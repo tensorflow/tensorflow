@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 

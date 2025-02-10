@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <iosfwd>
 #include <string>
@@ -51,15 +52,18 @@ class TensorProto;
 class Var;
 
 namespace batch_util {
-Status CopyElementToSlice(Tensor element, Tensor* parent, int64_t index);
-Status CopySliceToElement(const Tensor& parent, Tensor* element, int64_t index);
-Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64_t index);
-Status CopyContiguousSlices(const Tensor& src, int64_t src_offset,
-                            int64_t dst_offset, int64_t num_slices,
-                            Tensor* dst);
-Status MaybeMoveContiguousSlices(Tensor& src, int64_t src_offset,
-                                 int64_t dst_offset, int64_t num_slices,
-                                 Tensor* dst);
+absl::Status CopyElementToSlice(const Tensor& element, Tensor* parent,
+                                int64_t index);
+absl::Status CopySliceToElement(const Tensor& parent, Tensor* element,
+                                int64_t index);
+absl::Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element,
+                                     int64_t index);
+absl::Status CopyContiguousSlices(const Tensor& src, int64_t src_offset,
+                                  int64_t dst_offset, int64_t num_slices,
+                                  Tensor* dst);
+absl::Status MaybeMoveContiguousSlices(Tensor& src, int64_t src_offset,
+                                       int64_t dst_offset, int64_t num_slices,
+                                       Tensor* dst);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -185,8 +189,8 @@ class Tensor {
   /// validate that the `DataType` is valid and supported.
   ///
   /// The underlying buffer is allocated using a `CPUAllocator`.
-  static Status BuildTensor(DataType type, const TensorShape& shape,
-                            Tensor* out_tensor);
+  static absl::Status BuildTensor(DataType type, const TensorShape& shape,
+                                  Tensor* out_tensor);
 
  private:
   // A tag type for selecting the `Tensor` constructor overload that creates a
@@ -633,7 +637,7 @@ class Tensor {
   /// not get destroyed while the `StringPiece` is still used.
   ///
   /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
-  StringPiece tensor_data() const;
+  absl::string_view tensor_data() const;
   void* data() const;
 
   /// Copy the other tensor into this tensor, reshape it and reinterpret the
@@ -657,8 +661,8 @@ class Tensor {
   ///
   /// If any of the requirements are not met, errors::InvalidArgument is
   /// returned.
-  Status BitcastFrom(const Tensor& other, DataType dtype,
-                     const TensorShape& shape);
+  absl::Status BitcastFrom(const Tensor& other, DataType dtype,
+                           const TensorShape& shape);
 
   /// Like BitcastFrom, but CHECK fails if any preconditions are not met.
   ///
@@ -705,20 +709,20 @@ class Tensor {
   friend class CastOpBase;            // For access to set_dtype.
   friend class ScopedAllocator;       // For access to buf_.
   friend class PjRtTensorBufferUtil;  // For access to buf_.
-  friend Status batch_util::CopyElementToSlice(
-      Tensor element, Tensor* parent,
+  friend absl::Status batch_util::CopyElementToSlice(
+      const Tensor& element, Tensor* parent,
       int64_t index);  // For access to base<T>().
-  friend Status batch_util::CopySliceToElement(
+  friend absl::Status batch_util::CopySliceToElement(
       const Tensor& parent, Tensor* element,
       int64_t index);  // For access to base<T>().
-  friend Status batch_util::MaybeMoveSliceToElement(
+  friend absl::Status batch_util::MaybeMoveSliceToElement(
       Tensor* parent, Tensor* element,
       int64_t index);  // For access to base<T>().
-  friend Status batch_util::CopyContiguousSlices(
+  friend absl::Status batch_util::CopyContiguousSlices(
       const Tensor& src, int64_t src_offset, int64_t dst_offset,
       int64_t num_slices,
       Tensor* dst);  // For access to base<T>().
-  friend Status batch_util::MaybeMoveContiguousSlices(
+  friend absl::Status batch_util::MaybeMoveContiguousSlices(
       Tensor& src, int64_t src_offset, int64_t dst_offset, int64_t num_slices,
       Tensor* dst);  // For access to base<T>().
 
@@ -1060,9 +1064,8 @@ void Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer::operator delete(
   // NOTE(mrry): Using `sizeof(Tensor::ValueAndTensorBuffer<T>)` here requires
   // us to define this method outside the class definition, so that it is not
   // considered an incomplete type.
-  typename std::aligned_storage<sizeof(Tensor::ValueAndTensorBuffer<T>),
-                                alignof(Tensor::ValueAndTensorBuffer<T>)>::type
-      dummy_storage_;
+  alignas(Tensor::ValueAndTensorBuffer<T>)
+      std::byte dummy_storage_[sizeof(Tensor::ValueAndTensorBuffer<T>)];
   Tensor::ValueAndTensorBuffer<T>* dummy_object =
       reinterpret_cast<Tensor::ValueAndTensorBuffer<T>*>(&dummy_storage_);
   intptr_t offset = reinterpret_cast<intptr_t>(&dummy_object->tensor_buffer) -

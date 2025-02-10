@@ -103,13 +103,16 @@ class AdamOptimizer(optimizer.Optimizer):
   @end_compatibility
   """
 
-  def __init__(self,
-               learning_rate=0.001,
-               beta1=0.9,
-               beta2=0.999,
-               epsilon=1e-8,
-               use_locking=False,
-               name="Adam"):
+  def __init__(
+      self,
+      learning_rate=0.001,
+      beta1=0.9,
+      beta2=0.999,
+      epsilon=1e-8,
+      use_locking=False,
+      name="Adam",
+      use_own_namescope_for_non_slot_vars=False,
+  ):
     r"""Construct a new Adam optimizer.
 
     Initialization:
@@ -158,11 +161,11 @@ class AdamOptimizer(optimizer.Optimizer):
       use_locking: If True use locks for update operations.
       name: Optional name for the operations created when applying gradients.
         Defaults to "Adam".
-
-
+      use_own_namescope_for_non_slot_vars: If True, use a root namescope for
+        non-slot variables.
     """
 
-    super(AdamOptimizer, self).__init__(use_locking, name)
+    super().__init__(use_locking, name, use_own_namescope_for_non_slot_vars)
     self._lr = learning_rate
     self._beta1 = beta1
     self._beta2 = beta2

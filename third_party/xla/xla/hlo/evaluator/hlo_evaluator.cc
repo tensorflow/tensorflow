@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "Eigen/Core"
 #include "xla/array2d.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -69,11 +71,11 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/cpu/runtime_single_threaded_matmul.h"
+#include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
-#include "xla/service/tuple_points_to_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -222,7 +224,7 @@ absl::Status MakeEvalErrorDueToParamOrInfeed(
   return error;
 }
 
-// Repesents a value that might or might not be determined statically.
+// Represents a value that might or might not be determined statically.
 struct DynamicOrStaticInteger {
   std::optional<int64_t> static_value;
   bool is_dynamic() const { return !static_value.has_value(); }
@@ -898,8 +900,10 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
     const auto& computation_shape =
         computation.parameter_instruction(i)->shape();
     const auto& arg_shape = arg_literals[i]->shape();
-    if (!Shape::Equal().MinorToMajorOnlyInLayout()(computation_shape,
-                                                   arg_shape)) {
+    bool ignore_layout = !computation_shape.has_layout();
+    if (!Shape::Equal()
+             .IgnoreLayout(ignore_layout)
+             .MinorToMajorOnlyInLayout()(computation_shape, arg_shape)) {
       return InvalidArgument(
           "Shape mismatch at parameter %d. Computation expected %s, but arg "
           "was %s.",
@@ -980,12 +984,26 @@ bool HloEvaluator::TryEvaluate(const HloInstruction* instruction,
 absl::StatusOr<Literal> HloEvaluator::EvaluateWithSubstitutions(
     const HloInstruction* instruction,
     const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
-        substitutions) {
+        substitutions,
+    bool recursively_evaluate_nonconstant_operands) {
   std::vector<std::unique_ptr<HloInstruction>> owned_operands;
   for (const HloInstruction* operand : instruction->operands()) {
     auto it = substitutions.find(operand);
     if (it == substitutions.end()) {
-      owned_operands.push_back(operand->Clone());
+      if (recursively_evaluate_nonconstant_operands) {
+        TF_ASSIGN_OR_RETURN(Literal value,
+                            EvaluateWithSubstitutions(
+                                operand, substitutions,
+                                recursively_evaluate_nonconstant_operands));
+        owned_operands.push_back(HloInstruction::CreateConstant(value.Clone()));
+      } else {
+        if (!operand->IsConstant()) {
+          VLOG(2) << "EvaluateWithSubstitutions called when not all operands "
+                     "are constant. Consider calling it with "
+                     "`recursively_evaluate_non_constant_operands` true.";
+        }
+        owned_operands.push_back(operand->Clone());
+      }
     } else {
       owned_operands.push_back(
           HloInstruction::CreateConstant(it->second->Clone()));
@@ -1275,12 +1293,30 @@ absl::Status HloEvaluator::EvaluateInternal(
 }
 
 absl::Status HloEvaluator::HandleBitcast(const HloInstruction* bitcast) {
-  const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
-  Literal result(bitcast->shape());
+  Shape result_shape = bitcast->shape();
+
+  // Allow effective scalars without layouts as the result is unambiguous.
+  if (!result_shape.has_layout() &&
+      ShapeUtil::IsEffectiveScalar(result_shape)) {
+    result_shape = LayoutUtil::GetWithDefaultLayout(result_shape);
+  }
+
+  // In general, we require a layout to evaluate a bitcast: this is the only
+  // operation where indexing is physical rather than logical.
+  if (!result_shape.has_layout()) {
+    return InvalidArgument(
+        "Evaluator cannot evaluate bitcast for non-scalar operand without "
+        "assigned layout.");
+  }
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(result_shape));
+
+  Literal result(result_shape);
+
   // Bitcast output is allowed to be smaller than the input if the backend-
   // specific buffer sizes for the input and output are the same. Since the HLO
   // evaluator doesn't have access to the backend-specific shape size function,
   // assume it's OK to bitcast if output <= input.
+  const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
   TF_RET_CHECK(operand_literal.size_bytes() >= result.size_bytes());
   memcpy(result.untyped_data(), operand_literal.untyped_data(),
          result.size_bytes());
@@ -1357,8 +1393,11 @@ absl::Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
 #ifndef NDEBUG
     const Literal* input_literal = arg_literals_[parameter->parameter_number()];
     VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
-    DCHECK(Shape::Equal().MinorToMajorOnlyInLayout()(parameter->shape(),
-                                                     input_literal->shape()))
+    bool check_layout = parameter->shape().has_layout();
+    DCHECK(Shape::Equal()
+               .IgnoreLayout(!check_layout)
+               .MinorToMajorOnlyInLayout()(parameter->shape(),
+                                           input_literal->shape()))
         << "parameter shape is: "
         << ShapeUtil::HumanStringWithLayout(parameter->shape())
         << ", but input literal shape is: "
@@ -2372,6 +2411,18 @@ class OutputBatchIndexToInputIndex {
     int64_t index_vector_size =
         start_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
     index_vector_.resize(index_vector_size);
+
+    absl::flat_hash_map<int64_t, int64_t> start_indices_dims_to_output_dims =
+        GetStartIndicesDimToOutputDimForExplicitBatchingDims(
+            dim_numbers_.start_indices_batching_dims(),
+            dim_numbers_.index_vector_dim(), dim_numbers_.offset_dims(),
+            start_indices_.shape().rank(), output_shape.rank());
+    for (int64_t i = 0; i < dim_numbers->operand_batching_dims().size(); ++i) {
+      int64_t operand_dim = dim_numbers->operand_batching_dims(i);
+      int64_t start_indices_dim = dim_numbers->start_indices_batching_dims(i);
+      int64_t output_dim = start_indices_dims_to_output_dims[start_indices_dim];
+      explicit_batch_dims_operand_dim_to_output_dim_[operand_dim] = output_dim;
+    }
   }
 
   // Returns the contribution of start_indices to the input index corresponding
@@ -2393,6 +2444,7 @@ class OutputBatchIndexToInputIndex {
     PropagateOutputIndexGatherDimsToIndexVectorIndex(output_index);
     TF_RETURN_IF_ERROR(FetchIndexVector());
     PropagateIndexVectorToInputIndex();
+    PropagateExplicitBatchDimsToInputIndex(output_index);
     return absl::Span<const int64_t>(input_index_);
   }
 
@@ -2442,6 +2494,14 @@ class OutputBatchIndexToInputIndex {
     }
   }
 
+  void PropagateExplicitBatchDimsToInputIndex(
+      absl::Span<const int64_t> output_index) {
+    for (const auto [operand_dim, output_dim] :
+         explicit_batch_dims_operand_dim_to_output_dim_) {
+      input_index_[operand_dim] = output_index[output_dim];
+    }
+  }
+
   // input_dim_value_to_index_vector_[i] tells us how to compute dimension i of
   // the input index from the index vector.  See
   // PropagateIndexVectorToInputIndex.
@@ -2462,6 +2522,9 @@ class OutputBatchIndexToInputIndex {
   // this vector.
   std::vector<int64_t> input_index_;
 
+  absl::flat_hash_map<int64_t, int64_t>
+      explicit_batch_dims_operand_dim_to_output_dim_;
+
   const GatherDimensionNumbers& dim_numbers_;
   const Literal& start_indices_;
 };
@@ -2474,25 +2537,16 @@ class OutputOffsetIndexToInputIndex {
   // The constructor does some setup work that is amortized across all
   // iterations.
   explicit OutputOffsetIndexToInputIndex(
-      const GatherDimensionNumbers& dim_numbers, const Shape& input_shape,
-      const Shape& output_shape) {
-    std::vector<int64_t> window_index_to_output_index;
-    int64_t output_index_count = 0;
-    for (int64_t i = 0; i < output_shape.dimensions_size(); i++) {
-      if (absl::c_binary_search(dim_numbers.offset_dims(), i)) {
-        window_index_to_output_index.push_back(output_index_count++);
-      } else {
-        output_index_count++;
-      }
-    }
-
+      const GatherDimensionNumbers& dim_numbers, const Shape& input_shape) {
+    CHECK(absl::c_is_sorted(dim_numbers.offset_dims()));
     int64_t window_dim_count = 0;
     for (int64_t i = 0; i < input_shape.dimensions_size(); i++) {
-      if (absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
+      if (IsCollapsedOrBatchingDim(dim_numbers.collapsed_slice_dims(),
+                                   dim_numbers.operand_batching_dims(), i)) {
         input_dim_value_to_output_index_.push_back(-1);
       } else {
         input_dim_value_to_output_index_.push_back(
-            window_index_to_output_index[window_dim_count++]);
+            dim_numbers.offset_dims()[window_dim_count++]);
       }
     }
 
@@ -2603,8 +2657,7 @@ absl::Status HloEvaluator::HandleGather(const HloInstruction* gather) {
       &gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
       /*output_shape=*/shape, &start_indices);
   OutputOffsetIndexToInputIndex output_offset_index_to_input_index(
-      gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
-      /*output_shape=*/shape);
+      gather->gather_dimension_numbers(), /*input_shape=*/operand.shape());
 
   const Shape& operand_shape = operand.shape();
   if (ShapeUtil::IsZeroElementArray(operand_shape)) {
@@ -2777,6 +2830,20 @@ class UpdateScatterIndexToInputIndex {
     int64_t index_vector_size =
         scatter_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
     index_vector_.resize(index_vector_size);
+
+    absl::flat_hash_map<int64_t, int64_t> scatter_indices_dims_to_update_dims =
+        GetStartIndicesDimToOutputDimForExplicitBatchingDims(
+            dim_numbers_.scatter_indices_batching_dims(),
+            dim_numbers_.index_vector_dim(), dim_numbers_.update_window_dims(),
+            scatter_indices_.shape().rank(), updates_rank);
+    for (int64_t i = 0; i < dim_numbers.input_batching_dims().size(); ++i) {
+      int64_t input_dim = dim_numbers.input_batching_dims(i);
+      int64_t scatter_indices_dim =
+          dim_numbers.scatter_indices_batching_dims(i);
+      int64_t update_dim =
+          scatter_indices_dims_to_update_dims[scatter_indices_dim];
+      explicit_batch_dims_input_dim_to_update_dim_[input_dim] = update_dim;
+    }
   }
 
   // Returns the contribution of scatter_indices to the input index
@@ -2798,6 +2865,7 @@ class UpdateScatterIndexToInputIndex {
     PropagateUpdateIndexScatterDimsToIndexVectorIndex(update_index);
     TF_RETURN_IF_ERROR(FetchIndexVector());
     PropagateIndexVectorToInputIndex();
+    PropagateExplicitBatchDimsToInputIndex(update_index);
     return absl::Span<const int64_t>(input_index_);
   }
 
@@ -2846,6 +2914,14 @@ class UpdateScatterIndexToInputIndex {
     }
   }
 
+  void PropagateExplicitBatchDimsToInputIndex(
+      absl::Span<const int64_t> update_index) {
+    for (const auto& [input_dim, update_dim] :
+         explicit_batch_dims_input_dim_to_update_dim_) {
+      input_index_[input_dim] = update_index[update_dim];
+    }
+  }
+
   // input_dim_value_to_index_vector_[i] tells us how to compute dimension i
   // of the input index from the index vector.  See
   // PropagateIndexVectorToInputIndex.
@@ -2866,6 +2942,9 @@ class UpdateScatterIndexToInputIndex {
   // into this vector.
   std::vector<int64_t> input_index_;
 
+  absl::flat_hash_map<int64_t, int64_t>
+      explicit_batch_dims_input_dim_to_update_dim_;
+
   const ScatterDimensionNumbers& dim_numbers_;
   const Literal& scatter_indices_;
 };
@@ -2882,25 +2961,16 @@ class UpdateWindowIndexToInputIndex {
   // The constructor does some setup work that is amortized across all
   // iterations.
   explicit UpdateWindowIndexToInputIndex(
-      const ScatterDimensionNumbers& dim_numbers, int64_t input_rank,
-      int64_t update_rank) {
-    std::vector<int64_t> window_index_to_update_index;
-    int64_t update_index_count = 0;
-    for (int64_t i = 0; i < update_rank; i++) {
-      if (absl::c_binary_search(dim_numbers.update_window_dims(), i)) {
-        window_index_to_update_index.push_back(update_index_count++);
-      } else {
-        update_index_count++;
-      }
-    }
-
+      const ScatterDimensionNumbers& dim_numbers, int64_t input_rank) {
+    CHECK(absl::c_is_sorted(dim_numbers.update_window_dims()));
     int64_t window_dim_count = 0;
     for (int64_t i = 0; i < input_rank; i++) {
-      if (absl::c_binary_search(dim_numbers.inserted_window_dims(), i)) {
+      if (IsCollapsedOrBatchingDim(dim_numbers.inserted_window_dims(),
+                                   dim_numbers.input_batching_dims(), i)) {
         input_dim_value_to_update_index_.push_back(-1);
       } else {
         input_dim_value_to_update_index_.push_back(
-            window_index_to_update_index[window_dim_count++]);
+            dim_numbers.update_window_dims()[window_dim_count++]);
       }
     }
 
@@ -2990,8 +3060,7 @@ absl::Status HloEvaluator::HandleScatter(const HloInstruction* hlo) {
       /*input_rank=*/operand_dims.size(), updates_dims.size(),
       &scatter_indices);
   UpdateWindowIndexToInputIndex update_window_index_to_input_index(
-      scatter->scatter_dimension_numbers(),
-      /*input_rank=*/operand_dims.size(), updates_dims.size());
+      scatter->scatter_dimension_numbers(), /*input_rank=*/operand_dims.size());
 
   // Initialize the result with the operand. This makes it easier to handle
   // the updates even when the indices are repeated.
@@ -3677,7 +3746,7 @@ absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
                                             const Shape& result_shape) {
   std::function<ResultT(Fp, Uint)> stochastic_convert_op =
       [](Fp operand, Uint random) -> ResultT {
-    bool is_negative = static_cast<bool>(Eigen::numext::signbit(operand));
+    bool is_negative = static_cast<bool>(SignAndMagnitude(operand).first);
     if (Eigen::numext::isinf(operand)) {
       return is_negative ? std::numeric_limits<ResultT>::min()
                          : std::numeric_limits<ResultT>::max();
@@ -4678,7 +4747,7 @@ absl::Status HloEvaluator::Preprocess(const HloInstruction* hlo) {
       }
     }
   }
-  return ShapeUtil::ValidateShape(hlo->shape());
+  return ShapeUtil::ValidateShapeWithOptionalLayout(hlo->shape());
 }
 
 absl::Status HloEvaluator::Postprocess(const HloInstruction* hlo) {
@@ -4767,6 +4836,84 @@ std::unique_ptr<Array2D<uint8_t>> HloEvaluator::MatmulArray2D(
     const Array2D<uint8_t>& lhs, const Array2D<uint8_t>& rhs) {
   return MatmulArray2DImpl<uint8_t>(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulU8);
+}
+
+/* static */ std::unique_ptr<Array2D<float>> Array2DF8E5M2ToF32(
+    const Array2D<tsl::float8_e5m2>& input) {
+  auto result = std::make_unique<Array2D<float>>(input.height(), input.width());
+  for (int64_t rowno = 0; rowno < input.height(); ++rowno) {
+    for (int64_t colno = 0; colno < input.width(); ++colno) {
+      (*result)(rowno, colno) = static_cast<float>(input(rowno, colno));
+    }
+  }
+  return result;
+}
+
+/* static */ std::unique_ptr<Array2D<float>> Array2DF8E4M3FNToF32(
+    const Array2D<tsl::float8_e4m3fn>& input) {
+  auto result = std::make_unique<Array2D<float>>(input.height(), input.width());
+  for (int64_t rowno = 0; rowno < input.height(); ++rowno) {
+    for (int64_t colno = 0; colno < input.width(); ++colno) {
+      (*result)(rowno, colno) = static_cast<float>(input(rowno, colno));
+    }
+  }
+  return result;
+}
+
+/* static */ std::unique_ptr<Array2D<tsl::float8_e5m2>> Array2DF32ToF8E5M2(
+    const Array2D<float>& input) {
+  auto result = std::make_unique<Array2D<tsl::float8_e5m2>>(input.height(),
+                                                            input.width());
+  for (int64_t rowno = 0; rowno < input.height(); ++rowno) {
+    for (int64_t colno = 0; colno < input.width(); ++colno) {
+      (*result)(rowno, colno) =
+          static_cast<tsl::float8_e5m2>(input(rowno, colno));
+    }
+  }
+  return result;
+}
+
+/* static */ std::unique_ptr<Array2D<tsl::float8_e4m3fn>> Array2DF32ToF8E4M3FN(
+    const Array2D<float>& input) {
+  auto result = std::make_unique<Array2D<tsl::float8_e4m3fn>>(input.height(),
+                                                              input.width());
+  for (int64_t rowno = 0; rowno < input.height(); ++rowno) {
+    for (int64_t colno = 0; colno < input.width(); ++colno) {
+      (*result)(rowno, colno) =
+          static_cast<tsl::float8_e4m3fn>(input(rowno, colno));
+    }
+  }
+  return result;
+}
+
+static bool promote_f8_to_f32 = true;
+
+std::unique_ptr<Array2D<tsl::float8_e5m2>> HloEvaluator::MatmulArray2D(
+    const Array2D<tsl::float8_e5m2>& lhs,
+    const Array2D<tsl::float8_e5m2>& rhs) {
+  if (promote_f8_to_f32) {
+    auto lhs_float = Array2DF8E5M2ToF32(lhs);
+    auto rhs_float = Array2DF8E5M2ToF32(rhs);
+    auto result = MatmulArray2D(*lhs_float, *rhs_float);
+    return Array2DF32ToF8E5M2(*result);
+  } else {
+    return MatmulArray2DImpl<tsl::float8_e5m2>(
+        lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF8E5M2);
+  }
+}
+
+std::unique_ptr<Array2D<tsl::float8_e4m3fn>> HloEvaluator::MatmulArray2D(
+    const Array2D<tsl::float8_e4m3fn>& lhs,
+    const Array2D<tsl::float8_e4m3fn>& rhs) {
+  if (promote_f8_to_f32) {
+    auto lhs_float = Array2DF8E4M3FNToF32(lhs);
+    auto rhs_float = Array2DF8E4M3FNToF32(rhs);
+    auto result = MatmulArray2D(*lhs_float, *rhs_float);
+    return Array2DF32ToF8E4M3FN(*result);
+  } else {
+    return MatmulArray2DImpl<tsl::float8_e4m3fn>(
+        lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF8E4M3FN);
+  }
 }
 
 }  // namespace xla

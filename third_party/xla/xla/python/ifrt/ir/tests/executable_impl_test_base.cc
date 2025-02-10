@@ -21,31 +21,35 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/Version.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
+#include "xla/python/ifrt/ir/transforms/passes.h"
+#include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -53,13 +57,7 @@ namespace test_util {
 
 IfrtIrExecutableImplTestBase::IfrtIrExecutableImplTestBase() {
   mlir::registerMLIRContextCLOptions();
-
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  registry.insert<xla::ifrt::IfrtDialect>();
-  xla::ifrt::AttachBuiltInSpmdExpansions(registry);
-  mlir_context_.appendDialectRegistry(registry);
+  xla::ifrt::support::RegisterMlirDialects(mlir_context_);
 }
 
 void IfrtIrExecutableImplTestBase::SetUp() {
@@ -89,6 +87,43 @@ IfrtIrExecutableImplTestBase::LoadFromFile(absl::string_view file_path) {
                         diagnostic_handler.ConsumeStatus().message()));
   }
   return op_ref;
+}
+
+absl::StatusOr<std::unique_ptr<IfrtIRProgram>>
+IfrtIrExecutableImplTestBase::SerDeRoundTrip(
+    std::unique_ptr<IfrtIRProgram> program,
+    Version::CompatibilityRequirement compatibility_requirement,
+    bool propagate_shardings) {
+  // Ensure the atom programs are outlined to modules. If the atom programs are
+  // already outlined, this pipeline will do nothing.
+  mlir::PassManager pm(program->mlir_module.getContext());
+  xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions outline_pipeline_options;
+  outline_pipeline_options.propagate_shardings = propagate_shardings;
+  xla::ifrt::CreateIfrtToOutlinedAtomProgramsPipeline(pm,
+                                                      outline_pipeline_options);
+  mlir::BaseScopedDiagnosticHandler diag_handler(
+      program->mlir_module.getContext());
+  if (mlir::failed(pm.run(program->mlir_module))) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to outline IFRT IR program: ",
+                     diag_handler.ConsumeStatus().message()));
+  }
+
+  // Serialize IFRT IR program with the given compatibility requirement, and the
+  // atom programs at the current VHLO version.
+  TF_ASSIGN_OR_RETURN(
+      auto serialized,
+      Serialize(
+          *program,
+          std::make_unique<SerializeIfrtIRProgramOptions>(
+              Version::fromCompatibilityRequirement(compatibility_requirement)
+                  .toString(),
+              mlir::vhlo::Version::getCurrentVersion().toString())));
+
+  // Deserialize the versioned IFRT IR program.
+  TF_ASSIGN_OR_RETURN(
+      program, Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr));
+  return program;
 }
 
 absl::StatusOr<tsl::RCReference<Array>>
@@ -128,9 +163,7 @@ IfrtIrExecutableImplTestBase::PickDevices(int count) {
   absl::Span<Device* const> devices = client_->devices();
   TF_RET_CHECK(count <= devices.size())
       << "Requested " << count << " devices. Only have " << devices.size();
-  auto picked = devices.first(count);
-  return BasicDeviceList::Create(
-      BasicDeviceList::Devices(picked.begin(), picked.end()));
+  return BasicDeviceList::Create(devices.first(count));
 }
 
 }  // namespace test_util

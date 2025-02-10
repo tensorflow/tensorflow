@@ -75,7 +75,8 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
     return "xla::ifrt::proxy::TestProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestProgram>(serializable));
     return "";
   }
@@ -105,7 +106,8 @@ class TestCompileOptionsSerDes
     return "xla::ifrt::proxy::TestCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestCompileOptions>(serializable));
     return "";
   }

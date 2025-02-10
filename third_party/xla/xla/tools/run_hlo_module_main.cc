@@ -30,12 +30,12 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/translate/mhlo_to_hlo/translate.h"
+#include "xla/hlo/translate/stablehlo_to_hlo/translate.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/tools/run_hlo_module.h"
-#include "xla/translate/mhlo_to_hlo/translate.h"
-#include "xla/translate/stablehlo_to_hlo/translate.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
                 "Print the input and result literals to stdout."),
       tsl::Flag("output_literals_file", &opts.output_literals_file,
                 "Output literals as RunHloModuleLiterals protobuf to the"
-                " destimation file."),
+                " destination file."),
       tsl::Flag("input_literals_file", &opts.input_literals_file,
                 "Use arguments from the provided literals file. Cannot be used "
                 "in combination with \"force_fake_data\"."),

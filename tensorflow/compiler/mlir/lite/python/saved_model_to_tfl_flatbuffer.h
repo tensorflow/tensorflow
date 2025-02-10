@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_SAVED_MODEL_TO_TFL_FLATBUFFER_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_SAVED_MODEL_TO_TFL_FLATBUFFER_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -29,7 +30,7 @@ namespace tensorflow {
 // Converts the given saved_model(either v1 or v2) to a TF Lite FlatBuffer
 // string according to the given model flags, converter flags and tags. Returns
 // error status if it fails to convert the input.
-Status ConvertSavedModelToTFLiteFlatBuffer(
+absl::Status ConvertSavedModelToTFLiteFlatBuffer(
     const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags, string* result,
     const quantization::PyFunctionLibrary* quantization_py_function_lib);

@@ -39,11 +39,10 @@ class AbstractTensorHandle : public core::RefCounted {
 
   // Returns the status of the tensor handle. If it is a tfrt::TensorHandle,
   // the tensor handle can be an error and return non-OK status.
-  virtual tensorflow::Status TensorHandleStatus() const;
+  virtual absl::Status TensorHandleStatus() const;
 
   // Returns tensor shape. If tensor has unknown rank, shape remains untouched.
-  virtual tensorflow::Status Shape(
-      tensorflow::PartialTensorShape* shape) const = 0;
+  virtual absl::Status Shape(tensorflow::PartialTensorShape* shape) const = 0;
 
   // Returns tensor (full) type.
   // While there is no immediate plan to deprecate dtype and shape in favor

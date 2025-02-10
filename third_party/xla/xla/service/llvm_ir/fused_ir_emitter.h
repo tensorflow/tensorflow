@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_LLVM_IR_FUSED_IR_EMITTER_H_
 
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"

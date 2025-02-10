@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_XLA_CALL_MODULE_LOADER_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_XLA_CALL_MODULE_LOADER_H_
 
+#include <stdbool.h>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -31,11 +33,10 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
-#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "xla/client/xla_computation.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/shape.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -44,7 +45,7 @@ bool IsTokenType(mlir::Type type);
 class XlaCallModuleLoader {
  public:
   static absl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> Create(
-      mlir::MLIRContext* context, int version, std::string module_str,
+      mlir::MLIRContext* context, int version, mlir::StringRef module_str,
       std::vector<std::string> disabled_checks,
       std::vector<std::string> platforms, int num_invocation_args,
       bool main_has_token_input_output);
@@ -78,6 +79,9 @@ class XlaCallModuleLoader {
   // arguments.
   absl::Status RefineDynamicShapes(llvm::ArrayRef<xla::Shape> input_shapes);
 
+  // Returns true iff the output types are refined by RefineDynamicShapes.
+  bool IsOutputTypeRefined() { return output_types_refined_; };
+
   // Validates that the module only contains ops from valid dialects.
   absl::Status ValidateDialect();
 
@@ -86,12 +90,11 @@ class XlaCallModuleLoader {
   // much easier to detect here.
   absl::Status ValidateStaticShapes();
 
-  // Lowers the StableHLO module to MHLO in place.
-  absl::Status LowerModuleToMhlo();
+  // Runs some passes on the StableHLO module to prepare it for lowering to
+  // HLO and TF call lowering.
+  absl::Status PrepareStablehloForLowering();
 
-  // Lowers the MHLO module to XlaComputation and returns it.
-  //
-  // REQUIRES: `LowerModuleToMhlo()` is called beforehand.
+  // Lowers the StableHLO module to XlaComputation and returns it.
   absl::StatusOr<xla::XlaComputation> ToXlaComputation();
 
   // Returns the deserialized stablehlo module.
@@ -103,7 +106,7 @@ class XlaCallModuleLoader {
 
   // Initializes the loader with the given serialized module string.
   absl::Status LoadModule(mlir::MLIRContext* context, int version,
-                          std::string module_str,
+                          mlir::StringRef module_str,
                           std::vector<std::string> disabled_checks,
                           std::vector<std::string> platforms,
                           int num_invocation_args,
@@ -122,6 +125,8 @@ class XlaCallModuleLoader {
   // disabled_checks attribute and the TF_XLA_FLAGS environment variable.
   std::vector<std::string> loading_disabled_checks_;
   mlir::func::FuncOp main_;
+  // Keeps track of whether the output types are refined by RefineDynamicShapes.
+  bool output_types_refined_ = false;
 };
 
 }  // namespace tensorflow

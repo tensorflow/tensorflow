@@ -24,14 +24,14 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "third_party/protobuf/text_format.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/test.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -92,7 +92,7 @@ CreateSimpleOptimizedFunctionGraphInfo() {
   NodeDef node_def;
   TF_RETURN_IF_ERROR(NodeDefBuilder("A", "OneOutput").Finalize(&node_def));
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
-  Status status;
+  absl::Status status;
   graph->AddNode(node_def, &status);
   TF_RETURN_IF_ERROR(status);
 

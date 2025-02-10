@@ -20,9 +20,9 @@ limitations under the License.
 #include <utility>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"

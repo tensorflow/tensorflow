@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -27,10 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/dynamic_shaped_ops.h"
-#include "xla/client/value_inference.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/dynamic_shaped_ops.h"
+#include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -122,8 +123,10 @@ class StridedSliceOp : public XlaOpKernel {
       dims->set_edge_padding_low(0);
 
       dims->set_interior_padding(0);
-      if ((begins_are_dynamic[sparse_index] ||
-           ends_are_dynamic[sparse_index]) &&
+      if (((begins_are_dynamic.size() > sparse_index &&
+            begins_are_dynamic[sparse_index]) ||
+           (ends_are_dynamic.size() > sparse_index &&
+            ends_are_dynamic[sparse_index])) &&
           !shrink_axis_set) {
         // Need to slice this dimension so pad first.
         dims->set_edge_padding_high(input_shape.dim_size(i));

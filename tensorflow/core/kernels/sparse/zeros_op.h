@@ -40,8 +40,9 @@ namespace functor {
 
 template <typename Device>
 struct CSRSparseMatrixZeros {
-  Status operator()(OpKernelContext* c, DataType dtype,
-                    const Tensor& dense_shape_t, CSRSparseMatrix* matrix) {
+  absl::Status operator()(OpKernelContext* c, DataType dtype,
+                          const Tensor& dense_shape_t,
+                          CSRSparseMatrix* matrix) {
     auto dense_shape = dense_shape_t.vec<int64_t>();
     const int rank = dense_shape.size();
     if (!(rank == 2 || rank == 3)) {

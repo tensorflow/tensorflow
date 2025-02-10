@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -30,8 +29,8 @@ limitations under the License.
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -100,8 +99,6 @@ std::shared_ptr<MockClient> MakeDeviceTestClient(int num_devices,
     ON_CALL(*device, client).WillByDefault(ReturnPointee(&state->client));
     ON_CALL(*device, Id).WillByDefault(Return(DeviceId(i + 10)));
     ON_CALL(*device, IsAddressable).WillByDefault(Return(addressable));
-    ON_CALL(*device, DebugString)
-        .WillByDefault(Return(absl::StrCat("device(", i + 10, ")")));
     ON_CALL(*device, DefaultMemory).WillByDefault(Return(state->memories[i]));
     // device_memories will be filled in at the end of the loop.
     ON_CALL(*device, Memories)
@@ -149,6 +146,12 @@ void DeviceTest::SetUp() {
 tsl::RCReference<DeviceList> DeviceTest::GetDevices(
     absl::Span<const int> device_indices) {
   return test_util::GetDevices(client_.get(), device_indices).value();
+}
+
+tsl::RCReference<DeviceList> DeviceTest::GetAddressableDevices(
+    absl::Span<const int> device_indices) {
+  return test_util::GetAddressableDevices(client_.get(), device_indices)
+      .value();
 }
 
 }  // namespace test_util

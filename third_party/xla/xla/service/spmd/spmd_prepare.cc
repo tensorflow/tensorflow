@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/spmd/spmd_prepare.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -30,9 +31,9 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -77,10 +78,11 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
                                            const HloInstruction* updates) {
     std::vector<int64_t> slice_sizes = hlo_sharding_util::GetScatterSliceSize(
         operand->shape(), updates->shape(), dnums);
-    int64_t index_vector_dim = dnums.index_vector_dim();
-    const auto& index_map = dnums.scatter_dims_to_operand_dims();
     return hlo_sharding_util::GetGatherScatterBatchParallelDims(
-        operand, indices, slice_sizes, index_vector_dim, index_map, call_graph);
+        operand, indices, slice_sizes, dnums.index_vector_dim(),
+        dnums.scatter_dims_to_operand_dims(),
+        dnums.scatter_indices_batching_dims(), dnums.update_window_dims(),
+        call_graph);
   };
   // Parallel dim already detected. Assume everything is good.
   if (get_parallel_dims_for_scatter(operand, indices, updates).has_value()) {
@@ -90,8 +92,8 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
   HloInstruction* rhs_indices = indices->mutable_operand(1);
   HloInstruction* lhs_updates = updates->mutable_operand(0);
   HloInstruction* rhs_updates = updates->mutable_operand(1);
-  std::optional<hlo_sharding_util::GatherScatterParallelDims> lhs_parallel_dims;
-  std::optional<hlo_sharding_util::GatherScatterParallelDims> rhs_parallel_dims;
+  std::optional<hlo_sharding_util::GatherScatterDims> lhs_parallel_dims;
+  std::optional<hlo_sharding_util::GatherScatterDims> rhs_parallel_dims;
   lhs_parallel_dims =
       get_parallel_dims_for_scatter(operand, lhs_indices, lhs_updates);
   // Didn't find any LHS parallel dimension when looking through concat.
@@ -105,16 +107,12 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
     return false;
   }
   // Make sure the parallel dims are the same between the two pieces.
-  if (lhs_parallel_dims->operand_parallel_dims !=
-          rhs_parallel_dims->operand_parallel_dims ||
-      lhs_parallel_dims->indices_parallel_dims !=
-          rhs_parallel_dims->indices_parallel_dims ||
-      lhs_parallel_dims->index_parallel_in_dim !=
-          rhs_parallel_dims->index_parallel_in_dim) {
+  if (lhs_parallel_dims->operand_dims != rhs_parallel_dims->operand_dims ||
+      lhs_parallel_dims->indices_dims != rhs_parallel_dims->indices_dims) {
     return false;
   }
-  if (lhs_parallel_dims->operand_parallel_dims.size() !=
-      lhs_parallel_dims->indices_parallel_dims.size()) {
+  if (lhs_parallel_dims->operand_dims.size() !=
+      lhs_parallel_dims->indices_dims.size()) {
     return false;
   }
   HloInstruction* lhs_operand = operand->mutable_operand(0);
@@ -127,12 +125,12 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
   }
   // Check any parallel dimension is actually sharded, otherwise splitting the
   // scatter would have no value.
-  for (int i = 0; i < lhs_parallel_dims->operand_parallel_dims.size(); ++i) {
+  for (int i = 0; i < lhs_parallel_dims->operand_dims.size(); ++i) {
     if (lhs_operand->sharding().IsTiled() &&
         lhs_operand->sharding().tile_assignment().dim(
-            lhs_parallel_dims->operand_parallel_dims[i]) != 1 &&
+            lhs_parallel_dims->operand_dims[i]) != 1 &&
         lhs_indices->sharding().tile_assignment().dim(
-            lhs_parallel_dims->indices_parallel_dims[i]) != 1) {
+            lhs_parallel_dims->indices_dims[i]) != 1) {
       any_sharded_parallel_dim = true;
       break;
     }

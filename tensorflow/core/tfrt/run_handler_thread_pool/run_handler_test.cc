@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -28,7 +28,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive

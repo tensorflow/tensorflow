@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
@@ -47,7 +48,7 @@ class SparseExpanderBase {
 };
 
 // Computes the Sparse expansion for `op`.
-Status RunSparseExpansion(mlir::Operation* op, mlir::Operation** output);
+absl::Status RunSparseExpansion(mlir::Operation* op, mlir::Operation** output);
 
 // A registry of sparse SPMD expanders. This map is statically stored and
 // initialized with all the registered sparse SPMD expanders.

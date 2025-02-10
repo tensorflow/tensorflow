@@ -41,8 +41,7 @@ inline absl::string_view ToAbslStringView(tfrt::string_view sv) {
 
 // Parses the string representation of the DataType in `dtype` into `data_type`.
 // Aborts the program for unsupported dtypes.
-tensorflow::Status ParseTfDataType(absl::string_view dtype,
-                                   DataType* data_type);
+absl::Status ParseTfDataType(absl::string_view dtype, DataType* data_type);
 
 // The following 2 functions convert between Tensorflow DataTypes and
 // OpAttrTypes. The mapping between OpAttrType and DataType is defined in
@@ -58,24 +57,22 @@ tfrt::DType ConvertTfDataTypeToBefAttrType(DataType data_type);
 // Parses the tensor valued `attr_value` and constructs the tensor with its
 // contents in `tensor`. Returns OK status on success, INVALID_ARGUMENT on
 // failure.
-tensorflow::Status ParseTensorAttrValue(absl::string_view attr_value,
-                                        tensorflow::Tensor* tensor);
+absl::Status ParseTensorAttrValue(absl::string_view attr_value,
+                                  tensorflow::Tensor* tensor);
 
 // Parses a string of the form "[1,2,3,...]" in `attr_value` and returns the
 // constituent dimension sizes (shape) in `int_list_val`. Returns
 // INVALID_ARGUMENT on invalid input.
-tensorflow::Status ParseTensorShapeAttrValue(absl::string_view attr_value,
-                                             std::vector<int64_t>* shape_val);
+absl::Status ParseTensorShapeAttrValue(absl::string_view attr_value,
+                                       std::vector<int64_t>* shape_val);
 
 // Parses a boolean from `attr_value` into `bool_val` and returns OK status on
 // success. Returns INVALID_ARGUMENT on invalid input.
-tensorflow::Status ParseBoolAttrValue(absl::string_view attr_value,
-                                      bool* bool_val);
+absl::Status ParseBoolAttrValue(absl::string_view attr_value, bool* bool_val);
 
 // Parses an int64_t from `attr_value` into `int_val` and returns OK status on
 // success. Returns INVLAID_ARGUMENT on invalid input.
-tensorflow::Status ParseIntAttrValue(absl::string_view attr_value,
-                                     int64_t* int_val);
+absl::Status ParseIntAttrValue(absl::string_view attr_value, int64_t* int_val);
 
 inline std::vector<absl::string_view> AttrValueSplit(absl::string_view str) {
   return absl::StrSplit(str, absl::MaxSplits('$', 1));
@@ -92,9 +89,9 @@ llvm::Error FillAttrValueMap(const tfrt::OpAttrsRef& attrs,
                              AttrValueMap* attr_value_map);
 
 // Fills in the passed in AttrValueMap `attr_value_map`.
-tensorflow::Status SetUpAttrValueMap(tfrt::AggregateAttr op_attr_array,
-                                     tfrt::AggregateAttr op_func_attr_array,
-                                     tensorflow::AttrValueMap* attr_value_map);
+absl::Status SetUpAttrValueMap(tfrt::AggregateAttr op_attr_array,
+                               tfrt::AggregateAttr op_func_attr_array,
+                               tensorflow::AttrValueMap* attr_value_map);
 
 }  // namespace tfd
 }  // namespace tensorflow

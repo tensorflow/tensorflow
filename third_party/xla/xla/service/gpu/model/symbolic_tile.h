@@ -29,8 +29,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
-#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -63,57 +62,52 @@ class ConstraintExpression {
     }
   };
 
+ private:
   using ConjointConstraints = llvm::SmallVector<Constraint, 2>;
-  // Takes the conjunction of the constraints of `first` and `second`.
-  static ConstraintExpression And(ConstraintExpression first,
-                                  ConstraintExpression second);
+  explicit ConstraintExpression(bool is_satisfiable)
+      : is_satisfiable_(is_satisfiable) {}
 
-  // Takes the disjunction of the constraints of `first` and `second`.
-  static ConstraintExpression Or(ConstraintExpression first,
-                                 ConstraintExpression second);
+ public:
+  // Constructs a `ConstraintExpression` from a single `Constraint`.
+  explicit ConstraintExpression(const Constraint& constraint)
+      : disjoint_conjoint_constraints_({{constraint}}) {}
 
-  // Produces the unsatisfiable constraint expression.
-  static ConstraintExpression GetUnsatisfiableConstraintExpression() {
-    ConstraintExpression unsatisfiable;
-    unsatisfiable.is_satisfiable_ = false;
-    return unsatisfiable;
+  // Constructs a `ConstraintExpression` that is always satisfied.
+  static ConstraintExpression GetAlwaysSatisfied() {
+    return ConstraintExpression(true);
   }
 
-  // Convenience util to take the disjunction of `this` and unwrapped
-  // `ConjointConstraints`.
-  void Or(ConjointConstraints conjunction);
+  // Constructs a `ConstraintExpression` that is unsatisfiable.
+  static ConstraintExpression GetUnsatisfiable() {
+    return ConstraintExpression(false);
+  }
 
-  // Convenience util to take the conjunction of `this` and unwrapped
-  // `ConjointConstraints`.
-  void And(ConjointConstraints conjunction);
+  // Takes the conjunction of the constraints of `first` and `second`.
+  friend ConstraintExpression operator&&(const ConstraintExpression& first,
+                                         const ConstraintExpression& second);
 
-  // Whether the constraints can be satisfied. When this is set to `false`,
-  // the domain of the `TileConstraints` must be considered empty.
+  // Takes the disjunction of the constraints of `first` and `second`.
+  friend ConstraintExpression operator||(const ConstraintExpression& first,
+                                         const ConstraintExpression& second);
+
+  // Whether the constraints can be satisfied.
   bool is_satisfiable() const { return is_satisfiable_; }
 
   // Returns `true` if the constraint expression is marked satisfiable and does
-  // not contain any constraint. We expect this to be the case for a default
-  // constructed `ConstraintExpression`.
+  // not contain any constraint.
   bool IsAlwaysSatisfied() const {
     return is_satisfiable_ && disjoint_conjoint_constraints_.empty();
   }
 
   // Returns `true` if the constraint expression is satisfied by the provided
-  // parameters, and `false` otherwise.  The caller is responsible for ensuring
-  // that the number of provided parameters is sufficient to verify the
+  // dim_values, and `false` otherwise.  The caller is responsible for ensuring
+  // that the number of provided dim_values is sufficient to verify the
   // constraints.
-  bool IsSatisfiedBy(absl::Span<const int64_t> parameters) const;
+  bool IsSatisfiedBy(absl::Span<const int64_t> dim_values) const;
 
-  // Accessor for the underlying disjoint conjunctions of constraints. This is
-  // expected to be empty if `is_satisfiable()` is `false`.
-  absl::Span<ConjointConstraints const> DisjointConjointConstraints() const {
-    return disjoint_conjoint_constraints_;
-  }
+  std::string ToString() const;
 
-  std::string ToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
-
-  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
+  void Print(std::ostream& out) const;
 
   // Simplifies the constraint expression.
   //
@@ -127,33 +121,68 @@ class ConstraintExpression {
   // ConstraintExpression canonically always satisfied.
   void Simplify();
 
+ private:
   // This allows GUnit to print the expression.
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const ConstraintExpression& expr) {
     sink.Append(expr.ToString());
   }
 
-  // TODO(bchetioui): add a util to verify constraints here later.
- private:
+  template <typename H>
+  friend H AbslHashValue(H h, const Constraint& constraint) {
+    llvm::hash_code expr_hash = mlir::hash_value(constraint.expr);
+    return H::combine(std::move(h), static_cast<size_t>(expr_hash),
+                      constraint.interval);
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ConjointConstraints& conjoint_constraints) {
+    for (const auto& constraint : conjoint_constraints) {
+      h = H::combine(std::move(h), constraint);
+    }
+    return h;
+  }
+
+  // When this is set to `false`, disjoint_conjoint_constraints_ must be empty.
   bool is_satisfiable_ = true;
   llvm::SmallVector<ConjointConstraints, 2> disjoint_conjoint_constraints_;
 };
 
-template <typename H>
-H AbslHashValue(H h, const ConstraintExpression::Constraint& constraint) {
-  llvm::hash_code expr_hash = mlir::hash_value(constraint.expr);
-  return H::combine(std::move(h), static_cast<size_t>(expr_hash),
-                    constraint.interval);
+// Logical operators between `ConstraintExpression` and `Constraint`.
+inline ConstraintExpression operator&&(
+    const ConstraintExpression::Constraint& first,
+    const ConstraintExpression& second) {
+  return ConstraintExpression(first) && second;
 }
 
-template <typename H>
-H AbslHashValue(
-    H h,
-    const ConstraintExpression::ConjointConstraints& conjoint_constraints) {
-  for (const auto& constraint : conjoint_constraints) {
-    h = H::combine(std::move(h), constraint);
-  }
-  return h;
+inline ConstraintExpression operator&&(
+    const ConstraintExpression& first,
+    const ConstraintExpression::Constraint& second) {
+  return first && ConstraintExpression(second);
+}
+
+inline ConstraintExpression operator&&(
+    const ConstraintExpression::Constraint& first,
+    const ConstraintExpression::Constraint& second) {
+  return ConstraintExpression(first) && ConstraintExpression(second);
+}
+
+inline ConstraintExpression operator||(
+    const ConstraintExpression::Constraint& first,
+    const ConstraintExpression& second) {
+  return ConstraintExpression(first) || second;
+}
+
+inline ConstraintExpression operator||(
+    const ConstraintExpression& first,
+    const ConstraintExpression::Constraint& second) {
+  return first || ConstraintExpression(second);
+}
+
+inline ConstraintExpression operator||(
+    const ConstraintExpression::Constraint& first,
+    const ConstraintExpression::Constraint& second) {
+  return ConstraintExpression(first) || ConstraintExpression(second);
 }
 
 // Tiling in the simpler case, when we don't have dynamic offsets (see the
@@ -164,17 +193,17 @@ H AbslHashValue(
 // along each dimension can be expressed as a strided expression
 //     offset + stride * iota(size)
 //
-// where offset and stride are non-negative integers, size is a strictly
-// positive integer and `iota` is the usual range function.
+// where offset is a non-negative integer, stride is an integer, and size is a
+// strictly positive integer and `iota` is the usual range function.
 //
 // An *N-dimensional symbolic tile* is a function from an M-dimensional
 // tile to an N-dimensional tile. The input tile is assumed to have all offsets
 // equal to 0 and all strides equal to 1.
 //
 // It is represented with "tile_map()", which is an IndexingMap of this form:
-// (size0, ..., size{n-1}) ->  (offset0, ..., offset{n-1},
-//                              size'0, ..., size'{n-1},
-//                              stride0, ..., stride{n-1})
+// (size0, ..., size{M-1}) ->  (offset0, ..., offset{N-1},
+//                              size'0, ..., size'{N-1},
+//                              stride0, ..., stride{N-1})
 //
 // We can get three AffineMap projections of tile_map(), which are just
 // convenience methods to get the components that we need:
@@ -205,7 +234,7 @@ H AbslHashValue(
 //
 // Def. An n-dimensional tile is a function:
 // t: Z^k -> P(N^n) =
-//    rt_vars -> CartesianProduct_{i=1, ..., n-1}({
+//    rt_vars -> CartesianProduct_{i=0, ..., n-1}({
 //           offsets(rt_vars)[i] + strides[i] * 0,
 //           ...,
 //           offsets(rt_vars)[i] + strides[i] * (sizes[i]-1)
@@ -219,11 +248,11 @@ H AbslHashValue(
 //
 //    rt_vars: Z^k (so called "runtime variables")
 //    offsets: Z^k -> N^n
-//    strides: N^n
+//    strides: Z^n
 //    sizes: (N+)^n
 //
 // Notation. We can represent n-dimensional tiles as:
-//   (offsets, strides, sizes): (Z^k -> N^n) x N^n x (N+)^n
+//   (offsets, strides, sizes): (Z^k -> N^n) x Z^n x (N+)^n
 // where A x B means a Cartesian product.
 //
 // Def. Let Tiles(n) denote the set of n-dimensional tiles.
@@ -237,15 +266,15 @@ H AbslHashValue(
 //   -> (offsets', strides', sizes') : Tiles(n)
 // as a vector of functions:
 //   (offset_map, stride_map, size_map) where:
-//     offset_map: ((Z^j -> N^m) x N^m x (N+)^m) -> (Z^k -> N^n)
-//     stride_map: ((Z^j -> N^m) x N^m x (N+)^m) -> N^n
-//     size_map: ((Z^j -> N^m) x N^m x (N+)^m) -> (N+)^n
+//     offset_map: ((Z^j -> N^m) x Z^m x (N+)^m) -> (Z^k -> N^n)
+//     stride_map: ((Z^j -> N^m) x Z^m x (N+)^m) -> Z^n
+//     size_map: ((Z^j -> N^m) x Z^m x (N+)^m) -> (N+)^n
 // where each "map" returns one component of the result Tile.
 //
 // If we assume that offsets=({} -> {0, ..., 0}) and strides={1, ..., 1}, then
 // we can simplify the definition:
 //     offset_map: (N+)^m -> (Z^k -> N^n)
-//     stride_map: (N+)^m -> N^n
+//     stride_map: (N+)^m -> Z^n
 //     size_map: (N+)^m -> (N+)^n
 //
 // As a notation, we can further simplify the structure of offset_map:
@@ -254,7 +283,7 @@ H AbslHashValue(
 //
 // In the code we represent a symbolic tile with "tile_map()", which is an
 // IndexingMap of this form:
-// (size0, ..., size{n-1})
+// (size0, ..., size{m-1})
 // [rt_var0, ..., rt_var{k-1}] -> (offset0, ..., offset{n-1},
 //                                 size'0, ..., size'{n-1},
 //                                 stride0, ..., stride{n-1})
@@ -285,12 +314,9 @@ class SymbolicTile {
   static std::optional<SymbolicTile> FromIndexingMap(IndexingMap indexing_map);
 
   // For printing in tests.
-  std::string RtVarsToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
-  std::string ToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+  std::string ToString() const;
 
-  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
+  void Print(std::ostream& out) const;
 
   mlir::AffineMap offset_map() const;
   mlir::AffineMap size_map() const;
@@ -310,7 +336,7 @@ class SymbolicTile {
   // A map from one tile's sizes and RTVars to another tile's offsets, sizes,
   // and strides.
   //
-  // (size0, ..., size{n-1})
+  // (size0, ..., size{m-1})
   // [rt_var0, ..., rt_var{k-1}] -> (offset0, ..., offset{n-1},
   //                                 size'0, ..., size'{n-1},
   //                                 stride0, ..., stride{n-1})

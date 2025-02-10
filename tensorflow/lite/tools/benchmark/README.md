@@ -80,6 +80,15 @@ and the following optional parameters:
     and the path to include the name of the output file; otherwise results are
     printed to `stdout`.
 
+*  `export_model_runtime_info`: `bool` (default="false") \
+    Exports the model runtime information in a proto format as specified
+     in `tensorflow/lite/profiling/proto/model_runtime_info.proto`.
+*  `model_runtime_info_output_file`: `str` (default="") \
+    File path to export model runtime data to. The results are printed to
+    `stdout` if option is not set. Requires `export_model_runtime_info` to be
+    `true` and the path to include the name of the output file; otherwise
+    results are printed to `stdout`.
+
 *   `profiling_output_csv_file`: `str` (default="") \
 
     WARNING: Deprecated, prefer using `op_profiling_output_mode` and
@@ -244,7 +253,7 @@ example: put it in LD_LIBRARY_PATH.
     Note if this option is explicitly set to `false`, the TfLite runtime will
     use its original CPU kernels for model execution. In other words, after
     enabling the feature that the XNNPACK delegate is applied by default in
-    TfLite runtime, explictly setting this flag to `false` will cause the
+    TfLite runtime, explicitly setting this flag to `false` will cause the
     benchmark tool to disable the feature at runtime, and to use the original
     non-delegated CPU execution path for model benchmarking.
 *   `xnnpack_force_fp16`: `bool` (default=false) \

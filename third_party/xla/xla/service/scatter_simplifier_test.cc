@@ -15,13 +15,20 @@ limitations under the License.
 
 #include "xla/service/scatter_simplifier.h"
 
+#include <cstdint>
 #include <optional>
 
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -344,6 +351,202 @@ TEST_F(ScatterSimplifierTest, VariadicScatterIntoScalar) {
     CHECK: %[[UPDATES1:.*]] = bf16[] parameter(4)
     CHECK: ROOT %{{.*}} = (f32[], bf16[]) tuple(%[[UPDATES0]], %[[UPDATES1]])
   )");
+}
+
+class SimpleScatterExampleTest : public HloTestBase {};
+
+TEST_F(SimpleScatterExampleTest, 1x1d) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[4] parameter(0)
+      indices = s32[1,1] parameter(1)
+      update = s32[1,2] parameter(2)
+      ROOT scatter = s32[4] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
+  Literal operand = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{2}});
+  Literal updates = LiteralUtil::CreateR2<int32_t>({{2, 3}});
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<int32_t>({1, 2, 5, 7}), result));
+}
+
+TEST_F(SimpleScatterExampleTest, 2x2d) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[2,2] parameter(0)
+      indices = s32[2,2] parameter(1)
+      update = s32[2,2,2] parameter(2)
+      ROOT scatter = s32[2,2] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0,1},
+          index_vector_dim=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
+  Literal operand = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {0, 0}});
+  Literal updates = LiteralUtil::CreateR3<int32_t>(
+      {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>(
+          {{1 + 10 + 50, 2 + 20 + 60}, {3 + 30 + 70, 4 + 40 + 80}}),
+      result));
+}
+
+TEST_F(SimpleScatterExampleTest, 2x2d_n_less_than_N) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[2,2] parameter(0)
+      indices = s32[2,1] parameter(1)
+      update = s32[2,2,2] parameter(2)
+      ROOT scatter = s32[2,2] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
+  Literal operand = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0}, {0}});
+  Literal updates = LiteralUtil::CreateR3<int32_t>(
+      {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>(
+          {{1 + 10 + 50, 2 + 20 + 60}, {3 + 30 + 70, 4 + 40 + 80}}),
+      result));
+}
+
+TEST_F(SimpleScatterExampleTest, 2x2d_nofit) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[2,2] parameter(0)
+      indices = s32[2,1] parameter(1)
+      update = s32[2,2,2] parameter(2)
+      ROOT scatter = s32[2,2] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
+  Literal operand = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}});
+
+  // Note: the 2nd update slice won't fit.
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0}, {2}});
+
+  Literal updates = LiteralUtil::CreateR3<int32_t>(
+      {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>({{1 + 10, 2 + 20}, {3 + 30, 4 + 40}}),
+      result));
+}
+
+TEST_F(SimpleScatterExampleTest, 3x1d) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[4] parameter(0)
+      indices = s32[3,1] parameter(1)
+      update = s32[3,2] parameter(2)
+      ROOT scatter = s32[4] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
+  Literal operand = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0}, {1}, {2}});
+  Literal updates =
+      LiteralUtil::CreateR2<int32_t>({{1, 2}, {10, 20}, {200, 300}});
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(
+                                 {1 + 1, 2 + 2 + 10, 3 + 20 + 200, 4 + 300}),
+                             result));
 }
 
 }  // namespace

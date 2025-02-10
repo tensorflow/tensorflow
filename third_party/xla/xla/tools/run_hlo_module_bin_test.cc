@@ -21,14 +21,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/subprocess.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/subprocess.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

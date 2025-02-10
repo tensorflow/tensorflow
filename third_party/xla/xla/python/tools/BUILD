@@ -43,7 +43,7 @@ pytype_strict_library(
         ":_types",  # buildcleaner: keep
         "//third_party/py/numpy",
         "//xla:xla_data_proto_py",
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
     ],
 )
 

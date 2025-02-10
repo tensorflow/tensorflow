@@ -295,11 +295,9 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   tflite::PauseHeapMonitoring(/*pause=*/true);
 #endif
-  size_t alloc_bytes = num_bytes;
+  // This buffer may be consumed by XNNPack.
+  size_t alloc_bytes = num_bytes + /*XNN_EXTRA_BYTES=*/16;
   // TODO(b/145340303): Tensor data should be aligned.
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  alloc_bytes += 16;  // XNNPACK_EXTRA_BYTES = 16
-#endif
   if (!tensor->data.data) {
     tensor->data.data = (char*)malloc(alloc_bytes);
 #ifdef TF_LITE_TENSORFLOW_PROFILER
@@ -406,6 +404,8 @@ TfLiteAllocationStrategy TfLiteTensorGetAllocationStrategy(
       return kTfLiteAllocationStrategyUnknown;
     case kTfLiteVariantObject:
       return kTfLiteAllocationStrategyNew;
+    case kTfLiteNonCpu:
+      return kTfLiteAllocationStrategyUnknown;
   }
   return kTfLiteAllocationStrategyUnknown;
 }
@@ -430,6 +430,8 @@ TfLiteRunStability TfLiteTensorGetBufferAddressStability(
       return kTfLiteRunStabilityUnknown;
     case kTfLiteVariantObject:
       return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStabilityUnknown;
   }
   return kTfLiteRunStabilityUnknown;
 }
@@ -453,6 +455,8 @@ TfLiteRunStability TfLiteTensorGetDataStability(const TfLiteTensor* const t) {
       return kTfLiteRunStabilityUnknown;
     case kTfLiteVariantObject:
       return kTfLiteRunStabilitySingleRun;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStabilityUnknown;
   }
   return kTfLiteRunStabilityUnknown;
 }
@@ -479,11 +483,13 @@ TfLiteRunStep TfLiteTensorGetDataKnownStep(const TfLiteTensor* t) {
       return kTfLiteRunStepUnknown;
     case kTfLiteVariantObject:
       return kTfLiteRunStepEval;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStepUnknown;
   }
   return kTfLiteRunStepUnknown;
 }
 
-// Returns the operation steop when the shape of a tensor is computed.
+// Returns the operation step when the shape of a tensor is computed.
 //
 // Some operations can precompute the shape of their results before the
 // evaluation step. This makes the shape available earlier for subsequent
@@ -506,6 +512,8 @@ TfLiteRunStep TfLiteTensorGetShapeKnownStep(const TfLiteTensor* t) {
       return kTfLiteRunStepUnknown;
     case kTfLiteVariantObject:
       return kTfLiteRunStepEval;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStepUnknown;
   }
   return kTfLiteRunStepUnknown;
 }

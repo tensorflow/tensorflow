@@ -13,20 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iostream>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/functional_ops.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace ops {
 namespace {
 
-Status PartitionedCallGrad(const Scope& scope, const Operation& op,
-                           const std::vector<Output>& grad_inputs,
-                           std::vector<Output>* grad_outputs) {
+absl::Status PartitionedCallGrad(const Scope& scope, const Operation& op,
+                                 const std::vector<Output>& grad_inputs,
+                                 std::vector<Output>* grad_outputs) {
   NameAttrList f;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "f", &f));
   for (const auto& attr : op.node()->attrs()) {

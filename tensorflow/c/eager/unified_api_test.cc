@@ -29,7 +29,7 @@ class UnifiedAPI
   void SetUp() override {
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
-    Status s = StatusFromTF_Status(status.get());
+    absl::Status s = StatusFromTF_Status(status.get());
     CHECK_EQ(errors::OK, s.code()) << s.message();
   }
 
@@ -39,9 +39,9 @@ class UnifiedAPI
 };
 
 // Checks that inputs[0] is a scalar.
-Status TestScalarShape(AbstractContext* ctx,
-                       absl::Span<AbstractTensorHandle* const> inputs,
-                       absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status TestScalarShape(AbstractContext* ctx,
+                             absl::Span<AbstractTensorHandle* const> inputs,
+                             absl::Span<AbstractTensorHandle*> outputs) {
   PartialTensorShape shape;
   TF_RETURN_IF_ERROR(inputs[0]->Shape(&shape));
   if (shape.dims() != 0) {
@@ -59,7 +59,7 @@ TEST_P(UnifiedAPI, TestTensorShapeScalar) {
   AbstractContextPtr ctx;
   {
     AbstractContext* ctx_raw = nullptr;
-    Status s =
+    absl::Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
@@ -68,22 +68,23 @@ TEST_P(UnifiedAPI, TestTensorShapeScalar) {
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 2.0f, &x_raw);
+    absl::Status s =
+        TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 2.0f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
-  Status s = RunModel(TestScalarShape, ctx.get(),
-                      /*inputs=*/{x.get()},
-                      /*outputs=*/{},
-                      /*use_function=*/UseFunction());
+  absl::Status s = RunModel(TestScalarShape, ctx.get(),
+                            /*inputs=*/{x.get()},
+                            /*outputs=*/{},
+                            /*use_function=*/UseFunction());
   ASSERT_EQ(errors::OK, s.code()) << s.message();
 }
 
 // Checks that inputs[0] is a matrix with shape 2x4.
-Status TestTensorShape2x4(AbstractContext* ctx,
-                          absl::Span<AbstractTensorHandle* const> inputs,
-                          absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status TestTensorShape2x4(AbstractContext* ctx,
+                                absl::Span<AbstractTensorHandle* const> inputs,
+                                absl::Span<AbstractTensorHandle*> outputs) {
   PartialTensorShape shape;
   TF_RETURN_IF_ERROR(inputs[0]->Shape(&shape));
   if (shape.dims() != 2) {
@@ -109,7 +110,7 @@ TEST_P(UnifiedAPI, TestTensorShape2x4) {
   AbstractContextPtr ctx;
   {
     AbstractContext* ctx_raw = nullptr;
-    Status s =
+    absl::Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
@@ -120,16 +121,16 @@ TEST_P(UnifiedAPI, TestTensorShape2x4) {
     AbstractTensorHandle* x_raw = nullptr;
     float data[] = {0., 0., 0., 0., 0., 0., 0., 0};
     int64_t dim_sizes[] = {2, 4};
-    Status s = TestTensorHandleWithDims<float, TF_FLOAT>(ctx.get(), data,
-                                                         dim_sizes, 2, &x_raw);
+    absl::Status s = TestTensorHandleWithDims<float, TF_FLOAT>(
+        ctx.get(), data, dim_sizes, 2, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
-  Status s = RunModel(TestTensorShape2x4, ctx.get(),
-                      /*inputs=*/{x.get()},
-                      /*outputs=*/{},
-                      /*use_function=*/UseFunction());
+  absl::Status s = RunModel(TestTensorShape2x4, ctx.get(),
+                            /*inputs=*/{x.get()},
+                            /*outputs=*/{},
+                            /*use_function=*/UseFunction());
   ASSERT_EQ(errors::OK, s.code()) << s.message();
 }
 
@@ -146,14 +147,14 @@ TEST_P(UnifiedAPI, TestUnknownShapeTracing) {
   {
     tracing::TracingTensorHandle* x_raw = nullptr;
     PartialTensorShape shape;
-    Status s = dyn_cast<tracing::TracingContext>(ctx.get())->AddParameter(
+    absl::Status s = dyn_cast<tracing::TracingContext>(ctx.get())->AddParameter(
         DT_FLOAT, shape, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
   PartialTensorShape shape;
-  Status s = x->Shape(&shape);
+  absl::Status s = x->Shape(&shape);
   ASSERT_EQ(errors::OK, s.code()) << s.message();
   ASSERT_TRUE(shape.unknown_rank());
 }
@@ -171,7 +172,7 @@ TEST_P(UnifiedAPI, TestPartialShapeTracing) {
     tracing::TracingTensorHandle* x_raw = nullptr;
     PartialTensorShape shape;
     int64_t dim_sizes[] = {2, -1};
-    Status s = PartialTensorShape::MakePartialShape(dim_sizes, 2, &shape);
+    absl::Status s = PartialTensorShape::MakePartialShape(dim_sizes, 2, &shape);
     ASSERT_EQ(errors::OK, s.code()) << s.message();
     s = dyn_cast<tracing::TracingContext>(ctx.get())->AddParameter(
         DT_FLOAT, shape, &x_raw);
@@ -180,7 +181,7 @@ TEST_P(UnifiedAPI, TestPartialShapeTracing) {
   }
 
   PartialTensorShape shape;
-  Status s = x->Shape(&shape);
+  absl::Status s = x->Shape(&shape);
   ASSERT_EQ(errors::OK, s.code()) << s.message();
   ASSERT_FALSE(shape.unknown_rank());
 

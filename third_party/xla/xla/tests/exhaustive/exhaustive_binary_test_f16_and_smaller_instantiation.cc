@@ -13,31 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tests/exhaustive/exhaustive_binary_test_definitions.h"
-#include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/exhaustive/exhaustive_binary_test_definitions.h"  // IWYU pragma: keep, exhaustive_binary_test_f16_and_smaller_instantiation.inc
+#include "xla/tests/exhaustive/exhaustive_op_test_utils.h"  // IWYU pragma: keep, exhaustive_binary_test_f16_and_smaller_instantiation.inc
+#include "tsl/platform/test.h"  // IWYU pragma: keep, exhaustive_binary_test_f16_and_smaller_instantiation.inc
 
 namespace xla {
 namespace exhaustive_op_test {
 namespace {
 
-#if defined(XLA_BACKEND_SUPPORTS_BFLOAT16)
-INSTANTIATE_TEST_SUITE_P(BF16, ExhaustiveBF16BinaryTest,
-                         ::testing::ValuesIn(CreateExhaustiveF32Ranges()));
-#else
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveBF16BinaryTest);
-#endif
-
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
-INSTANTIATE_TEST_SUITE_P(F16, ExhaustiveF16BinaryTest,
-                         ::testing::ValuesIn(CreateExhaustiveF32Ranges()));
-#else
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveF16BinaryTest);
-#endif
-
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveF32BinaryTest);
-
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveF64BinaryTest);
+#include "xla/tests/exhaustive/exhaustive_binary_test_f16_and_smaller_instantiation.inc"
 
 }  // namespace
 }  // namespace exhaustive_op_test

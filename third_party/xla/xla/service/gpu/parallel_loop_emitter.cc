@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -46,7 +47,7 @@ namespace gpu {
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     llvm_ir::BodyEmitter body_emitter, const Shape& shape,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* b,
     LaunchDimensionsConfig launch_config)
     : launch_dimensions_(launch_dimensions),
       launch_config_(launch_config),
@@ -57,7 +58,7 @@ ParallelLoopEmitter::ParallelLoopEmitter(
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
     absl::Span<const llvm_ir::IrArray> target_arrays,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* b,
 
     LaunchDimensionsConfig launch_config)
     : launch_dimensions_(launch_dimensions),

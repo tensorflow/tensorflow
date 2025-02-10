@@ -123,16 +123,26 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
                                        node_lens_[dst_idx]);
     absl::flat_hash_map<std::string, NodeStrategyIdx>
         src_strategy_name_to_idx_map;
-    for (NodeStrategyIdx i = 0; i < node_lens_[src_idx]; ++i) {
+    const auto& src_strategy_input_shardings =
+        src_strategy_group.GetStrategyInputShardings();
+    for (size_t iid = 0; iid < src_strategy_input_shardings.size(); ++iid) {
+      const InputShardings& input_shardings = src_strategy_input_shardings[iid];
+      NodeStrategyIdx i =
+          src_strategy_group.GetStrategyIdxForInputShardings(iid);
       const ShardingStrategy& strategy = src_strategy_group.GetStrategy(i);
       if (strategy.communication_cost > 0) {
-        src_strategy_name_to_idx_map[strategy.name] = i;
+        src_strategy_name_to_idx_map[input_shardings.name] = i;
       }
     }
-    for (NodeStrategyIdx i = 0; i < node_lens_[dst_idx]; ++i) {
+    const auto& dst_strategy_input_shardings =
+        dst_strategy_group.GetStrategyInputShardings();
+    for (size_t iid = 0; iid < dst_strategy_input_shardings.size(); ++iid) {
+      const InputShardings& input_shardings = dst_strategy_input_shardings[iid];
+      NodeStrategyIdx i =
+          dst_strategy_group.GetStrategyIdxForInputShardings(iid);
       const ShardingStrategy& dst_strategy = dst_strategy_group.GetStrategy(i);
       if (dst_strategy.communication_cost > 0) {
-        auto it = src_strategy_name_to_idx_map.find(dst_strategy.name);
+        auto it = src_strategy_name_to_idx_map.find(input_shardings.name);
         if (it != src_strategy_name_to_idx_map.end()) {
           const auto& src_strategy = src_strategy_group.GetStrategy(it->second);
           CHECK_LE(std::abs(src_strategy.communication_cost -

@@ -58,7 +58,7 @@ bool TensorList::Decode(const VariantTensorData& data) {
   string metadata;
   data.get_metadata(&metadata);
   uint64 scratch;
-  StringPiece iter(metadata);
+  absl::string_view iter(metadata);
   std::vector<size_t> invalid_indices;
   core::GetVarint64(&iter, &scratch);
   size_t num_invalid_tensors = static_cast<size_t>(scratch);

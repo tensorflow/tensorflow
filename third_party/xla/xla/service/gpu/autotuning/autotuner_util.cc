@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -45,24 +44,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/dump.h"
-#include "xla/service/gpu/gpu_asm_opts_util.h"
-#include "xla/service/gpu/stream_executor_util.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
+#include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/base64.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -127,7 +120,7 @@ ResultAndInserted AddResultToInMemoryCache(const AutotuneCacheKey& key,
 
 absl::Status AddResultToFileBasedCacheIfEnabled(
     const AutotuneCacheKey& key, AutotuneResult result,
-    std::string_view cache_dir,
+    absl::string_view cache_dir,
     DebugOptions::AutotuneCacheMode autotune_cache_mode)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
   if (cache_dir.empty() ||
@@ -170,7 +163,7 @@ absl::Status AddResultToFileBasedCacheIfEnabled(
 
 absl::StatusOr<ResultAndInserted> AddResultToCaches(
     const AutotuneCacheKey& key, AutotuneResult result,
-    std::string_view cache_dir,
+    absl::string_view cache_dir,
     DebugOptions::AutotuneCacheMode autotune_cache_mode)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
   ResultAndInserted result_and_inserted = AddResultToInMemoryCache(key, result);
@@ -261,10 +254,12 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
 }  // namespace
 
 /*static*/ absl::Status AutotunerUtil::SerializeAutotuneResults(
-    AutotuneResults* results) {
+    AutotuneResults* results, std::optional<const AutotuneCacheKeySet*> keys) {
   absl::MutexLock lock(&autotune_cache_mu);
   for (const auto& [k, result] : autotune_cache) {
-    SerializeAutotuneEntry(results, k, &result);
+    if (!keys.has_value() || keys.value()->contains(k)) {
+      SerializeAutotuneEntry(results, k, &result);
+    }
   }
 
   results->set_version(kVersion);
@@ -274,14 +269,18 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
 }
 
 /*static*/ absl::Status AutotunerUtil::LoadAutotuneResults(
-    const AutotuneResults& results) {
+    const AutotuneResults& results, bool allow_override) {
   absl::MutexLock lock(&autotune_cache_mu);
   for (const AutotuneResults::Entry& result : results.results()) {
-    if (auto [it, inserted] = autotune_cache.emplace(
-            AutotuneCacheKey(result.device(), result.hlo()), result.result());
-        !inserted) {
-      return absl::InternalError(absl::StrCat(
-          "Duplicate autotuning result for ", it->first.ToString()));
+    AutotuneCacheKey key(result.device(), result.hlo());
+    if (allow_override) {
+      autotune_cache.insert_or_assign(key, result.result());
+    } else {
+      if (auto [it, inserted] = autotune_cache.emplace(key, result.result());
+          !inserted) {
+        return absl::InternalError(absl::StrCat(
+            "Duplicate autotuning result for ", it->first.ToString()));
+      }
     }
   }
   return absl::OkStatus();
@@ -297,19 +296,6 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
   return autotune_cache.empty();
 }
 
-/* static*/ absl::StatusOr<se::DeviceMemoryBase> AutotunerUtil::CreateBuffer(
-    se::RedzoneAllocator& allocator, const Shape& shape,
-    const AutotuneConfig& config, int64_t& rng_state) {
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
-                      allocator.AllocateBytes(ShapeUtil::ByteSizeOf(shape)));
-  if (config.should_init_buffers()) {
-    InitializeBuffer(allocator.stream(), shape.element_type(), &rng_state,
-                     buffer);
-  }
-  return buffer;
-}
-
-namespace {
 std::string ToCanonicalString(const HloInstruction* instr) {
   auto options = HloPrintOptions::Canonical();
   if (instr->opcode() != HloOpcode::kFusion) {
@@ -329,8 +315,6 @@ std::string ToCanonicalString(const HloInstruction* instr) {
   // of the HLO computation proto instead.
   return instr->called_computations()[0]->ToString(options);
 }
-
-}  // namespace
 
 AutotuneCacheKey::AutotuneCacheKey(absl::string_view model_str,
                                    const HloInstruction& instr)
@@ -463,10 +447,13 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
 
   // Cache miss.
   if (config.should_require_complete_aot_autotune_results()) {
-    return NotFound(
+    absl::Status s = NotFound(
         "Complete XLA AOT autotuning results are required, but no AOT result "
         "was found for key: %s",
         key.ToString());
+    tsl::errors::InsertPayloads(
+        s, {{std::string(kAutotuneCacheRequiredErrorPayloadKey), ""}});
+    return s;
   }
 
   TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result, autotune_fn());
@@ -490,7 +477,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
 }  // anonymous namespace
 
 /*static*/ absl::Status AutotunerUtil::LoadAutotuneResults(
-    absl::string_view data, bool as_textproto) {
+    absl::string_view data, bool as_textproto, bool allow_override) {
   AutotuneResults results;
   // The cast here is necessary for MacOS builds.
   bool parse_success =
@@ -507,7 +494,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
         kVersion, results.version()));
   }
 
-  TF_RETURN_IF_ERROR(LoadAutotuneResults(results));
+  TF_RETURN_IF_ERROR(LoadAutotuneResults(results, allow_override));
   return absl::OkStatus();
 }
 
@@ -569,18 +556,6 @@ bool IsTextProtoPath(absl::string_view file_path) {
   LOG(INFO) << "Autotune results loaded from file: " << resolved_path;
 
   return absl::OkStatus();
-}
-
-/*static*/ absl::StatusOr<se::RedzoneAllocator>
-AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
-                                      const DebugOptions& opts) {
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
-  return se::RedzoneAllocator(
-      stream, config.GetAllocator(), PtxOptsFromDebugOptions(opts),
-      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-      /*redzone_size=*/config.should_check_correctness()
-          ? opts.xla_gpu_redzone_padding_bytes()
-          : 0);
 }
 
 /*static*/ AutotunerUtil::CacheStats AutotunerUtil::GetCacheStats() {

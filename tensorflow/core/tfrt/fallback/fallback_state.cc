@@ -17,7 +17,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <new>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -27,11 +26,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/types.h"
@@ -41,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/tpu/virtual_device.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
 
 namespace tensorflow {
@@ -155,8 +156,8 @@ FallbackState::FallbackState(const SessionOptions &session_options,
 }
 
 absl::StatusOr<std::unique_ptr<GraphExecutionState>>
-FallbackState::CreateGraphExecutionState(GraphDef graph_def,
-                                         bool run_placer) const {
+FallbackState::CreateGraphExecutionState(GraphDef graph_def, bool run_placer,
+                                         bool enable_tf2xla_mlir_bridge) const {
   // Create GraphExecutionState which contains the preprocessed graph including
   // device information. The following code is adapted from
   // http://cs?q=tensorflow/core/common_runtime/direct_session.cc:427%20at_cl:352783230
@@ -166,6 +167,7 @@ FallbackState::CreateGraphExecutionState(GraphDef graph_def,
   options.session_options = &session_options_;
   options.session_handle = "tfrt_fallback_handle";
   options.run_placer = run_placer;
+  options.enable_tf2xla_mlir_bridge = enable_tf2xla_mlir_bridge;
 
   std::unique_ptr<GraphExecutionState> execution_state;
   TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(

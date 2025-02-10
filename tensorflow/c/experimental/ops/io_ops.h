@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_IO_OPS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_IO_OPS_H_
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
@@ -28,20 +29,20 @@ namespace tensorflow {
 namespace ops {
 
 // Restores tensors from a V2 checkpoint.
-Status RestoreV2(AbstractContext* ctx, AbstractTensorHandle* const prefix,
-                 AbstractTensorHandle* const tensor_names,
-                 AbstractTensorHandle* const shape_and_slices,
-                 absl::Span<AbstractTensorHandle*> tensors,
-                 absl::Span<DataType> dtypes, const char* name = nullptr,
-                 const char* raw_device_name = nullptr);
+absl::Status RestoreV2(AbstractContext* ctx, AbstractTensorHandle* const prefix,
+                       AbstractTensorHandle* const tensor_names,
+                       AbstractTensorHandle* const shape_and_slices,
+                       absl::Span<AbstractTensorHandle*> tensors,
+                       absl::Span<DataType> dtypes, const char* name = nullptr,
+                       const char* raw_device_name = nullptr);
 
 // Saves tensors in V2 checkpoint format.
-Status SaveV2(AbstractContext* ctx, AbstractTensorHandle* const prefix,
-              AbstractTensorHandle* const tensor_names,
-              AbstractTensorHandle* const shape_and_slices,
-              absl::Span<AbstractTensorHandle* const> tensors,
-              const char* name = nullptr,
-              const char* raw_device_name = nullptr);
+absl::Status SaveV2(AbstractContext* ctx, AbstractTensorHandle* const prefix,
+                    AbstractTensorHandle* const tensor_names,
+                    AbstractTensorHandle* const shape_and_slices,
+                    absl::Span<AbstractTensorHandle* const> tensors,
+                    const char* name = nullptr,
+                    const char* raw_device_name = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow

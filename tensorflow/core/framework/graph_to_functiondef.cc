@@ -61,7 +61,7 @@ class NodeNameMapping {
 
   // Records name as a used name. If this name is already used,
   // returns an error status.
-  Status UseOutputName(const string& name);
+  absl::Status UseOutputName(const string& name);
 
   // Look up how a node name was previously normalized/uniquified.
   // Returns empty if name was never seen.
@@ -137,7 +137,7 @@ string NodeNameMapping::Uniquify(const string& name) {
   return uniqued;
 }
 
-Status NodeNameMapping::UseOutputName(const string& name) {
+absl::Status NodeNameMapping::UseOutputName(const string& name) {
   const auto& iter = used_names_.find(name);
   if (iter != used_names_.end()) {
     return errors::InvalidArgument(
@@ -154,7 +154,7 @@ string NodeNameMapping::Lookup(const string& name) const {
   return iter->second;
 }
 
-Status FillFunctionBody(
+absl::Status FillFunctionBody(
     const string& fn_name, const NodeNameMapping& node_names,
     const std::vector<const Node*>& body_nodes,
     const absl::flat_hash_map<string, string>& tensor_renaming,
@@ -321,7 +321,7 @@ Status FillFunctionBody(
   return absl::OkStatus();
 }
 
-Status GraphToFunctionDefHelper(
+absl::Status GraphToFunctionDefHelper(
     const Graph& fn_body, const string& fn_name, bool append_hash_to_fn_name,
     bool set_stateful_from_nodes, bool copy_placeholder_attrs_from_nodes,
     const std::vector<const Node*>& body_nodes,
@@ -439,7 +439,7 @@ Status GraphToFunctionDefHelper(
     TF_RETURN_IF_ERROR(
         NameRangesForNode(*node, node->op_def(), nullptr, &output_ranges));
     for (const auto& output : output_ranges) {
-      const StringPiece& output_name = output.first;
+      const absl::string_view& output_name = output.first;
       int index_start = output.second.first;
       int index_end = output.second.second;
       for (int i = index_start; i < index_end; ++i) {
@@ -488,7 +488,7 @@ Status GraphToFunctionDefHelper(
     const uint64 hash = FunctionDefHash(*fdef);
     string encoded;
     TF_RETURN_IF_ERROR(Base64Encode(
-        StringPiece(reinterpret_cast<const char*>(&hash), sizeof(hash)),
+        absl::string_view(reinterpret_cast<const char*>(&hash), sizeof(hash)),
         &encoded));
     // Besides letters and digits our Base64 encoding uses '_' and '-'.
     // Dash is invalid in operation names and multiple underscores in random
@@ -539,7 +539,7 @@ Status GraphToFunctionDefHelper(
   return absl::OkStatus();
 }
 
-Status GraphToFunctionDefHelper(
+absl::Status GraphToFunctionDefHelper(
     const Graph& graph, const string& name,
     const std::function<absl::optional<string>(const Node*)>& control_ret,
     const std::vector<string>& output_names, bool allow_destructive_reads,
@@ -615,17 +615,17 @@ Status GraphToFunctionDefHelper(
 
 }  // anonymous namespace
 
-Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
-                          bool append_hash_to_fn_name,
-                          bool set_stateful_from_nodes,
-                          bool copy_placeholder_attrs_from_nodes,
-                          const std::vector<const Node*>& body_nodes,
-                          const std::vector<OutputTensor>& inputs,
-                          const std::vector<OutputTensor>& outputs,
-                          const std::vector<string>& output_names,
-                          const std::vector<const Node*>& control_outputs,
-                          const std::vector<string>& control_output_names,
-                          const char* description, FunctionDef* fdef) {
+absl::Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
+                                bool append_hash_to_fn_name,
+                                bool set_stateful_from_nodes,
+                                bool copy_placeholder_attrs_from_nodes,
+                                const std::vector<const Node*>& body_nodes,
+                                const std::vector<OutputTensor>& inputs,
+                                const std::vector<OutputTensor>& outputs,
+                                const std::vector<string>& output_names,
+                                const std::vector<const Node*>& control_outputs,
+                                const std::vector<string>& control_output_names,
+                                const char* description, FunctionDef* fdef) {
   return GraphToFunctionDefHelper(
       fn_body, fn_name, append_hash_to_fn_name, set_stateful_from_nodes,
       copy_placeholder_attrs_from_nodes, body_nodes, inputs, outputs,
@@ -634,7 +634,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
   return absl::OkStatus();
 }
 
-Status GraphToFunctionDef(
+absl::Status GraphToFunctionDef(
     const Graph& graph, const string& name,
     const std::function<absl::optional<string>(const Node*)>& control_ret,
     FunctionDef* fdef) {
@@ -643,20 +643,20 @@ Status GraphToFunctionDef(
                                   /*allow_destructive_reads=*/false, fdef);
 }
 
-Status GraphToFunctionDef(const Graph& graph, const string& name,
-                          FunctionDef* fdef) {
+absl::Status GraphToFunctionDef(const Graph& graph, const string& name,
+                                FunctionDef* fdef) {
   return GraphToFunctionDef(graph, name, /*control_ret=*/nullptr, fdef);
 }
 
-Status GraphToFunctionDef(const Graph& graph, const string& name,
-                          const std::vector<std::string>& output_names,
-                          FunctionDef* fdef) {
+absl::Status GraphToFunctionDef(const Graph& graph, const string& name,
+                                const std::vector<std::string>& output_names,
+                                FunctionDef* fdef) {
   return GraphToFunctionDefHelper(graph, name, /*control_ret=*/nullptr,
                                   output_names,
                                   /*allow_destructive_reads=*/false, fdef);
 }
 
-Status GraphToFunctionDef(
+absl::Status GraphToFunctionDef(
     std::unique_ptr<Graph> graph, const string& name,
     const std::function<std::optional<string>(const Node*)>& control_ret,
     FunctionDef* fdef) {

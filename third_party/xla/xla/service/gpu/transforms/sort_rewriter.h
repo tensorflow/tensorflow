@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 namespace gpu {
@@ -56,6 +56,9 @@ class SortRewriter : public HloModulePass {
 
   static inline int sort_size_threshold_ = 16385;
 };
+
+// Verify that the sort tensor shape is supported by CUB.
+bool IsCubCompatibleSort(const HloSortInstruction* sort_op);
 
 }  // namespace gpu
 }  // namespace xla

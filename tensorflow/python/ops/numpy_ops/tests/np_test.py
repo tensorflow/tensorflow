@@ -35,6 +35,7 @@ import tensorflow.python.ops.numpy_ops.tests.extensions as nje
 import tensorflow.python.ops.numpy_ops.tests.np_wrapper as tnp
 import tensorflow.python.ops.numpy_ops.tests.test_util as jtu
 from tensorflow.python.util import nest
+from tensorflow.python.util.numpy_compat import np_where
 
 config.parse_flags_with_absl()
 
@@ -683,7 +684,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for shape in all_shapes for dtype in all_dtypes))
   def testNonzero(self, shape, dtype):
     rng = jtu.rand_some_zero()
-    onp_fun = lambda x: onp.nonzero(x)  # pylint: disable=unnecessary-lambda
+    onp_fun = lambda x: onp.nonzero(onp.atleast_1d(x))  # pylint: disable=unnecessary-lambda
     lnp_fun = lambda x: tnp.nonzero(x)  # pylint: disable=unnecessary-lambda
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=False)
@@ -2338,7 +2339,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for shape in all_shapes for dtype in all_dtypes))
   def testWhereOneArgument(self, shape, dtype):
     rng = jtu.rand_some_zero()
-    onp_fun = lambda x: onp.where(x)
+    onp_fun = lambda x: np_where(x)
     lnp_fun = lambda x: tnp.where(x)
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=False)

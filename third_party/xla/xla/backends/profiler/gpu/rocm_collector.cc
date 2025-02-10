@@ -25,6 +25,10 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "xla/stream_executor/rocm/roctracer_wrapper.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "xla/tsl/profiler/utils/parse_annotation.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/abi.h"
 #include "tsl/platform/env_time.h"
@@ -36,10 +40,6 @@ limitations under the License.
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
-#include "tsl/profiler/utils/parse_annotation.h"
-#include "tsl/profiler/utils/xplane_builder.h"
-#include "tsl/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_utils.h"
 
 namespace xla {
 namespace profiler {
@@ -48,8 +48,6 @@ namespace se = ::stream_executor;
 using tensorflow::ProfileOptions;
 using tsl::mutex;
 using tsl::mutex_lock;
-// using tsl::OkStatus;
-using tsl::Status;
 using tsl::profiler::Annotation;
 using tsl::profiler::AnnotationStack;
 using tsl::profiler::FindOrAddMutablePlaneWithName;

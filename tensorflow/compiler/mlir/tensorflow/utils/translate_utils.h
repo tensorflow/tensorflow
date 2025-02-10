@@ -16,12 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TRANSLATE_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TRANSLATE_UTILS_H_
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
+#include <memory>
+
+#include "absl/status/statusor.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -38,6 +44,25 @@ mlir::LogicalResult ExtractTfVersions(mlir::ModuleOp module,
 // Returns TensorFlow GraphDef producer version for the given module. Returns an
 // error if the version information is missing for the module or is not valid.
 absl::StatusOr<int64_t> GetTfGraphProducerVersion(mlir::ModuleOp module);
+
+// Extracts the attributes of a MLIR operation and populates the converted
+// attributes in a proto map<string, AttrValue>.
+absl::Status GetAttrValuesFromOperation(
+    mlir::Operation* inst, llvm::StringRef name,
+    const tensorflow::OpRegistrationData* op_reg_data,
+    bool ignore_unregistered_attrs, AttrValueMap* attributes);
+
+// Converts a MLIR operation to TensorFlow NodeDef with given node name. This
+// name should be unique to the graph it is being inserted to. If the
+// `ignore_unregistered_attrs` argument is set to true, the attributes which are
+// not in the op registry will be ignored. If the `ignore_unregistered_attrs`
+// argument is not set to true, _output_shapes attribute is added to nodes with
+// ShapedType for the leading values with ShapedType in the results of the
+// nodes. Set it to true if the returned NodeDef will be executed by the linked
+// TF Eager runtime.
+absl::StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
+    mlir::Operation* inst, llvm::StringRef name,
+    bool ignore_unregistered_attrs);
 
 }  // namespace tensorflow
 

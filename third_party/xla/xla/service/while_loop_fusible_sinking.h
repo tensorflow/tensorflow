@@ -27,9 +27,12 @@ limitations under the License.
 
 namespace xla {
 
-// Sinks while loop invariant values that happen to be fusibles into the while
-// loop body and conditional. This is probably not a win in isolation but may
-// unlock further optimizations like fusible folding.
+// Sinks values into the while loop body and conditional that fusibles. This is
+// probably not a win in isolation but may unlock further optimizations like
+// fusible folding. There are two categories:
+
+// 1. Sinks while loop invariant values into the while
+// loop body and conditional.
 //
 //   state = (..., fusible_graph, ...)
 //   while (pred(state)) {
@@ -51,9 +54,41 @@ namespace xla {
 // tuple trivially loop invariant.  WhileLoopSimplifier will later get rid of
 // `v`.
 //
+// 2. Sinks constant-initialized value, i.e., broadcast(constant) into the while
+// body. The high level idea is that we don't want to leave any element of the
+// buffer after loop execution as undefined. Therefore, all the elements of the
+// buffer must be written to in the body. For element-wise operation 'instr' we
+// have:
+// forall index i in output shape: instr[i] = f(operand1[i], ...),  where
+// f is the elementwise operation.
+// We can see that all the indices of the output shape is written to. These
+// values can sink into the loop and fused later.
+//
+//   state = (..., broadcast(constant), ...)
+//   while (pred(state)) {
+//     (..., v, ...) = state
+//     value = f(v) // f writes to the entire shape of v.
+//     state = (..., value, ...)
+//   }
+//
+// =>
+//
+//   state = (..., allocate-buffer(), ...)
+//   while (pred(state)) {
+//     i = iteration_var
+//     (..., v, ...) = state
+//     new_v = select(i == 0, broadcast(constant), v)
+//     value = f(new_v)
+//     state = (..., value, ...)
+//   }
+//
+//   This transformation replaces the broadcast with a free AllocateBuffer
+//   outside the while loop with the hope that the broadcast inside the loop
+//   will be fused.
 class WhileLoopFusibleSinking : public HloModulePass {
  public:
-  WhileLoopFusibleSinking() = default;
+  explicit WhileLoopFusibleSinking(bool sink_broadcast_of_constant = true)
+      : sink_broadcast_of_constant_(sink_broadcast_of_constant) {}
 
   ~WhileLoopFusibleSinking() override = default;
 
@@ -78,6 +113,7 @@ class WhileLoopFusibleSinking : public HloModulePass {
   HloInstruction* CreateSinkableFusion(HloInstruction* while_operand);
 
   absl::flat_hash_map<HloComputation*, int> call_counts_;
+  const bool sink_broadcast_of_constant_;
 };
 }  // namespace xla
 

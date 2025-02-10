@@ -32,6 +32,12 @@ limitations under the License.
 
 namespace pjrt {
 
+template <typename T>
+absl::Span<const char> GetRawView(const std::vector<T>& v) {
+  return absl::Span<const char>(reinterpret_cast<const char*>(v.data()),
+                                v.size() * sizeof(T));
+}
+
 class PjrtCApiTestBase : public ::testing::Test {
  public:
   explicit PjrtCApiTestBase(const PJRT_Api* api);
@@ -65,10 +71,20 @@ class PjrtCApiTestBase : public ::testing::Test {
 
   std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
             xla::PjRtFuture<>>
+  create_buffer_from_data(const std::vector<float>& float_data,
+                          const xla::Shape& shape,
+                          PJRT_Device* device = nullptr);
+
+  std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
+            xla::PjRtFuture<>>
   create_buffer(PJRT_Device* device = nullptr);
 
   std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> ToUniquePtr(
       PJRT_Error* error);
+
+  std::unique_ptr<PJRT_AsyncHostToDeviceTransferManager,
+                  ::pjrt::PJRT_AsyncHostToDeviceTransferManagerDeleter>
+  create_transfer_manager(const xla::Shape& host_shape);
 
  private:
   PjrtCApiTestBase(const PjrtCApiTestBase&) = delete;

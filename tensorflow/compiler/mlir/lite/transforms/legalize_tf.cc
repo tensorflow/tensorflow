@@ -36,7 +36,7 @@ limitations under the License.
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -1103,7 +1103,7 @@ void LegalizeTFPass::runOnOperation() {
   if (!applyPatterns(func, target, stage1FrozenPatterns)) {
     return signalPassFailure();
   }
-  // Explict BroadcastTo addition for left-over broadcast-able ops.
+  // Explicit BroadcastTo addition for left-over broadcast-able ops.
   // The following pattern matchings should be done after the other legalization
   // rules in order not to add unnecessary BroadcastTo ops.
   RewritePatternSet stage2Patterns(&getContext());

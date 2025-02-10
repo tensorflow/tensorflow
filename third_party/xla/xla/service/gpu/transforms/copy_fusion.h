@@ -21,7 +21,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -30,7 +31,8 @@ namespace gpu {
 // those copies to the fusion, replacing the copies with get_tuple_elements.
 class CopyFusion : public HloModulePass {
  public:
-  CopyFusion() = default;
+  explicit CopyFusion(const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
 
   absl::string_view name() const override { return "copy_fusion"; }
 
@@ -41,6 +43,8 @@ class CopyFusion : public HloModulePass {
 
  private:
   absl::StatusOr<bool> DoCopyFusion(HloComputation* computation);
+
+  const se::DeviceDescription& device_description_;
 };
 
 }  // namespace gpu

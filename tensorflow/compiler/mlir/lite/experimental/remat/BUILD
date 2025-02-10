@@ -26,11 +26,7 @@ cc_library(
     srcs = ["metadata_util.cc"],
     hdrs = ["metadata_util.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//tensorflow/compiler/mlir/lite:__pkg__",
-        "//tensorflow/lite/core:__pkg__",
-        "//tensorflow/lite/delegates:__pkg__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite:control_edges",
     ],

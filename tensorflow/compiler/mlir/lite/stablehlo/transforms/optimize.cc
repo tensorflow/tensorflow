@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -29,7 +30,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
@@ -495,7 +496,7 @@ LogicalResult MergeConsecutivePad(mhlo::PadOp pad_op,
 
   // Check if the padding values are equal (otherwise merging is illegal)
   // Because we are using the greedy pattern rewrite driver
-  // (applyPatternsAndFoldGreedily), all different constant operators with the
+  // (applyPatternsGreedily), all different constant operators with the
   // same value will be replaced by a single constant operator of that value.
   // Due to this, if the padding values in the input are equal, they will become
   // the same constant operator and the following check (which compares memory
@@ -759,8 +760,7 @@ class OptimizePass
     patterns.add(ConvertReshapeDotRhsToBatchedDot);
     patterns.add(MergeConsecutivePad);
     patterns.add<SimplifyBroadcastInDimsReshape>(&getContext());
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

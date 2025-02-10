@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/batch_matmul.h"
 
 #include <stddef.h>
+#include <string.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -440,6 +441,17 @@ RuntimeShape SwapRowColumnDims(const RuntimeShape& shape) {
   return swapped_shape;
 }
 
+TfLiteStatus VerifyPerChannelQuantization(TfLiteContext* context,
+                                          const TfLiteTensor* tensor) {
+  TF_LITE_ENSURE_EQ(context, tensor->quantization.type,
+                    kTfLiteAffineQuantization);
+  const auto* affine_quantization =
+      reinterpret_cast<TfLiteAffineQuantization*>(tensor->quantization.params);
+  TF_LITE_ENSURE(context, affine_quantization);
+  TF_LITE_ENSURE(context, affine_quantization->scale);
+  return affine_quantization->scale->size > 1 ? kTfLiteOk : kTfLiteError;
+}
+
 TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
                         const RuntimeShape& input_shape,
                         const TfLiteTensor* input,
@@ -481,9 +493,22 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
                                     input_size, quant_data, scaling_factors_ptr,
                                     input_offset_ptr,
                                     params->asymmetric_quantize_inputs);
-  for (int b = 0; b < num_batches_to_quantize; ++b) {
-    // Incorporate scaling of the filter.
-    scaling_factors_ptr[b] *= filter->params.scale;
+  float* per_channel_scale_ptr = nullptr;
+  if (VerifyPerChannelQuantization(context, filter) == kTfLiteOk) {
+    //  Per channel quantization.
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            filter->quantization.params);
+    TF_LITE_ENSURE_EQ(
+        context, affine_quantization->scale->size,
+        filter->dims->data[affine_quantization->quantized_dimension]);
+    per_channel_scale_ptr = affine_quantization->scale->data;
+  } else {
+    // Per tensor quantization.
+    for (int b = 0; b < num_batches_to_quantize; ++b) {
+      // Incorporate scaling of the filter
+      scaling_factors_ptr[b] *= filter->params.scale;
+    }
   }
 
   RuntimeShape output_shape = GetTensorShape(output);
@@ -492,10 +517,11 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
     output_size *= output_shape.Dims(i);
   }
   std::fill_n(GetTensorData<float>(output), output_size, 0.0f);
-  reference_ops::BatchMatMul(
-      filter_shape, filter_data, input_shape, quant_data, scaling_factors_ptr,
-      input_offset_ptr, row_sums_ptr, GetTensorShape(output),
-      GetTensorData<float>(output), &(data->compute_row_sums));
+  reference_ops::BatchMatMul(filter_shape, filter_data, input_shape, quant_data,
+                             scaling_factors_ptr, input_offset_ptr,
+                             row_sums_ptr, GetTensorShape(output),
+                             GetTensorData<float>(output),
+                             &(data->compute_row_sums), per_channel_scale_ptr);
 
   return kTfLiteOk;
 }
@@ -660,10 +686,44 @@ TfLiteTensor* GetTempRhs(TfLiteContext* context, TfLiteNode* node,
     return nullptr;
   }
 
+  TfLiteIntArrayFree(transposed_rhs->dims);
+  transposed_rhs->dims = TfLiteIntArrayCopy(rhs->dims);
+  std::swap(transposed_rhs->dims->data[transposed_rhs->dims->size - 1],
+            transposed_rhs->dims->data[transposed_rhs->dims->size - 2]);
   if (rhs->type == kTfLiteInt8 || rhs->type == kTfLiteInt16) {
     // Get the quantization params from the RHS tensor.
     transposed_rhs->params.scale = rhs->params.scale;
     transposed_rhs->params.zero_point = rhs->params.zero_point;
+    if (rhs->quantization.type == kTfLiteAffineQuantization) {
+      transposed_rhs->quantization.type = rhs->quantization.type;
+      if (transposed_rhs->quantization.params) {
+        auto* transposed_rhs_affine_quantization =
+            reinterpret_cast<TfLiteAffineQuantization*>(
+                transposed_rhs->quantization.params);
+        TfLiteIntArrayFree(transposed_rhs_affine_quantization->zero_point);
+        TfLiteFloatArrayFree(transposed_rhs_affine_quantization->scale);
+        free(transposed_rhs->quantization.params);
+      }
+      transposed_rhs->quantization.params =
+          malloc(sizeof(TfLiteAffineQuantization));
+      const auto* rhs_affine_quantization =
+          reinterpret_cast<TfLiteAffineQuantization*>(rhs->quantization.params);
+      auto* transposed_rhs_affine_quantization =
+          reinterpret_cast<TfLiteAffineQuantization*>(
+              transposed_rhs->quantization.params);
+      int quantized_dimension = rhs_affine_quantization->quantized_dimension;
+      if (quantized_dimension == rhs->dims->size - 1) {
+        quantized_dimension = rhs->dims->size - 2;
+      } else if (quantized_dimension == rhs->dims->size - 2) {
+        quantized_dimension = rhs->dims->size - 1;
+      }
+      transposed_rhs_affine_quantization->quantized_dimension =
+          quantized_dimension;
+      transposed_rhs_affine_quantization->zero_point =
+          TfLiteIntArrayCopy(rhs_affine_quantization->zero_point);
+      transposed_rhs_affine_quantization->scale =
+          TfLiteFloatArrayCopy(rhs_affine_quantization->scale);
+    }
   }
   return transposed_rhs;
 }
@@ -738,8 +798,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   lhs_dims_count = orig_lhs_shape.DimensionsCount();
   const TfLiteTensor* rhs_tensor = rhs;
   bool implicit_transpose_possible = true;
-  if ((lhs->type == kTfLiteFloat32 && rhs->type == kTfLiteInt8) ||
-      kernel_type == kReference || rhs->type == kTfLiteInt16) {
+  if (lhs->type == kTfLiteFloat32 || kernel_type == kReference ||
+      rhs->type == kTfLiteInt16) {
     implicit_transpose_possible = false;
   }
   bool do_implicit_transpose = !adj_y && implicit_transpose_possible;
@@ -767,18 +827,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   switch (rhs->type) {
     case kTfLiteFloat32:
       // Note we pass RHS args first, LHS args second. See note above.
-      if (kernel_type == kGenericOptimized) {
-        optimized_ops::BatchMatMul(
-            rhs_shape, GetTensorData<float>(rhs_tensor), lhs_shape,
-            GetTensorData<float>(lhs_tensor), GetTensorShape(output),
-            GetTensorData<float>(output),
-            CpuBackendContext::GetFromContext(context), do_implicit_transpose);
-      } else {
-        reference_ops::BatchMatMul(rhs_shape, GetTensorData<float>(rhs_tensor),
-                                   lhs_shape, GetTensorData<float>(lhs_tensor),
-                                   GetTensorShape(output),
-                                   GetTensorData<float>(output));
-      }
+      reference_ops::BatchMatMul(rhs_shape, GetTensorData<float>(rhs_tensor),
+                                 lhs_shape, GetTensorData<float>(lhs_tensor),
+                                 GetTensorShape(output),
+                                 GetTensorData<float>(output));
       break;
     case kTfLiteInt8:
     case kTfLiteInt16:

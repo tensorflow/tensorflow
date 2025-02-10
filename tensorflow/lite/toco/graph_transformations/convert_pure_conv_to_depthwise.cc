@@ -12,9 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -25,9 +24,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ConvertPureConvToDepthwise::Run(Model* model,
-                                                     std::size_t op_index,
-                                                     bool* modified) {
+absl::Status ConvertPureConvToDepthwise::Run(Model* model, std::size_t op_index,
+                                             bool* modified) {
   *modified = false;
   auto conv_it = model->operators.begin() + op_index;
   if (conv_it->get()->type != OperatorType::kConv) {

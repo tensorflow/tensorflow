@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
@@ -52,7 +52,7 @@ absl::Status ReadInt64FromEnvVar(absl::string_view env_var_name,
   if (tf_env_var_val == nullptr) {
     return absl::OkStatus();
   }
-  if (strings::safe_strto64(tf_env_var_val, value)) {
+  if (absl::SimpleAtoi(tf_env_var_val, value)) {
     return absl::OkStatus();
   }
   return errors::InvalidArgument(strings::StrCat(
@@ -67,7 +67,7 @@ absl::Status ReadFloatFromEnvVar(absl::string_view env_var_name,
   if (tf_env_var_val == nullptr) {
     return absl::OkStatus();
   }
-  if (strings::safe_strtof(tf_env_var_val, value)) {
+  if (absl::SimpleAtof(tf_env_var_val, value)) {
     return absl::OkStatus();
   }
   return errors::InvalidArgument(strings::StrCat(

@@ -32,8 +32,10 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
@@ -50,6 +52,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
+#include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -57,12 +60,11 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -183,10 +185,9 @@ char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 
 absl::StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
-    std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
-    std::unique_ptr<XlaCompileOptions> compile_options) {
-  return std::unique_ptr<Executable>(new PjRtExecutable(
-      std::move(pjrt_executable), std::move(compile_options)));
+    std::shared_ptr<xla::PjRtExecutable> pjrt_executable) {
+  return std::unique_ptr<Executable>(
+      new PjRtExecutable(std::move(pjrt_executable)));
 }
 
 absl::StatusOr<std::optional<std::string>> PjRtExecutable::Fingerprint() const {
@@ -541,13 +542,33 @@ PjRtLoadedExecutable::Execute(
   const bool returned_future_supported =
       pjrt_loaded_executable_->IsReturnedFutureSupported();
 
-  auto opts = options;
+  xla::ExecuteOptions opts;
+  opts.untuple_result = true;
+  opts.launch_id = options.launch_id;
+  opts.use_major_to_minor_data_layout_for_callbacks = true;
+  opts.non_donatable_input_indices = options.non_donatable_input_indices;
+
+  auto context = std::make_shared<xla::ExecuteContext>();
+  auto platform_id = pjrt_loaded_executable_->client()->platform_id();
+  // Forward callbacks via FFI's ExecutionContext for CPU/GPU platforms only.
+  if (platform_id == CpuId() || platform_id == CudaId() ||
+      platform_id == RocmId() || platform_id == SyclId()) {
+    CHECK_OK(context->ffi_context().Insert(all_loaded_host_callbacks_.get()));
+    opts.context = context.get();
+  }
 
   if (!all_loaded_host_callbacks_->empty() && !returned_future_supported) {
     return Internal(
         "Host callback not supported without returned future support in "
         "runtime: %s",
         client_->runtime_type());
+  }
+
+  // When using host callbacks on CPU, we need to use synchronous dispatch to
+  // avoid deadlocks with reentrant callbacks. Note that this option only
+  // affects the CPU runtime.
+  if (!all_loaded_host_callbacks_->empty()) {
+    opts.execution_mode = xla::ExecuteOptions::ExecutionMode::kSynchronous;
   }
 
   std::unique_ptr<HostCallbackStates> host_callback_states;
@@ -564,9 +585,7 @@ PjRtLoadedExecutable::Execute(
         contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
             host_send_recv_callback->host_callback(),
             /*host_memory_for_device_manager=*/nullptr, send_callbacks,
-            recv_callbacks,
-            /*use_major_to_minor_data_layout_for_callbacks=*/
-            options.use_major_to_minor_data_layout_for_callbacks));
+            recv_callbacks, opts.use_major_to_minor_data_layout_for_callbacks));
       }
     }
     opts.send_callbacks = host_callback_states->send_callbacks;
@@ -575,7 +594,7 @@ PjRtLoadedExecutable::Execute(
 
   // Execute the computation.
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> pjrt_outputs;
-  ExecuteResult result;
+  xla::ifrt::Future<> status;
   if (portable_execution) {
     std::optional<PjRtFuture<>> returned_pjrt_future;
     TF_RET_CHECK(portable_execution_device->IsAddressable());
@@ -588,9 +607,9 @@ PjRtLoadedExecutable::Execute(
 
     pjrt_outputs.push_back(std::move(single_device_pjrt_results));
     if (returned_future_supported) {
-      result.status = *std::move(returned_pjrt_future);
+      status = *std::move(returned_pjrt_future);
     } else {
-      result.status = Future<>(absl::OkStatus());
+      status = Future<>(absl::OkStatus());
     }
   } else {
     std::optional<std::vector<PjRtFuture<>>> returned_pjrt_futures;
@@ -603,9 +622,9 @@ PjRtLoadedExecutable::Execute(
                                                        returned_pjrt_futures));
 
     if (returned_future_supported) {
-      result.status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
+      status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
     } else {
-      result.status = Future<>(absl::OkStatus());
+      status = Future<>(absl::OkStatus());
     }
   }
 
@@ -613,10 +632,11 @@ PjRtLoadedExecutable::Execute(
     // For host callbacks to work, returned futures must be supported so that we
     // can use the futures to extend the lifetime of the host callbacks until
     // the execution finishes.
-    result.status.OnReady(
-        [all_loaded_host_callbacks = all_loaded_host_callbacks_,
-         host_callback_states = std::move(host_callback_states)](
-            absl::Status) mutable { all_loaded_host_callbacks.reset(); });
+    status.OnReady([all_loaded_host_callbacks = all_loaded_host_callbacks_,
+                    host_callback_states = std::move(host_callback_states),
+                    context = std::move(context)](absl::Status) mutable {
+      all_loaded_host_callbacks.reset();
+    });
   }
 
   // Convert 2-level PjRtBuffer vectors into an Array vector.
@@ -681,6 +701,11 @@ PjRtLoadedExecutable::Execute(
     outputs.push_back(*PjRtArray::Create(client_, output_dtypes_[i],
                                          output_shapes_[i], std::move(sharding),
                                          std::move(buffers)));
+  }
+
+  ExecuteResult result;
+  if (options.fill_status) {
+    result.status = status;
   }
   result.outputs = std::move(outputs);
   return result;

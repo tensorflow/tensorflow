@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cmath>
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -27,9 +27,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status IdentifyL2Normalization::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status IdentifyL2Normalization::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   const auto div_it = model->operators.begin() + op_index;
   const auto* div_or_mul_op = div_it->get();

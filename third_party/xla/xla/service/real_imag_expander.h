@@ -16,22 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_REAL_IMAG_EXPANDER_H_
 #define XLA_SERVICE_REAL_IMAG_EXPANDER_H_
 
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-// Expands real/image instructions with non-complex inputs.
-class RealImagExpander : public OpExpanderPass {
- public:
-  absl::string_view name() const override { return "real_imag_expander"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* inst) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* inst) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/real_imag_expander.h"
 
 #endif  // XLA_SERVICE_REAL_IMAG_EXPANDER_H_

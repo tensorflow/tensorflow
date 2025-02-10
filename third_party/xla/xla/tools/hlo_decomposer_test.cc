@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/tests/filecheck.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
@@ -155,6 +155,21 @@ CHECK: ENTRY
 CHECK-THEN: %parameter.0 = f32[16384]{0} parameter(0)
 CHECK-THEN: ROOT %e.1
 )");
+}
+
+TEST_F(HloDecomposerTest, ExtractComputationIntoNewModule) {
+  std::unique_ptr<HloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p0 = s8[10,10] parameter(0)
+  p1 = s8[10,10] parameter(1)
+  ROOT r = s8[10,10] add(p0, p1)
+})")
+                                          .value();
+  auto new_module =
+      ExtractComputationIntoNewModule(*module->entry_computation());
+  EXPECT_EQ(new_module->name(), module->entry_computation()->name());
 }
 
 }  // namespace

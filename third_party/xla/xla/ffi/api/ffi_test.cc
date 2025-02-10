@@ -26,10 +26,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
@@ -42,12 +45,12 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -129,12 +132,16 @@ TEST(FfiTest, DataTypeEnumValue) {
 
   EXPECT_EQ(encoded(PrimitiveType::TOKEN), encoded(DataType::TOKEN));
 
+  EXPECT_EQ(encoded(PrimitiveType::F4E2M1FN), encoded(DataType::F4E2M1FN));
   EXPECT_EQ(encoded(PrimitiveType::F8E5M2), encoded(DataType::F8E5M2));
+  EXPECT_EQ(encoded(PrimitiveType::F8E4M3), encoded(DataType::F8E4M3));
   EXPECT_EQ(encoded(PrimitiveType::F8E4M3FN), encoded(DataType::F8E4M3FN));
   EXPECT_EQ(encoded(PrimitiveType::F8E4M3B11FNUZ),
             encoded(DataType::F8E4M3B11FNUZ));
   EXPECT_EQ(encoded(PrimitiveType::F8E5M2FNUZ), encoded(DataType::F8E5M2FNUZ));
   EXPECT_EQ(encoded(PrimitiveType::F8E4M3FNUZ), encoded(DataType::F8E4M3FNUZ));
+  EXPECT_EQ(encoded(PrimitiveType::F8E3M4), encoded(DataType::F8E3M4));
+  EXPECT_EQ(encoded(PrimitiveType::F8E8M0FNU), encoded(DataType::F8E8M0FNU));
 }
 
 TEST(FfiTest, DataTypeByteWidth) {
@@ -177,8 +184,12 @@ TEST(FfiTest, DataTypeByteWidth) {
   EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::C128),
             ByteWidth(DataType::C128));
 
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F4E2M1FN),
+            ByteWidth(DataType::F4E2M1FN));
   EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E5M2),
             ByteWidth(DataType::F8E5M2));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E4M3),
+            ByteWidth(DataType::F8E4M3));
   EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E4M3FN),
             ByteWidth(DataType::F8E4M3FN));
   EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E4M3B11FNUZ),
@@ -187,6 +198,10 @@ TEST(FfiTest, DataTypeByteWidth) {
             ByteWidth(DataType::F8E5M2FNUZ));
   EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E4M3FNUZ),
             ByteWidth(DataType::F8E4M3FNUZ));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E3M4),
+            ByteWidth(DataType::F8E3M4));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E8M0FNU),
+            ByteWidth(DataType::F8E8M0FNU));
 }
 
 TEST(FfiTest, ErrorEnumValue) {
@@ -337,6 +352,61 @@ TEST(FfiTest, FutureRace) {
   }
 }
 
+TEST(FfiTest, CountDownSuccess) {
+  CountDownPromise counter(2);
+  Future future(counter);
+  EXPECT_FALSE(counter.CountDown());
+  EXPECT_TRUE(counter.CountDown());
+  future.OnReady([](const std::optional<Error>& error) {
+    EXPECT_FALSE(error.has_value());
+  });
+}
+
+TEST(FfiTest, CountDownError) {
+  CountDownPromise counter(3);
+  Future future(counter);
+  EXPECT_FALSE(counter.CountDown());
+  EXPECT_FALSE(counter.CountDown(Error(ErrorCode::kInternal, "Test error")));
+  EXPECT_TRUE(counter.CountDown());
+  future.OnReady([](const std::optional<Error>& error) {
+    EXPECT_TRUE(error.has_value());
+    EXPECT_THAT(error->message(), HasSubstr("Test error"));
+  });
+}
+
+TEST(FfiTest, CountDownSuccessFromThreadPool) {
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "ffi-test", 2);
+
+  CountDownPromise counter(2);
+  Future future(counter);
+
+  future.OnReady([](const std::optional<Error>& error) {
+    EXPECT_FALSE(error.has_value());
+  });
+
+  for (int64_t i = 0; i < 2; ++i) {
+    pool.Schedule([counter]() mutable { counter.CountDown(); });
+  }
+}
+
+TEST(FfiTest, CountDownErrorFromThreadPool) {
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "ffi-test", 2);
+
+  CountDownPromise counter(3);
+  Future future(counter);
+
+  future.OnReady([](const std::optional<Error>& error) {
+    EXPECT_TRUE(error.has_value());
+    EXPECT_THAT(error->message(), HasSubstr("Test error"));
+  });
+
+  pool.Schedule([counter]() mutable { counter.CountDown(); });
+  pool.Schedule([counter]() mutable {
+    counter.CountDown(Error(ErrorCode::kInternal, "Test error"));
+  });
+  pool.Schedule([counter]() mutable { counter.CountDown(); });
+}
+
 TEST(FfiTest, ReturnError) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
@@ -346,6 +416,23 @@ TEST(FfiTest, ReturnError) {
 
   auto status = Call(*handler, call_frame);
   EXPECT_EQ(status, absl::InternalError("Test error"));
+}
+
+TEST(FfiTest, RunId) {
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Ctx<RunId>().To([&](RunId run_id) {
+    EXPECT_EQ(run_id.run_id, 42);
+    return Error::Success();
+  });
+
+  CallOptions options;
+  options.run_id = xla::RunId{42};
+
+  auto status = Call(*handler, call_frame, options);
+
+  TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, AnyBufferArgument) {
@@ -358,6 +445,10 @@ TEST(FfiTest, AnyBufferArgument) {
 
   auto handler = Ffi::Bind().Arg<AnyBuffer>().To([&](auto buffer) {
     EXPECT_EQ(buffer.untyped_data(), storage.data());
+    EXPECT_EQ(buffer.template typed_data<float>(),
+              reinterpret_cast<float*>(storage.data()));
+    EXPECT_EQ(buffer.template reinterpret_data<int32_t>(),
+              reinterpret_cast<int32_t*>(storage.data()));
     EXPECT_EQ(buffer.dimensions().size(), 2);
     return Error::Success();
   });
@@ -394,6 +485,8 @@ TEST(FfiTest, AnyBufferResult) {
 
   auto handler = Ffi::Bind().Ret<AnyBuffer>().To([&](Result<AnyBuffer> buffer) {
     EXPECT_EQ(buffer->untyped_data(), storage.data());
+    EXPECT_EQ(buffer->template typed_data<float>(),
+              reinterpret_cast<float*>(storage.data()));
     EXPECT_EQ(buffer->dimensions().size(), 2);
     return Error::Success();
   });
@@ -447,6 +540,25 @@ TEST(FfiTest, WrongTypeBufferArgument) {
       status,
       StatusIs(absl::StatusCode::kInvalidArgument,
                HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
+}
+
+TEST(FfiTest, WrongNumberOfArguments) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("foo", 42);
+  attrs.Insert("bar", 43);
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto handler =
+      Ffi::Bind().Attr<int>("foo").To([](int foo) { return Error::Success(); });
+  auto status = Call(*handler, call_frame);
+
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("Wrong number of attributes")));
+  EXPECT_THAT(status.message(), HasSubstr("foo"));
+  EXPECT_THAT(status.message(), HasSubstr("bar"));
 }
 
 TEST(FfiTest, TokenArgument) {
@@ -822,10 +934,10 @@ TEST(FfiTest, AttrsAsDictionary) {
 }
 
 TEST(FfiTest, DictionaryAttr) {
-  CallFrameBuilder::FlatAttributesMap dict0;
+  CallFrameBuilder::AttributesMap dict0;
   dict0.try_emplace("i32", 42);
 
-  CallFrameBuilder::FlatAttributesMap dict1;
+  CallFrameBuilder::AttributesMap dict1;
   dict1.try_emplace("f32", 42.0f);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -864,7 +976,7 @@ TEST(FfiTest, DictionaryAttr) {
 }
 
 TEST(FfiTest, StructAttr) {
-  CallFrameBuilder::FlatAttributesMap dict;
+  CallFrameBuilder::AttributesMap dict;
   dict.try_emplace("i32", 42);
   dict.try_emplace("f32", 42.0f);
 
@@ -977,7 +1089,7 @@ TEST(FfiTest, EnumAttr) {
 }
 
 TEST(FfiTest, WrongEnumAttrType) {
-  CallFrameBuilder::FlatAttributesMap dict;
+  CallFrameBuilder::AttributesMap dict;
   dict.try_emplace("i32", 42);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -1154,6 +1266,11 @@ TEST(FfiTest, ThreadPool) {
   Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
 
   auto fn = [&](ThreadPool thread_pool) {
+    // Check that we can get the size of the underlying thread pool.
+    if (thread_pool.num_threads() != 2) {
+      return Error::Internal("Wrong number of threads");
+    }
+
     // Use a pair of blocking counters to check that scheduled task was executed
     // on a thread pool (it would deadlock if executed inline).
     absl::BlockingCounter prepare(1);

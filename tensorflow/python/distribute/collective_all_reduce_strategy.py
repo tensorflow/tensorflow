@@ -19,6 +19,7 @@ import threading
 import time
 import weakref
 
+from xla.tsl.protobuf import coordination_config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.distribute import collective_util
@@ -49,7 +50,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
-from tsl.protobuf import coordination_config_pb2
 
 
 # pylint: disable=line-too-long

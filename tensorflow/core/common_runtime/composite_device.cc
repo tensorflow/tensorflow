@@ -24,7 +24,7 @@ const char* const kCompositeDeviceType = "COMPOSITE";
 
 std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
     const std::vector<string>& underlying_devices, const int unique_device_id,
-    const DeviceNameUtils::ParsedName& host_name, Status* status) {
+    const DeviceNameUtils::ParsedName& host_name, absl::Status* status) {
   DeviceNameUtils::ParsedName parsed_name = host_name;
   parsed_name.type = kCompositeDeviceType;
   parsed_name.id = unique_device_id;
@@ -34,7 +34,7 @@ std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
 
 std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
     const std::vector<string>& underlying_devices, const string& device_name,
-    Status* status) {
+    absl::Status* status) {
   if (underlying_devices.empty()) {
     status->Update(
         errors::InvalidArgument("underlying_devices should not be empty."));

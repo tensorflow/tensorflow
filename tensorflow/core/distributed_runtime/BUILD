@@ -109,6 +109,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@local_tsl//tsl/platform:stacktrace",
     ],
 )
 
@@ -172,10 +173,11 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/activity_watcher",
         "//tensorflow/core/protobuf:worker_proto_cc",
-        "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/log",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
+        "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
@@ -392,7 +394,7 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/protobuf:master_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
-        "@local_tsl//tsl/protobuf:rpc_options_proto_cc",
+        "@local_xla//xla/tsl/protobuf:rpc_options_proto_cc",
     ],
 )
 
@@ -491,7 +493,7 @@ cc_library(
         ":worker_cache",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
-        "@local_tsl//tsl/protobuf:rpc_options_proto_cc",
+        "@local_xla//xla/tsl/protobuf:rpc_options_proto_cc",
     ],
 )
 
@@ -512,6 +514,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",

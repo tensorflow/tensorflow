@@ -1046,7 +1046,6 @@ def _impl(ctx):
                     flag_group(
                         flags = [
                             "-no-canonical-prefixes",
-                            "-fno-canonical-system-headers",
                         ]
                     ),
                 ],

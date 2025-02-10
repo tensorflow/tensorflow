@@ -2,6 +2,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_grappler")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -54,6 +55,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_cost_analyzer.pyi",
     ],
+    starlark_only = True,
     deps = [
         ":cost_analyzer_headers",
         "//tensorflow/core:framework_headers_lib",
@@ -90,13 +92,14 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_model_analyzer.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
-    ],
+    ] + if_pywrap(["//tensorflow/python/grappler:model_analyzer_lib"]),
 )
 
 py_strict_library(
@@ -201,11 +204,14 @@ tf_python_pybind_extension(
     srcs = ["cluster_wrapper.cc"],
     hdrs = [
         "//tensorflow/cc:pywrap_required_hdrs",
-        "//tensorflow/core/grappler:pywrap_required_hdrs",
-        "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
-        "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
-        "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
-    ],
+    ] + if_pywrap(
+        if_false = [
+            "//tensorflow/core/grappler:pywrap_required_hdrs",
+            "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
+            "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
+            "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
+        ],
+    ),
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_tf_cluster.pyi",
@@ -219,7 +225,12 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/core/grappler/costs:measuring_cost_estimator",
+            "//tensorflow/core/grappler/clusters:single_machine",
+        ],
+    ),
 )
 
 cuda_py_strict_test(
@@ -265,14 +276,16 @@ py_strict_library(
 tf_python_pybind_extension(
     name = "_pywrap_tf_optimizer",
     srcs = ["tf_optimizer_wrapper.cc"],
-    hdrs = [
-        "//tensorflow/cc:pywrap_required_hdrs",
-        "//tensorflow/core/grappler:pywrap_required_hdrs",
-        "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
-        "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
-        "//tensorflow/core/grappler/optimizers:pywrap_required_hdrs",
-        "//tensorflow/core/grappler/verifiers:pywrap_required_hdrs",
-    ],
+    hdrs = if_pywrap(
+        if_false = [
+            "//tensorflow/cc:pywrap_required_hdrs",
+            "//tensorflow/core/grappler:pywrap_required_hdrs",
+            "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
+            "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
+            "//tensorflow/core/grappler/optimizers:pywrap_required_hdrs",
+            "//tensorflow/core/grappler/verifiers:pywrap_required_hdrs",
+        ],
+    ),
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_tf_optimizer.pyi",
@@ -293,7 +306,16 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/core/grappler/clusters:cluster",
+            "//tensorflow/core/grappler/clusters:utils",
+            "//tensorflow/core/grappler:grappler_item_builder",
+            "//tensorflow/core/grappler/optimizers:meta_optimizer",
+            "//tensorflow/core/grappler/optimizers:graph_optimizer",
+            "//tensorflow/core/grappler/verifiers:graph_verifier",
+        ],
+    ),
 )
 
 tf_py_strict_test(

@@ -27,16 +27,21 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -45,19 +50,6 @@ namespace stream_executor {
 
 // Identifies the memory space where an allocation resides.
 enum class MemoryType { kDevice = 0, kUnified, kCollective, kHost = 5 };
-
-inline std::string MemoryTypeString(MemoryType memory_type) {
-  switch (memory_type) {
-    case MemoryType::kDevice:
-      return "device";
-    case MemoryType::kUnified:
-      return "unified";
-    case MemoryType::kCollective:
-      return "collective";
-    case MemoryType::kHost:
-      return "host";
-  }
-}
 
 /// The StreamExecutor is a single-device abstraction for:
 //
@@ -70,6 +62,10 @@ inline std::string MemoryTypeString(MemoryType memory_type) {
 class StreamExecutor {
  public:
   virtual ~StreamExecutor() = default;
+
+  // Returns an ActivateContext that ensures the StreamExecutor's context is
+  // activated for the duration of the returned ActivateContext's scope.
+  virtual std::unique_ptr<ActivateContext> Activate() = 0;
 
   // Returns a reference to the platform that created this executor.
   virtual const Platform* GetPlatform() const = 0;
@@ -86,9 +82,20 @@ class StreamExecutor {
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream() {
     return CreateStream(std::nullopt);
   }
+  // Creates an EventBasedTimer for the given stream.
+  virtual absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+  CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
+    return absl::UnimplementedError("Not Implemented");
+  }
 
   // Creates and initializes an Event.
   virtual absl::StatusOr<std::unique_ptr<Event>> CreateEvent() = 0;
+
+  // Creates a MemoryAllocator for the given type.
+  virtual absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+  CreateMemoryAllocator(MemoryType type) {
+    return absl::UnimplementedError("Not Implemented");
+  }
 
   // Obtains metadata about the underlying device.
   // The value is cached on first use.
@@ -117,16 +124,18 @@ class StreamExecutor {
     return absl::UnimplementedError("Not Implemented");
   }
 
+  // Releases any state associated with the previously loaded kernel.
+  virtual void UnloadKernel(const Kernel* kernel) {}
+
   // Unloads the module with handle `module_handle`.
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
 
   // Loads a module for the platform this StreamExecutor is acting upon.
   //
-  // `spec` describes the module to be loaded.  On success writes the handle for
-  // the loaded module to `module_handle` and returns absl::OkStatus().
-  // Otherwise, returns the error which has occurred.
-  virtual absl::Status LoadModule(const MultiModuleLoaderSpec& spec,
-                                  ModuleHandle* module_handle) {
+  // `spec` describes the module to be loaded.  On success returns the handle
+  // for the loaded module. Otherwise, returns the error which has occurred.
+  virtual absl::StatusOr<ModuleHandle> LoadModule(
+      const MultiModuleLoaderSpec& spec) {
     return absl::UnimplementedError("Not Implemented");
   }
 
@@ -147,38 +156,11 @@ class StreamExecutor {
   // Deallocation of a nullptr-representative value is permitted.
   virtual void Deallocate(DeviceMemoryBase* mem) = 0;
 
-  // Allocates unified memory space of the given size, if supported.
-  // See
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
-  // for more details on unified memory.
-  virtual void* UnifiedMemoryAllocate(uint64_t size) { return nullptr; }
-
-  // Deallocates unified memory space previously allocated with
-  // UnifiedMemoryAllocate.
-  virtual void UnifiedMemoryDeallocate(void* mem) {}
-
-  // Allocates collective device memory using ncclMemAlloc.
-  // See
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-  // for more details on User Buffer Registration.
-  virtual absl::StatusOr<void*> CollectiveMemoryAllocate(uint64_t size) {
-    return absl::UnimplementedError("Not implemented");
-  }
-
-  // Deallocates collective device memory previously allocated with
-  // CollectiveMemoryAllocate.
-  virtual absl::Status CollectiveMemoryDeallocate(void* mem) {
-    return absl::UnimplementedError("Not implemented");
-  }
-
   // Allocates a region of host memory and registers it with the platform API.
   // Memory allocated in this manner is required for use in asynchronous memcpy
   // operations, such as Stream::Memcpy.
   virtual absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) = 0;
-
-  // Deallocates a region of host memory allocated by HostMemoryAllocate().
-  virtual void HostMemoryDeallocate(void* mem) = 0;
 
   // Returns the memory space of the given pointer.
   virtual absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) {
@@ -192,6 +174,19 @@ class StreamExecutor {
   // given location in device memory.
   virtual absl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                           uint64_t size) = 0;
+
+  // Returns a DeviceMemoryBase representing the range [base, base + size)
+  // for the given DeviceMemoryBase, such that location is contained within the
+  // returned range.
+  virtual absl::StatusOr<DeviceMemoryBase> GetMemoryRange(
+      const DeviceMemoryBase& location) {
+    return absl::UnimplementedError("Not implemented for this executor.");
+  }
+
+  virtual bool HostMemoryUnregister(void* location) { return false; };
+  virtual bool HostMemoryRegister(void* location, uint64_t size) {
+    return false;
+  };
 
   // Blocks the caller while "size" bytes are copied to the given location in
   // device memory.
@@ -215,11 +210,6 @@ class StreamExecutor {
 
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
-
-  // Causes the host code to synchronously wait for operations enqueued
-  // onto stream to complete. Effectively a join on the asynchronous device
-  // operations enqueued on the stream before this program point.
-  virtual absl::Status BlockHostUntilDone(Stream* stream) = 0;
 
   // Enables peer access from this StreamExecutor to memory
   // allocated by other, such that launched device code, memcpies, etc may
@@ -333,6 +323,15 @@ class StreamExecutor {
   // Sets the argument logging mode. Returns true if 'mode' is valid.
   // The mode is a bitmask of the kLog* constants.
   virtual bool SetArgumentLoggingMode(uint64_t mode) { return false; }
+
+  // Creates, allocates, and copies a CUtensorMap object for the given TMA
+  // descriptor.  Returns a DeviceMemoryBase pointing to the allocated
+  // CUtensorMap object to be used as an argument to a kernel.
+  // Only implemented on CUDA GPUs.
+  virtual absl::StatusOr<DeviceMemoryBase> CreateTensorMap(
+      gpu::TmaDescriptor tma_desc, void* global_address) {
+    return absl::UnimplementedError("Not Implemented");
+  }
 };
 
 template <typename T>

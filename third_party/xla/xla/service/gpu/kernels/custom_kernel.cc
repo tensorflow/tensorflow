@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstddef>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -50,7 +50,7 @@ CustomKernel::CustomKernel(std::string name,
       cluster_dims_(cluster_dims),
       shared_memory_bytes_(shared_memory_bytes) {}
 
-std::string_view CustomKernel::name() const { return name_; }
+absl::string_view CustomKernel::name() const { return name_; }
 
 const se::MultiKernelLoaderSpec& CustomKernel::kernel_spec() const {
   return kernel_spec_;

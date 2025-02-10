@@ -65,8 +65,8 @@ string SessionOptionsToString(const SessionOptions& options) {
 }
 }  // namespace
 
-Status SessionFactory::GetFactory(const SessionOptions& options,
-                                  SessionFactory** out_factory) {
+absl::Status SessionFactory::GetFactory(const SessionOptions& options,
+                                        SessionFactory** out_factory) {
   mutex_lock l(*get_session_factory_lock());  // could use reader lock
 
   std::vector<std::pair<string, SessionFactory*>> candidate_factories;

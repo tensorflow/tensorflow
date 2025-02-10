@@ -14,15 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/modify_model_interface.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <memory>
-#include <sstream>
-#include <string>
-#include <unordered_set>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/error_reporter.h"

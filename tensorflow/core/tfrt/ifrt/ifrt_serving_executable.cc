@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -39,7 +40,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/extract_callback.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
@@ -48,7 +52,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -58,14 +64,18 @@ limitations under the License.
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
-#include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/dump.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/serving_device_selector.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/example/feature.pb.h"
@@ -79,14 +89,12 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_device_utils.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_utils.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tsl/platform/tstring.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
@@ -184,6 +192,34 @@ absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedDevices(
                                 device_assignment_attr_val);
 }
 
+absl::StatusOr<
+    absl::flat_hash_map<std::string, mlir::OwningOpRef<mlir::ModuleOp>>>
+GetHostCallbackModulesAndRemoveHostFuncs(mlir::ModuleOp module) {
+  absl::flat_hash_map<std::string, mlir::OwningOpRef<mlir::ModuleOp>>
+      host_callback_modules;
+  llvm::DenseSet<mlir::TF::XlaHostComputeOp> xla_host_compute_ops;
+  module->walk(
+      [&](mlir::TF::XlaHostComputeOp op) { xla_host_compute_ops.insert(op); });
+  for (auto& op : xla_host_compute_ops) {
+    TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> host_callback_module,
+                        ExtractCallbackModule(module, op.getKey().str()));
+    auto [_, inserted] = host_callback_modules.insert(
+        {op.getKey().str(), std::move(host_callback_module)});
+    if (!inserted) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Duplicate host callback key: ", op.getKey().str()));
+    }
+    auto func = mlir::SymbolTable::lookupNearestSymbolFrom<mlir::func::FuncOp>(
+        module, op.getKeyAttr());
+    if (!func) {
+      return absl::InternalError(
+          absl::StrCat("symbol not found: ", op.getKey().str()));
+    }
+    func->erase();
+  }
+  return host_callback_modules;
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
@@ -198,7 +234,9 @@ IfrtServingExecutable::Create(
     tensorflow::DeviceMgr* device_mgr,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     IfrtServingCoreSelector* ifrt_serving_core_selector,
-    tsl::protobuf::Message* compilation_environement_proto) {
+    tsl::protobuf::Message* compilation_environment_proto,
+    TfToHloCompiler* tf_to_hlo_compiler,
+    IfrtPersistentCompilationCache* persistent_compilation_cache) {
   TF_ASSIGN_OR_RETURN(
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       GetCompileMetadata(*module, *client));
@@ -217,7 +255,8 @@ IfrtServingExecutable::Create(
       std::move(original_compile_metadata),
       xla::ifrt::BasicDeviceList::Create(xla::ifrt::BasicDeviceList::Devices(
           assigned_devices.begin(), assigned_devices.end())),
-      compilation_environement_proto));
+      compilation_environment_proto, tf_to_hlo_compiler,
+      persistent_compilation_cache));
 
   return executable;
 }
@@ -280,7 +319,7 @@ GroupHostCallbackByKey(const Tf2HloResult& tf2hlo_result) {
 // TODO: shape propagation in module
 absl::StatusOr<xla::HostCallback> BuildHostCallback(
     absl::string_view key, const HostCallbackBuilderInfo& builder_info,
-    mlir::ModuleOp module, tensorflow::DeviceMgr* device_mgr,
+    mlir::ModuleOp callback_module, tensorflow::DeviceMgr* device_mgr,
     std::vector<std::unique_ptr<TfHostCallback>>& tf_host_callbacks) {
   VLOG(2) << "BuildHostCallback for key: " << key;
 
@@ -329,13 +368,8 @@ absl::StatusOr<xla::HostCallback> BuildHostCallback(
         DtypeAndShape{.dtype = metadata.type(), .shape = metadata.shape()});
   }
 
-  // TODO(b/332774825): reuse functions in BEF/MLRT once we switch to
-  // GraphExecutor.
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> callback_module,
-                      ExtractCallbackModule(module, key));
-
   TF_ASSIGN_OR_RETURN(std::vector<tensorflow::FunctionDef> function_defs,
-                      BuildFunctionDef(*callback_module));
+                      BuildFunctionDef(callback_module));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<TfHostCallback> tf_host_callback,
@@ -352,7 +386,9 @@ absl::StatusOr<xla::HostCallback> BuildHostCallback(
 }
 
 absl::StatusOr<std::vector<xla::HostCallback>> BuildHostCallbacks(
-    const Tf2HloResult& tf2hlo_result, mlir::ModuleOp module,
+    const Tf2HloResult& tf2hlo_result,
+    absl::flat_hash_map<std::string, mlir::OwningOpRef<mlir::ModuleOp>>
+        host_callback_modules,
     tensorflow::DeviceMgr* device_mgr,
     std::vector<std::unique_ptr<TfHostCallback>>& tf_host_callbacks) {
   TF_ASSIGN_OR_RETURN(auto host_callback_maps,
@@ -361,8 +397,14 @@ absl::StatusOr<std::vector<xla::HostCallback>> BuildHostCallbacks(
   std::vector<xla::HostCallback> host_callbacks;
   host_callbacks.reserve(host_callback_maps.size());
   for (const auto& [entry_function, builder_info] : host_callback_maps) {
+    auto host_callback_module_it = host_callback_modules.find(entry_function);
+    if (host_callback_module_it == host_callback_modules.end()) {
+      return absl::NotFoundError(absl::StrCat(
+          "Host callback module not found for key: ", entry_function));
+    }
     TF_ASSIGN_OR_RETURN(auto host_callback,
-                        BuildHostCallback(entry_function, builder_info, module,
+                        BuildHostCallback(entry_function, builder_info,
+                                          *host_callback_module_it->second,
                                           device_mgr, tf_host_callbacks));
     host_callbacks.push_back(std::move(host_callback));
   }
@@ -374,12 +416,46 @@ absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::CreateExecutableSynchronously(
     mlir::OwningOpRef<mlir::ModuleOp> module_copy,
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
-    absl::Span<const DtypeAndShape> dtypes_and_shapes) {
+    absl::Span<const DtypeAndShape> dtypes_and_shapes,
+    absl::Span<const int> variable_arg_indices) {
+  TF_ASSIGN_OR_RETURN(auto host_callback_modules,
+                      GetHostCallbackModulesAndRemoveHostFuncs(*module_copy));
+  if (VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile("module_for_bridge_phase2", *module_copy);
+  }
+  Tf2HloArg tf2hlo_arg{
+      .module = module_copy.get(),
+      .input_dtypes_and_shapes = std::vector<DtypeAndShape>(
+          dtypes_and_shapes.begin(), dtypes_and_shapes.end()),
+      .variable_arg_indices = variable_arg_indices,
+      .entry_function_name = signature_name(),
+      .compile_metadata = compile_metadata,
+      .shape_representation_fn = shape_representation_fn_,
+      .platform_name = ifrt_client_->platform_name(),
+  };
+
+  // Only get device topology for clients that implement GetTopologyForDevices.
+  if (tf2hlo_arg.platform_name != xla::CudaName() &&
+      !absl::StartsWith(ifrt_client_->runtime_type(), "proxy/")) {
+    TF_ASSIGN_OR_RETURN(
+        tf2hlo_arg.topology,
+        ifrt_client_->GetTopologyForDevices(assigned_device_list_));
+  }
+
+  TF_ASSIGN_OR_RETURN(Tf2HloResult tf2hlo_result,
+                      persistent_compilation_cache_->LookupTf2HloResultOrCreate(
+                          tf2hlo_arg, tf_to_hlo_compiler_));
+  xla::DumpHloModuleProtoIfEnabled(tf2hlo_result.hlo_module_proto,
+                                   "before_ifrt_serialization");
   TF_ASSIGN_OR_RETURN(
-      Tf2HloResult tf2hlo_result,
-      CompileTfToHlo(*module_copy, dtypes_and_shapes, signature_name(),
-                     *ifrt_client_, compile_metadata,
-                     shape_representation_fn_));
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module,
+      xla::ConvertHloToMlirHlo(*module_copy->getContext(),
+                               &tf2hlo_result.hlo_module_proto));
+
+  if (VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile("ifrt_after_bridge_phase2",
+                                 mlir_hlo_module.get());
+  }
   const int num_replicas = tf2hlo_result.compile_metadata.num_replicas();
   const int num_partitions =
       tf2hlo_result.compile_metadata.num_cores_per_replica();
@@ -423,9 +499,10 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   }
 
   std::vector<std::unique_ptr<TfHostCallback>> tf_host_callbacks;
-  TF_ASSIGN_OR_RETURN(auto host_callbacks,
-                      BuildHostCallbacks(tf2hlo_result, *module_copy,
-                                         device_mgr_, tf_host_callbacks));
+  TF_ASSIGN_OR_RETURN(
+      auto host_callbacks,
+      BuildHostCallbacks(tf2hlo_result, std::move(host_callback_modules),
+                         device_mgr_, tf_host_callbacks));
 
   std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
       loaded_host_callbacks;
@@ -436,17 +513,24 @@ IfrtServingExecutable::CreateExecutableSynchronously(
             ifrt_client_.get(),
             std::make_unique<xla::HostCallback>(host_callback)));
   }
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable,
-      ifrt_client_->GetDefaultCompiler()->Compile(
-          std::make_unique<xla::ifrt::HloProgram>(
-              tf2hlo_result.mlir_hlo_module.get()),
-          std::make_unique<xla::ifrt::XlaCompileOptions>(
-              xla_compile_options, loaded_host_callbacks)));
-
+  auto hlo_program =
+      std::make_unique<xla::ifrt::HloProgram>(mlir_hlo_module.get());
+  std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable;
   SharedCachedExecutableBundle executable_bundle =
       std::make_shared<CachedExecutableBundle>();
+
+  TF_ASSIGN_OR_RETURN(
+      ifrt_executable,
+      persistent_compilation_cache_->LookupLoadedExecutableOrCreate(
+          std::move(hlo_program), assigned_device_list_, xla_compile_options,
+          loaded_host_callbacks, ifrt_client_.get(),
+          [&](std::unique_ptr<xla::ifrt::Program> program,
+              std::unique_ptr<xla::ifrt::CompileOptions> options)
+              -> absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> {
+            return ifrt_client_->GetDefaultCompiler()->Compile(
+                std::move(program), std::move(options));
+          }));
+
   executable_bundle->ifrt_executable = std::move(ifrt_executable);
   executable_bundle->compile_metadata =
       std::move(tf2hlo_result.compile_metadata);
@@ -458,7 +542,8 @@ IfrtServingExecutable::CreateExecutableSynchronously(
 xla::ifrt::Future<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::LookUpOrCreateExecutable(
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
-    absl::Span<const DtypeAndShape> dtypes_and_shapes) {
+    absl::Span<const DtypeAndShape> dtypes_and_shapes,
+    absl::Span<const int> variable_arg_indices) {
   std::vector<tensorflow::TensorShape> input_shapes;
   for (const auto& dtype_and_shape : dtypes_and_shapes) {
     input_shapes.push_back(dtype_and_shape.shape);
@@ -497,7 +582,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
   LOG(INFO) << "Cache missed. Building executable";
   absl::StatusOr<SharedCachedExecutableBundle> executable_bundle =
       CreateExecutableSynchronously(std::move(module_copy), compile_metadata,
-                                    dtypes_and_shapes);
+                                    dtypes_and_shapes, variable_arg_indices);
   promise.Set(std::move(executable_bundle));
   return future;
 }
@@ -574,10 +659,11 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   } else {
     device_list = assigned_device_list_;
   }
-  TF_ASSIGN_OR_RETURN(SharedCachedExecutableBundle executable_bundle,
-                      LookUpOrCreateExecutable(
-                          compile_metadata, absl::MakeSpan(dtypes_and_shapes))
-                          .Await());
+  TF_ASSIGN_OR_RETURN(
+      SharedCachedExecutableBundle executable_bundle,
+      LookUpOrCreateExecutable(compile_metadata, dtypes_and_shapes,
+                               variable_arg_indices)
+          .Await());
 
   if (executable_bundle->compile_metadata.args().size() !=
       dtypes_and_shapes.size()) {
@@ -586,9 +672,14 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         " but got ", dtypes_and_shapes.size(), " arguments"));
   }
 
-  // Asynchronously load the restored variable tensors to Ifrt array.
-  TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
-                                        *executable_bundle, device_list));
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    if (!is_frozen_) {
+      // Asynchronously load the restored variable tensors to Ifrt array.
+      TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
+                                            *executable_bundle, device_list));
+    }
+  }
 
   VLOG(2) << "Completed AsyncLoadIfrtArray";
 
@@ -620,15 +711,28 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
       args.push_back(std::move(single_array));
       variable_index++;
     } else {
+      // If the input shape is not the same as the shape after Tf2Hlo
+      // compilation, reshape the input tensor to the expected shape. Note that
+      // the tensor assignment here won't create a copy.
+      tensorflow::Tensor reshaped = inputs[i];
+      TF_ASSIGN_OR_RETURN(
+          tensorflow::TensorShape reshaped_shape,
+          tensorflow::TensorShape::BuildTensorShape(
+              executable_bundle->compile_metadata.args()[i].shape()));
+      if (reshaped.shape() != reshaped_shape &&
+          !reshaped.CopyFrom(inputs[i], reshaped_shape)) {
+        return absl::InternalError("Failed to reshape tensor");
+      }
+
       TF_ASSIGN_OR_RETURN(
           auto single_array,
           ConvertTensorToArray(
-              inputs[i], device_list,
+              reshaped, device_list,
               executable_bundle->compile_metadata.args()[i].sharding()));
       args.push_back(single_array);
     }
   }
-  DCHECK_EQ(args.size(), dtypes_and_shapes.size());
+  DCHECK_EQ(args.size(), executable_bundle->compile_metadata.args().size());
 
   VLOG(2) << "Start Execution";
 
@@ -639,10 +743,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   TF_ASSIGN_OR_RETURN(
       auto execution_result,
       executable_bundle->ifrt_executable->Execute(
-          absl::MakeSpan(args),
-          /*options=*/
-          {.untuple_result = true,
-           .use_major_to_minor_data_layout_for_callbacks = true},
+          absl::MakeSpan(args), /*options=*/{.fill_status = true},
           std::move(execution_device_list)));
 
   auto status = execution_result.status.Await();

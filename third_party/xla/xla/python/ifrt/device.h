@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.pb.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 namespace ifrt {
@@ -68,6 +68,8 @@ class Device : public llvm::RTTIExtends<Device, llvm::RTTIRoot> {
 
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current device unambiguously.
+  //
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   virtual absl::string_view DebugString() const = 0;
 
   // Returns the default memory space attached to this device.
@@ -86,6 +88,20 @@ class Device : public llvm::RTTIExtends<Device, llvm::RTTIRoot> {
   // processes, but only a subset of them are addressable and have the same
   // process_index as the client.
   virtual int ProcessIndex() const = 0;
+
+  template <class Sink>
+  friend void AbslStringify(Sink& sink, const Device& device) {
+    sink.Append(device.DebugString());
+  }
+
+  template <class Sink>
+  friend void AbslStringify(Sink& sink, const Device* device) {
+    if (device == nullptr) {
+      sink.Append("<nullptr>");
+    } else {
+      sink.Append(device->DebugString());
+    }
+  }
 
   static char ID;  // NOLINT
 };

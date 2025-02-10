@@ -66,6 +66,9 @@ static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
 
 namespace tflite {
 
+const int& Interpreter::kTensorsReservedCapacity = 128;
+const int& Interpreter::kTensorsCapacityHeadroom = 16;
+
 namespace {
 
 // Gets the current TfLiteQuantization from the legacy TfLiteQuantizationParams.
@@ -521,7 +524,7 @@ void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
 }
 
 impl::SignatureRunner* Interpreter::GetSignatureRunner(
-    const char* signature_key_, bool apply_default_delegates) {
+    const char* signature_key_) {
   auto [signature_key, empty_signature_fallback] =
       ReplaceWithPlaceholderSignatureKeyIfNeeded(signature_key_);
   if (!signature_key) {
@@ -533,13 +536,11 @@ impl::SignatureRunner* Interpreter::GetSignatureRunner(
     return &(iter->second);
   }
 
-  if (apply_default_delegates) {
-    // Default delegates are applied once for all subgraphs. Only returns error
-    // when the status is kTfLiteError. For other statuses, it will fall back to
-    // the default implementation.
-    if (ApplyLazyDelegateProviders() == kTfLiteError) {
-      return nullptr;
-    }
+  // Default delegates are applied once for all subgraphs. Only returns error
+  // when the status is kTfLiteError. For other statuses, it will fall back to
+  // the default implementation.
+  if (ApplyLazyDelegateProviders() == kTfLiteError) {
+    return nullptr;
   }
 
   if (empty_signature_fallback) {
@@ -565,13 +566,17 @@ impl::SignatureRunner* Interpreter::GetSignatureRunner(
 std::unique_ptr<internal::SignatureDef>
 Interpreter::CreatePlaceholderSignatureDef() {
   auto placeholder_signature_def = std::make_unique<internal::SignatureDef>();
+  placeholder_signature_def->input_names.reserve(inputs().size());
   for (auto i = 0; i < inputs().size(); ++i) {
     auto* name = GetInputName(i);
     placeholder_signature_def->inputs[name] = inputs()[i];
+    placeholder_signature_def->input_names.push_back(name);
   }
+  placeholder_signature_def->output_names.reserve(outputs().size());
   for (auto i = 0; i < outputs().size(); ++i) {
     auto* name = GetOutputName(i);
     placeholder_signature_def->outputs[name] = outputs()[i];
+    placeholder_signature_def->output_names.push_back(name);
   }
   placeholder_signature_def->signature_key = kPlaceholderSignatureDefKey;
   placeholder_signature_def->subgraph_index = 0;

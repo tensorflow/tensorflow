@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,22 +35,23 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -58,6 +60,7 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
+using ::testing::Ne;
 using ::testing::Not;
 using ::testing::TempDir;
 using ::testing::UnorderedElementsAre;
@@ -221,13 +224,16 @@ TEST_F(AutotunerUtilTest, FailIfRequireCompleteAotAutotuning) {
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
   AutotuneConfig config(DeviceConfig{executor}, options);
+  absl::Status s = AutotunerUtil::Autotune(instruction, config, [&] {
+                     return AutotuneResult();
+                   }).status();
   EXPECT_THAT(
-      AutotunerUtil::Autotune(instruction, config,
-                              [&] { return AutotuneResult(); }),
-      StatusIs(
-          absl::StatusCode::kNotFound,
-          HasSubstr("Complete XLA AOT autotuning results are required, but "
-                    "no AOT result was found for key: <key model")));
+      s, StatusIs(
+             absl::StatusCode::kNotFound,
+             HasSubstr("Complete XLA AOT autotuning results are required, but "
+                       "no AOT result was found for key: <key model")));
+  EXPECT_THAT(s.GetPayload(kAutotuneCacheRequiredErrorPayloadKey),
+              Ne(std::nullopt));
   EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 0);
   EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 1);
 }

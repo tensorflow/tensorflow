@@ -30,14 +30,14 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tools/xla_compile_lib.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/tsl/protobuf/status.pb.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
-#include "tsl/protobuf/error_codes.pb.h"
-#include "tsl/protobuf/status.pb.h"
 
 namespace xla {
 namespace {
@@ -90,14 +90,14 @@ TEST_F(XlaCompileLibTest, MainForGpu) {
   TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
                                       module_->ToString()));
 
-  const std::string output_path =
+  const std::string output_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_output");
   const std::string result_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_result.pb");
 
   XlaCompileOptions options;
   options.module_path = module_file;
-  options.output_path = output_path;
+  options.output_file = output_file;
   options.platform = "gpu";
   options.result_output_file = result_file;
   options.gpu_options.use_attached_device = true;

@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "xla/python/ifrt/array_spec.h"
 
+#include <memory>
+
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/Casting.h"
+#include "xla/layout_util.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_test_util.h"
@@ -25,13 +30,28 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
 
 class ArraySpecTest : public test_util::DeviceTest {};
+
+TEST_P(ArraySpecTest, SupportsAbslHash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      ArraySpec{DType(DType::kS32), Shape({4, 2}),
+                ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                             /*shape=*/Shape({4, 2}),
+                                             /*shard_shape=*/Shape({2, 2}))},
+      ArraySpec{DType(DType::kS32), Shape({4, 2}),
+                ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                             /*shape=*/Shape({4, 2}),
+                                             /*shard_shape=*/Shape({2, 2})),
+                std::make_shared<xla::PjRtLayout>(
+                    xla::LayoutUtil::MakeDescendingLayout(2))},
+  }));
+}
 
 TEST_P(ArraySpecTest, ToFromProto) {
   auto device_list = GetDevices({0, 1});

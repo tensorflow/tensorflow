@@ -16,12 +16,26 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_P2P_PIPELINER_H_
 #define XLA_SERVICE_GPU_GPU_P2P_PIPELINER_H_
 
-#include "xla/service/hlo_pass_pipeline.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 
 namespace xla {
 namespace gpu {
-// Adds a collective-pipeliner pass for pipelining P2P Send-Recv chains.
-void AddP2PPipeliner(HloPassPipeline& pipeline);
+
+class GpuP2PPipeliner : public HloModulePass {
+ public:
+  explicit GpuP2PPipeliner(bool enable_partial_send_recv_pipelining)
+      : enable_partial_send_recv_pipelining_(
+            enable_partial_send_recv_pipelining) {}
+
+  absl::string_view name() const override { return "gpu-p2p-pipeliner"; }
+
+  absl::StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  bool enable_partial_send_recv_pipelining_;
+};
 
 }  // namespace gpu
 }  // namespace xla

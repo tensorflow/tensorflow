@@ -37,7 +37,7 @@ class BoundedExecutor : public thread::ThreadPoolInterface {
     int num_threads = -1;
   };
 
-  static StatusOr<std::unique_ptr<BoundedExecutor>> Create(
+  static absl::StatusOr<std::unique_ptr<BoundedExecutor>> Create(
       const Options& options);
 
   // Destructor. All threads will be joined.

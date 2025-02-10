@@ -126,6 +126,9 @@ std::vector<std::string> DumpHloModuleIfEnabled(
     const HloModule& module, const BufferAssignment& buffer_assn,
     absl::string_view name);
 
+std::vector<std::string> DumpHloModuleProtoIfEnabled(
+    const HloModuleProto& module_proto, absl::string_view name);
+
 // Dumps the given HLO module after running one HLO pass and before running
 // another, if that's enabled. Returns the full file paths of all dumps of the
 // module, or an empty vector if nothing was dumped.
@@ -151,6 +154,11 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
                               const HloSnapshot& snapshot);
 void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
                               const DebugOptions& opts);
+
+// Dumps the given HloUnoptimisedSnapshot to the module's xla_dump_dir, if this
+// is enabled.
+void DumpHloUnoptimizedSnapshotIfEnabled(
+    const HloUnoptimizedSnapshot& hlo_snapshot, const DebugOptions& opts);
 
 void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules);
 

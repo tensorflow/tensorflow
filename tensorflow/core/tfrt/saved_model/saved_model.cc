@@ -40,9 +40,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
@@ -99,6 +98,9 @@ namespace tfrt_stub {
 namespace {
 
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
+constexpr absl::string_view kXlaCallModuleOpName = "XlaCallModule";
+constexpr absl::string_view kJaxModelLabel = "JAX";
+constexpr absl::string_view kUnknownModelLabel = "UNKNOWN";
 
 auto* lazy_loading_count = monitoring::Counter<3>::New(
     "/tensorflow/tfrt/lazy_loading_count", "The total number of lazy loadings.",
@@ -111,6 +113,16 @@ auto* use_backend_compiler_count = monitoring::Counter<3>::New(
     "/tensorflow/tfrt/use_backend_compiler_count",
     "The total number of instances that use injected backend compiler.",
     "model_name", "model_version", "use_backend_compiler");
+
+auto* inferred_model_type_count = monitoring::Counter<3>::New(
+    "/tensorflow/tfrt/inferred_model_type",
+    "Count of SavedModels with their inferred model types (best-effort).",
+    "model_name", "model_version", "inferred_model_type");
+
+auto* inferred_model_type_per_request_count = monitoring::Counter<3>::New(
+    "/tensorflow/tfrt/inferred_model_type_per_request",
+    "Count of requests with their inferred model types (best-effort).",
+    "model_name", "model_version", "inferred_model_type");
 
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
@@ -141,28 +153,25 @@ absl::Status PrepareRestore(mlir::MLIRContext* context,
                             const std::string& saved_model_dir,
                             const SavedModel::Options& options,
                             ifrt_serving::CheckpointLoader* checkpoint_loader) {
-  // Import the global MLIR with `import_user_signatures` as true so that we can
-  // analysis the global MLIR to retrieve data needed for restore.
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_restore_analysis;
-  ASSIGN_OR_RETURN_IN_IMPORT(
-      mlir_module_restore_analysis,
-      ImportSavedModel(
-          context, meta_graph_def, fallback_state, saved_model_dir,
-          /*import_user_signatures=*/true,
-          options.graph_execution_options.run_placer_grappler_on_functions));
-
   if (!checkpoint_loader) {
     return absl::InternalError("Missing checkpoint loader.");
   }
 
-  TF_RETURN_IF_ERROR(checkpoint_loader->PrepareRestore(
-      std::move(mlir_module_restore_analysis)));
+  ifrt_serving::CheckpointLoader::PrepareRestoreArgs args = {
+      .context = context,
+      .meta_graph_def = meta_graph_def,
+      .fallback_state = &fallback_state,
+      .saved_model_dir = saved_model_dir,
+      .run_placer_grappler_on_functions =
+          options.graph_execution_options.run_placer_grappler_on_functions};
+
+  TF_RETURN_IF_ERROR(checkpoint_loader->PrepareRestore(args));
 
   LOG(INFO) << "Complete set restore metadata.";
   return absl::OkStatus();
 }
 
-tensorflow::Status RunBytecodeInitializers(
+absl::Status RunBytecodeInitializers(
     const GraphExecutionOptions& options,
     const InitializersAndSignatures& initializers_and_signatures,
     const mlrt::LoadedExecutable& loaded_executable,
@@ -213,7 +222,7 @@ tensorflow::Status RunBytecodeInitializers(
   return absl::OkStatus();
 }
 
-tensorflow::Status RunBefInitializers(
+absl::Status RunBefInitializers(
     const GraphExecutionOptions& options,
     const InitializersAndSignatures& initializers_and_signatures,
     tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
@@ -267,9 +276,9 @@ tensorflow::Status RunBefInitializers(
   return absl::OkStatus();
 }
 
-tensorflow::Status IsInputSpecsCorrect(
-    absl::string_view name, const internal::Signature& signature,
-    absl::Span<const tensorflow::Tensor> inputs) {
+absl::Status IsInputSpecsCorrect(absl::string_view name,
+                                 const internal::Signature& signature,
+                                 absl::Span<const tensorflow::Tensor> inputs) {
   TF_RET_CHECK(signature.input_specs.size() == inputs.size())
       << "signature " << name
       << " input size is wrong, expected: " << signature.input_specs.size()
@@ -288,7 +297,7 @@ tensorflow::Status IsInputSpecsCorrect(
   return absl::OkStatus();
 }
 
-tensorflow::Status CheckInputSpecs(
+absl::Status CheckInputSpecs(
     const tensorflow::SessionMetadata& model_metadata,
     const SavedModel::RunOptions& run_options, absl::string_view signature_name,
     const internal::Signature& signature,
@@ -317,7 +326,7 @@ tensorflow::Status CheckInputSpecs(
   return absl::OkStatus();
 }
 
-tensorflow::Status PreprocessSignature(
+absl::Status PreprocessSignature(
     const tensorflow::SessionMetadata& model_metadata,
     const SavedModel::RunOptions& run_options, absl::string_view signature_name,
     const tensorflow::SignatureDef& signature_def,
@@ -388,6 +397,32 @@ bool AotPackageExists(absl::string_view saved_model_dir) {
   return env->FileExists(aot_package_path).ok() &&
          env->FileExists(aot_mlir_path).ok() &&
          env->FileExists(aot_bef_path).ok();
+}
+
+InferredModelType GetInferredModelType(const MetaGraphDef& meta_graph_def) {
+  bool found_xla_call_module_op = false;
+  for (const auto& function : meta_graph_def.graph_def().library().function()) {
+    for (const auto& node : function.node_def()) {
+      if (node.name() == kXlaCallModuleOpName) {
+        found_xla_call_module_op = true;
+        break;
+      }
+    }
+  }
+  return found_xla_call_module_op ? InferredModelType::kJax
+                                  : InferredModelType::kUncategorized;
+}
+
+std::string StringifyInferredModelType(InferredModelType model_type) {
+  switch (model_type) {
+    case InferredModelType::kUncategorized:
+      return std::string(kUnknownModelLabel);
+    case InferredModelType::kJax:
+      return std::string(kJaxModelLabel);
+  }
+  LOG(ERROR) << "Unexpected value for InferredModelType: "
+             << static_cast<int>(model_type);
+  return std::string(kUnknownModelLabel);
 }
 
 }  // namespace
@@ -497,6 +532,17 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
 
   tfrt::metrics::AddTFRTVersionMetric();
 
+  InferredModelType inferred_model_type = InferredModelType::kUncategorized;
+  if (options.emit_model_type_metric) {
+    inferred_model_type = GetInferredModelType(meta_graph_def);
+  }
+  inferred_model_type_count
+      ->GetCell(options.graph_execution_options.model_metadata.name(),
+                absl::StrCat(
+                    options.graph_execution_options.model_metadata.version()),
+                StringifyInferredModelType(inferred_model_type))
+      ->IncrementBy(1);
+
   UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
                                        meta_graph_def.graph_def());
   UpdateCompileOptions(options);
@@ -565,7 +611,9 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
             &context, meta_graph_def, *fallback_state,
             std::string(saved_model_dir),
             /*import_user_signatures=*/!options.enable_lazy_loading,
-            options.graph_execution_options.run_placer_grappler_on_functions));
+            options.graph_execution_options.run_placer_grappler_on_functions,
+            /*import_signature_names=*/{},
+            &options.graph_execution_options.runtime_config));
   }
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
@@ -701,7 +749,8 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
                             std::move(fallback_state),
                             std::move(resource_context),
                             std::move(*meta_graph_def.mutable_graph_def()),
-                            std::move(kernel_registry)));
+                            std::move(kernel_registry),
+                            &options.graph_execution_options.runtime_config));
 
   symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(mlir_module.get());
   const auto compile_duration = absl::Now() - compile_start_time;
@@ -785,7 +834,7 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
       std::move(loaded_executable),
       std::move(initializers_and_signatures.signature_map),
       std::move(runner_table), std::move(resource_array),
-      std::move(graph_executor))};
+      std::move(graph_executor), inferred_model_type)};
 }
 
 SavedModelImpl::SavedModelImpl(
@@ -795,7 +844,8 @@ SavedModelImpl::SavedModelImpl(
     std::optional<mlrt::LoadedExecutable> loaded_executable,
     SignatureMap signatures, std::unique_ptr<OpKernelRunnerTable> runner_table,
     std::unique_ptr<tfd::FallbackResourceArray> resource_array,
-    std::unique_ptr<GraphExecutor> graph_executor)
+    std::unique_ptr<GraphExecutor> graph_executor,
+    InferredModelType inferred_model_type)
     : SavedModel(std::move(options), std::move(graph_executor)),
       symbol_uids_(std::move(symbol_uids)),
       meta_graph_def_(std::move(meta_graph_def)),
@@ -806,7 +856,8 @@ SavedModelImpl::SavedModelImpl(
               ->GetHostContext()),
       signatures_(std::move(signatures)),
       runner_table_(std::move(runner_table)),
-      resource_array_(std::move(resource_array)) {
+      resource_array_(std::move(resource_array)),
+      inferred_model_type_(inferred_model_type) {
   if (!options_.enable_lazy_loading) {
     bytecode_ = std::move(bytecode);
     loaded_executable_ = std::move(loaded_executable);
@@ -832,10 +883,19 @@ std::optional<FunctionMetadata> SavedModelImpl::GetFunctionMetadata(
   return FunctionMetadata(&iter->second);
 }
 
-tensorflow::Status SavedModelImpl::Run(
-    const RunOptions& run_options, absl::string_view name,
-    absl::Span<const tensorflow::Tensor> inputs,
-    std::vector<tensorflow::Tensor>* outputs) {
+void SavedModelImpl::IncrementInferredModelTypePerRequestCount() {
+  inferred_model_type_per_request_count
+      ->GetCell(options_.graph_execution_options.model_metadata.name(),
+                absl::StrCat(
+                    options_.graph_execution_options.model_metadata.version()),
+                StringifyInferredModelType(inferred_model_type_))
+      ->IncrementBy(1);
+}
+
+absl::Status SavedModelImpl::Run(const RunOptions& run_options,
+                                 absl::string_view name,
+                                 absl::Span<const tensorflow::Tensor> inputs,
+                                 std::vector<tensorflow::Tensor>* outputs) {
   TF_RET_CHECK(outputs) << "outputs must be provided";
   outputs->clear();
 
@@ -868,6 +928,7 @@ tensorflow::Status SavedModelImpl::Run(
     auto run_opt = run_options;
     run_opt.name = name;
 
+    IncrementInferredModelTypePerRequestCount();
     return graph_executor_->Run(run_opt, input_tensors, output_tensor_names,
                                 /*target_tensor_names=*/{}, outputs);
   }
@@ -917,6 +978,7 @@ tensorflow::Status SavedModelImpl::Run(
   DCHECK(runner_table);
   DCHECK(resource_array);
 
+  IncrementInferredModelTypePerRequestCount();
   return GraphExecutionRunOnFunction(
       options_.graph_execution_options, run_options, name, *symbol_uids, func,
       loaded_executable, inputs, outputs, resource_context,
@@ -938,7 +1000,7 @@ struct SavedModelImpl::JoinedSignature {
   std::vector<std::string> target_nodes;
 };
 
-tensorflow::Status SavedModelImpl::RunMultipleSignatures(
+absl::Status SavedModelImpl::RunMultipleSignatures(
     const RunOptions& run_options, absl::Span<const std::string> names,
     absl::Span<const std::vector<tensorflow::Tensor>> multi_inputs,
     std::vector<std::vector<tensorflow::Tensor>>* multi_outputs) {
@@ -982,6 +1044,7 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
 
   std::vector<tensorflow::Tensor> flat_outputs;
 
+  IncrementInferredModelTypePerRequestCount();
   TF_RETURN_IF_ERROR(
       graph_executor_->Run(run_options, flat_inputs, flat_output_names,
                            /*target_tensor_names=*/{}, &flat_outputs));
@@ -1023,12 +1086,12 @@ SavedModelImpl::ImportSubgraph(
           graph_import_config));
 
   // Convert the optimized graph to an MLIR module.
-  return tensorflow::ConvertGraphToMlir(
+  return tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
       *optimization_result.graph, /*debug_info=*/{},
       optimization_result.graph->flib_def(), graph_import_config, context);
 }
 
-tensorflow::Status SavedModelImpl::RunByTensorNames(
+absl::Status SavedModelImpl::RunByTensorNames(
     const RunOptions& run_options,
     absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
     absl::Span<const std::string> output_tensor_names,
@@ -1036,6 +1099,7 @@ tensorflow::Status SavedModelImpl::RunByTensorNames(
     std::vector<tensorflow::Tensor>* outputs) {
   // TODO(b/192498110): Validate input type.
 
+  IncrementInferredModelTypePerRequestCount();
   return graph_executor_->Run(run_options, inputs, output_tensor_names,
                               target_node_names, outputs);
 }

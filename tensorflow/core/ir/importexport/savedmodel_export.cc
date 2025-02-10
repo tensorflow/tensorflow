@@ -25,7 +25,7 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
-tensorflow::Status ExportMlirToSavedModel(
+absl::Status ExportMlirToSavedModel(
     mlir::ModuleOp module, const tensorflow::SavedModel &original_saved_model,
     tensorflow::SavedModel *output_saved_model) {
   if (original_saved_model.meta_graphs_size() == 0) {

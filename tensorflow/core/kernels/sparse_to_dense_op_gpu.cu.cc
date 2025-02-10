@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse_to_dense_op_gpu.h"
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -194,7 +193,8 @@ void LaunchSparseToDense<T, Index>::operator()(
         // Ensure that within the callback, the proper GPU settings are
         // configured.
         auto stream = c->op_device_context()->stream();
-        se::gpu::ScopedActivateContext scoped_activation{stream->parent()};
+        std::unique_ptr<se::ActivateContext> scoped_activation =
+            stream->parent()->Activate();
 
         OP_REQUIRES_ASYNC(
             c, valid_status.valid == INT_MAX,
@@ -225,7 +225,7 @@ void LaunchSparseToDense<T, Index>::operator()(
                                  shape.flat<Index>().data(), num_dims,
                                  dense_ptr),
             done);
-      }  // Release ScopedActivateContext to prevent deadlock when done
+      }  // Release ActivateContext to prevent deadlock when done
       // inlines another Op kernel, which may assume the original cuda Context.
 
       done();

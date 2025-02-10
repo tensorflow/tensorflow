@@ -27,6 +27,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_SCHEDULER_H_
 
 #include <stddef.h>
+#include <sys/types.h>
 
 #include <algorithm>
 #include <atomic>
@@ -57,11 +58,13 @@ const absl::string_view kLowPriorityPaddingWithMaxBatchSizeAttrValue =
 const absl::string_view kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue =
     "low_priority_padding_with_next_allowed_batch_size";
 const absl::string_view kPriorityIsolationAttrValue = "priority_isolation";
+const absl::string_view kPriorityMergeAttrValue = "priority_merge";
 
 enum class MixedPriorityBatchingPolicy {
   kLowPriorityPaddingWithMaxBatchSize,
   kLowPriorityPaddingWithNextAllowedBatchSize,
-  kPriorityIsolation
+  kPriorityIsolation,
+  kPriorityMerge,
 };
 
 absl::StatusOr<MixedPriorityBatchingPolicy> GetMixedPriorityBatchingPolicy(
@@ -115,6 +118,9 @@ class TaskQueue {
   // Appends a task to the end of the queue with the given start time.
   void AddTask(std::unique_ptr<TaskType> task, uint64 start_time_micros);
 
+  // Adds a task to the front of the queue with the given start time.
+  void PrependTask(std::unique_ptr<TaskType> task, uint64 start_time_micros);
+
   // Removes a task from the front of the queue, i.e., the oldest task in the
   // queue.
   std::unique_ptr<TaskType> RemoveTask();
@@ -161,6 +167,17 @@ void TaskQueue<TaskType>::AddTask(std::unique_ptr<TaskType> task,
     mutex_lock l(mu_);
     size_ += task->size();
     tasks_.emplace_back(std::move(task), start_time_micros);
+    empty_.store(false);
+  }
+}
+
+template <typename TaskType>
+void TaskQueue<TaskType>::PrependTask(std::unique_ptr<TaskType> task,
+                                      uint64 start_time_micros) {
+  {
+    mutex_lock l(mu_);
+    size_ += task->size();
+    tasks_.emplace_front(std::move(task), start_time_micros);
     empty_.store(false);
   }
 }
@@ -264,7 +281,7 @@ class Batch {
   // Appends 'task' to the batch. After calling AddTask(), the newly-added task
   // can be accessed via task(num_tasks()-1) or mutable_task(num_tasks()-1).
   // Dies if the batch is closed.
-  void AddTask(std::unique_ptr<TaskType> task);
+  void AddTask(std::unique_ptr<TaskType> task, uint64 start_time_micros = 0);
 
   // Removes the most recently added task. Returns nullptr if the batch is
   // empty.
@@ -312,6 +329,10 @@ class Batch {
   void TryTrimToNewSize(
       int new_size, std::vector<std::unique_ptr<TaskType>>& out_trimmed_tasks);
 
+  // Returns the start time of the earliest task in the queue. If the queue is
+  // empty, return the null value.
+  std::optional<uint64> EarliestTaskStartTime() const;
+
  private:
   mutable mutex mu_;
 
@@ -328,6 +349,10 @@ class Batch {
 
   // The TracMe context id.
   const uint64 traceme_context_id_;
+
+  // The minimum start time of all tasks in the batch.
+  // If the batch is empty, the value is undefined.
+  uint64 earliest_task_start_time_micros_ TF_GUARDED_BY(mu_);
 
   Batch(const Batch&) = delete;
   void operator=(const Batch&) = delete;
@@ -361,7 +386,7 @@ class BatchScheduler {
   // substantial amount of time. If the method returns Status::OK, the task is
   // processed asynchronously, and any errors that occur during the processing
   // of the batch that includes the task can be reported to 'task'.
-  virtual Status Schedule(std::unique_ptr<TaskType>* task) = 0;
+  virtual absl::Status Schedule(std::unique_ptr<TaskType>* task) = 0;
 
   // Returns the number of tasks that have been scheduled (i.e. accepted by
   // Schedule()), but have yet to be handed to a thread for execution as part of
@@ -405,13 +430,31 @@ Batch<TaskType>::~Batch() {
 }
 
 template <typename TaskType>
-void Batch<TaskType>::AddTask(std::unique_ptr<TaskType> task) {
+void Batch<TaskType>::AddTask(std::unique_ptr<TaskType> task,
+                              uint64 start_time_micros) {
   DCHECK(!IsClosed());
   {
     mutex_lock l(mu_);
     size_ += task->size();
     tasks_.push_back(std::move(task));
     empty_.store(false);
+    if (tasks_.size() == 1) {
+      earliest_task_start_time_micros_ = start_time_micros;
+    } else {
+      earliest_task_start_time_micros_ =
+          std::min(earliest_task_start_time_micros_, start_time_micros);
+    }
+  }
+}
+
+template <typename TaskType>
+std::optional<uint64> Batch<TaskType>::EarliestTaskStartTime() const {
+  {
+    mutex_lock l(mu_);
+    if (tasks_.empty()) {
+      return std::nullopt;
+    }
+    return earliest_task_start_time_micros_;
   }
 }
 

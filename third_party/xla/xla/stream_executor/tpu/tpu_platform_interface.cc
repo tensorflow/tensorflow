@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace tpu {

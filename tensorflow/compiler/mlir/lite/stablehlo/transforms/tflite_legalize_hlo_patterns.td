@@ -326,13 +326,16 @@ def LowerCbrt : Pat<(MHLO_CbrtOp $opr),
       TFL_AF_None)),
       [(F32Tensor $opr)]>;
 
+// Pattern to legacyze mhlo.abs(complex) to tfl.complex_abs.
+def : Pat<(MHLO_AbsOp MHLO_ComplexTensor:$arg), (TFL_ComplexAbsOp $arg)>;
+
+// Pattern to match non-complex abs.
+def : Pat<(MHLO_AbsOp MHLO_PredIntFpOrQuantizedTensor:$arg), (TFL_AbsOp $arg)>;
 
 foreach pair = [
-  [MHLO_AbsOp, TFL_AbsOp],
   [MHLO_BitcastConvertOp, TFL_BitcastOp],
   [MHLO_CeilOp, TFL_CeilOp],
   [MHLO_CosineOp, TFL_CosOp],
-  [MHLO_ExpOp, TFL_ExpOp],
   [MHLO_FloorOp, TFL_FloorOp],
   [MHLO_ImagOp, TFL_ImagOp],
   [MHLO_LogOp, TFL_LogOp],
@@ -349,6 +352,18 @@ foreach pair = [
     (pair[0] $input),
     (pair[1] $input)>;
 }
+
+def ConstDefaultResultAccuracyAttr :
+  ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
+
+foreach pair = [
+  [MHLO_ExpOp, TFL_ExpOp],
+] in {
+  def : Pat<
+    (pair[0] $input, ConstDefaultResultAccuracyAttr),
+    (pair[1] $input)>;
+}
+
 
 def : Pat<
   (MHLO_ConvertOp $input),

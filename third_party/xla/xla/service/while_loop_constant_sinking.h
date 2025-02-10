@@ -55,9 +55,8 @@ class WhileLoopConstantSinking : public HloModulePass {
 
   ~WhileLoopConstantSinking() override = default;
 
-  absl::string_view name() const override {
-    return "while-loop-constant-sinking";
-  }
+  static constexpr absl::string_view kName = "while-loop-constant-sinking";
+  absl::string_view name() const override { return kName; }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -66,7 +65,7 @@ class WhileLoopConstantSinking : public HloModulePass {
 
  private:
   absl::StatusOr<bool> TrySinkingConstantsIntoWhileLoop(
-      HloInstruction* while_instr);
+      HloModule* module, HloInstruction* while_instr);
 
   const bool sink_broadcast_of_constants_;
   const bool sink_only_scalar_constants_;

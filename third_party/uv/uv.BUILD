@@ -51,6 +51,7 @@ cc_library(
             "src/unix/proctitle.c",
             "src/unix/random-getentropy.c",
         ],
+        "//conditions:default": [],
     }),
     # TODO: Add Linux, etc. as in https://github.com/libuv/libuv/blob/v1.38.0/CMakeLists.txt.
     hdrs = [
@@ -67,6 +68,7 @@ cc_library(
         "@platforms//os:osx": [
             "src/unix/darwin-stub.h",
         ],
+        "//conditions:default": [],
     }) + glob(["include/uv/*.h"]),
     copts = [
         "-fexceptions",

@@ -41,7 +41,7 @@ bool HasAttrStyleType(const OpDef::ArgDef& arg) {
          !arg.type_list_attr().empty();
 }
 
-Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
+absl::Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
   const AttrValue& allowed_values(attr.allowed_values());
   for (auto allowed : allowed_values.list().type()) {
     if (dt == allowed) {
@@ -61,7 +61,7 @@ Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
       " is not in the list of allowed values: ", allowed_str);
 }
 
-Status AllowedStringValue(const string& str, const OpDef::AttrDef& attr) {
+absl::Status AllowedStringValue(const string& str, const OpDef::AttrDef& attr) {
   const AttrValue& allowed_values(attr.allowed_values());
   for (const auto& allowed : allowed_values.list().s()) {
     if (str == allowed) {
@@ -83,8 +83,8 @@ Status AllowedStringValue(const string& str, const OpDef::AttrDef& attr) {
 }  // namespace
 
 // Requires: attr has already been validated.
-Status ValidateAttrValue(const AttrValue& attr_value,
-                         const OpDef::AttrDef& attr) {
+absl::Status ValidateAttrValue(const AttrValue& attr_value,
+                               const OpDef::AttrDef& attr) {
   // Is it a valid value?
   TF_RETURN_WITH_CONTEXT_IF_ERROR(AttrValueHasType(attr_value, attr.type()),
                                   " for attr '", attr.name(), "'");
@@ -146,7 +146,7 @@ Status ValidateAttrValue(const AttrValue& attr_value,
   return absl::OkStatus();
 }
 
-const OpDef::AttrDef* FindAttr(StringPiece name, const OpDef& op_def) {
+const OpDef::AttrDef* FindAttr(absl::string_view name, const OpDef& op_def) {
   for (int i = 0; i < op_def.attr_size(); ++i) {
     if (op_def.attr(i).name() == name) {
       return &op_def.attr(i);
@@ -155,7 +155,7 @@ const OpDef::AttrDef* FindAttr(StringPiece name, const OpDef& op_def) {
   return nullptr;
 }
 
-OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def) {
+OpDef::AttrDef* FindAttrMutable(absl::string_view name, OpDef* op_def) {
   for (int i = 0; i < op_def->attr_size(); ++i) {
     if (op_def->attr(i).name() == name) {
       return op_def->mutable_attr(i);
@@ -164,7 +164,7 @@ OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def) {
   return nullptr;
 }
 
-const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def) {
+const OpDef::ArgDef* FindInputArg(absl::string_view name, const OpDef& op_def) {
   for (int i = 0; i < op_def.input_arg_size(); ++i) {
     if (op_def.input_arg(i).name() == name) {
       return &op_def.input_arg(i);
@@ -173,7 +173,7 @@ const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def) {
   return nullptr;
 }
 
-const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
+const ApiDef::Arg* FindInputArg(absl::string_view name, const ApiDef& api_def) {
   for (int i = 0; i < api_def.in_arg_size(); ++i) {
     if (api_def.in_arg(i).name() == name) {
       return &api_def.in_arg(i);
@@ -190,9 +190,9 @@ const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
     }                                                              \
   } while (false)
 
-static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
-                          bool output,
-                          absl::flat_hash_set<StringPiece>* names) {
+static absl::Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
+                                bool output,
+                                absl::flat_hash_set<absl::string_view>* names) {
   const string suffix = strings::StrCat(
       output ? " for output '" : " for input '", arg.name(), "'");
   VALIDATE(names->emplace(arg.name()).second, "Duplicate name: ", arg.name());
@@ -247,7 +247,7 @@ static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
   return absl::OkStatus();
 }
 
-bool IsValidOpName(StringPiece sp) {
+bool IsValidOpName(absl::string_view sp) {
   using ::tensorflow::strings::Scanner;
 
   Scanner scanner(sp);
@@ -266,13 +266,14 @@ bool IsValidOpName(StringPiece sp) {
   }
 }
 
-Status ValidateOpDef(const OpDef& op_def) {
+absl::Status ValidateOpDef(const OpDef& op_def) {
   if (!absl::StartsWith(op_def.name(), "_")) {
     VALIDATE(IsValidOpName(op_def.name()), "Invalid name: ", op_def.name(),
              " (Did you use CamelCase?)");
   }
 
-  absl::flat_hash_set<StringPiece> names;  // for detecting duplicate names
+  absl::flat_hash_set<absl::string_view>
+      names;  // for detecting duplicate names
   for (const auto& attr : op_def.attr()) {
     // Validate name
     VALIDATE(names.emplace(attr.name()).second,
@@ -282,11 +283,11 @@ Status ValidateOpDef(const OpDef& op_def) {
              attr.name(), " that matches a data type");
 
     // Validate type
-    StringPiece type(attr.type());
+    absl::string_view type(attr.type());
     bool is_list = absl::ConsumePrefix(&type, "list(");
     bool found = false;
-    for (StringPiece valid : {"string", "int", "float", "bool", "type", "shape",
-                              "tensor", "func"}) {
+    for (absl::string_view valid : {"string", "int", "float", "bool", "type",
+                                    "shape", "tensor", "func"}) {
       if (absl::ConsumePrefix(&type, valid)) {
         found = true;
         break;
@@ -348,7 +349,7 @@ Status ValidateOpDef(const OpDef& op_def) {
 
 #undef VALIDATE
 
-Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
+absl::Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
   if (op_def.has_deprecation()) {
     const OpDeprecation& dep = op_def.deprecation();
     if (graph_def_version >= dep.version()) {
@@ -499,7 +500,7 @@ string MinStr(const OpDef::AttrDef& attr) {
   return strings::StrCat(attr.minimum());
 }
 
-typedef absl::flat_hash_map<StringPiece, const OpDef::AttrDef*> AttrMap;
+typedef absl::flat_hash_map<absl::string_view, const OpDef::AttrDef*> AttrMap;
 void FillAttrMap(const OpDef& op_def, AttrMap* attr_map) {
   for (const auto& attr : op_def.attr()) {
     (*attr_map)[attr.name()] = &attr;
@@ -618,7 +619,7 @@ string ComputeArgSignature(
 
 }  // namespace
 
-Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
+absl::Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
 #define VALIDATE(CONDITION, ...)                                            \
   if (!(CONDITION)) {                                                       \
     return errors::InvalidArgument("Incompatible Op change: ", __VA_ARGS__, \
@@ -687,9 +688,9 @@ Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
   return absl::OkStatus();
 }
 
-Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
-                                   const OpDef& penultimate_op,
-                                   const OpDef& new_op) {
+absl::Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
+                                         const OpDef& penultimate_op,
+                                         const OpDef& new_op) {
   AttrMap new_attrs, old_attrs;
   FillAttrMap(old_op, &old_attrs);
   FillAttrMap(new_op, &new_attrs);
@@ -726,7 +727,8 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
   return absl::OkStatus();
 }
 
-Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op) {
+absl::Status OpDefAttrDefaultsUnchanged(const OpDef& old_op,
+                                        const OpDef& new_op) {
   AttrMap new_attrs, old_attrs;
   FillAttrMap(old_op, &old_attrs);
   FillAttrMap(new_op, &new_attrs);
@@ -862,11 +864,11 @@ bool OpDefEqual(const OpDef& o1, const OpDef& o2) {
   if (!RepeatedAttrDefEqual(o1.attr(), o2.attr())) return false;
 
   // `control_output` order doesn't matter.
-  std::vector<StringPiece> control_output1(o1.control_output().begin(),
-                                           o1.control_output().end());
+  std::vector<absl::string_view> control_output1(o1.control_output().begin(),
+                                                 o1.control_output().end());
   std::sort(control_output1.begin(), control_output1.end());
-  std::vector<StringPiece> control_output2(o2.control_output().begin(),
-                                           o2.control_output().end());
+  std::vector<absl::string_view> control_output2(o2.control_output().begin(),
+                                                 o2.control_output().end());
   std::sort(control_output2.begin(), control_output2.end());
   if (control_output1 != control_output2) return false;
 

@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 
 namespace mlir {
@@ -296,7 +296,7 @@ void FallbackToFlexOps::runOnOperation() {
   // Convert binary ops to BiasAdd ops if possible.
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Convert unsupported ops to Flex ops.
   auto tf_dialect = ctx->getLoadedDialect<TF::TensorFlowDialect>();

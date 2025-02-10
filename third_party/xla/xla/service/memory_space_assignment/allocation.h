@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_ALLOCATION_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_ALLOCATION_H_
 
+#include <stdbool.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -25,12 +27,15 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
@@ -43,6 +48,10 @@ namespace xla::memory_space_assignment {
 // MemorySpaceAssignment uses a notion of a slow and large default memory
 // space and a fast and small alternate memory space.
 enum class MemorySpace : std::uint8_t { kDefault, kAlternate };
+std::string MemorySpaceToString(MemorySpace memory_space);
+
+using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
+    const HloInstruction* instruction, int64_t split_dim)>;
 
 // An interface describing what to do with a value in memory over its lifetime.
 // An allocation might either be placed in the default or alternate memory. An
@@ -85,6 +94,11 @@ class Allocation {
   // Returns the cross-program prefetch index for this allocation.
   std::optional<int64_t> cross_program_prefetch_index() const;
 
+  void set_split_shape(const std::optional<Shape>& split_shape) {
+    split_shape_ = split_shape;
+  }
+  std::optional<Shape> mutable_split_shape() { return split_shape_; }
+
   // Allocation timing methods
   // --------------------------------------------------------------------------
   // TODO(cl/604356742): update all timing methods to explicitly state that
@@ -122,9 +136,11 @@ class Allocation {
   bool has_no_uses() const { return uses_.empty(); }
   // Adds a use to this allocation.
   void AddUse(HloUse use);
+  void RemoveUse(HloUse use);
   // Replaces all uses of the allocation with the copy_complete instruction.
   absl::Status UpdateUses(HloComputation* computation,
-                          HloInstruction* producing_instruction);
+                          HloInstruction* producing_instruction,
+                          const BitcastSplitFn& bitcast_split_fn);
 
   // Allocation type methods
   // --------------------------------------------------------------------------
@@ -143,7 +159,7 @@ class Allocation {
   // After all of the time ranges for the allocations have been assigned,
   // Process morphs the instructions affected to assign the memory spaces and
   // insert asynchronous copy instructions if necessary.
-  virtual absl::Status Process() = 0;
+  virtual absl::Status Process(const BitcastSplitFn& bitcast_split_fn) = 0;
   // An optional post-process step that will be called after all allocations
   // have been processed.
   virtual absl::Status PostProcess() = 0;
@@ -185,6 +201,8 @@ class Allocation {
   const bool is_scoped_allocation_;
   std::vector<HloUse> uses_;
   std::optional<int64_t> cross_program_prefetch_index_;
+  // If present, indicates the newly split shape.
+  std::optional<Shape> split_shape_;
 };
 
 using AllocationSequence = std::vector<std::unique_ptr<Allocation>>;
@@ -214,7 +232,7 @@ class PinnedAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
-  absl::Status Process() override;
+  absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
@@ -233,14 +251,13 @@ class PinnedAllocation final : public Allocation {
 // before `copy_done_schedule_before_time`.
 class CopyAllocation final : public Allocation {
  public:
-  // TODO(b/307342076): Reorder scheduling times to be
-  // copy_start_schedule_after_time, copy_done_schedule_before_time, end_time
   CopyAllocation(
       Allocation& prev_allocation, MemorySpace memory_space,
       std::optional<HeapSimulator::Chunk> chunk,
       int64_t copy_start_schedule_after_time,
       int64_t copy_done_schedule_before_time, int64_t end_time,
-      std::optional<int64_t> cross_program_prefetch_index = std::nullopt);
+      std::optional<int64_t> cross_program_prefetch_index = std::nullopt,
+      HloInstruction* sync_mem_op = nullptr);
 
   // Overridden methods
   //
@@ -253,7 +270,7 @@ class CopyAllocation final : public Allocation {
   bool is_copy_allocation() const override { return true; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
-  absl::Status Process() override;
+  absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
@@ -263,6 +280,7 @@ class CopyAllocation final : public Allocation {
   bool operator==(const Allocation& other) const override;
 
   // New non-virtual methods
+  const HloInstruction* sync_mem_op() const { return sync_mem_op_; }
   bool operator==(const CopyAllocation& other) const;
 
   const Allocation& prev_allocation() { return prev_allocation_; }
@@ -286,6 +304,8 @@ class CopyAllocation final : public Allocation {
   int64_t copy_done_schedule_before_;
   HloInstruction* copy_start_ = nullptr;
   HloInstruction* copy_done_ = nullptr;
+  // The sync data movement instruction that this copy is associated with.
+  HloInstruction* sync_mem_op_ = nullptr;
 };
 
 // This class represents an allocation resulting from asynchronous sliced
@@ -343,7 +363,8 @@ class SlicedCopyAllocation final : public Allocation {
       std::vector<SliceDecision> slice_decisions_sorted_by_exclusive_start_time,
       int64_t copy_done_schedule_before_time, int64_t end_time,
       const SlicedPrefetchOptions& sliced_prefetch_options,
-      absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn);
+      absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn,
+      HloInstruction* sync_mem_op = nullptr);
 
   // Overridden methods
   //
@@ -355,9 +376,10 @@ class SlicedCopyAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return true; }
   bool is_window_prefetched_allocation() const override { return false; }
-  // MemorySpaceAssignment::Process() calls Process() to create asynchronous
-  // slice copies, and a bitcast-concat call to glue the slices back together.
-  absl::Status Process() override;
+  // MemorySpaceAssignment::Process() calls Process(const BitcastSplitFn&
+  // bitcast_split_fn) to create asynchronous slice copies, and a bitcast-concat
+  // call to glue the slices back together.
+  absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   // Marks the allocation as needed.
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -368,6 +390,7 @@ class SlicedCopyAllocation final : public Allocation {
   bool operator==(const Allocation& other) const override;
 
   // New non-virtual methods
+  const HloInstruction* sync_mem_op() const { return sync_mem_op_; }
   bool operator==(const SlicedCopyAllocation& other) const;
 
   std::vector<int64_t> SliceOffsetsSortedByStartTime() const;
@@ -396,6 +419,8 @@ class SlicedCopyAllocation final : public Allocation {
   HloInstruction* concat_ = nullptr;
   const SlicedPrefetchOptions& sliced_prefetch_options_;
   absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn_;
+  // The sync data movement instruction that this copy is associated with.
+  HloInstruction* sync_mem_op_ = nullptr;
 };
 
 // This class represents an allocation resulting from asynchronously prefetching
@@ -427,9 +452,9 @@ class WindowPrefetchedAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return true; }
-  // MemorySpaceAssignment::Process() calls Process() to create asynchronous
-  // window prefetches.
-  absl::Status Process() override;
+  // MemorySpaceAssignment::Process() calls Process(const BitcastSplitFn&
+  // bitcast_split_fn) to create asynchronous window prefetches.
+  absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   // Marks the allocation as needed.
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -449,9 +474,9 @@ class WindowPrefetchedAllocation final : public Allocation {
   HloInstruction* prefetch() const { return prefetch_instruction_; }
 
  private:
-  // This method is called by Process() to create window prefetch instructions.
-  // These instructions include a pair of async WindowPrefetch which is passed
-  // to the fusion.
+  // This method is called by Process(const BitcastSplitFn& bitcast_split_fn) to
+  // create window prefetch instructions. These instructions include a pair of
+  // async WindowPrefetch which is passed to the fusion.
   absl::Status InsertWindowPrefetchInstruction(
       HloInstruction* producing_instruction, HloInstruction* use_instruction,
       HloComputation* computation);
@@ -482,7 +507,7 @@ class MirroredAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
-  absl::Status Process() override;
+  absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
@@ -516,7 +541,7 @@ class ParentAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
-  absl::Status Process() override;
+  absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override;
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
@@ -531,6 +556,17 @@ class ParentAllocation final : public Allocation {
  private:
   const Allocation& original_allocation_;
   HloInstruction* calling_instruction_;
+};
+
+// A class with some utility functions that are useful in debugging.
+struct AllocationSequenceDebugging {
+  // Developers can call this method to log all the allocations in alternate
+  // memory, at a given instruction time.
+  //
+  // REQUIRED:
+  // - This method is intended to be called before MSA modifies the HloModule.
+  static void LogAltMemAllocationsAt(const AllocationSequence& allocations,
+                                     int64_t time);
 };
 
 }  // namespace xla::memory_space_assignment

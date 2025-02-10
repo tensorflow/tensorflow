@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -87,6 +87,11 @@ void AssertPerShardData(
 // Helper function that makes `DeviceList` containing devices at given
 // indexes (not ids) within `client.devices()`.
 absl::StatusOr<tsl::RCReference<DeviceList>> GetDevices(
+    Client* client, absl::Span<const int> device_indices);
+
+// Helper function that makes `DeviceList` containing devices at given
+// indexes (not ids) within `client.addressable_devices()`.
+absl::StatusOr<tsl::RCReference<DeviceList>> GetAddressableDevices(
     Client* client, absl::Span<const int> device_indices);
 
 }  // namespace test_util

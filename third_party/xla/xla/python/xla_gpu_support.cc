@@ -15,7 +15,12 @@ limitations under the License.
 
 #include <Python.h>
 
+#include "absl/strings/string_view.h"
 #include "nanobind/nanobind.h"
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "xla/pjrt/status_casters.h"
+#include "xla/pjrt/triton.h"
 #include "xla/python/gpu_support.h"
 #include "xla/python/logging.h"
 #include "xla/python/py_client.h"  // IWYU pragma: keep
@@ -38,6 +43,22 @@ NB_MODULE(xla_gpu_extension, m_nb) {
   nb::set_leak_warnings(false);
 
   RegisterGpuClientAndDefineGpuAllocatorConfig(m_nb);
+
+  nb::class_<triton::CompilationResult>(m_nb, "TritonCompilationResult")
+      .def_ro("asm", &triton::CompilationResult::asm_text)
+      .def_ro("smem_bytes", &triton::CompilationResult::smem_bytes)
+      .def_ro("cluster_dim_x", &triton::CompilationResult::cluster_dim_x)
+      .def_ro("cluster_dim_y", &triton::CompilationResult::cluster_dim_y)
+      .def_ro("cluster_dim_z", &triton::CompilationResult::cluster_dim_z);
+
+  m_nb.def("compile_triton_to_asm",
+           [](nb::bytes module, nb::str arch_name, int num_warps, int num_ctas,
+              int num_stages) {
+             return xla::ValueOrThrow(xla::triton::Compile(
+                 absl::string_view(static_cast<const char*>(module.data()),
+                                   module.size()),
+                 arch_name.c_str(), num_warps, num_ctas, num_stages));
+           });
 }
 
 }  // namespace xla

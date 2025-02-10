@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/logging.h"
@@ -2147,9 +2151,8 @@ void ProcessScatterNdOperator(Model* model, ScatterNdOperator* op) {
 
 }  // namespace
 
-::tensorflow::Status PropagateFixedSizes::Run(Model* model,
-                                              std::size_t op_index,
-                                              bool* modified) {
+absl::Status PropagateFixedSizes::Run(Model* model, std::size_t op_index,
+                                      bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();

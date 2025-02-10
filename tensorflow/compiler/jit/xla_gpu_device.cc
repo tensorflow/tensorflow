@@ -33,18 +33,21 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
 class XlaGpuDeviceFactory : public DeviceFactory {
  public:
-  Status ListPhysicalDevices(std::vector<string>* devices) override;
-  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<std::unique_ptr<Device>>* devices) override;
+  absl::Status ListPhysicalDevices(std::vector<string>* devices) override;
+  absl::Status CreateDevices(
+      const SessionOptions& options, const string& name_prefix,
+      std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
-Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+absl::Status XlaGpuDeviceFactory::ListPhysicalDevices(
+    std::vector<string>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set "
@@ -72,7 +75,7 @@ Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   return absl::OkStatus();
 }
 
-Status XlaGpuDeviceFactory::CreateDevices(
+absl::Status XlaGpuDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
@@ -139,7 +142,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
     options.shape_determination_fns = {shape_representation_fns};
     auto device = std::make_unique<XlaDevice>(session_options, options);
 
-    Status status = device->UseAcceleratorDeviceInfo();
+    absl::Status status = device->UseAcceleratorDeviceInfo();
     if (!status.ok()) {
       LOG(INFO) << "Ignoring visible " << DEVICE_GPU_XLA_JIT
                 << " device. Device number is " << i << ", reason: " << status;
@@ -155,11 +158,29 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_GPU, XlaGpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 20> kAllXlaGpuTypes = {
-    {DT_UINT8,    DT_QUINT8,      DT_UINT16,        DT_INT8,       DT_QINT8,
-     DT_INT16,    DT_INT32,       DT_QINT32,        DT_INT64,      DT_HALF,
-     DT_FLOAT,    DT_DOUBLE,      DT_COMPLEX64,     DT_COMPLEX128, DT_BOOL,
-     DT_BFLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_INT4,       DT_UINT4}};
+constexpr std::array<DataType, 23> kAllXlaGpuTypes = {{DT_UINT8,
+                                                       DT_QUINT8,
+                                                       DT_UINT16,
+                                                       DT_INT8,
+                                                       DT_QINT8,
+                                                       DT_INT16,
+                                                       DT_INT32,
+                                                       DT_QINT32,
+                                                       DT_INT64,
+                                                       DT_HALF,
+                                                       DT_FLOAT,
+                                                       DT_DOUBLE,
+                                                       DT_COMPLEX64,
+                                                       DT_COMPLEX128,
+                                                       DT_BOOL,
+                                                       DT_BFLOAT16,
+                                                       DT_FLOAT8_E5M2,
+                                                       DT_FLOAT8_E4M3FN,
+                                                       DT_FLOAT8_E4M3FNUZ,
+                                                       DT_FLOAT8_E4M3B11FNUZ,
+                                                       DT_FLOAT8_E5M2FNUZ,
+                                                       DT_INT4,
+                                                       DT_UINT4}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_GPU, XlaLocalLaunchOp, kAllXlaGpuTypes);
 REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_GPU, XlaCompileOp, kAllXlaGpuTypes);

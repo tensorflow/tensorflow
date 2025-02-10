@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/AssumeBundleQueries.h"
@@ -137,7 +138,7 @@ llvm::MinMax OperandNumbersMinMax(llvm::StringRef op_name);
 // `custom_code` is used to identify CustomOp.
 // `custom_options` are opaque attribute used to store infomations for this
 // custom op.
-tensorflow::Status CustomOptionsToAttributes(
+absl::Status CustomOptionsToAttributes(
     const std::string &custom_code, const std::vector<uint8_t> &custom_options,
     mlir::Builder builder,
     // NOLINTNEXTLINE

@@ -44,16 +44,19 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/tsl/lib/math/math_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tsl/lib/math/math_util.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -73,15 +76,93 @@ int64_t GetPadding(const int split_dim, const int num_splits,
   return total_padding;
 }
 
+mlir::TF::SliceOp CreateSliceOp(mlir::OpBuilder* builder,
+                                const mlir::Location& location,
+                                mlir::Value input,
+                                const PartialTensorShape& shape) {
+  mlir::SmallVector<int64_t, 4> slice_start_position;
+  for (int i = 0; i < shape.dims(); ++i) {
+    slice_start_position.push_back(0);
+  }
+  mlir::SmallVector<int64_t, 4> slice_size;
+  for (int i = 0; i < shape.dims(); ++i) {
+    slice_size.push_back(shape.dim_size(i));
+  }
+
+  auto start_position_type =
+      mlir::RankedTensorType::get(shape.dims(), builder->getIntegerType(64));
+
+  auto start_position_op = builder->create<mlir::TF::ConstOp>(
+      input.getLoc(), mlir::DenseIntElementsAttr::get(start_position_type,
+                                                      slice_start_position));
+
+  auto slice_size_op = builder->create<mlir::TF::ConstOp>(
+      input.getLoc(), mlir::DenseIntElementsAttr::get(
+                          mlir::RankedTensorType::get(
+                              shape.dims(), builder->getIntegerType(64)),
+                          slice_size));
+
+  auto slice_result_type =
+      mlir::RankedTensorType::get(slice_size, getElementTypeOrSelf(input));
+
+  return builder->create<mlir::TF::SliceOp>(input.getLoc(), slice_result_type,
+                                            input, start_position_op,
+                                            slice_size_op);
+}
+
+mlir::TF::PadOp CreatePadOp(mlir::OpBuilder* builder,
+                            const mlir::Location& location, int64_t num_dims,
+                            int64_t split_dim, mlir::Value src_input,
+                            int64_t padding) {
+  auto input_type = mlir::cast<mlir::TensorType>(src_input.getType());
+  llvm::SmallVector<int64_t, 4> padding_values;
+  std::vector<int64_t> padded_shape;
+  for (int i = 0; i < num_dims; ++i) {
+    // 0 padding in the beginning.
+    padding_values.push_back(0);
+    if (i == split_dim) {
+      // pad the split dimension to make the total size of the input equal to
+      // the total size of the split dimension.
+      padding_values.push_back(padding);
+      padded_shape.push_back(input_type.getShape()[i] + padding);
+    } else {
+      padding_values.push_back(0);
+      padded_shape.push_back(input_type.getShape()[i]);
+    }
+  }
+  auto padding_type =
+      mlir::RankedTensorType::get({num_dims, 2}, builder->getIntegerType(64));
+  auto paddings = mlir::DenseIntElementsAttr::get(padding_type, padding_values);
+  auto paddings_value = builder->create<mlir::TF::ConstOp>(location, paddings);
+  mlir::SmallVector<int64_t, 4> expand_shape(padded_shape.begin(),
+                                             padded_shape.end());
+
+  auto expand_result_type =
+      mlir::RankedTensorType::get(expand_shape, input_type.getElementType());
+
+  return builder->create<mlir::TF::PadOp>(location, expand_result_type,
+                                          src_input, paddings_value);
+}
+
 // Creates a tf::SplitOp that splits 'src_input' into 'num_splits' ways
 // in 'split_dimension' dimension and returns the split values.
-mlir::LogicalResult CreateSplitOp(const int num_split,
-                                  const int split_dimension,
-                                  const mlir::Location& location,
-                                  mlir::Value src_input,
-                                  mlir::OpBuilder* builder,
-                                  mlir::TF::SplitOp* split_op,
-                                  bool is_ici_weight_dist_spmd) {
+mlir::LogicalResult CreateSplitOp(
+    const int num_split, const int split_dimension, const int64_t padding,
+    const mlir::Location& location, mlir::Value src_input,
+    mlir::OpBuilder* builder, mlir::TF::SplitOp* split_op,
+    bool is_ici_weight_dist_spmd) {
+  if (padding > 0) {
+    int64_t num_dims =
+        mlir::cast<mlir::TensorType>(src_input.getType()).getRank();
+    auto pad_op = CreatePadOp(builder, location, num_dims, split_dimension,
+                              src_input, padding);
+    if (is_ici_weight_dist_spmd) {
+      pad_op->setAttr(kICIWeightDistributionMlirBridgeMarker,
+                      builder->getBoolAttr(true));
+    }
+    src_input = pad_op.getResult();
+  }
+
   // Creates a const op to hold split dimension value.
   auto split_dim_type =
       mlir::RankedTensorType::get({}, builder->getIntegerType(32));
@@ -139,6 +220,7 @@ mlir::LogicalResult CreateSplitOp(const int num_split,
 // Creates a tf::ConcatOp that merges `input` values in `concat_dimension`.
 mlir::TF::ConcatOp CreateConcatOp(const int concat_dimension,
                                   const mlir::Location& location,
+                                  const int64_t padding,
                                   mlir::ArrayRef<mlir::Value> inputs,
                                   mlir::OpBuilder* builder) {
   // Creates a const op to hold concat dimension value.
@@ -265,6 +347,22 @@ mlir::LogicalResult CreateXlaSplitNDOp(const mlir::Location& location,
   return mlir::success();
 }
 
+bool IsShapeKnown(mlir::TensorType type) {
+  if (!type.hasRank()) return false;
+
+  bool shape_known = false;
+  for (int i = 0; i < type.getRank(); ++i) {
+    if (type.getShape()[i] == mlir::ShapedType::kDynamic) {
+      shape_known = false;
+      break;
+    } else {
+      shape_known = true;
+    }
+  }
+
+  return shape_known;
+}
+
 mlir::LogicalResult HandleTileShardedInputsUsingXlaSplitOps(
     const mlir::Location& location, const xla::OpSharding& input_sharding,
     const mlir::Value& original_source, mlir::OpBuilder* builder,
@@ -335,17 +433,27 @@ mlir::LogicalResult HandleTileShardedInputsUsingTfSplitOps(
     LOG(ERROR) << dimension_to_splits_map.status();
     return mlir::failure();
   }
-
+  PartialTensorShape shape;
+  const auto input_type =
+      mlir::cast<mlir::TensorType>(original_source.getType());
+  bool input_shape_known = IsShapeKnown(input_type);
+  if (input_shape_known) {
+    shape = PartialTensorShape(input_type.getShape());
+  }
   for (const auto& dimension_and_num_splits : *dimension_to_splits_map) {
     const int dimension = dimension_and_num_splits.first;
     const int num_splits = dimension_and_num_splits.second;
 
+    int padding = input_shape_known
+                      ? GetPadding(dimension, num_splits,
+                                   PartialTensorShape(input_type.getShape()))
+                      : 0;
     // Creates root split op.
     if (split_ops_for_tiled_input.empty()) {
       mlir::TF::SplitOp root_split_op;
-      auto result =
-          CreateSplitOp(num_splits, dimension, location, original_source,
-                        builder, &root_split_op, is_ici_weight_dist_spmd);
+      auto result = CreateSplitOp(num_splits, dimension, padding, location,
+                                  original_source, builder, &root_split_op,
+                                  is_ici_weight_dist_spmd);
       if (mlir::failed(result)) return mlir::failure();
 
       split_ops_for_tiled_input.emplace_back(root_split_op);
@@ -358,7 +466,7 @@ mlir::LogicalResult HandleTileShardedInputsUsingTfSplitOps(
     for (auto split_op : split_ops_for_tiled_input) {
       for (auto parent_split_output_value : split_op.getResults()) {
         mlir::TF::SplitOp child_split_op;
-        auto result = CreateSplitOp(num_splits, dimension, location,
+        auto result = CreateSplitOp(num_splits, dimension, padding, location,
                                     parent_split_output_value, builder,
                                     &child_split_op, is_ici_weight_dist_spmd);
         if (mlir::failed(result)) return mlir::failure();
@@ -827,7 +935,15 @@ mlir::LogicalResult HandleTileShardedOutputsUsingTfConcatOps(
     LOG(ERROR) << dimension_to_splits_map.status();
     return mlir::failure();
   }
-
+  auto output_type =
+      mlir::cast<mlir::TensorType>(cluster_func_output.getType());
+  PartialTensorShape shape;
+  bool output_shape_known = IsShapeKnown(output_type);
+  if (output_shape_known) {
+    shape = PartialTensorShape(output_type.getShape());
+  }
+  bool has_paddings = false;
+  std::vector<int64_t> paddings;
   for (auto it = dimension_to_splits_map->rbegin();
        it != dimension_to_splits_map->rend(); ++it) {
     int concat_dimension = it->first;
@@ -837,12 +953,21 @@ mlir::LogicalResult HandleTileShardedOutputsUsingTfConcatOps(
     new_outputs.reserve(num_splits);
     for (int i = 0, end = outputs_to_merge.size(); i < end;
          i = i + num_splits) {
+      int64_t padding;
+      if (output_shape_known) {
+        padding = GetPadding(concat_dimension, num_splits, shape);
+      } else {
+        padding = 0;
+      }
       mlir::TF::ConcatOp concat_op =
-          CreateConcatOp(concat_dimension, location,
+          CreateConcatOp(concat_dimension, location, padding,
                          llvm::ArrayRef<mlir::Value>{
                              outputs_to_merge.begin() + i,
                              outputs_to_merge.begin() + i + num_splits},
                          builder);
+
+      paddings.push_back(padding);
+      has_paddings |= padding > 0;
       new_outputs.emplace_back(concat_op.getResult());
     }
 
@@ -850,6 +975,12 @@ mlir::LogicalResult HandleTileShardedOutputsUsingTfConcatOps(
   }
 
   assert(outputs_to_merge.size() == 1);
+  if (has_paddings) {
+    // Add slice op to remove paddings.
+    mlir::TF::SliceOp slice_op =
+        CreateSliceOp(builder, location, outputs_to_merge[0], shape);
+    cluster_func_output.replaceAllUsesWith(slice_op.getResult());
+  }
   cluster_func_output.replaceAllUsesWith(outputs_to_merge[0]);
   return mlir::success();
 }
@@ -876,26 +1007,13 @@ mlir::LogicalResult ValidateAndGetTiledExecuteOutputShape(
       *tiled_logical_computation_type = cluster_func_output_type;
       break;
     }
-    if (use_xla_nd_ops) {
-      if (output_shape[dimension] % output_splits == 0) {
-        new_output_shape[dimension] = output_shape[dimension] / output_splits;
-      } else {
-        // Input will be padded to be divisible by output_splits, thus add 1 to
-        // the output shape.
-        new_output_shape[dimension] =
-            (output_shape[dimension] / output_splits) + 1;
-      }
-    } else {
-      if (output_shape[dimension] % output_splits != 0) {
-        mlir::emitError(
-            location,
-            llvm::formatv("incorrect output sharding received. "
-                          "{0}-th dimension of the output must be "
-                          "evenly divisible by {1}, got dimension "
-                          "shape {2}",
-                          dimension, output_splits, output_shape[dimension]));
-      }
+    if (output_shape[dimension] % output_splits == 0) {
       new_output_shape[dimension] = output_shape[dimension] / output_splits;
+    } else {
+      // Input will be padded to be divisible by output_splits, thus add 1 to
+      // the output shape.
+      new_output_shape[dimension] =
+          (output_shape[dimension] / output_splits) + 1;
     }
   }
 
@@ -904,23 +1022,6 @@ mlir::LogicalResult ValidateAndGetTiledExecuteOutputShape(
 
   return mlir::success();
 }
-
-bool IsShapeKnown(mlir::TensorType type) {
-  if (!type.hasRank()) return false;
-
-  bool shape_known = false;
-  for (int i = 0; i < type.getRank(); ++i) {
-    if (type.getShape()[i] == mlir::ShapedType::kDynamic) {
-      shape_known = false;
-      break;
-    } else {
-      shape_known = true;
-    }
-  }
-
-  return shape_known;
-}
-
 }  // namespace
 
 bool AreInputOutputShapesStaticallyKnownForSplitSharding(

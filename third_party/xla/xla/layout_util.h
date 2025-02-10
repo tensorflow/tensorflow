@@ -28,8 +28,8 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -250,7 +250,9 @@ class LayoutUtil {
   // lhs and rhs need not be compatible to have the same layout but the two
   // shapes must have the same tuple structure (if any) and arrays must have the
   // same rank. Element type is ignored.
-  static bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs);
+  static bool LayoutsInShapesEqual(
+      const Shape& lhs, const Shape& rhs,
+      std::optional<Layout::Equal> equal = std::nullopt);
 
   // Returns whether the given dimensions are consecutive in the given layout,
   // not necessarily in the order given.

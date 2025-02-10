@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/tsl/lib/core/bitmap.h"
 
-#include "tsl/lib/random/simple_philox.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/lib/random/simple_philox.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace core {

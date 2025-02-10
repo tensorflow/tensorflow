@@ -91,11 +91,11 @@ class CoarseningAnalysis {
       llvm::filter_iterator<SmallVector<MergedIsland>::const_iterator,
                             function_ref<bool(const MergedIsland&)>>>
   GetMergableIslands() const {
-    function_ref<bool(const MergedIsland&)> filter_fn =
-        [](const MergedIsland& merged_island) {
-          return merged_island.islands.size() > 1;
-        };
-    return llvm::make_filter_range(merged_islands_, filter_fn);
+    return llvm::make_filter_range(
+        merged_islands_, function_ref<bool(const MergedIsland&)>(
+                             [](const MergedIsland& merged_island) {
+                               return merged_island.islands.size() > 1;
+                             }));
   }
 
  private:

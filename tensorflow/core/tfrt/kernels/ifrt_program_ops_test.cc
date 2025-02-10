@@ -20,19 +20,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/check.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/cpu/cpu_client.h"
-#include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
-#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -46,8 +43,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable_test_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -62,9 +57,9 @@ using ::testing::Return;
 
 class IfrtCallOpTest : public OpsTestBase {
  protected:
-  Status Init(int64_t program_id, int num_inputs, DataType input_type,
-              const std::vector<int>& variable_arg_indices,
-              const std::vector<DataType>& output_type_list) {
+  absl::Status Init(int64_t program_id, int num_inputs, DataType input_type,
+                    const std::vector<int>& variable_arg_indices,
+                    const std::vector<DataType>& output_type_list) {
     TF_CHECK_OK(NodeDefBuilder("op", "IfrtCall")
                     .Input(FakeInput(num_inputs, input_type))
                     .Attr("program_id", program_id)

@@ -37,10 +37,10 @@ limitations under the License.
 #include "xla/printer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace {
@@ -623,8 +623,8 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return CopyLayoutInternal(src, dst);
 }
 
-/* static */ bool LayoutUtil::LayoutsInShapesEqual(const Shape& lhs,
-                                                   const Shape& rhs) {
+/* static */ bool LayoutUtil::LayoutsInShapesEqual(
+    const Shape& lhs, const Shape& rhs, std::optional<Layout::Equal> equal) {
   if (lhs.IsTuple()) {
     if (!rhs.IsTuple() || ShapeUtil::TupleElementCount(lhs) !=
                               ShapeUtil::TupleElementCount(rhs)) {
@@ -647,6 +647,11 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
     if (!lhs.has_layout() || !rhs.has_layout()) {
       return false;
     }
+
+    if (equal.has_value()) {
+      return equal.value()(lhs.layout(), rhs.layout());
+    }
+
     return LayoutUtil::Equal(lhs.layout(), rhs.layout());
   }
   // Layouts of non-array and non-tuple shapes is ignored.

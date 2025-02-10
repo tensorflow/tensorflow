@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/stringpiece.h"
 

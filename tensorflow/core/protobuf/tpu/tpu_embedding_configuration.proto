@@ -139,6 +139,11 @@ message TPUEmbeddingConfiguration {
 
     // Number of cores per replica.
     int32 num_cores_per_replica = 2;
+
+    // If true, the tensors are manually partitioned. Otherwise, use the
+    // automatic SPMD partitioning. This should be true when users use
+    // `shard_map`.
+    bool use_manual_partitioning = 3;
   }
   SpmdSharding spmd_sharding = 11;
 

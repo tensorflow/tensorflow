@@ -39,7 +39,7 @@ class GemmBroadcastFoldingRewriteTest : public GpuCodegenTest {
         .gpu_compute_capability();
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // These tests test the cuBLAS rewriter so we have to make sure that we use
     // cuBLAS for them.

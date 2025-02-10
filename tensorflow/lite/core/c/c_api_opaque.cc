@@ -292,6 +292,10 @@ void TfLiteOpaqueTensorSetAllocationTypeToDynamic(TfLiteOpaqueTensor* tensor) {
   tflite::SetTensorToDynamic(Convert(tensor));
 }
 
+void TfLiteOpaqueTensorSetNonCpuAllocation(TfLiteOpaqueTensor* opaque_tensor) {
+  Convert(opaque_tensor)->allocation_type = kTfLiteNonCpu;
+}
+
 const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
     const TfLiteOpaqueContext* opaque_context,
     const TfLiteOpaqueNode* opaque_node, int index) {
@@ -398,6 +402,14 @@ TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
   // TfLiteOpaqueContext and TfLiteContext being equivalent.
   auto context = reinterpret_cast<TfLiteContext*>(opaque_context);
   return context->GetExecutionPlan(context, execution_plan);
+}
+
+TfLiteStatus TfLiteOpaqueContextGetExternalContext(
+    TfLiteOpaqueContext* opaque_context, void** external_context,
+    TfLiteExternalContextType type) {
+  auto context = reinterpret_cast<TfLiteContext*>(opaque_context);
+  *external_context = context->GetExternalContext(context, type);
+  return kTfLiteOk;
 }
 
 TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
@@ -625,6 +637,13 @@ TfLiteStatus TfLiteOpaqueContextGetSizeOfType(TfLiteOpaqueContext* context,
                                               const TfLiteType type,
                                               size_t* bytes) {
   return tflite::GetSizeOfType(Convert(context), type, bytes);
+}
+
+TfLiteStatus TfLiteOpaqueContextGetMetadata(TfLiteOpaqueContext* context,
+                                            const char* name, const char** ptr,
+                                            size_t* bytes) {
+  auto* tflite_context = Convert(context);
+  return tflite_context->GetModelMetadata(tflite_context, name, ptr, bytes);
 }
 
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,

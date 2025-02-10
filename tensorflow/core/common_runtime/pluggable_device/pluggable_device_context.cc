@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/core/common_runtime/device.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 
@@ -33,11 +35,9 @@ void PluggableDeviceContext::CopyCPUTensorToDevice(
       cpu_tensor, this, device, device_tensor, done, sync_dst_compute);
 }
 
-void PluggableDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                                                   StringPiece tensor_name,
-                                                   Device* device,
-                                                   Tensor* cpu_tensor,
-                                                   StatusCallback done) {
+void PluggableDeviceContext::CopyDeviceTensorToCPU(
+    const Tensor* device_tensor, absl::string_view tensor_name, Device* device,
+    Tensor* cpu_tensor, StatusCallback done) {
   PluggableDeviceUtil::CopyPluggableDeviceTensorToCPU(
       device, this, device_tensor, cpu_tensor, done);
 }
@@ -50,8 +50,9 @@ void PluggableDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
       device, this, input_tensor, output_tensor, done);
 }
 
-Status PluggableDeviceContext::ThenExecute(Device* device, se::Stream* stream,
-                                           std::function<void()> func) {
+absl::Status PluggableDeviceContext::ThenExecute(Device* device,
+                                                 se::Stream* stream,
+                                                 std::function<void()> func) {
   const DeviceBase::AcceleratorDeviceInfo* device_info =
       device->tensorflow_accelerator_device_info();
   device_info->event_mgr->ThenExecute(stream, func);

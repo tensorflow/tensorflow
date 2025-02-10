@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ValidateCombiners(absl::Span<const std::string> combiners) {
+absl::Status ValidateCombiners(absl::Span<const std::string> combiners) {
   for (const std::string& combiner : combiners) {
     if (combiner != "sum" && combiner != "mean" && combiner != "sqrtn") {
       return absl::InvalidArgumentError(
@@ -45,8 +45,9 @@ Status ValidateCombiners(absl::Span<const std::string> combiners) {
   return absl::OkStatus();
 }
 
-Status GetValidatedModeOverride(const std::string& mode_override,
-                                tpu::TPUEmbeddingConfiguration::Mode* mode) {
+absl::Status GetValidatedModeOverride(
+    const std::string& mode_override,
+    tpu::TPUEmbeddingConfiguration::Mode* mode) {
   if (mode_override == "train") {
     *mode = tpu::TPUEmbeddingConfiguration::TRAINING;
   } else if (mode_override == "inference") {
@@ -142,7 +143,7 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     std::vector<TF_Tensor*> aggregation_weights_tensors(num_input_features);
 
     for (int i = 0; i < num_input_features; ++i) {
-      Status tf_status;
+      absl::Status tf_status;
       sample_indices_or_row_splits_tensors[i] = TF_TensorFromTensorShallow(
           sample_indices_or_row_splits_list[i], &tf_status);
       OP_REQUIRES_OK(ctx, tf_status);

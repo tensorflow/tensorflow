@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "Eigen/Core"  // from @eigen_archive
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
@@ -104,6 +105,29 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestF32InPlaceInput) {
               ElementsAreArray(ArrayFloatNear({1, 2, 3,   //
                                                4, -1, 6,  //
                                                7, -2, 9})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
+TEST(DynamicUpdateSliceOpTest, SimpleTestF16InPlaceInput) {
+  DynamicUpdateSliceOpModel m({TensorType_FLOAT16, {3, 3}},
+                              {TensorType_FLOAT16, {2, 1}},
+                              {TensorType_INT32, {2}});
+  m.SetInput<Eigen::half>({Eigen::half(1), Eigen::half(2), Eigen::half(3),
+                           Eigen::half(4), Eigen::half(5), Eigen::half(6),
+                           Eigen::half(7), Eigen::half(8), Eigen::half(9)});
+  m.SetUpdate<Eigen::half>({Eigen::half(-1), Eigen::half(-2)});
+  m.SetStartIndices<int32_t>({1, 1});
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<Eigen::half>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {Eigen::half(1), Eigen::half(2), Eigen::half(3),
+                   Eigen::half(4), Eigen::half(-1), Eigen::half(6),
+                   Eigen::half(7), Eigen::half(-2), Eigen::half(9)})));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 

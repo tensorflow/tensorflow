@@ -18,9 +18,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 #include "tensorflow/python/framework/op_reg_offset.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/types.h"
 
 namespace tensorflow {
 absl::Status FindOpRegistationFromFile(absl::string_view filename,

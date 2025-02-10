@@ -659,7 +659,7 @@ def TF_AsStringOp : TF_Op<"AsString", [Pure, SameOperandsAndResultShape]> {
 Supports many numeric types and boolean.
 
 For Unicode, see the
-[https://www.tensorflow.org/tutorials/representation/unicode](Working with Unicode text)
+[https://www.tensorflow.org/text/guide/unicode](Working with Unicode text)
 tutorial.
 
 Examples:
@@ -1136,7 +1136,7 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_batch_timeout_micros,
     DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$low_priority_allowed_batch_sizes,
     DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_max_enqueued_batches,
-    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["low_priority_padding_with_max_batch_size", "low_priority_padding_with_next_allowed_batch_size", "priority_isolation"]>, "\"low_priority_padding_with_max_batch_size\"">:$mixed_priority_policy,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["low_priority_padding_with_max_batch_size", "low_priority_padding_with_next_allowed_batch_size", "priority_isolation", "priority_merge"]>, "\"low_priority_padding_with_max_batch_size\"">:$mixed_priority_policy,
     DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["PAD_UP", "BATCH_DOWN", "MINIMIZE_TPU_COST_PER_REQUEST"]>, "\"PAD_UP\"">:$batch_padding_policy,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting
   );
@@ -6790,7 +6790,7 @@ The lower regularized incomplete Gamma function is defined as:
 
 where
 
-\\(gamma(a, x) = \\int_{0}^{x} t^{a-1} exp(-t) dt\\)
+\\(gamma(a, x) = \int_{0}^{x} t^{a-1} exp(-t) dt\\)
 
 is the lower incomplete Gamma function.
 
@@ -11335,52 +11335,6 @@ truncated normal values using the parameters for each row.}]>:$output
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
-  let summary = [{
-returns `f(inputs)`, where `f`'s body is placed and partitioned.
-  }];
-
-  let description = [{
-Asynchronously executes a function, potentially across multiple devices but
-within a single process. The kernel places and partitions a given function's
-underlying graph, and executes each of the partitioned subgraphs as a function.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_Tensor>, [{A list of input tensors.}]>:$args,
-
-    SymbolRefAttr:$f,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config_proto,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$executor_type
-  );
-
-  let results = (outs
-    Res<Variadic<TF_Tensor>, [{A list of return values.}]>:$output
-  );
-
-  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
-
-  let extraClassDeclaration = [{
-    // Gets the argument operands to the called function.
-    operand_range getArgOperands() { return getArgs(); }
-    MutableOperandRange getArgOperandsMutable() {
-      return getArgsMutable();
-    }
-
-    // Returns the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
-    // Sets the callee from the callable.
-    void setCalleeFromCallable(CallInterfaceCallable callee);
-
-    // returns the callee of this operation.
-    func::FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getF());
-    }
-  }];
-}
-
 def TF_PolygammaOp : TF_Op<"Polygamma", [Pure, ResultsBroadcastableShape]>,
                      WithBroadcastableBinOpBuilder {
   let summary = [{
@@ -12899,6 +12853,12 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", [CallOpInterface]> {
     void setCalleeFromCallable(CallInterfaceCallable callee) {
       (*this)->setAttr("f", callee.get<SymbolRefAttr>());
     }
+    Attribute removeArgAttrsAttr() { return nullptr; }
+    Attribute removeResAttrsAttr() { return nullptr; }
+    ArrayAttr getArgAttrsAttr() { return nullptr; }
+    ArrayAttr getResAttrsAttr() { return nullptr; }
+    void setArgAttrsAttr(ArrayAttr) { return; }
+    void setResAttrsAttr(ArrayAttr) { return; }
   }];
 }
 
@@ -20068,7 +20028,7 @@ array([[1, 2, 3, 1, 2, 3],
   TF_DerivedOperandTypeAttr Tmultiples = TF_DerivedOperandTypeAttr<1>;
 
   let hasVerifier = 1;
-
+  let hasCanonicalizer = 1;
   let hasFolder = 1;
 }
 
@@ -20365,66 +20325,6 @@ def TF_UncompressElementOp : TF_Op<"UncompressElement", [Pure]> {
 
   TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
   TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
-}
-
-def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [Pure]> {
-  let summary = "Perform dequantization on the quantized Tensor `input`.";
-
-  let description = [{
-Given quantized `input` which was quantized using `scales` and `zero_points`, performs dequantization using the formula:
-dequantized_data = (quantized_data - zero_point) * scale.
-  }];
-
-  let arguments = (ins
-    Arg<TensorOf<[TF_Qint32, TF_Qint8]>, [{Must be a Tensor of Tin.}]>:$input,
-    Arg<TF_Float32Tensor, [{The float value(s) used as scale(s) when quantizing original data that input represents.
-Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
-    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point(s) when quantizing original data that input represents.
-Same shape condition as scales.}]>:$zero_points,
-
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
-    I64Attr:$quantization_min_val,
-    I64Attr:$quantization_max_val
-  );
-
-  let results = (outs
-    Res<TF_Float32Tensor, [{The output dequantized Tensor of Tout, whose shape is same as input.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-
-  let hasVerifier = 1;
-}
-
-def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
-  let summary = "Perform quantization on Tensor `input`.";
-
-  let description = [{
-Given `input`, `scales` and `zero_points`, performs quantization using the formula:
-quantized_data = floor(input_data * (1.0f / scale) + 0.5f) + zero_point
-  }];
-
-  let arguments = (ins
-    Arg<TF_Float32Tensor, [{Must be a Tensor of Tin.}]>:$input,
-    Arg<TF_Float32Tensor, [{The float value(s) to use as scale(s) to quantize `input`.
-Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
-    Arg<TF_Int32Tensor, [{The int32 value(s) to use as zero_point(s) to quantize `input`.
-Same shape condition as scales.}]>:$zero_points,
-
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
-    I64Attr:$quantization_min_val,
-    I64Attr:$quantization_max_val
-  );
-
-  let results = (outs
-    Res<TensorOf<[TF_Qint32, TF_Qint8]>, [{The output quantized Tensor of Tout, whose shape is same as input.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-
-  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [Pure]> {

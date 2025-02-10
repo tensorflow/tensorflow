@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -59,6 +60,9 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_op_executable.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"
@@ -68,9 +72,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -110,7 +111,7 @@ absl::Status FixTupleTableAsync(se::Stream* stream,
   return xla::ShapeUtil::ForEachSubshapeWithStatus(
       tuple_shape,
       [&](const xla::Shape& element_shape,
-          const xla::ShapeIndex& index) -> Status {
+          const xla::ShapeIndex& index) -> absl::Status {
         if (!element_shape.IsTuple()) {
           return absl::OkStatus();
         }
@@ -180,7 +181,7 @@ absl::Status UpdateDynamicInputs(
     TF_RETURN_IF_ERROR(xla::ShapeUtil::ForEachSubshapeWithStatus(
         compile_time_shapes_on_device,
         [&](const xla::Shape& compile_time_shape,
-            const xla::ShapeIndex& index) -> Status {
+            const xla::ShapeIndex& index) -> absl::Status {
           if (compile_time_shape.IsTuple() || compile_time_shape.is_static()) {
             return absl::OkStatus();
           }
@@ -266,7 +267,7 @@ absl::Status UpdateDynamicInputs(
 void TPUCancelExecution(int device_ordinal) {
   if (tpu_cancellation_closes_chips) {
     LOG(INFO) << "TPUCancelExecution CloseTPUHost on device " << device_ordinal;
-    Status status = TpuNodeContext::CloseTpuHost();
+    absl::Status status = TpuNodeContext::CloseTpuHost();
     LOG(INFO) << "TPUCancelExecution CloseTPUHost done: " << status
               << " on device " << device_ordinal;
   } else {
@@ -528,8 +529,7 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
 
   absl::StatusOr<xla::ExecutionOutput> output =
       tpu_executable->ExecuteAsyncOnStream(&service_run_options,
-                                           std::move(arguments),
-                                           /*hlo_execution_profile=*/nullptr);
+                                           std::move(arguments));
 
   // If !output.ok(), it means we failed to enqueue the program the TPU. This is
   // possibly caused by a failed cancellation callback closing the chips.

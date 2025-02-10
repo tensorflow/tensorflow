@@ -23,12 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/iterator_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/util.h"
-#include "tsl/lib/gtl/iterator_range.h"
 
 namespace xla {
 namespace gpu {

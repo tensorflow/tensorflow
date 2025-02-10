@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "xla/compiler_macros.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 #ifdef XLA_HAS_SSE2
 #include <immintrin.h>  // IWYU pragma: keep

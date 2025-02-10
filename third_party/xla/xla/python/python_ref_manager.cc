@@ -19,7 +19,6 @@ limitations under the License.
 #include <deque>
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"

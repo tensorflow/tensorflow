@@ -96,7 +96,7 @@ class ImmediateExecutionContext : public AbstractContext {
   // Copy the handle to another device.
   virtual ImmediateExecutionTensorHandle* CopyTensorHandleToDevice(
       ImmediateExecutionTensorHandle* handle, const char* device_name,
-      Status* status) = 0;
+      absl::Status* status) = 0;
 
   // Create an operation to perform op execution
   ImmediateExecutionOperation* CreateOperation() override = 0;
@@ -111,24 +111,25 @@ class ImmediateExecutionContext : public AbstractContext {
 
   // Add `devices` into context's device manager. Context's device manager
   // will take ownership and maintain devices' lifetime.
-  virtual Status AddDevices(std::vector<std::unique_ptr<Device>> devices) = 0;
+  virtual absl::Status AddDevices(
+      std::vector<std::unique_ptr<Device>> devices) = 0;
 
   // Block until all pending nodes are finished.
-  virtual Status AsyncWait() = 0;
+  virtual absl::Status AsyncWait() = 0;
 
   // Add a function (serialized FunctionDef protocol buffer) so that it can
   // be executed as an op. Return error if the function with the same name
   // already exists.
-  virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
+  virtual absl::Status AddFunctionDef(const FunctionDef& fdef) = 0;
 
   // Notifies about the function removal.
-  virtual Status AddRemoveFunctionNotifier(const string& func,
-                                           std::function<void()> notifier) = 0;
+  virtual absl::Status AddRemoveFunctionNotifier(
+      const string& func, std::function<void()> notifier) = 0;
 
   // Same as `AddFunctionDef`, but additionally saves the `stack_traces` under
   // the key of the function definition name (to be retrieved during function
   // instantiation).
-  virtual Status AddFunctionDefWithStackTraces(
+  virtual absl::Status AddFunctionDefWithStackTraces(
       const FunctionDef& fdef, const StackTracesMap& stack_traces) = 0;
 
   // Find and return a added function by its name.
@@ -184,8 +185,8 @@ class ImmediateExecutionContext : public AbstractContext {
   // already registered.
   // TODO(tfrt-devs): Remove this method. Let caller register it directly into
   // CustomDeviceOpHandler.
-  virtual Status RegisterCustomDevice(const string& name,
-                                      std::unique_ptr<CustomDevice> device) = 0;
+  virtual absl::Status RegisterCustomDevice(
+      const string& name, std::unique_ptr<CustomDevice> device) = 0;
 
   // Return FunctionLibraryDefinition. Transformations need to use it to use it
   // to invoke MLIR compiler passes.
@@ -258,7 +259,7 @@ class ImmediateExecutionContext : public AbstractContext {
   // all tasks in the cluster.
   // This call internally coordinates with other tasks to initialize the eager
   // context and TF server for multi-client execution.
-  virtual Status EnableCollectiveOps(const ServerDef& server_def) = 0;
+  virtual absl::Status EnableCollectiveOps(const ServerDef& server_def) = 0;
 
   // Set a distributed manager that helps set up, update, and check liveness
   // of member tasks in the cluster.

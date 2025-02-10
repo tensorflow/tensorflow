@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 
@@ -362,6 +362,10 @@ class BufferIntervalTree {
 
   // Remove the interval from the tree. Returns true if the chunk is removed.
   bool Remove(int64_t start, int64_t end, const Chunk& chunk);
+
+  // Returns the number of allocated chunks that overlap with the given time
+  // interval.
+  int NumChunksOverlappingInTime(int64_t start, int64_t end) const;
 
   // Returns vector of allocated chunks that overlap with the given time
   // interval.

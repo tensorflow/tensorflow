@@ -34,7 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -98,12 +98,8 @@ class TfPjRtBuffer : public PjRtBuffer {
         wait_for_operations_to_complete);
   }
   bool IsDeleted() override { return wrapped_->IsDeleted(); }
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) override;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
-      PjRtMemorySpace* dst_memory_space) override {
-    return Unimplemented("CopyToMemorySpace not implemented");
-  }
+      PjRtMemorySpace* dst_memory_space) override;
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override {
     wrapped_->CopyToRemoteDevice(std::move(serialized_descriptor),
@@ -247,9 +243,6 @@ class TfPjRtClient : public PjRtClient {
   absl::string_view platform_version() const override {
     return wrapped_->platform_version();
   }
-  PjRtRuntimeType runtime_type() const override {
-    return wrapped_->runtime_type();
-  }
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     return wrapped_->GetDefaultDeviceAssignment(num_replicas, num_partitions);
@@ -278,7 +271,7 @@ class TfPjRtClient : public PjRtClient {
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtDevice* device) override {
+      const Shape& shape, PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "CreateUninitializedBuffer not supported for TfPjRtClient.");
   }
@@ -299,31 +292,23 @@ class TfPjRtClient : public PjRtClient {
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device) override {
+      PjRtMemorySpace* memory_space, const Layout* device_layout) override {
     return WrapBuffer(wrapped_->BufferFromHostBuffer(
         data, type, dims, byte_strides, host_buffer_semantics,
-        std::move(on_done_with_host_buffer), device));
-  }
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device, const Layout* device_layout) override {
-    return WrapBuffer(wrapped_->BufferFromHostBuffer(
-        data, type, dims, byte_strides, host_buffer_semantics,
-        std::move(on_done_with_host_buffer), device, device_layout));
+        std::move(on_done_with_host_buffer), memory_space, device_layout));
   }
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) override {
-    return WrapBuffer(wrapped_->BufferFromHostLiteral(literal, device));
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+      const Layout* device_layout) override {
+    return WrapBuffer(
+        wrapped_->BufferFromHostLiteral(literal, memory_space, device_layout));
   }
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
-      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override {
     return WrapBuffer(wrapped_->CreateViewOfDeviceBuffer(
-        device_ptr, shape, device, on_delete_callback, stream));
+        device_ptr, shape, memory_space, on_delete_callback, stream));
   }
   absl::StatusOr<std::uintptr_t> UnsafeBufferPointer(
       PjRtBuffer* buffer) override {
@@ -342,12 +327,6 @@ class TfPjRtClient : public PjRtClient {
       PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
     return wrapped_->MakeCrossHostReceiveBuffersForGather(
         shapes, std::move(gather_details), device, std::move(notifier));
-  }
-  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
-    return wrapped_->CreateChannelHandle();
-  }
-  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return wrapped_->CreateDeviceToHostChannelHandle();
   }
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override {

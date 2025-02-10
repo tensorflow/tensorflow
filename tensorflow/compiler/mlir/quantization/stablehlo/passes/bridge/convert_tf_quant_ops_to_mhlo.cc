@@ -24,8 +24,8 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -49,8 +49,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
+#include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -88,13 +88,16 @@ FailureOr<TensorType> GetUniformQuantizedType(
   }
 
   auto original_element_type = getElementTypeOrSelf(original_type);
-  if (!mlir::isa<TF::Qint8Type, TF::Qint32Type>(original_element_type)) {
+  if (!mlir::isa<TF::Qint8Type, TF::Quint8Type, TF::Qint32Type>(
+          original_element_type)) {
     return rewriter.notifyMatchFailure(
-        op, "Quantized type must be qint8 or qint32.");
+        op, "Quantized type must be qint8, quint8 or qint32.");
   }
   auto storage_type = GetIntTypeFromTFQint(original_element_type);
 
-  const unsigned flags = quant::QuantizationFlags::Signed;
+  const unsigned flags = mlir::isa<TF::Quint8Type>(original_element_type)
+                             ? 0
+                             : quant::QuantizationFlags::Signed;
   Type elem_ty;
   if (quantized_dimension == -1) {
     elem_ty = quant::UniformQuantizedType::get(

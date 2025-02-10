@@ -64,6 +64,22 @@ class InterpreterCustomOpsTest(test_util.TensorFlowTestCase):
               'testdata/permute_float.tflite'),
           custom_op_registerers=[bogus_name])
 
+  # Register GenAI Ops is only supported when using LiteRT wheel.
+  def testRegisterGenAIOpsFailure(self):
+    genai_ops_name = 'pywrap_genai_ops.GenAIOpsRegisterer'
+    with self.assertRaisesRegex(
+        ValueError,
+        "Loading library 'pywrap_genai_ops.so' failed with error"
+        " 'pywrap_genai_ops.so: cannot open shared object file: No such file or"
+        " directory'",
+    ):
+      interpreter_wrapper.InterpreterWithCustomOps(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'
+          ),
+          custom_op_registerers=[genai_ops_name],
+      )
+
   def testNoCustomOps(self):
     interpreter = interpreter_wrapper.InterpreterWithCustomOps(
         model_path=resource_loader.get_path_to_datafile(

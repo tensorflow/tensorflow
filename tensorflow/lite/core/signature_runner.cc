@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/signature_runner.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
@@ -29,11 +30,13 @@ SignatureRunner::SignatureRunner(const internal::SignatureDef* signature_def,
                                  Subgraph* subgraph)
     : signature_def_(signature_def), subgraph_(subgraph) {
   // Collects the list of input and output tensor names.
-  for (const auto& it : signature_def_->inputs) {
-    input_names_.push_back(it.first.c_str());
+  input_names_.reserve(signature_def_->input_names.size());
+  for (const auto& it : signature_def_->input_names) {
+    input_names_.push_back(it.c_str());
   }
-  for (const auto& it : signature_def_->outputs) {
-    output_names_.push_back(it.first.c_str());
+  output_names_.reserve(signature_def_->output_names.size());
+  for (const auto& it : signature_def_->output_names) {
+    output_names_.push_back(it.c_str());
   }
 }
 

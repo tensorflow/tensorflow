@@ -22,22 +22,21 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/lib/gtl/inlined_vector.h"
+#include "xla/tsl/lib/random/simple_philox.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/platform/types.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tsl/lib/gtl/inlined_vector.h"
-#include "tsl/lib/random/simple_philox.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {
@@ -70,7 +69,7 @@ std::unique_ptr<SubAllocator> CreateGPUMemAllocator(size_t) {
   PlatformDeviceId gpu_id(0);
   return absl::WrapUnique(new DeviceMemAllocator(
       GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value(), gpu_id,
-      stream_executor::MemoryType::kDevice, {}, {}));
+      {}));
 }
 
 std::unique_ptr<SubAllocator> CreateSubAllocator(

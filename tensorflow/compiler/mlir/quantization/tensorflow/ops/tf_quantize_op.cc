@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -101,7 +101,8 @@ TF::PartitionedCallOp FinalizeFunctionRegister(
   rewriter.restoreInsertionPoint(original_point);
 
   auto quantize_call = rewriter.create<TF::PartitionedCallOp>(
-      quantized_op->getLoc(), quantize_result_type, input, func_name_attr,
+      quantized_op->getLoc(), quantize_result_type, input,
+      /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, func_name_attr,
       /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
   return quantize_call;
 }

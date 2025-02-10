@@ -27,10 +27,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-namespace gpu {
-class GpuExecutor;
-}  // namespace gpu
-
 namespace rocm {
 
 class BlasLt : public gpu::BlasLt {
@@ -148,7 +144,7 @@ class BlasLt : public gpu::BlasLt {
     bool must_swap_operands_;
   };  // class MatmulPlan
 
-  explicit BlasLt(gpu::GpuExecutor* parent)
+  explicit BlasLt(StreamExecutor* parent)
       : parent_(parent), blas_lt_(nullptr, wrap::hipblasLtDestroy) {}
 
   absl::Status Init() override;
@@ -159,7 +155,7 @@ class BlasLt : public gpu::BlasLt {
   ~BlasLt() override = default;
 
  private:
-  gpu::GpuExecutor* parent_;
+  StreamExecutor* parent_;
   mutable absl::Mutex mu_;
   Owned<hipblasLtHandle_t> blas_lt_ ABSL_GUARDED_BY(mu_);
 };

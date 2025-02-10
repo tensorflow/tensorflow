@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse/kernels.h"
 
+#include <cstdint>
+
+#include <gmock/gmock.h>
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/platform/errors.h"

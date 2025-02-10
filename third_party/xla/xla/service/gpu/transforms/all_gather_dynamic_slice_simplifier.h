@@ -16,7 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_ALL_GATHER_DYNAMIC_SLICE_SIMPLIFIER_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_ALL_GATHER_DYNAMIC_SLICE_SIMPLIFIER_H_
 
-#include "xla/service/op_expander_pass.h"
+#include <utility>
+
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 namespace xla {
 
@@ -32,6 +37,20 @@ namespace xla {
 
 class AllGatherDynamicSliceSimplifier : public OpExpanderPass {
  public:
+  struct Config {
+    bool allow_multiple_split_dims = false;
+    bool allow_intervening_reshape = true;
+    int min_rank = 1;
+    bool allow_intervening_bitcast = false;
+    bool allow_multiple_users = false;
+  };
+
+  static Config DefaultConfig() { return {}; }
+
+  explicit AllGatherDynamicSliceSimplifier(
+      Config config = AllGatherDynamicSliceSimplifier::DefaultConfig())
+      : config_(std::move(config)) {}
+
   absl::string_view name() const override {
     return "all-gather-dynamic-slice-simplifier";
   }
@@ -39,8 +58,11 @@ class AllGatherDynamicSliceSimplifier : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
+
+ private:
+  Config config_;
 };
 
 }  // namespace xla

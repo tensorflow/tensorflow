@@ -1,7 +1,6 @@
 // RUN: tf-tfrt-opt -tfrt-test-cost-analysis -verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: test_cheap_ops_0
-module attributes {tfrt.cost_threshold = 10000 : i64} {
 func.func @test_cheap_ops_0(%arg: tensor<?x!tf_type.string>) -> (tensor<?x8xf32>) {
     // expected-remark@+1 {{Cost: 1}}
     %0 = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
@@ -149,23 +148,4 @@ func.func @test_sparse_segment_sum(%indices: tensor<3xi64>, %segment_ids: tensor
     %1 = "tf.SparseSegmentSum"(%data, %indices, %segment_ids) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<476x28xf32>, tensor<3xi64>, tensor<3xi64>) -> tensor<?x28xf32>
     // expected-remark@+1 {{Cost: 3}}
     func.return %1 : tensor<?x28xf32>
-}
-func.func private @cond_false_43520() -> tensor<1xf32> {
-    // expected-remark@+1 {{Cost: 1}}
-    %1 = "tf.Const"() { value = dense<0.1> : tensor<1xf32> } : () -> tensor<1xf32>
-    // expected-remark@+1 {{Cost: 1}}
-    return %1 : tensor<1xf32>
-  }
-func.func private @cond_true_43510() -> tensor<1xf32> {
-    // expected-remark@+1 {{Cost: 1}}
-    %1 = "tf.Const"() { value = dense<0.2> : tensor<1xf32> } : () -> tensor<1xf32>
-    // expected-remark@+1 {{Cost: 1}}
-    return %1 : tensor<1xf32>
-}
-func.func @test_if_control_flow(%arg0: tensor<*xi1>) -> tensor<1xf32> {
-    // expected-remark@+1 {{Cost: -1}}
-    %0 = "tf.If"(%arg0) <{else_branch = @cond_false_43520, is_stateless = true, then_branch = @cond_true_43510}> : (tensor<*xi1>) -> tensor<1xf32>
-    // expected-remark@+1 {{Cost: 1}}
-    return %0 : tensor<1xf32>
-}
 }

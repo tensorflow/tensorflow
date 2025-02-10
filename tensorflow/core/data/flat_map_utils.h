@@ -15,13 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_FLAT_MAP_UTILS_H_
 #define TENSORFLOW_CORE_DATA_FLAT_MAP_UTILS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -31,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tsl/platform/refcount.h"
-#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace data {

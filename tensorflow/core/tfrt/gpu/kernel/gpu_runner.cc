@@ -41,6 +41,8 @@ limitations under the License.
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_id_manager.h"
 #include "xla/tsl/framework/serving_device_selector.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device.h"
@@ -58,10 +60,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/gpu_variables_table.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
@@ -96,9 +96,9 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferTensorToDevice(
       host_ctx, [result = result.CopyRef(), gpu_device, pjrt_device_context,
                  src, dst = std::move(dst)]() mutable {
         tensorflow::Notification n;
-        tensorflow::Status status;
+        absl::Status status;
         pjrt_device_context->CopyCPUTensorToDevice(
-            &src, gpu_device, &dst, [&status, &n](Status s) mutable {
+            &src, gpu_device, &dst, [&status, &n](absl::Status s) mutable {
               status = s;
               n.Notify();
             });
@@ -137,10 +137,10 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferTensorFromDevice(
       host_ctx, [result = result.CopyRef(), gpu_device, pjrt_device_context,
                  src, dst = std::move(dst)]() mutable {
         tensorflow::Notification n;
-        tensorflow::Status status;
+        absl::Status status;
         pjrt_device_context->CopyDeviceTensorToCPU(
             &src, "tensor_name", gpu_device, &dst,
-            [&status, &n](Status s) mutable {
+            [&status, &n](absl::Status s) mutable {
               status = s;
               n.Notify();
             });
@@ -335,10 +335,11 @@ std::vector<XlaCompiler::Argument> BuildXlaCompilerArguments(
   return out;
 }
 
-Status CompileProgram(const GpuRunInputs& run_inputs, int device_idx,
-                      const XlaCompiler::CompilationResult** compilation_result,
-                      xla::PjRtClient** pjrt_client,
-                      xla::PjRtLoadedExecutable** pjrt_executable) {
+absl::Status CompileProgram(
+    const GpuRunInputs& run_inputs, int device_idx,
+    const XlaCompiler::CompilationResult** compilation_result,
+    xla::PjRtClient** pjrt_client,
+    xla::PjRtLoadedExecutable** pjrt_executable) {
   std::vector<XlaCompiler::Argument> xla_compiler_args =
       BuildXlaCompilerArguments(run_inputs.args);
 

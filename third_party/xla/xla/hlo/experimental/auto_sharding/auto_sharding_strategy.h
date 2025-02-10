@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -75,12 +77,37 @@ using ReshardingCache =
     ConstInstructionMap<std::vector<std::pair<HloSharding, HloInstruction*>>>;
 // Resharding costs for each operand
 using ReshardingCosts = std::vector<std::vector<double>>;
-// Optional shardings for each operand
-using InputShardings = std::vector<std::optional<HloSharding>>;
+
+// A named vector of optional shardings for each operand.
+struct InputShardings {
+  std::string name;
+  std::vector<std::optional<HloSharding>> shardings;
+
+  std::string ToString() const {
+    std::string str = absl::StrCat(name, " ");
+    for (const auto& s : shardings) {
+      if (!s.has_value()) {
+        absl::StrAppend(&str, "[*],");
+      } else if (s->IsReplicated()) {
+        absl::StrAppend(&str, "[R],");
+      } else {
+        if (s->ReplicateOnLastTileDim()) {
+          absl::StrAppend(
+              &str, "[", absl::StrJoin(s->tile_assignment().dimensions(), ", "),
+              "]last_tile_dim_replicate,");
+        } else {
+          absl::StrAppend(
+              &str, "[", absl::StrJoin(s->tile_assignment().dimensions(), ", "),
+              "],");
+        }
+      }
+    }
+    return str;
+  }
+};
 
 // One sharding strategy
 struct ShardingStrategy {
-  std::string name;
   HloSharding output_sharding;
   double compute_cost;
   double communication_cost;
@@ -92,9 +119,7 @@ struct ShardingStrategy {
   ReshardingCosts communication_resharding_costs;
   ReshardingCosts memory_resharding_costs;
 
-  std::string ToString() const {
-    return absl::StrCat(name, ", ", output_sharding.ToString());
-  }
+  std::string ToString() const { return output_sharding.ToString(); }
 
   std::string ToStringLong() const {
     std::vector<std::string> communication_resharding_vector_strings;
@@ -117,7 +142,7 @@ struct ShardingStrategy {
         "{", absl::StrJoin(memory_resharding_vector_strings, ", "), "}");
 
     return absl::StrCat(
-        name, ", ", output_sharding.ToString(), ", compute_cost=", compute_cost,
+        output_sharding.ToString(), ", compute_cost=", compute_cost,
         ", communication_cost=", communication_cost,
         ", memory_cost=", memory_cost,
         ", communication_resharding_costs=", communication_resharding_cost_str,
@@ -125,7 +150,7 @@ struct ShardingStrategy {
   }
 
   bool operator==(const ShardingStrategy& other) const {
-    return name == other.name && output_sharding == other.output_sharding &&
+    return output_sharding == other.output_sharding &&
            compute_cost == other.compute_cost &&
            communication_cost == other.communication_cost &&
            memory_cost == other.memory_cost &&
@@ -213,7 +238,15 @@ struct StrategyGroup {
       }
     } else {
       for (const auto& strategy : strategies) {
-        absl::StrAppend(&str, indent, "Strategy ", strategy.ToStringLong());
+        absl::StrAppend(&str, indent, "Strategy ", strategy.ToStringLong(),
+                        "\n");
+      }
+    }
+    if (!is_tuple) {
+      for (const auto& input_shardings : strategy_input_shardings) {
+        const std::string input_sharding_str =
+            absl::StrCat("{", input_shardings.ToString(), "}\n");
+        absl::StrAppend(&str, indent, "Input Sharding ", input_sharding_str);
       }
     }
     return str;
@@ -253,21 +286,53 @@ struct StrategyGroup {
 
   void AddStrategy(const ShardingStrategy& strategy,
                    const InputShardings& input_shardings = {}) {
-    strategies.push_back(strategy);
+    // Create a new strategy if needed (otherwise, reuse an existing one).
+    size_t strategy_idx = strategies.size();
+    const size_t input_sharding_idx = strategy_input_shardings.size();
+    const auto it = std::find(strategies.begin(), strategies.end(), strategy);
+    if (it == strategies.end()) {
+      strategies.push_back(strategy);
+      strategy_idx_to_input_sharding_idx.push_back(input_sharding_idx);
+    } else {
+      strategy_idx = std::distance(strategies.begin(), it);
+    }
+    input_sharding_idx_to_strategy_idx.push_back(strategy_idx);
     strategy_input_shardings.push_back(input_shardings);
   }
 
   void ClearStrategies() {
     strategies.clear();
     strategy_input_shardings.clear();
+    input_sharding_idx_to_strategy_idx.clear();
+    strategy_idx_to_input_sharding_idx.clear();
   }
 
   ShardingStrategy& GetStrategy(size_t strategy_idx) {
     return strategies[strategy_idx];
   }
 
-  const InputShardings& GetInputShardings(size_t strategy_idx) const {
-    return strategy_input_shardings[strategy_idx];
+  const ShardingStrategy& GetStrategyForInputShardings(
+      size_t input_sharding_idx) const {
+    const size_t strategy_idx =
+        input_sharding_idx_to_strategy_idx[input_sharding_idx];
+    CHECK_LT(strategy_idx, strategies.size());
+    return strategies[strategy_idx];
+  }
+
+  size_t GetStrategyIdxForInputShardings(size_t input_sharding_idx) const {
+    return input_sharding_idx_to_strategy_idx[input_sharding_idx];
+  }
+
+  const InputShardings& GetInputShardings(size_t input_sharding_idx) const {
+    return strategy_input_shardings[input_sharding_idx];
+  }
+
+  const InputShardings& GetInputShardingsForStrategy(
+      size_t strategy_idx) const {
+    const size_t input_sharding_idx =
+        strategy_idx_to_input_sharding_idx[strategy_idx];
+    CHECK_LT(input_sharding_idx, strategy_input_shardings.size());
+    return strategy_input_shardings[input_sharding_idx];
   }
 
   const std::vector<ShardingStrategy>& GetStrategies() const {
@@ -297,6 +362,8 @@ struct StrategyGroup {
   // A vector of strategy choices for the non-tuple output.
   std::vector<ShardingStrategy> strategies;
   std::vector<InputShardings> strategy_input_shardings;
+  std::vector<size_t> input_sharding_idx_to_strategy_idx;
+  std::vector<size_t> strategy_idx_to_input_sharding_idx;
 
   // Used when is_tuple == True. A vector of pointers, each pointer is one
   // StrategyGroup for one value in the output Tuple

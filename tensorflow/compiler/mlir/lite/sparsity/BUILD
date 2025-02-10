@@ -29,6 +29,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate_lib",
+        "//tensorflow/compiler/mlir/lite:pass_registry_utils",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_d2s",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",

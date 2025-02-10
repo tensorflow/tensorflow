@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/stateful_random_ops.h"
 
-#include <cmath>
+#include <cstdint>
 #include <functional>
 #include <tuple>
 #include <utility>
@@ -28,11 +28,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/prng.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/prng.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -43,8 +45,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -138,7 +138,8 @@ int64_t GetMinStateSize(xla::RandomAlgorithm alg) {
   }
 }
 
-Status CheckStateShape(xla::RandomAlgorithm alg, const TensorShape& shape) {
+absl::Status CheckStateShape(xla::RandomAlgorithm alg,
+                             const TensorShape& shape) {
   if (shape.dims() != 1) {
     return errors::InvalidArgument(
         "RNG state must have one and only one dimension, not ", shape.dims());
@@ -203,7 +204,7 @@ xla::XlaOp CounterAndKeyToVariable(xla::RandomAlgorithm alg, xla::XlaOp state,
 
 // A helper function containing the common part of several kernels below.
 // Precondition: 'algorithm' and 'shape' are compile-time constants.
-Status CompileImpl(
+absl::Status CompileImpl(
     XlaOpKernelContext* ctx, int state_input_idx, int alg_input_idx,
     int shape_input_idx,
     std::function<SamplerReturnType(xla::RandomAlgorithm, xla::XlaOp,

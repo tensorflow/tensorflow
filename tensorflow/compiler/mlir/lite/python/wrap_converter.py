@@ -22,19 +22,17 @@ from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_
 
 def wrapped_convert(
     model_flags_str,
-    toco_flags_str,
+    converter_flags_str,
     input_data_str,
     debug_info_str,
-    enable_mlir_converter,
 ):
-  """Wraps TocoConvert with lazy loader."""
+  """Wraps Convert with lazy loader."""
   return _pywrap_converter_api.Convert(
       model_flags_str,
-      toco_flags_str,
+      converter_flags_str,
       input_data_str,
       False,  # extended_return
       debug_info_str,
-      enable_mlir_converter,
       py_function_lib.PyFunctionLibrary(),
   )
 

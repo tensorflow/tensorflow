@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/tuning_utils.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_module.h"

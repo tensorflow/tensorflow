@@ -14,6 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_file_writer.h"
 
+#include <algorithm>
+#include <functional>
+#include <memory>
+#include <set>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -42,9 +53,9 @@ class FakeClockEnv : public EnvWrapper {
 
 class SummaryFileWriterTest : public ::testing::Test {
  protected:
-  Status SummaryTestHelper(
+  absl::Status SummaryTestHelper(
       const string& test_name,
-      const std::function<Status(SummaryWriterInterface*)>& writer_fn,
+      const std::function<absl::Status(SummaryWriterInterface*)>& writer_fn,
       const std::function<void(const Event&)>& test_fn) {
     static std::set<string>* tests = new std::set<string>();
     CHECK(tests->insert(test_name).second) << ": " << test_name;
@@ -166,7 +177,7 @@ namespace {
 // Create a 1x1 monochrome image consisting of a single pixel oof the given
 // type.
 template <typename T>
-static Status CreateImage(SummaryWriterInterface* writer) {
+static absl::Status CreateImage(SummaryWriterInterface* writer) {
   Tensor bad_color(DT_UINT8, TensorShape({1}));
   bad_color.scalar<uint8>()() = 0;
   Tensor one(DataTypeToEnum<T>::v(), TensorShape({1, 1, 1, 1}));

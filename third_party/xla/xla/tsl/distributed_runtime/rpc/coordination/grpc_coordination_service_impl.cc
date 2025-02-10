@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 
 #include "absl/synchronization/mutex.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace tsl {
 
@@ -57,6 +57,7 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(DeleteKeyValue);
   ENQUEUE_REQUEST(Barrier);
   ENQUEUE_REQUEST(CancelBarrier);
+  ENQUEUE_REQUEST(GetAliveTasks);
   ENQUEUE_REQUEST(PollForError);
 #undef ENQUEUE_REQUEST
 

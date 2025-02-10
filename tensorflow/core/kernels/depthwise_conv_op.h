@@ -224,14 +224,16 @@ struct DepthwiseInputCopyOp {
     if (kDepth > 1 && kDepth <= kPacketSize) {
       for (int64_t f_r = 0; f_r < args.filter_rows; ++f_r) {
         const int64_t in_r = in_r_start + f_r;
+        const auto* in = input + in_r * args.in_cols * args.in_depth +
+                         in_c_start * args.in_depth;
+        const int64_t step = args.in_depth;
 
-        for (int64_t f_c = 0; f_c < args.filter_cols; ++f_c) {
+        for (int64_t f_c = 0; f_c < args.filter_cols; ++f_c, in += step) {
+          // 'in' is input + (in_r * args.in_cols + in_c) * args.in_depth
           const int64_t in_c = in_c_start + f_c;
 
           if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
               in_c < args.in_cols) {
-            const auto* in =
-                input + (in_r * args.in_cols + in_c) * args.in_depth;
             int64_t limit = args.in_depth;
             // This will overwrite up to kPacketSize next elements,
             // this is ok on all iterations except the last one, since
@@ -276,16 +278,20 @@ struct DepthwiseInputCopyOp {
       // when 'depth_multiplier' > kPacketSize.
       const int64_t dm_vectorized_size = (kDepth / kPacketSize) * kPacketSize;
 
-      for (int64_t f_r = 0; f_r < args.filter_rows; ++f_r) {
+      const int64_t col_step = args.in_cols * args.in_depth;
+      const int64_t step = args.in_depth;
+      const auto start = in_c_start * step;
+      const auto* in_col = input + in_r_start * col_step;
+      for (int64_t f_r = 0; f_r < args.filter_rows; ++f_r, in_col += col_step) {
         const int64_t in_r = in_r_start + f_r;
+        const auto* in = in_col + start;
 
-        for (int64_t f_c = 0; f_c < args.filter_cols; ++f_c) {
+        for (int64_t f_c = 0; f_c < args.filter_cols; ++f_c, in += step) {
+          // 'in' is input + (in_r * args.in_cols + in_c) * args.in_depth
           const int64_t in_c = in_c_start + f_c;
 
           if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
               in_c < args.in_cols) {
-            const auto* in =
-                input + (in_r * args.in_cols + in_c) * args.in_depth;
             // Copy vectorized portion of inner dimension.
             for (int64_t d = 0; d < args.in_depth; d++) {
               const auto p = Eigen::internal::pset1<Packet>(in[d]);
@@ -309,16 +315,19 @@ struct DepthwiseInputCopyOp {
         }
       }
     } else if (kDepth == 1) {
-      for (int64_t f_r = 0; f_r < args.filter_rows; ++f_r) {
+      const int64_t col_step = args.in_cols * args.in_depth;
+      const int64_t step = args.in_depth;
+      const auto start = in_c_start * step;
+      const auto* in_col = input + in_r_start * col_step;
+      for (int64_t f_r = 0; f_r < args.filter_rows; ++f_r, in_col += col_step) {
         const int64_t in_r = in_r_start + f_r;
-
-        for (int64_t f_c = 0; f_c < args.filter_cols; ++f_c) {
+        const auto* in = in_col + start;
+        for (int64_t f_c = 0; f_c < args.filter_cols; ++f_c, in += step) {
+          // 'in' is input + (in_r * args.in_cols + in_c) * args.in_depth
           const int64_t in_c = in_c_start + f_c;
 
           if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
               in_c < args.in_cols) {
-            const auto* in =
-                input + (in_r * args.in_cols + in_c) * args.in_depth;
             for (int64_t d = 0; d < input_vectorized_size; d += kPacketSize) {
               const auto p = Eigen::internal::ploadu<Packet>(in + d);
               Eigen::internal::pstoreu<T>(in_buf, p);

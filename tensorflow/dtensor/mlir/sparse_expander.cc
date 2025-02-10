@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -53,7 +54,7 @@ InitOnStartupMarker SparseExpanderRegistry::RegisterSparseExpansionFn(
   return {};
 }
 
-Status RunSparseExpansion(mlir::Operation* op, mlir::Operation** output) {
+absl::Status RunSparseExpansion(mlir::Operation* op, mlir::Operation** output) {
   // Only expand if there are any SparseTensor inputs.
   if (HasAnySparseInput(op)) {
     SparseExpanderBase* expander =

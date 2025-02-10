@@ -1,4 +1,5 @@
 // RUN: tf-opt --pass-pipeline='builtin.module(func.func(tosa-legalize-tfl{disable-patterns=TFLConv2D,TFLSoftmax, enable-patterns=TFLFullyConnected,TFLTranspose}))' %s | FileCheck %s
+// REQUIRES: tf_tosa
 
 // -----
 
@@ -30,7 +31,7 @@ func.func @test_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // CHECK: %[[VAR1:.*]] = tosa.transpose %arg1, %[[CST]]
 // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 14, 1, 1, 19>}
 // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR1]] {new_shape = array<i64: 28, 1, 1, 19>}
-// CHECK-DAG: %[[VAR4:.*]] = tosa.conv2d %[[VAR2]], %[[VAR3]], %[[VAR0]] {dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
+// CHECK-DAG: %[[VAR4:.*]] = tosa.conv2d %[[VAR2]], %[[VAR3]], %[[VAR0]] {acc_type = f32, dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
 // CHECK: %[[VAR5:.*]] = tosa.reshape %[[VAR4]] {new_shape = array<i64: 14, 28>}
 func.func @test_matmul(%arg0: tensor<14x19xf32>, %arg1: tensor<19x28xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[1, 0]> : tensor<2xi32>

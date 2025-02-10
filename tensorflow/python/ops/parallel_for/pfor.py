@@ -1368,8 +1368,12 @@ class PFor:
     self._all_indices_partitioned = all_indices_partitioned
     if all_indices_partitioned:
       assert all_indices is not None
-    self.all_indices = (
-        math_ops.range(loop_len) if all_indices is None else all_indices)
+    if all_indices is None:
+      self.all_indices = math_ops.range(
+          loop_len, dtype=dtypes.int32, name="all_indices"
+      )
+    else:
+      self.all_indices = all_indices
 
     self._conversion_map = object_identity.ObjectIdentityDictionary()
     self._conversion_map[loop_var] = wrap(self.all_indices, True)
@@ -2805,7 +2809,9 @@ def _convert_matmul(pfor_input: _PforInput):
   tr_a = pfor_input.get_attr("transpose_a")
   tr_b = pfor_input.get_attr("transpose_b")
   if a_stacked and b_stacked:
-    output = wrap(math_ops.matmul(a, b, adjoint_a=tr_a, adjoint_b=tr_b), True)
+    output = wrap(
+        math_ops.matmul(a, b, transpose_a=tr_a, transpose_b=tr_b), True
+    )
     return output
   elif a_stacked:
     if tr_a:

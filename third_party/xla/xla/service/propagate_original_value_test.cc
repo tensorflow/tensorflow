@@ -29,17 +29,17 @@ TEST_F(PropagateOriginalValueTest, InstructionFusion) {
 HloModule test, entry_computation_layout={(s32[]{:T(256)})->u32[2]{0:T(256)}}
 
 ENTRY test {
-  Arg_0 = s32[]{:T(256)} parameter(0), original_value={{"Arg_0"}}, metadata={op_name="seed"}
-  constant = s32[]{:T(256)} constant(32), original_value={{"constant"}}
-  shift-right-logical = s32[]{:T(256)} shift-right-logical(Arg_0, constant), original_value={{"shift-right-logical"}}
-  convert = u32[]{:T(256)} convert(shift-right-logical), original_value={{"convert"}}
-  bitcast = u32[1]{0:T(256)} bitcast(convert), original_value={{"reshape"}}
+  Arg_0 = s32[]{:T(256)} parameter(0), origin={{"Arg_0"}}, metadata={op_name="seed"}
+  constant = s32[]{:T(256)} constant(32), origin={{"constant"}}
+  shift-right-logical = s32[]{:T(256)} shift-right-logical(Arg_0, constant), origin={{"shift-right-logical"}}
+  convert = u32[]{:T(256)} convert(shift-right-logical), origin={{"convert"}}
+  bitcast = u32[1]{0:T(256)} bitcast(convert), origin={{"reshape"}}
   constant.1 = u32[]{:T(256)} constant(0)
   pad = u32[2]{0:T(256)} pad(bitcast, constant.1), padding=0_1
-  convert.1 = u32[]{:T(256)} convert(Arg_0), original_value={{"convert.1"}}
-  bitcast.1 = u32[1]{0:T(256)} bitcast(convert.1), original_value={{"reshape.1"}}
+  convert.1 = u32[]{:T(256)} convert(Arg_0), origin={{"convert.1"}}
+  bitcast.1 = u32[1]{0:T(256)} bitcast(convert.1), origin={{"reshape.1"}}
   pad.1 = u32[2]{0:T(256)} pad(bitcast.1, constant.1), padding=1_0
-  ROOT add = u32[2]{0:T(256)} add(pad, pad.1), original_value={{"concatenate"}}
+  ROOT add = u32[2]{0:T(256)} add(pad, pad.1), origin={{"concatenate"}}
 }
   )";
 
@@ -49,20 +49,20 @@ ENTRY test {
       R"(
 CHECK: %fused_computation
 CHECK:   %[[PARAM:.*]] = s32[]{:T(256)} parameter(0)
-CHECK:   %[[CONSTANT:.*]] = s32[]{:T(256)} constant(32), original_value={{[{]}}{"constant"}}
-CHECK:   %[[SHIFT:.*]] = s32[]{:T(256)} shift-right-logical(%[[PARAM]], %[[CONSTANT]]), original_value={{[{]}}{"shift-right-logical"}
-CHECK:   %[[CONVERT:.*]] = u32[]{:T(256)} convert(%[[SHIFT]]), original_value={{[{]}}{"convert"}
-CHECK:   %[[BITCAST:.*]] = u32[1]{0:T(256)} bitcast(%[[CONVERT]]), original_value={{[{]}}{"reshape"}
+CHECK:   %[[CONSTANT:.*]] = s32[]{:T(256)} constant(32), origin={{[{]}}{"constant"}}
+CHECK:   %[[SHIFT:.*]] = s32[]{:T(256)} shift-right-logical(%[[PARAM]], %[[CONSTANT]]), origin={{[{]}}{"shift-right-logical"}
+CHECK:   %[[CONVERT:.*]] = u32[]{:T(256)} convert(%[[SHIFT]]), origin={{[{]}}{"convert"}
+CHECK:   %[[BITCAST:.*]] = u32[1]{0:T(256)} bitcast(%[[CONVERT]]), origin={{[{]}}{"reshape"}
 CHECK:   %[[CONSTANT1:.*]] = u32[]{:T(256)} constant(0)
 CHECK:   %[[PAD:.*]] = u32[2]{0:T(256)} pad(%[[BITCAST]], %[[CONSTANT1]]), padding=0_1
-CHECK:   %[[CONVERT1:.*]] = u32[]{:T(256)} convert(%[[PARAM]]), original_value={{[{]}}{"convert.1"}
-CHECK:   %[[BITCAST1:.*]] = u32[1]{0:T(256)} bitcast(%[[CONVERT1]]), original_value={{[{]}}{"reshape.1"}
+CHECK:   %[[CONVERT1:.*]] = u32[]{:T(256)} convert(%[[PARAM]]), origin={{[{]}}{"convert.1"}
+CHECK:   %[[BITCAST1:.*]] = u32[1]{0:T(256)} bitcast(%[[CONVERT1]]), origin={{[{]}}{"reshape.1"}
 CHECK:   %[[PAD1:.*]] = u32[2]{0:T(256)} pad(%[[BITCAST1]], %[[CONSTANT1]]), padding=1_0
-CHECK:   ROOT %[[ADD:.*]] = u32[2]{0:T(256)} add(%[[PAD]], %[[PAD1]]), original_value={{[{]}}{"concatenate"}
+CHECK:   ROOT %[[ADD:.*]] = u32[2]{0:T(256)} add(%[[PAD]], %[[PAD1]]), origin={{[{]}}{"concatenate"}
 
 CHECK: ENTRY %test
-CHECK:   %Arg_0 = s32[]{:T(256)} parameter(0), original_value={{[{]}}{"Arg_0"}
-CHECK:   ROOT %fusion = u32[2]{0:T(256)} fusion(%Arg_0), kind=kLoop, calls=%fused_computation
+CHECK:   %Arg_0 = s32[]{:T(256)} parameter(0), origin={{[{]}}{"Arg_0"}
+CHECK:   ROOT %pad_add_fusion = u32[2]{0:T(256)} fusion(%Arg_0), kind=kLoop, calls=%fused_computation, origin={{[{]}}{"concatenate"}
 )");
 }
 

@@ -17,12 +17,11 @@ limitations under the License.
 
 #include <Python.h>
 
-#include <string_view>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/py_client.h"
@@ -37,7 +36,7 @@ PyMemorySpace::PyMemorySpace(nb_class_ptr<PyClient> client,
 
 int PyMemorySpace::process_index() const { return client_->process_index(); }
 
-std::string_view PyMemorySpace::platform() const {
+absl::string_view PyMemorySpace::platform() const {
   // TODO(phawkins): this is a temporary backwards
   // compatibility shim. We changed the name PJRT
   // reports for GPU platforms to "cuda" or "rocm",
@@ -46,19 +45,19 @@ std::string_view PyMemorySpace::platform() const {
   // code.
   if (client_->platform_name() == "cuda" ||
       client_->platform_name() == "rocm") {
-    return std::string_view("gpu");
+    return absl::string_view("gpu");
   } else {
     return client_->platform_name();
   }
 }
 
-std::string_view PyMemorySpace::kind() const {
+absl::string_view PyMemorySpace::kind() const {
   return *memory_->Kind().memory_kind();
 }
 
-std::string_view PyMemorySpace::Str() const { return memory_->DebugString(); }
+absl::string_view PyMemorySpace::Str() const { return memory_->DebugString(); }
 
-std::string_view PyMemorySpace::Repr() const { return memory_->ToString(); }
+absl::string_view PyMemorySpace::Repr() const { return memory_->ToString(); }
 
 nb::list PyMemorySpace::AddressableByDevices() const {
   nb::list devices;

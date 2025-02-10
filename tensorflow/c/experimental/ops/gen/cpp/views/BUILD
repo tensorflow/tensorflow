@@ -11,7 +11,10 @@ cc_library(
         exclude = ["*_test.cc"],
     ),
     hdrs = glob(["*.h"]),
-    visibility = ["//tensorflow/c/experimental/ops/gen/cpp/renderers:__pkg__"],
+    visibility = [
+        "//tensorflow/c/experimental/ops/gen/cpp:__pkg__",
+        "//tensorflow/c/experimental/ops/gen/cpp/renderers:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/experimental/ops/gen/common",
         "//tensorflow/c/experimental/ops/gen/model",
@@ -19,6 +22,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,

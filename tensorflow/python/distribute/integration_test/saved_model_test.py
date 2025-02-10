@@ -115,14 +115,14 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
   # function on a single device, and the distributed variables are saved as
   # single variables.
   #
-  # Curently references to components of a distributed variable are mapped to
+  # Currently references to components of a distributed variable are mapped to
   # the single variable that is saved. This means that if the saved tf.functions
   # access components of a distributed variable, for example if it triggers
   # variable aggregation, the outputs are likely incorrect.
   #
   # Note that distributed variables have different behavior in the replica
   # context and the cross-replica context. Saving happens in the cross replica
-  # context or the default startegy's replica context.
+  # context or the default strategy's replica context.
 
   def test_read_sync_on_read_variable(self, strategy):
     # synchronizaiton=ON_READ variables are typically used in Keras metrics and
@@ -517,7 +517,7 @@ class SaveAndLoadForTrainingTest(test.TestCase, parameterized.TestCase):
     # under tf.distribute.Strategy.
     #
     # Although the error is the same models with TF2 SavedModel, the cause is
-    # different. TF1 models loaded in API contain an intializer, which is
+    # different. TF1 models loaded in API contain an initializer, which is
     # invoked upon loading. Since loading is in the cross-replica context, that
     # fails.
     #

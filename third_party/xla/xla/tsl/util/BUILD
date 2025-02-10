@@ -1,21 +1,9 @@
 # Description:
-#   Tensor Standard Libraries.
+#   Tensor Standard Libraries - common utilities for implementing XLA.
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load(
-    "@local_tsl//tsl/platform:build_config.bzl",
-    "tsl_cc_test",
-)
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "if_static",
-)
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
-)
 load(
     "//xla/tsl:tsl.bzl",
     "check_deps",
@@ -23,6 +11,18 @@ load(
     "tsl_copts",
 )
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
+load(
+    "//xla/tsl/platform:build_config_root.bzl",
+    "if_static",
+)
+load(
+    "//xla/tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -127,9 +127,9 @@ cc_library(
     srcs = ["byte_swap_array.cc"],
     hdrs = ["byte_swap_array.h"],
     deps = [
-        "@local_tsl//tsl/platform:byte_order",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
+        "//xla/tsl/platform:byte_order",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
     ],
 )
 
@@ -200,14 +200,14 @@ cc_library(
     srcs = ["env_var.cc"],
     hdrs = ["env_var.h"],
     deps = [
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -220,14 +220,14 @@ cc_library(
         "@local_tsl//tsl:__subpackages__",
     ]),
     deps = [
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:test_log_proto_cc",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -243,6 +243,7 @@ cc_library(
     copts = tsl_copts(),
     visibility = internal_visibility([
         "//xla/tsl:internal",
+        "//xla/tsl/profiler:friends",
     ]),
 )
 
@@ -251,8 +252,8 @@ tsl_cc_test(
     srcs = ["stats_calculator_test.cc"],
     deps = [
         ":stats_calculator_portable",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -261,8 +262,9 @@ cc_library(
     srcs = ["device_name_utils.cc"],
     hdrs = ["device_name_utils.h"],
     deps = [
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
+        "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/platform:stringpiece",
     ],
 )
@@ -274,11 +276,12 @@ tsl_cc_test(
     deps = [
         ":device_name_utils",
         "//xla/tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:errors",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -287,12 +290,12 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     deps = [
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:stringprintf",
-        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -341,4 +344,25 @@ filegroup(
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util:__pkg__",
     ]),
+)
+
+cc_library(
+    name = "fixed_option_set_flag",
+    srcs = ["fixed_option_set_flag.cc"],
+    hdrs = ["fixed_option_set_flag.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tsl_cc_test(
+    name = "fixed_option_set_flag_test",
+    srcs = ["fixed_option_set_flag_test.cc"],
+    deps = [
+        ":fixed_option_set_flag",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

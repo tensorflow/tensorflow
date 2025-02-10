@@ -31,10 +31,10 @@ limitations under the License.
 #include "absl/container/node_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/buffer_pool.h"
+#include "xla/tsl/profiler/utils/lock_free_queue.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/profiler/utils/buffer_pool.h"
-#include "tsl/profiler/utils/lock_free_queue.h"
 
 namespace xla {
 namespace profiler {
@@ -174,6 +174,9 @@ enum class CuptiTracerEventType {
   HostRegister = 13,
   HostUnregister = 14,
   CudaGraph = 15,
+  ThreadMarkerRange = 16,
+  ThreadMarkerStart = 17,
+  ThreadMarkerEnd = 18,
   Generic = 100,
 };
 
@@ -187,8 +190,8 @@ enum class CuptiTracerEventSource {
 };
 
 struct CuptiTracerEvent {
-  static constexpr uint32_t kInvalidThreadId =
-      std::numeric_limits<uint32_t>::max();
+  static constexpr uint64_t kInvalidThreadId =
+      std::numeric_limits<uint64_t>::max();
   static constexpr uint32_t kInvalidCorrelationId =
       std::numeric_limits<uint32_t>::max();
   static constexpr uint64_t kInvalidContextId =
@@ -209,10 +212,11 @@ struct CuptiTracerEvent {
   uint64_t end_time_ns = 0;
   uint32_t device_id = 0;
   uint32_t correlation_id = kInvalidCorrelationId;
-  uint32_t thread_id = kInvalidThreadId;
+  uint64_t thread_id = kInvalidThreadId;
   int64_t context_id = kInvalidContextId;
   int64_t stream_id = kInvalidStreamId;
   uint32_t graph_id = 0;
+  int64_t scope_range_id = 0;
   union {
     // For Memcpy API and activities. `type` must be Memcpy*.
     MemcpyDetails memcpy_info;
@@ -266,13 +270,15 @@ class AnnotationMap {
   struct AnnotationInfo {
     absl::string_view annotation;
     absl::string_view nvtx_range;
+    int64_t scope_range_id = 0;
   };
 
   explicit AnnotationMap(uint64_t max_size, uint32_t num_gpus)
       : max_size_(max_size), per_device_map_(num_gpus) {}
 
   void Add(uint32_t device_id, uint32_t correlation_id,
-           absl::string_view annotation, absl::string_view nvtx_range);
+           absl::string_view annotation, absl::string_view nvtx_range,
+           int64_t scope_range_id = 0);
 
   AnnotationInfo LookUp(uint32_t device_id, uint32_t correlation_id) const
       ABSL_ATTRIBUTE_LIFETIME_BOUND;
@@ -299,6 +305,9 @@ struct CuptiEventCollectorDelegate {
       std::function<void(CuptiTracerEvent&&)> p_receive)
       : annotation_map(p_annotation_map), receive(std::move(p_receive)) {}
 };
+
+// A tree of scope range ids which map child_id ==> parent_id
+typedef absl::flat_hash_map<int64_t, int64_t> ScopeRangeIdTree;
 
 class CuptiActivityBufferManager {
  public:
@@ -357,15 +366,17 @@ class CallbackAnnotationsAndEvents {
 
   size_t NumAnnotations() const { return annotations_.Size(); }
 
-  std::string_view DedupAnnotation(std::string_view str) {
+  absl::string_view DedupAnnotation(absl::string_view str) {
     return annotations_.Dedup(str);
   }
 
-  std::string_view DedupNvtxRange(std::string_view str) {
+  absl::string_view DedupNvtxRange(absl::string_view str) {
     return nvtx_ranges_.Dedup(str);
   }
 
   EventQueue& event_queue() { return event_queue_; }
+
+  ScopeRangeIdTree& scope_range_id_tree() { return scope_range_id_tree_; }
 
   size_t NumDroppedEvents() const { return num_dropped_events_; }
 
@@ -378,6 +389,7 @@ class CallbackAnnotationsAndEvents {
   StringDeduper nvtx_ranges_;
   size_t num_dropped_events_ = 0;
   EventQueue event_queue_;
+  ScopeRangeIdTree scope_range_id_tree_;
 };
 
 }  // namespace profiler

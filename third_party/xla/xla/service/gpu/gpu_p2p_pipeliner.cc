@@ -17,25 +17,34 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_pipeliner.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/util.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+// Rather than pipelining the send/recv and *-done instructions, we only
+// pipeline send/recv instructions. This allows spanning async send/recv across
+// the loop boundary.
+bool PipelineOnlySendRecvStart(const HloInstruction* instr) {
+  return HloPredicateIsOp<HloOpcode::kRecv, HloOpcode::kSend>(instr);
+}
 
 bool ShouldPipeline(const HloInstruction* instr) {
   if (!HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(instr)) {
@@ -202,7 +211,21 @@ absl::Status PostprocessRotatedP2P(HloInstruction* instr) {
 
 }  // anonymous namespace
 
-void AddP2PPipeliner(HloPassPipeline& pipeline) {
+absl::StatusOr<bool> GpuP2PPipeliner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  auto should_process = ShouldPipeline;
+  CollectivePipeliner::HloPostprocessor postprocess_backward_peeled_op =
+      PostprocessPeeledP2P;
+  CollectivePipeliner::HloPostprocessor postprocess_backward_rotated_op =
+      PostprocessRotatedP2P;
+
+  if (enable_partial_send_recv_pipelining_) {
+    should_process = PipelineOnlySendRecvStart;
+    postprocess_backward_peeled_op = std::nullopt;
+    postprocess_backward_rotated_op = std::nullopt;
+  }
+
   CollectivePipeliner::Config config{
       /*level_to_operate_on=*/0,
       // Pipeline everything annotated for pipelining.
@@ -212,15 +235,16 @@ void AddP2PPipeliner(HloPassPipeline& pipeline) {
       /*process_different_sized_ops=*/true,
       /*pipelining_direction=*/
       CollectivePipeliner::PipeliningDirection::kBackward,
-      /*should_process=*/ShouldPipeline,
+      /*should_process=*/should_process,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
       /*should_allow_loop_variant_parameter_in_chain=*/
       ShouldAllowLoopVariantParameterInChain,
       /*should_allow_control_dependencies=*/true,
-      /*=postprocess_backward_peeled_op*/ PostprocessPeeledP2P,
-      /*=postprocess_backward_rotated_op*/ PostprocessRotatedP2P};
-  pipeline.AddPass<CollectivePipeliner>(config);
+      /*=postprocess_backward_peeled_op*/ postprocess_backward_peeled_op,
+      /*=postprocess_backward_rotated_op*/ postprocess_backward_rotated_op};
+
+  return CollectivePipeliner(config).Run(module, execution_threads);
 }
 
 }  // namespace gpu

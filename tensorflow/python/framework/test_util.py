@@ -76,7 +76,6 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
-from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_sync_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -100,6 +99,7 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.numpy_compat import np_where
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
 
@@ -2579,7 +2579,7 @@ class TensorFlowTestCase(googletest.TestCase):
       pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
 
     # Check if the mlir bridge has been explicitly enabled or disabled. If
-    # is_mlir_bridge_enabled() returns None, the user did not explictly enable
+    # is_mlir_bridge_enabled() returns None, the user did not explicitly enable
     # or disable the bridge so do not update enable_mlir_bridge.
     if is_mlir_bridge_enabled():
       context.context().enable_mlir_bridge = True
@@ -2737,7 +2737,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def assertProtoEquals(
       self,
       expected_message_maybe_ascii,
-      message,
+      validate_message,
       msg=None,
       relative_tolerance=None,
   ):
@@ -2748,36 +2748,38 @@ class TensorFlowTestCase(googletest.TestCase):
 
     Args:
       expected_message_maybe_ascii: proto message in original or ascii form.
-      message: the message to validate.
+      validate_message: the message to validate.
       msg: Optional message to report on failure.
       relative_tolerance: float. The allowable difference between the two values
         being compared is determined by multiplying the relative tolerance by
         the maximum of the two values. If this is not provided, then all floats
         are compared using string comparison.
     """
-    if isinstance(expected_message_maybe_ascii, type(message)):
+    if isinstance(expected_message_maybe_ascii, type(validate_message)):
       expected_message = expected_message_maybe_ascii
       self._AssertProtoEquals(
           expected_message,
-          message,
+          validate_message,
           msg=msg,
           relative_tolerance=relative_tolerance,
       )
     elif isinstance(expected_message_maybe_ascii, (str, bytes)):
-      expected_message = type(message)()
+      expected_message = type(validate_message)()
       text_format.Merge(
           expected_message_maybe_ascii,
           expected_message,
           descriptor_pool=descriptor_pool.Default())
       self._AssertProtoEquals(
           expected_message,
-          message,
+          validate_message,
           msg=msg,
           relative_tolerance=relative_tolerance,
       )
     else:
-      assert False, ("Can't compare protos of type %s and %s." %
-                     (type(expected_message_maybe_ascii), type(message)))
+      assert False, "Can't compare protos of type %s and %s." % (
+          type(expected_message_maybe_ascii),
+          type(validate_message),
+      )
 
   def assertProtoEqualsVersion(
       self,
@@ -3232,7 +3234,10 @@ class TensorFlowTestCase(googletest.TestCase):
     a_dtype = a.dtype
     custom_dtypes = (dtypes.bfloat16.as_numpy_dtype,
                      dtypes.float8_e5m2.as_numpy_dtype,
-                     dtypes.float8_e4m3fn.as_numpy_dtype)
+                     dtypes.float8_e4m3fn.as_numpy_dtype,
+                     dtypes.float8_e4m3fnuz.as_numpy_dtype,
+                     dtypes.float8_e4m3b11fnuz.as_numpy_dtype,
+                     dtypes.float8_e5m2fnuz.as_numpy_dtype)
     a = a.astype(np.float32) if a.dtype in custom_dtypes else a
     b = b.astype(np.float32) if b.dtype in custom_dtypes else b
     if not np.allclose(a, b, rtol=rtol, atol=atol):
@@ -3248,11 +3253,11 @@ class TensorFlowTestCase(googletest.TestCase):
           np.abs(a - b) > atol + rtol * np.abs(b),
           np.isnan(a) != np.isnan(b))
       if a.ndim:
-        x = a[np.where(cond)]
-        y = b[np.where(cond)]
-        msgs.append("not close where = {}".format(np.where(cond)))
+        x = a[np_where(cond)]
+        y = b[np_where(cond)]
+        msgs.append("not close where = {}".format(np_where(cond)))
       else:
-        # np.where is broken for scalars
+        # np_where is broken for scalars
         x, y = a, b
       msgs.append("not close lhs = {}".format(x))
       msgs.append("not close rhs = {}".format(y))
@@ -3479,11 +3484,11 @@ class TensorFlowTestCase(googletest.TestCase):
       # Adds more details to np.testing.assert_array_equal.
       diff = np.logical_not(same)
       if a.ndim:
-        x = a[np.where(diff)]
-        y = b[np.where(diff)]
-        msgs.append("not equal where = {}".format(np.where(diff)))
+        x = a[np_where(diff)]
+        y = b[np_where(diff)]
+        msgs.append("not equal where = {}".format(np_where(diff)))
       else:
-        # np.where is broken for scalars
+        # np_where is broken for scalars
         x, y = a, b
       msgs.append("not equal lhs = %r" % x)
       msgs.append("not equal rhs = %r" % y)
@@ -3583,7 +3588,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
     Args:
       subscripts: The tensor (np.ndarray) subscripts, of the same format as
-        np.where()'s return value, i.e., a tuple of arrays with each array
+        np_where()'s return value, i.e., a tuple of arrays with each array
         corresponding to a dimension. E.g., (array([1, 1]), array([0, 1])).
       value: (np.ndarray) value of the tensor.
       limit: (int) The maximum number of indices to print.
@@ -3639,7 +3644,7 @@ class TensorFlowTestCase(googletest.TestCase):
           "The value of %s does not have an ordered numeric type, instead it "
           "has type: %s" % (target, target.dtype))
 
-    nan_subscripts = np.where(np.isnan(target))
+    nan_subscripts = np_where(np.isnan(target))
     if np.size(nan_subscripts):
       raise AssertionError(
           "%d of the %d element(s) are NaN. "
@@ -3657,7 +3662,7 @@ class TensorFlowTestCase(googletest.TestCase):
         violations,
         np.greater_equal(target, upper_bound)
         if open_upper_bound else np.greater(target, upper_bound))
-    violation_subscripts = np.where(violations)
+    violation_subscripts = np_where(violations)
     if np.size(violation_subscripts):
       raise AssertionError(
           "%d of the %d element(s) are outside the range %s. " %

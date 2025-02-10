@@ -1,4 +1,5 @@
 // RUN: tf-opt --pass-pipeline='builtin.module(tosa-tflite-strip-module-metadata,func.func(tosa-tflite-strip-function-metadata))' %s | FileCheck %s
+// REQUIRES: tf_tosa
 
 // CHECK-LABEL: module {
 // CHECK-NOT: tf.schema_version

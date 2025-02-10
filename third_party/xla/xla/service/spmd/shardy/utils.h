@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
+#include <optional>
+#include <string>
 
 #include "absl/log/check.h"
 #include "absl/strings/escaping.h"
@@ -26,7 +28,10 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 namespace xla {
 namespace sdy {
@@ -40,15 +45,18 @@ mlir::DictionaryAttr getFrontendAttrs(mlir::Operation* op);
 mlir::DictionaryAttr getFuncArgFrontendAttrs(mlir::func::FuncOp funcOp,
                                              unsigned int index);
 
-// Add `name` into the frontend attributes of `op` with value `value`. Note that
-// `value` will be turned into a `StringAttr`.
-void addFrontendAttribute(mlir::Operation* op, mlir::StringRef name,
-                          mlir::Attribute value);
+// Adds `name` into the frontend attributes of `op` with value `value`. If
+// `name` already exists, it will be overwritten. Note that `value` will be
+// turned into a `StringAttr`.
+void setFrontendAttribute(mlir::Operation* op, mlir::StringRef name,
+                          mlir::Attribute value, bool escapeAttr = true);
 
-// Add `name` into the argument at `argNum`'s frontend attributes of `funcOp`
-// with value `value`. Note that `value` will be turned into a `StringAttr`.
-void addFrontendAttribute(mlir::func::FuncOp funcOp, mlir::StringRef name,
-                          mlir::Attribute value, int64_t argNum);
+// Adds `name` into the argument at `argNum`'s frontend attributes of `funcOp`
+// with value `value`. If `name` already exists, it will be overwritten. Note
+// that `value` will be turned into a `StringAttr`.
+void setFrontendAttribute(mlir::func::FuncOp funcOp, mlir::StringRef name,
+                          mlir::Attribute value, int64_t argNum,
+                          bool escapeAttr = true);
 
 // Remove `attributeName` from the frontend attributes of `op`.
 void removeFrontendAttribute(mlir::Operation* op,
@@ -59,28 +67,51 @@ void removeFrontendAttribute(mlir::Operation* op,
 void removeFrontendAttribute(mlir::func::FuncOp funcOp,
                              mlir::StringRef attributeName, int64_t argNum);
 
-void loadAllRequiredDialects(mlir::MLIRContext* context);
+// Checks if "frontend_attributes" `DictionaryAttr` from `op` contains `key`.
+bool hasFrontendAttr(mlir::Operation* op, mlir::StringRef key);
 
-// Parses `stringAttr` to an attribute of type `AttrTy`.
-//
-// NOTE: assumes `stringAttr` is of type `StringAttr`.
-template <typename AttrTy>
-AttrTy parseStringAttr(mlir::Attribute stringAttr) {
-  std::string value;
-  std::string error;
-  CHECK(absl::CUnescape(mlir::cast<mlir::StringAttr>(stringAttr).getValue(),
-                        &value, &error))
-      << error;
-  return mlir::cast<AttrTy>(
-      mlir::parseAttribute(value, stringAttr.getContext()));
-}
+// Checks if `dictAttr` exists and contains `key`.
+bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key);
+
+void loadAllRequiredDialects(mlir::MLIRContext* context);
 
 // Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
 template <typename AttrTy>
 AttrTy parseStringAttr(mlir::DictionaryAttr dictAttr,
                        llvm::StringRef attrName) {
-  return parseStringAttr<AttrTy>(dictAttr.get(attrName));
+  if (mlir::Attribute stringAttr = dictAttr.get(attrName)) {
+    std::string value;
+    std::string error;
+    CHECK(absl::CUnescape(mlir::cast<mlir::StringAttr>(stringAttr).getValue(),
+                          &value, &error))
+        << error;
+    return mlir::cast<AttrTy>(
+        mlir::parseAttribute(value, stringAttr.getContext()));
+  }
+  return nullptr;
 }
+
+// Checks if `op`'s "frontend_attributes" `DictionaryAttr` contains `attrName`
+// and parses it to an attribute of type `AttrTy`. If it doesn't exist, then
+// returns std::nullopt.
+template <typename AttrTy>
+std::optional<AttrTy> tryGetFrontendAttr(mlir::Operation* op,
+                                         mlir::StringRef attrName) {
+  mlir::DictionaryAttr dictAttr = getFrontendAttrs(op);
+  if (hasKey(dictAttr, attrName)) {
+    return parseStringAttr<AttrTy>(dictAttr, attrName);
+  }
+  return std::nullopt;
+}
+
+// Builds a new `stablehlo.custom_call` with the same operands and attributes
+// as `op` but with new `resultTypes`.
+mlir::stablehlo::CustomCallOp cloneCustomCallWithNewResultTypes(
+    mlir::stablehlo::CustomCallOp op, mlir::TypeRange resultTypes,
+    mlir::IRRewriter& rewriter);
+
+// Whether `op` is a Python callback custom call.
+bool isPythonCallbackCustomCall(mlir::stablehlo::CustomCallOp op);
 
 }  // namespace sdy
 }  // namespace xla

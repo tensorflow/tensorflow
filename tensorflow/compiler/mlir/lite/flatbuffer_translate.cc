@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -24,8 +26,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -46,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/tools/parsers.h"
 
 using llvm::cl::opt;
 
@@ -229,7 +232,7 @@ static TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
 static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(
     "mlir-to-tflite-flatbuffer", "mlir-to-tflite-flatbuffer",
     MlirToFlatBufferFileTranslateFunction, [](DialectRegistry& registry) {
-      registry.insert<quant::QuantizationDialect,
+      registry.insert<quant::QuantDialect,
                       quantfork::QuantizationForkDialect>();
       mlir::RegisterAllTensorFlowDialects(registry);
       registry.insert<TFL::TensorFlowLiteDialect>();

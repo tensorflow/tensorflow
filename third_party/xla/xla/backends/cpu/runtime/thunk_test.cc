@@ -15,55 +15,20 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/thunk.h"
 
-#include <cstdint>
 #include <utility>
 
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
 
-class ThunkExecuteStateTestHelper : public Thunk {
- public:
-  static ExecuteState CreateExecuteState(int64_t parallel_tasks) {
-    return ExecuteState(parallel_tasks);
-  }
-};
-
 TEST(ThunkTest, OkExecuteEventSingleton) {
   auto event = Thunk::OkExecuteEventSingleton();
   ASSERT_TRUE(event.IsConcrete());
-}
-
-TEST(ThunkExecuteStateTest, OneTask) {
-  auto execute_state =
-      ThunkExecuteStateTestHelper::CreateExecuteState(/*parallel_tasks=*/1);
-
-  // State should not be available right after construction.
-  EXPECT_FALSE(execute_state.event.IsAvailable());
-
-  // Notifying once should make the state available.
-  execute_state.Notify();
-  EXPECT_TRUE(execute_state.event.IsAvailable());
-}
-
-TEST(ThunkExecuteStateTest, MultipleTasks) {
-  int parallel_tasks = 10;
-  auto execute_state =
-      ThunkExecuteStateTestHelper::CreateExecuteState(parallel_tasks);
-
-  for (int i = 0; i < parallel_tasks; ++i) {
-    // State should not be available until all tasks are notified.
-    EXPECT_FALSE(execute_state.event.IsAvailable());
-    execute_state.Notify();
-  }
-
-  // All tasks are notified, state should be available.
-  EXPECT_TRUE(execute_state.event.IsAvailable());
 }
 
 TEST(ThunkTest, ExecuteSession) {
@@ -128,13 +93,12 @@ TEST(ThunkTest, CollectiveExecuteParams) {
   // Test forwarding collectives interface from CpuExecutableRunOptions.
   CpuExecutableRunOptions cpu_run_options;
   cpu_run_options.set_collectives(
-      reinterpret_cast<CollectivesInterface*>(0x12345678));
+      reinterpret_cast<CpuCollectives*>(0x12345678));
   run_options.set_cpu_executable_run_options(&cpu_run_options);
 
   TF_ASSERT_OK_AND_ASSIGN(params,
                           Thunk::CollectiveExecuteParams::Create(&run_options));
-  EXPECT_EQ(params.collectives,
-            reinterpret_cast<CollectivesInterface*>(0x12345678));
+  EXPECT_EQ(params.collectives, reinterpret_cast<CpuCollectives*>(0x12345678));
 }
 
 }  // namespace

@@ -45,8 +45,8 @@ class OpGenerator {
   //
   // Output files are generated in <output_dir>/<base_package>/<op_package>,
   // where 'op_package' is derived from ops endpoints.
-  Status Run(const OpList& op_list, const string& base_package,
-             const string& output_dir);
+  absl::Status Run(const OpList& op_list, const string& base_package,
+                   const string& output_dir);
 
  private:
   const std::vector<string> api_dirs_;

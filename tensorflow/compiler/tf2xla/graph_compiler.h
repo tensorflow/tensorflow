@@ -66,7 +66,7 @@ class GraphCompiler {
   // Compiles the graph. The results are written in xla_context stored in the
   // resource_manager of the 'XlaCompilationDevice' that's passed into the
   // constructor.
-  Status Compile();
+  absl::Status Compile();
 
  private:
   // Partially sets params. This partially set params can be reused
@@ -76,7 +76,7 @@ class GraphCompiler {
   // Compiles a functional node and writes result to OpkernelContext. A
   // functional node represents a defined computation and should be compiled
   // using `compiler_`.
-  Status CompileFunctionalNode(Node* n, OpKernelContext* op_context);
+  absl::Status CompileFunctionalNode(Node* n, OpKernelContext* op_context);
 
   XlaCompilationDevice* device_;
   Graph* graph_;

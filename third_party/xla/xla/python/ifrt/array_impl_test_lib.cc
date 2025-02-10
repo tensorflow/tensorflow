@@ -39,9 +39,9 @@ limitations under the License.
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -311,9 +311,8 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferReplicated) {
   std::iota(data->begin(), data->end(), 0);
   absl::Span<Device* const> devices = client->addressable_devices();
   std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
-      BasicDeviceList::Create(
-          BasicDeviceList::Devices(devices.begin(), devices.end())),
-      MemoryKind(), shape, /*shard_shape=*/shape, /*is_fully_replicated=*/true);
+      BasicDeviceList::Create(devices), MemoryKind(), shape,
+      /*shard_shape=*/shape, /*is_fully_replicated=*/true);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array,
@@ -330,7 +329,8 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferReplicated) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
                           array->DisassembleIntoSingleDeviceArrays(
-                              ArrayCopySemantics::kAlwaysCopy));
+                              ArrayCopySemantics::kAlwaysCopy,
+                              SingleDeviceShardSemantics::kAddressableShards));
   ASSERT_EQ(single_device_arrays.size(), devices.size());
   for (int i = 0; i < single_device_arrays.size(); ++i) {
     EXPECT_THAT(single_device_arrays[i]->sharding().devices()->devices(),
@@ -375,15 +375,16 @@ TEST(ArrayImplTest, AssembleArray) {
   std::vector<tsl::RCReference<Array>> arrays({array0, array1});
   Shape assembled_shape({4, 3});
   std::shared_ptr<const Sharding> assembled_sharding = OpaqueSharding::Create(
-      BasicDeviceList::Create(BasicDeviceList::Devices(
+      BasicDeviceList::Create(
           {array0->sharding().devices()->devices().front(),
-           array1->sharding().devices()->devices().front()})),
+           array1->sharding().devices()->devices().front()}),
       MemoryKind());
   TF_ASSERT_OK_AND_ASSIGN(
       auto assembled_array,
       client->AssembleArrayFromSingleDeviceArrays(
           assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
-          ArrayCopySemantics::kAlwaysCopy));
+          ArrayCopySemantics::kAlwaysCopy,
+          SingleDeviceShardSemantics::kAddressableShards));
 
   EXPECT_EQ(assembled_array->dtype(), dtype);
   EXPECT_EQ(assembled_array->shape(), assembled_shape);
@@ -422,9 +423,9 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
   Shape assembled_shape({4, 3});
   ShardingParam sharding_param(
       /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}});
-  auto ifrt_device_list = BasicDeviceList::Create(BasicDeviceList::Devices(
+  auto ifrt_device_list = BasicDeviceList::Create(
       {array0->sharding().devices()->devices().front(),
-       array1->sharding().devices()->devices().front()}));
+       array1->sharding().devices()->devices().front()});
   TF_ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<const Sharding> sharding_param_sharding,
       ShardingParamSharding::Create(std::move(sharding_param), ifrt_device_list,
@@ -438,11 +439,14 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
         auto assembled_array,
         client->AssembleArrayFromSingleDeviceArrays(
             assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
-            ArrayCopySemantics::kAlwaysCopy));
+            ArrayCopySemantics::kAlwaysCopy,
+            SingleDeviceShardSemantics::kAddressableShards));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
-                            assembled_array->DisassembleIntoSingleDeviceArrays(
-                                ArrayCopySemantics::kAlwaysCopy));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto single_device_arrays,
+        assembled_array->DisassembleIntoSingleDeviceArrays(
+            ArrayCopySemantics::kAlwaysCopy,
+            SingleDeviceShardSemantics::kAddressableShards));
 
     ASSERT_THAT(single_device_arrays, SizeIs(2));
     EXPECT_EQ(single_device_arrays[0]->dtype(), array0->dtype());
@@ -479,7 +483,8 @@ TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
   TF_ASSERT_OK_AND_ASSIGN(auto assembled_array,
                           client->AssembleArrayFromSingleDeviceArrays(
                               shape, sharding, absl::MakeSpan(arrays),
-                              ArrayCopySemantics::kAlwaysCopy));
+                              ArrayCopySemantics::kAlwaysCopy,
+                              SingleDeviceShardSemantics::kAddressableShards));
 
   ASSERT_EQ(assembled_array->dtype(), array->dtype());
   ASSERT_EQ(assembled_array->shape(), array->shape());
@@ -488,7 +493,8 @@ TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
                           assembled_array->DisassembleIntoSingleDeviceArrays(
-                              ArrayCopySemantics::kAlwaysCopy));
+                              ArrayCopySemantics::kAlwaysCopy,
+                              SingleDeviceShardSemantics::kAddressableShards));
 
   ASSERT_THAT(single_device_arrays, SizeIs(1));
   ASSERT_EQ(single_device_arrays[0]->dtype(), array->dtype());
@@ -530,9 +536,8 @@ TEST(ArrayImplTest, CopyToSameDevices) {
 
 TEST(ArrayImplTest, CopyToDifferentDevice) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  tsl::RCReference<DeviceList> devices = BasicDeviceList::Create(
-      BasicDeviceList::Devices(client->addressable_devices().begin(),
-                               client->addressable_devices().end()));
+  tsl::RCReference<DeviceList> devices =
+      BasicDeviceList::Create(client->addressable_devices());
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});
@@ -557,18 +562,22 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
     std::vector<Shape> shapes(shards.size(), shape);
     std::shared_ptr<const Sharding> sharding =
         ConcreteSharding::Create(devices, MemoryKind(), shape, shapes);
-    TF_ASSERT_OK_AND_ASSIGN(arrays.emplace_back(),
-                            client->AssembleArrayFromSingleDeviceArrays(
-                                shape, sharding, absl::MakeSpan(shards),
-                                ArrayCopySemantics::kAlwaysCopy));
+    TF_ASSERT_OK_AND_ASSIGN(
+        arrays.emplace_back(),
+        client->AssembleArrayFromSingleDeviceArrays(
+            shape, sharding, absl::MakeSpan(shards),
+            ArrayCopySemantics::kAlwaysCopy,
+            SingleDeviceShardSemantics::kAddressableShards));
   }
   {
     std::shared_ptr<const Sharding> sharding =
         ConcreteEvenSharding::Create(devices, MemoryKind(), shape, shape);
-    TF_ASSERT_OK_AND_ASSIGN(arrays.emplace_back(),
-                            client->AssembleArrayFromSingleDeviceArrays(
-                                shape, sharding, absl::MakeSpan(shards),
-                                ArrayCopySemantics::kAlwaysCopy));
+    TF_ASSERT_OK_AND_ASSIGN(
+        arrays.emplace_back(),
+        client->AssembleArrayFromSingleDeviceArrays(
+            shape, sharding, absl::MakeSpan(shards),
+            ArrayCopySemantics::kAlwaysCopy,
+            SingleDeviceShardSemantics::kAddressableShards));
   }
 
   BasicDeviceList::Devices new_devices;
@@ -589,9 +598,10 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
             BasicDeviceList::Create(new_devices), MemoryKind()));
     EXPECT_EQ(new_arrays[i]->sharding(), *expected_sharding);
 
-    TF_ASSERT_OK_AND_ASSIGN(auto shards,
-                            arrays[i]->DisassembleIntoSingleDeviceArrays(
-                                ArrayCopySemantics::kAlwaysCopy));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto shards, arrays[i]->DisassembleIntoSingleDeviceArrays(
+                         ArrayCopySemantics::kAlwaysCopy,
+                         SingleDeviceShardSemantics::kAddressableShards));
     for (const auto& shard : shards) {
       std::vector<float> out_data(6);
       auto future = shard->CopyToHostBuffer(out_data.data(),
@@ -627,8 +637,7 @@ TEST(ArrayImplTest, CopyMixedSourceDevices) {
   Device* new_device = client->addressable_devices().at(1);
   EXPECT_THAT(client
                   ->CopyArrays(absl::MakeSpan(arrays),
-                               BasicDeviceList::Create(
-                                   BasicDeviceList::Devices({new_device})),
+                               BasicDeviceList::Create({new_device}),
                                MemoryKind(), ArrayCopySemantics::kAlwaysCopy)
                   .status(),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -662,8 +671,7 @@ TEST(ArrayImplTest, CopyMixedSourceMemoryKind) {
   Device* new_device = client->addressable_devices().at(1);
   EXPECT_THAT(client
                   ->CopyArrays(absl::MakeSpan(arrays),
-                               BasicDeviceList::Create(
-                                   BasicDeviceList::Devices({new_device})),
+                               BasicDeviceList::Create({new_device}),
                                MemoryKind(), ArrayCopySemantics::kAlwaysCopy)
                   .status(),
               StatusIs(absl::StatusCode::kInvalidArgument));

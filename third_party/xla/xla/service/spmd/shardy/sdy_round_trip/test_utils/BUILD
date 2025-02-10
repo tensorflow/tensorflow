@@ -1,4 +1,4 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,30 +16,23 @@ package_group(
 )
 
 cc_library(
-    name = "mhlo_to_hlo_to_mhlo",
-    srcs = ["mhlo_to_hlo_to_mhlo.cc"],
-    hdrs = ["mhlo_to_hlo_to_mhlo.h"],
+    name = "stablehlo_to_hlo_to_stablehlo",
+    srcs = ["stablehlo_to_hlo_to_stablehlo.cc"],
+    hdrs = ["stablehlo_to_hlo_to_stablehlo.h"],
     deps = [
-        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
-        "//xla/mlir_hlo",
-        "//xla/mlir_hlo:mhlo_passes",
+        "//xla/hlo/translate:stablehlo",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
-        "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "//xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
-        "@shardy//shardy/dialect/sdy/ir:dialect",
-        "@stablehlo//:stablehlo_ops",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -48,7 +41,7 @@ cc_library(
     srcs = ["testing_pipeline.cc"],
     hdrs = ["testing_pipeline.h"],
     deps = [
-        ":mhlo_to_hlo_to_mhlo",
+        ":stablehlo_to_hlo_to_stablehlo",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "@llvm-project//mlir:Pass",
     ],

@@ -21,10 +21,22 @@ limitations under the License.
 namespace xla {
 
 // Convert between inclusive/exclusive start/end times.
-int64_t ExclusiveToInclusiveStartTime(int64_t exclusive_time);
-int64_t InclusiveToExclusiveStartTime(int64_t inclusive_time);
-int64_t ExclusiveToInclusiveEndTime(int64_t exclusive_time);
-int64_t InclusiveToExclusiveEndTime(int64_t inclusive_time);
+
+inline int64_t ExclusiveToInclusiveStartTime(int64_t exclusive_time) {
+  return exclusive_time + 1;
+}
+
+inline int64_t InclusiveToExclusiveStartTime(int64_t inclusive_time) {
+  return inclusive_time - 1;
+}
+
+inline int64_t ExclusiveToInclusiveEndTime(int64_t exclusive_time) {
+  return exclusive_time - 1;
+}
+
+inline int64_t InclusiveToExclusiveEndTime(int64_t inclusive_time) {
+  return inclusive_time + 1;
+}
 
 }  // namespace xla
 

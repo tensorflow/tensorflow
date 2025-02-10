@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/python/refine_polymorphic_shapes.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -49,8 +50,8 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 

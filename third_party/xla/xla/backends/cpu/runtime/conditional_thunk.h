@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
@@ -37,6 +36,14 @@ class ConditionalThunk final : public Thunk {
 
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
+
+  const std::vector<ThunkExecutor>& branch_executors() const {
+    return branch_executors_;
+  }
+
+  const BufferAllocation::Slice& branch_index_buffer() const {
+    return branch_index_buffer_;
+  }
 
  private:
   ConditionalThunk(Info info, BufferAllocation::Slice branch_index_buffer,

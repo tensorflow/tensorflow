@@ -16,16 +16,25 @@ limitations under the License.
 #ifndef XLA_SERVICE_COLLECTIVE_PERMUTE_DECOMPOSER_H_
 #define XLA_SERVICE_COLLECTIVE_PERMUTE_DECOMPOSER_H_
 
+#include <cstdint>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
+inline constexpr absl::string_view kCollectiveStreamAttrName =
+    "_xla_gpu_collective_stream";
+inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
+
 // CollectivePermuteDecomposer is a pass that (1) converts CollectivePermute
 // operations without any cycle in their (source, target) relationship to
 // Send/Recv, and (2) annotates the Send/Recv for pipelining with a frontend
-// frontend attribute. We currently restrict the decomposition to
-// CollectivePermute with one input and without any context data.
+// attribute. We currently restrict the decomposition to CollectivePermute with
+// one input and without any context data.
 //
 // before transformation:
 //     cp = (<rt>, <rt>) collective-permute(data),
@@ -54,13 +63,15 @@ namespace xla {
 //
 class CollectivePermuteDecomposer : public HloModulePass {
  public:
-  explicit CollectivePermuteDecomposer(int64_t threshold_in_bytes)
-      : threshold_in_bytes_(threshold_in_bytes) {}
+  explicit CollectivePermuteDecomposer(
+      int64_t threshold_in_bytes,
+      DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level)
+      : threshold_in_bytes_(threshold_in_bytes),
+        pipeline_parallelism_opt_level_(pipeline_parallelism_opt_level) {}
   absl::string_view name() const override {
     return "collective-permute-decomposer";
   }
 
-  using HloPassInterface::Run;
   // Runs CollectivePermuteDecomposer pass on computations in 'module'.
   // Returns whether the 'module' was changed.
   absl::StatusOr<bool> Run(
@@ -70,6 +81,8 @@ class CollectivePermuteDecomposer : public HloModulePass {
  private:
   // Transform only if the size of the collective permute is >= threshold.
   int64_t threshold_in_bytes_;
+
+  DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level_;
 };
 
 }  // namespace xla

@@ -15,8 +15,14 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/util.h"
 
 #include <cstdarg>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <iterator>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -82,7 +88,7 @@ TEST(UtilTest, ConvertStatus) {
   EXPECT_EQ(context.error, "Some Error");
 
   context.error.clear();
-  EXPECT_EQ(ConvertStatus(&context, tensorflow::Status()), kTfLiteOk);
+  EXPECT_EQ(ConvertStatus(&context, absl::Status()), kTfLiteOk);
   EXPECT_TRUE(context.error.empty());
 }
 

@@ -29,7 +29,7 @@
 # -o history: record shell history
 # -o allexport: export all functions and variables to be available to subscripts
 #               (affects 'source $TFCI')
-set -euxo pipefail -o history -o allexport
+set -exo pipefail -o history -o allexport
 
 # Set TFCI_GIT_DIR, the root directory for all commands, to two directories
 # above the location of this file (setup.sh). We could also use "git rev-parse
@@ -81,6 +81,7 @@ else
     source "$FROM_ENV"
     rm "$FROM_ENV"
   fi
+  set +u
 fi
 
 # If building installer wheels, set the required environment variables that are
@@ -118,7 +119,7 @@ exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
 # functionality instead.
 tfrun() { "$@"; }
 
-if [[ `uname -s | grep -P '^MSYS_NT'` ]]; then
+if [[ $(uname -s) = MSYS_NT* ]]; then
   source ./ci/official/utilities/windows.sh
   echo 'Converting MSYS Linux-like paths to Windows paths (for Docker, Python, etc.)'
   source <(python ./ci/official/utilities/convert_msys_paths_to_win_paths.py --whitelist-prefix TFCI_)
@@ -133,6 +134,15 @@ fi
 if [[ "$TFCI_INDEX_HTML_ENABLE" == 1 ]]; then
   ./ci/official/utilities/generate_index_html.sh "$TFCI_OUTPUT_DIR/index.html"
 fi
+
+# Re-try `bazel --version` multiple times to get around
+# Bazel download issues.
+set +e
+MAX_RETRIES=2
+for ((i=1; i <= $MAX_RETRIES; i++)); do
+  tfrun bazel --version
+done
+set -e
 
 # Single handler for all cleanup actions, triggered on an EXIT trap.
 # TODO(angerson) Making this use different scripts may be overkill.

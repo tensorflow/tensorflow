@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_type.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tsl {
 

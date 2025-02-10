@@ -7,8 +7,8 @@ cc_library(
     name = "sm_bw_utils",
     hdrs = ["sm_bw_utils.h"],
     tags = [
+        "cuda-only",
         "gpu",
-        "no_rocm",
     ],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
@@ -20,7 +20,7 @@ cuda_library(
     name = "sm_bw_kernels",
     srcs = ["sm_bw_kernels.cu.cc"],
     hdrs = ["sm_bw_kernels.h"],
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = [
         ":sm_bw_utils",
     ],
@@ -30,8 +30,8 @@ xla_cc_test(
     name = "sm_bw_test",
     srcs = ["sm_bw_test.cc"],
     tags = [
+        "cuda-only",
         "gpu",
-        "no_rocm",
         "requires-gpu-nvidia",
     ],
     deps = [

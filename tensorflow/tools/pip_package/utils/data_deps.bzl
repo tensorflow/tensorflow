@@ -36,10 +36,11 @@ def _collect_data_aspect_impl(_, ctx):
                     continue
                 files[f] = True
 
-    for dep in ctx.rule.attr.deps:
-        if dep[FilePathInfo].files:
-            for file in dep[FilePathInfo].files.to_list():
-                files[file] = True
+    if hasattr(ctx.rule.attr, "deps"):
+        for dep in ctx.rule.attr.deps:
+            if dep[FilePathInfo].files:
+                for file in dep[FilePathInfo].files.to_list():
+                    files[file] = True
 
     return [FilePathInfo(files = depset(files.keys()))]
 

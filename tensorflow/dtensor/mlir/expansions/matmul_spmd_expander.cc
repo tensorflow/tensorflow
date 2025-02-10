@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/matmul_spmd_expander.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -30,7 +34,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -189,7 +192,7 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
 // * The resulting layout of the matmul tensor, so we can insert an AllConcat/
 //   split to make the output have the desired layout.
 // * The left and right value for use as input to the matmul.
-Status MatMulSPMDExpander::MaybeRelayoutInputs(
+absl::Status MatMulSPMDExpander::MaybeRelayoutInputs(
     mlir::Operation* op, const Layout& left_layout, bool left_transposed,
     const Layout& right_layout, bool right_transposed,
     const Layout& output_layout, std::string& reduced_dim,

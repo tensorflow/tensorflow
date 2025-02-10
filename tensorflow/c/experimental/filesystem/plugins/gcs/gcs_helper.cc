@@ -16,7 +16,9 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <cstdio>
 #include <fstream>
+#include <ios>
 #include <string>
 #include <utility>
 

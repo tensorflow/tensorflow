@@ -16,29 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CONVOLUTION_PRED_EXPANDER_H_
 #define XLA_SERVICE_CONVOLUTION_PRED_EXPANDER_H_
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-// A pass that rewrites boolean convolutions to floating point and converts the
-// result back to boolean. This is necessary, as the convolutions on GPUs are
-// implemented using custom call to cuDNN, which only supports FP and S8 inputs.
-class ConvolutionPredExpander : public OpExpanderPass {
- public:
-  absl::string_view name() const override {
-    return "convolution-pred-expander";
-  }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/convolution_pred_expander.h"
 
 #endif  // XLA_SERVICE_CONVOLUTION_PRED_EXPANDER_H_

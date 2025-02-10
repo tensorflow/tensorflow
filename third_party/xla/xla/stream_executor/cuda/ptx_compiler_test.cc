@@ -158,7 +158,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileHelper(
                                       /*preferred_cuda_dir=*/"", extra_flags);
 
   return stream_executor::CompileGpuAsmUsingLibNvPtxCompiler(
-      cc.major, cc.minor, ptx_input, options, cancel_if_reg_spill);
+      cc, ptx_input, options, cancel_if_reg_spill);
 }
 
 class PtxCompilerTest : public ::testing::Test {
@@ -166,7 +166,7 @@ class PtxCompilerTest : public ::testing::Test {
     // This can't be in the constructor because `GTEST_SKIP` can't be called
     // from constructors.
     if (!stream_executor::IsLibNvPtxCompilerSupported()) {
-      // We skip these tests if this is a build without libnvptxcompiler
+      // We skip these tests if this is a build without libNvptxCompiler
       // support.
       GTEST_SKIP();
     }

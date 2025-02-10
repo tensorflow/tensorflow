@@ -37,6 +37,8 @@ class CallThunk final : public Thunk {
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
 
+  const ThunkExecutor& called_executor() const { return called_executor_; }
+
  private:
   CallThunk(Info info, ThunkExecutor called_executor);
 

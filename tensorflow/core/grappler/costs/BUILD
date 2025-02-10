@@ -227,6 +227,7 @@ tf_cc_test(
         ":cost_estimator",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -416,7 +417,6 @@ tf_cc_test(
 # py_proto_library(
 #     name = "op_performance_data_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":op_performance_data"],
 # )

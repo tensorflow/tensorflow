@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 
-#include <cstddef>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -43,10 +41,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TFL {

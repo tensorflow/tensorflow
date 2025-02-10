@@ -332,7 +332,7 @@ TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status) {
         "Invalid text proto for ServerDef: ", text_proto);
     return nullptr;
   }
-  status->status = tensorflow::Status();
+  status->status = absl::Status();
   TF_Buffer* ret = TF_NewBuffer();
   TF_CHECK_OK(MessageToBuffer(server_def, ret));
   return ret;
@@ -595,10 +595,11 @@ void TF_DeleteShapeAndTypeListArray(TF_ShapeAndTypeList** shape_list_array,
 }
 
 namespace tensorflow {
-Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+absl::Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 // Helpers for loadding a TensorFlow PluggableDevice plugin (a .so file).
-Status LoadPluggableDeviceLibrary(const char* library_filename, void** result);
+absl::Status LoadPluggableDeviceLibrary(const char* library_filename,
+                                        void** result);
 }  // namespace tensorflow
 
 void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,

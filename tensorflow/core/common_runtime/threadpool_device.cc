@@ -118,7 +118,7 @@ Allocator* ThreadPoolDevice::GetScopedAllocator(AllocatorAttributes attr,
   return allocator_;
 }
 
-Status ThreadPoolDevice::MakeTensorFromProto(
+absl::Status ThreadPoolDevice::MakeTensorFromProto(
     const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
     Tensor* tensor) {
   if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
@@ -184,7 +184,7 @@ void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   op_kernel->Compute(context);
 
   if (context->status().ok() && node_file_writer_) {
-    Status s = node_file_writer_->RecordNodeExecution(op_kernel, context);
+    absl::Status s = node_file_writer_->RecordNodeExecution(op_kernel, context);
     if (!s.ok()) {
       LOG(ERROR) << s;
       context->SetStatus(s);

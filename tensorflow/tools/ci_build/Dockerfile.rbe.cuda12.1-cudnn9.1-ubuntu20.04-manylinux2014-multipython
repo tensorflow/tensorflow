@@ -19,6 +19,7 @@ COPY install/install_deb_packages.sh /install/
 RUN /install/install_deb_packages.sh
 
 RUN apt-get update && apt-get install -y \
+    python3.13-nogil \
     libbz2-dev \
     libffi-dev \
     libgdbm-dev \
@@ -37,6 +38,7 @@ RUN /install/build_and_install_python.sh "3.9.18"
 RUN /install/build_and_install_python.sh "3.10.13"
 RUN /install/build_and_install_python.sh "3.11.6"
 RUN /install/build_and_install_python.sh "3.12.2"
+RUN /install/build_and_install_python.sh "3.13.0"
 
 COPY install/install_pip_packages_by_version.sh /install/
 # https://github.com/numpy/numpy/issues/22623 for `SETUPTOOLS_USE_DISTUTILS`.
@@ -44,3 +46,5 @@ RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh 
 RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10" "jax"
 RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.11" "jax"
 RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.12" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.13" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/bin/python3.13-nogil" "jax"

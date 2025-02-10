@@ -47,8 +47,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 
 namespace tensorflow {

@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -26,8 +25,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -80,76 +81,40 @@ IotaReplicaGroupList IotaReplicaGroupList::FromProto(
                        proto.iota_transpose_perm().end()));
 }
 
-CollectiveDeviceList::CollectiveDeviceList(
-    tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator start,
-    tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator end) {
-  replica_groups_shared_ =
-      std::make_shared<std::vector<ReplicaGroup>>(start, end);
-  replica_groups_ = replica_groups_shared_.get();
-}
-
-CollectiveDeviceList::CollectiveDeviceList(
-    absl::Span<const ReplicaGroup> replica_groups) {
-  replica_groups_shared_ = std::make_shared<std::vector<ReplicaGroup>>(
-      replica_groups.begin(), replica_groups.end());
-  replica_groups_ = replica_groups_shared_.get();
-}
-
-CollectiveDeviceList::CollectiveDeviceList(
-    absl::Span<const std::vector<int64_t>> replica_groups) {
-  auto rg_list = std::make_shared<std::vector<ReplicaGroup>>();
-  rg_list->reserve(replica_groups.size());
-  for (auto g : replica_groups) {
-    auto& group = rg_list->emplace_back();
-    *group.mutable_replica_ids() = {g.begin(), g.end()};
-  }
-  replica_groups_shared_ = std::move(rg_list);
-  replica_groups_ = replica_groups_shared_.get();
-}
-
-CollectiveDeviceList::CollectiveDeviceList() {
-  replica_groups_shared_ = std::make_shared<std::vector<ReplicaGroup>>();
-  replica_groups_ = replica_groups_shared_.get();
-}
-
 void CollectiveDeviceList::MaybeMaterializeFullReplicaGroupList() const {
-  if (replica_groups_ != nullptr) {
+  if (replica_groups_ != nullptr && !replica_groups_->empty()) {
     VLOG(10) << "Replica group list already materialized.";
     return;
   }
-
-  DCHECK(iota_replica_group_list_.has_value());
+  if (!iota_replica_group_list_.has_value()) {
+    VLOG(1) << "Replica group list not materialized because iota replica group "
+               "list is not present.";
+    return;
+  }
   VLOG(10) << "Materializing full replica group list";
 
-  auto rg_list = std::make_shared<std::vector<ReplicaGroup>>();
+  replica_groups_ = std::make_shared<std::vector<ReplicaGroup>>();
   const int64_t num_replica_groups =
       iota_replica_group_list_->num_replica_groups();
-  rg_list->reserve(num_replica_groups);
+  replica_groups_->reserve(num_replica_groups);
 
-  auto array = iota_replica_group_list_->ToArray();
+  Array<int64_t> array = iota_replica_group_list_->ToArray();
   // Iota replica group list array must only have 2 dimensions.
   DCHECK_EQ(array.num_dimensions(), 2);
   const int64_t num_devices_per_group =
       iota_replica_group_list_->num_devices_per_group();
   DCHECK_EQ(array.end() - array.begin(),
             num_devices_per_group * num_replica_groups);
-  for (auto it = array.begin(), end = array.end(); it != end;
+  for (auto it = array.begin(); it != array.end();
        it += num_devices_per_group) {
-    *rg_list->emplace_back().mutable_replica_ids() = {
-        it, it + num_devices_per_group};
+    auto& group = replica_groups_->emplace_back();
+    *group.mutable_replica_ids() = {it, it + num_devices_per_group};
   }
-
-  replica_groups_shared_ = std::move(rg_list);
-  replica_groups_ = replica_groups_shared_.get();
 }
 
-const std::vector<ReplicaGroup>& CollectiveDeviceList::replica_groups() const {
-  MaybeMaterializeFullReplicaGroupList();
-  return *replica_groups_;
-}
-
-std::string CollectiveDeviceList::ToString() const {
-  if (iota_replica_group_list_.has_value()) {
+std::string CollectiveDeviceList::ToString(
+    bool print_full_replica_group_list) const {
+  if (iota_replica_group_list_.has_value() && !print_full_replica_group_list) {
     return iota_replica_group_list_->ToString();
   }
 

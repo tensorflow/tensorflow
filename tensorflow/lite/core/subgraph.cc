@@ -497,9 +497,12 @@ const char* GetDelegateKernalName(const TfLiteRegistration& registration) {
 TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
                                       std::vector<NodeSubset>* node_subsets) {
   const InterpreterInfo info(this);
-  return PartitionGraphIntoIndependentNodeSubsets(
+  // Tensor preservation requires node fusion to be disabled.
+  const bool disable_node_fusion = ShouldPreserveAllTensors();
+  return tflite::PartitionGraphIntoIndependentNodeSubsets(
       &info, nodes_to_replace, node_subsets,
-      /*greedily=*/!DisableDelegateClustering(), control_edges_);
+      /*greedily=*/!DisableDelegateClustering(), control_edges_,
+      disable_node_fusion);
 }
 
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
@@ -562,9 +565,10 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                   "Replacing %d out of %d node(s) with delegate (%s) node, "
                   "yielding %zu partitions "
-                  "for the whole graph.",
+                  "for subgraph %d.",
                   nodes_to_replace->size, execution_plan_.size(),
-                  GetDelegateKernalName(registration), node_subsets.size());
+                  GetDelegateKernalName(registration), node_subsets.size(),
+                  subgraph_index_);
 
   execution_plan_.clear();
 
@@ -1506,7 +1510,8 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
                               node_index);
 #endif  // TF_LITE_TENSORFLOW_PROFILER
     const TfLiteStatus op_prepare_status = OpPrepare(registration, &node);
-    if (op_prepare_status != kTfLiteOk) {
+    if (op_prepare_status != kTfLiteOk &&
+        op_prepare_status != kTfLiteOutputShapeNotKnown) {
       ReportOpError(&context_, node, registration, node_index,
                     "failed to prepare");
       return op_prepare_status;
@@ -1517,7 +1522,8 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     // Discontinue if the node has dynamic outputs. Note that we don't
     // stop for dynamic temporary tensors since they won't affect the
     // sizes of other tensors in the graph.
-    if (HasDynamicTensor(context_, node.outputs, &dynamic_tensor_index_)) {
+    if (HasDynamicTensor(context_, node.outputs, &dynamic_tensor_index_) ||
+        op_prepare_status == kTfLiteOutputShapeNotKnown) {
       has_dynamic_tensors_ = true;
       return kTfLiteOk;
     }
@@ -1684,7 +1690,8 @@ TfLiteStatus Subgraph::InvokeImpl() {
           tensor->data_is_stale) {
         TF_LITE_ENSURE_STATUS(EnsureTensorDataIsReadable(tensor_index));
       }
-      if (tensor->data.raw == nullptr && tensor->bytes > 0) {
+      if (tensor->data.raw == nullptr && tensor->bytes > 0 &&
+          tensor->allocation_type != kTfLiteNonCpu) {
         if (registration.builtin_code == kTfLiteBuiltinReshape && i == 1 &&
             tensor->dims->size != 1) {
           // In general, having a tensor here with no buffer will be an error.
@@ -2007,7 +2014,8 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
       tensor->allocation_type == kTfLiteDynamic ||
       tensor->allocation_type == kTfLiteArenaRwPersistent ||
       tensor->allocation_type == kTfLitePersistentRo ||
-      tensor->allocation_type == kTfLiteCustom) {
+      tensor->allocation_type == kTfLiteCustom ||
+      tensor->allocation_type == kTfLiteNonCpu) {
     tensor_resized_since_op_invoke_ |=
         TfLiteIntArrayEqual(tensor->dims, new_size) == 0;
     if (tensor->type != kTfLiteString && tensor->type != kTfLiteResource &&

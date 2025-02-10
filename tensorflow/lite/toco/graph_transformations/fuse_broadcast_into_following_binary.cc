@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -52,9 +52,9 @@ bool IsBroadcastingOp(const Model& model, Operator* op) {
 // Finds an operation that looks like a broadcast (concat of the same sources
 // along the last dimension) and drops it by relying on the ability of certain
 // binary ops to perform an implicit broadcast.
-::tensorflow::Status FuseBroadcastIntoFollowingBinary::Run(Model* model,
-                                                           std::size_t op_index,
-                                                           bool* modified) {
+absl::Status FuseBroadcastIntoFollowingBinary::Run(Model* model,
+                                                   std::size_t op_index,
+                                                   bool* modified) {
   *modified = false;
   const auto binary_it = model->operators.begin() + op_index;
   auto* binary_op = binary_it->get();

@@ -38,10 +38,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -793,7 +793,7 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
   lhs = lhs.Reshard(target_operand_sharding);
 
   // Replicate the RHS.
-  rhs = rhs.Reshard(HloSharding::Replicate());
+  rhs = rhs.Replicate();
 
   // Convolution window config does not include batch and feature dimensions,
   // whereas ReshardAsWindowedInput() expects the same number of window

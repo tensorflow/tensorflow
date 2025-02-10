@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #ifndef TENSORFLOW_CORE_TFRT_GPU_KERNEL_TFRT_GPU_INIT_H_
 #define TENSORFLOW_CORE_TFRT_GPU_KERNEL_TFRT_GPU_INIT_H_
+#include "absl/status/status.h"
 #include "xla/tsl/framework/serving_device_selector_policies.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
@@ -27,8 +28,8 @@ struct GpuRunnerOptions {
       tsl::ServingDeviceSelectorPolicy::kRoundRobin;
 };
 
-Status InitTfrtGpu(const GpuRunnerOptions& options,
-                   tensorflow::tfrt_stub::Runtime& runtime);
+absl::Status InitTfrtGpu(const GpuRunnerOptions& options,
+                         tensorflow::tfrt_stub::Runtime& runtime);
 
 }  // namespace gpu
 }  // namespace tensorflow

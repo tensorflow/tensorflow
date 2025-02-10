@@ -1,4 +1,8 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load(
+    "@local_xla//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 
 package(
@@ -22,6 +26,7 @@ package_group(
         "//learning/brain/tfrt/mlir/mlrt/application/pathways/compiler/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
+        "//learning/infra/mira/experimental/orbax_model/serving/sidecar/...",
         "//smartass/brain/util/...",
     ]),
 )
@@ -89,10 +94,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
+        "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/mlir/tensorflow/ir/host_runtime:tensorflow_tfrt_ops",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:tpu_metadata_utils",
@@ -125,6 +130,7 @@ cc_library(
     srcs = ["tf2hlo.cc"],
     hdrs = ["tf2hlo.h"],
     deps = [
+        ":ifrt_compilation_proto_cc",
         ":ifrt_constants",
         ":ifrt_types",
         "//tensorflow/compiler/jit:xla_cpu_jit",
@@ -151,16 +157,17 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:fingerprint",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:client_library",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "@local_xla//xla/pjrt:pjrt_compiler",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
-        "@local_xla//xla/service/llvm_ir:llvm_util",
-        "@local_xla//xla/stream_executor",
-        "@local_xla//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 
@@ -204,16 +211,24 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/pjrt:pjrt_compiler",
+        "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
         "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:mock",
         "@local_xla//xla/python/ifrt:test_util",
+        "@local_xla//xla/python/pjrt_ifrt",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
+        "@local_xla//xla/service:computation_placer_hdr",
     ],
 )
 
@@ -242,9 +257,9 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -263,21 +278,37 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "//tensorflow/core/tfrt/ifrt:ifrt_executable_registry",
         "//tensorflow/core/tfrt/ifrt:ifrt_model_context",
         "//tensorflow/core/tfrt/ifrt:ifrt_serving_core_selector",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@local_xla//xla/tsl/framework/test_util:mock_serving_device_selector",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:statusor",
         "@tf_runtime//:hostcontext",
+    ],
+)
+
+tf_proto_library(
+    name = "ifrt_compilation_proto",
+    srcs = ["ifrt_compilation.proto"],
+    protodeps = [
+        "//tensorflow/compiler/tf2xla:host_compute_metadata_proto",
+        "@local_xla//xla/service:hlo_proto",
+        "//tensorflow/core:protos_all",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto",
     ],
 )

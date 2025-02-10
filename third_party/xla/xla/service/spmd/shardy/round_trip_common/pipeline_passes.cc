@@ -17,10 +17,13 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "xla/service/spmd/shardy/round_trip_common/convert_sharding_custom_calls.h"
+#include "stablehlo/transforms/Passes.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
+#include "xla/service/spmd/shardy/round_trip_common/import_backend_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
+#include "xla/service/spmd/shardy/round_trip_common/import_sdy_custom_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 
 namespace xla {
@@ -34,25 +37,30 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm) {
   // We call prepare-for-export pass before SDY propagation, so that all IR
   // changes happen before shardings are added to operations, to ensure the
   // correct shardings are added and that they are not lost by this pass.
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createPrepareForExportPass());
-
-  // We import `mhlo.constant` ops to `sdy.constant` ops so that constants
+  pm.addNestedPass<FuncOp>(
+      mlir::stablehlo_ext::createStablehloPrepareForHloExportPass());
+  // We import `stablehlo.constant` ops to `sdy.constant` ops so that constants
   // aren't folded in greedy pattern rewriters, which would lift them outside of
   // nested regions (this undoes `WhileLoopConstantSinking` HLO pass).
-  // Therefore, this pass needs to be applied after any mhlo pass that expects
-  // `mhlo.constant`, and before any pass that has a greedy pattern rewriter.
+  // Therefore, this pass needs to be applied after any StableHLO pass that
+  // expects `stablehlo.constant`, and before any pass that has a greedy pattern
+  // rewriter.
   pm.addNestedPass<FuncOp>(createImportConstantsPass());
-
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createFlattenTuplePass());
-  // We need to canonicalize redundant mhlo::GetTupleElementOp and
-  // mhlo::GetTupleOp. We also need to canonicalize mhlo::WhileOp before
-  // `createOpenWhileFreeVarsShardingPass`.
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::stablehlo_ext::createStablehloFlattenTuplePass());
+  mlir::GreedyRewriteConfig config;
+  config.useTopDownTraversal = true;
+  config.enableRegionSimplification = mlir::GreedySimplifyRegionLevel::Disabled;
+  config.fold = false;
+  config.cseConstants = false;
+  pm.addNestedPass<FuncOp>(
+      mlir::stablehlo::createStablehloAggressiveSimplificationPass(config));
 }
 
 void addCommonPostImportPasses(mlir::OpPassManager& pm) {
-  pm.addPass(createConvertShardingCustomCallsPass());
+  pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
+  pm.addPass(createImportBackendFuncCallsPass());
 }
 
 }  // namespace sdy

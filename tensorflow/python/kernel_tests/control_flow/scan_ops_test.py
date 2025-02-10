@@ -155,6 +155,10 @@ class CumsumTest(test.TestCase):
     for dtype in self.valid_dtypes:
       if np.__version__ >= np.lib.NumpyVersion("2.0.0") and dtype == np.float16:
         continue
+      if dtype == dtypes.bfloat16.as_numpy_dtype:
+        # https://github.com/numpy/numpy/issues/27709, which might be fixed
+        # in some numpy version after 2.1.3.
+        continue
 
       x = np.ones([1000000], dtype=dtype) / 1024
       self._compareAll(x, 0)

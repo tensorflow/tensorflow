@@ -33,9 +33,9 @@ namespace tensorflow {
 // `grad_inputs` and `grad_outputs` are both in loop-variable order, as defined
 // by the original inputs to BuildWhileLoop().
 // TODO(skyewm): maybe comment on NoGradient once it's supported
-Status AddWhileLoopGradient(WhileContext* while_ctx, const Scope& scope,
-                            const std::vector<Output>& grad_inputs,
-                            std::vector<Output>* grad_outputs);
+absl::Status AddWhileLoopGradient(WhileContext* while_ctx, const Scope& scope,
+                                  const std::vector<Output>& grad_inputs,
+                                  std::vector<Output>* grad_outputs);
 
 }  // namespace tensorflow
 

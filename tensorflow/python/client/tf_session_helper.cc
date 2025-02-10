@@ -88,7 +88,7 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
   PyObject* value;
   Py_ssize_t pos = 0;
   int index = 0;
-  Status s;
+  absl::Status s;
 
   while (PyDict_Next(feed_dict, &pos, &key, &value)) {
     char* key_string = PyBytes_AsString(key);
@@ -195,7 +195,7 @@ void MakeCallableHelper(tensorflow::Session* session,
     return;
   }
   tensorflow::Session::CallableHandle handle;
-  Status s = session->MakeCallable(callable_options_proto, &handle);
+  absl::Status s = session->MakeCallable(callable_options_proto, &handle);
   if (!s.ok()) {
     tsl::Set_TF_Status_from_Status(out_status, s);
     return;
@@ -221,7 +221,7 @@ void RunCallableHelper(tensorflow::Session* session, int64_t handle,
                        PyObjectVector* out_values, TF_Buffer* run_metadata) {
   // Convert feed values to a vector of tensorflow::Tensor objects.
   std::vector<Tensor> input_tensors;
-  Status s;
+  absl::Status s;
   {
     feed_values =
         PySequence_Fast(feed_values, "feed_values must be a sequence");
@@ -369,7 +369,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
   DCHECK_EQ(inputs.size(), input_ndarrays.size());
   DCHECK(py_outputs != nullptr);
   DCHECK(py_outputs->empty());
-  Status s;
+  absl::Status s;
 
   // Convert input ndarray PyObjects to TF_Tensors. We maintain a continuous
   // array of TF_Tensor*s as well as scoped containers to make sure they're
@@ -722,7 +722,7 @@ PyObject* TF_TryEvaluateConstant_wrapper(TF_Graph* graph, TF_Output output,
 
   Safe_TF_TensorPtr safe_result_tensor(result_tensor);
   PyObject* out;
-  Status s = TF_TensorToPyArray(std::move(safe_result_tensor), &out);
+  absl::Status s = TF_TensorToPyArray(std::move(safe_result_tensor), &out);
   tsl::Set_TF_Status_from_Status(status, s);
   if (!s.ok()) Py_RETURN_NONE;
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(out));

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -98,9 +99,7 @@ absl::Status StatefulRngSpmdPartitioner::HandleRotateRightWhilePreprocessing(
           ->config()
           .debug_options()
           .xla_gpu_unsafe_pipelined_loop_annotator()) {
-    xla::FrontendAttributes attributes;
-    (*attributes.mutable_map())["is_pipelined_while_loop"] = "true";
-    while_loop->add_frontend_attributes(attributes);
+    while_loop->set_frontend_attribute("is_pipelined_while_loop", "true");
   }
   return absl::OkStatus();
 }

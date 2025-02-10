@@ -4100,6 +4100,7 @@ op {
         s: "low_priority_padding_with_max_batch_size"
         s: "low_priority_padding_with_next_allowed_batch_size"
         s: "priority_isolation"
+        s: "priority_merge"
       }
     }
   }
@@ -64744,6 +64745,7 @@ op {
     allowed_values {
       list {
         type: DT_QINT8
+        type: DT_QUINT8
         type: DT_QINT32
       }
     }
@@ -64806,6 +64808,7 @@ op {
     allowed_values {
       list {
         type: DT_QINT8
+        type: DT_QUINT8
         type: DT_QINT32
       }
     }

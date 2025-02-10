@@ -48,9 +48,9 @@ constraints in mind:
   Lite, you should track the compatibility of your model against the
   capabilities of TensorFlow Lite runtime environments.
 
-For more information building effective, compatible, high performance models
-for TensorFlow Lite, see
-[Performance best practices](../../performance/best_practices).
+For more information building effective, compatible, high performance models for
+TensorFlow Lite, see
+[Performance best practices](../../performance/best_practices.md).
 
 ### Model development
 
@@ -120,19 +120,16 @@ which provides an API that implements these techniques.
 
 ## Next steps
 
-* To start building your custom model, see the
-  [quick start for beginners](https://www.tensorflow.org/tutorials/quickstart/beginner)
-  tutorial in TensorFlow core documentation.
-* To convert your custom TensorFlow model, see the
-  [Convert models overview](../convert).
-* See the
-  [operator compatibility](../../guide/ops_compatibility) guide to determine
-  if your model is compatible with TensorFlow Lite or if you'll need to take
-  additional steps to make it compatible.
-* See the
-  [performance best practices guide](https://www.tensorflow.org/lite/performance/best_practices)
-  for guidance on making your TensorFlow Lite models efficient and performant.
-* See the [performance metrics guide](../../performance/measurement) to learn
-  how to measure the performance of your model using benchmarking tools.
-
-
+*   To start building your custom model, see the
+    [quick start for beginners](https://www.tensorflow.org/tutorials/quickstart/beginner)
+    tutorial in TensorFlow core documentation.
+*   To convert your custom TensorFlow model, see the
+    [Convert models overview](../convert).
+*   See the [operator compatibility](../../guide/ops_compatibility.md) guide to
+    determine if your model is compatible with TensorFlow Lite or if you'll need
+    to take additional steps to make it compatible.
+*   See the
+    [performance best practices guide](https://www.tensorflow.org/lite/performance/best_practices)
+    for guidance on making your TensorFlow Lite models efficient and performant.
+*   See the [performance metrics guide](../../performance/measurement.md) to
+    learn how to measure the performance of your model using benchmarking tools.

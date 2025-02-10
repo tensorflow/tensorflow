@@ -49,7 +49,7 @@ struct WhileLoopConfig {
   int64_t induction_var_idx;
 };
 
-// Config for unrollable while loops.
+// Result for unrolled while loops.
 struct UnrollResult {
   // Whether it's unrolled.
   bool unrolled = false;
@@ -65,9 +65,29 @@ struct UnrollResult {
 // 1. All start indices must be constant zero except only a single dimension.
 // 2. The start index of that dimension should be equal to the enclosing loop
 //    induction variable.
-// 3. And, the size of that dimension must match the loop trip count.
+// 3. The size of that dimension must match the loop trip count.
+// 4. For dynamic-slice, the slice size for the induction variable dimension is
+//    1, and the size of all other dimensions is the same as the shape of the
+//    input.
 // If so, it returns the dynamic index.
 std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
+    const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
+    const WhileLoopConfig& config);
+
+// More advanced version of the above method. Also checks if `instr` is a
+// dynamic index instruction, i.e. dynamic-elice or dynamic-update-slice with
+// the given input that operates on the entire shape of the instruction. To
+// satisfy this (this constraint list is looser):
+// 1. All start indices must be constant zero except for a single dimension,
+//    hereafter referred to as the dynamic dimension.
+// 2. The slice sizes of all nondynamic dimensions is the same as their size in
+//    the input shape.
+// 3. The start index of the dynamic dimension should be equal to the enclosing
+//    loop induction variable times the dynamic dimension's slice size.
+// 4. The size of the dynamic dimension must be at most the loop trip count
+//    times the slice size.
+// If so, it returns the index of the dynamic dimension.
+std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
     const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
     const WhileLoopConfig& config);
 
@@ -86,7 +106,7 @@ std::optional<int64_t> MatchEffectivelyStaticDynamicSliceInsideLoop(
 //
 // The trip count for loops is calculated based on
 // `MatchTrivialLoopTripCount` function in
-// tensorflow/compiler/xla/service/while_loop_analysis.h`
+// tensorflow/compiler/xla/hlo/analysis/while_loop_analysis.h`
 //
 // TODO(b/301472793): Add utility functions to unroll specific loops.
 class WhileLoopUnroller : public HloModulePass {
@@ -120,12 +140,14 @@ class WhileLoopUnroller : public HloModulePass {
   static std::optional<WhileLoopConfig> IsLoopUnrollable(
       HloInstruction* while_op);
 
-  // Returns the list of unrollable loops in the given module
+  // Returns the list of unrollable loops in the given module. If
+  // `unroll_config` is provided, it will be used to check feasibility according
+  // to InitialFeasibilityCheck method
   static std::vector<std::pair<HloInstruction*, WhileLoopConfig>>
   GetUnrollableLoops(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
-      const UnrollConfig& unroll_config = UnrollConfig());
+      std::optional<UnrollConfig> unroll_config);
 
   // Unrolls the given while loop with the default behaviour set to full unroll.
   // If wrap_in_trivial_loop is set, the unrolled body of the loop will be

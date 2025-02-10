@@ -601,12 +601,12 @@ class Node {
       TF_LOCKS_EXCLUDED(mu_);
 
   // Produces a proto for this node. Does not produce a proto for input nodes.
-  virtual Status ToProto(ModelProto::Node* node_proto) const;
+  virtual absl::Status ToProto(ModelProto::Node* node_proto) const;
 
   // Restores a node from the proto. Does not restore input nodes.
-  static Status FromProto(ModelProto::Node node_proto,
-                          std::shared_ptr<Node> output,
-                          std::shared_ptr<Node>* node);
+  static absl::Status FromProto(ModelProto::Node node_proto,
+                                std::shared_ptr<Node> output,
+                                std::shared_ptr<Node>* node);
 
   // Returns a vector of nodes of the subtree rooted in this node. The nodes are
   // either in breadth-first search or reverse breadth-first search order
@@ -811,8 +811,8 @@ class Node {
 
   // Restores node from the proto. Note that this is not done recursively, i.e.
   // input nodes are not restored.
-  static Status FromProtoHelper(ModelProto::Node node_proto,
-                                std::shared_ptr<Node> node);
+  static absl::Status FromProtoHelper(ModelProto::Node node_proto,
+                                      std::shared_ptr<Node> node);
 
   // Stores the time passed to the last call to `Node::record_start()` on the
   // current thread.
@@ -974,12 +974,12 @@ class Model {
   //
   // To terminate the execution of the optimization loop, the caller needs to
   // invoke `cancellation_mgr->StartCancel()`.
-  Status OptimizeLoop(AutotuneAlgorithm algorithm,
-                      std::function<int64_t()> cpu_budget_func,
-                      double ram_budget_share,
-                      std::optional<int64_t> fixed_ram_budget,
-                      RamBudgetManager& ram_budget_manager,
-                      CancellationManager* cancellation_manager);
+  absl::Status OptimizeLoop(AutotuneAlgorithm algorithm,
+                            std::function<int64_t()> cpu_budget_func,
+                            double ram_budget_share,
+                            std::optional<int64_t> fixed_ram_budget,
+                            RamBudgetManager& ram_budget_manager,
+                            CancellationManager* cancellation_manager);
 
   // Uses the given algorithm and resource budgets to perform the autotuning
   // optimization.
@@ -1006,21 +1006,21 @@ class Model {
   void RemoveNode(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_);
 
   // Produces a proto for this model.
-  Status ToProto(ModelProto* model_proto);
+  absl::Status ToProto(ModelProto* model_proto);
 
   // Restores a model from the proto.
-  static Status FromProto(ModelProto model_proto,
-                          std::unique_ptr<Model>* model);
+  static absl::Status FromProto(ModelProto model_proto,
+                                std::unique_ptr<Model>* model);
 
   // Saves this model with a given snapshot and its optimization parameters to a
   // file. Note that the file directory must already exist.
-  Status Save(const string& fname, std::shared_ptr<Node> snapshot,
-              const OptimizationParams& optimization_params);
+  absl::Status Save(const string& fname, std::shared_ptr<Node> snapshot,
+                    const OptimizationParams& optimization_params);
 
   // Loads a model and its optimization parameters from a file with the given
   // name.
-  static Status Load(const string& fname, std::unique_ptr<Model>* model,
-                     OptimizationParams* optimization_params);
+  static absl::Status Load(const string& fname, std::unique_ptr<Model>* model,
+                           OptimizationParams* optimization_params);
 
   // Records gap time between consecutive `GetNext()` calls.
   void RecordIteratorGapTime(uint64_t duration_usec);

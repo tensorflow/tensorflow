@@ -18,6 +18,7 @@
 
 #include <algorithm>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -31,6 +32,13 @@ absl::StatusOr<int> ChooseVersion(int client_min_version,
                                   int server_min_version,
                                   int server_max_version) {
   const int version = std::min(server_max_version, client_max_version);
+
+  LOG(INFO) << "IFRT proxy: ChooseVersion(client_min_version="
+            << client_min_version
+            << ", client_max_version=" << client_max_version
+            << ", server_min_version=" << server_min_version
+            << ", server_max_version=" << server_max_version << ") is "
+            << version;
 
   if (version < server_min_version || version < client_min_version) {
     return absl::InvalidArgumentError(absl::StrCat(

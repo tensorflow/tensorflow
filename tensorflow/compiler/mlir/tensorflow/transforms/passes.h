@@ -101,7 +101,8 @@ CreateReplicateTensorListInitOpsPass();
 
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass(
-    ArrayRef<ArrayRef<int64_t>> input_shapes = {});
+    ArrayRef<ArrayRef<int64_t>> input_shapes = {},
+    bool enable_stablehlo_propagation = false);
 
 // Performs TF.data optimizations.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTFDataOptimizationPass();
@@ -175,6 +176,11 @@ struct StandardPipelineOptions
   Option<bool> form_clusters{*this, "form-clusters",
                              llvm::cl::desc("Enable Cluster Formation pass."),
                              llvm::cl::init(false)};
+  Option<bool> enable_stablehlo_shape_propagation{
+      *this, "enable-stablehlo-shape-propagation",
+      llvm::cl::desc(
+          "Enable StableHLO shape propagation in the TF shape inference pass."),
+      llvm::cl::init(false)};
 };
 
 // Propagates the pass manager with the passes involved in transforming or
@@ -502,8 +508,6 @@ CreateConvertToLegacyCompileAndReplicateAttributesPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUPartitionedOpConversionPass();
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass();
-
 // Creates a pass that cleans up `_replication_info` attribute on operations
 // that are inside a cluster.
 std::unique_ptr<OperationPass<ModuleOp>>
@@ -671,7 +675,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPURESOURCEREADSWRITESPARTITIONINGPASS
 #define GEN_PASS_DECL_TPUSPACETODEPTHPASS
 #define GEN_PASS_DECL_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS
-#define GEN_PASS_DECL_TPUVALIDATEINPUTSPASS
 #define GEN_PASS_DECL_TENSORARRAYOPSDECOMPOSITIONPASS
 #define GEN_PASS_DECL_TENSORDEVICECOPYCONVERSIONPASS
 #define GEN_PASS_DECL_TENSORFLOWOPTIMIZEPASS

@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_ROCM_H_
 #define TENSORFLOW_CORE_PLATFORM_ROCM_H_
 
-#include "xla/stream_executor/gpu/scoped_activate_context.h"  // IWYU pragma: keep
 #include "tensorflow/core/platform/platform.h"  // IWYU pragma: keep
 
 #endif  // TENSORFLOW_CORE_PLATFORM_ROCM_H_

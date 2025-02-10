@@ -72,7 +72,7 @@ message FloatList {
   repeated float value = 1 [packed = true];
 }
 message Int64List {
-  repeated int64 value = 1 [packed = true];
+  repeated int64 value = 1 [packed = true, jstype = JS_STRING];
 }
 
 // Containers for non-sequential data.

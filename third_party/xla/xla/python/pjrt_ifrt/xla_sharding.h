@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -74,12 +75,25 @@ class HloSharding final
 
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
+  absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+  Disassemble(
+      const Shape& shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const override;
+
   absl::StatusOr<
       std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
   Disassemble(const DynamicShape& dynamic_shape) const override;
+  absl::StatusOr<
+      std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+  Disassemble(
+      const DynamicShape& dynamic_shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
+  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
+      const Shape& shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   std::string DebugString() const override;
 
@@ -89,13 +103,16 @@ class HloSharding final
   HloSharding(tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
               xla::HloSharding xla_hlo_sharding);
 
+  void Hash(absl::HashState state) const override;
+
   xla::HloSharding xla_hlo_sharding_;
 };
 
 // Test only: returns `HloSharding::IndexDomains()`, using `xla::HloSharding`
 // APIs internally.
 std::vector<IndexDomain> TEST_HloShardingIndexDomainsSlowPath(
-    const HloSharding& sharding, const Shape& shape);
+    const HloSharding& sharding, const Shape& shape,
+    SingleDeviceShardSemantics single_device_shard_semantics);
 
 }  // namespace ifrt
 }  // namespace xla

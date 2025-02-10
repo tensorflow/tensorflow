@@ -60,6 +60,8 @@ template <typename T>
 inline constexpr bool is_specialized_integral_v =
     is_specialized_integral<T>::value;
 
+using u1 = tsl::uint1;
+using s1 = tsl::int1;
 using u2 = tsl::uint2;
 using s2 = tsl::int2;
 using u4 = tsl::uint4;
@@ -129,15 +131,31 @@ struct make_specialized_signed<T, typename std::enable_if_t<is_intN_v<T>>> {
 template <typename T>
 using make_specialized_signed_t = typename make_specialized_signed<T>::type;
 
+// has_negative_zero[_v]
+
 template <typename T>
 struct has_negative_zero
     : std::bool_constant<std::numeric_limits<T>::is_iec559> {};
+
+template <>
+struct has_negative_zero<tsl::float4_e2m1fn> : std::bool_constant<true> {};
 
 template <>
 struct has_negative_zero<tsl::float8_e4m3fn> : std::bool_constant<true> {};
 
 template <typename T>
 inline constexpr bool has_negative_zero_v = has_negative_zero<T>::value;
+
+// has_zero[_v]
+
+template <typename T>
+struct has_zero : std::bool_constant<true> {};
+
+template <>
+struct has_zero<tsl::float8_e8m0fnu> : std::bool_constant<false> {};
+
+template <typename T>
+inline constexpr bool has_zero_v = has_zero<T>::value;
 
 }  // namespace xla
 

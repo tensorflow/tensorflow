@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/backends/interpreter/executor.h"
 
+#include <cstdint>
 #include <cstring>
+#include <ctime>
 #include <memory>
 #include <utility>
 
@@ -54,10 +56,6 @@ absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
     void *host_dst, const DeviceMemoryBase &dev_src, uint64_t size) {
   memcpy(host_dst, dev_src.opaque(), size);
   return absl::OkStatus();
-}
-
-absl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
-  return AsExecutorStream(stream)->BlockUntilDone();
 }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>

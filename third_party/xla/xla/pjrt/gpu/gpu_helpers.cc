@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/gpu_helpers.h"
 
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -23,12 +25,26 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/client_library.h"
+#include "xla/client/local_client.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/integrations/device_host_allocator.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/stream_executor_allocator.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/bfc_allocator.h"
 #include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 
@@ -84,13 +100,19 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   }
 
   int device_ordinal = executor->device_ordinal();
-  auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
-      executor, tsl::PlatformDeviceId(device_ordinal),
-      /*memory_type=*/
-      enable_unified_memory ? stream_executor::MemoryType::kUnified
-                            : stream_executor::MemoryType::kDevice,
-      /*alloc_visitors=*/std::vector<tsl::SubAllocator::Visitor>(),
-      /*free_visitors=*/std::vector<tsl::SubAllocator::Visitor>());
+  std::unique_ptr<tsl::SubAllocator> sub_allocator;
+
+  if (enable_unified_memory) {
+    TF_ASSIGN_OR_RETURN(
+        auto unified_memory_allocator,
+        executor->CreateMemoryAllocator(stream_executor::MemoryType::kUnified));
+    sub_allocator = std::make_unique<se::StreamExecutorAllocator>(
+        std::move(unified_memory_allocator),
+        stream_executor::MemoryType::kUnified, device_ordinal);
+  } else {
+    sub_allocator = std::make_unique<se::DeviceMemAllocator>(
+        executor, tsl::PlatformDeviceId(device_ordinal));
+  }
 
   int64_t free_memory;
   int64_t total_memory;
@@ -130,11 +152,12 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction,
     size_t collective_memory_size) {
   int device_ordinal = executor->device_ordinal();
-  auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
-      executor, tsl::PlatformDeviceId(device_ordinal),
-      /*memory_type=*/stream_executor::MemoryType::kCollective,
-      /*alloc_visitors=*/std::vector<tsl::SubAllocator::Visitor>(),
-      /*free_visitors=*/std::vector<tsl::SubAllocator::Visitor>());
+  TF_ASSIGN_OR_RETURN(auto collective_memory_allocator,
+                      executor->CreateMemoryAllocator(
+                          stream_executor::MemoryType::kCollective));
+  auto sub_allocator = std::make_unique<se::StreamExecutorAllocator>(
+      std::move(collective_memory_allocator),
+      /*memory_type=*/stream_executor::MemoryType::kCollective, device_ordinal);
 
   int64_t free_memory;
   int64_t total_memory;
@@ -173,37 +196,30 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
 // preallocated, and the preallocated size is controlled by
 // XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB environment variable, which defaults to
 // 16GB in this case.
-std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
+  TF_ASSIGN_OR_RETURN(
+      auto host_memory_allocator,
+      executor->CreateMemoryAllocator(stream_executor::MemoryType::kHost));
   std::unique_ptr<tsl::SubAllocator> sub_allocator(
-      new se::DeviceHostAllocator(executor, /*numa_node=*/0,
-                                  /*alloc_visitors=*/{},
-                                  /*free_visitors=*/{}));
+      new se::StreamExecutorAllocator(std::move(host_memory_allocator),
+                                      stream_executor::MemoryType::kHost,
+                                      /*index=*/0,
+                                      /*alloc_visitors=*/{},
+                                      /*free_visitors=*/{}));
   bool xla_pjrt_gpu_host_memory_preallocate;
-  {
-    absl::Status status =
-        tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE", false,
-                                &xla_pjrt_gpu_host_memory_preallocate);
-    if (!status.ok()) {
-      LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE: "
-                 << status.message();
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE", false,
+                              &xla_pjrt_gpu_host_memory_preallocate));
 
   const int64_t default_xla_pjrt_gpu_host_memory_limit_gb =
       xla_pjrt_gpu_host_memory_preallocate ? 16 : 64;
 
   int64_t xla_pjrt_gpu_host_memory_limit_gb;
-  {
-    absl::Status status =
-        tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB",
-                                 default_xla_pjrt_gpu_host_memory_limit_gb,
-                                 &xla_pjrt_gpu_host_memory_limit_gb);
-    if (!status.ok()) {
-      LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB: "
-                 << status.message();
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB",
+                               default_xla_pjrt_gpu_host_memory_limit_gb,
+                               &xla_pjrt_gpu_host_memory_limit_gb));
 
   const int64_t kGpuHostMemoryLimitBytes =
       xla_pjrt_gpu_host_memory_limit_gb * (1LL << 30);
@@ -213,6 +229,27 @@ std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
   return std::make_unique<tsl::BFCAllocator>(std::move(sub_allocator),
                                              kGpuHostMemoryLimitBytes,
                                              /*name=*/"xla_gpu_host_bfc", opts);
+}
+
+int TopologySizes::GetDeviceCount() {
+  return num_slices * num_hosts_per_slice * num_devices_per_host;
+}
+
+// static
+absl::StatusOr<TopologySizes> TopologySizes::FromString(
+    absl::string_view topology_string) {
+  TopologySizes sizes;
+  std::vector<std::string> topology_components =
+      absl::StrSplit(topology_string, 'x');
+  if (topology_components.size() != 3 ||
+      !absl::SimpleAtoi(topology_components[0], &sizes.num_slices) ||
+      !absl::SimpleAtoi(topology_components[1], &sizes.num_hosts_per_slice) ||
+      !absl::SimpleAtoi(topology_components[2], &sizes.num_devices_per_host)) {
+    return absl::InternalError(
+        "topology must be of shape "
+        "\"<num-slices>x<num-hosts-per-slice>x<num-devices-per-host>\"");
+  }
+  return sizes;
 }
 
 }  // namespace xla

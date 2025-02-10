@@ -385,8 +385,8 @@ py_strict_library(
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:state_ops",
+        "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:base",
@@ -781,7 +781,6 @@ tf_proto_library(
 # py_proto_library(
 #     name = "checkpoint_state_py_pb2",
 #     testonly = 0,
-#     api_version = 2,
 #     deps = [":checkpoint_state"],
 # )
 # copybara:uncomment_end
@@ -800,10 +799,16 @@ py_strict_library(
     name = "saver",
     srcs = ["saver.py"],
     srcs_version = "PY3",
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     visibility = [
-        "//tensorflow:internal",
-        "//third_party/py/tf_slim:__subpackages__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":py_checkpoint_reader",
         ":training_util",

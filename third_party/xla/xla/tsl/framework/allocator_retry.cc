@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/framework/metrics.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 
@@ -67,28 +67,26 @@ void* AllocatorRetry::AllocateRaw(
     return nullptr;
   }
   ScopedTimeTracker tracker(env_);
-  uint64 deadline_micros = 0;
+  absl::Time deadline;
   bool first = true;
-  void* ptr = nullptr;
-  while (ptr == nullptr) {
-    ptr = alloc_func(alignment, num_bytes, false);
-    if (ptr == nullptr) {
-      uint64 now = env_->NowMicros();
-      if (first) {
-        deadline_micros = now + max_millis_to_wait * 1000;
-        first = false;
-      }
-      if (now < deadline_micros) {
-        tracker.Enable();
-        absl::MutexLock l(&mu_);
-        memory_returned_.WaitWithTimeout(
-            &mu_, absl::Milliseconds((deadline_micros - now) / 1000));
-      } else {
-        return alloc_func(alignment, num_bytes, true);
-      }
+  while (true) {
+    if (void* ptr = alloc_func(alignment, num_bytes, false); ptr != nullptr) {
+      return ptr;
+    }
+
+    absl::Time now = absl::FromUnixMicros(env_->NowMicros());
+    if (first) {
+      deadline = now + absl::Milliseconds(max_millis_to_wait);
+      first = false;
+    }
+    if (now < deadline) {
+      tracker.Enable();
+      absl::MutexLock l(&mu_);
+      memory_returned_.WaitWithDeadline(&mu_, deadline);
+    } else {
+      return alloc_func(alignment, num_bytes, true);
     }
   }
-  return ptr;
 }
 
 }  // namespace tsl

@@ -200,8 +200,7 @@ struct StablehloCanonicalizeDynamismPass
     patterns.add<CanonicalizeApproxDynamicTopKOpPattern>(&getContext());
 
     auto funcOp = getOperation();
-    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns),
-                                            config))) {
+    if (failed(applyPatternsGreedily(funcOp, std::move(patterns), config))) {
       funcOp.emitError("Failed to converge StablehloCanonicalizeDynamism in ")
           << config.maxIterations << " iterations";
       return signalPassFailure();

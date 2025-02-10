@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -39,6 +38,8 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -63,18 +64,20 @@ limitations under the License.
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/nb_class_ptr.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
+#include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/python/py_client.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace nb = nanobind;
 
@@ -245,6 +248,16 @@ class CompileOnlyIfRtClient final
         "AssembleArrayFromSingleDeviceArrays not available with compile-only "
         "client.");
   }
+  absl::StatusOr<tsl::RCReference<ifrt::Array>>
+  AssembleArrayFromSingleDeviceArrays(
+      ifrt::Shape shape, std::shared_ptr<const ifrt::Sharding> sharding,
+      absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+      ifrt::ArrayCopySemantics array_copy_semantics,
+      ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
+    return Unimplemented(
+        "AssembleArrayFromSingleDeviceArrays not available with compile-only "
+        "client.");
+  }
 
   absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> CopyArrays(
       absl::Span<tsl::RCReference<ifrt::Array>> arrays,
@@ -294,6 +307,9 @@ class CompileOnlyIfRtClient final
     return {};
   }
   int process_index() const override { return 0; }
+  absl::Span<xla::ifrt::Device* const> GetAllDevices() const override {
+    return devices_;
+  }
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     return Unimplemented(
@@ -322,13 +338,17 @@ class CompileOnlyIfRtClient final
     return topology_;
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> GetDefaultLayoutForDevice(
-      ifrt::DType dtype, absl::Span<const int64_t> dims,
-      ifrt::Device* device) const override {
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayout(
+      ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
+      ifrt::MemoryKind memory_kind) const override {
+    if (memory_kind == ifrt::MemoryKind(UnpinnedHostMemorySpace::kKind)) {
+      return std::make_shared<PjRtLayout>(
+          LayoutUtil::MakeDescendingLayout(dims.size()));
+    }
     TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
     TF_ASSIGN_OR_RETURN(xla::Layout layout,
                         topology_->GetDefaultLayout(element_type, dims));
-    return std::make_unique<PjRtXlaLayout>(std::move(layout));
+    return std::make_shared<PjRtLayout>(std::move(layout));
   }
 
  private:
@@ -356,7 +376,7 @@ class CompileOnlyPyClient : public PyClient {
   }
 
   absl::StatusOr<std::shared_ptr<ifrt::Executable>> CompileUnloaded(
-      std::string_view mlir_module, CompileOptions options,
+      absl::string_view mlir_module, CompileOptions options,
       std::vector<nb::capsule> host_callbacks) {
     if (!host_callbacks.empty()) {
       return Unimplemented(
@@ -367,6 +387,11 @@ class CompileOnlyPyClient : public PyClient {
     mlir::MLIRContext context;
     TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                         ParseMlirModuleString(mlir_module, context));
+    if (options.executable_build_options.use_shardy_partitioner()) {
+      // Since Shardy is located in the middle of the XLA pipeline, we need to
+      // export it before going to HLO while preserving Shardy ops and attrs.
+      TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(*module));
+    }
     auto* ifrt_client =
         llvm::dyn_cast_or_null<CompileOnlyIfRtClient>(this->ifrt_client());
     CHECK(ifrt_client) << "CompileOnlyPyClient requires ifrt_client be a "
@@ -376,8 +401,7 @@ class CompileOnlyPyClient : public PyClient {
                         PjRtCompile(std::move(options), module.get(),
                                     *ifrt_client->topology().description()));
     TF_ASSIGN_OR_RETURN(auto ifrt_executable,
-                        ifrt::PjRtExecutable::Create(std::move(executable),
-                                                     std::move(xla_options)));
+                        ifrt::PjRtExecutable::Create(std::move(executable)));
     return std::shared_ptr<ifrt::Executable>(std::move(ifrt_executable));
   }
 
@@ -401,7 +425,7 @@ void RegisterCompileOnlyClient(nb::module_& m) {
           [](CompileOnlyPyClient& self, nb::bytes mlir_module,
              CompileOptions options, std::vector<nb::capsule> host_callbacks) {
             return ValueOrThrow(self.CompileUnloaded(
-                std::string_view(mlir_module.c_str(), mlir_module.size()),
+                absl::string_view(mlir_module.c_str(), mlir_module.size()),
                 std::move(options), std::move(host_callbacks)));
           },
           nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),

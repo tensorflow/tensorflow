@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -47,7 +48,7 @@ using CustomCallInComputation =
 bool MayInvokeCustomCall(
     const HloInstruction* hlo,
     const CustomCallInComputation& custom_call_in_computation) {
-  if (hlo->opcode() == HloOpcode::kCustomCall) {
+  if (HloPredicateIsOp<HloOpcode::kCustomCall>(hlo)) {
     return true;
   }
 
@@ -59,21 +60,15 @@ bool MayInvokeCustomCall(
 
 // Returns true if this is an asynchronous collective start operation, excluding
 // P2P operations.
-absl::StatusOr<bool> IsRelevantAsynchronousStart(const HloInstruction* hlo) {
-  if (!hlo_query::IsAsyncCollectiveStartOp(hlo,
-                                           /*include_send_recv=*/false)) {
-    return false;
-  }
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      hlo->backend_config<GpuBackendConfig>());
-  const CollectiveBackendConfig& collective_backend_config =
-      gpu_config.collective_backend_config();
-  return !collective_backend_config.is_sync();
+bool IsRelevantAsynchronousStart(const HloInstruction* hlo) {
+  return hlo_query::IsAsyncCollectiveStartOp(hlo,
+                                             /*include_send_recv=*/false) &&
+         !IsGPUSyncCollective(*hlo);
 }
 
 // Returns true if this is a collective done operation, excluding P2P
 // operations.
-absl::StatusOr<bool> IsRelevantAsynchronousDone(const HloInstruction* hlo) {
+bool IsRelevantAsynchronousDone(const HloInstruction* hlo) {
   return hlo_query::IsAsyncCollectiveDoneOp(hlo,
                                             /*include_send_recv=*/false);
 }
@@ -104,14 +99,12 @@ absl::StatusOr<bool> ProcessComputation(
       has_custom_call = true;
       continue;
     }
-    TF_ASSIGN_OR_RETURN(bool is_async_start, IsRelevantAsynchronousStart(hlo));
-    if (is_async_start) {
+    if (IsRelevantAsynchronousStart(hlo)) {
       async_starts.insert(hlo);
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(bool is_async_done, IsRelevantAsynchronousDone(hlo));
-    if (is_async_done) {
+    if (IsRelevantAsynchronousDone(hlo)) {
       HloInstruction* async_start = hlo->mutable_operand(0);
       if (async_starts.contains(async_start)) {
         changed = true;

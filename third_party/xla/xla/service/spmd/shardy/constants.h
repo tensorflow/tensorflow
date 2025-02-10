@@ -21,6 +21,10 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
+// TODO(b/393406516): [Shardy] Change Attributes names from *mhlo* to
+// *stablehlo*
+inline constexpr llvm::StringRef kMhloAttributesAttr = "mhlo.attributes";
+
 // The attribute name for xla::HloSharding.
 inline constexpr llvm::StringRef kXlaShardingAttr = "mhlo.sharding";
 
@@ -35,16 +39,41 @@ inline constexpr llvm::StringRef kSPMDFullToShardShapeCallTargetName =
 inline constexpr llvm::StringRef kSPMDShardToFullShapeCallTargetName =
     "SPMDShardToFullShape";
 
+// The target name of the Python CPU callback custom call.
+inline constexpr llvm::StringRef kPythonCpuCallbackCustomCallTargetName =
+    "xla_python_cpu_callback";
+
+// The target name of the FFI Python CPU callback custom call.
+inline constexpr llvm::StringRef kFFIPythonCpuCallbackCustomCallTargetName =
+    "xla_ffi_python_cpu_callback";
+
+// The target name of the Python GPU callback custom call.
+inline constexpr llvm::StringRef kPythonGpuCallbackCustomCallTargetName =
+    "xla_python_gpu_callback";
+
+// The target name of the FFI Python GPU callback custom call.
+inline constexpr llvm::StringRef kFFIPythonGpuCallbackCustomCallTargetName =
+    "xla_ffi_python_gpu_callback";
+
 // The attribute name for backend config.
 inline constexpr llvm::StringRef kXlaBackendConfigAttr = "backend_config";
 
-// Attribute name for temporarily storing the Shardonnay sharding during HLO
-// round-trip. It cannot match the name kShardingAttr ("sdy.sharding"), as
-// during round-trip, going from HLO to MHLO, the code removes attributes
-// in the `frontend_attributes` field, making them top level. And Shardonnay
-// verification expects `kShardingAttr` to be of type
+// Attribute name for temporarily storing the Shardy sharding during HLO
+// sdy-round-trip. It cannot match the name `kShardingAttr` ("sdy.sharding"), as
+// during sdy-round-trip, going from HLO to StableHLO, the code removes
+// attributes in the `frontend_attributes` field, making them top level. And
+// Shardy verification expects `kShardingAttr` to be of type
 // TensorShardingAttr/TensorShardingPerValueAttr - not a StringAttr.
 inline constexpr llvm::StringRef kShardingRoundTripAttr = "xla.sdy.sharding";
+
+// Attribute name for temporarily storing the Shardy sharding rule during HLO
+// sdy-round-trip. It cannot match the name `kShardingRuleAttr`
+// ("sdy.sharding_rule"), as during sdy-round-trip, going from HLO to StableHLO,
+// the code removes attributes in the `frontend_attributes` field, making them
+// top level. And Shardy verification expects `kShardingRuleAttr` to be of type
+// OpShardingRuleAttr - not a StringAttr.
+inline constexpr llvm::StringRef kShardingRuleRoundTripAttr =
+    "xla.sdy.sharding_rule";
 
 // Attribute name for temporarily storing the Shardonnay meshes during HLO
 // round-trip.
@@ -55,16 +84,23 @@ inline constexpr llvm::StringRef kMeshesRoundTripAttr = "xla.sdy.meshes";
 inline constexpr llvm::StringRef kFuncResultShardingTargetName =
     "xla.sdy.FuncResultSharding";
 
+// The target name of the ShardingGroup custom call.
+inline constexpr llvm::StringRef kShardingGroupCustomCallTargetName =
+    "xla.sdy.ShardingGroup";
+
+// Sharding group id attribute name. The attribute will be of type `int64_t`
+// and will be used to identify a group of ops that should be sharded together.
+inline constexpr llvm::StringRef kShardingGroupIdAttr =
+    "xla.sdy.sharding_group_id";
+
 // Attribute name for storing frontend attributes in XLA.
 inline constexpr llvm::StringRef kFrontendAttributesAttr =
     "mhlo.frontend_attributes";
 
-// Attribute name for determining whether the frontend Python framework has
-// lowered to SDY collectives and has exported them using
-// `SdyRoundTripExportPipeline`.
-// TODO(bartchr): remove this when JAX & PartIR integration is complete.
-inline constexpr llvm::StringRef kPythonIntegrationComplete =
-    "xla.sdy.python_integration_complete";
+// Attribute name for determining whether we need to import StableHLO shardings,
+// i.e., the input module doesn't contain SDY shardings as frontend attributes.
+inline constexpr llvm::StringRef kImportMhloShardings =
+    "xla.sdy.import_mhlo_shardings";
 
 // Attribute name for determining whether tuple parameters should be used for
 // the rest of the XLA pipeline.
@@ -81,16 +117,20 @@ inline constexpr llvm::StringRef kOutShardings = "xla.sdy.out_shardings";
 // Attribute name for the manual axes of a `ManualComputationOp`.
 inline constexpr llvm::StringRef kManualAxes = "xla.sdy.manual_axes";
 
-// The target name of the custom call that will store the various attrs of a
-// `ManualComputationOp` and a reference to a `FuncOp` that is the body of the
-// original `ManualComputationOp`.
-inline constexpr llvm::StringRef kManualComputationCustomCallTargetName =
-    "xla.sdy.ManualComputation";
-
 // The function name of the of the body of a `ManualComputationOp` during Shardy
 // round tripping. Used
 inline constexpr llvm::StringRef kManualComputationBodyFuncName =
     "xla.sdy.manual_computation_body";
+
+// The target name of the custom call that changes operands from global to local
+// shape during Shardy round tripping.
+inline constexpr llvm::StringRef kGlobalToLocalShapeCallTargetName =
+    "xla.sdy.GlobalToLocalShape";
+
+// The target name of the custom call that changes results from local to global
+// shape during Shardy round tripping.
+inline constexpr llvm::StringRef kLocalToGlobalShapeCallTargetName =
+    "xla.sdy.LocalToGlobalShape";
 
 // The name of the global mesh.
 inline constexpr llvm::StringRef kGlobalMeshName = "mesh";

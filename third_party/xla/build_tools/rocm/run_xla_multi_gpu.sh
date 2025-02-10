@@ -26,7 +26,7 @@
 # //xla/pjrt/distributed:topology_util_test
 # //xla/pjrt/distributed:client_server_test
 # ```
-# Also these tests do not use `--run_under=//tools/ci_build/gpu_build:parallel_gpu_execute` with bazel which
+# Also these tests do not use `--run_under=//build_tools/ci:parallel_gpu_execute` with bazel which
 # locks down individual gpus thus making multi gpu tests impossible to run
 
 set -e
@@ -47,9 +47,10 @@ fi
 
 TF_TESTS_PER_GPU=1
 N_TEST_JOBS=$(expr ${TF_GPU_COUNT} \* ${TF_TESTS_PER_GPU})
-
+amdgpuname=(`rocminfo | grep gfx | head -n 1`)
+AMD_GPU_GFX_ID=${amdgpuname[1]}
 echo ""
-echo "Bazel will use ${N_BUILD_JOBS} concurrent build job(s) and ${N_TEST_JOBS} concurrent test job(s)."
+echo "Bazel will use ${N_BUILD_JOBS} concurrent build job(s) and ${N_TEST_JOBS} concurrent test job(s) for gpu ${AMD_GPU_GFX_ID}."
 echo ""
 
 # First positional argument (if any) specifies the ROCM_INSTALL_DIR
@@ -57,7 +58,7 @@ if [[ -n $1 ]]; then
     ROCM_INSTALL_DIR=$1
 else
     if [[ -z "${ROCM_PATH}" ]]; then
-        ROCM_INSTALL_DIR=/opt/rocm-6.0.2
+        ROCM_INSTALL_DIR=/opt/rocm/
     else
         ROCM_INSTALL_DIR=$ROCM_PATH
     fi
@@ -72,6 +73,8 @@ TAGS_FILTER="${TAGS_FILTER},${UNSUPPORTED_GPU_TAGS// /,}"
 
 bazel \
     test \
+    --define xnn_enable_avxvnniint8=false \
+    --define xnn_enable_avx512fp16=false \
     --config=rocm \
     --build_tag_filters=${TAGS_FILTER} \
     --test_tag_filters=${TAGS_FILTER} \
@@ -83,8 +86,10 @@ bazel \
     --local_test_jobs=${N_TEST_JOBS} \
     --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
     --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
+    --action_env=TF_ROCM_AMDGPU_TARGETS=${AMD_GPU_GFX_ID} \
     --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
     --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
+    --action_env=NCCL_MAX_NCHANNELS=1 \
     -- //xla/tests:collective_ops_e2e_test_gpu_amd_any \
        //xla/tests:collective_ops_test_gpu_amd_any \
        //xla/tests:replicated_io_feed_test_gpu_amd_any \

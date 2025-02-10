@@ -79,7 +79,7 @@ void XlaDebugInfoManager::StopTracing(
         modules_to_serialize.emplace_back(std::move(m));
         modules_.erase(cur_it);
       } else {
-        modules_to_serialize.emplace_back(m);
+        modules_to_serialize.push_back(m);
       }
     }
   }

@@ -21,14 +21,14 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/base/log_severity.h"
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
-#include "xla/statusor.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
+#include "absl/status/statusor.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace status_macros {

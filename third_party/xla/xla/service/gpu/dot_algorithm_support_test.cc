@@ -115,7 +115,7 @@ class DotAlgorithmSupportTest
     return GetDeviceDescription().gpu_compute_capability();
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     // Setting this explicitly to make sure that we also test the case when the
     // dot's dimensions are under the rewrite size threshold:
@@ -173,10 +173,10 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
 
     if (params.backend_restriction == BackendRestriction::kTritonOnly) {
       MatchOptimizedHlo(hlo_text, R"(
-  ;CHECK: ENTRY
-  ;CHECK: ROOT
-  ;CHECK-SAME: kCustom
-  ;CHECK-SAME: "triton_gemm_config"
+        ;CHECK: ENTRY
+        ;CHECK: ROOT
+        ;CHECK-SAME: kCustom
+        ;CHECK-SAME: "triton_gemm_config"
     )");
     }
   } else {
@@ -215,28 +215,41 @@ INSTANTIATE_TEST_SUITE_P(DotF16F16F32Tests, DotAlgorithmSupportTest,
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
-INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32Tests, DotAlgorithmSupportTest,
-                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32),
-                                 Values(BF16), Values(BF16, F32),
-                                 Values(CC(8, 0)),
+INSTANTIATE_TEST_SUITE_P(DotF32ForBf16Bf16F32Tests, DotAlgorithmSupportTest,
+                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32), Values(F32),
+                                 Values(F32), Values(CC(8, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
                                  Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
-INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32XnTests, DotAlgorithmSupportTest,
-
-                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X3,
-                                        PC::ALG_DOT_BF16_BF16_F32_X6),
+INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32X3Tests, DotAlgorithmSupportTest,
+                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X3),
                                  Values(F32), Values(F32), Values(CC(8, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
-                                 Values(BackendRestriction::kTritonOnly),
+                                 Values(BackendRestriction::kNoRestriction),
+                                 Values(Sizes{32, 32}, Sizes{16, 2})),
+                         TestParamsToString);
+
+INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32X6Tests, DotAlgorithmSupportTest,
+                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X6),
+                                 Values(F32), Values(F32), Values(CC(8, 0)),
+                                 Values(SemanticVersion{6, 0, 0}),
+                                 Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(DotTf32Tf32F32Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_TF32_TF32_F32), Values(F32),
                                  Values(F32), Values(CC(8, 0)),
+                                 Values(SemanticVersion{6, 0, 0}),
+                                 Values(BackendRestriction::kNoRestriction),
+                                 Values(Sizes{32, 32}, Sizes{16, 2})),
+                         TestParamsToString);
+
+INSTANTIATE_TEST_SUITE_P(DotTf32Tf32F32X3Tests, DotAlgorithmSupportTest,
+                         Combine(Values(PC::ALG_DOT_TF32_TF32_F32_X3),
+                                 Values(F32), Values(F32), Values(CC(8, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
                                  Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),

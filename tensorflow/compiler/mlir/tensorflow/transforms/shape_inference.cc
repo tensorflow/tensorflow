@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -27,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -58,6 +61,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -73,27 +77,30 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
+#include "stablehlo/dialect/Serialization.h"  // from @stablehlo
+#include "stablehlo/dialect/Version.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/tools/parsers.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/types/dialect.h"
-#include "tsl/platform/errors.h"
 
 #define DEBUG_TYPE "tf-shape-inference"
 
@@ -808,6 +815,14 @@ class ShapeInference {
   FailureOr<bool> InferShapeUntilFixPoint(Region* region,
                                           int64_t max_iterations);
 
+  // Updates the serialized StableHLO modules of XlaCallModule ops whose shapes
+  // are refined. This function should be called after the shape refinement has
+  // finished, i.e. when InferShapeUntilFixPoint will no longer be called, to
+  // avoid re-serializing the modules multiple times.
+  // Returns whether it was able to propagate the shape to the StableHLO modules
+  // successfully.
+  LogicalResult PropagateShapeToStableHloModules();
+
   // Updates input types and refine shapes inside body of functions that are
   // attached to ControlFlow ops (If/While) or Calls. These functions include
   // Then/Else branches of IfOp and Cond/Body functions of WhileOp. Functions
@@ -1266,7 +1281,7 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     xla_call_module_context_->appendDialectRegistry(registry);
 
     auto l = tensorflow::XlaCallModuleLoader::Create(
-        xla_call_module_context_.get(), op.getVersion(), op.getModule().str(),
+        xla_call_module_context_.get(), op.getVersion(), op.getModule(),
         std::move(disabled_checks), std::move(platforms),
         /*num_invocation_args=*/op.getArgs().size(),
         op.getHasTokenInputOutput());
@@ -1334,6 +1349,32 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
   }
 
   return changed;
+}
+
+LogicalResult ShapeInference::PropagateShapeToStableHloModules() {
+  for (auto& [op, loader] : xla_call_module_loaders_) {
+    if (!loader->IsOutputTypeRefined()) continue;
+
+    FailureOr<vhlo::Version> version =
+        stablehlo::getPortableArtifactVersion(op.getModule());
+    if (failed(version)) {
+      return op.emitOpError() << "Failed to extract the VHLO version from the "
+                                 "serialized StableHLO module while attempting "
+                                 "to propagate shapes to the StableHLO module.";
+    }
+
+    std::string bytecode;
+    llvm::raw_string_ostream os(bytecode);
+    if (failed(stablehlo::serializePortableArtifact(loader->module(),
+                                                    version->toString(), os))) {
+      return op.emitOpError()
+             << "Failed to serialize StableHLO module while attempting to "
+                "propagate shapes to the StableHLO module.";
+    }
+
+    op.setModule(bytecode);
+  }
+  return success();
 }
 
 bool ShapeInference::InferShapeForFunctionAttachedToXlaHostCompute(
@@ -3342,7 +3383,8 @@ FailureOr<bool> InferShapeForFunction(func::FuncOp func,
 
 FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations,
                                  ArrayRef<TypeID> ops_to_skip,
-                                 ArrayRef<ArrayRef<int64_t>> input_shapes) {
+                                 ArrayRef<ArrayRef<int64_t>> input_shapes,
+                                 bool enable_stablehlo_propagation) {
   auto producer_or = tensorflow::GetTfGraphProducerVersion(module);
   if (!producer_or.ok()) {
     // TODO(jpienaar): Keeping the existing behavior for now but this could
@@ -3395,6 +3437,13 @@ FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations,
       return false;
     }
   }
+
+  // Propagate shapes to StableHLO modules, if enabled and there are any
+  // XlaCallModule ops whose StableHLO modules were refined.
+  if (enable_stablehlo_propagation) {
+    if (failed(context.PropagateShapeToStableHloModules())) return failure();
+  }
+
   return true;
 }
 

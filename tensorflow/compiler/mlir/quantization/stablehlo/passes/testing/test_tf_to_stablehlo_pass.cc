@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Dialect/UB/IR/UBOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep

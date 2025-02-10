@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/elementwise_spmd_expander.h"
 
-#include <iterator>
+#include <cassert>
+#include <cstdint>
 #include <optional>
-#include <string>
-#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/ArrayRef.h"

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/qr_spmd_expander.h"
 
-#include <algorithm>
-
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"

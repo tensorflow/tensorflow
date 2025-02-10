@@ -18,6 +18,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tfrt/host_context/location.h"  // from @tf_runtime
@@ -54,7 +57,8 @@ class OpKernelRunnerCache {
   absl::StatusOr<OpKernelRunner*> GetOrCreate(
       tfrt::Location loc, absl::string_view op_name,
       absl::string_view device_name, int num_args,
-      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const std::function<absl::Status(tensorflow::AttrValueMap*)>&
+          attr_builder,
       const tensorflow::DeviceMgr& device_manager,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime);

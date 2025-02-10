@@ -90,11 +90,10 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor {
-
-class Kernel;
 
 //===----------------------------------------------------------------------===//
 // Kernel metadata
@@ -230,15 +229,47 @@ class Kernel {
     args_packing_ = std::move(args_packing);
   }
 
-  std::string_view name() const { return name_; }
+  absl::string_view name() const { return name_; }
   void set_name(absl::string_view name);
 
+  // Launches a data parallel kernel with the given thread/block
+  // dimensionality and already-packed args/sizes to pass to the underlying
+  // platform driver.
+  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
+                      Stream *stream, const KernelArgs &args);
+
+  // Launches a data parallel kernel with the given thread/block
+  // dimensionality and already-packed args/sizes to pass to the underlying
+  // platform driver.
+  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
+                      const ClusterDim &cluster_dims, Stream *stream,
+                      const KernelArgs &args);
+
  private:
+  // Helper method to launch a kernel with optional cluster dimensions.
+  virtual absl::Status Launch(const ThreadDim &thread_dims,
+                              const BlockDim &block_dims,
+                              const std::optional<ClusterDim> &cluster_dims,
+                              Stream *stream, const KernelArgs &args) = 0;
+
   std::string name_;
 
   KernelMetadata metadata_;
   KernelArgsPacking args_packing_;
 };
+
+inline absl::Status Kernel::Launch(const ThreadDim &thread_dims,
+                                   const BlockDim &block_dims, Stream *stream,
+                                   const KernelArgs &args) {
+  return Launch(thread_dims, block_dims, std::nullopt, stream, args);
+}
+inline absl::Status Kernel::Launch(const ThreadDim &thread_dims,
+                                   const BlockDim &block_dims,
+                                   const ClusterDim &cluster_dims,
+                                   Stream *stream, const KernelArgs &args) {
+  return Launch(thread_dims, block_dims, std::make_optional(cluster_dims),
+                stream, args);
+}
 
 //===----------------------------------------------------------------------===//
 // Typed kernel
@@ -264,6 +295,39 @@ class TypedKernel {
 
   // Type of factory used to create a TypedKernel.
   using FactoryType = TypedKernelFactory<Params...>;
+
+  // Launches a kernel with the given (variadic) parameters for the invocation
+  // onto the specified stream. These arguments can be things
+  // like DeviceMemory or primitive types such as int. What arguments you may
+  // pass to a given kernel are noted as the template parameters to the
+  // TypedKernel type that the compiler generates.
+  //
+  //  Template parameters:
+  //   Params...   The type list of formal parameters that the typed kernel
+  //               expects, which is matched against Args...
+  //   Args...     The deduced type list for passed actual arguments
+  //
+  // Implementation: A compile-time compatibility check is performed that has
+  // some leniency versus an exact parameter pack match -- for example,
+  // `const DeviceMemory<T>` is considered "pack compatible" with a
+  // `const DeviceMemory<T>&` formal parameter; in part, because we don't have
+  // perfect forwarding support without rvalue references. It also attempts to
+  // spit out helpful static_assert error traces with information as to the
+  // argument number and types that were mismatched.
+  template <typename... Args>
+  inline absl::Status Launch(ThreadDim thread_dims, BlockDim block_dims,
+                             Stream *stream, Args... args) {
+    auto kernel_args = PackKernelArgs(*this, args...);
+    return kernel_->Launch(thread_dims, block_dims, stream, *kernel_args);
+  }
+
+  template <typename... Args>
+  inline absl::Status Launch(ThreadDim thread_dims, BlockDim block_dims,
+                             int32_t shmem_bytes, Stream *stream,
+                             Args... args) {
+    auto kernel_args = PackKernelArgs(shmem_bytes, args...);
+    return kernel_->Launch(thread_dims, block_dims, stream, *kernel_args);
+  }
 
  private:
   friend class TypedKernelFactory<Params...>;

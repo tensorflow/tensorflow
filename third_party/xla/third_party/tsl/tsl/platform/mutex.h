@@ -22,19 +22,11 @@ limitations under the License.
 #include <condition_variable>  // NOLINT
 #include <mutex>               // NOLINT
 
-#include "tsl/platform/platform.h"
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "tsl/platform/thread_annotations.h"
-
-// Include appropriate platform-dependent implementation details of mutex etc.
-#if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/mutex_data.h"
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
-#include "tsl/platform/default/mutex_data.h"
-#else
-#error Define the appropriate PLATFORM_<foo> macro for this platform
-#endif
 
 namespace tsl {
 
@@ -42,26 +34,18 @@ enum ConditionResult { kCond_Timeout, kCond_MaybeNotified };
 enum LinkerInitialized { LINKER_INITIALIZED };
 
 class condition_variable;
-class Condition;
+using Condition = absl::Condition;
 
 // Mimic std::mutex + C++17's shared_mutex, adding a LinkerInitialized
 // constructor interface.  This type is as fast as mutex, but is also a shared
 // lock, and provides conditional critical sections (via Await()), as an
 // alternative to condition variables.
-class TF_LOCKABLE mutex {
+class TF_LOCKABLE ABSL_DEPRECATED("Use absl::Mutex instead.") mutex {
  public:
   mutex();
   // The default implementation of the underlying mutex is safe to use after
   // the linker initialization to zero.
-  explicit constexpr mutex(LinkerInitialized x)
-      :
-#if defined(PLATFORM_GOOGLE)
-        mu_(absl::kConstInit)
-#else
-        mu_()
-#endif
-  {
-  }
+  explicit constexpr mutex(LinkerInitialized x) : mu_(absl::kConstInit) {}
 
   void lock() TF_EXCLUSIVE_LOCK_FUNCTION();
   bool try_lock() TF_EXCLUSIVE_TRYLOCK_FUNCTION(true);
@@ -112,43 +96,7 @@ class TF_LOCKABLE mutex {
 
  private:
   friend class condition_variable;
-  internal::MuData mu_;
-};
-
-// A Condition represents a predicate on state protected by a mutex.  The
-// function must have no side-effects on that state.  When passed to
-// mutex::Await(), the function will be called with the mutex held.  It may be
-// called:
-// - any number of times;
-// - by any thread using the mutex; and/or
-// - with the mutex held in any mode (read or write).
-// If you must use a lambda, prefix the lambda with +, and capture no variables.
-// For example:  Condition(+[](int *pi)->bool { return *pi == 0; }, &i)
-class Condition {
- public:
-  template <typename T>
-  Condition(bool (*func)(T* arg), T* arg);  // Value is (*func)(arg)
-  template <typename T>
-  Condition(T* obj, bool (T::*method)());  // Value is obj->*method()
-  template <typename T>
-  Condition(T* obj, bool (T::*method)() const);  // Value is obj->*method()
-  explicit Condition(const bool* flag);          // Value is *flag
-
-  // Return the value of the predicate represented by this Condition.
-  bool Eval() const { return (*this->eval_)(this); }
-
- private:
-  bool (*eval_)(const Condition*);  // CallFunction, CallMethod, or, ReturnBool
-  bool (*function_)(void*);         // predicate of form (*function_)(arg_)
-  bool (Condition::*method_)();     // predicate of form arg_->method_()
-  void* arg_;
-  Condition();
-  // The following functions can be pointed to by the eval_ field.
-  template <typename T>
-  static bool CallFunction(const Condition* cond);  // call function_
-  template <typename T>
-  static bool CallMethod(const Condition* cond);  // call method_
-  static bool ReturnBool(const Condition* cond);  // access *(bool *)arg_
+  absl::Mutex mu_;
 };
 
 // Mimic a subset of the std::unique_lock<tsl::mutex> functionality.
@@ -232,7 +180,7 @@ class TF_SCOPED_LOCKABLE tf_shared_lock {
   static_assert(0, "tf_shared_lock_decl_missing_var_name");
 
 // Mimic std::condition_variable.
-class condition_variable {
+class ABSL_DEPRECATED("Use absl::CondVar instead.") condition_variable {
  public:
   condition_variable();
 
@@ -255,7 +203,7 @@ class condition_variable {
   friend ConditionResult WaitForMilliseconds(mutex_lock* mu,
                                              condition_variable* cv,
                                              int64_t ms);
-  internal::CVData cv_;
+  absl::CondVar cv_;
 };
 
 // Like "cv->wait(*mu)", except that it only waits for up to "ms" milliseconds.
@@ -272,63 +220,56 @@ inline ConditionResult WaitForMilliseconds(mutex_lock* mu,
 // ------------------------------------------------------------
 // Implementation details follow.   Clients should ignore them.
 
-// private static
-template <typename T>
-inline bool Condition::CallFunction(const Condition* cond) {
-  bool (*fn)(T*) = reinterpret_cast<bool (*)(T*)>(cond->function_);
-  return (*fn)(static_cast<T*>(cond->arg_));
+inline mutex::mutex() = default;
+
+inline void mutex::lock() TF_EXCLUSIVE_LOCK_FUNCTION() { mu_.Lock(); }
+
+inline bool mutex::try_lock() TF_EXCLUSIVE_TRYLOCK_FUNCTION(true) {
+  return mu_.TryLock();
+};
+
+inline void mutex::unlock() TF_UNLOCK_FUNCTION() { mu_.Unlock(); }
+
+inline void mutex::assert_held() const TF_ASSERT_EXCLUSIVE_LOCK() {
+  mu_.AssertHeld();
 }
 
-template <typename T>
-inline Condition::Condition(bool (*func)(T*), T* arg)
-    : eval_(&CallFunction<T>),
-      function_(reinterpret_cast<bool (*)(void*)>(func)),
-      method_(nullptr),
-      arg_(const_cast<void*>(static_cast<const void*>(arg))) {}
+inline void mutex::lock_shared() TF_SHARED_LOCK_FUNCTION() { mu_.ReaderLock(); }
 
-// private static
-template <typename T>
-inline bool Condition::CallMethod(const Condition* cond) {
-  bool (T::*m)() = reinterpret_cast<bool (T::*)()>(cond->method_);
-  return (static_cast<T*>(cond->arg_)->*m)();
+inline bool mutex::try_lock_shared() TF_SHARED_TRYLOCK_FUNCTION(true) {
+  return mu_.ReaderTryLock();
 }
 
-template <typename T>
-inline Condition::Condition(T* obj, bool (T::*method)())
-    : eval_(&CallMethod<T>),
-      function_(nullptr),
-      method_(reinterpret_cast<bool (Condition::*)()>(method)),
-      arg_(const_cast<void*>(static_cast<const void*>(obj))) {}
+inline void mutex::unlock_shared() TF_UNLOCK_FUNCTION() { mu_.ReaderUnlock(); }
 
-template <typename T>
-inline Condition::Condition(T* obj, bool (T::*method)() const)
-    : eval_(&CallMethod<T>),
-      function_(nullptr),
-      method_(reinterpret_cast<bool (Condition::*)()>(method)),
-      arg_(const_cast<void*>(static_cast<const void*>(obj))) {}
-
-// private static
-inline bool Condition::ReturnBool(const Condition* cond) {
-  return *static_cast<bool*>(cond->arg_);
+inline void mutex::assert_held_shared() const TF_ASSERT_SHARED_LOCK() {
+  mu_.AssertReaderHeld();
 }
 
-inline Condition::Condition(const bool* flag)
-    : eval_(&ReturnBool),
-      function_(nullptr),
-      method_(nullptr),
-      arg_(const_cast<void*>(static_cast<const void*>(flag))) {}
+inline void mutex::Await(const Condition& cond) { mu_.Await(cond); }
+
+inline bool mutex::AwaitWithDeadline(const Condition& cond,
+                                     uint64_t abs_deadline_ns) {
+  return mu_.AwaitWithDeadline(cond, absl::FromUnixNanos(abs_deadline_ns));
+}
+
+inline condition_variable::condition_variable() = default;
+
+inline void condition_variable::wait(mutex_lock& lock) {
+  cv_.Wait(&lock.mutex()->mu_);
+}
+
+inline void condition_variable::notify_one() { cv_.Signal(); }
+
+inline void condition_variable::notify_all() { cv_.SignalAll(); }
+
+template <class Rep, class Period>
+std::cv_status condition_variable::wait_for(
+    mutex_lock& lock, std::chrono::duration<Rep, Period> dur) {
+  bool r = cv_.WaitWithTimeout(&lock.mutex()->mu_, ::absl::FromChrono(dur));
+  return r ? std::cv_status::timeout : std::cv_status::no_timeout;
+}
 
 }  // namespace tsl
-
-// Include appropriate platform-dependent implementation details of mutex etc.
-#if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/mutex.h"
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
-#include "tsl/platform/default/mutex.h"
-#else
-#error Define the appropriate PLATFORM_<foo> macro for this platform
-#endif
 
 #endif  // TENSORFLOW_TSL_PLATFORM_MUTEX_H_

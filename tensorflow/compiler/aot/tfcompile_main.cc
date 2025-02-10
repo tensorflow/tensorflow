@@ -24,12 +24,12 @@ limitations under the License.
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "xla/debug_options_flags.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(argc == 1) << "\nERROR: This command does not take any arguments "
                        "other than flags. See --help.\n\n";
-  tensorflow::Status status = tensorflow::tfcompile::Main(flags);
+  absl::Status status = tensorflow::tfcompile::Main(flags);
   if (status.code() == absl::StatusCode::kInvalidArgument) {
     std::cerr << "INVALID ARGUMENTS: " << status.message() << "\n\n";
     return 1;

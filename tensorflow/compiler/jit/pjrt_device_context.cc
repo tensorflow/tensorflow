@@ -59,12 +59,14 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                       pjrt_client->LookupAddressableDevice(
                           xla::PjRtLocalDeviceId(pjrt_device_id)));
+  TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * pjrt_memory,
+                      pjrt_device->default_memory_space());
   auto first_try_buffer = pjrt_client->BufferFromHostBuffer(
       cpu_tensor->data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,
       xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
       /*on_done_with_host_buffer=*/
-      [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device,
+      [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_memory,
       device_layout);
   if (first_try_buffer.ok()) {
     return std::move(*first_try_buffer);
@@ -80,7 +82,8 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
             /*byte_strides=*/std::nullopt,
             xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
             /*on_done_with_host_buffer=*/
-            [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device));
+            [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_memory,
+            /*device_layout=*/nullptr));
     return second_try_buffer;
   } else {
     return first_try_buffer.status();
@@ -138,7 +141,7 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
 
   xla::PjRtFuture<> future = device_buffer->ToLiteral(literal.get());
   future.OnReady([literal = std::move(literal), done = std::move(done)](
-                     const tensorflow::Status& status) { done(status); });
+                     const absl::Status& status) { done(status); });
 }
 
 void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
@@ -268,7 +271,8 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
           .value();
 
   absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or =
-      src_device_buffer->CopyToDevice(pjrt_dst_device);
+      src_device_buffer->CopyToMemorySpace(
+          *pjrt_dst_device->default_memory_space());
   if (!buffer_or.ok()) {
     done(buffer_or.status());
     return;

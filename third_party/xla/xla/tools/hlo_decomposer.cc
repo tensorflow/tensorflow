@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
-#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -224,10 +223,10 @@ std::unique_ptr<HloModule> ExtractProducerConsumerIntoNewModule(
 
 std::unique_ptr<HloModule> ExtractComputationIntoNewModule(
     const HloComputation& computation) {
-  auto new_hlo_module =
-      std::make_unique<HloModule>("extracted", HloModuleConfig{},
-                                  std::make_unique<CompilationEnvironments>(
-                                      computation.parent()->comp_envs()));
+  auto new_hlo_module = std::make_unique<HloModule>(
+      std::string(computation.name()), HloModuleConfig{},
+      std::make_unique<CompilationEnvironments>(
+          computation.parent()->comp_envs()));
   HloCloneContext clone_context(new_hlo_module.get());
   new_hlo_module->AddEntryComputationWithLayouts(
       computation.CloneInContext(clone_context));

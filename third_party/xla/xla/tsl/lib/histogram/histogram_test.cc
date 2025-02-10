@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <float.h>
 
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test.h"
-#include "tsl/protobuf/histogram.pb.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace histogram {

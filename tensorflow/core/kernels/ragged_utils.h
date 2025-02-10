@@ -26,9 +26,9 @@ namespace tensorflow {
 
 // Verifies that the splits are valid for ragged tensor
 template <typename SPLIT_TYPE>
-Status RaggedTensorVerifySplits(const Tensor& ragged_splits,
-                                bool check_last_element,
-                                int64_t num_ragged_values) {
+absl::Status RaggedTensorVerifySplits(const Tensor& ragged_splits,
+                                      bool check_last_element,
+                                      int64_t num_ragged_values) {
   auto flat_ragged_splits = ragged_splits.flat<SPLIT_TYPE>();
 
   if (ragged_splits.dims() != 1) {

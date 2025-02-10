@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/graph_compactor/pass.h"
 
+#include <cassert>
 #include <iterator>
 #include <memory>
 #include <string>

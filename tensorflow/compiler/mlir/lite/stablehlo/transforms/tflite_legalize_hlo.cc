@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/fft.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/gather.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/get_dimension_size.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/if.h"
@@ -51,7 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/sort.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/while.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -260,7 +262,7 @@ bool ValueGreaterThanZero(ElementsAttr float_or_int) {
 }
 
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFLITEPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 bool SupportedComparisonType(mhlo::ComparisonTypeAttr comp_type) {
   if (!comp_type) return true;
@@ -291,6 +293,51 @@ bool IsCompareLegal(mhlo::CompareOp op) {
   return !SupportedComparisonType(op.getCompareTypeAttr());
 }
 
+bool IsAbsOpLegal(mhlo::AbsOp op) {
+  return !llvm::cast<ShapedType>(op.getOperand().getType())
+              .getElementType()
+              .isIntOrFloat() &&
+         !llvm::isa<mlir::ComplexType>(
+             op.getOperand().getType().getElementType());
+}
+
+bool IsImagOpLegal(mhlo::ImagOp op) {
+  return llvm::cast<ShapedType>(op.getOperand().getType())
+             .getElementType()
+             .isIntOrFloat() ||
+         !llvm::isa<mlir::ComplexType>(
+             op.getOperand().getType().getElementType());
+}
+
+bool IsRealOpLegal(mhlo::RealOp op) {
+  return llvm::cast<ShapedType>(op.getOperand().getType())
+             .getElementType()
+             .isIntOrFloat() ||
+         !llvm::isa<mlir::ComplexType>(
+             op.getOperand().getType().getElementType());
+}
+
+// shlo reference add kernel supports u32 which tfl does not.
+bool IsAddOpLegal(mhlo::AddOp op) {
+  return llvm::cast<ShapedType>(op.getOperand(0).getType())
+      .getElementType()
+      .isUnsignedInteger(32);
+}
+
+// shlo reference sub kernel support u32 which tfl does not.
+bool IsSubtractOpLegal(mhlo::SubtractOp op) {
+  return llvm::cast<ShapedType>(op.getOperand(0).getType())
+      .getElementType()
+      .isUnsignedInteger(32);
+}
+
+// shlo reference min kernels supports bool which tfl does not.
+bool IsMinimumOpLegal(mhlo::MinOp op) {
+  return llvm::cast<ShapedType>(op.getOperand(0).getType())
+      .getElementType()
+      .isInteger(1);
+}
+
 void SetUnaryOpLegal(ConversionTarget& target) {
   auto is_legal = [](Operation* op) {
     return !llvm::cast<ShapedType>(op->getOperand(0).getType())
@@ -300,7 +347,6 @@ void SetUnaryOpLegal(ConversionTarget& target) {
   target.addDynamicallyLegalOp<
       // go/keep-sorted start
       // clang-format off
-      mhlo::AbsOp,
       mhlo::BitcastConvertOp,
       mhlo::CeilOp,
       mhlo::ConvertOp,
@@ -308,13 +354,11 @@ void SetUnaryOpLegal(ConversionTarget& target) {
       mhlo::ExpOp,
       mhlo::Expm1Op,
       mhlo::FloorOp,
-      mhlo::ImagOp,
       mhlo::IsFiniteOp,
       mhlo::Log1pOp,
       mhlo::LogOp,
       mhlo::LogisticOp,
       mhlo::NegOp,
-      mhlo::RealOp,
       mhlo::RsqrtOp,
       mhlo::SignOp,
       mhlo::SineOp,
@@ -360,8 +404,8 @@ void LegalizeHloToTfLitePass::runOnOperation() {
         // clang-format on
         >(context);
 
-    (void)applyPatternsAndFoldGreedily(getOperation().getOperation(),
-                                       std::move(patterns));
+    (void)applyPatternsGreedily(getOperation().getOperation(),
+                                std::move(patterns));
   }
 
   {
@@ -377,15 +421,20 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
 
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
+  target.addDynamicallyLegalOp<mhlo::AbsOp>(IsAbsOpLegal);
+  target.addDynamicallyLegalOp<mhlo::ImagOp>(IsImagOpLegal);
+  target.addDynamicallyLegalOp<mhlo::RealOp>(IsRealOpLegal);
   target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
   target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
+  target.addDynamicallyLegalOp<mhlo::AddOp>(IsAddOpLegal);
+  target.addDynamicallyLegalOp<mhlo::SubtractOp>(IsSubtractOpLegal);
+  target.addDynamicallyLegalOp<mhlo::MinOp>(IsMinimumOpLegal);
   target.addDynamicallyLegalOp<mhlo::TupleOp>(
       [](mhlo::TupleOp op) { return std::nullopt; });
 
   target.addIllegalOp<
       // go/keep-sorted start
       // clang-format off
-      mhlo::AddOp,
       mhlo::Atan2Op,
       mhlo::BroadcastInDimOp,
       mhlo::ClampOp,
@@ -397,7 +446,6 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       mhlo::DynamicBroadcastInDimOp,
       mhlo::DynamicReshapeOp,
       mhlo::MaxOp,
-      mhlo::MinOp,
       mhlo::MulOp,
       mhlo::PowOp,
       mhlo::RemOp,
@@ -408,7 +456,6 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       mhlo::SelectOp,
       mhlo::ShiftRightArithmeticOp,
       mhlo::ShiftRightLogicalOp,
-      mhlo::SubtractOp,
       mhlo::TransposeOp
       // clang-format on
       // go/keep-sorted end
@@ -432,6 +479,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   PopulateWhilePatterns(context, patterns, target);
   PopulateGetDimensionSizePatterns(context, patterns, target);
   PopulateIfPatterns(context, patterns, target);
+  PopulateLegalizeFftPatterns(context, patterns, target);
   PopulateCustomCallPatterns(context, patterns, target);
 
   patterns.add<odml::LowerDotGeneralOp>(context);

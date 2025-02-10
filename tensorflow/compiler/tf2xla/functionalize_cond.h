@@ -37,8 +37,8 @@ namespace tensorflow {
 // b) While loops must have been functionalized before according to
 //    `node_filter` (e.g., by calling `FunctionalizeWhileLoop` with the same
 //    filter before calling this function).
-Status FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library,
-                         const NodeFilter& node_filter = {});
+absl::Status FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library,
+                               const NodeFilter& node_filter = {});
 
 // Internal functions/classes exposed for testing purposes.
 namespace functionalize_cond {
@@ -184,12 +184,13 @@ class StateMap {
 class FunctionalizeCond {
  public:
   // See comment for function `FunctionalizeCond`.
-  static Status Functionalize(Graph* graph, FunctionLibraryDefinition* library,
-                              const NodeFilter& node_filter);
+  static absl::Status Functionalize(Graph* graph,
+                                    FunctionLibraryDefinition* library,
+                                    const NodeFilter& node_filter);
 
   // Build identity node with the same name as the merge that will be replaced
   // in case the output is fetched/colocated.
-  Status AddIdentityNode(const Node* replacee, Node* if_node, int port);
+  absl::Status AddIdentityNode(const Node* replacee, Node* if_node, int port);
 
   // Add a If node to the graph defined by def that will, amongst other, replace
   // replacee in the graph.
@@ -197,7 +198,7 @@ class FunctionalizeCond {
                                   const OutputTensor& predicate);
 
   // Propagates the state of a newly inserted node.
-  Status PropagateUpdatedState(const Node* replacee);
+  absl::Status PropagateUpdatedState(const Node* replacee);
 
   // Dump graph with the CondState annotated.
   void DumpGraphWithCondState(const string& name);
@@ -212,7 +213,7 @@ class FunctionalizeCond {
   // Performs the actual cond functionalization. Iterate over groups of merge
   // nodes (linked by common predicates & ancestor IDs), from innermost to
   // outermost, and extract into If nodes.
-  Status FunctionalizeInternal();
+  absl::Status FunctionalizeInternal();
 
   // Returns the forward flow state propagated along edge `e`.
   // This may modify state_map_.
@@ -221,19 +222,19 @@ class FunctionalizeCond {
   // Determines the CondState and AncestorState of all the nodes in the given
   // vector where the input is expected in reverse topological order.
   // This populates the state_map_.
-  Status DetermineStates(std::vector<Node*> rev_topo_order);
+  absl::Status DetermineStates(std::vector<Node*> rev_topo_order);
 
   // Determine the CondState for a given node using the incoming edges
   // to the node. Note: it is expected that this node's CondState is only
   // determined once its input's CondState is.
-  Status DetermineCondState(Node* dst) {
+  absl::Status DetermineCondState(Node* dst) {
     if (IsMerge(dst)) return DetermineCondStateMerge(dst);
     return DetermineCondStateNonMerge(dst);
   }
 
   // Helper functions for DetermineCondState.
-  Status DetermineCondStateNonMerge(Node* dst);
-  Status DetermineCondStateMerge(Node* dst);
+  absl::Status DetermineCondStateNonMerge(Node* dst);
+  absl::Status DetermineCondStateMerge(Node* dst);
 
   // Determines the dst node's CondState by joining the src and dst's CondState
   // where either the dst node is a merge or not.
@@ -245,13 +246,13 @@ class FunctionalizeCond {
                                                           StateMap::CondId dst);
 
   // Determines which switch/merge nodes are ancestors of this node.
-  Status DetermineAncestorState(Node* dst);
+  absl::Status DetermineAncestorState(Node* dst);
 
   // Checks if a merge node is redundant and if so removes it from the graph.
-  Status RemoveRedundantMerge(Node* node);
+  absl::Status RemoveRedundantMerge(Node* node);
 
   // Checks if a switch node is redundant and if so removes it from the graph.
-  Status RemoveRedundantSwitch(Node* node);
+  absl::Status RemoveRedundantSwitch(Node* node);
 
   // Sorts merge nodes (in reverse topological order) in order of increasing
   // nesting depth.

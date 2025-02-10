@@ -29,9 +29,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -46,42 +48,75 @@ bool IsBatchScatter(const HloScatterInstruction* scatter) {
   return !dims.input_batching_dims().empty();
 }
 
+// If `type` is an integral type in which `size` doesn't fit, promote it to S32
+// or S64 (depending on `size`).
+PrimitiveType PromoteTypeForSize(PrimitiveType type, int64_t size) {
+  // Gather/Scatter should have an integral type, but we check just in case.
+  if (!primitive_util::IsIntegralType(type) ||
+      primitive_util::FitsInIntegralType(size, type)) {
+    return type;
+  }
+  if (primitive_util::FitsInIntegralType(size, PrimitiveType::S32)) {
+    return PrimitiveType::S32;
+  }
+  return PrimitiveType::S64;
+}
+
+// If `indices_batching_dims` and `updated_index_map` are both sorted, then the
+// `indices_are_sorted` property is preserved.
+//
+// This is because each concatenated iota is monotonically increasing, sorted
+// indices batching dims mean their order corresponds to the order of batching
+// dims in the operand, and a sorted updated start index map means the order of
+// the index vector dim corresponds to the order of operand dims.
+bool GetUpdatedIndicesAreSorted(bool indices_are_sorted,
+                                absl::Span<const int64_t> indices_batching_dims,
+                                absl::Span<const int64_t> updated_index_map) {
+  return indices_are_sorted && absl::c_is_sorted(indices_batching_dims) &&
+         absl::c_is_sorted(updated_index_map);
+}
+
 // Update gather/scater indices by adding fake batching iota dimensions.
 HloInstruction* CreateConcatIndices(
     HloInstruction* inst, HloInstruction* indices, int64_t index_vector_dim,
     absl::Span<const int64_t> indices_batching_dims,
     BatchedGatherScatterNormalizer* normalizer) {
-  const bool index_vector_dim_on_last_dim =
-      index_vector_dim == indices->shape().rank();
+  // The batching dim sizes might not fit in the existing element type,
+  // in which case we need to promote it.
+  PrimitiveType element_type = indices->shape().element_type();
+  for (int64_t indices_batching_dim : indices_batching_dims) {
+    element_type = PromoteTypeForSize(
+        element_type, indices->shape().dimensions(indices_batching_dim));
+  }
+  if (element_type != indices->shape().element_type()) {
+    Shape indices_shape = indices->shape();
+    indices_shape.set_element_type(element_type);
+    indices = inst->parent()->AddInstruction(
+        HloInstruction::CreateConvert(indices_shape, indices));
+  }
 
   Shape iota_shape = indices->shape();
+  const bool index_vector_dim_on_last_dim =
+      index_vector_dim == iota_shape.rank();
   if (index_vector_dim_on_last_dim) {
     std::vector<int64_t> dimensions(iota_shape.dimensions().begin(),
                                     iota_shape.dimensions().end());
     dimensions.push_back(1);
-    iota_shape = ShapeUtil::MakeShape(iota_shape.element_type(), dimensions);
+    iota_shape = ShapeUtil::MakeShape(element_type, dimensions);
+    indices = inst->AddInstruction(
+        HloInstruction::CreateReshape(iota_shape, indices));
   }
   iota_shape.set_dimensions(index_vector_dim, 1);
   normalizer->UpdateLayout(&iota_shape);
 
   std::vector<HloInstruction*> indices_to_concat;
+  indices_to_concat.reserve(indices_batching_dims.size() + 1);
   for (int64_t indices_batching_dim : indices_batching_dims) {
     indices_to_concat.push_back(inst->parent()->AddInstruction(
         HloInstruction::CreateIota(iota_shape, indices_batching_dim)));
   }
-  if (index_vector_dim_on_last_dim) {
-    std::vector<int64_t> dimensions(indices->shape().dimensions().begin(),
-                                    indices->shape().dimensions().end());
-    dimensions.push_back(1);
-    Shape reshape_shape =
-        ShapeUtil::MakeShape(indices->shape().element_type(), dimensions);
-    normalizer->UpdateLayout(&reshape_shape);
-    HloInstruction* reshaped_indices = inst->AddInstruction(
-        HloInstruction::CreateReshape(reshape_shape, indices));
-    indices_to_concat.push_back(reshaped_indices);
-  } else {
-    indices_to_concat.push_back(indices);
-  }
+  indices_to_concat.push_back(indices);
+
   Shape concat_shape = iota_shape;
   concat_shape.set_dimensions(
       index_vector_dim,
@@ -121,7 +156,10 @@ absl::StatusOr<HloInstruction*> NormalizeBatchGather(
           dims.index_vector_dim());
   return gather->AddInstruction(HloInstruction::CreateGather(
       gather->shape(), gather_operand, gather_indices, updated_dims,
-      gather->gather_slice_sizes(), gather->indices_are_sorted()));
+      gather->gather_slice_sizes(),
+      GetUpdatedIndicesAreSorted(gather->indices_are_sorted(),
+                                 dims.start_indices_batching_dims(),
+                                 start_index_map)));
 }
 
 absl::StatusOr<HloInstruction*> NormalizeBatchScatter(
@@ -154,7 +192,10 @@ absl::StatusOr<HloInstruction*> NormalizeBatchScatter(
           scatter_dims_to_operand_dims, dims.index_vector_dim());
   return scatter->AddInstruction(HloInstruction::CreateScatter(
       scatter->shape(), scatter_operands, scatter_indices, scatter_updates,
-      scatter->to_apply(), updated_dims, scatter->indices_are_sorted(),
+      scatter->to_apply(), updated_dims,
+      GetUpdatedIndicesAreSorted(scatter->indices_are_sorted(),
+                                 dims.scatter_indices_batching_dims(),
+                                 scatter_dims_to_operand_dims),
       scatter->unique_indices()));
 }
 

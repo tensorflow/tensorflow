@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -160,10 +161,10 @@ absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
        num_devices == 1)) {
     // Convert replicated or TileMaximal. Only single-device TileMaximal
     // conversion is supported.
-    llvm::SmallVector<int64_t> dim_shards(rank, 1);
+    std::vector<int64_t> dim_shards(rank, 1);
     minor_to_major.permutation.push_back(0);
     minor_to_major.axis_sizes.push_back(num_devices);
-    return ShardingParam(dim_shards, std::move(minor_to_major));
+    return ShardingParam(std::move(dim_shards), std::move(minor_to_major));
   } else if (hlo_sharding.IsTiled()) {
     const xla::TileAssignment& tile_assignment = hlo_sharding.tile_assignment();
     if (!tile_assignment.iota()) {
@@ -188,8 +189,8 @@ absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
           hlo_sharding.ToString()));
     }
     // Get the `dim_shards` from the tile assignment.
-    llvm::SmallVector<int64_t> dim_shards(tile_assignment.dimensions().begin(),
-                                          tile_assignment.dimensions().end());
+    std::vector<int64_t> dim_shards(tile_assignment.dimensions().begin(),
+                                    tile_assignment.dimensions().end());
     if (hlo_sharding.ReplicateOnLastTileDim() ||
         (hlo_sharding.subgroup_types().size() == 1 &&
          hlo_sharding.subgroup_types()[0] == xla::OpSharding::REPLICATED)) {
@@ -216,7 +217,7 @@ absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
         minor_to_major.permutation.push_back(num_axis - axis_id - 1);
       }
     }
-    return ShardingParam(dim_shards, std::move(minor_to_major));
+    return ShardingParam(std::move(dim_shards), std::move(minor_to_major));
   }
   return absl::UnimplementedError(
       absl::StrCat("Unsupported conversion to `ShardingParam` from "

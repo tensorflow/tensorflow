@@ -219,6 +219,19 @@ def _create_libcuda_symlinks(
         repository_ctx.symlink(nvidia_driver_path, "lib/libcuda.so.1")
         repository_ctx.symlink("lib/libcuda.so.1", "lib/libcuda.so")
 
+def _create_cuda_header_symlinks(repository_ctx):
+    if repository_ctx.name == "cuda_nvcc":
+        repository_ctx.symlink("../cuda_cudart/include/cuda.h", "include/cuda.h")
+
+def _create_cuda_version_file(repository_ctx, lib_name_to_version_dict):
+    key = "%{libcudart_version}"
+    major_cudart_version = lib_name_to_version_dict[key] if key in lib_name_to_version_dict else ""
+    if repository_ctx.name == "cuda_cudart":
+        repository_ctx.file(
+            "cuda_version.bzl",
+            "MAJOR_CUDA_VERSION = \"{}\"".format(major_cudart_version),
+        )
+
 def use_local_path(repository_ctx, local_path, dirs):
     # buildifier: disable=function-docstring-args
     """Creates repository using local redistribution paths."""
@@ -241,6 +254,7 @@ def use_local_path(repository_ctx, local_path, dirs):
         repository_ctx,
         lib_name_to_version_dict,
     )
+    _create_cuda_version_file(repository_ctx, lib_name_to_version_dict)
     repository_ctx.file("version.txt", major_version)
 
 def _use_local_cuda_path(repository_ctx, local_cuda_path):
@@ -283,7 +297,21 @@ def _download_redistribution(repository_ctx, arch_key, path_prefix):
     repository_ctx.delete(file_name)
 
 def _get_platform_architecture(repository_ctx):
-    host_arch = repository_ctx.os.arch
+    target_arch = get_env_var(repository_ctx, "CUDA_REDIST_TARGET_PLATFORM")
+
+    # We use NVCC compiler as the host compiler.
+    if target_arch and repository_ctx.name != "cuda_nvcc":
+        if target_arch in OS_ARCH_DICT.keys():
+            host_arch = target_arch
+        else:
+            fail(
+                "Unsupported architecture: {arch}, use one of {supported}".format(
+                    arch = target_arch,
+                    supported = OS_ARCH_DICT.keys(),
+                ),
+            )
+    else:
+        host_arch = repository_ctx.os.arch
 
     if host_arch == "aarch64":
         uname_result = repository_ctx.execute(["uname", "-a"]).stdout
@@ -300,6 +328,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
     if not cuda_version:
         # If no CUDA version is found, comment out all cc_import targets.
         create_dummy_build_file(repository_ctx)
+        _create_cuda_version_file(repository_ctx, {})
         repository_ctx.file("version.txt", major_version)
         return
 
@@ -308,6 +337,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
             repository_ctx.name,
         ))  # buildifier: disable=print
         create_dummy_build_file(repository_ctx)
+        _create_cuda_version_file(repository_ctx, {})
         repository_ctx.file("version.txt", major_version)
         return
 
@@ -339,6 +369,8 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
         repository_ctx,
         lib_name_to_version_dict,
     )
+    _create_cuda_header_symlinks(repository_ctx)
+    _create_cuda_version_file(repository_ctx, lib_name_to_version_dict)
     repository_ctx.file("version.txt", major_version)
 
 def _cuda_repo_impl(repository_ctx):
@@ -361,6 +393,7 @@ cuda_repo = repository_rule(
         "HERMETIC_CUDA_VERSION",
         "TF_CUDA_VERSION",
         "LOCAL_CUDA_PATH",
+        "CUDA_REDIST_TARGET_PLATFORM",
     ],
 )
 
@@ -446,6 +479,7 @@ cudnn_repo = repository_rule(
         "HERMETIC_CUDA_VERSION",
         "TF_CUDA_VERSION",
         "LOCAL_CUDNN_PATH",
+        "CUDA_REDIST_TARGET_PLATFORM",
     ],
 )
 

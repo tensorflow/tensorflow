@@ -53,7 +53,7 @@ void WriteUpdateTo(const string& directory) {
   printf("%d changed ops\n%d added ops\n", changed_ops, added_ops);
 
   const string& history_dir = compatibility.op_history_directory();
-  Status status = env->CreateDir(history_dir);
+  absl::Status status = env->CreateDir(history_dir);
   if (!errors::IsAlreadyExists(status)) {
     TF_QCHECK_OK(status);
   }

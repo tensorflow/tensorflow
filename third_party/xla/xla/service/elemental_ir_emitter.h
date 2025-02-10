@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
@@ -46,11 +47,11 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   using HloToElementGeneratorMap =
       absl::flat_hash_map<const HloInstruction*, llvm_ir::ElementGenerator>;
 
-  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b,
+  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilderBase* b,
                      const Options& options)
       : b_(b), module_(module), options_(options) {}
 
-  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b)
+  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilderBase* b)
       : ElementalIrEmitter(module, b, Options()) {}
 
   virtual ~ElementalIrEmitter() = default;
@@ -61,10 +62,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator);
 
-  llvm::IRBuilder<>* b() { return b_; }
+  llvm::IRBuilderBase* b() { return b_; }
 
   // builder() is for IrBuilderMixin.
-  llvm::IRBuilder<>* builder() { return b_; }
+  llvm::IRBuilderBase* builder() { return b_; }
 
   llvm::Module* module() { return module_; }
 
@@ -286,7 +287,7 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   virtual absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name, bool is_reducer) = 0;
+      absl::string_view name, bool is_reducer);
 
   absl::StatusOr<llvm::Value*> EmitElementalMap(
       const HloMapInstruction* map_instr,
@@ -318,9 +319,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   absl::StatusOr<llvm::Value*> EvaluatePolynomial(
       llvm::Type* type, llvm::Value* x, absl::Span<const double> coefficients);
 
-  virtual bool fast_min_max() = 0;
+  virtual bool fast_min_max();
 
-  llvm::IRBuilder<>* const b_;
+  llvm::IRBuilderBase* const b_;
 
   llvm::Module* module_;
 
@@ -332,7 +333,7 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 // Allow to instantiate IR emitter in tests.
 class ElementalIrEmitterForTests : public ElementalIrEmitter {
  public:
-  ElementalIrEmitterForTests(llvm::Module* module, llvm::IRBuilder<>* builder)
+  ElementalIrEmitterForTests(llvm::Module* module, llvm::IRBuilderBase* builder)
       : ElementalIrEmitter(module, builder) {}
 
   absl::Status TestElementalDot(const HloInstruction* hlo,
@@ -350,6 +351,10 @@ class ElementalIrEmitterForTests : public ElementalIrEmitter {
 
   HloToElementGeneratorMap generator_map_;
 };
+
+absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
+    PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
+    int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilderBase* b);
 
 }  // namespace xla
 

@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/core/ir/ops.h"
 
 #include <algorithm>
-#include <cstdint>
+#include <array>
+#include <cassert>
+#include <iterator>
 #include <list>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -721,7 +722,7 @@ GraphFuncOp GraphFuncOp::getCalledFunction(Operation* op,
                                            SymbolTable& symbol_table) {
   // Check if a node does indirect function call via PartitionedCallOp.
   // TODO(aminim): consider replacing with isa<...> when possible.
-  if (op->getName().getStringRef() == "tfg.PartitionCall" ||
+  if (op->getName().getStringRef() == "tfg.PartitionedCall" ||
       op->getName().getStringRef() == "tfg.StatefulPartitionedCall" ||
       op->getName().getStringRef() == "tfg.TPUPartitionedCall") {
     auto func_attr = op->getAttrOfType<FuncAttr>("f");

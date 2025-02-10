@@ -21,7 +21,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 

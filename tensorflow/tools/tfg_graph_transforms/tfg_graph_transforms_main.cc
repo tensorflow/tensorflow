@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdlib>
 #include <string>
 #include <utility>
 
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/ir/dialect.h"
@@ -48,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/transforms/pass_registration.h"
 #include "tensorflow/tools/tfg_graph_transforms/utils.h"
-#include "tsl/platform/errors.h"
 
 namespace {
 
@@ -132,7 +133,7 @@ void RegisterDialects(mlir::DialectRegistry& registry) {
       });
 }
 
-tensorflow::Status RunOptimizationPasses(
+absl::Status RunOptimizationPasses(
     const mlir::PassPipelineCLParser& passPipeline, mlir::ModuleOp module,
     mlir::MLIRContext* context) {
   mlir::PassManager pm(context);
@@ -191,12 +192,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportModel(
   }
 }
 
-tensorflow::Status ExportTFGModule(mlir::ModuleOp module_op,
-                                   DataFormat data_format,
-                                   const std::string& input_file,
-                                   const std::string& output_file,
-                                   bool experimental_image_format,
-                                   int experimental_image_format_max_size) {
+absl::Status ExportTFGModule(mlir::ModuleOp module_op, DataFormat data_format,
+                             const std::string& input_file,
+                             const std::string& output_file,
+                             bool experimental_image_format,
+                             int experimental_image_format_max_size) {
   switch (data_format) {
     case DataFormat::SavedModel: {
       tensorflow::SavedModel original_saved_model;
@@ -276,14 +276,14 @@ int main(int argc, char** argv) {
 
   // Parse the optimization pipeline configuration and run requested graph
   // optimizations.
-  tensorflow::Status pass_pipeline_status =
+  absl::Status pass_pipeline_status =
       RunOptimizationPasses(pass_pipeline, *module_ref, &context);
   if (!pass_pipeline_status.ok()) {
     LOG(QFATAL) << pass_pipeline_status << "\n";
   }
 
   // Export MLIR TFG module to the resulting model proto.
-  tensorflow::Status export_status = ExportTFGModule(
+  absl::Status export_status = ExportTFGModule(
       *module_ref, data_format, input_file, output_file,
       experimental_image_format, experimental_image_format_max_proto_size);
 

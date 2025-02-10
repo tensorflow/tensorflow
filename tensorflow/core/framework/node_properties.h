@@ -47,9 +47,9 @@ struct NodeProperties {
   // from the given NodeDef. 'op_registry' is used to look up the OpDef
   // corresponding to node_def.op(). Returns an error if OpDef lookup or
   // creation failed.
-  static Status CreateFromNodeDef(NodeDef node_def,
-                                  const OpRegistryInterface* op_registry,
-                                  std::shared_ptr<const NodeProperties>* props);
+  static absl::Status CreateFromNodeDef(
+      NodeDef node_def, const OpRegistryInterface* op_registry,
+      std::shared_ptr<const NodeProperties>* props);
 
   const OpDef* op_def;  // not owned.
   NodeDef node_def;

@@ -58,7 +58,7 @@ TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
 
   MemoryOptimizer optimizer(RewriterConfig::MANUAL);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
 
   TF_EXPECT_OK(status);
   NodeMap post_transform_node_map(&output);
@@ -98,7 +98,7 @@ TEST_F(RecomputeSubgraphTest, NoFeedsRecomputed) {
 
   MemoryOptimizer optimizer(RewriterConfig::MANUAL);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
 
   TF_EXPECT_OK(status);
   EXPECT_EQ(6, output.node_size());
@@ -124,7 +124,7 @@ TEST_F(RecomputeSubgraphTest, TwoInputSubgraphs) {
   MemoryOptimizer optimizer(RewriterConfig::MANUAL,
                             "some_name_scope/gradients");
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
 
   TF_EXPECT_OK(status);
   NodeMap post_transform_node_map(&output);
@@ -163,7 +163,7 @@ TEST_F(RecomputeSubgraphTest, MultiNode) {
 
   MemoryOptimizer optimizer(RewriterConfig::RECOMPUTATION_HEURISTICS);
   GraphDef first_pass_output;
-  Status first_pass_status =
+  absl::Status first_pass_status =
       optimizer.Optimize(nullptr, item, &first_pass_output);
   TF_EXPECT_OK(first_pass_status);
 
@@ -252,7 +252,7 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
 
   MemoryOptimizer optimizer(RewriterConfig::MANUAL);
   GraphDef output;
-  Status status = optimizer.Optimize(cluster.get(), item, &output);
+  absl::Status status = optimizer.Optimize(cluster.get(), item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(9, output.node_size());
@@ -322,7 +322,7 @@ TEST_F(MemoryOptimizerTest, SwappingHeuristics) {
 
   MemoryOptimizer optimizer(RewriterConfig::SWAPPING_HEURISTICS);
   GraphDef output;
-  Status status = optimizer.Optimize(cluster.get(), item, &output);
+  absl::Status status = optimizer.Optimize(cluster.get(), item, &output);
   TF_EXPECT_OK(status);
 
   for (const auto& node : output.node()) {
@@ -373,7 +373,7 @@ TEST_F(MemoryOptimizerTest, UnswappableInputs) {
 
   MemoryOptimizer optimizer(RewriterConfig::SWAPPING_HEURISTICS);
   GraphDef output;
-  Status status = optimizer.Optimize(cluster.get(), item, &output);
+  absl::Status status = optimizer.Optimize(cluster.get(), item, &output);
   TF_EXPECT_OK(status);
 
   for (const auto& node : output.node()) {
@@ -411,7 +411,7 @@ TEST_F(MemoryOptimizerTest, AccumulationRewrites) {
   std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
   MemoryOptimizer optimizer(RewriterConfig::SCHEDULING_HEURISTICS);
   GraphDef output;
-  Status status = optimizer.Optimize(cluster.get(), item, &output);
+  absl::Status status = optimizer.Optimize(cluster.get(), item, &output);
   TF_EXPECT_OK(status);
 
   int count = 0;

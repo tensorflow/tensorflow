@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 namespace gpu {
@@ -31,9 +31,7 @@ namespace gpu {
 // dot(p0, p1), lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
 // The first case gets transposes inserted by dot_decomposer, the second one
 // does not and thus is generally more efficient.
-
 // TODO(b/265688934): do the same for batch dimensions?
-
 class DotDimensionSorter : public HloModulePass {
  public:
   absl::string_view name() const override { return "dot_dimension_sorter"; }

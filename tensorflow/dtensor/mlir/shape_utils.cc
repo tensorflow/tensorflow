@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/shape_utils.h"
 
+#include <cassert>
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -230,7 +232,7 @@ mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
 
 }  // namespace
 
-Status InferSPMDExpandedLocalShapeForResourceOutput(
+absl::Status InferSPMDExpandedLocalShapeForResourceOutput(
     mlir::OpResult* op_result, const Layout& output_layout,
     mlir::MLIRContext* context) {
   if (llvm::isa<mlir::TF::ResourceType>(

@@ -104,6 +104,22 @@ absl::StatusOr<tsl::RCReference<DeviceList>> GetDevices(
   return BasicDeviceList::Create(std::move(devices));
 }
 
+absl::StatusOr<tsl::RCReference<DeviceList>> GetAddressableDevices(
+    Client* client, absl::Span<const int> device_indices) {
+  BasicDeviceList::Devices devices;
+  devices.reserve(device_indices.size());
+  const absl::Span<Device* const> client_devices =
+      client->addressable_devices();
+  for (int device_index : device_indices) {
+    if (device_index < 0 || device_index >= client_devices.size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Out of range device index: ", device_index));
+    }
+    devices.push_back(client_devices[device_index]);
+  }
+  return BasicDeviceList::Create(std::move(devices));
+}
+
 }  // namespace test_util
 }  // namespace ifrt
 }  // namespace xla

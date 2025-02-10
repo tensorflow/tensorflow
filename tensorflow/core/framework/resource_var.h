@@ -86,7 +86,7 @@ class Var : public ResourceBase {
     is_initialized = false;
   }
 
-  Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override;
+  absl::Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override;
 
   std::string DebugString() const override {
     return strings::StrCat(DataTypeString(tensor_.dtype()), "/",

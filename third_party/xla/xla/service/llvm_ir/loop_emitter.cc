@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/loop_emitter.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -32,27 +35,27 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace llvm_ir {
 
 LoopEmitter::LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
-                         llvm::IRBuilder<>* b)
+                         llvm::IRBuilderBase* b)
     : body_emitter_(body_emitter), shape_(shape), b_(b) {}
 
 LoopEmitter::LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
                          std::vector<llvm::Value*> dynamic_dims,
-                         llvm::IRBuilder<>* b)
+                         llvm::IRBuilderBase* b)
     : LoopEmitter::LoopEmitter(body_emitter, shape, b) {
   CHECK_EQ(dynamic_dims.size(), shape_.dimensions_size());
   dynamic_dims_ = std::move(dynamic_dims);
 }
 
 LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
-                         const IrArray& target_array, llvm::IRBuilder<>* b)
+                         const IrArray& target_array, llvm::IRBuilderBase* b)
     : body_emitter_(MakeBodyEmitter(target_element_generator, {target_array}, b,
                                     /*is_tuple=*/false)),
       shape_(target_array.GetShape()),
@@ -60,7 +63,7 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
 
 LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
                          absl::Span<const IrArray> target_arrays,
-                         llvm::IRBuilder<>* b)
+                         llvm::IRBuilderBase* b)
     : body_emitter_(MakeBodyEmitter(target_element_generator, target_arrays, b,
                                     /*is_tuple=*/true)),
       shape_(target_arrays[0].GetShape()),
@@ -76,7 +79,7 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
 
 BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
                             absl::Span<IrArray const> target_arrays,
-                            llvm::IRBuilder<>* b, bool is_tuple) {
+                            llvm::IRBuilderBase* b, bool is_tuple) {
   std::vector<IrArray> target_arrays_vec(target_arrays.begin(),
                                          target_arrays.end());
   if (!is_tuple) {
@@ -125,10 +128,15 @@ IrArray::Index LoopEmitter::EmitStaticIndex(ForLoopNest* loop_nest,
   std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
   for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
+    // Only unroll the most minor dimension, this seems to give us good runtime
+    // performance with a large improvement in compile time.
+    auto unroll_mode = (i == shape_.rank() - 1)
+                           ? llvm_ir::UnrollMode::kDefaultUnroll
+                           : llvm_ir::UnrollMode::kNoUnroll;
     std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape_.dimensions(dimension),
-        /*suffix=*/absl::StrFormat("dim.%d", dimension));
+        /*suffix=*/absl::StrFormat("dim.%d", dimension), unroll_mode);
     array_multi_index[dimension] = loop->GetIndVarValue();
   }
   return IrArray::Index(array_multi_index, shape_, index_type);
@@ -144,10 +152,15 @@ IrArray::Index LoopEmitter::EmitDynamicIndex(ForLoopNest* loop_nest,
   std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
   for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
+    // Only unroll the most minor dimension, this seems to give us good runtime
+    // performance with a large improvement in compile time.
+    auto unroll_mode = (i == shape_.rank() - 1)
+                           ? llvm_ir::UnrollMode::kDefaultUnroll
+                           : llvm_ir::UnrollMode::kNoUnroll;
     std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
         /*suffix=*/absl::StrFormat("dim.%d", dimension),
         /*start_index=*/llvm::ConstantInt::get(index_type, 0),
-        /*end_index=*/dynamic_dims_[dimension]);
+        /*end_index=*/dynamic_dims_[dimension], unroll_mode);
     array_multi_index[dimension] = loop->GetIndVarValue();
   }
   return IrArray::Index(array_multi_index, shape_, index_type);

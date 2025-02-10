@@ -1,48 +1,15 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..ed6047c 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1 +1,28 @@
- Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/X86/avx10_2_512satcvtds-builtins-errors.c b/clang/test/CodeGen/X86/avx10_2_512satcvtds-builtins-errors.c
-+--- a/clang/test/CodeGen/X86/avx10_2_512satcvtds-builtins-errors.c
-++++ b/clang/test/CodeGen/X86/avx10_2_512satcvtds-builtins-errors.c
-+@@ -1,4 +1,4 @@
-+-// RUN: %clang_cc1 -flax-vector-conversions=none -ffreestanding %s -triple=i386-unknown-unknown -target-feature +avx10.2-512 -emit-llvm -Wall -Werror -verify
-++// RUN: %clang_cc1 -flax-vector-conversions=none -ffreestanding %s -triple=i386-unknown-unknown -target-feature +avx10.2-512 -Wall -Werror -verify
-+ 
-+ #include <immintrin.h>
-+ #include <stddef.h>
-+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/X86/avx10_2_512satcvtds-builtins-x64-error.c b/clang/test/CodeGen/X86/avx10_2_512satcvtds-builtins-x64-error.c
-+--- a/clang/test/CodeGen/X86/avx10_2_512satcvtds-builtins-x64-error.c
-++++ b/clang/test/CodeGen/X86/avx10_2_512satcvtds-builtins-x64-error.c
-+@@ -1,4 +1,4 @@
-+-// RUN: %clang_cc1 -flax-vector-conversions=none -ffreestanding %s -triple=x86_64-unknown-unknown -target-feature +avx10.2-512 -emit-llvm -Wall -Werror -verify
-++// RUN: %clang_cc1 -flax-vector-conversions=none -ffreestanding %s -triple=x86_64-unknown-unknown -target-feature +avx10.2-512 -Wall -Werror -verify
-+ 
-+ #include <immintrin.h>
-+ #include <stddef.h>
-+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/X86/avx10_2satcvtds-builtins-errors.c b/clang/test/CodeGen/X86/avx10_2satcvtds-builtins-errors.c
-+--- a/clang/test/CodeGen/X86/avx10_2satcvtds-builtins-errors.c
-++++ b/clang/test/CodeGen/X86/avx10_2satcvtds-builtins-errors.c
-+@@ -1,4 +1,4 @@
-+-// RUN: %clang_cc1 -flax-vector-conversions=none -ffreestanding %s -triple=i386-unknown-unknown -target-feature +avx10.2-256 -emit-llvm -Wall -Werror -verify
-++// RUN: %clang_cc1 -flax-vector-conversions=none -ffreestanding %s -triple=i386-unknown-unknown -target-feature +avx10.2-256 -Wall -Werror -verify
-+ 
-+ unsigned long long test_mm_cvttssd(unsigned long long __A) {
-+   return _mm_cvttssd(__A); // expected-error {{call to undeclared function '_mm_cvttssd'}}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 2f731c7..aaf1f1a 100644
+index 7fce0f3..a34b0dd 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "36adf8ecedb64047021265a1e1730773d3b3a9e8"
--    LLVM_SHA256 = "7baedfc21f67f64f054482cbe77cb3049cd4428187cd45799e10ff8eb03dc9f6"
-+    LLVM_COMMIT = "f0b3287297aeeddcf030e3c1b08d05a69ad465aa"
-+    LLVM_SHA256 = "3bc65e7a760a389f5ace1146cb2ffde724a272e97e71c8b8509149e827df6c83"
+-    LLVM_COMMIT = "d8e0b130bd7b2dd168642a82056b8eca21c49f9f"
+-    LLVM_SHA256 = "3ce7f9828f6f345e9866cb81d0a18d1d93f921ea183d6774af3a335cdb5474d9"
++    LLVM_COMMIT = "c269182b13abddc459820e57a4d2065f364b23dc"
++    LLVM_SHA256 = "638799205284c3cf59166d585284ab39d160733c0027f5ad0a0e5098104968dd"
  
      tf_http_archive(
          name = name,

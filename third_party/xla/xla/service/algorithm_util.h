@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALGORITHM_UTIL_H_
 #define XLA_SERVICE_ALGORITHM_UTIL_H_
 
+#include <cstdint>
+
 #include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -52,7 +55,10 @@ bool HasFastAccum(PrecisionConfig::Algorithm algorithm);
 //
 // We may want to also check storage types, but for now those are checked in
 // IsSupportedDotAlgorithmOnGpu.
-bool IsSupportedByCublasOrCublasLt(PrecisionConfig::Algorithm algorithm);
+bool IsSupportedByCublasOrCublasLt(
+    PrecisionConfig::Algorithm algorithm,
+    stream_executor::GpuComputeCapability gpu_compute_capability,
+    const HloDotInstruction* dot = nullptr, int64_t rhs_contracting_index = -1);
 
 // Checks if we support the given algorithm using cuDNN.
 bool IsSupportedByCudnn(PrecisionConfig::Algorithm algorithm);

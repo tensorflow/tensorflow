@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -21,8 +24,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status DropIm2colArrays::Run(Model* model, std::size_t op_index,
-                                           bool* modified) {
+absl::Status DropIm2colArrays::Run(Model* model, std::size_t op_index,
+                                   bool* modified) {
   *modified = false;
   auto conv_it = model->operators.begin() + op_index;
   if (conv_it->get()->type != OperatorType::kConv) {

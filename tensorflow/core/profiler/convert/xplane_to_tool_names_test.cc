@@ -113,14 +113,19 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
 
   std::vector<std::string> tools = absl::StrSplit(toolsString.value(), ',');
 
-  std::vector<std::string> expected_tools = {"trace_viewer",
-                                             "overview_page",
-                                             "input_pipeline_analyzer",
-                                             "framework_op_stats",
-                                             "memory_profile",
-                                             "pod_viewer",
-                                             "tf_data_bottleneck_analysis",
-                                             "op_profile"};
+  std::vector<std::string> expected_tools = {
+      "trace_viewer",
+      "overview_page",
+      "input_pipeline_analyzer",
+      "framework_op_stats",
+      "memory_profile",
+      "pod_viewer",
+      "tf_data_bottleneck_analysis",
+      "op_profile",
+      "hlo_stats",
+      "roofline_model",
+      "inference_profile",
+  };
   expected_tools.insert(expected_tools.end(), test_case.expected_tools.begin(),
                         test_case.expected_tools.end());
   EXPECT_THAT(tools, ::testing::UnorderedElementsAreArray(expected_tools));

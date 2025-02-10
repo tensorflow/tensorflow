@@ -98,14 +98,9 @@ bool IsConvLegal(mhlo::ConvolutionOp op) {
       (!IsSupportedNonTrivialConv(data) &&
        (!IsPaddingSupported(data) || !IsInputDilationSupported(data)));
 
-  const bool are_shapes_supported =
-      ((IsStandardConv(data) || IsDepthwiseConv(data)) &&
-       InputOutputNonBatchDimsFullyStatic(data)) ||
-      AreShapesFullyStatic(data);
-
   return !supported_conv_type || !IsBatchGroupSupported(data) ||
-         !are_shapes_supported || !IsTFLNativeLayout(data) ||
-         is_non_supported_trivial_conv || !IsWindowReversalSupported(data);
+         !IsTFLNativeLayout(data) || is_non_supported_trivial_conv ||
+         !IsWindowReversalSupported(data);
 }
 
 //===----------------------------------------------------------------------===//
@@ -620,7 +615,7 @@ arith::ConstantOp ShapeToConst(PatternRewriter& rewriter,
   return rewriter.create<arith::ConstantOp>(loc, attr_type, attr);
 }
 
-std::tuple<llvm::SmallVector<int64_t>, Layout> InsertTrivialSpatialDim(
+std::tuple<llvm::SmallVector<int64_t>, int64_t, Layout> InsertTrivialSpatialDim(
     const Layout& layout, ArrayRef<int64_t> shape) {
   // Make new Layout with extra spatial dimension.
   const int64_t last_spatial = layout.Spatials()[layout.Rank() - 3];
@@ -645,7 +640,8 @@ std::tuple<llvm::SmallVector<int64_t>, Layout> InsertTrivialSpatialDim(
     }
     new_shape[new_spatial] = shape[new_spatial];
   }
-  return std::tuple(new_shape, Layout(new_dim1, new_dim2, new_spatials));
+  return std::tuple(new_shape, new_last_spatial,
+                    Layout(new_dim1, new_dim2, new_spatials));
 }
 
 LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
@@ -654,14 +650,6 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
 
   if (view.InputLayout().Rank() != 3) {
     return rewriter.notifyMatchFailure(op, "Not 1D conv.");
-  }
-
-  if (!IsInputDilationSupported(view)) {
-    return rewriter.notifyMatchFailure(op, "Expects trivial lhs dims.");
-  }
-
-  if (!InputOutputNonBatchDimsFullyStatic(view)) {
-    return rewriter.notifyMatchFailure(op, "Expects static dims.");
   }
 
   if (!IsWindowReversalSupported(view)) {
@@ -680,22 +668,23 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
   //=-----
 
   // Add new trivial spatial dimension to input (LHS).
-  auto [lhs_new_shape, lhs_new_layout] =
+  auto [lhs_new_shape, lhs_new_expnaded_dim, lhs_new_layout] =
       InsertTrivialSpatialDim(view.InputLayout(), view.InputShape());
   auto lhs_new_type = op.getLhs().getType().clone(lhs_new_shape);
-  auto new_lhs = rewriter.create<TFL::ReshapeOp>(
+  auto new_lhs = rewriter.create<TFL::ExpandDimsOp>(
       op.getLoc(), lhs_new_type, op.getLhs(),
-      ShapeToConst(rewriter, lhs_new_shape, op.getLoc()));
+      ShapeToConst(rewriter, {lhs_new_expnaded_dim}, op.getLoc()));
 
   // Add new trivial spatial dimension to kernel.
-  auto [rhs_new_shape, rhs_new_layout] =
+  auto [rhs_new_shape, rhs_new_expnaded_dim, rhs_new_layout] =
       InsertTrivialSpatialDim(view.KernelLayout(), view.KernelShape());
   auto rhs_new_type = op.getRhs().getType().clone(rhs_new_shape);
-  auto new_rhs =
-      rewriter.create<mhlo::ReshapeOp>(op.getLoc(), rhs_new_type, op.getRhs());
+  auto new_rhs = rewriter.create<TFL::ExpandDimsOp>(
+      op.getLoc(), rhs_new_type, op.getRhs(),
+      ShapeToConst(rewriter, {rhs_new_expnaded_dim}, op.getLoc()));
 
   // Add new trivial spatial dimension to output (insert reshape later).
-  auto [out_new_shape, out_new_layout] =
+  auto [out_new_shape, out_new_expnaded_dim, out_new_layout] =
       InsertTrivialSpatialDim(view.OutputLayout(), view.OutputShape());
   auto out_new_type = op.getResult().getType().clone(out_new_shape);
 
@@ -721,7 +710,9 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
       RankedTensorType::get({2, 2}, rewriter.getI64Type()), padding_2d);
 
   // LHS dilation
-  SmallVector<int64_t, 2> lhs_dilation_2d(2, 1);
+  SmallVector<int64_t, 2> lhs_dilation_2d;
+  lhs_dilation_2d.push_back(view.InputDilations()[0]);
+  lhs_dilation_2d.push_back(1);
   auto lhs_dilation_2d_attr = DenseIntElementsAttr::get(
       RankedTensorType::get({2}, rewriter.getI64Type()), lhs_dilation_2d);
 
@@ -755,9 +746,9 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
       op.getBatchGroupCount(), op.getPrecisionConfigAttr());
 
   auto new_out_type = op.getResult().getType();
-  rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
-      op, new_out_type, conv2d_op.getResult(),
-      ShapeToConst(rewriter, new_out_type.getShape(), op.getLoc()));
+  auto squeeze_dim = rewriter.getI64ArrayAttr({out_new_expnaded_dim});
+  rewriter.replaceOpWithNewOp<TFL::SqueezeOp>(
+      op, new_out_type, conv2d_op.getResult(), squeeze_dim);
 
   return success();
 }

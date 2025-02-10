@@ -37,12 +37,13 @@ from typing import (
 
 import numpy as np
 
+from . import config
+from . import guard_lib
 from . import ifrt_programs
 from . import ifrt_proxy
 from . import jax_jit
 from . import mlir
 from . import ops
-from . import outfeed_receiver
 from . import pmap_lib
 from . import profiler
 from . import pytree
@@ -73,11 +74,15 @@ class PrimitiveType(enum.IntEnum):
   U16: PrimitiveType
   U32: PrimitiveType
   U64: PrimitiveType
+  F4E2M1FN: PrimitiveType
+  F8E3M4: PrimitiveType
+  F8E4M3: PrimitiveType
   F8E4M3FN: PrimitiveType
   F8E4M3B11FNUZ: PrimitiveType
   F8E4M3FNUZ: PrimitiveType
   F8E5M2: PrimitiveType
   F8E5M2FNUZ: PrimitiveType
+  F8E8M0FNU: PrimitiveType
   BF16: PrimitiveType
   F16: PrimitiveType
   F32: PrimitiveType
@@ -89,6 +94,11 @@ class PrimitiveType(enum.IntEnum):
   TOKEN: PrimitiveType
 
 # === BEGIN xla_compiler.cc
+
+class ArrayCopySemantics(enum.IntEnum):
+  ALWAYS_COPY: ArrayCopySemantics
+  REUSE_INPUT: ArrayCopySemantics
+  DONATE_INPUT: ArrayCopySemantics
 
 class Layout:
   @overload
@@ -156,7 +166,12 @@ class ShapeIndex:
   def __repr__(self) -> str: ...
 
 class Literal:
+  def __init__(self, shape: Shape) -> Literal: ...
   def __repr__(self) -> str: ...
+  def __array__(
+      self, dtype: Optional[np.dtype] = None, copy: Optional[bool] = None
+  ) -> np.ndarray: ...
+  def shape(self) -> Shape: ...
 
 class XlaComputation:
   def __init__(self, serialized_hlo_module_proto: bytes) -> None: ...
@@ -280,6 +295,15 @@ def register_custom_call_partitioner(
     c_api: Optional[Any] = ...,
 ) -> None: ...
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
+def register_custom_call_as_batch_partitionable(
+    target_name: str,
+    c_api: Optional[Any] = ...,
+) -> None: ...
+
+class AutotuneCacheMode(enum.IntEnum):
+  UNSPECIFIED: AutotuneCacheMode
+  UPDATE: AutotuneCacheMode
+  READ: AutotuneCacheMode
 
 class DebugOptions:
   def __repr__(self) -> str: ...
@@ -321,6 +345,7 @@ class DebugOptions:
   xla_gpu_kernel_cache_file: str
   xla_gpu_enable_llvm_module_compilation_parallelism: bool
   xla_gpu_per_fusion_autotune_cache_dir: str
+  xla_gpu_experimental_autotune_cache_mode: AutotuneCacheMode
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
@@ -355,6 +380,18 @@ class PrecisionConfig_Precision(enum.IntEnum):
   DEFAULT: int
   HIGH: int
   HIGHEST: int
+
+
+class ResultAccuracy_Mode(enum.IntEnum):
+  DEFAULT: int
+  HIGHEST: int
+  TOLERANCE: int
+
+class ResultAccuracy:
+  mode: ResultAccuracy_Mode
+  atol: float
+  rtol: float
+  ulps: int
 
 class OpSharding_Type(enum.IntEnum):
   REPLICATED: int
@@ -408,6 +445,10 @@ class HloSharding:
   def manual() -> HloSharding: ...
   @staticmethod
   def unknown() -> HloSharding: ...
+  @staticmethod
+  def subgroup_with_device_ordering(
+      tile_assignment: np.ndarray,
+      subgroup_types: Sequence[OpSharding.Type]) -> HloSharding: ...
   def __eq__(self, other: HloSharding) -> bool: ...
   def __hash__(self) -> int: ...
   def __repr__(self) -> str: ...
@@ -466,7 +507,7 @@ class PjRtLayout:
   def __eq__(self, other: PjRtLayout) -> bool: ...
   def __hash__(self) -> int: ...
   def __getstate__(self) -> Any: ...
-  def __setstate__(self, Any): ...
+  def __setstate__(self, _: Any): ...
   def _xla_layout(self) -> Layout: ...
 
 class GpuAllocatorConfig:
@@ -491,12 +532,14 @@ class HostBufferSemantics(enum.IntEnum):
 
 class Client:
   platform: str
+  _raw_platform: str
   platform_version: str
   runtime_type: str
   def device_count(self) -> int: ...
   def local_device_count(self) -> int: ...
   def devices(self) -> List[Device]: ...
   def local_devices(self) -> List[Device]: ...
+  def _get_all_devices(self) -> List[Device]: ...
   def device_from_local_hardware_id(self, int) -> Device: ...
   def live_buffers(self) -> List[Any]: ...
   def live_arrays(self) -> List[ArrayImpl]: ...
@@ -570,6 +613,7 @@ def get_tfrt_cpu_client(
     node_id: int = ...,
     num_nodes: int = ...,
     collectives: Optional[CpuCollectives] = ...,
+    num_devices: int | None = ...,
 ) -> Client: ...
 def get_gpu_client(
     asynchronous: bool = ...,
@@ -638,6 +682,7 @@ def batched_copy_array_to_devices_with_sharding(
     arrays: Sequence[ArrayImpl],
     devices: Sequence[List[Device]],
     sharding: Sequence[Any],
+    array_copy_semantics: Sequence[ArrayCopySemantics],
 ) -> Sequence[ArrayImpl]: ...
 
 def batched_block_until_ready(x: Sequence[ArrayImpl]) -> None: ...
@@ -649,6 +694,13 @@ def batched_device_put(
     devices: List[Device],
     committed: bool = True,
 ) -> ArrayImpl: ...
+
+def reorder_shards(
+    x: ArrayImpl,
+    dst_sharding: Any,
+    array_copy_semantics: ArrayCopySemantics,
+) -> ArrayImpl: ...
+
 def check_and_canonicalize_memory_kind(
     memory_kind: Optional[str], device_list: DeviceList
 ) -> Optional[str]: ...
@@ -698,7 +750,6 @@ class LoadedExecutable:
   def get_parameter_layouts(self) -> List[Layout]: ...
   def get_output_layouts(self) -> List[Layout]: ...
   def keep_alive(self) -> None: ...
-  def compile_options(self) -> CompileOptions: ...
   def cost_analysis(self) -> Dict[str, Any]: ...
   traceback: Traceback
   fingerprint: Optional[bytes]
@@ -712,7 +763,6 @@ class Executable:
   def get_output_layouts(self) -> List[Layout]: ...
   def get_compiled_memory_stats(self) -> CompiledMemoryStats: ...
   def serialize(self) -> str: ...
-  def compile_options(self) -> CompileOptions: ...
   def cost_analysis(self) -> Dict[str, Any]: ...
 
 class DeviceTopology:
@@ -792,6 +842,8 @@ class DistributedRuntimeClient:
   def blocking_key_value_get_bytes(
       self, key: str, timeout_in_ms: int
   ) -> _Status: ...
+  def key_value_try_get(self, key: str) -> _Status: ...
+  def key_value_try_get_bytes(self, key: str) -> _Status: ...
   def key_value_dir_get(self, key: str) -> _Status: ...
   def key_value_dir_get_bytes(self, key: str) -> _Status: ...
   def key_value_set(self, key: str, value: str,
@@ -821,6 +873,7 @@ def get_distributed_runtime_client(
     max_missing_heartbeats: Optional[int] = ...,
     missed_heartbeat_callback: Optional[Any] = ...,
     shutdown_on_destruction: Optional[bool] = ...,
+    use_compression: Optional[bool] = ...,
 ) -> DistributedRuntimeClient: ...
 
 class PreemptionSyncManager:
@@ -843,7 +896,7 @@ class PmapFunction:
 
 def weakref_lru_cache(
     cache_context_fn: Callable, call: Callable, maxsize=...
-): ...
+) -> WeakrefLRUCache: ...
 
 class DeviceList:
   def __init__(self, device_assignment: Tuple[Device, ...]): ...
@@ -877,6 +930,7 @@ class NamedSharding(Sharding):
       memory_kind: Optional[str] = None,
       _parsed_pspec: Any = None,
       _manual_axes: frozenset[Any] = frozenset(),
+      _logical_device_ids: tuple[int, ...] | None = None,
   ): ...
   mesh: Any
   spec: Any
@@ -884,6 +938,7 @@ class NamedSharding(Sharding):
   _parsed_pspec: Any
   _internal_device_list: DeviceList
   _manual_axes: frozenset[Any]
+  _logical_device_ids: tuple[int, ...] | None
 
 class SingleDeviceSharding(Sharding):
   def __init__(self, device: Device, *, memory_kind: Optional[str] = None): ...
@@ -932,7 +987,7 @@ def pjit(
     cache_miss: Callable,
     static_argnums: Sequence[int],
     static_argnames: Sequence[str],
-    donate_argnums: Sequence[int],
+    global_cache_key: Any,
     pytree_registry: pytree.PyTreeRegistry,
     shard_arg_fallback: Callable,
     cache: Optional[PjitFunctionCache] = ...,
@@ -957,7 +1012,36 @@ class FlattenCallGraph(HloPassInterface):
 class TupleSimplifer(HloPassInterface):
   def __init__(self) -> None: ...
 
+class WeakrefLRUCacheInfo:
+  @property
+  def hits(self) -> int: ...
+  @property
+  def misses(self) -> int: ...
+  @property
+  def maxsize(self) -> int: ...
+  @property
+  def currsize(self) -> int: ...
+
+class WeakrefLRUCache:
+  def __call__(self, weakref_key: Any, *args, **kwargs) -> Any: ...
+  def cache_keys(self) -> list[Any]: ...
+  def cache_info(self) -> WeakrefLRUCacheInfo: ...
+  def cache_clear(self): ...
+
 def is_asan() -> bool: ...
 def is_msan() -> bool: ...
 def is_tsan() -> bool: ...
 def is_sanitized() -> bool: ...
+
+class TransferConnection:
+
+  def address(self) -> str: ...
+
+  def _pull_flat(self, uuid, backend, avals_flat) -> list[Any]: ...
+
+class TransferServer:
+  def _await_pull_flat(self, uuid, args: list[ArrayImpl]): ...
+
+  def connect(self, address: str) -> TransferConnection: ...
+
+def start_transfer_server(client: Client, address: str = "", transport_addresses: list[str] = [], max_num_parallel_copies: int = 0, transfer_size: int = 0) -> TransferServer: ...

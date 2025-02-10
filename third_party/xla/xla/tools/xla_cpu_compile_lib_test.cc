@@ -21,6 +21,7 @@ limitations under the License.
 #include "google/protobuf/duration.pb.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/platform_util.h"
@@ -29,6 +30,8 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tools/xla_compile_lib.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/tsl/protobuf/status.pb.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/env_time.h"
@@ -37,8 +40,6 @@ limitations under the License.
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
-#include "tsl/protobuf/error_codes.pb.h"
-#include "tsl/protobuf/status.pb.h"
 
 namespace xla {
 namespace {
@@ -122,6 +123,13 @@ TEST_F(XlaCompileLibTest, LoadModuleErrors) {
   EXPECT_THAT(LoadModule("/does/not/exist"), Not(IsOk()));
 }
 
+TEST_F(XlaCompileLibTest, ErrorsOnMissingOutputPaths) {
+  XlaCompileOptions options;
+  options.platform = "gpu";
+  EXPECT_THAT(XlaCompileMain(options),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST_F(XlaCompileLibTest, LoadModuleLoadsTextFormat) {
   const std::string module_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "module.txt");
@@ -137,14 +145,14 @@ TEST_F(XlaCompileLibTest, MainForCpu) {
   TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
                                       module_->ToString()));
 
-  const std::string output_path =
+  const std::string output_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "cpu_output");
   const std::string result_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "cpu_result.pb");
 
   XlaCompileOptions options;
   options.module_path = module_file;
-  options.output_path = output_path;
+  options.output_file = output_file;
   options.platform = "cpu";
   options.result_output_file = result_file;
   TF_EXPECT_OK(XlaCompileMain(options));

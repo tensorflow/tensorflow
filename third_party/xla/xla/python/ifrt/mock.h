@@ -24,11 +24,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -51,8 +54,8 @@ limitations under the License.
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
-#include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -69,17 +72,21 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(Future<>, GetReadyFuture, (), (const, final));
   MOCK_METHOD(Future<>, Delete, (), (final));
   MOCK_METHOD(bool, IsDeleted, (), (const, final));
-  MOCK_METHOD(std::string, DebugString, (), (const, final));
 
   MOCK_METHOD(DType, dtype, (), (const, final));
   MOCK_METHOD(const Shape&, shape, (), (const, final));
   MOCK_METHOD(const Sharding&, sharding, (), (const, final));
-  MOCK_METHOD(std::shared_ptr<const Sharding>, shared_ptr_sharding, (),
-              (const, final));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<PjRtLayout>>, layout, (),
+  MOCK_METHOD(absl::Nonnull<std::shared_ptr<const Sharding>>,
+              shared_ptr_sharding, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::shared_ptr<const PjRtLayout>>, layout, (),
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
               DisassembleIntoSingleDeviceArrays, (ArrayCopySemantics semantics),
+              (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
+              DisassembleIntoSingleDeviceArrays,
+              (ArrayCopySemantics array_copy_semantics,
+               SingleDeviceShardSemantics single_device_shard_semantics),
               (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>, FullyReplicatedShard,
               (ArrayCopySemantics semantics), (final));
@@ -91,6 +98,8 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   // LINT.ThenChange(mock.cc:MockArrayDelegation)
 
   tsl::RCReference<xla::ifrt::Array> delegated() const { return delegated_; }
+
+  std::string DebugString() const final { return "MockArray"; }
 
   static char ID;  // NOLINT
 
@@ -109,15 +118,24 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>, MakeArrayFromHostBuffer,
               (const void* data, DType dtype, Shape shape,
                std::optional<absl::Span<const int64_t>> byte_strides,
-               std::shared_ptr<const Sharding> sharding,
+               absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
                HostBufferSemantics semantics,
                std::function<void()> on_done_with_host_buffer),
               (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
               AssembleArrayFromSingleDeviceArrays,
-              (Shape shape, std::shared_ptr<const Sharding> sharding,
+              (Shape shape,
+               absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
                absl::Span<tsl::RCReference<Array>> arrays,
                ArrayCopySemantics semantics),
+              (final));
+  MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
+              AssembleArrayFromSingleDeviceArrays,
+              (Shape shape,
+               absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+               absl::Span<tsl::RCReference<Array>> arrays,
+               ArrayCopySemantics array_copy_semantics,
+               SingleDeviceShardSemantics single_device_shard_semantics),
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>, CopyArrays,
               (absl::Span<tsl::RCReference<Array>> arrays,
@@ -145,6 +163,8 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
   MOCK_METHOD(int, process_index, (), (const, final));
+  MOCK_METHOD(absl::Span<xla::ifrt::Device* const>, GetAllDevices, (),
+              (const, final));
   MOCK_METHOD(absl::StatusOr<DeviceAssignment>, GetDefaultDeviceAssignment,
               (int num_replicas, int num_partitions), (const, final));
   MOCK_METHOD(absl::StatusOr<Device*>, LookupDevice, (DeviceId device_id),
@@ -155,10 +175,10 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
               (const tsl::RCReference<xla::ifrt::DeviceList>& devices),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::PjRtLayout>>,
-              GetDefaultLayoutForDevice,
+  MOCK_METHOD(absl::StatusOr<std::shared_ptr<const PjRtLayout>>,
+              GetDefaultLayout,
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
-               xla::ifrt::Device* device),
+               xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind),
               (const, final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
 
@@ -204,14 +224,15 @@ class MockDevice : public Device {
   MOCK_METHOD(int, ProcessIndex, (), (const, final));
   MOCK_METHOD(DeviceId, Id, (), (const, final));
   MOCK_METHOD(absl::string_view, Kind, (), (const, final));
-  MOCK_METHOD(absl::string_view, DebugString, (), (const, final));
-  MOCK_METHOD(absl::string_view, ToString, (), (const, final));
   MOCK_METHOD((const AttributeMap&), Attributes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<Memory*>, DefaultMemory, (), (const, final));
   MOCK_METHOD(absl::Span<Memory* const>, Memories, (), (const, final));
   // LINT.ThenChange(mock.cc:MockDeviceDelegation)
 
   Device* delegated() const { return delegated_; }
+
+  absl::string_view DebugString() const final { return "MockDevice"; }
+  absl::string_view ToString() const final { return "MockDevice"; }
 
  private:
   Device* const delegated_ = nullptr;
@@ -224,8 +245,9 @@ class MockMemory : public Memory {
   MOCK_METHOD(MemoryId, Id, (), (const, final));
   MOCK_METHOD(absl::Span<Device* const>, Devices, (), (const, final));
   MOCK_METHOD(const MemoryKind&, Kind, (), (const, final));
-  MOCK_METHOD(absl::string_view, DebugString, (), (const, final));
   MOCK_METHOD(absl::string_view, ToString, (), (const, final));
+
+  absl::string_view DebugString() const final { return "MockMemory"; }
 };
 
 // executable.h
@@ -244,9 +266,9 @@ class MockExecutable : public llvm::RTTIExtends<MockExecutable, Executable> {
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<Layout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
               GetParameterLayouts, (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<Layout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
               GetOutputLayouts, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>,
               GetHloModules, (), (const, final));
@@ -273,9 +295,9 @@ class MockLoadedExecutable
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<Layout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
               GetParameterLayouts, (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<Layout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
               GetOutputLayouts, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
               GetOutputMemoryKinds, (), (const, final));
@@ -324,16 +346,39 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
             BasicDeviceList::Create({}), MemoryKind(),
             /*is_fully_replicated=*/false) {}
 
+  MockSharding(tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
+               bool is_fully_replicated)
+      : llvm::RTTIExtends<MockSharding, Sharding>(devices, memory_kind,
+                                                  is_fully_replicated) {}
+
   MOCK_METHOD(
-      (absl::StatusOr<
-          std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>),
+      (absl::StatusOr<std::vector<
+           std::pair<Shape, absl::Nonnull<std::shared_ptr<const Sharding>>>>>),
       Disassemble, (const Shape& shape), (const, final));
-  MOCK_METHOD((absl::StatusOr<std::vector<
-                   std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>),
-              Disassemble, (const DynamicShape& dynamic_shape), (const final));
+  MOCK_METHOD(
+      (absl::StatusOr<std::vector<
+           std::pair<Shape, absl::Nonnull<std::shared_ptr<const Sharding>>>>>),
+      Disassemble,
+      (const Shape& shape,
+       SingleDeviceShardSemantics single_device_shard_semantics),
+      (const, final));
+  MOCK_METHOD(
+      (absl::StatusOr<std::vector<std::pair<
+           DynamicShape, absl::Nonnull<std::shared_ptr<const Sharding>>>>>),
+      Disassemble, (const DynamicShape& dynamic_shape), (const final));
+  MOCK_METHOD(
+      (absl::StatusOr<std::vector<std::pair<
+           DynamicShape, absl::Nonnull<std::shared_ptr<const Sharding>>>>>),
+      Disassemble,
+      (const DynamicShape& dynamic_shape,
+       SingleDeviceShardSemantics single_device_shard_semantics),
+      (const final));
   MOCK_METHOD(absl::StatusOr<std::vector<IndexDomain>>, IndexDomains,
               (const Shape& shape), (const, final));
-  MOCK_METHOD(std::string, DebugString, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::vector<IndexDomain>>, IndexDomains,
+              (const Shape& shape,
+               SingleDeviceShardSemantics single_device_shard_semantics),
+              (const, final));
   MOCK_METHOD(absl::StatusOr<Shape>, GetShardShape, (const Shape& shape),
               (const, final));
   MOCK_METHOD(bool, HasSamePartitioning, (const Sharding& other),
@@ -342,6 +387,9 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
               (std::optional<tsl::RCReference<DeviceList>> devices,
                std::optional<MemoryKind> memory_kind),
               (const final));
+  MOCK_METHOD(void, Hash, (absl::HashState), (const final));
+
+  std::string DebugString() const final { return "MockSharding"; }
 
   static char ID;  // NOLINT
 };

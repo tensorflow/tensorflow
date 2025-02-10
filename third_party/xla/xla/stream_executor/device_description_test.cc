@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/stream_executor/device_description.h"
 
+#include <gtest/gtest.h>
 #include "xla/stream_executor/semantic_version.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {
@@ -31,20 +31,6 @@ TEST(DeviceDescription, DefaultConstruction) {
   EXPECT_EQ(desc.driver_version(), kZeroVersion);
   EXPECT_EQ(desc.runtime_version(), kZeroVersion);
   EXPECT_EQ(desc.pci_bus_id(), "<undefined>");
-}
-
-TEST(CudaComputeCapability, GenerationNumericTest) {
-  EXPECT_TRUE(CudaComputeCapability(7, 5).IsAtLeastVolta());
-  EXPECT_TRUE(CudaComputeCapability(8, 0).IsAtLeastAmpere());
-  EXPECT_TRUE(CudaComputeCapability(9, 0).IsAtLeastHopper());
-  EXPECT_TRUE(CudaComputeCapability(10, 0).IsAtLeastBlackwell());
-}
-
-TEST(CudaComputeCapability, GenerationLiteralTest) {
-  EXPECT_TRUE(CudaComputeCapability::Volta().IsAtLeast(7));
-  EXPECT_TRUE(CudaComputeCapability::Ampere().IsAtLeast(8));
-  EXPECT_TRUE(CudaComputeCapability::Hopper().IsAtLeast(9));
-  EXPECT_TRUE(CudaComputeCapability::Blackwell().IsAtLeast(10));
 }
 
 }  // namespace

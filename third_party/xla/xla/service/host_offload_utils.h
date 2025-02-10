@@ -98,6 +98,11 @@ bool IsValidDuringPureMemoryOffload(const HloInstruction* instruction);
 // Returns true if the instruction is an async-start with host thread.
 bool IsHostAsyncStart(const HloInstruction* instruction);
 
+// Returns true if the copy is from or to host memory space.
+bool IsSynchronousCopyFromOrToHost(const HloInstruction* instruction);
+
+bool ComputeTypeIsHost(const HloInstruction* hlo_instruction);
+
 }  // namespace host_offload_utils
 }  // namespace xla
 

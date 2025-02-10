@@ -57,7 +57,7 @@ class GpuTopology {
       const GpuTopologyProto& proto);
   GpuTopologyProto ToProto() const;
 
-  std::string_view platform_version() const { return platform_version_; }
+  absl::string_view platform_version() const { return platform_version_; }
   int32_t num_slices() const { return num_slices_; }
   int32_t num_hosts_per_slice() const { return num_hosts_per_slice_; }
   int32_t num_devices_per_host() const { return num_devices_per_host_; }

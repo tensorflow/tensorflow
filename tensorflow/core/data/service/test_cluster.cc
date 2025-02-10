@@ -24,13 +24,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tsl/platform/env.h"
 
 namespace tensorflow {
 namespace data {
@@ -55,7 +55,7 @@ TestCluster::~TestCluster() {
   }
 }
 
-Status TestCluster::Initialize() {
+absl::Status TestCluster::Initialize() {
   if (initialized_) {
     return errors::FailedPrecondition(
         "Test cluster has already been initialized.");
@@ -89,7 +89,7 @@ Status TestCluster::Initialize() {
   return absl::OkStatus();
 }
 
-Status TestCluster::AddWorker(
+absl::Status TestCluster::AddWorker(
     std::optional<int> port,
     std::optional<std::string> data_transfer_protocol) {
   std::unique_ptr<WorkerGrpcDataServer> worker;

@@ -68,9 +68,9 @@ class GPUDeviceContext : public DeviceContext {
                              Tensor* device_tensor, StatusCallback done,
                              bool sync_dst_compute) const override;
 
-  void CopyDeviceTensorToCPU(const Tensor* device_tensor, StringPiece edge_name,
-                             Device* device, Tensor* cpu_tensor,
-                             StatusCallback done) override;
+  void CopyDeviceTensorToCPU(const Tensor* device_tensor,
+                             absl::string_view edge_name, Device* device,
+                             Tensor* cpu_tensor, StatusCallback done) override;
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
                               Tensor* output_tensor,
@@ -79,8 +79,8 @@ class GPUDeviceContext : public DeviceContext {
   void MaintainLifetimeOnStream(const Tensor* t,
                                 se::Stream* stream) const override {}
 
-  Status ThenExecute(Device* device, se::Stream* stream,
-                     std::function<void()> func) override;
+  absl::Status ThenExecute(Device* device, se::Stream* stream,
+                           std::function<void()> func) override;
 
  private:
   int stream_id_;

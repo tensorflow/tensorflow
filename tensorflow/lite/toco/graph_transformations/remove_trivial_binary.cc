@@ -12,12 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iterator>
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -49,9 +48,9 @@ bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
 // For example, an Add operator is trivial if
 // one of its operands is constant 0, a Mul operator is trivial
 // if one of its operands is constant 1, etc.
-::tensorflow::Status RemoveTrivialBinaryOperator::Run(Model* model,
-                                                      std::size_t op_index,
-                                                      bool* modified) {
+absl::Status RemoveTrivialBinaryOperator::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
   *modified = false;
   const auto binary_it = model->operators.begin() + op_index;
   auto* binary_op = binary_it->get();

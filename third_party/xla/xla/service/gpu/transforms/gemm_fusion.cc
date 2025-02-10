@@ -35,6 +35,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -43,8 +45,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
-#include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -624,12 +624,43 @@ HlosAndRequirements FuseDotOutput(
                          context.requirements(), builder, fusion_params);
 }
 
+namespace {
+
+class Decision {
+ public:
+  // Returns true if the emitter capable of emitting the fusion (profitable or
+  // not).
+  bool CanFuse() const { return fusing_decision_.CanFuse() || able_to_fuse_; }
+
+  // Returns true if it's profitable to fuse.
+  bool WantToFuse() const { return fusing_decision_.CanFuse(); }
+
+  static Decision Allow() { return {FusionDecision::Allow(), true}; };
+
+  static Decision Deny(absl::string_view value) {
+    return {FusionDecision::Forbid(value), false};
+  }
+
+  static Decision NotProfitable(absl::string_view value) {
+    return {FusionDecision::Forbid(value), true};
+  }
+
+ private:
+  Decision(FusionDecision decision, bool able_to_fuse)
+      : fusing_decision_(std::move(decision)), able_to_fuse_(able_to_fuse) {}
+
+  FusionDecision fusing_decision_;
+  bool able_to_fuse_;
+};
+
+}  // namespace
+
 // Fuses dot and the compatible and profitable to fuse operations around it
 // into a new fusion computation constructed using the builder. fusion_inputs
 // get populated with the non-fused instructions that become operands of the
 // call to this fusion. fusion_output_ptr (if not nullptr) gets assigned the
 // original instruction that has to be replaced by the call to the fusion.
-absl::StatusOr<FusionDecision> CreateDotFusion(
+absl::StatusOr<Decision> CreateDotFusion(
     const HloDotInstruction& dot, const se::GpuComputeCapability gpu_version,
     HloComputation::Builder& builder,
     std::vector<HloInstruction*>& fusion_inputs,
@@ -639,7 +670,7 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
           legacy_triton::IsTritonSupportedInstruction(dot, gpu_version);
       !is_supported) {
     VLOG(3) << is_supported.Explain();
-    return is_supported;
+    return Decision::Deny(is_supported.Explain());
   }
 
   // Verify sparse dot constraints.
@@ -698,7 +729,7 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
               dot, TritonFusionAnalysis::Scope::LHS) ||
           !analysis.IsBatchDimMinorForInt4Parameter(
               dot, TritonFusionAnalysis::Scope::RHS)) {
-        return InvalidArgument(
+        return Decision::Deny(
             "Fusion is not possible because the parameter with the type S4 has "
             "minor batch dimension.");
       }
@@ -709,9 +740,13 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
       dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
+      algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32 ||
+      algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
+      algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ||
+      algorithm == PrecisionConfig::ALG_DOT_F32_F32_F32 ||
       dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
       dot.sparse_operands()) {
-    return FusionDecision{};
+    return Decision::Allow();
   }
 
   bool is_pure_matmul = true;
@@ -726,11 +761,10 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
     }
     return absl::OkStatus();
   });
-  if (!is_pure_matmul) {
-    return FusionDecision{};
-  }
 
-  return "No profitable operations to fuse.";
+  if (is_pure_matmul) return Decision::NotProfitable("Pure Matmul");
+
+  return Decision::Allow();
 }
 
 // Extracts into fused computations parts of HLO graph including dot()
@@ -762,23 +796,18 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     std::vector<HloInstruction*> fusion_inputs;
     HloInstruction* fusion_output = nullptr;
     TF_ASSIGN_OR_RETURN(
-        const FusionDecision should_fuse,
+        const Decision decision,
         CreateDotFusion(*Cast<HloDotInstruction>(dot), gpu_version_, builder,
                         fusion_inputs, &fusion_output));
-    if (builder.last_added_instruction() == nullptr) {
+    if (!decision.CanFuse()) {
       return absl::OkStatus();
     }
     // If a GEMM requiring padding for cuBLAS is encountered here this
     // happened because earlier ShouldTritonHandleGEMM() accepted it and padding
     // was skipped. Accept it ignoring profitability checks.
-    // TODO(rocm): check ROCM padding requirements.
-    if (std::holds_alternative<se::CudaComputeCapability>(gpu_version_)) {
-      if (!CublasRequiresPadding(
-              *Cast<HloDotInstruction>(dot),
-              std::get<se::CudaComputeCapability>(gpu_version_)) &&
-          !should_fuse) {
-        return absl::OkStatus();
-      }
+    if (!CublasRequiresPadding(*Cast<HloDotInstruction>(dot), gpu_version_) &&
+        !decision.WantToFuse()) {
+      return absl::OkStatus();
     }
 
     HloComputation* computation =
@@ -832,7 +861,7 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
   HloComputation::Builder builder("disposable");
   return CreateDotFusion(dot, gpu_version, builder, fusion_inputs,
                          /*fusion_output_ptr=*/nullptr)
-      ->CanFuse();
+      ->WantToFuse();
 }
 
 absl::StatusOr<bool> GemmFusion::Run(

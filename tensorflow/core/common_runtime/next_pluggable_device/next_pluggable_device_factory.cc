@@ -16,23 +16,30 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -49,14 +56,14 @@ absl::StatusOr<xla::Shape> DeviceShapeRepresentation(
       &c_xla_shape.value, type, use_fast_memory,
       ConvertToCXlaLayoutPreference(layout_preference), &c_device_shape.value,
       tf_status);
-  const Status status = StatusFromTF_Status(tf_status);
+  const absl::Status status = StatusFromTF_Status(tf_status);
   TF_DeleteStatus(tf_status);
   TF_RETURN_IF_ERROR(status);
   return c_device_shape.AsCpp<xla::Shape>();
 }
 }  // namespace
 
-Status NextPluggableDeviceFactory::ListPhysicalDevices(
+absl::Status NextPluggableDeviceFactory::ListPhysicalDevices(
     std::vector<string>* devices) {
   TF_Status* c_status = TF_NewStatus();
   int32_t device_count = api_->TFNPD_GetDeviceCount(c_status);
@@ -72,7 +79,7 @@ Status NextPluggableDeviceFactory::ListPhysicalDevices(
   return absl::OkStatus();
 }
 
-Status NextPluggableDeviceFactory::CreateDevices(
+absl::Status NextPluggableDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const std::string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   TF_Status* c_status = TF_NewStatus();

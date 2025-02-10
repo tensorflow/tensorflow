@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/op_utils.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 

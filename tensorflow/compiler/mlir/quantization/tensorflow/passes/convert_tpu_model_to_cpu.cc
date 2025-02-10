@@ -111,7 +111,8 @@ class ReplaceTpuPartitionedCallOpWithPartitionedCallOp
     SmallVector<Value> args = call_op.getOperands().drop_back();
 
     rewriter.replaceOpWithNewOp<TF::PartitionedCallOp>(
-        call_op, float_func.getResultTypes(), args, f_attr);
+        call_op, float_func.getResultTypes(), args, call_op.getArgAttrsAttr(),
+        call_op.getResAttrsAttr(), f_attr);
     return success();
   }
 };
@@ -126,7 +127,7 @@ void ConvertTpuModelToCpuPass::runOnOperation() {
   patterns.add<RemoveTpuOp>(ctx);
   patterns.add<RemoveIdentity>(ctx);
 
-  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
     module_op.emitError() << "quant-convert-tpu-model-to-cpu pattern "
                              "conversion did not converge.";
     signalPassFailure();

@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iostream>
+#include <cstdint>
+#include <memory>
+#include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -148,8 +150,7 @@ struct TensorFlowOptimizePass
 
   void runOnOperation() override {
     auto func = getOperation();
-    if (failed(applyPatternsAndFoldGreedily(func, patterns)))
-      signalPassFailure();
+    if (failed(applyPatternsGreedily(func, patterns))) signalPassFailure();
   }
 
   FrozenRewritePatternSet patterns;
@@ -173,7 +174,8 @@ void CreateTFStandardPipeline(OpPassManager &pm,
   // Hopefully there is a single island left, or there wasn't any to begin with.
   // We now run the optimizer which operates mostly inside islands.
   func_pm.addPass(createCanonicalizerPass());
-  pm.addPass(CreateTFShapeInferencePass());
+  pm.addPass(CreateTFShapeInferencePass(
+      {}, options.enable_stablehlo_shape_propagation));
   if (options.enable_inliner) {
     pm.addPass(createInlinerPass());
   }

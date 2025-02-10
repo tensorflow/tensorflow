@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/allocation.h"
+#include "tensorflow/compiler/mlir/lite/allocation.h"
+
+#include <cstddef>
 
 #if defined(__linux__)
 #include <fcntl.h>
 #endif
 
 #include <sys/stat.h>
-
-#include <string>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/testing/util.h"

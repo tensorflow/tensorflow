@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/framework/op_reg_offset.pb.h"
 #include "tensorflow/python/framework/python_op_gen.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/str_util.h"
 
 namespace tensorflow {
@@ -47,20 +47,20 @@ namespace {
 constexpr char kUsage[] =
     "This tool generates python wrapper for tensorflow ops.";
 
-Status ReadOpListFromFile(const string& filename,
-                          std::vector<string>* op_list) {
+absl::Status ReadOpListFromFile(const string& filename,
+                                std::vector<string>* op_list) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(Env::Default()->NewRandomAccessFile(filename, &file));
   std::unique_ptr<io::InputBuffer> input_buffer(
       new io::InputBuffer(file.get(), 256 << 10));
   string line_contents;
-  Status s = input_buffer->ReadLine(&line_contents);
+  absl::Status s = input_buffer->ReadLine(&line_contents);
   while (s.ok()) {
     // The parser assumes that the op name is the first string on each
     // line with no preceding whitespace, and ignores lines that do
     // not start with an op name as a comment.
-    strings::Scanner scanner{StringPiece(line_contents)};
-    StringPiece op_name;
+    strings::Scanner scanner{absl::string_view(line_contents)};
+    absl::string_view op_name;
     if (scanner.One(strings::Scanner::LETTER_DIGIT_DOT)
             .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
             .GetResult(nullptr, &op_name)) {
@@ -72,8 +72,8 @@ Status ReadOpListFromFile(const string& filename,
   return absl::OkStatus();
 }
 
-Status ReadOpRegOffsetsFromFile(absl::string_view filename,
-                                OpRegOffsets* op_reg_offsets) {
+absl::Status ReadOpRegOffsetsFromFile(absl::string_view filename,
+                                      OpRegOffsets* op_reg_offsets) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(
       Env::Default()->NewRandomAccessFile(std::string(filename), &file));
@@ -103,12 +103,12 @@ std::vector<string> GetSourceFileListFromOpRegOffsets(
 //
 // If `source_file_name` is not empty, a comment block will be generated
 // to show the source file name that the generated file is generated from.
-Status PrintAllPythonOps(absl::Span<const string> api_def_dirs,
-                         absl::Span<const string> source_file_list,
-                         const string& out_path,
-                         const OpRegOffsets& op_reg_offsets,
-                         absl::Span<const string> op_allowlist = {},
-                         absl::Span<const string> hidden_op_list = {}) {
+absl::Status PrintAllPythonOps(absl::Span<const string> api_def_dirs,
+                               absl::Span<const string> source_file_list,
+                               const string& out_path,
+                               const OpRegOffsets& op_reg_offsets,
+                               absl::Span<const string> op_allowlist = {},
+                               absl::Span<const string> hidden_op_list = {}) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);
 

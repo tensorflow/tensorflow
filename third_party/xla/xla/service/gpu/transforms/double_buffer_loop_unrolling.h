@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 namespace gpu {
@@ -45,11 +45,9 @@ namespace gpu {
 //
 // Note that this pass will flatten the call graph if any loop has been
 // unrolled.
-// TODO(olechwierowicz): Rename the loop unroller to something more generic like
-// 'DoubleBufferLoopUnrolling'.
 class DoubleBufferLoopUnrolling : public HloModulePass {
  public:
-  enum class UnrollStrategy { kDoubleBuffer, kFullUnroll };
+  enum class UnrollStrategy { kDoubleBuffer, kFullUnroll, kAuto };
 
   explicit DoubleBufferLoopUnrolling(
       UnrollStrategy unroll_strategy = UnrollStrategy::kDoubleBuffer)

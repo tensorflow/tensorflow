@@ -20,7 +20,6 @@ limitations under the License.
 #include <complex>
 #include <cstddef>
 #include <cstdint>
-#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -28,8 +27,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/bit_cast.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/exhaustive/error_spec.h"
@@ -40,16 +39,11 @@ limitations under the License.
 namespace xla {
 namespace exhaustive_op_test {
 
-// Access this through GetEupVersion.
-extern int eup_version;
-
-// Get the TPU EUP version (if it was provided).
-int GetEupVersion();
-
 // Return if the user specified dumping all tested values with their expected
 // and actual results.
 bool ShouldDumpValues();
 
+// Add all extra CLI flags that are used by ExhaustiveOpTestBase.
 void AddExhaustiveFlags(std::vector<tsl::Flag>& flag_list);
 
 // Base class from which all exhaustive tests should inherit.
@@ -60,10 +54,16 @@ void AddExhaustiveFlags(std::vector<tsl::Flag>& flag_list);
 // Type Parameters:
 // - T: The primitive type being tested.
 // - N: The number of operands that the function being tested takes.
+//
+// Pure Virtual Functions:
+// - GetInputSize
+// - FillInput
+// - RelaxedDenormalSigns
 template <PrimitiveType T, size_t N>
 class ExhaustiveOpTestBase : public ClientLibraryTestBase {
  public:
   using Traits = ExhaustiveOpTestTraits<T, N>;
+  static constexpr PrimitiveType kT = Traits::kT;
 
   using NativeT = typename Traits::NativeT;
   using NativeRefT = typename Traits::NativeRefT;
@@ -85,10 +85,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   using ErrorSpecGen = typename Traits::ErrorSpecGen;
 
   ExhaustiveOpTestBase()
-      : ty_(T),
-        platform_(client_->platform()->Name()),
-        eup_version_(xla::exhaustive_op_test::GetEupVersion()),
-        should_dump_values_(xla::exhaustive_op_test::ShouldDumpValues()) {
+      : should_dump_values_(xla::exhaustive_op_test::ShouldDumpValues()) {
     SetFastMathDisabled(true);
 
     // Run all HLO passes.  In particular, constant folding is disabled by
@@ -105,8 +102,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // uint64_t. This function is used to convert such a bit pattern stored as
   // uint64_t to the input value for T.
   static ComponentNativeT ConvertValue(uint64_t bits) {
-    using I = ComponentIntegralNativeT;
-    I used_bits = static_cast<I>(bits);
+    auto used_bits = static_cast<ComponentIntegralNativeT>(bits);
     return BitCast<ComponentNativeT>(used_bits);
   }
 
@@ -116,13 +112,22 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // Fills the literals with values to test for.
   virtual void FillInput(LiteralInputs* literals) = 0;
 
+  // If true, allows denormals to be flushed to non-sign-preserving 0.
+  //
+  // For example, normally we'd expect sqrt(-denormal) to be either nan (sqrt of
+  // a negative number) or -inf (flush the denormal to sign-preserving zero,
+  // then sqrt(-0)). When true, we'll also accept 0 (sqrt(0)).
+  //
+  // XLA:GPU preserves denormal signs, but other backends don't.
+  virtual bool RelaxedDenormalSigns() const = 0;
+
   // Enable debug logging for the invocation of the lambda.
   //
-  // This is intended to be used to wrap a call to `Run`, which will then log
-  // extra debug information for a failure such as the calculated absolute,
-  // relative, and distance errors. In addition, in an effort to reduce output
-  // log size, this will trigger an ASSERT failure to early return from a test
-  // at the first failure.
+  // This is intended to be used to wrap a call to `Run`, which will then
+  // log extra debug information for a failure such as the calculated
+  // absolute, relative, and distance errors. In addition, in an effort to
+  // reduce output log size, this will trigger an ASSERT failure to early
+  // return from a test at the first failure.
   template <typename Callable,
             std::enable_if_t<std::is_invocable_r_v<void, Callable>, int> = 0>
   void EnableDebugLoggingForScope(Callable&& work) {
@@ -218,65 +223,13 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
                   ErrorSpecGen error_spec_gen,
                   OutputRangeCheck check_valid_range = nullptr);
 
-  const std::string& Platform() { return platform_; }
-
-  bool IsGpu(const std::string& platform) const { return platform == "CUDA"; }
-  bool IsCpu(const std::string& platform) const { return platform == "Host"; }
-  bool IsTpu(const std::string& platform) const {
-    return !IsGpu(platform) && !IsCpu(platform);
-  }
-
-  int EupVersion() const { return eup_version_; }
-  bool IsPreV5Tpu(const std::string& platform) const {
-    return IsTpu(platform) && eup_version_ < 2;
-  }
-  bool IsPreV6Tpu(const std::string& platform) const {
-    return IsTpu(platform) && eup_version_ < 3;
-  }
-
  protected:
-  // The primitive type being tested.
-  const PrimitiveType ty_;
-
-  // The platform under test.
-  const std::string platform_;
-
-  // Version of the EUP for a TPU target. Only relevant for TPU platforms.
-  const int eup_version_;
-
-  // If true, allows denormals to be flushed to non-sign-preserving 0.
-  //
-  // For example, normally we'd expect sqrt(-denormal) to be either nan (sqrt of
-  // a negative number) or -inf (flush the denormal to sign-preserving zero,
-  // then sqrt(-0)).  But with this as true, we'll also accept 0 (sqrt(0)).
-  //
-  // XLA:GPU preserves denormal signs, but other backends don't.
-  bool relaxed_denormal_signs_ = platform_ != "CUDA";
-
   // Indicates if files of the expected and actual values should be dumped.
   bool should_dump_values_ = false;
 
   // Indicates if additional (potentially costly) logging should be emitted to
   // ease with debugging.
   bool should_emit_debug_logging_ = false;
-};
-
-template <PrimitiveType T>
-class ExhaustiveUnaryTest : public ExhaustiveOpTestBase<T, 1> {
- public:
-  static typename ExhaustiveOpTestTraits<T, 1>::ErrorSpecGen
-  GetDefaultSpecGenerator() {
-    return exhaustive_op_test::GetDefaultSpecGenerator<T, 1>();
-  }
-};
-
-template <PrimitiveType T>
-class ExhaustiveBinaryTest : public ExhaustiveOpTestBase<T, 2> {
- public:
-  static typename ExhaustiveOpTestTraits<T, 2>::ErrorSpecGen
-  GetDefaultSpecGenerator() {
-    return exhaustive_op_test::GetDefaultSpecGenerator<T, 2>();
-  }
 };
 
 }  // namespace exhaustive_op_test

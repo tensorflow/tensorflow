@@ -1,36 +1,39 @@
-Subject: [PATCH] Add Python 3.13.0rc2 support to rules_python
----
-Index: python/versions.bzl
-<+>UTF-8
-===================================================================
-diff --git a/python/versions.bzl b/python/versions.bzl
---- a/python/versions.bzl	(revision 084b877c98b580839ceab2b071b02fc6768f3de6)
-+++ b/python/versions.bzl	(date 1726256410148)
-@@ -484,6 +484,19 @@
-         },
-         "strip_prefix": "python",
-     },
-+    "3.13.0": {
-+        "url": "20240909/cpython-{python_version}rc2+20240909-{platform}-{build}.tar.gz",
-+        "sha256": {
-+            "aarch64-apple-darwin": "5d38ca1e6b030b004714e10813903e906c6b8f2a6361770df4512a838f4a4a9f",
-+            "aarch64-unknown-linux-gnu": "85e103fc81a1fcf94a93180f6df42e39a7dc15d4b711705e133dc2ec847552e7",
-+            "ppc64le-unknown-linux-gnu": "3be3d8aefae579c420fc6abf01658ae89fda8120154f989575b08085d2f8d6dc",
-+            "s390x-unknown-linux-gnu": "6ec5130d62473368ecc7e55338bf1cc58607dbfe8088959cab51265b9f13c38d",
-+            "x86_64-apple-darwin": "c3dcd4314324159945dc19342c73b9deb8de0f2d1709171427dd52f1a05eecca",
-+            "x86_64-pc-windows-msvc": "31282f912e984d399c56925dfb69a4f3ce76226dfb4806b09f37e3b4a15e5a30",
-+            "x86_64-unknown-linux-gnu": "028581cce5004c66775a3ae8b3ed65681ab4b289608dfd1aec3354d169216099",
-+        },
-+        "strip_prefix": "python",
-+    },
- }
-
- # buildifier: disable=unsorted-dict-items
-@@ -493,6 +506,7 @@
-     "3.10": "3.10.14",
-     "3.11": "3.11.9",
-     "3.12": "3.12.3",
-+    "3.13": "3.13.0",
- }
-
- PLATFORMS = {
+diff --git a/python/private/pypi/deps.bzl b/python/private/pypi/deps.bzl
+index 8949ed4a..8d0ab0e7 100644
+--- a/python/private/pypi/deps.bzl
++++ b/python/private/pypi/deps.bzl
+@@ -51,8 +51,8 @@ _RULE_DEPS = [
+     ),
+     (
+         "pypi__packaging",
+-        "https://files.pythonhosted.org/packages/49/df/1fceb2f8900f8639e278b056416d49134fb8d84c5942ffaa01ad34782422/packaging-24.0-py3-none-any.whl",
+-        "2ddfb553fdf02fb784c234c7ba6ccc288296ceabec964ad2eae3777778130bc5",
++        "https://files.pythonhosted.org/packages/88/ef/eb23f262cca3c0c4eb7ab1933c3b1f03d021f2c48f54763065b6f0e321be/packaging-24.2-py3-none-any.whl",
++        "09abb1bccd265c01f4a3aa3f7a7db064b36514d2cba19a2f694fe6150451a759",
+     ),
+     (
+         "pypi__pep517",
+@@ -61,8 +61,8 @@ _RULE_DEPS = [
+     ),
+     (
+         "pypi__pip",
+-        "https://files.pythonhosted.org/packages/8a/6a/19e9fe04fca059ccf770861c7d5721ab4c2aebc539889e97c7977528a53b/pip-24.0-py3-none-any.whl",
+-        "ba0d021a166865d2265246961bec0152ff124de910c5cc39f1156ce3fa7c69dc",
++        "https://files.pythonhosted.org/packages/ef/7d/500c9ad20238fcfcb4cb9243eede163594d7020ce87bd9610c9e02771876/pip-24.3.1-py3-none-any.whl",
++        "3790624780082365f47549d032f3770eeb2b1e8bd1f7b2e02dace1afa361b4ed",
+     ),
+     (
+         "pypi__pip_tools",
+diff --git a/python/private/pypi/evaluate_markers.bzl b/python/private/pypi/evaluate_markers.bzl
+index c805fd7a..e57e6138 100644
+--- a/python/private/pypi/evaluate_markers.bzl
++++ b/python/private/pypi/evaluate_markers.bzl
+@@ -20,7 +20,7 @@ load(":pypi_repo_utils.bzl", "pypi_repo_utils")
+ SRCS = [
+     # When the version, or any of the files in `packaging` package changes,
+     # this file will change as well.
+-    Label("@pypi__packaging//:packaging-24.0.dist-info/RECORD"),
++    Label("@pypi__packaging//:packaging-24.2.dist-info/RECORD"),
+     Label("//python/private/pypi/requirements_parser:resolve_target_platforms.py"),
+     Label("//python/private/pypi/whl_installer:platform.py"),
+ ]

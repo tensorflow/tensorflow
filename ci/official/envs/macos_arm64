@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-TFCI_BAZEL_COMMON_ARGS="--repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config release_macos_arm64"
+TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config release_macos_arm64"
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=macos_arm64
-TFCI_BUILD_PIP_PACKAGE_ARGS="--repo_env=WHEEL_NAME=tensorflow"
+TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=tensorflow"
 TFCI_INDEX_HTML_ENABLE=1
 TFCI_LIB_SUFFIX="-cpu-darwin-arm64"
 TFCI_MACOS_BAZEL_TEST_DIR_ENABLE=1
 TFCI_MACOS_BAZEL_TEST_DIR_PATH="/Volumes/BuildData/bazel_output"
 TFCI_OUTPUT_DIR=build_output
 TFCI_WHL_BAZEL_TEST_ENABLE=1
-TFCI_WHL_SIZE_LIMIT=240M
+TFCI_WHL_SIZE_LIMIT=245M
 TFCI_WHL_SIZE_LIMIT_ENABLE=1
 
 # 3.11 is the system python on our images

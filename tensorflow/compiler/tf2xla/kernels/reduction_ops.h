@@ -18,10 +18,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_REDUCTION_OPS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_REDUCTION_OPS_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb.h"

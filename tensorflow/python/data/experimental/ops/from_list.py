@@ -28,7 +28,10 @@ class _ListDataset(dataset_ops.DatasetSource):
 
   def __init__(self, elements, name=None):
     if not elements:
-      raise ValueError("Invalid `elements`. `elements` should not be empty.")
+      raise ValueError(
+          "Invalid `elements`. `elements` should not be empty. If you want an"
+          " empty dataset, use `tf.data.Dataset.range(0)`."
+      )
     if not isinstance(elements, list):
       raise ValueError("Invalid `elements`. `elements` must be a list.")
 

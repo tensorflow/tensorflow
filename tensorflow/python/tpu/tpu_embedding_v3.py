@@ -45,6 +45,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -84,6 +85,7 @@ class SparseCoreEmbeddingConfig:
   max_unique_ids_per_table: Optional[Dict[str, int]] = None
   allow_id_dropping: bool = False
   initialize_tables_on_host: bool = True
+  enable_fast_table_initialization: bool = False
 
 
 class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
@@ -93,7 +95,15 @@ class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
     super().__init__()
     self._name = "EmbeddingPipelinigContext"
     self._mode = attr_value_pb2.AttrValue(s=compat.as_bytes(mode))
-    self._enable = enable
+    recording_summaries = summary_ops_v2.is_recording_summaries()
+    if enable and recording_summaries:
+      logging.info(
+          "Embedding pipelining requested but summaries are being recorded:"
+          " Disabling embedding pipelining."
+      )
+      self._enable = False
+    else:
+      self._enable = enable
 
   def to_control_flow_context_def(
       self, context_def: Any, export_scope: Any = None
@@ -812,8 +822,17 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     )
 
     def table_initialize_fn(shape, dtype, shard_info=None):
+      # If enable fast table initialization, we will initialize the table
+      # directly on the device and use the initializer from the first table.
+      if self._sparse_core_embedding_config.enable_fast_table_initialization:
+        return stacked_tables[0].initializer(
+            shape=(shard_info.shape[0], stacked_tables[0].dim),
+            dtype=dtype,
+        )
+
       # Concat all the tables along the first axis.
       concat_tensors = []
+
       # Temporary patch, we need to initialize tables with the SC level
       # sharding. Note that we need to ensure that the vocab size is divisible
       # by the global number of SC.
@@ -1873,7 +1892,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           table_vocab_size=total_vocab_size,
           feature_width=feature_width,
           table_name=table_name,
-          allow_id_dropping=True,  # TODO(pineapplejuice233): make this configurable.
+          allow_id_dropping=self._sparse_core_embedding_config.allow_id_dropping,
       )
       table_to_csr_format_tensor[table_name] = (
           PartitionedCsrFormatTensor(

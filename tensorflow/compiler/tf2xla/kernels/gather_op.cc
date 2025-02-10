@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
@@ -26,20 +28,22 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/slicing.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/slicing.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
-Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
-                 const xla::XlaOp& indices, const TensorShape& indices_shape,
-                 int64_t axis, bool indices_are_nd, DataType dtype,
-                 DataType index_type, xla::XlaBuilder* builder,
-                 xla::XlaOp* gather_output) {
+absl::Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
+                       const xla::XlaOp& indices,
+                       const TensorShape& indices_shape, int64_t axis,
+                       bool indices_are_nd, DataType dtype, DataType index_type,
+                       xla::XlaBuilder* builder, xla::XlaOp* gather_output) {
   // There is no deep reason why we need this precondition, but this is the only
   // combination that is used and tested today.
   CHECK(!indices_are_nd || axis == 0);
@@ -160,10 +164,11 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   return absl::OkStatus();
 }
 
-Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
-                                    const xla::XlaOp input,
-                                    const TensorShape& input_shape,
-                                    int batch_dims, xla::XlaOp* gather_output) {
+absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
+                                          const xla::XlaOp input,
+                                          const TensorShape& input_shape,
+                                          int batch_dims,
+                                          xla::XlaOp* gather_output) {
   auto indices = context->Input(1);
   auto indices_shape = context->InputShape(1);
 

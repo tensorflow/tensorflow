@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 
 #include <algorithm>
-#include <iterator>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -29,7 +31,7 @@ limitations under the License.
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -833,26 +835,32 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
     auto cast_input_to_float_op = rewriter.create<CallOp>(
         loc, result_types,
         SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
-        ArrayRef<Value>{input, constant_f32_op, c_false});
+        ArrayRef<Value>{input, constant_f32_op, c_false},
+        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
     auto input_x_scale_op = rewriter.create<CallOp>(
         loc, result_types, SymbolRefAttr::get(rewriter.getContext(), "tf__mul"),
-        ArrayRef<Value>{cast_input_to_float_op.getResult(0), scale});
+        ArrayRef<Value>{cast_input_to_float_op.getResult(0), scale},
+        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
     auto round_rescaled_op = rewriter.create<CallOp>(
         loc, result_types,
         SymbolRefAttr::get(rewriter.getContext(), "tf__round"),
-        ArrayRef<Value>{input_x_scale_op->getResult(0)});
+        ArrayRef<Value>{input_x_scale_op->getResult(0)},
+        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
     auto cast_zp_to_float_op = rewriter.create<CallOp>(
         loc, result_types,
         SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
-        ArrayRef<Value>{zp_cast, constant_f32_op, c_false});
+        ArrayRef<Value>{zp_cast, constant_f32_op, c_false},
+        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
     auto recentered_op = rewriter.create<CallOp>(
         loc, result_types, SymbolRefAttr::get(rewriter.getContext(), "tf__add"),
         ArrayRef<Value>{round_rescaled_op->getResult(0),
-                        cast_zp_to_float_op->getResult(0)});
+                        cast_zp_to_float_op->getResult(0)},
+        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
     auto cast_output_to_i32 = rewriter.create<CallOp>(
         loc, result_types,
         SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
-        ArrayRef<Value>{recentered_op->getResult(0), constant_i32_op, c_false});
+        ArrayRef<Value>{recentered_op->getResult(0), constant_i32_op, c_false},
+        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
     rescale_op.getOutput().replaceAllUsesWith(cast_output_to_i32.getResult(0));
     return success();
   }

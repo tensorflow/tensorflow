@@ -87,8 +87,8 @@ inline float Int16SampleToFloat(int16_t data) {
 
 // Handles moving the data index forward, validating the arguments, and avoiding
 // overflow or underflow.
-Status IncrementOffset(int old_offset, int64_t increment, size_t max_size,
-                       int* new_offset) {
+absl::Status IncrementOffset(int old_offset, int64_t increment, size_t max_size,
+                             int* new_offset) {
   if (old_offset < 0) {
     return errors::InvalidArgument("Negative offsets are not allowed: ",
                                    old_offset);
@@ -114,8 +114,8 @@ Status IncrementOffset(int old_offset, int64_t increment, size_t max_size,
   return absl::OkStatus();
 }
 
-Status ExpectText(const std::string& data, const std::string& expected_text,
-                  int* offset) {
+absl::Status ExpectText(const std::string& data,
+                        const std::string& expected_text, int* offset) {
   int new_offset;
   TF_RETURN_IF_ERROR(
       IncrementOffset(*offset, expected_text.size(), data.size(), &new_offset));
@@ -129,8 +129,8 @@ Status ExpectText(const std::string& data, const std::string& expected_text,
   return absl::OkStatus();
 }
 
-Status ReadString(const std::string& data, int expected_length,
-                  std::string* value, int* offset) {
+absl::Status ReadString(const std::string& data, int expected_length,
+                        std::string* value, int* offset) {
   int new_offset;
   TF_RETURN_IF_ERROR(
       IncrementOffset(*offset, expected_length, data.size(), &new_offset));
@@ -140,9 +140,9 @@ Status ReadString(const std::string& data, int expected_length,
 }
 
 template <typename T>
-Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
-                             size_t num_channels, size_t num_frames,
-                             T* wav_string) {
+absl::Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
+                                   size_t num_channels, size_t num_frames,
+                                   T* wav_string) {
   constexpr size_t kFormatChunkSize = 16;
   constexpr size_t kCompressionCodePcm = 1;
   constexpr size_t kBitsPerSample = 16;
@@ -225,10 +225,11 @@ template Status EncodeAudioAsS16LEWav<tstring>(const float* audio,
                                                size_t num_frames,
                                                tstring* wav_string);
 
-Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
-                                    std::vector<float>* float_values,
-                                    uint32* sample_count, uint16* channel_count,
-                                    uint32* sample_rate) {
+absl::Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
+                                          std::vector<float>* float_values,
+                                          uint32* sample_count,
+                                          uint16* channel_count,
+                                          uint32* sample_rate) {
   int offset = 0;
   TF_RETURN_IF_ERROR(ExpectText(wav_string, kRiffChunkId, &offset));
   uint32 total_file_size;

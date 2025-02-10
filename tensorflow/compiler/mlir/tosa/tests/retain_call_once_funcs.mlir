@@ -1,4 +1,5 @@
 // RUN: tf-opt --split-input-file --pass-pipeline='builtin.module(tflite-retain-call-once-funcs)' %s | FileCheck %s
+// REQUIRES: tf_tosa
 
 // CHECK-LABEL: module {
 module {

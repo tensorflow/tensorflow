@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -57,9 +58,6 @@ std::string OpMetadataToString(const OpMetadata& metadata, bool only_op_name) {
     result.push_back(absl::StrCat("deduplicated_name=\"",
                                   absl::CEscape(metadata.deduplicated_name()),
                                   "\""));
-  }
-  if (metadata.preserve_layout()) {
-    result.push_back(absl::StrCat("preserve_layout=true"));
   }
   if (!metadata.scheduling_name().empty()) {
     result.push_back(

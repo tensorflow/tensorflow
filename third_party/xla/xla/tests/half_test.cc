@@ -17,10 +17,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
@@ -85,7 +85,8 @@ INSTANTIATE_TEST_CASE_P(
         UnaryOpTestParam{[](half x) { return round_imp(x); }, &Round},
         UnaryOpTestParam{[](half x) { return ceil(x); }, &Ceil},
         UnaryOpTestParam{[](half x) { return cos(x); }, &Cos},
-        UnaryOpTestParam{[](half x) { return exp(x); }, &Exp},
+        UnaryOpTestParam{[](half x) { return exp(x); },
+                         static_cast<xla::XlaOp (*)(xla::XlaOp)>(&xla::Exp)},
         UnaryOpTestParam{[](half x) { return floor(x); }, &Floor},
         UnaryOpTestParam{[](half x) { return log(x); }, &Log},
         UnaryOpTestParam{[](half x) { return -x; }, &Neg},

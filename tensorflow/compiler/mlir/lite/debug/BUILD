@@ -24,6 +24,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
         "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -34,10 +35,10 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/lib/io:buffered_file",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:stringpiece",
+        "@local_xla//xla/tsl/lib/io:buffered_file",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )
 
@@ -58,8 +59,8 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )

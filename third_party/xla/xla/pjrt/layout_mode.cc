@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout.h"
-#include "xla/service/hlo_parser.h"
 
 namespace xla {
 

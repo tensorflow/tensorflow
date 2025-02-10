@@ -38,16 +38,20 @@ CollectiveDeviceListProto CreateDeviceListProto(
 }
 
 TEST(CollectiveDeviceListTest, DefaultListToString) {
-  CollectiveDeviceList list({{1, 2}, {3, 4}});
-  ASSERT_EQ(list.ToString(), "{{1,2},{3,4}}");
+  EXPECT_EQ(CollectiveDeviceList().ToString(), "{}");
+  EXPECT_EQ(CollectiveDeviceList({{1, 2}, {3, 4}}).ToString(), "{{1,2},{3,4}}");
+  EXPECT_EQ(CollectiveDeviceList({{1, 2, 3, 4, 5, 6, 7}}).ToString(),
+            "{{1,2,3,4,5,6,7}}");
 }
 
-TEST(CollectiveDeviceListTest, DefaultListToString2) {
-  CollectiveDeviceList list({{1, 2, 3, 4, 5, 6, 7}});
-  EXPECT_EQ(list.ToString(), "{{1,2,3,4,5,6,7}}");
+TEST(CollectiveDeviceListTest, DeepCopy) {
+  CollectiveDeviceList orig({{1, 2, 3, 4, 5, 6, 7}});
+  CollectiveDeviceList copy = orig;
+  EXPECT_EQ(&orig.replica_groups(), &copy.replica_groups());
 }
 
 TEST(CollectiveDeviceListTest, DefaultListToProto) {
+  EXPECT_THAT(CollectiveDeviceList().ToProto().replica_groups().size(), 0);
   CollectiveDeviceList list({{1, 2}, {3, 4}});
   CollectiveDeviceListProto proto = list.ToProto();
   EXPECT_THAT(proto.replica_groups().size(), 2);
@@ -96,9 +100,23 @@ TEST(CollectiveDeviceListTest, IotaListToString) {
   EXPECT_EQ(list.ToString(), "[2,10]<=[20]");
 }
 
+TEST(CollectiveDeviceListTest,
+     IotaListToStringWithPrintingFullReplicaGroupList) {
+  CollectiveDeviceList list(IotaReplicaGroupList(2, 10));
+  EXPECT_EQ(list.ToString(/*print_full_replica_group_list=*/true),
+            "{{0,1,2,3,4,5,6,7,8,9},{10,11,12,13,14,15,16,17,18,19}}");
+}
+
 TEST(CollectiveDeviceListTest, IotaListToString2) {
   CollectiveDeviceList list(IotaReplicaGroupList(2, 10, {4, 5}, {1, 0}));
   EXPECT_EQ(list.ToString(), "[2,10]<=[4,5]T(1,0)");
+}
+
+TEST(CollectiveDeviceListTest,
+     IotaListToStringWithPrintingFullReplicaGroupList2) {
+  CollectiveDeviceList list(IotaReplicaGroupList(2, 10, {4, 5}, {1, 0}));
+  EXPECT_EQ(list.ToString(/*print_full_replica_group_list=*/true),
+            "{{0,5,10,15,1,6,11,16,2,7},{12,17,3,8,13,18,4,9,14,19}}");
 }
 
 TEST(CollectiveDeviceListTest, IotaListToProto) {

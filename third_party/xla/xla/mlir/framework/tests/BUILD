@@ -17,7 +17,7 @@ lit_test_suite(
     ),
     cfg = "//xla:lit.cfg.py",
     tools = [
-        "//xla/translate:xla-translate-opt",
+        "//xla/hlo/translate:xla-translate-opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )

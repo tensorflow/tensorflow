@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_DOT_THUNK_H_
 #define XLA_BACKENDS_CPU_RUNTIME_DOT_THUNK_H_
 
+#include "xla/backends/cpu/runtime/dot_lib.h"
 #define EIGEN_USE_THREADS
 
 #include <array>
@@ -30,7 +31,6 @@ limitations under the License.
 #include "Eigen/Core"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/backends/cpu/runtime/thunk.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -48,18 +48,14 @@ class DotThunk final : public Thunk {
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
-  BufferUses buffer_uses() const final {
-    return {BufferUse::Read(lhs_buffer_), BufferUse::Read(rhs_buffer_),
-            BufferUse::Write(out_buffer_)};
-  }
+  BufferUses buffer_uses() const final { return DotBufferUses(dot_slices_); }
+
+  DotDimensionNumbers dot_dimensions() const { return dot_dimensions_; }
+  DotSlices dot_slices() const { return dot_slices_; }
 
  private:
-  DotThunk(Info info, DotDimensionNumbers dot_dimensions,
-           BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
-           BufferAllocation::Slice rhs_buffer, Shape rhs_shape,
-           BufferAllocation::Slice out_buffer, Shape out_shape,
-           int64_t batch_size, Shape lhs_matmul_shape, Shape rhs_matmul_shape,
-           Shape out_matmul_shape);
+  DotThunk(Info info, DotDimensionNumbers dot_dimensions, DotSlices dot_slices,
+           DotShape dot_shape, DotCanonicalDims dot_canonical_dims);
 
   using DoneCallback = absl::AnyInvocable<void()>;
 
@@ -77,23 +73,9 @@ class DotThunk final : public Thunk {
                           DoneCallback done);
 
   DotDimensionNumbers dot_dimensions_;
-
-  BufferAllocation::Slice lhs_buffer_;
-  Shape lhs_shape_;
-
-  BufferAllocation::Slice rhs_buffer_;
-  Shape rhs_shape_;
-
-  BufferAllocation::Slice out_buffer_;
-  Shape out_shape_;
-
-  // Product of batch dimensions.
-  int64_t batch_size_;
-
-  // Shapes of the non-batch matrix-multiplication for the dot operation
-  Shape lhs_matmul_shape_;
-  Shape rhs_matmul_shape_;
-  Shape out_matmul_shape_;
+  DotSlices dot_slices_;
+  DotShape dot_shape_;
+  DotCanonicalDims dot_canonical_dims_;
 
   // Contracting dimensions of the LHS and RHS matmul shapes.
   absl::InlinedVector<int64_t, 2> lhs_matmul_contracting_dims_;
@@ -128,7 +110,12 @@ void DotThunk::MatMul(const Eigen::ThreadPoolDevice* device, T* out, T* lhs,
   int rhs_contract_dim = transpose_rhs ? 1 : 0;
   std::array<DimPair, 1> dims({DimPair(lhs_contract_dim, rhs_contract_dim)});
 
-  c.device(*device, std::move(done)) = a.contract(b, dims);
+  if (device != nullptr) {
+    c.device(*device, std::move(done)) = a.contract(b, dims);
+  } else {
+    c = a.contract(b, dims);
+    done();
+  }
 }
 
 template <typename T>

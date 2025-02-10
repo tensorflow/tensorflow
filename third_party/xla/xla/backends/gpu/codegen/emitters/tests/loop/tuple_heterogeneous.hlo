@@ -1,0 +1,22 @@
+// RUN: fusion_to_mlir %s |\
+// RUN:   emitters_opt --xla-gpu-test-optimize | FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  param0 = f64[8] parameter(0)
+  param1 = f64[8] parameter(1)
+
+  minimum = f64[8] minimum(param0, param1)
+  maximum = f64[8] maximum(param0, param1)
+  bc = f64[2, 4] bitcast(maximum)
+  ROOT tuple = (f64[8], f64[2,4]) tuple(minimum, bc)
+}
+
+// CHECK: #[[MAJOR:.*]] = #xla.indexing_map<"(d0) -> (d0 floordiv 4),
+// CHECK: #[[MINOR:.*]] = #xla.indexing_map<"(d0) -> (d0 mod 4),
+
+// CHECK:     xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
+// CHECK-DAG:   %[[MAJOR_IDX:.*]] = xla.apply_indexing #[[MAJOR]]
+// CHECK-DAG:   %[[MINOR_IDX:.*]] = xla.apply_indexing #[[MINOR]]
+// CHECK-DAG:   tensor.insert {{.*}}[%[[MAJOR_IDX]], %[[MINOR_IDX]]]
+// CHECK-DAG:   tensor.insert {{.*}}[%[[RA]]]

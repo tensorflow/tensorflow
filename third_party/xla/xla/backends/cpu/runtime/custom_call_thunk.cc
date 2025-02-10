@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -51,16 +52,15 @@ limitations under the License.
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 namespace {
 
-using AttributesMap = ffi::CallFrameBuilder::FlatAttributesMap;
+using AttributesMap = ffi::CallFrameBuilder::AttributesMap;
 
 absl::StatusOr<AttributesMap> ParseAttributes(
     absl::string_view backend_config) {
@@ -132,6 +132,12 @@ absl::StatusOr<ffi::CallFrame> BuildCallFrameForTypedFFI(
   // memory addresses will be updated at runtime.
   for (int i = 0; i < op_buffers.arguments_buffers.size(); ++i) {
     auto& shape = op_buffers.arguments_shapes[i];
+
+    if (shape.IsToken()) {
+      builder.AddTokenArg();
+      continue;
+    }
+
     auto elements = absl::c_accumulate(shape.dimensions(), 1ULL,
                                        std::multiplies<int64_t>());
     auto dtype_bytes = primitive_util::ByteWidth(shape.element_type());
@@ -144,6 +150,12 @@ absl::StatusOr<ffi::CallFrame> BuildCallFrameForTypedFFI(
   // memory addresses will be updated at runtime.
   for (int i = 0; i < op_buffers.results_buffers.size(); ++i) {
     auto& shape = op_buffers.results_shapes[i];
+
+    if (shape.IsToken()) {
+      builder.AddTokenRet();
+      continue;
+    }
+
     auto elements = absl::c_accumulate(shape.dimensions(), 1ULL,
                                        std::multiplies<int64_t>());
     auto dtype_bytes = primitive_util::ByteWidth(shape.element_type());
@@ -262,20 +274,14 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   // Forward ExecutableRunOptions to the FFI handlers via the call options.
   CustomCallExecuteParams* custom_call_params = params.custom_call_params;
   ffi::CallOptions call_options = {
+      custom_call_params->run_id,
       custom_call_params->device_ordinal,
       ffi::CallOptions::CpuOptions{custom_call_params->intra_op_thread_pool},
-      /*called_computation=*/nullptr, custom_call_params->ffi_execution_context,
+      /*called_computation=*/nullptr,
+      custom_call_params->ffi_execution_context,
       execution_state_.get()};
 
-  // Call the function and check execution status.
-  auto status = ffi::Call(handler->bundle.execute, call_frame, call_options);
-  if (!status.ok()) {
-    // Overwrite the returned error code to kInternal to match the original CPU
-    // implementation.
-    // TODO(penporn): Use TF_RETURN_IF_ERROR when thunks is the only runtime.
-    return Internal("%s", status.message());
-  }
-  return OkExecuteEvent();
+  return ffi::CallAsync(handler->bundle.execute, call_frame, call_options);
 }
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(

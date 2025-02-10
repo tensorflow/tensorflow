@@ -86,7 +86,8 @@ struct DefaultValue {
 //   value: the default value as obtained from the FieldDescriptor
 //   result: the object to initialize
 template <typename T>
-Status InitDefaultValue(DataType dtype, const T value, DefaultValue* result) {
+absl::Status InitDefaultValue(DataType dtype, const T value,
+                              DefaultValue* result) {
   result->dtype = dtype;
   switch (dtype) {
     case DT_BOOL:
@@ -126,8 +127,8 @@ Status InitDefaultValue(DataType dtype, const T value, DefaultValue* result) {
 }
 
 template <>
-Status InitDefaultValue(DataType dtype, const tstring value,
-                        DefaultValue* result) {
+absl::Status InitDefaultValue(DataType dtype, const tstring value,
+                              DefaultValue* result) {
   // These are sanity checks that should never trigger given the code that
   // leads here.
   if (TF_PREDICT_FALSE(dtype != DT_STRING)) {
@@ -141,9 +142,8 @@ Status InitDefaultValue(DataType dtype, const tstring value,
 
 // Initializes a default value from the output data type and the field
 // descriptor.
-Status InitDefaultValueFromFieldDescriptor(DataType dtype,
-                                           const FieldDescriptor* field_desc,
-                                           DefaultValue* result) {
+absl::Status InitDefaultValueFromFieldDescriptor(
+    DataType dtype, const FieldDescriptor* field_desc, DefaultValue* result) {
   switch (field_desc->type()) {
     case WireFormatLite::TYPE_DOUBLE:
       return InitDefaultValue(dtype, field_desc->default_value_double(),
@@ -248,7 +248,7 @@ class CountCollector {
   explicit CountCollector(int32* count) : count_ptr_(count) {}
 
   // Reads (in this case counts) a single value.
-  Status ReadValue(CodedInputStream* input, const FieldInfo& field) {
+  absl::Status ReadValue(CodedInputStream* input, const FieldInfo& field) {
     // Only repeated fields can have count > 1.
     if (*count_ptr_ == 0 || field.is_repeated) {
       (*count_ptr_)++;
@@ -262,8 +262,8 @@ class CountCollector {
   }
 
   // Reads (in this case counts) a length-delimited list of values.
-  Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
-                          size_t buf_size) {
+  absl::Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
+                                size_t buf_size) {
     if (buf_size == 0) {
       return absl::OkStatus();
     }
@@ -286,7 +286,7 @@ class CountCollector {
 
     // Dispatch to the appropriately typed field reader based on the schema
     // type.
-    Status st;
+    absl::Status st;
     switch (field.type) {
       case WireFormatLite::TYPE_DOUBLE:
         st = CountPackedFixed<double>(buf, buf_size);
@@ -367,7 +367,7 @@ class CountCollector {
   // Counts the number of packed varints in an array. The end of a varint is
   // signaled by a value < 0x80, so counting them requires parsing the
   // bytestream. It is the caller's responsibility to ensure that len > 0.
-  Status CountPackedVarint(const uint8* buf, size_t len) {
+  absl::Status CountPackedVarint(const uint8* buf, size_t len) {
     const uint8* bound = buf + len;
     int count;
 
@@ -396,7 +396,7 @@ class CountCollector {
   // Counts the number of fixed-size values in a packed field. This can be done
   // without actually parsing anything.
   template <typename T>
-  Status CountPackedFixed(const uint8* unused_buf, size_t len) {
+  absl::Status CountPackedFixed(const uint8* unused_buf, size_t len) {
     int count = len / sizeof(T);
     if (count * sizeof(T) != len) {
       return errors::DataLoss(
@@ -483,7 +483,7 @@ class DenseCollector {
   // Always inlining gave a ~50% speedup on microbenchmarks at one point.
   // TODO(nix): try removing it to see if that still holds.
   // TODO(jsimsa): ABSL_ATTRIBUTE_ALWAYS_INLINE
-  Status ReadValue(CodedInputStream* input, const FieldInfo& field) {
+  absl::Status ReadValue(CodedInputStream* input, const FieldInfo& field) {
     // For required and optional fields, we overwrite values[0] with
     // the latest one in the wire stream.
     // See https://developers.google.com/protocol-buffers/docs/encoding#optional
@@ -501,8 +501,8 @@ class DenseCollector {
   }
 
   // Reads and stores a length-delimited list of values.
-  Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
-                          const size_t buf_size) {
+  absl::Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
+                                const size_t buf_size) {
     const void* buf;
     int unused_max_buf_size;
     input->GetDirectBufferPointerInline(&buf, &unused_max_buf_size);
@@ -533,7 +533,7 @@ class DenseCollector {
 
   // Fills in any missing values in the output array with defaults. Dispatches
   // to the appropriately typed field default based on the runtime type tag.
-  Status FillWithDefaults() {
+  absl::Status FillWithDefaults() {
     switch (default_value_.dtype) {
       case DataType::DT_BOOL:
         return FillDefault(absl::get<bool>(default_value_.value));
@@ -569,7 +569,7 @@ class DenseCollector {
   // uses next_repeat_index_ which counts the number of parsed values for the
   // field.
   template <class T>
-  Status FillDefault(const T& default_value) {
+  absl::Status FillDefault(const T& default_value) {
     for (int i = next_repeat_index_; i < max_repeat_count_; i++) {
       reinterpret_cast<T*>(datap_)[i] = default_value;
     }
@@ -839,7 +839,7 @@ class DecodeProtoOp : public OpKernel {
       counters.emplace_back(&field_sizes[i]);
     }
 
-    Status st = Collect(&input, absl::MakeSpan(counters));
+    absl::Status st = Collect(&input, absl::MakeSpan(counters));
     if (st.ok() && !input.ConsumedEntireMessage()) {
       st = errors::DataLoss("CountFields: Failed to consume entire buffer");
     }
@@ -928,7 +928,7 @@ class DecodeProtoOp : public OpKernel {
       // Fill in output tensors from the wire.
       CodedInputStream input(reinterpret_cast<const uint8*>(buf.c_str()),
                              buf.size());
-      Status st = Collect(&input, absl::MakeSpan(collectors));
+      absl::Status st = Collect(&input, absl::MakeSpan(collectors));
       if (st.ok() && !input.ConsumedEntireMessage()) {
         st = errors::DataLoss(
             "AccumulateFields: Failed to consume entire buffer");
@@ -952,8 +952,8 @@ class DecodeProtoOp : public OpKernel {
 
   // Traverses a serialized protobuf, dispatching values to the collectors.
   template <class CollectorClass>
-  Status Collect(CodedInputStream* input,
-                 absl::Span<CollectorClass> collectors) {
+  absl::Status Collect(CodedInputStream* input,
+                       absl::Span<CollectorClass> collectors) {
     // At the beginning of each loop, the last field number that was seen,
     // regardless of whether it was collected or not, or -1 if no field has
     // been seen before.
@@ -1033,9 +1033,10 @@ class DecodeProtoOp : public OpKernel {
 
   // Collects values for a single field.
   template <class CollectorClass>
-  Status CollectField(const FieldInfo& field,
-                      WireFormatLite::WireType wire_type,
-                      CodedInputStream* input, CollectorClass* collector) {
+  absl::Status CollectField(const FieldInfo& field,
+                            WireFormatLite::WireType wire_type,
+                            CodedInputStream* input,
+                            CollectorClass* collector) {
     // The wire format library defines the same constants used in
     // descriptor.proto. This static_cast is safe because they are guaranteed to
     // stay in sync.

@@ -47,7 +47,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:error_logging",
-        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -223,10 +223,10 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:error_logging",
-        "@local_tsl//tsl/platform:errors",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla:xla_proto_cc",
         "@local_xla//xla/mlir_hlo",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 

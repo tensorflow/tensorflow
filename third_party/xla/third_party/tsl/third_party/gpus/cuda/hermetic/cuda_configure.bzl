@@ -29,6 +29,7 @@ load(
     "//third_party/remote_config:common.bzl",
     "get_cpu_value",
     "get_host_environ",
+    "realpath",
     "which",
 )
 
@@ -42,15 +43,12 @@ def _find_cc(repository_ctx):
     ) or get_host_environ(repository_ctx, _CC)
     if cc_name_from_env:
         cc_name = cc_name_from_env
-    if cc_name.startswith("/"):
-        # Return the absolute path.
-        return cc_name
     cc = which(repository_ctx, cc_name, allow_failure = True)
     if not cc:
         print(("Cannot find {}, either correct your path," +
                " or set the CLANG_CUDA_COMPILER_PATH or CC" +
                " environment variables").format(cc_name))  # buildifier: disable=print
-    return cc
+    return None if not cc else realpath(repository_ctx, cc)
 
 def _auto_configure_fail(msg):
     """Output failure message when cuda configuration fails."""
@@ -173,9 +171,12 @@ def _compute_capabilities(repository_ctx):
         for prefix in ["compute_", "sm_"]:
             if not capability.startswith(prefix):
                 continue
-            if len(capability) == len(prefix) + 2 and capability[-2:].isdigit():
-                continue
-            if len(capability) == len(prefix) + 3 and capability.endswith("90a"):
+            version = capability[len(prefix):]
+
+            # Allow PTX accelerated features: sm_90a, sm_100a, etc.
+            if version.endswith("a"):
+                version = version[:-1]
+            if version.isdigit() and len(version) in (2, 3):
                 continue
             _auto_configure_fail("Invalid compute capability: %s" % capability)
 
@@ -290,12 +291,13 @@ def _setup_toolchains(repository_ctx, cc, cuda_version):
     })
 
     cuda_defines["%{builtin_sysroot}"] = tf_sysroot
+    is_clang_compiler = "clang" in cc
     if not enable_cuda(repository_ctx):
         cuda_defines["%{cuda_toolkit_path}"] = ""
         cuda_defines["%{cuda_nvcc_files}"] = "[]"
         nvcc_relative_path = ""
     else:
-        if cc.endswith("clang"):
+        if is_clang_compiler:
             cuda_defines["%{cuda_toolkit_path}"] = repository_ctx.attr.nvcc_binary.workspace_root
         else:
             cuda_defines["%{cuda_toolkit_path}"] = ""
@@ -306,7 +308,7 @@ def _setup_toolchains(repository_ctx, cc, cuda_version):
             repository_ctx.attr.nvcc_binary.workspace_root,
             repository_ctx.attr.nvcc_binary.name,
         )
-    if cc.endswith("clang"):
+    if is_clang_compiler:
         cuda_defines["%{compiler}"] = "clang"
         cuda_defines["%{extra_no_canonical_prefixes_flags}"] = ""
         cuda_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
@@ -348,7 +350,7 @@ def _setup_toolchains(repository_ctx, cc, cuda_version):
             "%{cuda_version}": cuda_version,
             "%{nvcc_path}": nvcc_relative_path,
             "%{host_compiler_path}": str(cc),
-            "%{use_clang_compiler}": str(cc.endswith("clang")),
+            "%{use_clang_compiler}": str(is_clang_compiler),
             "%{tmpdir}": get_host_environ(
                 repository_ctx,
                 _TMPDIR,
@@ -454,7 +456,7 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cuda_is_configured}": "True",
             "%{cuda_extra_copts}": _compute_cuda_extra_copts(
                 cuda_config.compute_capabilities,
-                cc.endswith("clang"),
+                "clang" in cc,
             ),
             "%{cuda_gpu_architectures}": str(cuda_config.compute_capabilities),
             "%{cuda_version}": cuda_config.cuda_version,

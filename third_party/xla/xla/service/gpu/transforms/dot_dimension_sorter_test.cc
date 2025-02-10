@@ -31,7 +31,7 @@ namespace {
 
 class WithoutDotDimensionSorterTest : public GpuCodegenTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // The pass is disabled here to preserve suboptimal dimension order in
     // 1) UnsortedDimsCreateTransposes to reveal the transposes.

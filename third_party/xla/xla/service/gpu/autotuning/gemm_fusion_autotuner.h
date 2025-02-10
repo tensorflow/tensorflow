@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -29,7 +30,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -38,13 +41,26 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
+
+// Uses profile results to rewrite a gemm fusion to use the best backend.
+class GemmFusionAutotunerRewriterVisitor : public DfsHloRewriteVisitor {
+ public:
+  explicit GemmFusionAutotunerRewriterVisitor(const AutotuneConfig& config)
+      : config_(config) {}
+
+  absl::Status HandleFusion(HloInstruction* fusion_instr) override;
+
+ private:
+  AutotuneConfig config_;
+};
 
 // Takes a gemm fusion and chooses between cuBLAS, cuDNN, and Triton backends.
 // In the case of Triton, it also chooses the best tiling configuration.
@@ -99,14 +115,20 @@ class GemmFusionAutotunerImpl {
     int64_t plan_id;
     bool operator<(const CuDnnConfig& other) const;
   };
+  struct CustomKernelFusionConfig {
+    int64_t kernel_index;
+    bool operator<(const CustomKernelFusionConfig& other) const;
+  };
   using BackendConfig =
-      std::variant<CuBlasConfig, CuDnnConfig, TritonGemmConfig>;
+      std::variant<CuBlasConfig, CuDnnConfig, CustomKernelFusionConfig,
+                   TritonGemmConfig>;
   using BackendConfigs = std::vector<
       std::pair<const HloFusionInstruction*, std::vector<BackendConfig>>>;
 
   struct ExecutableCandidate {
     BackendConfig config;
     std::unique_ptr<Executable> executable;
+    std::optional<AutotuneResult> result;
   };
 
   // Generate all possible configs for a dot operation.
@@ -134,13 +156,48 @@ class GemmFusionAutotunerImpl {
   // Helper methods.
   const AutotuneConfig& GetConfig() const { return config_; }
   bool IsAutotuningEnabled() const;
-  static std::string ToString(const BackendConfig& config);
+
+  static const int64_t BLAS_GEMM_DEFAULT;
 
  private:
-  se::CudaComputeCapability GetComputeCapability() const {
-    return std::get<se::CudaComputeCapability>(
-        config_.GetGpuComputeCapability());
+  // Measures the performance of a single executable candidate.
+  //
+  // If required and the candidate is cuBLAS, this will save the output to the
+  // reference buffer.
+  //
+  // If the candidate is not cuBLAS, this will check the redzones and compare
+  // the outputs with the reference buffer.
+  absl::StatusOr<AutotuneResult> MeasurePerformance(
+      AutotunerCompileUtil& compile_util, const HloFusionInstruction& fusion,
+      const ExecutableCandidate& candidate,
+      std::optional<ScopedShapedBuffer>& reference_buffer);
+
+  // Checks that the redzone buffers are correct, updates `res` otherwise.
+  // Returns true if the redzones are correct, false otherwise.
+  absl::StatusOr<bool> CheckRedZones(const RedzoneBuffers& rz_buffers,
+                                     AutotuneResult& res);
+
+  // Compares the outputs of the fusion with the reference buffer.
+  // Updates `res` if the outputs do not match.
+  absl::Status CompareBuffers(const HloFusionInstruction& fusion,
+                              const ScopedShapedBuffer& reference_buffer,
+                              const ScopedShapedBuffer& buffer,
+                              AutotuneResult& res);
+
+  se::GpuComputeCapability GetComputeCapability() const {
+    return config_.GetGpuComputeCapability();
   }
+
+  bool isRocm() const {
+    return std::holds_alternative<se::RocmComputeCapability>(
+        GetComputeCapability());
+  }
+
+  bool IsFusionKind(const HloInstruction& hlo, absl::string_view kind);
+
+  bool AddLibConfigs(const HloFusionInstruction& fusion,
+                     const HloDotInstruction* dot,
+                     std::vector<BackendConfig>& configs);
 
   std::vector<TritonGemmConfig> GetDefaultTritonConfigs() const;
   std::vector<TritonGemmConfig> GetExhaustiveTritonConfigs() const;

@@ -47,8 +47,8 @@ TensorSlice::TensorSlice(
   }
 }
 
-Status TensorSlice::BuildTensorSlice(const TensorSliceProto& proto,
-                                     TensorSlice* output) {
+absl::Status TensorSlice::BuildTensorSlice(const TensorSliceProto& proto,
+                                           TensorSlice* output) {
   output->Clear();
   output->starts_.reserve(proto.extent_size());
   output->lengths_.reserve(proto.extent_size());
@@ -75,7 +75,7 @@ Status TensorSlice::BuildTensorSlice(const TensorSliceProto& proto,
   return absl::OkStatus();
 }
 
-Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
+absl::Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
   std::vector<string> items = str_util::Split(str, ':', str_util::SkipEmpty());
   slice->starts_.reserve(items.size());
   slice->lengths_.reserve(items.size());
@@ -88,7 +88,7 @@ Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
     } else {
       std::vector<string> sl = str_util::Split(x, ',', str_util::SkipEmpty());
       if (sl.size() != 2 || !strings::safe_strto64(sl[0], &s) ||
-          !strings::safe_strto64(sl[1], &l)) {
+          !absl::SimpleAtoi(sl[1], &l)) {
         return errors::InvalidArgument(
             "Expected a pair of numbers or '-' "
             "but got '",
@@ -267,8 +267,8 @@ int64_t TensorSlice::GetExtentLength(const TensorSliceProto::Extent& extent) {
   return extent.length();
 }
 
-Status TensorSlice::SliceTensorShape(const TensorShape& shape,
-                                     TensorShape* result_shape) const {
+absl::Status TensorSlice::SliceTensorShape(const TensorShape& shape,
+                                           TensorShape* result_shape) const {
   result_shape->Clear();
   // Mismatching ranks: we can't apply the slice at all.
   if (shape.dims() != dims()) {

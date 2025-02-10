@@ -20,21 +20,24 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/matrix.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/matrix.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/reference_util.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "tsl/platform/ml_dtypes.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -309,9 +312,10 @@ class ParametricDotTest : public DotOperationTest,
                                ->GetDeviceDescription()
                                .gpu_compute_capability();
     if (std::holds_alternative<se::RocmComputeCapability>(gpu_comp)) {
-      std::string_view name(
+      absl::string_view name(
           ::testing::UnitTest::GetInstance()->current_test_info()->name());
       if (name.find("TestF16/270x270x520_MajorToMinor") != std::string::npos) {
+        GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
         execution_options_.mutable_debug_options()->set_xla_gpu_autotune_level(
             0);
         DotTestParam param = GetParam();
@@ -364,6 +368,27 @@ void ParametricDotTest::ComputeAndCompareR2WithError<uint8_t>(
   ComputeAndCompareR2(builder, expected, arguments);
 }
 
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<tsl::float8_e5m2>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  error_spec.low_precision_fp_error_spec.type =
+      primitive_util::NativeToPrimitiveType<tsl::float8_e5m2>();
+  error_spec.low_precision_fp_error_spec.within_n_values = 1;
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<tsl::float8_e4m3fn>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  error_spec.low_precision_fp_error_spec.type =
+      primitive_util::NativeToPrimitiveType<tsl::float8_e4m3fn>();
+  error_spec.low_precision_fp_error_spec.within_n_values = 1;
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
 template <typename NativeT>
 void ParametricDotTest::TestImpl() {
   DotTestParam param = GetParam();
@@ -486,6 +511,8 @@ XLA_TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
 XLA_TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32_t>(); }
+XLA_TEST_P(ParametricDotTest, TestF8E5M2) { TestImpl<tsl::float8_e5m2>(); }
+XLA_TEST_P(ParametricDotTest, TestF8E4M3FN) { TestImpl<tsl::float8_e4m3fn>(); }
 
 XLA_TEST_P(ParametricDotTest, TestU8) { TestImpl<uint8_t>(); }
 
@@ -2005,6 +2032,21 @@ ENTRY SmallIntegerDot {
   arg0 = s8[20,2] parameter(0)
   arg1 = s8[2,20] parameter(1)
   ROOT dot = s8[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_TPU(S4Dot)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s4[20,2] parameter(0)
+  arg1 = s4[2,20] parameter(1)
+  ROOT dot = s4[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
 

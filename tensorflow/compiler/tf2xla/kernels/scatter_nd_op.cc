@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <functional>
 
 #include "absl/status/status.h"
@@ -20,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -34,10 +35,10 @@ namespace {
 
 // Check whether updates.shape = indices.shape[:batch_dim] +
 // buffer_shape[num_index_dims:]
-Status ValidateUpdateShape(const TensorShape& buffer_shape,
-                           const TensorShape& indices_shape,
-                           const TensorShape& updates_shape,
-                           bool broadcast_scalar_update) {
+absl::Status ValidateUpdateShape(const TensorShape& buffer_shape,
+                                 const TensorShape& indices_shape,
+                                 const TensorShape& updates_shape,
+                                 bool broadcast_scalar_update) {
   if (indices_shape.dims() < 1) {
     return errors::InvalidArgument(
         "indices shape must have >= 1 dimension; got ",

@@ -16,11 +16,11 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
-#include <memory>
 #include <numeric>
 #include <string>
 #include <tuple>
@@ -28,30 +28,27 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/status/statusor.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
-#include "ml_dtypes/include/float8.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/global_data.h"
-#include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
 #include "xla/comparison_util.h"
+#include "xla/error_spec.h"
 #include "xla/fp_util.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/test.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
-#include "tsl/platform/ml_dtypes.h"
-
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
 
 namespace xla {
 namespace {
@@ -93,7 +90,23 @@ std::pair<std::vector<T>, std::vector<T>> AllSignedPairs(
   return {xs, ys};
 }
 
-class ArrayElementwiseOpTest : public ClientLibraryTestBase {
+template <typename T>
+void AddNegativeValuesMaybeRemoveZero(std::vector<T>& values) {
+  values.reserve(values.size() * 2);
+  if (!has_zero_v<T>) {
+    values.erase(values.begin());
+  }
+  for (size_t i = 0, n = values.size(); i < n; ++i) {
+    auto neg = -values[i];
+    if (SignAndMagnitude(neg).first) {
+      values.push_back(neg);
+    }
+  }
+}
+
+class ArrayElementwiseOpTest
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  public:
   static constexpr float kEpsF32 = std::numeric_limits<float>::epsilon();
   static constexpr double kEpsF64 = std::numeric_limits<double>::epsilon();
@@ -317,8 +330,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
                             1};
   Literal lhs_literal = LiteralUtil::CreateR1<uint64_t>({lhs});
   auto lhs_param = Parameter(&b, 0, lhs_literal.shape(), "lhs_param");
-  std::unique_ptr<GlobalData> lhs_data =
-      client_->TransferToServer(lhs_literal).value();
 
   std::vector<uint64_t> rhs{1,
                             0x7FFFFFFFFFFFFFFLL,
@@ -331,8 +342,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
                             0x8000000000000000ULL};
   Literal rhs_literal = LiteralUtil::CreateR1<uint64_t>({rhs});
   auto rhs_param = Parameter(&b, 1, rhs_literal.shape(), "rhs_param");
-  std::unique_ptr<GlobalData> rhs_data =
-      client_->TransferToServer(rhs_literal).value();
 
   Add(lhs_param, rhs_param);
 
@@ -341,7 +350,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
     expected[i] = lhs[i] + rhs[i];
   }
 
-  ComputeAndCompareR1<uint64_t>(&b, expected, {lhs_data.get(), rhs_data.get()});
+  ComputeAndCompareR1<uint64_t>(&b, expected, {&lhs_literal, &rhs_literal});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
@@ -357,8 +366,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
                            -1};
   Literal lhs_literal = LiteralUtil::CreateR1<int64_t>({lhs});
   auto lhs_param = Parameter(&b, 0, lhs_literal.shape(), "lhs_param");
-  std::unique_ptr<GlobalData> lhs_data =
-      client_->TransferToServer(lhs_literal).value();
 
   std::vector<int64_t> rhs{-1,
                            0,
@@ -370,8 +377,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
                            0x7FFFFFFFFFFFFFFFLL};
   Literal rhs_literal = LiteralUtil::CreateR1<int64_t>({rhs});
   auto rhs_param = Parameter(&b, 1, rhs_literal.shape(), "rhs_param");
-  std::unique_ptr<GlobalData> rhs_data =
-      client_->TransferToServer(rhs_literal).value();
 
   Sub(lhs_param, rhs_param);
 
@@ -380,7 +385,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
     expected[i] = lhs[i] - rhs[i];
   }
 
-  ComputeAndCompareR1<int64_t>(&b, expected, {lhs_data.get(), rhs_data.get()});
+  ComputeAndCompareR1<int64_t>(&b, expected, {&lhs_literal, &rhs_literal});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CmpTwoConstantU64s) {
@@ -396,7 +401,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, CmpTwoConstantU64s) {
 
   Lt(lhs_param, rhs_param);
 
-  ComputeAndCompare(&b, {std::move(lhs_literal), std::move(rhs_literal)});
+  ComputeAndCompare(&b, {&lhs_literal, &rhs_literal});
 }
 
 TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
@@ -412,14 +417,10 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
   }
 
   Literal a_literal = LiteralUtil::CreateR1<float>({a_values});
-  std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(a_literal).value();
   auto a_constant = ConstantR1<float>(&builder, a_values);
   auto a_param = Parameter(&builder, 0, a_literal.shape(), "a_param");
 
   Literal b_literal = LiteralUtil::CreateR1<float>({b_values});
-  std::unique_ptr<GlobalData> b_data =
-      client_->TransferToServer(b_literal).value();
   auto b_param = Parameter(&builder, 1, a_literal.shape(), "b_param");
   auto b_constant = ConstantR1<float>(&builder, b_values);
 
@@ -438,7 +439,7 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
     expected.push_back(4 * (a_values[i] + b_values[i]));
   }
 
-  ComputeAndCompareR1<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR1<float>(&builder, expected, {&a_literal, &b_literal},
                              error_spec_);
 }
 
@@ -473,9 +474,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, DeeplyNestedAddWithSlices) {
     return Add(slice1, slice2);
   };
   generate_recursive(1);
-  auto a_data = client_->TransferToServer(a_literal).value();
-  auto b_data = client_->TransferToServer(b_literal).value();
-  ComputeAndCompareR1<float>(&builder, {0.0}, {a_data.get(), b_data.get()});
+  ComputeAndCompareR1<float>(&builder, {0.0}, {&a_literal, &b_literal});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantF32s) {
@@ -626,7 +625,7 @@ class IntegerDivideOpTest : public ArrayElementwiseOpTest {
       Div(dividend, divisor);
 
       ComputeAndCompareR1<T>(&builder, quotients,
-                             {dividend_data.get(), divisor_data.get()});
+                             {&dividend_data, &divisor_data});
     }
 
     // Test with a compile-time constant divisor.
@@ -637,7 +636,7 @@ class IntegerDivideOpTest : public ArrayElementwiseOpTest {
           CreateR1Parameter<T>(dividends, 0, "dividend", &builder, &dividend);
       Div(dividend, ConstantR1<T>(&builder, divisors));
 
-      ComputeAndCompareR1<T>(&builder, quotients, {dividend_data.get()});
+      ComputeAndCompareR1<T>(&builder, quotients, {&dividend_data});
     }
 
     {
@@ -651,7 +650,7 @@ class IntegerDivideOpTest : public ArrayElementwiseOpTest {
       Rem(dividend, divisor);
 
       ComputeAndCompareR1<T>(&builder, remainders,
-                             {dividend_data.get(), divisor_data.get()});
+                             {&dividend_data, &divisor_data});
     }
 
     // Test with a compile-time constant divisor.
@@ -662,7 +661,7 @@ class IntegerDivideOpTest : public ArrayElementwiseOpTest {
           CreateR1Parameter<T>(dividends, 0, "dividend", &builder, &dividend);
       Rem(dividend, ConstantR1<T>(&builder, divisors));
 
-      ComputeAndCompareR1<T>(&builder, remainders, {dividend_data.get()});
+      ComputeAndCompareR1<T>(&builder, remainders, {&dividend_data});
     }
   }
 };
@@ -1342,7 +1341,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
 }
 
 template <typename T>
-class TotalOrderTest : public ClientLibraryTestBase {
+class TotalOrderTest : public ClientLibraryTestRunnerMixin<
+                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  public:
   void DoIt(ComparisonDirection direction) {
     this->SetFastMathDisabled(true);
@@ -1371,14 +1371,7 @@ class TotalOrderTest : public ClientLibraryTestBase {
       values.push_back(Eigen::numext::abs(std::numeric_limits<T>::quiet_NaN()));
     }
 #endif
-    values.reserve(values.size() * 2);
-    for (size_t i = 0, n = values.size(); i < n; ++i) {
-      auto value = values[i];
-      auto neg = -value;
-      if (Eigen::numext::signbit(neg) != Eigen::numext::signbit(value)) {
-        values.push_back(neg);
-      }
-    }
+    AddNegativeValuesMaybeRemoveZero(values);
     std::vector<T> lhs_data;
     std::vector<T> rhs_data;
     lhs_data.reserve(values.size() * values.size());
@@ -1423,18 +1416,24 @@ class TotalOrderTest : public ClientLibraryTestBase {
   }
 };
 
-using Types = ::testing::Types<tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
-                               tsl::float8_e5m2, tsl::float8_e5m2fnuz,
+using Types =
+    ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fn,
+                     tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
+                     tsl::float8_e5m2, tsl::float8_e5m2fnuz,
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
-                               Eigen::half,
+                     Eigen::half,
 #endif
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16)
-                               Eigen::bfloat16,
+                     Eigen::bfloat16,
 #endif
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
-                               double,
+                     double,
 #endif
-                               float>;
+#if !defined(XLA_TEST_BACKEND_TPU)
+                     // TODO(b/385004399): Run tests on these types on TPU.
+                     tsl::float4_e2m1fn, tsl::float8_e8m0fnu,
+#endif
+                     float>;
 
 TYPED_TEST_SUITE(TotalOrderTest, Types);
 
@@ -1461,19 +1460,13 @@ TYPED_TEST(TotalOrderTest, LargeMagnitudeVsNaN) {
   if constexpr (std::numeric_limits<T>::has_infinity) {
     values.push_back(std::numeric_limits<T>::infinity());
   }
-  for (size_t i = 0, n = values.size(); i < n; ++i) {
-    auto value = values[i];
-    auto neg = -value;
-    if (Eigen::numext::signbit(neg) != Eigen::numext::signbit(value)) {
-      values.push_back(neg);
-    }
-  }
+  AddNegativeValuesMaybeRemoveZero(values);
   auto lhs = ConstantR1<T>(&builder, values);
   auto rhs = ConstantR1<T>(
       &builder,
       std::vector<T>(values.size(), std::numeric_limits<T>::quiet_NaN()));
   LtTotalOrder(lhs, rhs);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, this->ComputeAndTransfer(&builder, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, this->ExecuteAndTransfer(&builder, {}));
   EXPECT_TRUE(result.IsAll(0) || result.IsAll(1)) << result.ToString();
 }
 
@@ -1751,11 +1744,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
-#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION == 50700
-  GTEST_SKIP()
-      << "This test fails on rocm-5.7.0 platform due to a compiler bug";
-#endif
-
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   auto eps = std::numeric_limits<float>::epsilon();
@@ -1866,11 +1854,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowOfExpF32) {
   std::vector<float> values1 = {0.0f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
 
   Literal literal0 = LiteralUtil::CreateR1<float>(values0);
-  std::unique_ptr<GlobalData> data0 =
-      client_->TransferToServer(literal0).value();
   Literal literal1 = LiteralUtil::CreateR1<float>(values1);
-  std::unique_ptr<GlobalData> data1 =
-      client_->TransferToServer(literal1).value();
   auto param0 = Parameter(&b, 0, literal0.shape(), "param0");
   auto param1 = Parameter(&b, 1, literal1.shape(), "param1");
   Pow(Exp(param0), param1);
@@ -1880,8 +1864,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowOfExpF32) {
     expected[i] = std::pow(std::exp(values0[i]), values1[i]);
   }
 
-  ComputeAndCompareR1<float>(&b, expected, {data0.get(), data1.get()},
-                             error_spec_);
+  ComputeAndCompareR1<float>(&b, expected, {&literal0, &literal1}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, LogOfPowerF32) {
@@ -1893,11 +1876,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, LogOfPowerF32) {
                                 0.5f, -1.0f, -0.5f, 0.0f};
 
   Literal literal0 = LiteralUtil::CreateR1<float>(values0);
-  std::unique_ptr<GlobalData> data0 =
-      client_->TransferToServer(literal0).value();
   Literal literal1 = LiteralUtil::CreateR1<float>(values1);
-  std::unique_ptr<GlobalData> data1 =
-      client_->TransferToServer(literal1).value();
   auto param0 = Parameter(&b, 0, literal0.shape(), "param0");
   auto param1 = Parameter(&b, 1, literal1.shape(), "param1");
   Log(Pow(param0, param1));
@@ -1909,8 +1888,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, LogOfPowerF32) {
 
   // Log2 is very inaccurate onon some platforms.
   ErrorSpec error_spec(1000 * kEpsF32, 1000 * kEpsF32);
-  ComputeAndCompareR1<float>(&b, expected, {data0.get(), data1.get()},
-                             error_spec);
+  ComputeAndCompareR1<float>(&b, expected, {&literal0, &literal1}, error_spec);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MulOfExpF32) {
@@ -1920,11 +1898,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, MulOfExpF32) {
   std::vector<float> values1 = {0.0f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
 
   Literal literal0 = LiteralUtil::CreateR1<float>(values0);
-  std::unique_ptr<GlobalData> data0 =
-      client_->TransferToServer(literal0).value();
   Literal literal1 = LiteralUtil::CreateR1<float>(values1);
-  std::unique_ptr<GlobalData> data1 =
-      client_->TransferToServer(literal1).value();
   auto param0 = Parameter(&b, 0, literal0.shape(), "param0");
   auto param1 = Parameter(&b, 1, literal1.shape(), "param1");
   Mul(Exp(param0), Exp(param1));
@@ -1934,8 +1908,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, MulOfExpF32) {
     expected[i] = std::exp(values0[i]) * std::exp(values1[i]);
   }
 
-  ComputeAndCompareR1<float>(&b, expected, {data0.get(), data1.get()},
-                             error_spec_);
+  ComputeAndCompareR1<float>(&b, expected, {&literal0, &literal1}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, DivOfExpF32) {
@@ -1945,11 +1918,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivOfExpF32) {
   std::vector<float> values1 = {0.0f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
 
   Literal literal0 = LiteralUtil::CreateR1<float>(values0);
-  std::unique_ptr<GlobalData> data0 =
-      client_->TransferToServer(literal0).value();
   Literal literal1 = LiteralUtil::CreateR1<float>(values1);
-  std::unique_ptr<GlobalData> data1 =
-      client_->TransferToServer(literal1).value();
   auto param0 = Parameter(&b, 0, literal0.shape(), "param0");
   auto param1 = Parameter(&b, 1, literal1.shape(), "param1");
   Div(param0, Exp(param1));
@@ -1959,8 +1928,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivOfExpF32) {
     expected[i] = values0[i] / std::exp(values1[i]);
   }
 
-  ComputeAndCompareR1<float>(&b, expected, {data0.get(), data1.get()},
-                             error_spec_);
+  ComputeAndCompareR1<float>(&b, expected, {&literal0, &literal1}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, Div3_lhs_F32) {
@@ -1971,16 +1939,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Div3_lhs_F32) {
   std::vector<float> values2 = {0.1f, 1.1f, 6.9f, 12.5f, -15.0f, -0.5f};
 
   Literal literal0 = LiteralUtil::CreateR1<float>(values0);
-  std::unique_ptr<GlobalData> data0 =
-      client_->TransferToServer(literal0).value();
-
   Literal literal1 = LiteralUtil::CreateR1<float>(values1);
-  std::unique_ptr<GlobalData> data1 =
-      client_->TransferToServer(literal1).value();
-
   Literal literal2 = LiteralUtil::CreateR1<float>(values2);
-  std::unique_ptr<GlobalData> data2 =
-      client_->TransferToServer(literal2).value();
   auto param0 = Parameter(&b, 0, literal0.shape(), "param0");
   auto param1 = Parameter(&b, 1, literal1.shape(), "param1");
   auto param2 = Parameter(&b, 2, literal2.shape(), "param2");
@@ -1991,8 +1951,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Div3_lhs_F32) {
     expected[i] = (values0[i] / values1[i]) / values2[i];
   }
 
-  ComputeAndCompareR1<float>(
-      &b, expected, {data0.get(), data1.get(), data2.get()}, error_spec_);
+  ComputeAndCompareR1<float>(&b, expected, {&literal0, &literal1, &literal2},
+                             error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, Div3_rhs_F32) {
@@ -2003,17 +1963,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Div3_rhs_F32) {
   std::vector<float> values2 = {0.1f, 1.1f, 6.9f, 12.5f, -15.0f, -0.5f};
 
   Literal literal0 = LiteralUtil::CreateR1<float>(values0);
-  std::unique_ptr<GlobalData> data0 =
-      client_->TransferToServer(literal0).value();
-
   Literal literal1 = LiteralUtil::CreateR1<float>(values1);
-  std::unique_ptr<GlobalData> data1 =
-      client_->TransferToServer(literal1).value();
-
   Literal literal2 = LiteralUtil::CreateR1<float>(values2);
-  std::unique_ptr<GlobalData> data2 =
-      client_->TransferToServer(literal2).value();
-
   auto param0 = Parameter(&b, 0, literal0.shape(), "param0");
   auto param1 = Parameter(&b, 1, literal1.shape(), "param1");
   auto param2 = Parameter(&b, 2, literal2.shape(), "param2");
@@ -2024,8 +1975,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Div3_rhs_F32) {
     expected[i] = values0[i] / (values1[i] / values2[i]);
   }
 
-  ComputeAndCompareR1<float>(
-      &b, expected, {data0.get(), data1.get(), data2.get()}, error_spec_);
+  ComputeAndCompareR1<float>(&b, expected, {&literal0, &literal1, &literal2},
+                             error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, DivOfPowerF32) {
@@ -2036,17 +1987,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivOfPowerF32) {
   std::vector<float> values2 = {0.1f, 1.1f, 6.9f, 9.5f, -11.0f, -0.5f};
 
   Literal literal0 = LiteralUtil::CreateR1<float>(values0);
-  std::unique_ptr<GlobalData> data0 =
-      client_->TransferToServer(literal0).value();
-
   Literal literal1 = LiteralUtil::CreateR1<float>(values1);
-  std::unique_ptr<GlobalData> data1 =
-      client_->TransferToServer(literal1).value();
-
   Literal literal2 = LiteralUtil::CreateR1<float>(values2);
-  std::unique_ptr<GlobalData> data2 =
-      client_->TransferToServer(literal2).value();
-
   auto param0 = Parameter(&b, 0, literal0.shape(), "param0");
   auto param1 = Parameter(&b, 1, literal1.shape(), "param1");
   auto param2 = Parameter(&b, 2, literal2.shape(), "param2");
@@ -2057,8 +1999,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivOfPowerF32) {
     expected[i] = values0[i] / std::pow(values1[i], values2[i]);
   }
 
-  ComputeAndCompareR1<float>(
-      &b, expected, {data0.get(), data1.get(), data2.get()}, error_spec_);
+  ComputeAndCompareR1<float>(&b, expected, {&literal0, &literal1, &literal2},
+                             error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, Div4F32) {
@@ -2070,21 +2012,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, Div4F32) {
   std::vector<float> values3 = {2.1f, 3.1f, 9.9f, -4.5f, -11.0f, -21.5f};
 
   Literal literal0 = LiteralUtil::CreateR1<float>(values0);
-  std::unique_ptr<GlobalData> data0 =
-      client_->TransferToServer(literal0).value();
-
   Literal literal1 = LiteralUtil::CreateR1<float>(values1);
-  std::unique_ptr<GlobalData> data1 =
-      client_->TransferToServer(literal1).value();
-
   Literal literal2 = LiteralUtil::CreateR1<float>(values2);
-  std::unique_ptr<GlobalData> data2 =
-      client_->TransferToServer(literal2).value();
-
   Literal literal3 = LiteralUtil::CreateR1<float>(values3);
-  std::unique_ptr<GlobalData> data3 =
-      client_->TransferToServer(literal3).value();
-
   auto param0 = Parameter(&b, 0, literal0.shape(), "param0");
   auto param1 = Parameter(&b, 1, literal1.shape(), "param1");
   auto param2 = Parameter(&b, 2, literal2.shape(), "param2");
@@ -2097,8 +2027,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Div4F32) {
   }
 
   ComputeAndCompareR1<float>(
-      &b, expected, {data0.get(), data1.get(), data2.get(), data3.get()},
-      error_spec_);
+      &b, expected, {&literal0, &literal1, &literal2, &literal3}, error_spec_);
 }
 
 TEST_P(ArrayElementwiseOpTestParamCount, SquareManyValues) {
@@ -2304,8 +2233,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, MinF16) {
   auto y = Parameter(&builder, 1, y_literal.shape(), "y");
   Max(x, y);
 
-  ComputeAndCompare(&builder, {std::move(x_literal), std::move(y_literal)},
-                    ErrorSpec{0.0, 0.0});
+  ComputeAndCompare(&builder, {&x_literal, &y_literal}, ErrorSpec{0.0, 0.0});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MinF64s) {
@@ -2678,21 +2606,14 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersF32s) {
 
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
-
   Literal param1_literal =
       LiteralUtil::CreateR1<float>({7.2f, 2.3f, 3.4f, 5.6f});
-  std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).value();
-
   auto p0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto p1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
   Add(p0, p1);
 
   ComputeAndCompareR1<float>(&builder, {8.3f, 4.5f, 6.7f, 11.1f},
-                             {param0_data.get(), param1_data.get()},
-                             error_spec_);
+                             {&param0_literal, &param1_literal}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersZeroElementF32s) {
@@ -2700,21 +2621,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersZeroElementF32s) {
 
   Literal param0_literal =
       LiteralUtil::CreateR3FromArray3D<float>(Array3D<float>(0, 7, 0));
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
-
   Literal param1_literal =
       LiteralUtil::CreateR3FromArray3D<float>(Array3D<float>(0, 7, 0));
-  std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).value();
-
   auto p0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto p1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
   Add(p0, p1);
 
   Array3D<float> expected(0, 7, 0);
-  ComputeAndCompareR3<float>(
-      &builder, expected, {param0_data.get(), param1_data.get()}, error_spec_);
+  ComputeAndCompareR3<float>(&builder, expected,
+                             {&param0_literal, &param1_literal}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AddParameterToConstantF32s) {
@@ -2722,15 +2637,12 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddParameterToConstantF32s) {
 
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
-
   auto a = ConstantR1<float>(&builder, {1.1f, 2.2f, 3.3f, 4.4f});
   auto p = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Add(a, p);
 
   ComputeAndCompareR1<float>(&builder, {2.2f, 4.4f, 6.6f, 9.9f},
-                             {param0_data.get()}, error_spec_);
+                             {&param0_literal}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CosF32s) {
@@ -2991,9 +2903,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {
        68.4,   69.5,   70.6,   71.7,   72.8,   73.9,   75.0,  76.1,   77.2,
        78.3,   79.4,   80.5,   81.6,   82.7,   83.8,   84.9,  85.2,   86.3,
        86.4,   86.5,   87.6,   87.7,   87.8,   87.9});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
-                          client_->TransferToServer(input_literal));
-
   auto input = Parameter(&builder, 0, input_literal.shape(), "input");
   Exp(input);
 
@@ -3004,7 +2913,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {
     expected_result.push_back(std::exp(input_literal.Get<float>({i})));
   }
 
-  ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
+  ComputeAndCompareR1<float>(&builder, expected_result, {&input_literal},
                              error_spec_);
 }
 
@@ -3029,9 +2938,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, LogF32sVector) {
        1.5e+28,  1.79e+28, 1.36e+29, 1.95e+29, 1.5e+30,  1.81e+30, 1.34e+30,
        1.7e+31,  1.44e+31, 1.1e+31,  1.4e+32,  1.67e+32, 1.96e+33, 1.11e+33,
        1.19e+33, 1.61e+34, 1.05e+34, 1.88e+34, 1.67e+35, 1.7e+35});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
-                          client_->TransferToServer(input_literal));
-
   auto input = Parameter(&builder, 0, input_literal.shape(), "input");
   Log(input);
 
@@ -3044,7 +2950,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, LogF32sVector) {
 
   // Log2 is very inaccurate onon some platforms.
   ErrorSpec error_spec(1000 * kEpsF32, 1000 * kEpsF32);
-  ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
+  ComputeAndCompareR1<float>(&builder, expected_result, {&input_literal},
                              error_spec);
 }
 
@@ -3631,15 +3537,12 @@ XLA_TEST_F(ArrayElementwiseOpTest, ImplicitBroadcastInFusedExpressions) {
   XlaBuilder builder(TestName());
   auto x_literal = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto y_literal = LiteralUtil::CreateR1<float>({4, 5});
-  auto x_data = client_->TransferToServer(x_literal).value();
-  auto y_data = client_->TransferToServer(y_literal).value();
-
   auto x = Parameter(&builder, 0, x_literal.shape(), "x");
   auto y = Parameter(&builder, 1, y_literal.shape(), "y");
   auto slice = Slice(x, {1}, {2}, {1});
   Sub(slice, y);
 
-  ComputeAndCompareR1<float>(&builder, {-2, -3}, {x_data.get(), y_data.get()},
+  ComputeAndCompareR1<float>(&builder, {-2, -3}, {&x_literal, &y_literal},
                              error_spec_);
 }
 
@@ -3648,8 +3551,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, LessEqual2D) {
   XlaBuilder builder(TestName());
   auto x_literal = LiteralUtil::CreateR1<int>({0, 1});
   auto y_literal = LiteralUtil::CreateR1<int>({0, 0});
-  auto x_data = client_->TransferToServer(x_literal).value();
-  auto y_data = client_->TransferToServer(y_literal).value();
   auto x = Parameter(&builder, 0, x_literal.shape(), "x");
   auto y = Parameter(&builder, 1, y_literal.shape(), "y");
   auto slice_x_0 = Slice(x, {0}, {1}, {1});
@@ -3668,7 +3569,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, LessEqual2D) {
   Reshape(result, {1});
   tsl::core::Bitmap expected(1);
   expected.clear(0);
-  ComputeAndCompareR1(&builder, expected, {x_data.get(), y_data.get()});
+  ComputeAndCompareR1(&builder, expected, {&x_literal, &y_literal});
 }
 
 INSTANTIATE_TEST_CASE_P(ArrayElementwiseOpTestParamCount,

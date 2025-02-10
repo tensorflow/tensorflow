@@ -502,9 +502,6 @@ class TensorflowCostModel : public StreamAnalysis::CostModelInterface {
       : cost_analysis_(*cost_analysis) {}
 
   std::optional<int64_t> GetOperationCost(mlir::Operation* op) const override {
-    if (cost_analysis_.IsOpUsingThresholdAsCost(op)) {
-      return std::nullopt;
-    }
     return cost_analysis_.GetCost(op);
   }
 

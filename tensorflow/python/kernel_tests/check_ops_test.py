@@ -1554,7 +1554,7 @@ class AssertTypeTest(test.TestCase):
         constant_op.constant([[111], [232]], dtypes.int64),
         constant_op.constant([23.4, -43.2], dtypes.float16),
         constant_op.constant([500], dtypes.int64))
-    with self.assertRaisesRegexp(TypeError, "must be of type.*float32"):
+    with self.assertRaisesRegex(TypeError, "must be of type.*float32"):
       check_ops.assert_type(sparse_float16, dtypes.float32)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1567,7 +1567,7 @@ class AssertTypeTest(test.TestCase):
     # Test case for GitHub issue:
     # https://github.com/tensorflow/tensorflow/issues/45975
     value = constant_op.constant(0.0)
-    with self.assertRaisesRegexp(TypeError,
+    with self.assertRaisesRegex(TypeError,
                                  "Cannot convert.*to a TensorFlow DType"):
       check_ops.assert_type(value, (dtypes.float32,))
 
@@ -1935,7 +1935,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[]], dtypes.int64),
         constant_op.constant([42], dtypes.float32),
         constant_op.constant([], dtypes.int64))
-    with self.assertRaisesRegexp(ValueError,
+    with self.assertRaisesRegex(ValueError,
                                  r"must have rank 2.*Received rank 0"):
       assertion = check_ops.assert_shapes([(sparse_float, [None, None])])
       with ops.control_dependencies([assertion]):
@@ -1959,7 +1959,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[111], [232]], dtypes.int64),
         constant_op.constant([23.4, -43.2], dtypes.float32),
         constant_op.constant([500], dtypes.int64))
-    with self.assertRaisesRegexp(ValueError, r"dimension 0 must have size 499"):
+    with self.assertRaisesRegex(ValueError, r"dimension 0 must have size 499"):
       assertion = check_ops.assert_shapes([(sparse_float, [499])])
       with ops.control_dependencies([assertion]):
         out = array_ops.identity(sparse_float)
@@ -1993,7 +1993,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 41"):
+    with self.assertRaisesRegex(ValueError, r"dimension 1 must have size 41"):
       assertion = check_ops.assert_shapes([(sparse_int, [None, 41])])
       with ops.control_dependencies([assertion]):
         out = array_ops.identity(sparse_int)
@@ -2005,7 +2005,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegexp(ValueError,
+    with self.assertRaisesRegex(ValueError,
                                  r"must have rank 3\..* Received rank 2"):
       assertion = check_ops.assert_shapes([(sparse_int, [None, None, 40])])
       with ops.control_dependencies([assertion]):
@@ -2018,7 +2018,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 30"):
+    with self.assertRaisesRegex(ValueError, r"dimension 1 must have size 30"):
       assertion = check_ops.assert_shapes([(sparse_int, ["D", "D"])])
       with ops.control_dependencies([assertion]):
         out = array_ops.identity(sparse_int)
@@ -2050,7 +2050,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 30"):
+    with self.assertRaisesRegex(ValueError, r"dimension 1 must have size 30"):
       assertion = check_ops.assert_shapes([(sparse_scalar, []),
                                            (sparse_2d, ["N", "N"])])
       with ops.control_dependencies([assertion]):
@@ -2077,7 +2077,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 30"):
+    with self.assertRaisesRegex(ValueError, r"dimension 1 must have size 30"):
       assertion = check_ops.assert_shapes([(dense_scalar, []),
                                            (sparse_2d, ["N", "N"])])
       with ops.control_dependencies([assertion]):

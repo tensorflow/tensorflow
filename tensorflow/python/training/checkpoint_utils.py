@@ -228,10 +228,11 @@ def checkpoints_iterator(checkpoint_dir,
     if new_checkpoint_path is None:
       if not timeout_fn:
         # timed out
-        logging.info("Timed-out waiting for a checkpoint.")
+        logging.info("Timed-out waiting for a checkpoint (without timeout_fn).")
         return
       if timeout_fn():
         # The timeout_fn indicated that we are truly done.
+        logging.info("Timed-out waiting for a checkpoint.")
         return
       else:
         # The timeout_fn indicated that more checkpoints may come.

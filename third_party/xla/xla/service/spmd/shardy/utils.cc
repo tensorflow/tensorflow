@@ -30,10 +30,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/dialect/sdy/ir/register.h"
 #include "shardy/dialect/sdy/ir/utils.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/service/spmd/shardy/constants.h"
 
 namespace xla {
@@ -50,6 +52,7 @@ using ::mlir::StringRef;
 using xla::sdy::kFrontendAttributesAttr;
 
 using ::mlir::func::FuncOp;
+using ::mlir::stablehlo::CustomCallOp;
 
 DictionaryAttr getFrontendAttrs(Operation* op) {
   return op->getAttrOfType<DictionaryAttr>(kFrontendAttributesAttr);
@@ -62,14 +65,18 @@ DictionaryAttr getFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index) {
 
 namespace {
 
-mlir::StringAttr getStringAttribute(Attribute attr, mlir::OpBuilder& builder) {
+mlir::StringAttr getStringAttribute(Attribute attr, mlir::OpBuilder& builder,
+                                    bool escapeAttr) {
   std::string value;
   if (auto stringAttr = mlir::dyn_cast<StringAttr>(attr)) {
+    if (!escapeAttr) {
+      return stringAttr;
+    }
     value = stringAttr.getValue().str();
   } else {
     value = mlir::sdy::attributeToString(attr);
   }
-  return builder.getStringAttr(absl::CEscape(value));
+  return builder.getStringAttr(escapeAttr ? absl::CEscape(value) : value);
 }
 
 SmallVector<NamedAttribute> getExistingFrontendAttributes(
@@ -80,17 +87,28 @@ SmallVector<NamedAttribute> getExistingFrontendAttributes(
   }
   for (NamedAttribute entry : frontendAttributes) {
     if (entry.getName() != excludedAttribute) {
-      dictEntries.emplace_back(entry);
+      dictEntries.push_back(entry);
     }
   }
   return dictEntries;
 }
 
-void addFrontendAttribute(SmallVector<NamedAttribute>& existingAttributes,
-                          StringRef name, Attribute value) {
+void setFrontendAttribute(SmallVector<NamedAttribute>& existingAttributes,
+                          StringRef name, Attribute value, bool escapeAttr) {
   mlir::OpBuilder builder(value.getContext());
-  existingAttributes.emplace_back(NamedAttribute(
-      builder.getStringAttr(name), getStringAttribute(value, builder)));
+  StringAttr stringValue = getStringAttribute(value, builder, escapeAttr);
+  for (auto* it = existingAttributes.begin(); it != existingAttributes.end();
+       ++it) {
+    if (it->getName() == name) {
+      if (it->getValue() == stringValue) {
+        return;
+      }
+      existingAttributes.erase(it);
+      break;
+    }
+  }
+  existingAttributes.emplace_back(
+      NamedAttribute(builder.getStringAttr(name), stringValue));
 }
 
 void removeFrontendAttribute(
@@ -119,19 +137,20 @@ void setFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index,
 
 }  // namespace
 
-void addFrontendAttribute(Operation* op, StringRef name, Attribute value) {
+void setFrontendAttribute(Operation* op, StringRef name, Attribute value,
+                          bool escapeAttr) {
   SmallVector<NamedAttribute> existingAttributes =
       getExistingFrontendAttributes(getFrontendAttrs(op), "");
-  addFrontendAttribute(existingAttributes, name, value);
+  setFrontendAttribute(existingAttributes, name, value, escapeAttr);
   setFrontendAttrs(op, existingAttributes);
 }
 
-void addFrontendAttribute(FuncOp funcOp, StringRef name, Attribute value,
-                          int64_t argNum) {
+void setFrontendAttribute(FuncOp funcOp, StringRef name, Attribute value,
+                          int64_t argNum, bool escapeAttr) {
   SmallVector<NamedAttribute> existingAttributes =
       getExistingFrontendAttributes(getFuncArgFrontendAttrs(funcOp, argNum),
                                     "");
-  addFrontendAttribute(existingAttributes, name, value);
+  setFrontendAttribute(existingAttributes, name, value, escapeAttr);
   setFuncArgFrontendAttrs(funcOp, argNum, existingAttributes);
 }
 
@@ -152,13 +171,42 @@ void removeFrontendAttribute(FuncOp funcOp, StringRef attributeName,
       [&]() { funcOp.removeArgAttr(argNum, kFrontendAttributesAttr); });
 }
 
+bool hasFrontendAttr(mlir::Operation* op, mlir::StringRef key) {
+  return hasKey(getFrontendAttrs(op), key);
+}
+
+bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key) {
+  return dictAttr && dictAttr.contains(key);
+}
+
 void loadAllRequiredDialects(mlir::MLIRContext* context) {
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
-  registry.insert<mlir::mhlo::MhloDialect>();
   mlir::sdy::registerAllDialects(registry);
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();
+}
+
+CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,
+                                               mlir::TypeRange resultTypes,
+                                               mlir::IRRewriter& rewriter) {
+  auto customCallOp = rewriter.create<CustomCallOp>(
+      op.getLoc(), resultTypes, op.getOperands(), op.getCallTargetNameAttr(),
+      op.getHasSideEffectAttr(), op.getBackendConfigAttr(),
+      op.getApiVersionAttr(), op.getCalledComputations(),
+      op.getOperandLayoutsAttr(), op.getResultLayoutsAttr(),
+      op.getOutputOperandAliases());
+  customCallOp->setDiscardableAttrs(mlir::DictionaryAttr::get(
+      op->getContext(), llvm::to_vector(op->getDiscardableAttrs())));
+  return customCallOp;
+};
+
+bool isPythonCallbackCustomCall(mlir::stablehlo::CustomCallOp op) {
+  mlir::StringRef targetName = op.getCallTargetName();
+  return targetName == kPythonCpuCallbackCustomCallTargetName ||
+         targetName == kPythonGpuCallbackCustomCallTargetName ||
+         targetName == kFFIPythonCpuCallbackCustomCallTargetName ||
+         targetName == kFFIPythonGpuCallbackCustomCallTargetName;
 }
 
 }  // namespace sdy

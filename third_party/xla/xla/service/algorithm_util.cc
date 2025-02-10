@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/primitive_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -41,11 +42,15 @@ absl::StatusOr<se::blas::ComputationType> GetBlasComputationType(
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_F16_F16_F16:
       return se::blas::ComputationType::kF16;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+      return se::blas::ComputationType::kBF16AsF32;
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
       return se::blas::ComputationType::kF32;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
       return se::blas::ComputationType::kTF32AsF32;
@@ -95,16 +100,44 @@ bool HasFastAccum(PrecisionConfig::Algorithm algorithm) {
   return algorithm == PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM;
 }
 
+bool IsAmpere(stream_executor::GpuComputeCapability gpu_compute_capability) {
+  return std::holds_alternative<se::CudaComputeCapability>(
+             gpu_compute_capability) &&
+         std::get<se::CudaComputeCapability>(gpu_compute_capability).major ==
+             stream_executor::CudaComputeCapability::AMPERE;
+}
+
 // It's clear that those libraries could support more, but we only list the ones
 // which we explicitly test for now.
-bool IsSupportedByCublasOrCublasLt(PrecisionConfig::Algorithm algorithm) {
+bool IsSupportedByCublasOrCublasLt(
+    PrecisionConfig::Algorithm algorithm,
+    stream_executor::GpuComputeCapability gpu_compute_capability,
+    const HloDotInstruction* dot, const int64_t rhs_contracting_index) {
+  // 8-bit x 8-bit GEMMs with contracting dim < 4 are not supported by cuBLAS.
+  // As this was determined through a failing test, I'm eering on the side of
+  // caution and not generalizing this further.
+  if (dot) {
+    auto lhs_type = dot->operand(0)->shape().element_type();
+    auto rhs_type = dot->operand(1)->shape().element_type();
+    auto contracting_dim_size =
+        dot->operand(1)->shape().dimensions(rhs_contracting_index);
+    if (primitive_util::Is8BitIntegralType(lhs_type) &&
+        primitive_util::Is8BitIntegralType(rhs_type) &&
+        contracting_dim_size < 4) {
+      return false;
+    }
+  }
+
   switch (algorithm) {
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
     case PrecisionConfig::ALG_UNSET:
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
     case PrecisionConfig::ALG_DOT_F64_F64_F64:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
       return true;
@@ -174,13 +207,20 @@ bool IsSupportedDotAlgorithmOnGpu(
       return input_storage_type == F16 &&
              (output_storage_type == F16 || output_storage_type == F32);
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
-      return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
-             input_storage_type == BF16 &&
-             (output_storage_type == BF16 || output_storage_type == F32);
+      if (!is_cuda_ge_ampere && !is_rocm_mi100_and_above) return false;
+      switch (input_storage_type) {
+        case BF16:
+          return output_storage_type == BF16 || output_storage_type == F32;
+        case F32:
+          return output_storage_type == F32;
+        default:
+          return false;
+      }
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
       return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
              input_storage_type == F32 && output_storage_type == F32;
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
       return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
              input_storage_type == F32 && output_storage_type == F32;

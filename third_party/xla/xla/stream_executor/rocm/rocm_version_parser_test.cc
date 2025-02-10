@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "rocm/include/hip/hip_version.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/test.h"
 
 namespace stream_executor {
 
@@ -30,7 +30,7 @@ using tsl::testing::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
 TEST(ParseRocmVersionTest, Simple) {
-  EXPECT_THAT(stream_executor::ParseRocmVersion(60102),
+  EXPECT_THAT(stream_executor::ParseRocmVersion(60'100'002),
               IsOkAndHolds(SemanticVersion(6, 1, 2)));
 }
 

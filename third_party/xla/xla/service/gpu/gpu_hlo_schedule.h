@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -28,6 +29,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Converts sync collective instructions to a pair of async start and done
+// instructions.
+absl::Status RunAsyncCollectivesConversionPasses(HloModule* module);
+
 struct ScheduleMetadata {
   int64_t scheduler_mem_limit;
 };
@@ -36,6 +41,13 @@ struct ScheduleMetadata {
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info);
+
+// Schedules a GPU module with `DefaultMemoryScheduler` and
+// `PostProcessSchedule` postprocessing. If `peak_memory_bytes` is not nullptr,
+// then the it will be set to peak memory usage in bytes.
+absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
+    const HloModule* module, int64_t pointer_size,
+    int64_t* peak_memory_bytes = nullptr);
 
 HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 

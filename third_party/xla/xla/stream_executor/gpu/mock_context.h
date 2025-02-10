@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_MOCK_CONTEXT_H_
 #define XLA_STREAM_EXECUTOR_GPU_MOCK_CONTEXT_H_
 
+#include "xla/hlo/testlib/test.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/test.h"
 
 namespace stream_executor::gpu {
 
@@ -28,6 +28,7 @@ class MockContext : public Context {
   MOCK_METHOD(void, SetActive, (), (override));
   MOCK_METHOD(bool, IsActive, (), (const, override));
   MOCK_METHOD(int, device_ordinal, (), (const, override));
+  MOCK_METHOD(absl::Status, Synchronize, (), (override));
 };
 }  // namespace stream_executor::gpu
 

@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -104,8 +104,9 @@ std::vector<int32> ReshapeToTranspose(const Model& model,
 // to be merged if the reshape does not affect memory ordering and does not
 // affects the number of dimensions. This only occurs when only unary dimensions
 // are shifting position.
-::tensorflow::Status MergeReshapeIntoPrecedingTranspose::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status MergeReshapeIntoPrecedingTranspose::Run(Model* model,
+                                                     std::size_t op_index,
+                                                     bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* reshape_op = ConvertOperator<TensorFlowReshapeOperator*>(

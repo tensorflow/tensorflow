@@ -17,7 +17,6 @@ pytype_strict_library(
     srcs = [
         "type_dispatch.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//visibility:private"],
     deps = [
         ":function_type",
@@ -27,7 +26,6 @@ pytype_strict_library(
 py_strict_test(
     name = "type_dispatch_test",
     srcs = ["type_dispatch_test.py"],
-    python_version = "PY3",
     deps = [
         ":function_type",
         ":type_dispatch",
@@ -40,7 +38,6 @@ py_strict_test(
 pytype_strict_library(
     name = "function_cache",
     srcs = ["function_cache.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow/python/eager:__subpackages__",
     ],
@@ -55,7 +52,6 @@ py_strict_test(
     name = "function_cache_test",
     size = "medium",
     srcs = ["function_cache_test.py"],
-    python_version = "PY3",
     # TODO(b/213375459): For continuous benchmark monitoring
     visibility = ["//learning/brain/contrib/eager/python/examples:__pkg__"],
     deps = [
@@ -74,7 +70,6 @@ pytype_strict_library(
     srcs = [
         "function_type.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/function/polymorphism:function_type_proto_py",
@@ -100,7 +95,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "function_type_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:private"],
 #     deps = [":function_type_proto"],
 # )
@@ -109,7 +103,6 @@ tf_proto_library(
 py_strict_test(
     name = "function_type_test",
     srcs = ["function_type_test.py"],
-    python_version = "PY3",
     deps = [
         ":function_type",
         #internal proto upb dep

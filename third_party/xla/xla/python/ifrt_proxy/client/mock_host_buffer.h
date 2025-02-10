@@ -20,7 +20,6 @@
 #include <cstdint>
 
 #include <gmock/gmock.h>
-#include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/python/ifrt/future.h"
@@ -32,7 +31,6 @@ namespace proxy {
 
 class MockClientHostBufferStore final : public ClientHostBufferStore {
  public:
-  MOCK_METHOD(uint64_t, NextHandle, (), (override));
   MOCK_METHOD(Future<>, Store, (uint64_t handle, absl::string_view data),
               (override));
   MOCK_METHOD(Future<>, Store, (uint64_t handle, const absl::Cord& data),

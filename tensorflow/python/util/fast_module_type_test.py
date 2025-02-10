@@ -31,7 +31,23 @@ class ChildFastModule(FastModuleType):
     return 3
 
 
+class EarlyAttrAccessModule(FastModuleType):
+
+  def __init__(self, name):
+    self.some_attr = 1
+    super().__init__(name)  # pytype: disable=too-many-function-args
+
+
 class FastModuleTypeTest(test.TestCase):
+
+  def testAttributeAccessBeforeSuperInitDoesNotCrash(self):
+    # Tests that the attribute access before super().__init__() does not crash.
+    module = EarlyAttrAccessModule("early_attr")
+    self.assertEqual(1, module.some_attr)
+
+  def testMissingModuleNameCallDoesNotCrash(self):
+    with self.assertRaises(TypeError):
+      ChildFastModule()
 
   def testBaseGetattribute(self):
     # Tests that the default attribute lookup works.

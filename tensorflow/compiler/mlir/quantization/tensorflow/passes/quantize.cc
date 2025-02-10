@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -550,14 +550,14 @@ void QuantizePass::runOnOperation() {
                                               target_opset_);
     patterns.add<QuantizeAvgPoolOpPattern>(ctx);
   }
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitWarning("Failed to converge pattern at QuantizePass.");
   }
 
   if (!shouldKeepUnusedQdqPattern()) {
     RewritePatternSet patterns_2(&getContext());
     patterns_2.add<RemoveUnusedQdqPattern>(ctx);
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns_2)))) {
+    if (failed(applyPatternsGreedily(func, std::move(patterns_2)))) {
       signalPassFailure();
     }
   }

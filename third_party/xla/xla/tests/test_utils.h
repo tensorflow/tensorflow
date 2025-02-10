@@ -57,13 +57,6 @@ class PseudorandomGenerator {
   std::mt19937 generator_;
 };
 
-// Generates fake data in a literal of the given shape, or returns an error
-// status if the element type is currently unhandled for fake data
-// generation. See below for documentation of pseudo_random and use_large_range.
-absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
-                                        bool pseudo_random = true,
-                                        bool use_large_range = false);
-
 // Generates a vector of arguments containing fake data. The number, shape and
 // layout of the arguments is appropriate for given HLO module.
 //
@@ -123,9 +116,6 @@ absl::Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
 std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
                                                       HloInstruction* lhs,
                                                       HloInstruction* rhs);
-
-// Checks whether MLIR lowering is enabled through XLA_FLAGS.
-bool IsMlirLoweringEnabled();
 
 template <typename MessageType>
 absl::StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {

@@ -15,18 +15,21 @@ limitations under the License.
 
 #include "xla/primitive_util.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace primitive_util {
@@ -93,6 +96,18 @@ bool HasInfinity(PrimitiveType type) {
   return false;
 }
 
+bool HasNaN(PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
+    return FloatingPointTypeSwitch<bool>(
+        [&](auto constant_type) -> bool {
+          return std::numeric_limits<
+              NativeTypeOf<constant_type>>::has_quiet_NaN;
+        },
+        type);
+  }
+  return false;
+}
+
 bool HasNegativeZero(PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
     return FloatingPointTypeSwitch<bool>(
@@ -132,22 +147,25 @@ xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
 class PrimitiveTypeNameGenerator {
  public:
   PrimitiveTypeNameGenerator() {
-    for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
-      if (i == static_cast<int>(OPAQUE_TYPE)) {
-        lowercase_name_[i] = "opaque";
-      } else if (PrimitiveType_IsValid(i)) {
-        lowercase_name_[i] = absl::AsciiStrToLower(
-            PrimitiveType_Name(static_cast<PrimitiveType>(i)));
+    for (size_t idx = 0; idx < std::size(lowercase_name_); ++idx) {
+      PrimitiveType t = static_cast<PrimitiveType>(idx + PrimitiveType_MIN);
+      if (t == OPAQUE_TYPE) {
+        lowercase_name_[idx] = "opaque";
+      } else if (PrimitiveType_IsValid(t)) {
+        lowercase_name_[idx] = absl::AsciiStrToLower(PrimitiveType_Name(t));
       }
     }
   }
   const std::string& LowercaseName(PrimitiveType t) {
-    CHECK_LT(t, PrimitiveType_ARRAYSIZE);
-    return lowercase_name_[static_cast<int>(t)];
+    CHECK_GE(t, PrimitiveType_MIN);
+    CHECK_LE(t, PrimitiveType_MAX);
+    CHECK(PrimitiveType_IsValid(t))
+        << "Invalid PrimitiveType: " << static_cast<int>(t);
+    return lowercase_name_[t - PrimitiveType_MIN];
   }
 
  private:
-  std::string lowercase_name_[PrimitiveType_ARRAYSIZE];
+  std::string lowercase_name_[PrimitiveType_MAX - PrimitiveType_MIN + 1];
 };
 
 const std::string& LowercasePrimitiveTypeName(PrimitiveType s) {

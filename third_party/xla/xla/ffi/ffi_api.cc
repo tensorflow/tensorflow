@@ -26,10 +26,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/optimization.h"
-#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -51,9 +53,9 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -82,6 +84,7 @@ struct XLA_FFI_ExecutionContext {
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;
 
+  xla::RunId run_id = {};
   int32_t device_ordinal = -1;
   BackendContext backend_context = {};
 
@@ -119,6 +122,7 @@ static XLA_FFI_ExecutionContext CreateExecutionContext(
   };
 
   return XLA_FFI_ExecutionContext{
+      options.run_id,
       options.device_ordinal,
       std::visit(BackendVisitor{}, options.backend_options),
       options.called_computation,
@@ -370,7 +374,7 @@ static absl::Status RegisterHandler(std::string_view name,
       api_version.minor_version != XLA_FFI_API_MINOR) {
     return InvalidArgument(
         "FFI handler registration for %s on platform %s (canonical %s) failed "
-        "because the hander's API version (%d.%d) is incompatible with the "
+        "because the handler's API version (%d.%d) is incompatible with the "
         "framework's API version (%d.%d)",
         name, platform, canonical_platform, api_version.major_version,
         api_version.minor_version, XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR);
@@ -615,6 +619,16 @@ static XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args) {
   return nullptr;
 }
 
+static XLA_FFI_Error* XLA_FFI_RunId_Get(XLA_FFI_RunId_Get_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_RunId_Get", XLA_FFI_RunId_Get_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->run_id = args->ctx->run_id.ToInt();
+
+  return nullptr;
+}
+
 static XLA_FFI_Error* XLA_FFI_TypeId_Register(
     XLA_FFI_TypeId_Register_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -756,28 +770,52 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
   return nullptr;
 }
 
+static absl::StatusOr<const Eigen::ThreadPoolDevice*> GetIntraOpThreadPool(
+    const XLA_FFI_ExecutionContext* ctx) {
+  auto* cpu =
+      std::get_if<XLA_FFI_ExecutionContext::CpuContext>(&ctx->backend_context);
+
+  if (ABSL_PREDICT_FALSE(cpu == nullptr)) {
+    return Unimplemented("XLA FFI CPU context is not available");
+  }
+
+  if (ABSL_PREDICT_FALSE(cpu->intra_op_thread_pool == nullptr)) {
+    return Unimplemented("No intra-op thread pool available on this platform");
+  }
+
+  return cpu->intra_op_thread_pool;
+}
+
 static XLA_FFI_Error* XLA_FFI_ThreadPool_Schedule(
     XLA_FFI_ThreadPool_Schedule_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_ThreadPool_Schedule_Args",
       XLA_FFI_ThreadPool_Schedule_Args_STRUCT_SIZE, args->struct_size));
 
-  auto* cpu = std::get_if<XLA_FFI_ExecutionContext::CpuContext>(
-      &args->ctx->backend_context);
-
-  if (ABSL_PREDICT_FALSE(cpu == nullptr)) {
-    return new XLA_FFI_Error{
-        Unimplemented("XLA FFI CPU context is not available")};
+  auto intra_op_thread_pool = GetIntraOpThreadPool(args->ctx);
+  if (!intra_op_thread_pool.ok()) {
+    return new XLA_FFI_Error{std::move(intra_op_thread_pool).status()};
   }
 
-  if (ABSL_PREDICT_FALSE(cpu->intra_op_thread_pool == nullptr)) {
-    return new XLA_FFI_Error{
-        Unimplemented("No intra-op thread pool available on this platform")};
+  (*intra_op_thread_pool)
+      ->enqueueNoNotification(
+          [task = args->task, data = args->data] { (*task)(data); });
+
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
+    XLA_FFI_ThreadPool_NumThreads_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_ThreadPool_NumThreads_Args",
+      XLA_FFI_ThreadPool_NumThreads_Args_STRUCT_SIZE, args->struct_size));
+
+  auto intra_op_thread_pool = GetIntraOpThreadPool(args->ctx);
+  if (!intra_op_thread_pool.ok()) {
+    return new XLA_FFI_Error{std::move(intra_op_thread_pool).status()};
   }
 
-  cpu->intra_op_thread_pool->enqueueNoNotification(
-      [task = args->task, data = args->data] { (*task)(data); });
-
+  *args->num_threads = (*intra_op_thread_pool)->numThreadsInPool();
   return nullptr;
 }
 
@@ -814,6 +852,10 @@ static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
 static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
     XLA_FFI_ExecutionContext* ctx) {
   return ctx->device_ordinal;
+}
+
+static int64_t XLA_FFI_INTERNAL_RunId_Get(XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_id.ToInt();
 }
 
 static void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
@@ -863,6 +905,7 @@ static XLA_FFI_InternalApi internal_api = {
     XLA_FFI_INTERNAL_Future_Forward,
     XLA_FFI_INTERNAL_Stream_Get,
     XLA_FFI_INTERNAL_DeviceOrdinal_Get,
+    XLA_FFI_INTERNAL_RunId_Get,
     XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
     XLA_FFI_INTERNAL_CalledComputation_Get,
     XLA_FFI_INTERNAL_ExecutionContext_Get,
@@ -895,9 +938,11 @@ static XLA_FFI_Api api = {
     XLA_FFI_DeviceMemory_Allocate,
     XLA_FFI_DeviceMemory_Free,
     XLA_FFI_ThreadPool_Schedule,
+    XLA_FFI_ThreadPool_NumThreads,
     XLA_FFI_Future_Create,
     XLA_FFI_Future_SetAvailable,
     XLA_FFI_Future_SetError,
+    XLA_FFI_RunId_Get,
 };
 
 const XLA_FFI_Api* GetXlaFfiApi() { return &api; }

@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
@@ -32,16 +34,15 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
-#include "tsl/platform/logging.h"
 
 namespace tensorflow {
 
-Status FunctionDefToBodyHelper(
+absl::Status FunctionDefToBodyHelper(
     core::RefCountPtr<FunctionRecord>&& record, const AttrSlice& attrs,
     const FunctionLibraryDefinition* const lib_def,
-    const std::function<Status(const string&, const OpDef**)>& get_func_sig,
+    const std::function<absl::Status(const string&, const OpDef**)>&
+        get_func_sig,
     std::unique_ptr<FunctionBody>* fbody) {
   // Instantiates the function template into a graph def.
   InstantiationResult result;
@@ -91,10 +92,10 @@ Status FunctionDefToBodyHelper(
   return absl::OkStatus();
 }
 
-Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
-                               const AttrSlice& attrs,
-                               const FunctionLibraryDefinition* lib_def,
-                               std::unique_ptr<FunctionBody>* fbody) {
+absl::Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
+                                     const AttrSlice& attrs,
+                                     const FunctionLibraryDefinition* lib_def,
+                                     std::unique_ptr<FunctionBody>* fbody) {
   const auto get_func_sig = [&lib_def](const string& op, const OpDef** sig) {
     return lib_def->LookUpOpDef(op, sig);
   };
@@ -102,9 +103,10 @@ Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
                                  get_func_sig, fbody);
 }
 
-Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
-                               const FunctionLibraryDefinition* lib_def,
-                               std::unique_ptr<FunctionBody>* fbody) {
+absl::Status FunctionDefToBodyHelper(const FunctionDef& fdef,
+                                     const AttrSlice& attrs,
+                                     const FunctionLibraryDefinition* lib_def,
+                                     std::unique_ptr<FunctionBody>* fbody) {
   core::RefCountPtr<FunctionRecord> record(
       new FunctionRecord(FunctionDef(fdef), {}, true));
   const auto get_func_sig = [&lib_def](const string& op, const OpDef** sig) {

@@ -27,7 +27,7 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
-llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input,
+llvm::Value* EmitFastTanh(llvm::IRBuilderBase* b, llvm::Value* input,
                           bool with_fma) {
   llvm::Type* type = input->getType();
   const float plus_clamp =
@@ -85,7 +85,7 @@ llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input,
                          b->CreateFDiv(numerator, denominator));
 }
 
-llvm::Value* EmitFastTanhF64(llvm::IRBuilder<>* b, llvm::Value* input,
+llvm::Value* EmitFastTanhF64(llvm::IRBuilderBase* b, llvm::Value* input,
                              bool with_fma) {
   llvm::Type* type = input->getType();
 
@@ -140,7 +140,7 @@ llvm::Value* EmitFastTanhF64(llvm::IRBuilder<>* b, llvm::Value* input,
   return b->CreateFDiv(numerator, denominator);
 }
 
-llvm::Value* EmitErfF32(llvm::IRBuilder<>* b, llvm::Value* x) {
+llvm::Value* EmitErfF32(llvm::IRBuilderBase* b, llvm::Value* x) {
   auto type = x->getType();
   constexpr float kErfInvOneMinusHalfULP = 3.832506856900711f;
   auto call_fabs = [b](llvm::Value* operand_value) {

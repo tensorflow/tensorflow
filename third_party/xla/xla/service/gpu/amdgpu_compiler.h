@@ -16,16 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AMDGPU_COMPILER_H_
 #define XLA_SERVICE_GPU_AMDGPU_COMPILER_H_
 
+#include <string>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -43,7 +45,6 @@ class AMDGPUCompiler : public GpuCompiler {
   absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
-      se::DeviceMemoryAllocator* device_allocator,
       const se::SemanticVersion& toolkit_version) override;
 
   absl::Status OptimizeHloPostLayoutAssignment(
@@ -55,21 +56,29 @@ class AMDGPUCompiler : public GpuCompiler {
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
   absl::Status AddConvAndGemmAutotuningPasses(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
+      HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
+      const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
-  absl::Status AddCustomKernelReplacementPasses(
-      HloPassPipeline* pipeline, const DebugOptions& debug_options) override;
-
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      se::GpuComputeCapability gpu_version, bool relocatable,
-      const HloModule* debug_module, const CompileOptions& options) override;
+      const se::DeviceDescription& device_description, bool relocatable,
+      const HloModule* debug_module, const CompileOptions& options,
+      std::optional<int> shard_number) override;
+
+  absl::Status AddGemmFusionAutotuningPasses(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+      const MultiProcessKeyValueStore& key_value_store,
+      const se::SemanticVersion& toolkit_version) override;
 
  private:
   AMDGPUCompiler(const AMDGPUCompiler&) = delete;
   AMDGPUCompiler& operator=(const AMDGPUCompiler&) = delete;
+
+  std::vector<std::string> GetLLVMCommandLineOptions(
+      const DebugOptions& debug_options) const override;
 };
 
 }  // namespace gpu

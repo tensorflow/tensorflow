@@ -23,12 +23,7 @@ limitations under the License.
 // 3. insert tosa.RESCALE int8 -> uint8 if original returned tensor is uint8
 // typed.
 
-#include <climits>
-#include <cstddef>
-#include <cstdint>
-#include <iterator>
 #include <memory>
-#include <numeric>
 #include <utility>
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project

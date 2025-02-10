@@ -398,7 +398,7 @@ std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
   std::vector<int> perm;
   perm.reserve(rank + expand_tile_sizes.size());
   for (int64_t dim = 0; dim < rank; dim++) {
-    perm.emplace_back(dim);
+    perm.push_back(dim);
     if (expand_tile_dims_indices[dim] > -1) {
       perm.emplace_back(expand_tile_dims_indices[dim] + rank);
     }
@@ -530,7 +530,7 @@ std::optional<HloInstruction*> PadFromPartialReplicateShape(
     // If src sharding at this dimension is not partitioned, simply pad to
     // the desired shape.
     if (src_shard_count == 1) {
-      expand_dims_without_halo_exchange.emplace_back(dim);
+      expand_dims_without_halo_exchange.push_back(dim);
       continue;
     }
 
@@ -956,8 +956,7 @@ HloInstruction* ExchangeHaloCompact(
         (i + 1) * input_shard_size + right_halo_size_function.Calculate(i);
     max_window_size = std::max(max_window_size, limit - start);
     while (next_start < limit) {
-      halos[i].emplace_back();
-      Halo& halo = halos[i].back();
+      Halo& halo = halos[i].emplace_back();
       halo.my_index = i;
       halo.halo_offset = next_start - start;
       halo.start = next_start % input_shard_size;
@@ -1038,11 +1037,12 @@ HloInstruction* ExchangeHaloCompact(
   // Sort halos that are from the same src according to halo_offset, so that
   // they are more likely to have similar characteristics.
   for (int64_t i = 0; i < src_to_dst.size(); ++i) {
-    absl::c_sort(src_to_dst[i], [&](const std::pair<int64_t, int64_t>& a,
-                                    const std::pair<int64_t, int64_t>& b) {
-      return halos[a.first][a.second].halo_offset <
-             halos[b.first][b.second].halo_offset;
-    });
+    absl::c_stable_sort(src_to_dst[i],
+                        [&](const std::pair<int64_t, int64_t>& a,
+                            const std::pair<int64_t, int64_t>& b) {
+                          return halos[a.first][a.second].halo_offset <
+                                 halos[b.first][b.second].halo_offset;
+                        });
   }
 
   // Build collective permutes with distinct src/dst values.
@@ -2141,9 +2141,9 @@ HloSharding CreateMatchingShardingOnDims(
 std::optional<GatherScatterParallelDimSharding>
 GatherScatterOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
-    const hlo_sharding_util::GatherScatterParallelDims& parallel_dims) {
-  auto& indices_parallel_dims = parallel_dims.indices_parallel_dims;
-  auto& operand_parallel_dims = parallel_dims.operand_parallel_dims;
+    const hlo_sharding_util::GatherScatterDims& parallel_dims) {
+  const auto& indices_parallel_dims = parallel_dims.indices_dims;
+  const auto& operand_parallel_dims = parallel_dims.operand_dims;
   if (indices_parallel_dims.size() != operand_parallel_dims.size()) {
     return std::nullopt;
   }
@@ -2154,32 +2154,26 @@ GatherScatterOperandsShardedAcrossParallelDims(
   if (idx_parallel_tiles_num == 1 && op_parallel_tiles_num == 1) {
     return std::nullopt;
   }
-  absl::InlinedVector<int64_t, 1> indices_parallel_dims_ordered_as_operand;
-  for (int idx : parallel_dims.index_parallel_in_dim) {
-    if (idx != -1) {
-      indices_parallel_dims_ordered_as_operand.push_back(idx);
-    }
-  }
+
   if (new_index_shard.IsReplicated()) {
     return GatherScatterParallelDimSharding{
         CreateMatchingShardingOnDims(indices.shape(), new_operand_shard,
-                                     indices_parallel_dims_ordered_as_operand,
+                                     indices_parallel_dims,
                                      operand_parallel_dims),
         new_operand_shard};
   }
   if (new_operand_shard.IsReplicated()) {
     return GatherScatterParallelDimSharding{
-        new_index_shard,
-        CreateMatchingShardingOnDims(operand.shape(), new_index_shard,
-                                     operand_parallel_dims,
-                                     indices_parallel_dims_ordered_as_operand)};
+        new_index_shard, CreateMatchingShardingOnDims(
+                             operand.shape(), new_index_shard,
+                             operand_parallel_dims, indices_parallel_dims)};
   }
 
   // Parallel dimension distribution needs to be the same, so try to steal
   // sharding from partial replication to compensate.
   if (idx_parallel_tiles_num != op_parallel_tiles_num) {
     auto to_adjust_dims = operand_parallel_dims;
-    auto target_dims = indices_parallel_dims_ordered_as_operand;
+    auto target_dims = indices_parallel_dims;
     HloSharding* target = &new_index_shard;
     HloSharding* to_adjust = &new_operand_shard;
     if (idx_parallel_tiles_num < op_parallel_tiles_num) {
@@ -2231,46 +2225,72 @@ GatherScatterOperandsShardedAcrossParallelDims(
   std::vector<int64_t> operand_shard_tile_dims(
       new_operand_shard.tile_assignment().dimensions().begin(),
       new_operand_shard.tile_assignment().dimensions().end());
-  for (int i = 0; i < indices_parallel_dims_ordered_as_operand.size(); ++i) {
+  for (int i = 0; i < indices_parallel_dims.size(); ++i) {
     operand_shard_tile_dims[operand_parallel_dims[i]] =
-        new_index_shard.tile_assignment().dim(
-            indices_parallel_dims_ordered_as_operand[i]);
+        new_index_shard.tile_assignment().dim(indices_parallel_dims[i]);
   }
   auto operand_shard_tiles =
       new_operand_shard.tile_assignment().Reshape(operand_shard_tile_dims);
-  new_operand_shard =
-      AlignShardingOnDims(new_operand_shard.ReplicateOnLastTileDim()
-                              ? HloSharding::PartialTile(operand_shard_tiles)
-                              : HloSharding::Tile(operand_shard_tiles),
-                          operand_parallel_dims, new_index_shard,
-                          indices_parallel_dims_ordered_as_operand);
+  new_operand_shard = AlignShardingOnDims(
+      new_operand_shard.ReplicateOnLastTileDim()
+          ? HloSharding::PartialTile(operand_shard_tiles)
+          : HloSharding::Tile(operand_shard_tiles),
+      operand_parallel_dims, new_index_shard, indices_parallel_dims);
   return GatherScatterParallelDimSharding{new_index_shard, new_operand_shard};
 }
 
-int64_t FindRotateRightPattern(const HloInstruction* concat,
-                               const HloInstruction* lhs,
-                               const HloInstruction* rhs) {
+namespace {
+
+const HloInstruction* SkipCopyOperands(const HloInstruction* operand,
+                                       bool check_single_use = true) {
+  while (operand->user_count() == 1 && operand->opcode() == HloOpcode::kCopy) {
+    operand = operand->operand(0);
+  }
+  if (check_single_use && operand->user_count() != 1) {
+    return nullptr;
+  }
+  return operand;
+}
+
+}  // namespace
+
+std::optional<int64_t> FindRotateRightPattern(const HloInstruction* concat) {
+  if (concat->operand_count() != 2) {
+    return std::nullopt;
+  }
+  const HloInstruction* lhs = SkipCopyOperands(concat->operand(0));
+  const HloInstruction* rhs = SkipCopyOperands(concat->operand(1));
+  if (!lhs || !rhs) {
+    return std::nullopt;
+  }
+
   if (lhs->opcode() != HloOpcode::kSlice ||
       rhs->opcode() != HloOpcode::kSlice ||
       lhs->operand(0) != rhs->operand(0)) {
-    return -1;
+    return std::nullopt;
   }
   const HloInstruction* to_rotate = lhs->operand(0);
   if (!ShapeUtil::Compatible(to_rotate->shape(), concat->shape()) ||
       concat->sharding() != to_rotate->sharding()) {
-    return -1;
+    return std::nullopt;
   }
   const int64_t dim = concat->concatenate_dimension();
   if (lhs->slice_strides(dim) != 1 || rhs->slice_strides(dim) != 1 ||
       lhs->slice_starts(dim) != rhs->slice_limits(dim)) {
-    return -1;
+    return std::nullopt;
   }
   return lhs->shape().dimensions(dim);
 }
 
 std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
-    const HloInstruction* concat, const HloInstruction* lhs,
-    const HloInstruction* mid, const HloInstruction* rhs) {
+    const HloInstruction* concat) {
+  if (concat->operand_count() != 3) {
+    return std::nullopt;
+  }
+  const HloInstruction* lhs = SkipCopyOperands(concat->operand(0));
+  const HloInstruction* mid = SkipCopyOperands(concat->operand(1),
+                                               /*check_single_use=*/false);
+  const HloInstruction* rhs = SkipCopyOperands(concat->operand(2));
   if (!lhs || !mid || !rhs) {
     return std::nullopt;
   }
@@ -2302,9 +2322,7 @@ std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
   if (lhs->opcode() != HloOpcode::kSlice ||
       rhs->opcode() != HloOpcode::kSlice || lhs->operand(0) != mid ||
       rhs->operand(0) != mid || lhs->slice_strides(dim) != 1 ||
-      rhs->slice_strides(dim) != 1 || lhs->sharding() != mid->sharding() ||
-      rhs->sharding() != mid->sharding() ||
-      lhs->sharding() != concat->sharding()) {
+      rhs->slice_strides(dim) != 1) {
     return std::nullopt;
   }
   pad_pattern.lhs_slice_start = lhs->slice_starts(dim);
@@ -2544,6 +2562,14 @@ CollectiveDeviceList ExpandPartitionGroupListAcrossReplicas(
   return CollectiveDeviceList(
       IotaReplicaGroupList(replica_group_count, partition_group_size,
                            new_reshape_dims, new_transpose_dims));
+}
+
+PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
+                                                   SpmdBuilder* b) {
+  HloInstruction* copy_hlo = b->AddInstruction(HloInstruction::CreateUnary(
+      phlo.hlo()->shape(), HloOpcode::kCopy, phlo.hlo()));
+  copy_hlo->copy_sharding(phlo.hlo());
+  return PartitionedHlo(copy_hlo, phlo.base_shape(), phlo.state());
 }
 
 }  // namespace spmd

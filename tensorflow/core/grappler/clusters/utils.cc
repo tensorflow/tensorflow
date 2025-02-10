@@ -151,7 +151,7 @@ DeviceProperties GetDeviceInfo(const DeviceNameUtils::ParsedName& device) {
     if (device.has_id) {
       TfDeviceId tf_device_id(device.id);
       PlatformDeviceId platform_device_id;
-      Status s =
+      absl::Status s =
           GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
       if (!s.ok()) {
         LOG(ERROR) << s;

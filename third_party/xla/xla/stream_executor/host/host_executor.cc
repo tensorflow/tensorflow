@@ -22,34 +22,36 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <new>
 #include <optional>
 #include <string>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/generic_memory_allocation.h"
+#include "xla/stream_executor/generic_memory_allocator.h"
 #include "xla/stream_executor/host/host_event.h"
-#include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host/host_stream.h"
+#include "xla/stream_executor/host/host_stream_factory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/profile_utils/cpu_utils.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/profile_utils/cpu_utils.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace stream_executor {
 namespace host {
@@ -57,16 +59,6 @@ namespace host {
 HostStream* AsHostStream(Stream* stream) {
   DCHECK(stream != nullptr);
   return dynamic_cast<HostStream*>(stream);
-}
-
-static std::vector<HostExecutor::KernelFunctionLoader>&
-KernelFunctionLoaderRegistry() {
-  static auto* registry = new std::vector<HostExecutor::KernelFunctionLoader>();
-  return *registry;
-}
-
-void HostExecutor::RegisterKernelFunctionLoader(KernelFunctionLoader loader) {
-  KernelFunctionLoaderRegistry().push_back(std::move(loader));
 }
 
 absl::Status HostExecutor::Init() {
@@ -77,18 +69,6 @@ absl::Status HostExecutor::Init() {
 
 absl::StatusOr<std::unique_ptr<Kernel>> HostExecutor::LoadKernel(
     const MultiKernelLoaderSpec& spec) {
-  auto host_kernel = std::make_unique<HostKernel>(thread_pool_);
-  host_kernel->SetArity(spec.arity());
-
-  for (auto& loader : KernelFunctionLoaderRegistry()) {
-    auto loaded = loader(spec);
-    if (!loaded.has_value()) continue;
-
-    TF_ASSIGN_OR_RETURN(auto kernel_function, *std::move(loaded));
-    host_kernel->SetKernelFunction(std::move(kernel_function));
-    return std::move(host_kernel);
-  }
-
   return absl::InternalError("No method of loading host kernel provided");
 }
 
@@ -138,15 +118,6 @@ absl::StatusOr<std::unique_ptr<Event>> HostExecutor::CreateEvent() {
   return std::make_unique<HostEvent>();
 }
 
-static HostEvent* AsHostEvent(Event* event) {
-  DCHECK(event != nullptr);
-  return static_cast<HostEvent*>(event);
-}
-
-absl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
-  return AsHostStream(stream)->BlockUntilDone();
-}
-
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 HostExecutor::CreateDeviceDescription(int device_ordinal) {
   DeviceDescription desc;
@@ -169,7 +140,27 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
 
 absl::StatusOr<std::unique_ptr<Stream>> HostExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
+  const HostStreamFactory* factory = HostStreamFactory::GetFactory();
+  if (factory != nullptr) {
+    return factory->CreateStream(this);
+  }
   return std::make_unique<HostStream>(this);
+}
+
+absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+HostExecutor::CreateMemoryAllocator(MemoryType type) {
+  if (type == MemoryType::kHost) {
+    return std::make_unique<GenericMemoryAllocator>(
+        [](uint64_t size) -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+          void* ptr = new char[size];
+          return std::make_unique<GenericMemoryAllocation>(
+              ptr, size, [](void* location, uint64_t size) {
+                delete[] static_cast<char*>(location);
+              });
+        });
+  }
+  return absl::UnimplementedError(
+      absl::StrFormat("Unsupported memory type %d", type));
 }
 
 }  // namespace host

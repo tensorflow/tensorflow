@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 
 namespace tensorflow {
-Status ReportClusteringInfoPass::Run(
+absl::Status ReportClusteringInfoPass::Run(
     const GraphOptimizationPassOptions& options) {
   XlaAutoClusteringActivity activity;
   *activity.mutable_summary() = GetXlaAutoClusteringSummary(**options.graph);

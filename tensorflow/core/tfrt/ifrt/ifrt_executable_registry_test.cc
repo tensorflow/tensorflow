@@ -37,6 +37,9 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/resource_loader.h"
@@ -46,9 +49,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -96,7 +96,9 @@ CreateIfrtServingExecutable(mlir::MLIRContext& context, int64_t program_id) {
       &ifrt_restore_tensor_registry, work_queue.get(), device_mgr.get(),
       tensorflow::IdentityShapeRepresentationFn(),
       /*ifrt_serving_core_selector=*/nullptr,
-      /*compilation_environment_proto=*/nullptr);
+      /*compilation_environment_proto=*/nullptr,
+      /*tf_to_hlo_compiler=*/nullptr,
+      /*persistent_compilation_cache=*/nullptr);
 }
 
 TEST(IfrtExecutableRegistry, Basic) {

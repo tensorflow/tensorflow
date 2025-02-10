@@ -66,8 +66,9 @@ string ToString(FusedBatchNormActivationMode activation_mode) {
   }
 }
 
-Status ParseActivationMode(OpKernelConstruction* context,
-                           FusedBatchNormActivationMode* activation_mode) {
+absl::Status ParseActivationMode(
+    OpKernelConstruction* context,
+    FusedBatchNormActivationMode* activation_mode) {
   string activation_mode_str;
   TF_RETURN_IF_ERROR(context->GetAttr("activation_mode", &activation_mode_str));
 
@@ -227,7 +228,7 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
     if (tensor_format == FORMAT_NCHW) {
       // Perform NHWC to NCHW
       const std::array<int32, 4> perm = {0, 3, 1, 2};
-      const Status s = ::tensorflow::DoTranspose(
+      const absl::Status s = ::tensorflow::DoTranspose(
           context->eigen_device<CPUDevice>(), transformed_y, perm, y_output);
       if (!s.ok()) {
         context->SetStatus(errors::InvalidArgument("Transpose failed: ", s));
@@ -347,7 +348,7 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
     if (tensor_format == FORMAT_NCHW) {
       // Perform NHWC to NCHW
       const std::array<int32, 4> perm = {0, 3, 1, 2};
-      const Status s = ::tensorflow::DoTranspose(
+      const absl::Status s = ::tensorflow::DoTranspose(
           context->eigen_device<CPUDevice>(), transformed_y, perm, y_output);
       if (!s.ok()) {
         context->SetStatus(errors::InvalidArgument("Transpose failed: ", s));

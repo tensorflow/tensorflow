@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -37,8 +37,8 @@ namespace toco {
 
 using util::IsBinaryOp;
 
-::tensorflow::Status IdentifyHardSwish::Run(Model* model, std::size_t op_index,
-                                            bool* modified) {
+absl::Status IdentifyHardSwish::Run(Model* model, std::size_t op_index,
+                                    bool* modified) {
   *modified = false;
   const auto add_with_relu6_op_it = (model->operators.begin() + op_index);
   const auto add_with_relu6_op = add_with_relu6_op_it->get();

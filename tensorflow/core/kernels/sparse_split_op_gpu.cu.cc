@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
-using stream_executor::gpu::ScopedActivateContext;
 
 namespace tensorflow {
 
@@ -302,7 +301,8 @@ struct SparseSplitFunctor<GPUDevice, T> {
         // Ensure that within the callback, the proper GPU settings are
         // configured.
         auto stream = context->op_device_context()->stream();
-        ScopedActivateContext scoped_activation{stream->parent()};
+        std::unique_ptr<se::ActivateContext> scoped_activation =
+            stream->parent()->Activate();
 
         GpuDeviceArrayOnHost<Index*> output_indices(context, num_split);
         GpuDeviceArrayOnHost<T*> output_values(context, num_split);
@@ -325,7 +325,7 @@ struct SparseSplitFunctor<GPUDevice, T> {
                 input_values_ptr, dense_shape.dim_size(axis),
                 output_indices.data(), output_values.data()),
             done);
-      }  // Release ScopedActivateContext to prevent deadlock when done
+      }  // Release ActivateContext to prevent deadlock when done
          // inlines another Op kernel, which may assume the original cuda
          // Context.
 

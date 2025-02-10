@@ -30,11 +30,11 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/file_statistics.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/platform/file_statistics.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -64,7 +64,8 @@ class LoggingHooksTest : public ::testing::Test {
 
     test_group_name_ = "TestGroup";
     test_dir_ = testing::TmpDir();
-    setenv("TF_DUMP_GRAPH_PREFIX", test_dir_.c_str(), 1);
+    setenv(/*name=*/"TF_DUMP_GRAPH_PREFIX", /*value=*/test_dir_.c_str(),
+           /*overwrite=*/1);
   }
 
   absl::Status CreateMlirModule(std::string mlir_module_filename) {

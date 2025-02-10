@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -136,8 +137,8 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
 
 }  // namespace
 
-::tensorflow::Status IdentifyLstmCell::Run(Model* model, std::size_t op_index,
-                                           bool* modified) {
+absl::Status IdentifyLstmCell::Run(Model* model, std::size_t op_index,
+                                   bool* modified) {
   *modified = false;
   // This LSTM cell identification method is not invariant to commutation of
   // commutative operator inputs. For example, if input[0] and input[1] of the

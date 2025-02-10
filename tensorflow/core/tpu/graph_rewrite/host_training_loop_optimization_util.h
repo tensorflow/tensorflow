@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
@@ -63,7 +64,7 @@ struct HostTrainingLoopInfo {
 // most while loops that encapsulates TPUCompileOp node. This would be
 // later used/analyzed to introduce host loop specific optimizations such
 // as adding sharded weight update.
-Status DetectHostTrainingLoop(
+absl::Status DetectHostTrainingLoop(
     const std::string* current_function_name,
     const AttrValueMap* current_function_attr,
     const FunctionLibraryDefinition* library, Graph* graph,
@@ -73,7 +74,8 @@ Status DetectHostTrainingLoop(
 // Injects VariableReshardOps to before and after TPUExecute op inside
 // host training loop body. This effectively applies sharded weight update
 // on model weight variables.
-Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info);
+absl::Status AddReshardOp(Graph* graph,
+                          const HostTrainingLoopInfo& host_loop_info);
 
 }  // namespace tpu
 }  // namespace tensorflow

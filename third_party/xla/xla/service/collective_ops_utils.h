@@ -16,31 +16,39 @@ limitations under the License.
 #ifndef XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 #define XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 
-#include <memory>
+#include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
+#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/stream_executor/device_memory.h"
-#include "tsl/platform/blocking_counter.h"
 
 namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 
-constexpr std::string_view ReductionKindToString(ReductionKind reduction_kind) {
+constexpr absl::string_view ReductionKindToString(
+    ReductionKind reduction_kind) {
   switch (reduction_kind) {
     case ReductionKind::SUM:
       return "sum";
@@ -52,6 +60,9 @@ constexpr std::string_view ReductionKindToString(ReductionKind reduction_kind) {
       return "max";
   }
 }
+
+absl::StatusOr<ReductionKind> StringToReductionKind(
+    absl::string_view reduction_kind);
 
 // Attempts to match instruction to one of the possible cases for ReductionKind.
 std::optional<ReductionKind> MatchReductionInstruction(
@@ -118,6 +129,22 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 absl::string_view CollectiveOpGroupModeToString(
     CollectiveOpGroupMode group_mode);
 
+absl::StatusOr<bool> GetCollectiveUseGlobalDeviceIds(const HloInstruction* hlo);
+
+std::optional<int64_t> GetCollectiveChannelId(const HloInstruction* hlo);
+
+const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo);
+
+const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
+    const HloInstruction* hlo);
+
+// Returns the group formation mode of instr, assuming that instr is, or is
+// dervied from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
+// HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
+// HloCollectivePermuteInstruction.
+absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
+    const HloInstruction* instr);
+
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
@@ -150,6 +177,10 @@ GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
                               CollectiveOpGroupMode group_mode);
 
+// Same as above, except taking an HloInstruction instead.
+absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+GetParticipatingDevicesGroups(const HloInstruction* collective);
+
 // Same as above, except that it returns the flattened id in the replica groups
 // instead of device id.
 absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
@@ -160,8 +191,16 @@ absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
 // Same as above, but take replica/partition count instead of device assignment.
 absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode replica_group_mode, int replica_count,
-    int partition_count);
+    CollectiveOpGroupMode group_mode, int replica_count, int partition_count);
+
+// Same as above, with collective group mode determined by the collective
+// instruction.
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    const HloInstruction* hlo, const DeviceAssignment& device_assignment);
+
+// Same as above, used for cases where static_device_assignment is not present.
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    const HloInstruction* hlo, int replica_count, int partition_count);
 
 // Figures out which devices are participating in the collective subgroup.
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
@@ -174,6 +213,9 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
     int64_t num_replicas, int64_t num_partitions,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
+
+absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
+GetReplicaGroupCountAndSize(const HloInstruction* hlo);
 
 // Returns true if the two replica group are orthogonal.
 bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
@@ -207,18 +249,16 @@ bool IsCollective(const HloInstruction* instruction);
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
 
-// Returns true if instruction is a synchronous collective op.
-bool IsSyncCollective(const HloInstruction* instr);
-
-// Returns true if the (a, b) pairs form a forward cycle with all participants
-// in the cycle, such as {{0,1},{1,2},{2,3},{3,0}}. We assume that the (a, b)
-// pairs are ordered as they are generated by SPMD partitioning.
-bool IsForwardCycle(const std::vector<std::pair<int64_t, int64_t>>& pairs);
-
-// Returns true if the (a, b) pairs form a backward cycle with all participants
-// in the cycle, such as {{0,3},{1,0},{2,1},{3,2}}. We assume that the (a, b)
-// pairs are ordered as they are generated by SPMD partitioning.
-bool IsBackwardCycle(const std::vector<std::pair<int64_t, int64_t>>& pairs);
+// Returns the cycle type and indices of the vertices that form cycles. For
+// example, GetCycleTypeAndIndices({{0,3},{1,0},{2,1},{3,2}}) returns
+// {kBackward, {0}}, since the communication pattern contains a backward cycle
+// with the cycle-inducing vertex at index 0 in the input source-target pairs
+// array. This function uses the assumption that, in practice, in forward
+// cycles, most edges will have the target replica ID greater than the source
+// replica ID except for the back edges that form cycles (similar logic applies
+// to backward cycles).
+std::pair<collective_permute_cycle::CycleType, std::set<int>>
+GetCycleTypeAndIndices(const std::vector<std::pair<int64_t, int64_t>>& pairs);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
@@ -296,132 +336,6 @@ struct RendezvousKey {
   int num_local_participants;
   CollectiveOpKind collective_op_kind;
   int64_t op_id;
-};
-
-template <typename DescFn>
-void WaitAndLogIfStuck(tsl::BlockingCounter* counter, const DescFn& desc_fn) {
-  VLOG(3) << "Begin: " << desc_fn();
-  const std::chrono::milliseconds timeout(5000);
-  bool ok = counter->WaitFor(timeout);
-  if (ok) {
-    VLOG(3) << "Finished: " << desc_fn();
-    return;
-  }
-  LOG(ERROR) << "This thread has been waiting for " << timeout.count()
-             << "ms for and may be stuck: " << desc_fn();
-  counter->Wait();
-  LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
-                "Perhaps the timeout is too short: "
-             << desc_fn();
-}
-
-// Participant data for each rendezvous.
-struct ParticipantData {
-  ParticipantData(const RendezvousKey& rendezvous_key, int local_rank)
-      : rendezvous_key(rendezvous_key), local_rank(local_rank) {}
-
-  virtual ~ParticipantData() {}
-
-  RendezvousKey rendezvous_key;
-  int local_rank;  // Which of the local participants is this?
-
-  virtual std::string ToString() const = 0;
-};
-
-// The set of threads that want to do a collective op together all pick the same
-// Rendezvous object out of the global cache and call SubmitParticipant.
-//
-// The Rendezvous instance handles waiting for all threads to join, ensuring
-// that a clique exists for the desired set of GPUs, etc.
-//
-// Rendezvous objects can only be used once.
-//
-// I: Participant data.
-// O: Participant output.
-template <typename I, typename O,
-          typename =
-              std::enable_if_t<std::is_base_of<ParticipantData, I>::value>>
-class Rendezvous {
- public:
-  virtual ~Rendezvous() {}
-  explicit Rendezvous(const RendezvousKey& k)
-      : participants_(k.num_local_participants), key_(k) {}
-
-  // Submit a participant to the rendezvous. We get the rendezvous from
-  // `rendezvous_getter`, which we can then use to drop the existing reference.
-  static absl::StatusOr<O> SubmitParticipant(
-      absl::FunctionRef<std::shared_ptr<Rendezvous<I, O>>()> rendezvous_getter,
-      I participant) {
-    std::shared_ptr<Rendezvous<I, O>> rendezvous = rendezvous_getter();
-    TF_ASSIGN_OR_RETURN(auto p, rendezvous->SubmitParticipant(participant));
-
-    // Drop our reference to the Rendezvous and wait for all other threads to do
-    // the same.  If we didn't do this, one of the threads could run past this
-    // point, reenter ExecuteOnStream for another all-reduce, and attempt to
-    // reuse the Rendezvous!
-    //
-    // An alternative way of accomplishing this goal would be to implement
-    // RefcountingHashMap::erase() and call it during SubmitParticipant.  But
-    // erase() is deceptively complex to implement correctly.
-    std::shared_ptr<tsl::BlockingCounter> blocking_counter = p.second;
-    rendezvous.reset();
-    blocking_counter->DecrementCount();
-    xla::WaitAndLogIfStuck(blocking_counter.get(), [&] {
-      return absl::StrFormat(
-          "participant waiting for all threads to drop their reference to the "
-          "rendezvous: %p",
-          rendezvous.get());
-    });
-    return std::move(p.first);
-  }
-
- protected:
-  // Returns domain-specific output O and whether this replica is primary.
-  virtual absl::StatusOr<O> RunCollectiveOp(const I& participant) = 0;
-
-  // Adding participants_ requires holding mu_.
-  // Not annotated with ABSL_GUARDED_BY(mu_) because we do not require the lock
-  // to be held during CollectiveOp(), since at that point all the data is known
-  // to be present due to the global barrier.
-  std::vector<std::optional<I>> participants_;
-
- private:
-  absl::Mutex mu_;
-
-  // Runs the all-reduce on the given thread.  If successful, returns
-  //  - a handle to the clique that was used, so that the caller may keep the
-  //    clique alive if it chooses.
-  //  - a BlockingCounter initialized to the number of participants, so that
-  //    the caller can coordinate with the participants one last time if it
-  //    chooses.  This is useful for coordinating destruction of the Rendezvous.
-  absl::StatusOr<std::pair<O, std::shared_ptr<tsl::BlockingCounter>>>
-  SubmitParticipant(const I& participant) {
-    {
-      absl::MutexLock lock(&mu_);
-      CHECK(!participants_[participant.local_rank].has_value());
-      participants_[participant.local_rank] = participant;
-    }
-
-    // Wait for all participants to arrive.
-    all_participants_present_.DecrementCount();
-    WaitAndLogIfStuck(&all_participants_present_, [&] {
-      return absl::StrFormat(
-          "participant %s waiting for all participants to arrive at rendezvous "
-          "%s",
-          participant.ToString(), key_.ToString());
-    });
-
-    TF_ASSIGN_OR_RETURN(O output, RunCollectiveOp(participant));
-    return std::make_pair(std::move(output), returned_blocking_counter_);
-  }
-
-  const RendezvousKey key_;
-
-  tsl::BlockingCounter all_participants_present_{key_.num_local_participants};
-
-  // tsl::BlockingCounter returned by SubmitParticipant.
-  std::shared_ptr<tsl::BlockingCounter> returned_blocking_counter_{
-      std::make_shared<tsl::BlockingCounter>(key_.num_local_participants)};
 };
 
 // We only pipeline Send-Recv chains with channel_id > 0, where each chain

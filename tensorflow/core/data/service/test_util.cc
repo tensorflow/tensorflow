@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"
 
 namespace tensorflow {

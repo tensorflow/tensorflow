@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/python/nb_numpy.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/service/custom_call_status.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace nb = nanobind;
 
@@ -78,7 +78,10 @@ absl::Status CpuCallback::PrepareAndCall(void* result, void** arg_ptrs) {
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto result_tuple, Call(std::move(args)));
+  EnterHostCallback();
+  absl::StatusOr<nb::tuple> maybe_result_tuple = Call(std::move(args));
+  LeaveHostCallback();
+  TF_ASSIGN_OR_RETURN(auto result_tuple, maybe_result_tuple);
 
   for (size_t i = 0; i < results_.size(); ++i) {
     if (results_[i].type == xla::TOKEN) {
@@ -127,7 +130,7 @@ absl::StatusOr<nb::tuple> CpuCallback::Call(nb::tuple args) {
   if (!PyTuple_Check(result_object.ptr())) {
     return absl::InternalError(
         absl::StrFormat("CPU callback expected a tuple result, got %s",
-                        nb::cast<std::string_view>(nb::repr(result_object))));
+                        nb::cast<absl::string_view>(nb::repr(result_object))));
   }
   if (PyTuple_Size(result_object.ptr()) != results_.size()) {
     return absl::InternalError(
@@ -142,7 +145,7 @@ absl::StatusOr<nb::tuple> CpuCallback::Call(nb::tuple args) {
       if (!output.is_none()) {
         return absl::InternalError(absl::StrFormat(
             "Token output from Python callback should be None, got %s",
-            nb::cast<std::string_view>(nb::repr(output))));
+            nb::cast<absl::string_view>(nb::repr(output))));
       }
       continue;
     }

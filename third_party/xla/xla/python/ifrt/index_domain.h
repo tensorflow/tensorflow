@@ -72,7 +72,14 @@ class IndexDomain {
     origin_ -= offset;
     return *this;
   }
+
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const IndexDomain& index_domain) {
+    sink.Append(index_domain.DebugString());
+  }
 
  private:
   Index origin_;

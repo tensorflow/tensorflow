@@ -188,6 +188,7 @@ extern const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget;
 extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget;
 extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxCallTarget;
 // Backward calls
+extern const absl::string_view kCudnnfMHASoftmaxBackwardF8CallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxBackwardCallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget;
 extern const absl::string_view
@@ -195,6 +196,7 @@ extern const absl::string_view
 extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget;
 
 bool IsFwdCustomCallTofMHAF8(const HloInstruction& hlo);
+bool IsBwdCustomCallTofMHAF8(const HloInstruction& hlo);
 bool IsCustomCallTofMHAF8(const HloInstruction& hlo);
 bool IsFwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsBwdCustomCallTofMHA(const HloInstruction& hlo);
@@ -207,6 +209,11 @@ std::string CudnnfMHAKindToString(CudnnfMHAKind kind);
 absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
 
 bool MHACallHasDropout(absl::string_view fmha_call_name);
+
+// A call to cuDNN for a block scaled dot.
+extern const absl::string_view kCudnnBlockScaledDotCallTarget;
+
+bool IsCustomCallToBlockScaledDot(const HloInstruction& hlo);
 
 // CUB library calls.
 // Reference: https://nvlabs.github.io/cub/

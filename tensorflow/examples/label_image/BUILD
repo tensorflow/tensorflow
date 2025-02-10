@@ -47,11 +47,12 @@ tf_cc_binary(
         ],
     }) + [
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "@local_xla//xla/tsl/util:command_line_flags",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:types",
         # cc:cc_ops is used to include image ops (for label_image)
         # Jpg, gif, and png related code won't be included
         "//tensorflow/cc:cc_ops",
@@ -62,8 +63,6 @@ py_strict_binary(
     name = "label_image_py",
     srcs = ["label_image.py"],
     main = "label_image.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",

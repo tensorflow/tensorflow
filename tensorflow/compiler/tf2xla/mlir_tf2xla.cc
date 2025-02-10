@@ -28,16 +28,19 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/tools/parsers.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -64,12 +67,14 @@ class FakeDevice : public Device {
   explicit FakeDevice(const DeviceAttributes& device_attributes)
       : Device(nullptr, device_attributes) {}
 
-  Status Sync() override { return errors::Unimplemented("FakeDevice::Sync()"); }
+  absl::Status Sync() override {
+    return errors::Unimplemented("FakeDevice::Sync()");
+  }
 };
 
 // Translates the graph input information from tf2xla:::Config to
 // GraphImportConfig.
-Status ConvertInputInfo(
+absl::Status ConvertInputInfo(
     const tf2xla::Config& config,
     const std::unordered_map<std::string, std::string>& feed_name_remap,
     GraphImportConfig* specs) {
@@ -99,8 +104,8 @@ Status ConvertInputInfo(
 
 // Translates the graph output information from tf2xla:::Config to
 // GraphImportConfig.
-Status ConvertOutputInfo(const tf2xla::Config& config,
-                         GraphImportConfig* specs) {
+absl::Status ConvertOutputInfo(const tf2xla::Config& config,
+                               GraphImportConfig* specs) {
   std::vector<std::string> array_names;
   for (const tf2xla::Fetch& fetch : config.fetch()) {
     array_names.push_back(fetch.id().node_name());
@@ -111,7 +116,7 @@ Status ConvertOutputInfo(const tf2xla::Config& config,
 
 }  // namespace
 
-Status ConvertGraphDefToXlaViaMlir(
+absl::Status ConvertGraphDefToXlaViaMlir(
     GraphDef graph_def, const tf2xla::Config& config,
     xla::XlaComputation* computation, absl::string_view debug_info_filename,
     absl::string_view debug_info_path_begin_marker) {
@@ -158,9 +163,17 @@ Status ConvertGraphDefToXlaViaMlir(
   }
 
   mlir::MLIRContext context;
+  GraphConstructorOptions options;
+  options.allow_internal_ops = true;
+  options.add_default_attributes = true;
+  options.upgrade_legacy = specs.upgrade_legacy;
+  Graph final_graph(OpRegistry::Global());
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToGraph(options, pruned_graph_def, &final_graph));
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
-      ConvertGraphdefToMlir(pruned_graph_def, debug_info, specs, &context));
+      tf2xla::v2::ConvertGraphToTfExecutor(
+          final_graph, debug_info, final_graph.flib_def(), specs, &context));
 
   // Construct a CPU device and add the device to the operations.
   DeviceSet device_set;

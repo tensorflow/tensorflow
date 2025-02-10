@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/cc/training/coordinator.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -29,25 +30,25 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/public/session.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
-Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
-                        std::unique_ptr<QueueRunner>* result) {
+absl::Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
+                              std::unique_ptr<QueueRunner>* result) {
   result->reset(new QueueRunner());
   return (*result)->Init(queue_runner_def);
 }
 
-Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
-                        Coordinator* coord,
-                        std::unique_ptr<QueueRunner>* result) {
+absl::Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
+                              Coordinator* coord,
+                              std::unique_ptr<QueueRunner>* result) {
   result->reset(new QueueRunner());
   (*result)->coord_ = coord;
   return (*result)->Init(queue_runner_def);
 }
 
-void QueueRunner::AddErrorCallback(const std::function<void(Status)>& cb) {
+void QueueRunner::AddErrorCallback(
+    const std::function<void(absl::Status)>& cb) {
   mutex_lock l(cb_mu_);
   callbacks_.push_back(cb);
 }
@@ -57,7 +58,7 @@ void QueueRunner::ClearErrorCallbacks() {
   callbacks_.clear();
 }
 
-Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
+absl::Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
   queue_name_ = queue_runner_def.queue_name();
   enqueue_op_names_.clear();
   enqueue_op_names_.insert(enqueue_op_names_.end(),
@@ -65,13 +66,13 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
                            queue_runner_def.enqueue_op_name().end());
   size_t op_names_size = enqueue_op_names_.size();
   if (op_names_size > kint32max) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  "Enqueue ops to run cannot exceed kint32max");
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "Enqueue ops to run cannot exceed kint32max");
   }
   runs_ = static_cast<int>(op_names_size);
   if (runs_ == 0) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  "Empty enqueue ops to run.");
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "Empty enqueue ops to run.");
   }
   close_op_name_ = queue_runner_def.close_op_name();
   cancel_op_name_ = queue_runner_def.cancel_op_name();
@@ -100,15 +101,15 @@ QueueRunner::~QueueRunner() {
   Join().IgnoreError();
 }
 
-Status QueueRunner::Start(Session* sess) { return Start(sess, 0); }
+absl::Status QueueRunner::Start(Session* sess) { return Start(sess, 0); }
 
-Status QueueRunner::StartAndCollectCostGraph(Session* sess,
-                                             const RunOptions& run_options) {
+absl::Status QueueRunner::StartAndCollectCostGraph(
+    Session* sess, const RunOptions& run_options) {
   SetRunArgumentsAndCostGraph(run_options);
   return Start(sess, 0);
 }
 
-Status QueueRunner::Start(Session* sess, int wait_for) {
+absl::Status QueueRunner::Start(Session* sess, int wait_for) {
   counter_.reset(new BlockingCounter(runs_));
   for (const string& enqueue_op : enqueue_op_names_) {
     thread_pool_->Schedule(
@@ -120,8 +121,8 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
   // Wait for up to 'wait_for' milliseconds.
   if (wait_for > 0) {
     if (!counter_->WaitFor(std::chrono::milliseconds(wait_for))) {
-      return Status(absl::StatusCode::kDeadlineExceeded,
-                    "Queues not fed before the timeout");
+      return absl::Status(absl::StatusCode::kDeadlineExceeded,
+                          "Queues not fed before the timeout");
     }
     // Check the status of the queue runner as well as the result of the enqueue
     // operations.
@@ -135,8 +136,8 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
   return absl::OkStatus();
 }
 
-Status QueueRunner::StartAndCollectCostGraph(Session* session, int wait_for_ms,
-                                             const RunOptions& run_options) {
+absl::Status QueueRunner::StartAndCollectCostGraph(
+    Session* session, int wait_for_ms, const RunOptions& run_options) {
   SetRunArgumentsAndCostGraph(run_options);
   return Start(session, wait_for_ms);
 }
@@ -151,13 +152,13 @@ void QueueRunner::Stop(Session* sess) {
   stopped_ = true;
 }
 
-Status QueueRunner::Join() {
+absl::Status QueueRunner::Join() {
   thread_pool_.reset();
   mutex_lock l(mu_);
   return status_;
 }
 
-void QueueRunner::UpdateStatus(const Status& status) {
+void QueueRunner::UpdateStatus(const absl::Status& status) {
   {
     mutex_lock l(mu_);
     if (!status_.ok() || status.ok() || IsQueueClosed(status)) {
@@ -176,7 +177,7 @@ void QueueRunner::UpdateStatus(const Status& status) {
 
 void QueueRunner::Run(Session* sess, const string& enqueue_op) {
   bool first_iteration = true;
-  Status status;
+  absl::Status status;
   while (status.ok()) {
     if (coord_ && coord_->ShouldStop()) {
       break;
@@ -205,8 +206,7 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
       UpdateStatus(RealRun(sess, close_op_name_, false));
     }
   } else if (!status.ok()) {
-    LOG(ERROR) << "Queue runner thread got a failure status: "
-               << status.ToString();
+    LOG(ERROR) << "Queue runner thread got a failure status: " << status;
     UpdateStatus(status);
     if (coord_) {
       coord_->RequestStop().IgnoreError();
@@ -214,15 +214,15 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
   }
 }
 
-Status QueueRunner::GetStatus() {
+absl::Status QueueRunner::GetStatus() {
   mutex_lock l(mu_);
   return status_;
 }
 
-Status QueueRunner::ExportCostGraph(CostGraphDef* cost_graph) const {
+absl::Status QueueRunner::ExportCostGraph(CostGraphDef* cost_graph) const {
   if (!cg_mu_) {
-    return Status(absl::StatusCode::kFailedPrecondition,
-                  "This QueueRunner doesn't collect a cost graph.");
+    return absl::Status(absl::StatusCode::kFailedPrecondition,
+                        "This QueueRunner doesn't collect a cost graph.");
   }
   mutex_lock l(*cg_mu_);
   cost_graph->MergeFrom(*cost_graph_);
@@ -238,9 +238,9 @@ void QueueRunner::SetRunArgumentsAndCostGraph(const RunOptions& run_options) {
   run_options_ = run_options;
 }
 
-Status QueueRunner::RealRun(Session* sess, const string& op,
-                            bool update_costs) {
-  Status s;
+absl::Status QueueRunner::RealRun(Session* sess, const string& op,
+                                  bool update_costs) {
+  absl::Status s;
   if (update_costs && cg_mu_) {
     RunMetadata metadata;
     s = sess->Run(run_options_, {}, {}, {op}, nullptr, &metadata);
