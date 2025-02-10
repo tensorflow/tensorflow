@@ -40,6 +40,13 @@ jobs:
             repo: "openxla/xla",
           },
           {
+            pool: "linux-x86-g2-16-l4-1gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            kokoro_job_name: "xla-linux-x86-gpu-t4",
+            pretty_name: "XLA Linux x86 GPU T4",
+            repo: "openxla/xla",
+          },
+          {
             pool: "linux-arm64-c4a-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
             kokoro_job_name: "xla-linux-arm64-cpu",

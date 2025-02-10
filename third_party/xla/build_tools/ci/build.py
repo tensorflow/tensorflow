@@ -91,6 +91,7 @@ class BuildType(enum.Enum):
   CPU_X86_SELF_HOSTED = enum.auto()
   CPU_ARM64_SELF_HOSTED = enum.auto()
   GPU = enum.auto()
+  GPU_T4_SELF_HOSTED = enum.auto()
   GPU_CONTINUOUS = enum.auto()
 
   MACOS_CPU_X86 = enum.auto()
@@ -257,13 +258,17 @@ _ML_BUILD_ARM64_IMAGE = "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/m
 
 
 def nvidia_gpu_build_with_compute_capability(
-    *, type_: BuildType, configs: Tuple[str, ...], compute_capability: int
+    *,
+    type_: BuildType,
+    image_url: Optional[str],
+    configs: Tuple[str, ...],
+    compute_capability: int,
 ) -> Build:
   extra_gpu_tags = _tag_filters_for_compute_capability(compute_capability)
   return Build(
       type_=type_,
       repo="openxla/xla",
-      image_url=_ML_BUILD_IMAGE,
+      image_url=image_url,
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=configs,
       test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
@@ -313,9 +318,16 @@ _CPU_ARM64_SELF_HOSTED_BUILD = Build(
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
 )
-# TODO(ddunleavy): Setup additional build for a100 tests once L4 RBE is ready.
 _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
     type_=BuildType.GPU,
+    image_url=_ML_BUILD_IMAGE,
+    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    compute_capability=75,
+)
+
+_GPU_T4_SELF_HOSTED_BUILD = nvidia_gpu_build_with_compute_capability(
+    type_=BuildType.GPU_T4_SELF_HOSTED,
+    image_url=None,
     configs=("warnings", "rbe_linux_cuda_nvcc"),
     compute_capability=75,
 )
@@ -459,6 +471,7 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/tensorflow/gpu/build_gpu": _TENSORFLOW_GPU_BUILD,
     "xla-linux-x86-cpu": _CPU_X86_SELF_HOSTED_BUILD,
     "xla-linux-arm64-cpu": _CPU_ARM64_SELF_HOSTED_BUILD,
+    "xla-linux-x86-gpu-t4": _GPU_T4_SELF_HOSTED_BUILD,
     "jax-linux-x86-cpu": _JAX_CPU_SELF_HOSTED_BUILD,
     "tensorflow-linux-x86-cpu": _TENSORFLOW_CPU_SELF_HOSTED_BUILD,
 }
