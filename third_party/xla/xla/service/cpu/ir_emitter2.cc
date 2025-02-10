@@ -18,7 +18,9 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -46,7 +48,13 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/Support/CodeGen.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
+#include "xla/backends/cpu/codegen/emitters/cpu_loop_emitter.h"
+#include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -89,6 +97,25 @@ KernelApiIrBuilder::Options KernelApiIrBuilderOptionsFromHloModuleConfig(
       config.debug_options().xla_cpu_prefer_vector_width()};
 }
 
+// Explicitly in HLO we mostly see "loop" types for fusions.
+// However, internally we pick a fusion kind to pick the appropriate
+// fusion emitter.
+enum class EmitterFusionKind {
+  kLoop,
+  kScatter,
+};
+
+// This is very crude at the moment. Eventually we will need to either have
+// the fusion indicate what emitter it is meant for (e.g. producing this
+// info via a cost model), or heuristics to estimate which emitter is best
+// for the fusion.
+EmitterFusionKind AnalyzeHloFusion(const HloFusionInstruction* fusion) {
+  if (fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
+    return EmitterFusionKind::kScatter;
+  }
+  return EmitterFusionKind::kLoop;
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -107,6 +134,22 @@ IrEmitter2::IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
 bool IrEmitter2::fast_min_max() const {
   return hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max();
 }
+
+bool IrEmitter2::IsSupportedByFusionEmitter(
+    const HloFusionInstruction* fusion) const {
+  if (!hlo_module_.config().debug_options().xla_cpu_use_fusion_emitters()) {
+    return false;
+  }
+  EmitterFusionKind emitter_fusion_kind = AnalyzeHloFusion(fusion);
+  switch (emitter_fusion_kind) {
+    case EmitterFusionKind::kLoop:
+    case EmitterFusionKind::kScatter:
+      return true;
+    default:
+      return false;
+  }
+}
+
 IrEmitter2::KernelInfo::KernelInfo(KernelPrototype prototype,
                                    const se::BlockDim& block_dims,
                                    const se::ThreadDim& thread_dims)
@@ -145,6 +188,40 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
       KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
+absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionWithFusionEmitters(
+    const HloFusionInstruction* fusion) {
+  mlir::DialectRegistry registry;
+  mlir::MLIRContext mlir_context(registry);
+  EmitterFusionKind emitter_fusion_kind = AnalyzeHloFusion(fusion);
+  std::unique_ptr<CpuFusionEmitterBase> emitter;
+  switch (emitter_fusion_kind) {
+    case EmitterFusionKind::kLoop:
+      emitter = std::make_unique<CpuLoopFusion>(
+          &mlir_context, &module_->getContext(),
+          nested_ir_emitter_->assignment(), fusion);
+      break;
+    case EmitterFusionKind::kScatter:
+      emitter = std::make_unique<CpuScatterFusion>(
+          &mlir_context, &module_->getContext(),
+          nested_ir_emitter_->assignment(), fusion);
+      break;
+    default:
+      return Internal("Unimplemented fusion kind %d for instruction: %s",
+                      emitter_fusion_kind, fusion->ToString());
+  }
+
+  TF_ASSIGN_OR_RETURN(auto fusion_result, emitter->Emit());
+  if (llvm::Linker::linkModules(*module_,
+                                std::move(fusion_result.llvm_module))) {
+    return Internal("Cannot link additional LLVM module for fusion %s",
+                    fusion->name());
+  }
+  return kernels_.emplace_back(KernelInfo(std::string(fusion->name()),
+                                          se::BlockDim(),
+                                          se::ThreadDim(emitter->num_threads()),
+                                          fusion_result.invariant_arguments));
+}
+
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emit fusion host kernel: " << fusion->name();
@@ -157,6 +234,10 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
     return Internal("Unsupported fusion kind for instruction: %s",
                     fusion->ToString());
+  }
+
+  if (IsSupportedByFusionEmitter(fusion)) {
+    return EmitFusionWithFusionEmitters(fusion);
   }
 
   TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
