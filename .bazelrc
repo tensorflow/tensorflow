@@ -626,6 +626,7 @@ try-import %workspace%/.bazelrc.user
 # Here are bazelrc configs for release builds
 # Build TensorFlow v2.
 test:release_base --test_size_filters=small,medium
+test:release_base --flaky_test_attempts=3
 
 # Enable support for all targets
 build:release_base --config=cpu_cross
