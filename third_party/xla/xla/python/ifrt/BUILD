@@ -599,6 +599,7 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
