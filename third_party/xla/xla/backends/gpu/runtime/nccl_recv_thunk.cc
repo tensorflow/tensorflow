@@ -55,7 +55,8 @@ NcclRecvThunk::NcclRecvThunk(ThunkInfo thunk_info,
       execution_counters_(config_.validation_kind ==
                                   NcclP2PConfig::ValidationKind::kConditional
                               ? new ExecutionCounters()
-                              : nullptr) {}
+                              : nullptr),
+      hlo_name_(instr->name()) {}
 
 absl::Status NcclRecvThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
@@ -96,7 +97,8 @@ absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing Recv from device ordinal: " << device_ordinal
           << ", current_id: " << current_id << ", group mode: "
-          << CollectiveOpGroupModeToString(config_.config.group_mode);
+          << CollectiveOpGroupModeToString(config_.config.group_mode) << " ("
+          << hlo_name_ << ")";
 
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   TF_RETURN_IF_ERROR(MaybeRegisterBuffers(collectives, stream.parent(),

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -53,6 +54,7 @@ class NcclSendThunk : public NcclCollectiveThunk {
   const Buffer buffer_;
   const AsyncStreamKind stream_kind_;
   std::shared_ptr<ExecutionCounters> execution_counters_;
+  std::string hlo_name_;
 };
 
 absl::Status RunSend(GpuCollectives* collectives,
