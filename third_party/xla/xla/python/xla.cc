@@ -450,7 +450,7 @@ NB_MODULE(xla_extension, m) {
                 "get_topology_for_devices requires >= 1 devices.");
           }
           auto client = py_devices[0]->client();
-          ifrt::BasicDeviceList::Devices ifrt_devices;
+          absl::InlinedVector<ifrt::Device*, 1> ifrt_devices;
           ifrt_devices.reserve(py_devices.size());
           for (const auto& py_device : py_devices) {
             if (py_device->client().get() != client.get()) {
@@ -461,7 +461,7 @@ NB_MODULE(xla_extension, m) {
             ifrt_devices.push_back(py_device->device());
           }
           tsl::RCReference<ifrt::DeviceList> device_list =
-              ifrt::BasicDeviceList::Create(std::move(ifrt_devices));
+              client->ifrt_client()->MakeDeviceList(ifrt_devices);
           return xla::ValueOrThrow(
               client->ifrt_client()->GetTopologyForDevices(device_list));
         });

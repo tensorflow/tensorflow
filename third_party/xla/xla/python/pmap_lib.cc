@@ -154,19 +154,18 @@ absl::StatusOr<ShardArgResult> ShardArg(
           return xla::InvalidArgument("Array has been deleted.");
         }
         if (result.ifrt_array->sharding().devices()->devices() != devices) {
-          xla::ifrt::BasicDeviceList::Devices ifrt_devices;
+          absl::InlinedVector<xla::ifrt::Device*, 1> ifrt_devices;
           ifrt_devices.reserve(devices.size());
           ifrt_devices.insert(ifrt_devices.end(), devices.begin(),
                               devices.end());
           // pmap does not support memory_kind for now.
           auto* ifrt_client = result.ifrt_array->client();
-          TF_ASSIGN_OR_RETURN(
-              auto copied_ifrt_arrays,
-              ifrt_client->CopyArrays(
-                  absl::MakeSpan(&result.ifrt_array, 1),
-                  xla::ifrt::BasicDeviceList::Create(std::move(ifrt_devices)),
-                  xla::ifrt::MemoryKind(),
-                  xla::ifrt::ArrayCopySemantics::kReuseInput));
+          TF_ASSIGN_OR_RETURN(auto copied_ifrt_arrays,
+                              ifrt_client->CopyArrays(
+                                  absl::MakeSpan(&result.ifrt_array, 1),
+                                  ifrt_client->MakeDeviceList(ifrt_devices),
+                                  xla::ifrt::MemoryKind(),
+                                  xla::ifrt::ArrayCopySemantics::kReuseInput));
           result.ifrt_array = std::move(copied_ifrt_arrays.front());
         }
         return result;
@@ -188,7 +187,7 @@ absl::StatusOr<ShardArgResult> ShardArg(
 
     std::vector<tsl::RCReference<xla::ifrt::Array>> per_device_arrays;
     per_device_arrays.reserve(n_devices);
-    xla::ifrt::BasicDeviceList::Devices devices;
+    absl::InlinedVector<xla::ifrt::Device*, 1> devices;
     devices.reserve(n_devices);
     // TODO(hyeontaek): The created array will never be disassembled. We should
     // omit collecting shapes and make the OpaqueSharding non-disassemblable?

@@ -554,7 +554,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     xla::ifrt::Client* const ifrt_client =
         executable.ifrt_loaded_executable()->client();
     tsl::RCReference<xla::ifrt::DeviceList> ifrt_devices =
-        xla::ifrt::BasicDeviceList::Create({addressable_devices[0]});
+        ifrt_client->MakeDeviceList({addressable_devices[0]});
     for (auto& [key, group] : copy_groups) {
       TF_ASSIGN_OR_RETURN(
           auto copied_ifrt_arrays,

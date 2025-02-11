@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -58,7 +59,7 @@ PyDeviceList::PyDeviceList(nb::tuple py_device_assignment)
     device_list_ = xla::ifrt::BasicDeviceList::Create({});
     return;
   }
-  xla::ifrt::BasicDeviceList::Devices devices;
+  absl::InlinedVector<xla::ifrt::Device*, 1> devices;
   devices.reserve(py_device_assignment.size());
   for (nb::handle obj : py_device_assignment) {
     if (!nb::isinstance<xla::PyDevice>(obj.ptr())) {
@@ -75,7 +76,7 @@ PyDeviceList::PyDeviceList(nb::tuple py_device_assignment)
     }
     devices.push_back(py_device->device());
   }
-  device_list_ = xla::ifrt::BasicDeviceList::Create(std::move(devices));
+  device_list_ = py_client_->ifrt_client()->MakeDeviceList(devices);
 }
 
 PyDeviceList::~PyDeviceList() {
@@ -303,7 +304,7 @@ bool PyDeviceList::IsFullyAddressable() {
   if (!self->addressable_device_list_.has_value()) {
     switch (self->device_list_.index()) {
       case 0: {
-        xla::ifrt::BasicDeviceList::Devices addressable_devices;
+        absl::InlinedVector<xla::ifrt::Device*, 1> addressable_devices;
         const int process_index =
             self->py_client_ ? self->py_client_->process_index() : 0;
         for (xla::ifrt::Device* device :
@@ -313,8 +314,8 @@ bool PyDeviceList::IsFullyAddressable() {
           }
         }
         self->addressable_device_list_ = xla::make_nb_class<PyDeviceList>(
-            self->py_client_,
-            xla::ifrt::BasicDeviceList::Create(std::move(addressable_devices)));
+            self->py_client_, self->py_client_->ifrt_client()->MakeDeviceList(
+                                  addressable_devices));
         break;
       }
       case 1: {

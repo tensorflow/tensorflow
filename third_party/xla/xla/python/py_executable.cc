@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -152,7 +153,7 @@ struct ShardedBufferAdapter<ExecuteShardedArg> {
     // shape information is unused.
     std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
     ifrt_arrays.reserve(arg_vector.size());
-    ifrt::BasicDeviceList::Devices devices;
+    absl::InlinedVector<ifrt::Device*, 1> devices;
     devices.reserve(arg_vector.size());
     for (auto& arr : arg_vector) {
       CHECK_EQ(arr.ifrt_array()->sharding().devices()->size(), 1)
@@ -165,14 +166,13 @@ struct ShardedBufferAdapter<ExecuteShardedArg> {
     // Use a dummy shape.
     // TODO(hyeontaek): Find a way to compute a correct shape.
     // TODO(yashkatariya): Plumb sharding or memory_kind here.
-    auto ifrt_array =
-        ifrt_arrays.front()->client()->AssembleArrayFromSingleDeviceArrays(
-            ifrt_arrays.front()->shape(),
-            ifrt::OpaqueSharding::Create(
-                ifrt::BasicDeviceList::Create(std::move(devices)),
-                ifrt::MemoryKind()),
-            absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput,
-            ifrt::SingleDeviceShardSemantics::kAddressableShards);
+    ifrt::Client* client = ifrt_arrays.front()->client();
+    auto ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
+        ifrt_arrays.front()->shape(),
+        ifrt::OpaqueSharding::Create(client->MakeDeviceList(devices),
+                                     ifrt::MemoryKind()),
+        absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput,
+        ifrt::SingleDeviceShardSemantics::kAddressableShards);
     TF_CHECK_OK(ifrt_array.status());
     return *ifrt_array;
   }
