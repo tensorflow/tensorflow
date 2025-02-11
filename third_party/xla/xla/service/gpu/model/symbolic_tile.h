@@ -359,6 +359,18 @@ class SymbolicTile {
       : tile_map_(std::move(tile_map)), constraints_(std::move(constraints)) {}
 };
 
+// Evaluates the tile offsets of `symbolic_tile` given tile parameters.
+llvm::SmallVector<int64_t> EvaluateTileOffsets(
+    const SymbolicTile& symbolic_tile, absl::Span<int64_t const> parameters);
+
+// Evaluates the tile sizes of `symbolic_tile` given tile parameters.
+llvm::SmallVector<int64_t> EvaluateTileSizes(
+    const SymbolicTile& symbolic_tile, absl::Span<int64_t const> parameters);
+
+// Evaluates the tile strides of `symbolic_tile` given tile parameters.
+llvm::SmallVector<int64_t> EvaluateTileStrides(
+    const SymbolicTile& symbolic_tile, absl::Span<int64_t const> parameters);
+
 }  // namespace gpu
 }  // namespace xla
 
