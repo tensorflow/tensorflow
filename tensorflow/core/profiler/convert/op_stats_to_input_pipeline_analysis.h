@@ -22,6 +22,7 @@ limitations under the License.
 #include "google/protobuf/any.pb.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"

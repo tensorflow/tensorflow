@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow::profiler {
 // Get non overlapped step events from xspace for GPU.

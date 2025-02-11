@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/hlo_proto_to_graph_view.h"
 
-#include <string>
 #include <variant>
 
+#include <gmock/gmock.h>
 #include "xla/service/hlo_graph_dumper.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"

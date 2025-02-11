@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
 
+#include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/convert/op_stats_combiner.h"
 #include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
