@@ -1,3 +1,7 @@
+# Release 2.18.1
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.18.0
 
 ## TensorFlow
