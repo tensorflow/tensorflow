@@ -787,6 +787,7 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_handle",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:errors",

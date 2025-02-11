@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -172,15 +173,16 @@ absl::Status NcclRaggedAllToAllStartThunk::Initialize(
   }
 
   if (!device_buffer_allocs_.contains(params.executor)) {
-    se::DeviceMemoryBase output_offsets_device_buffer =
-        params.executor->Allocate(config_.num_ragged_rows * sizeof(int64_t));
+    se::DeviceMemoryHandle output_offsets_device_buffer{
+        params.executor,
+        params.executor->Allocate(config_.num_ragged_rows * sizeof(int64_t))};
 
-    if (output_offsets_device_buffer.is_null()) {
+    if (output_offsets_device_buffer.memory().is_null()) {
       return absl::InternalError("Failed to allocate output offsets buffer.");
     }
 
     device_buffer_allocs_.emplace(params.executor,
-                                  output_offsets_device_buffer);
+                                  std::move(output_offsets_device_buffer));
   }
 
   if (should_use_memcpy()) {
@@ -211,19 +213,6 @@ absl::Status NcclRaggedAllToAllStartThunk::Initialize(
       }
     }
   }
-  return absl::OkStatus();
-}
-
-absl::Status NcclRaggedAllToAllStartThunk::Cleanup(
-    const CleanupParams& params) {
-  absl::MutexLock lock(&mutex_);
-
-  if (device_buffer_allocs_.contains(params.executor)) {
-    se::DeviceMemoryBase alloc =
-        device_buffer_allocs_.extract(params.executor).mapped();
-    params.executor->Deallocate(&alloc);
-  }
-
   return absl::OkStatus();
 }
 
@@ -267,7 +256,7 @@ absl::Status NcclRaggedAllToAllStartThunk::RunNcclCollective(
 
     auto jt = device_buffer_allocs_.find(stream.parent());
     CHECK(jt != device_buffer_allocs_.end());
-    output_offsets_device_buffer = jt->second;
+    output_offsets_device_buffer = jt->second.memory();
   }
 
   if (should_use_memcpy()) {

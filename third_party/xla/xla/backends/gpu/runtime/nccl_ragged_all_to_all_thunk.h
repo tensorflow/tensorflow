@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 
@@ -60,8 +61,6 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
       int64_t partition_count);
 
   absl::Status Initialize(const InitializeParams& params) override;
-
-  absl::Status Cleanup(const CleanupParams& params) override;
 
   static const char* GetHloOpName() { return "ragged-all-to-all-start"; }
 
@@ -92,7 +91,7 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
                       std::vector<std::unique_ptr<se::MemoryAllocation>>>
       host_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
 
-  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryBase>
+  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryHandle>
       device_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
 
   absl::Mutex pointers_mutex_;
