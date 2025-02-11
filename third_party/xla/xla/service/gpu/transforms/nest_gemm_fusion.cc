@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -249,7 +250,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
     if (!parameters_satisfy_constraints) {
       continue;
     }
-    auto mapped_dot_tile_sizes = tiled_dot.TileSizes(output_tile_sizes);
+    auto mapped_dot_tile_sizes =
+        EvaluateTileSizes(tiled_dot.symbolic_tile(), output_tile_sizes);
     if (mapped_dot_tile_sizes == expected_dot_tile_sizes) {
       return output_tile_sizes;
     }
