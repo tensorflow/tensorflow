@@ -58,6 +58,7 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:jit_compiler",
         "//xla/codegen:kernel_definition",
         "//xla/codegen/testlib:kernel_runner",
