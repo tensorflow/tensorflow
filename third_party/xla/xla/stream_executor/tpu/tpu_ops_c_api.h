@@ -290,9 +290,9 @@ typedef struct InitializeHostForDistributedTpuOp_DoWork_Params {
 TFTPU_CAPI_EXPORT void InitializeHostForDistributedTpuOp_DoWork(
     InitializeHostForDistributedTpuOp_DoWork_Params* params);
 
-TFTPU_CAPI_EXPORT void SetGlobalTPUArrayOp_DoWork(
-    const size_t tpu_topology_size, const char* tpu_topology,
-    TF_Status* status);
+TFTPU_CAPI_EXPORT void SetGlobalTPUArrayOp_DoWork(size_t tpu_topology_size,
+                                                  const char* tpu_topology,
+                                                  TF_Status* status);
 
 TFTPU_CAPI_EXPORT void DisconnectDistributedTpuChipsOp_DoWork(
     int32_t* number_of_chips_output, TF_Status* status);
