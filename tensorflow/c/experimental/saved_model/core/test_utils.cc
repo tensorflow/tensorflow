@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/test_utils.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
