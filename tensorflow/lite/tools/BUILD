@@ -26,8 +26,6 @@ exports_files([
 py_strict_binary(
     name = "visualize",
     srcs = ["visualize.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
         "//third_party/py/numpy",
@@ -37,7 +35,6 @@ py_strict_binary(
 py_strict_library(
     name = "visualize_lib",
     srcs = ["visualize.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
         "//third_party/py/numpy",
@@ -47,8 +44,6 @@ py_strict_library(
 py_strict_test(
     name = "visualize_test",
     srcs = ["visualize_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":test_utils",
         ":visualize_lib",
@@ -61,8 +56,6 @@ py_strict_test(
 py_strict_binary(
     name = "convert_image_to_csv",
     srcs = ["convert_image_to_csv.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:errors",
@@ -77,7 +70,6 @@ py_strict_binary(
 py_strict_library(
     name = "convert_image_to_csv_lib",
     srcs = ["convert_image_to_csv.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:errors",
@@ -93,8 +85,6 @@ py_strict_test(
     name = "convert_image_to_csv_test",
     srcs = ["convert_image_to_csv_test.py"],
     data = ["//tensorflow/core:image_testdata"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":convert_image_to_csv_lib",
         #internal proto upb dep
@@ -109,8 +99,6 @@ py_strict_test(
 py_strict_binary(
     name = "strip_strings",
     srcs = ["strip_strings.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":flatbuffer_utils",
         "@absl_py//absl:app",
@@ -121,8 +109,6 @@ py_strict_binary(
 py_strict_binary(
     name = "reverse_xxd_dump_from_cc",
     srcs = ["reverse_xxd_dump_from_cc.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":flatbuffer_utils",
         "@absl_py//absl:app",
@@ -133,8 +119,6 @@ py_strict_binary(
 py_strict_binary(
     name = "randomize_weights",
     srcs = ["randomize_weights.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":flatbuffer_utils",
         "@absl_py//absl:app",
@@ -145,7 +129,6 @@ py_strict_binary(
 py_strict_library(
     name = "flatbuffer_utils",
     srcs = ["flatbuffer_utils.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
         "//tensorflow/lite/python:schema_util",
@@ -157,8 +140,6 @@ py_strict_library(
 py_strict_test(
     name = "flatbuffer_utils_test",
     srcs = ["flatbuffer_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":flatbuffer_utils",
         ":test_utils",
@@ -171,7 +152,6 @@ py_strict_test(
 py_strict_library(
     name = "test_utils",
     srcs = ["test_utils.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
         "@flatbuffers//:runtime_py",
@@ -396,7 +376,6 @@ tf_cc_test(
 py_strict_binary(
     name = "zip_files",
     srcs = ["zip_files.py"],
-    python_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "@absl_py//absl:app",

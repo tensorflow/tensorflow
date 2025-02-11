@@ -53,7 +53,6 @@ pybind_extension(
 pytype_strict_library(
     name = "metrics_wrapper",
     srcs = ["wrapper/metrics_wrapper.py"],
-    srcs_version = "PY3",
     deps = [
         ":_pywrap_tensorflow_lite_metrics_wrapper",
         "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
@@ -64,8 +63,6 @@ pytype_strict_library(
 py_strict_test(
     name = "metrics_wrapper_test",
     srcs = ["wrapper/metrics_wrapper_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":metrics_wrapper",
         #internal proto upb dep
@@ -81,7 +78,6 @@ pytype_strict_library(
     name = "metrics_interface",
     srcs = ["metrics_interface.py"],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
     visibility = ["//visibility:private"],
 )
 
@@ -102,7 +98,6 @@ pytype_strict_library(
     name = "metrics",
     srcs = ["metrics.py"],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = if_portable(
         if_false = [
@@ -127,7 +122,6 @@ py_strict_test(
         if_false = "metrics_nonportable_test.py",
         if_true = "metrics_portable_test.py",
     ),
-    python_version = "PY3",
     tags = ["notap"],  # TODO(b/373657707): Remove once we debug the failure.
     deps = [
         ":metrics",

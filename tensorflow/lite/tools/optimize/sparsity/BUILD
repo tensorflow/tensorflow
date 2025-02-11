@@ -32,7 +32,6 @@ pybind_extension(
 py_strict_test(
     name = "format_converter_wrapper_pybind11_test",
     srcs = ["format_converter_wrapper_pybind11_test.py"],
-    python_version = "PY3",
     deps = [
         ":format_converter_wrapper_pybind11",
         "@absl_py//absl/testing:absltest",

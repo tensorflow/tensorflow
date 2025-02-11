@@ -128,7 +128,6 @@ py_strict_library(
     data = [
         "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
     ],
-    srcs_version = "PY3",
     deps = [
         ":zip_test_utils",
         "//tensorflow:tensorflow_py",
@@ -142,7 +141,6 @@ py_strict_library(
 py_strict_library(
     name = "op_tests",
     srcs = glob(["op_tests/*.py"]),
-    srcs_version = "PY3",
     deps = [
         ":zip_test_utils",
         "//third_party/py/numpy",
@@ -160,7 +158,6 @@ py_strict_library(
 py_strict_library(
     name = "generate_examples_lib",
     srcs = ["generate_examples_lib.py"],
-    srcs_version = "PY3",
     deps = [
         ":op_tests",
         ":zip_test_utils",
@@ -171,7 +168,6 @@ py_strict_library(
 py_strict_library(
     name = "zip_test_utils",
     srcs = ["zip_test_utils.py"],
-    srcs_version = "PY3",
     deps = [
         ":_pywrap_string_util",
         ":generate_examples_report",
@@ -187,8 +183,6 @@ py_strict_library(
 py_strict_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":generate_examples_lib",
         ":mlir_convert",
@@ -199,7 +193,6 @@ py_strict_binary(
 py_strict_library(
     name = "generate_examples_report",
     srcs = ["generate_examples_report.py"],
-    srcs_version = "PY3",
 )
 
 cc_library(

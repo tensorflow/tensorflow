@@ -109,8 +109,6 @@ genrule(
 py_strict_binary(
     name = "convert_binary_to_cc_source",
     srcs = ["convert_binary_to_cc_source.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 

@@ -35,7 +35,6 @@ py_strict_library(
     srcs = [
         "kl_divergence.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow:tensorflow_py",
@@ -45,8 +44,6 @@ py_strict_library(
 py_strict_binary(
     name = "mobilenet",
     srcs = ["mobilenet.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":kl_divergence",
         "//tensorflow:tensorflow_py",
@@ -90,8 +87,6 @@ validation_test(
 py_strict_binary(
     name = "blazeface_metrics",
     srcs = ["blazeface_metrics.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":kl_divergence",
         "//tensorflow:tensorflow_py",
