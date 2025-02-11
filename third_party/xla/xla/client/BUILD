@@ -28,20 +28,6 @@ filegroup(
 )
 
 cc_library(
-    name = "global_data",
-    hdrs = ["global_data.h"],
-    deps = [
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/service",
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "padding",
     hdrs = ["padding.h"],
     deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder:padding instead.",
