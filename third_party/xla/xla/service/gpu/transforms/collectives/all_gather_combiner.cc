@@ -69,12 +69,12 @@ absl::StatusOr<bool> GpuAllGatherCombiner::Run(
     return AllGatherCombiner::Run(module, execution_threads);
   }
 
+  // Combiner threshold is not specified. We use heuristics.
   // We sequentially combine synchronous collectives then pipelined collectives
   // and finally the rest. Note that collectives can be both synchronous and
   // pipelined. Hence, we combine them in two steps.
 
   bool changed = false;
-  int original_combiner_threshold = combine_threshold_in_bytes_;
 
   // Combine as much as possible for synchronous collectives.
   absl::flat_hash_set<HloInstruction*> sync_collectives;
@@ -107,9 +107,9 @@ absl::StatusOr<bool> GpuAllGatherCombiner::Run(
     changed |= combined;
   }
 
-  // Use previous combiner thresholds after we combine pipelined collectives.
+  // Use default combiner thresholds after we combine pipelined collectives.
   // The rest is combined by the parent pass code.
-  combine_threshold_in_bytes_ = original_combiner_threshold;
+  combine_threshold_in_bytes_ = default_combine_threshold_in_bytes_;
   TF_ASSIGN_OR_RETURN(bool combined_rest,
                       AllGatherCombiner::Run(module, execution_threads));
   changed |= combined_rest;
