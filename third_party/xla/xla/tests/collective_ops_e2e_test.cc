@@ -271,7 +271,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
   }
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncAllGather) {
+XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllGather) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -288,7 +288,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGather) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << test_runner().device_count() << " available)";
   }
-  const bool enable_async_all_gather = GetParam();
+  const bool enable_async_all_gather = std::get<0>(GetParam());
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -312,7 +312,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGather) {
   }
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
+XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllGatherMixedTypes) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -334,7 +334,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << test_runner().device_count() << " available)";
   }
-  const bool enable_async_all_gather = GetParam();
+  const bool enable_async_all_gather = std::get<0>(GetParam());
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -358,6 +358,37 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
     LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
     LiteralTestUtil::ExpectR1Equal<float>({10.0, 15.0, 11.0, 16.0}, results[1]);
   }
+}
+
+XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllGatherMultipleReplicaGroups) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[1, 2] broadcast(id), dimensions={}
+    a0 = u32[1, 2] constant({{10, 15}})
+    a1 = u32[1, 2] add(id2, a0)
+    allgather = u32[2, 2] all-gather(a1), dimensions={0}, replica_groups={{0,3},{1,2}}
+    ROOT out = u32[4] reshape(allgather)
+  }
+  )";
+  const int64_t kNumReplicas = 4;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 13, 18}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 16, 12, 17}, results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 16, 12, 17}, results[2]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 13, 18}, results[3]);
 }
 
 XLA_TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
