@@ -44,6 +44,7 @@
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
+#include "tensorflow/lite/experimental/litert/core/model/buffer_manager.h"
 #include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
@@ -359,7 +360,8 @@ namespace {
 
 LiteRtStatus PartitionSubgraph(std::vector<LiteRtOp> selected_ops,
                                LiteRtSubgraphT& subgraph,
-                               PartitionResult& result) {
+                               PartitionResult& result,
+                               BufferManager* buffer_manager) {
   // Group selected ops into connected islands.
   auto islands = GroupPartitions(selected_ops);
   if (islands.empty()) {
@@ -370,7 +372,7 @@ LiteRtStatus PartitionSubgraph(std::vector<LiteRtOp> selected_ops,
   // For each connected island, slice into new subgraph and replace use with
   // single dispatch op.
   for (auto& island : islands) {
-    auto& new_subgraph = result.second.EmplaceBack();
+    auto& new_subgraph = result.second.EmplaceBack(buffer_manager);
     auto* dispatch_op = OutlinePartition(subgraph, &new_subgraph, island);
     result.first.push_back(dispatch_op);
   }
@@ -392,7 +394,8 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
       return selected_ops.Error();
     }
 
-    LITERT_RETURN_IF_ERROR(PartitionSubgraph(*selected_ops, *subgraph, result));
+    LITERT_RETURN_IF_ERROR(
+        PartitionSubgraph(*selected_ops, *subgraph, result, model.Buffers()));
   }
   ABSL_DCHECK_EQ(result.first.size(), result.second.Size());
   return result;
@@ -407,8 +410,8 @@ Expected<PartitionResult> PartitionModelDirect(
   // Accumulate partition results for each subgraph in model.
   PartitionResult result;
   auto* subgraph = model.Subgraphs().front();
-  LITERT_RETURN_IF_ERROR(
-      PartitionSubgraph(std::move(selected_ops), *subgraph, result));
+  LITERT_RETURN_IF_ERROR(PartitionSubgraph(std::move(selected_ops), *subgraph,
+                                           result, model.Buffers()));
   ABSL_DCHECK_EQ(result.first.size(), result.second.Size());
   return result;
 }

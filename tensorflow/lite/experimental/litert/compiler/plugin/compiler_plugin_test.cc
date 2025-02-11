@@ -215,6 +215,43 @@ TEST(PartitionModelTest, MultiSubgraph) {
   EXPECT_EQ(subgraphs.Elements().back()->Ops().size(), 1);
 }
 
+TEST(PartitionModelTest, CstMultiSubgraph) {
+  auto model_wrap = testing::LoadTestFileModel("multi_use_cst.tflite");
+  auto& model = *model_wrap.Get();
+  ASSERT_EQ(model.MainSubgraph()->Ops().size(), 3);
+
+  std::vector<LiteRtOp> selected_ops = {
+      model.MainSubgraph()->Ops().front(),
+      model.MainSubgraph()->Ops().back(),
+  };
+  auto partition_result = PartitionModelDirect(std::move(selected_ops), model);
+  ASSERT_TRUE(partition_result);
+
+  const auto& [ops, subgraphs] = *partition_result;
+
+  EXPECT_EQ(ops.size(), 2);
+  EXPECT_EQ(ops.front()->OpCode(), kLiteRtOpCodeTflCustom);
+  EXPECT_EQ(ops.back()->OpCode(), kLiteRtOpCodeTflCustom);
+
+  EXPECT_EQ(subgraphs.Size(), 2);
+  EXPECT_EQ(subgraphs.Elements().front()->Ops().size(), 1);
+  EXPECT_EQ(subgraphs.Elements().back()->Ops().size(), 1);
+
+  const auto& cst_1 =
+      subgraphs.Elements().front()->Ops().front()->Input(1).Weights();
+  const auto& cst_2 =
+      subgraphs.Elements().back()->Ops().front()->Input(1).Weights();
+
+  // Both weights should have the same object managed by the same buffer
+  // manager.
+  ASSERT_EQ(cst_1.GetBufferManager(), model.Buffers());
+  ASSERT_EQ(cst_2.GetBufferManager(), model.Buffers());
+  ASSERT_GT(cst_1.Buffer().Size(), 0);
+  ASSERT_GT(cst_2.Buffer().Size(), 0);
+  EXPECT_EQ(cst_1.GetBufferId(), cst_2.GetBufferId());
+  ASSERT_EQ(cst_1.Buffer().Data(), cst_2.Buffer().Data());
+}
+
 TEST(ApplyTest, Simple) {
   auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
   ASSERT_EQ(plugins->size(), 1);

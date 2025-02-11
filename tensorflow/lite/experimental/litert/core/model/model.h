@@ -561,9 +561,12 @@ class LiteRtSubgraphT {
   template <class... Args>
   LiteRtTensorT& EmplaceTensor(Args&&... args) {
     if (buffer_manager_ == nullptr) {
+      std::cerr << "Emplacing tensor without buffer manager \n";
       return tensors_.EmplaceBack(std::forward<Args>(args)...);
+    } else {
+      // std::cerr << "Emplacing tensor with buffer manager \n";
+      return tensors_.EmplaceBack(buffer_manager_, std::forward<Args>(args)...);
     }
-    return tensors_.EmplaceBack(buffer_manager_, std::forward<Args>(args)...);
   }
 
   // Construct a new op which will be owned by this subgraph and get a
@@ -592,6 +595,11 @@ class LiteRtSubgraphT {
   LiteRtSubgraphT(LiteRtSubgraphT&&) = default;
   LiteRtSubgraphT& operator=(const LiteRtSubgraphT&) = delete;
   LiteRtSubgraphT& operator=(LiteRtSubgraphT&&) = default;
+
+  // Get the buffer manager for this subgraph.
+  ::litert::internal::BufferManager* GetBufferManager() const {
+    return buffer_manager_;
+  }
 
  private:
   // If null, tensors emplaced will own their own buffer managers.
