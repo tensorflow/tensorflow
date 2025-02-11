@@ -130,6 +130,11 @@ std::shared_ptr<MockClient> MakeDeviceTestClient(int num_devices,
         }
         return it->second.get();
       });
+  ON_CALL(*client, MakeDeviceList)
+      .WillByDefault([](absl::Span<Device* const> devices)
+                         -> tsl::RCReference<DeviceList> {
+        return BasicDeviceList::Create(devices);
+      });
   ON_CALL(*client, GetTopologyForDevices)
       .WillByDefault(
           [](const tsl::RCReference<DeviceList>&) { return nullptr; });

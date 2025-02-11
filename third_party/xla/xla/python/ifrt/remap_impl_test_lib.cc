@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -110,7 +111,7 @@ absl::StatusOr<tsl::RCReference<Array>> CreateArray(
 
   std::vector<tsl::RCReference<Array>> shards;
   shards.reserve(base_values.size());
-  BasicDeviceList::Devices devices;
+  absl::InlinedVector<xla::ifrt::Device*, 1> devices;
   devices.reserve(device_indices.size());
 
   for (int i = 0; i < base_values.size(); ++i) {
@@ -132,7 +133,7 @@ absl::StatusOr<tsl::RCReference<Array>> CreateArray(
   }
 
   std::shared_ptr<const Sharding> assembled_sharding =
-      ConcreteEvenSharding::Create(BasicDeviceList::Create(std::move(devices)),
+      ConcreteEvenSharding::Create(client->MakeDeviceList(devices),
                                    MemoryKind(),
                                    /*shape=*/shape,
                                    /*shard_shape=*/std::move(shard_shape));
