@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
 
+#include <cstddef>
+
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/master.pb.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 namespace {

@@ -16,6 +16,10 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_session.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -24,7 +28,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "base/tracer.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/profile_handler.h"
@@ -40,9 +50,11 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -62,6 +74,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/master.pb.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/tracing.h"

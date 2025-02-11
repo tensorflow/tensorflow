@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
