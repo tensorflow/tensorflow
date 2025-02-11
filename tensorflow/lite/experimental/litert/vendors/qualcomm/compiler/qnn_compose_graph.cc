@@ -403,8 +403,8 @@ LiteRtStatus ConvertOp(
       break;
     }
     case LiteRtOpCode::kLiteRtOpCodeTflPack: {
-      uint32_t axis =
-          detail::GetTflOptions(*litert_op.Get()).AsPackOptions()->axis;
+      int32_t axis{};
+      LiteRtGetPackAxisOption(litert_op.Get(), &axis);
       op_wrappers =
           ::qnn::BuildPackOp(tensor_pool, input_tensors, output_tensors, axis);
       break;
@@ -416,7 +416,10 @@ LiteRtStatus ConvertOp(
       break;
     }
     default: {
-      break;
+      LITERT_LOG(LITERT_ERROR,
+                 "LiteRT Op Code: %d is not supported in Qualcomm Compiler.",
+                 litert_op.Code());
+      return kLiteRtStatusErrorUnsupported;
     }
   }
   return kLiteRtStatusOk;

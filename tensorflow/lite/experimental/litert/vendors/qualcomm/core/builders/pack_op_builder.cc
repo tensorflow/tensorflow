@@ -20,11 +20,6 @@ std::vector<OpWrapper> BuildPackOp(TensorPool& tensor_pool,
     return res;
   }
 
-  int adjusted_axis = axis;
-  if (axis < 0) {
-    adjusted_axis += static_cast<int>(inputs[0].get().GetRank());
-  }
-
   if (outputs[0].get().GetRank() != inputs[0].get().GetRank() + 1) {
     auto& concat_op = CreateOpWrapper(res, QNN_OP_CONCAT);
     for (const auto& input : inputs) {
@@ -36,8 +31,10 @@ std::vector<OpWrapper> BuildPackOp(TensorPool& tensor_pool,
     for (const auto& input : inputs) {
       pack_op.AddInputTensor(input);
     }
-    pack_op.AddScalarParam<std::uint32_t>(
-        QNN_OP_PACK_PARAM_AXIS, static_cast<std::uint32_t>(adjusted_axis));
+    std::uint32_t adjusted_axis =
+        axis < 0 ? axis + inputs[0].get().GetRank() : axis;
+    pack_op.AddScalarParam<std::uint32_t>(QNN_OP_PACK_PARAM_AXIS,
+                                          adjusted_axis);
     pack_op.AddOutputTensor(outputs[0]);
   }
 
