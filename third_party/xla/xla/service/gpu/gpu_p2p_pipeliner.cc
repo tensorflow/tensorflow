@@ -31,8 +31,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/service/collective_conflict_analysis.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_pipeliner.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -211,6 +214,30 @@ absl::Status PostprocessRotatedP2P(HloInstruction* instr) {
 
 }  // anonymous namespace
 
+// Post-process rotated send/recv ops to add control dependencies with
+// conflicting collectives.
+static absl::Status PostProcessRotatedSendRecvOps(
+    std::vector<HloInstruction*>& rotated_send_recvs) {
+  // Convert to set for faster lookup.
+  absl::flat_hash_set<HloInstruction*> rotated_send_recvs_set(
+      rotated_send_recvs.begin(), rotated_send_recvs.end());
+
+  // Add control dependencies from conflicting collectives to rotated send/recv
+  // ops.
+  for (HloInstruction* instr : rotated_send_recvs) {
+    CHECK(instr->opcode() == HloOpcode::kRecv ||
+          instr->opcode() == HloOpcode::kSend);
+    HloComputation* parent = instr->parent();
+    for (HloInstruction* conflicting_collective :
+         FindAllConflictingCollectives(parent, {instr})) {
+      if (rotated_send_recvs_set.contains(conflicting_collective)) continue;
+      TF_RETURN_IF_ERROR(conflicting_collective->AddControlDependencyTo(instr));
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> GpuP2PPipeliner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -220,12 +247,19 @@ absl::StatusOr<bool> GpuP2PPipeliner::Run(
   CollectivePipeliner::HloPostprocessor postprocess_backward_rotated_op =
       PostprocessRotatedP2P;
 
+  // If partial send/recv pipelining is enabled, collect send/recv instructions
+  // for post-processing.
+  std::vector<HloInstruction*> rotated_send_recvs;
   if (enable_partial_send_recv_pipelining_) {
     should_process = PipelineOnlySendRecvStart;
     postprocess_backward_peeled_op = std::nullopt;
-    postprocess_backward_rotated_op = std::nullopt;
+    postprocess_backward_rotated_op = [&](HloInstruction* it) {
+      rotated_send_recvs.push_back(it);
+      return absl::OkStatus();
+    };
   }
 
+  // Run pipeliner.
   CollectivePipeliner::Config config{
       /*level_to_operate_on=*/0,
       // Pipeline everything annotated for pipelining.
@@ -243,8 +277,14 @@ absl::StatusOr<bool> GpuP2PPipeliner::Run(
       /*should_allow_control_dependencies=*/true,
       /*=postprocess_backward_peeled_op*/ postprocess_backward_peeled_op,
       /*=postprocess_backward_rotated_op*/ postprocess_backward_rotated_op};
+  TF_ASSIGN_OR_RETURN(
+      bool changed, CollectivePipeliner(config).Run(module, execution_threads));
 
-  return CollectivePipeliner(config).Run(module, execution_threads);
+  // Post-process rotated and peeled send/recv ops to add control dependencies
+  // with conflicting collectives.
+  TF_RETURN_IF_ERROR(PostProcessRotatedSendRecvOps(rotated_send_recvs));
+
+  return changed;
 }
 
 }  // namespace gpu

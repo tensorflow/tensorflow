@@ -41,6 +41,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::UnorderedElementsAre;
+
 class GpuP2PPipelinerTest : public HloTestBase {
  public:
   GpuP2PPipelinerTest() {
@@ -306,25 +308,29 @@ TEST_F(GpuP2PPipelinerTest, PipelineParallelismExperimentalOpt) {
       broadcast = pred[2,2] broadcast(compare), dimensions={}
       data = f32[2,2] get-tuple-element(inputs), index=1
       after-all = token[] after-all()
-      recv = (f32[2,2], u32[], token[]) recv(after-all), channel_id=1
+      recv = (f32[2,2], u32[], token[]) recv(after-all), channel_id=1,
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
       send = (f32[2,2], u32[], token[]) send(data, after-all), channel_id=1,
-        control-predecessors={recv}
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
+          control-predecessors={recv}
       recv-done = (f32[2,2], token[]) recv-done(recv), channel_id=1,
-        control-predecessors={send}
+          control-predecessors={send}
       recv-done-data = f32[2,2] get-tuple-element(recv-done), index=0
       after-all.1 = token[] after-all()
       recv.1 = (f32[2,2], u32[], token[]) recv(after-all.1), channel_id=2,
-        control-predecessors={send}
+          frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}},
+          control-predecessors={send}
       send.1 = (f32[2,2], u32[], token[]) send(data, after-all.1), channel_id=2,
-        control-predecessors={recv.1}
+          frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}},
+          control-predecessors={recv.1}
       recv-done.1 = (f32[2,2], token[]) recv-done(recv.1), channel_id=2,
-        control-predecessors={send.1}
+          control-predecessors={send.1}
       recv-done-1-data = f32[2,2] get-tuple-element(recv-done.1), index=0
       select = f32[2,2] select(broadcast, recv-done-data, recv-done-1-data)
       matmul = f32[2,2] dot(weights, select),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
       ROOT result = (u32[], f32[2,2], f32[2,2]) tuple(next_iter, matmul,
-        weights)
+          weights)
       send-done = token[] send-done(send), channel_id=1
       send-done.1 = token[] send-done(send.1), channel_id=2
     }
@@ -379,6 +385,97 @@ TEST_F(GpuP2PPipelinerTest, PipelineParallelismExperimentalOpt) {
     // CHECK:        send-done
     )")
                   .value());
+}
+
+TEST_F(GpuP2PPipelinerTest, OneSendRecvWithOneConflictingAllReduce) {
+  const char* kHloStr = R"(
+    HloModule test
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    cond {
+      param = (u32[], f32[64], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      n = u32[] constant(2)
+      ROOT result = pred[] compare(i, n), direction=LT
+    }
+
+    body {
+      param = (u32[], f32[64], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      data_a = f32[64] get-tuple-element(param), index=1
+      data_b = f32[64] get-tuple-element(param), index=2
+
+      // Decomposed cp_fwd.
+      after-all = token[] after-all()
+      recv = (f32[64], u32[], token[]) recv(after-all), channel_id=1,
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+      send = (f32[64], u32[], token[]) send(data_a, after-all), channel_id=1,
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
+          control-predecessors={recv}
+      recv_done = (f32[64], token[]) recv-done(recv), channel_id=1,
+          control-predecessors={send}
+      send_done = token[] send-done(send), channel_id=1,
+          control-predecessors={recv_done}
+      recv_data = f32[64] get-tuple-element(recv_done), index=0
+
+      // Conflicting all-reduce.
+      ar = f32[64] all-reduce(data_b), channel_id=2, replica_groups={{0,1,2,3}},
+          to_apply=add, control-predecessors={send_done}
+
+      c1 = u32[] constant(1)
+      i_ = u32[] add(u32[] i, u32[] c1)
+
+      ROOT result = (u32[], f32[64], f32[64]) tuple(i_, recv_data, ar)
+    }
+
+    ENTRY entry {
+      c0 = u32[] constant(0)
+      a = f32[] constant(42)
+      data = f32[64] broadcast(a), dimensions={}
+      while_init = (u32[], f32[64], f32[64]) tuple(c0, data, data)
+      ROOT result = (u32[], f32[64], f32[64]) while(while_init), condition=cond,
+         body=body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kHloStr, config_));
+
+  // Run pass.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunOptimizer(module.get(),
+                                 /*enable_partial_send_recv_pipelining=*/true));
+  EXPECT_TRUE(changed);
+
+  // Find while loop.
+  HloInstruction* while_op = FindInstruction(module.get(), "while");
+  HloComputation* body = while_op->while_body();
+
+  // Find ops in while loop body.
+  HloInstruction* recv_op = FindInstruction(module.get(), "recv.2");
+  HloInstruction* send_op = FindInstruction(module.get(), "send.2");
+  HloInstruction* recv_done_op = FindInstruction(module.get(), "recv_done.1");
+  HloInstruction* send_done_op = FindInstruction(module.get(), "send_done.1");
+  HloInstruction* ar_op = FindInstruction(module.get(), "ar.1");
+  EXPECT_EQ(recv_op->parent(), body);
+  EXPECT_EQ(send_op->parent(), body);
+  EXPECT_EQ(recv_done_op->parent(), body);
+  EXPECT_EQ(send_done_op->parent(), body);
+  EXPECT_EQ(ar_op->parent(), body);
+
+  // Expect control dependencies from send/recv to conflicting all-reduce.
+  EXPECT_THAT(recv_op->control_predecessors(), UnorderedElementsAre(ar_op));
+  EXPECT_THAT(send_op->control_predecessors(),
+              UnorderedElementsAre(recv_op, ar_op));
+  EXPECT_THAT(recv_done_op->control_predecessors(), UnorderedElementsAre());
+  EXPECT_THAT(send_done_op->control_predecessors(),
+              UnorderedElementsAre(recv_done_op));
+  EXPECT_THAT(ar_op->control_predecessors(),
+              UnorderedElementsAre(send_done_op));
 }
 
 }  // namespace
