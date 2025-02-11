@@ -504,9 +504,9 @@ nvidia-cusparse-cu12==12.5.1.3 \
     # via
     #   -r ci/official/requirements_updater/requirements.in
     #   nvidia-cusolver-cu12
-nvidia-nccl-cu12==2.23.4 \
-    --hash=sha256:aa946c8327e22ced28e7cef508a334673abc42064ec85f02d005ba1785ea4cec \
-    --hash=sha256:b097258d9aab2fa9f686e33c6fe40ae57b27df60cedbd15d139701bb5509e0c1
+nvidia-nccl-cu12==2.25.1 \
+    --hash=sha256:362aed5963fb9ea2ed2f264409baae30143498fd0e5c503aeaa1badd88cdc54a \
+    --hash=sha256:4ab428bc915785cc66e8c57cb34c7a64cf739c46702b8db748b6ad6cc7180cf8
     # via -r ci/official/requirements_updater/requirements.in
 nvidia-nvjitlink-cu12==12.5.82 \
     --hash=sha256:98103729cc5226e13ca319a10bbf9433bbbd44ef64fe72f45f067cacc14b8d27 \
