@@ -43,9 +43,9 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 
@@ -64,12 +64,13 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // inspect a particular computation or instruction.
   static HloComputation* FindComputation(HloModule* module,
                                          absl::string_view name);
-  static HloInstruction* FindInstruction(HloModule* module,
+  static HloInstruction* FindInstruction(const HloModule* module,
                                          absl::string_view name);
   // Gets the instruction from the given module with the given opcode.
-  static HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
+  static HloInstruction* FindInstruction(const HloModule* module,
+                                         HloOpcode opcode);
   // Gets all the instructions from the given module with the given opcode.
-  static std::vector<HloInstruction*> FindInstructions(HloModule* module,
+  static std::vector<HloInstruction*> FindInstructions(const HloModule* module,
                                                        HloOpcode opcode);
 
  protected:
@@ -170,8 +171,19 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // changed the module or not based on expect_change flag.  Returns unique_ptr
   // to the HLO module for further inspection.
   absl::StatusOr<std::unique_ptr<HloModule>> RunAndCheckHloRewrite(
-      absl::string_view hlo_template, HloPassInterface&& hlo_pass,
+      absl::string_view hlo_template, HloPassInterface* hlo_pass,
       bool expect_change = true, FixedMapping params = {}) const;
+
+  // Reference overload.
+  absl::StatusOr<std::unique_ptr<HloModule>> RunAndCheckHloRewrite(
+      absl::string_view hlo_template, const HloPassInterface& hlo_pass,
+      bool expect_change = true, FixedMapping params = {}) const {
+    // HloPassInterface::Run is non-const historically.
+    HloPassInterface& non_const_hlo_pass =
+        const_cast<HloPassInterface&>(hlo_pass);
+    return RunAndCheckHloRewrite(hlo_template, &non_const_hlo_pass,
+                                 expect_change, params);
+  }
 
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in

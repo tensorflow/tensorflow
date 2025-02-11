@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -45,6 +46,10 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -122,22 +127,21 @@ HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
 /* static */
 absl::StatusOr<bool> HloHardwareIndependentTestBase::RunHloPass(
     HloPassInterface* hlo_pass, HloModule* module) {
-  const std::string module_str_before_run =
-      module->ToProto().ShortDebugString();
-  const auto status_or = hlo_pass->Run(module);
-  if (status_or.status().ok()) {
-    const std::string module_str_after_run =
-        module->ToProto().ShortDebugString();
-    const bool passChangedHlo = status_or.value();
-    if (passChangedHlo) {
-      // Check that the proto actually changed.
-      EXPECT_NE(module_str_after_run, module_str_before_run);
-    } else {
-      // Check that the proto remains same.
-      EXPECT_EQ(module_str_after_run, module_str_before_run);
-    }
+  const std::string before_run = module->ToProto().ShortDebugString();
+  TF_ASSIGN_OR_RETURN(bool changed, hlo_pass->Run(module));
+  const std::string after_run = module->ToProto().ShortDebugString();
+  if (changed) {
+    EXPECT_NE(after_run, before_run) << absl::StrFormat(
+        "HLO pass %s claims to have changed the module, but the module remains "
+        "the same.",
+        hlo_pass->name());
+  } else {
+    EXPECT_EQ(after_run, before_run) << absl::StrFormat(
+        "HLO pass %s claims to have not changed the module, but the module is "
+        "different after the pass.",
+        hlo_pass->name());
   }
-  return status_or;
+  return changed;
 }
 
 /* static */
@@ -256,14 +260,14 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloModuleGroupRewrite(
 
 absl::StatusOr<std::unique_ptr<HloModule>>
 HloHardwareIndependentTestBase::RunAndCheckHloRewrite(
-    absl::string_view hlo_template, HloPassInterface&& hlo_pass,
+    absl::string_view hlo_template, HloPassInterface* hlo_pass,
     bool expect_change, FixedMapping params) const {
   std::string hlo_string = absl::StrReplaceAll(hlo_template, params);
   SCOPED_TRACE("Input HLO: " + hlo_string);
   VLOG(7) << "Input HLO: " << hlo_string;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnVerifiedModule(hlo_string));
-  VLOG(7) << "Input HLO parsed. Running the pass:  + " << hlo_pass.name();
+  VLOG(7) << "Input HLO parsed. Running the pass:  + " << hlo_pass->name();
   TF_ASSIGN_OR_RETURN(bool changed, RunHloPass(hlo_pass, module.get()));
   VLOG(7) << "Output HLO: "
           << module->ToString(HloPrintOptions::ShortParsable()
@@ -322,7 +326,7 @@ HloComputation* HloHardwareIndependentTestBase::FindComputation(
 
 /* static */
 HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
-    HloModule* module, absl::string_view name) {
+    const HloModule* module, absl::string_view name) {
   for (const HloComputation* computation : module->computations()) {
     if (HloInstruction* instruction =
             hlo_query::FindInstruction(computation, name)) {
@@ -334,7 +338,7 @@ HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
 
 /* static */
 HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
-    HloModule* module, HloOpcode opcode) {
+    const HloModule* module, HloOpcode opcode) {
   for (const HloComputation* computation : module->computations()) {
     if (HloInstruction* instruction =
             hlo_query::FindInstruction(computation, opcode)) {
@@ -346,7 +350,7 @@ HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
 
 /* static */
 std::vector<HloInstruction*> HloHardwareIndependentTestBase::FindInstructions(
-    HloModule* module, HloOpcode opcode) {
+    const HloModule* module, HloOpcode opcode) {
   std::vector<HloInstruction*> instructions;
   for (const HloComputation* c : module->computations()) {
     absl::c_copy_if(c->instructions(), std::back_inserter(instructions),

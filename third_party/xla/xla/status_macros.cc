@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace status_macros {

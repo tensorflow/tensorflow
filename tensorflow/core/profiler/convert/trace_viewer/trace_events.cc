@@ -250,27 +250,24 @@ absl::Status DoStoreAsLevelDbTable(
     uint64_t last_timestamp = std::numeric_limits<uint64_t>::max();
     uint64_t last_timestamp_repetition = 0;
     for (const TraceEvent* event : events_by_level[zoom_level]) {
-      // NOTE: temporarily mutate the event for the storage efficiency, the
-      // timestamp is restored after serialization.
-      // NOTE: runtime-proto-const-cast lint error is bogus because we are
-      // casting the top level proto.
-      TraceEvent* mutable_event = const_cast<TraceEvent*>(event);
-      auto timestamp = mutable_event->timestamp_ps();
-      mutable_event->clear_timestamp_ps();
+      uint64_t timestamp = event->timestamp_ps();
       if (timestamp != last_timestamp) {
         last_timestamp = timestamp;
         last_timestamp_repetition = 0;
       } else {
         ++last_timestamp_repetition;
       }
-      auto key =
+      std::string key =
           LevelDbTableKey(zoom_level, timestamp, last_timestamp_repetition);
       if (!key.empty()) {
-        builder.Add(key, mutable_event->SerializeAsString());
+        // To reduce file size, clear the timestamp from the value. It is
+        // redundant info because the timestamp is part of the key.
+        TraceEvent event_copy = *event;
+        event_copy.clear_timestamp_ps();
+        builder.Add(key, event_copy.SerializeAsString());
       } else {
         ++num_of_events_dropped;
       }
-      mutable_event->set_timestamp_ps(timestamp);
     }
   }
   absl::string_view filename;

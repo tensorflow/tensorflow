@@ -811,6 +811,9 @@ InputPipelineAnalysisResult ComputeTpuInputPipelineAnalysisResult(
         core_details_map) {
   InputPipelineAnalysisResult result;
   bool has_sparse_core = false;
+  for (const auto& [core_id, core_details] : core_details_map) {
+    has_sparse_core |= core_details.is_sparse_core();
+  }
 
   // Computes the summary of step time in ms.
   *result.mutable_step_time_summary() =
@@ -829,10 +832,6 @@ InputPipelineAnalysisResult ComputeTpuInputPipelineAnalysisResult(
     // each step.
     infeed_summary_stats_in_percent.UpdateStat(
         per_step_data.infeed_percent_maximum());
-    // Since core_details_map only contains tensor core data, we can use it to
-    // see if more cores have steps (aka sparse cores are present in the chip).
-    has_sparse_core |= (core_details_map.size() <
-                        coreid_stepinfo_map.step_info_per_core().size());
   }
 
   // Computes the summary of infeed time as percentage of step time.

@@ -35,8 +35,8 @@ limitations under the License.
 #include "ml_dtypes/include/float8.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/maybe_owning.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/ml_dtypes.h"
 
 namespace xla {

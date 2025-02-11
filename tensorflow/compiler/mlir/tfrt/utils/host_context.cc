@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime

@@ -89,6 +89,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #endif
   opts.set_xla_cpu_use_thunk_runtime(true);
   opts.set_xla_cpu_use_xnnpack(false);
+  opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
+      DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
   opts.set_xla_cpu_parallel_codegen_split_count(32);
   opts.set_xla_cpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_cpu_enable_concurrency_optimized_scheduler(true);
@@ -200,12 +202,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_pipeline_parallelism_opt_level(
       DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE);
 
+  opts.set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(false);
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
 
   opts.set_xla_gpu_enable_triton_gemm(true);
+  opts.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(false);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
-  opts.set_xla_gpu_triton_gemm_any(false);
+  opts.set_xla_gpu_triton_gemm_any(true);
   opts.set_xla_gpu_verify_triton_fusion_numerics(false);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
@@ -297,7 +301,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
-  opts.set_xla_experimental_ignore_channel_id(false);
+  opts.set_xla_ignore_channel_id(true);
   opts.set_xla_gpu_dot_merger_threshold_mb(32);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
@@ -306,6 +310,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(false);
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
+  opts.set_xla_gpu_experimental_enable_sync_collective_combining(false);
   return opts;
 }
 
@@ -666,6 +671,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     return absl::StrJoin(collective_ops, ", ", Formatter());
   };
 
+  // Custom parser for `xla_cpu_xnn_graph_fusion_mode` flag.
+  auto setter_for_xla_cpu_experimental_xnn_graph_fusion_mode =
+      [debug_options](absl::string_view input) {
+        DebugOptions::XnnGraphFusionMode mode;
+        if (!DebugOptions::XnnGraphFusionMode_Parse(
+                absl::AsciiStrToUpper(input), &mode)) {
+          return false;
+        }
+        debug_options->set_xla_cpu_experimental_xnn_graph_fusion_mode(mode);
+        return true;
+      };
+
   // Custom parser for `xla_gpu_enable_while_loop_unrolling` flag.
   auto setter_for_xla_gpu_enable_while_loop_unrolling =
       [&debug_options](absl::string_view input) {
@@ -679,7 +696,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
 
   // Custom parser for xla_gpu_disable_async_collectives.
   auto setter_for_xla_gpu_disable_async_collectives =
-      [debug_options](const absl::string_view& input) {
+      [debug_options](absl::string_view input) {
         auto is_collective_type = [](absl::string_view value) {
           DebugOptions::CollectiveOpType op_type;
           return DebugOptions::CollectiveOpType_Parse(
@@ -699,6 +716,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         if (absl::c_all_of(values, is_collective_type)) {
           debug_options->clear_xla_gpu_disable_async_collectives();
           for (const absl::string_view value : values) {
+            auto parsed_op = parse_collective_type(value);
+            if (parsed_op == DebugOptions::ALLCOLLECTIVES) {
+              for (int i = (int)DebugOptions::ALLREDUCE;
+                   i < (int)DebugOptions::ALLCOLLECTIVES; i++) {
+                debug_options->add_xla_gpu_disable_async_collectives(
+                    (DebugOptions::CollectiveOpType)i);
+              }
+              return true;
+            }
             debug_options->add_xla_gpu_disable_async_collectives(
                 parse_collective_type(value));
           }
@@ -926,6 +952,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_cpu_use_xnnpack(),
                 "Use XNNPACK for supported operations."));
   flag_list->push_back(tsl::Flag(
+      "xla_cpu_experimental_xnn_graph_fusion_mode",
+      setter_for_xla_cpu_experimental_xnn_graph_fusion_mode,
+      DebugOptions::XnnGraphFusionMode_Name(
+          debug_options->xla_cpu_experimental_xnn_graph_fusion_mode()),
+      "Controls XnnGraphFusion pass. "
+      "`XNN_GRAPH_FUSION_MODE_DISABLED` - default value, "
+      "`XNN_GRAPH_FUSION_MODE_GREEDY` - greedy extraction of "
+      "XNNPACK-compatible subgraphs starting from root instructions."));
+  flag_list->push_back(tsl::Flag(
       "xla_cpu_parallel_codegen_split_count",
       int32_setter_for(&DebugOptions::set_xla_cpu_parallel_codegen_split_count),
       debug_options->xla_cpu_parallel_codegen_split_count(),
@@ -1031,6 +1066,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "and \"test_undeclared_outputs_dir\" have a special meaning: They cause "
       "us to dump into the directory specified by the environment variable "
       "TEST_UNDECLARED_OUTPUTS_DIR."));
+  flag_list->push_back(tsl::Flag(
+      "xla_flags_reset", bool_setter_for(&DebugOptions::set_xla_flags_reset),
+      debug_options->xla_flags_reset(),
+      "Whether to reset XLA_FLAGS next time to parse."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_annotate_with_emitter_loc",
       bool_setter_for(
@@ -1685,6 +1724,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_triton_gemm(),
                 "Use Triton-based matrix multiplication."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms),
+      debug_options
+          ->xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(),
+      "Enable lowering Triton GEMM fusions through the generic Triton "
+      "emitter."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_verify_triton_fusion_numerics",
       bool_setter_for(&DebugOptions::set_xla_gpu_verify_triton_fusion_numerics),
       debug_options->xla_gpu_verify_triton_fusion_numerics(),
@@ -1713,6 +1761,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   flag_list->push_back(tsl::Flag("xla_gpu_enable_priority_fusion",
                                  noop_flag_setter<bool>, true,
                                  "[Deprecated, do not use]"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_subchannel_dequantisation_fusion",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion),
+      debug_options
+          ->xla_gpu_experimental_enable_subchannel_dequantisation_fusion(),
+      "Enable fusion for the subchannel dequantisation sequences like "
+      "[x,z]param -> [x,y,z]broadcast -> [x*y,z]bitcast -> multiply -> dot. "
+      "Compilation can fail with Broadcast has a different size than the block "
+      "size. Performance can be worse, because some block sizes / split-k > 1 "
+      "is not considered for subchannel dequant fusions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_triton_heroless_priority_fusion",
       bool_setter_for(
@@ -2097,11 +2157,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_disable_binary_libraries(),
       "Disable XLA GPU passes that depend on non-open source binary "
       "libraries"));
-  flag_list->push_back(tsl::Flag(
-      "xla_experimental_ignore_channel_id",
-      bool_setter_for(&DebugOptions::set_xla_experimental_ignore_channel_id),
-      debug_options->xla_experimental_ignore_channel_id(),
-      "Experimental: ignore channel ids for collective operations."));
+  flag_list->push_back(
+      tsl::Flag("xla_ignore_channel_id",
+                bool_setter_for(&DebugOptions::set_xla_ignore_channel_id),
+                debug_options->xla_ignore_channel_id(),
+                "Ignore channel ids for collective operations."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dot_merger_threshold_mb",
       int32_setter_for(&DebugOptions::set_xla_gpu_dot_merger_threshold_mb),
@@ -2176,6 +2236,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_unsupported_crash_on_hlo_pass_fix_max_iterations(),
       "Crash if HloPassFix can not converge after a fixed number of "
       "iterations."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_sync_collective_combining",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_sync_collective_combining),
+      debug_options->xla_gpu_experimental_enable_sync_collective_combining(),
+      "Enable sync collective combining."));
 }  // NOLINT(readability/fn_size)1
 
 // Allocates flag_values and flag_objects; this function must not be called more
@@ -2199,6 +2266,10 @@ void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
 
 xla::DebugOptions GetDebugOptionsFromFlags() {
   absl::call_once(flags_init, &AllocateFlags, nullptr);
+  if (flag_values->xla_flags_reset()) {
+    ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects,
+                                     /*reset_envvar=*/true);
+  }
   return *flag_values;
 }
 

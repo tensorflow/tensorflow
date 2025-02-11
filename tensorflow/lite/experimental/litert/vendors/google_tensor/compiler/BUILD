@@ -66,7 +66,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/test:common",
-        "//tensorflow/lite/experimental/litert/test:test_macros",
+        "//tensorflow/lite/experimental/litert/test:matchers",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/vendors/cc:litert_compiler_plugin",
         "@com_google_absl//absl/strings:string_view",

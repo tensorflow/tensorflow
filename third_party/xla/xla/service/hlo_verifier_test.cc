@@ -225,7 +225,10 @@ TEST_F(HloVerifierTest, CheckCallThreadMismatch) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
-  auto status = verifier().Run(module.get()).status();
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
+          .Run(module.get())
+          .status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
               HasSubstr("mycall top_apply computation execution thread does "
@@ -2263,8 +2266,14 @@ TEST_F(HloVerifierTest, FusionNestedComputationThreadVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
+          .Run(module.get())
+          .status();
+  ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      verifier().Run(module.get()).status().message(),
+      status.message(),
       HasSubstr("crs0 top_apply computation execution thread does not match "
                 "(parallel_thread vs main)"));
 }
@@ -3003,8 +3012,7 @@ TEST_F(HloVerifierTest, VerifyCustomCallThread) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status =
-      HloVerifier{
-          HloVerifierOpts{}.VerifyCustomCallNestedComputationThreadName()}
+      HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
           .Run(module.get())
           .status();
   ASSERT_FALSE(status.ok());
@@ -3666,6 +3674,90 @@ ENTRY %entry_computation {
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
+}
+
+TEST_F(HloVerifierTest, RaggedAllToAllWithRank1OffsetsSizes) {
+  const std::string hlo_string = R"(
+  HloModule RaggedAllToAllWithRank1OffsetsSizes
+    ENTRY main {
+      input = bf16[4,1024,4096] parameter(0)
+      output = bf16[4,1024,4096] parameter(1)
+      input_offsets = s32[64] parameter(2)
+      send_sizes = s32[64] parameter(3)
+      output_offsets = s32[64] parameter(4)
+      recv_sizes = s32[64] parameter(5)
+      ROOT ra2a = bf16[4,1024,4096] ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}}
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok()) << status;
+}
+
+TEST_F(HloVerifierTest, RaggedAllToAllWithRank2OffsetsSizes) {
+  const std::string hlo_string = R"(
+  HloModule RaggedAllToAllWithRank2OffsetsSizes
+    ENTRY main {
+      input = bf16[4,1024,4096] parameter(0)
+      output = bf16[4,1024,4096] parameter(1)
+      input_offsets = s32[64,16] parameter(2)
+      send_sizes = s32[64,16] parameter(3)
+      output_offsets = s32[64,16] parameter(4)
+      recv_sizes = s32[64,16] parameter(5)
+      ROOT ra2a = bf16[4,1024,4096] ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}}
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok()) << status;
+}
+
+TEST_F(HloVerifierTest, RaggedAllToAllWithInvalidOffsetsRanks) {
+  const std::string hlo_string = R"(
+  HloModule RaggedAllToAllWithInvalidOffsetsRanks
+    ENTRY main {
+      input = bf16[4,1024,4096] parameter(0)
+      output = bf16[4,1024,4096] parameter(1)
+      input_offsets = s32[64,16,8] parameter(2)
+      send_sizes = s32[64,16,8] parameter(3)
+      output_offsets = s32[64,16,8] parameter(4)
+      recv_sizes = s32[64,16,8] parameter(5)
+      ROOT ra2a = bf16[4,1024,4096] ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}}
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok()) << status;
+  EXPECT_THAT(status.message(),
+              HasSubstr("RaggedAllToAll operand 2 must be rank 1 or 2"));
+}
+
+TEST_F(HloVerifierTest, RaggedAllToAllWithRank2OffsetsShapes) {
+  const std::string hlo_string = R"(
+  HloModule RaggedAllToAllWithRank2OffsetsShapes
+    ENTRY main {
+      input = bf16[4,1024,4096] parameter(0)
+      output = bf16[4,1024,4096] parameter(1)
+      input_offsets = s32[64,16] parameter(2)
+      send_sizes = s32[64] parameter(3)
+      output_offsets = s32[64,16] parameter(4)
+      recv_sizes = s32[64] parameter(5)
+      ROOT ra2a = bf16[4,1024,4096] ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}}
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok()) << status;
+  EXPECT_THAT(status.message(),
+              HasSubstr("RaggedAllToAll operands have different shapes"));
 }
 
 }  // namespace

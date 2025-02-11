@@ -83,6 +83,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner_cache",
+        "@com_google_absl//absl/log",
         "@com_google_protobuf//:protobuf_headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -91,7 +92,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -195,7 +196,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 

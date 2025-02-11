@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
@@ -248,9 +249,6 @@ bool IsCollective(const HloInstruction* instruction);
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
 
-// Returns true if instruction is a synchronous collective op.
-bool IsSyncCollective(const HloInstruction* instr);
-
 // Returns the cycle type and indices of the vertices that form cycles. For
 // example, GetCycleTypeAndIndices({{0,3},{1,0},{2,1},{3,2}}) returns
 // {kBackward, {0}}, since the communication pattern contains a backward cycle
@@ -259,8 +257,8 @@ bool IsSyncCollective(const HloInstruction* instr);
 // cycles, most edges will have the target replica ID greater than the source
 // replica ID except for the back edges that form cycles (similar logic applies
 // to backward cycles).
-std::pair<SourceTargetPairs::CycleType, std::set<int>> GetCycleTypeAndIndices(
-    const std::vector<std::pair<int64_t, int64_t>>& pairs);
+std::pair<collective_permute_cycle::CycleType, std::set<int>>
+GetCycleTypeAndIndices(const std::vector<std::pair<int64_t, int64_t>>& pairs);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.

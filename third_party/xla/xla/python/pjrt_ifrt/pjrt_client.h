@@ -251,6 +251,9 @@ class PjRtClient final
   absl::StatusOr<Device*> LookupAddressableDevice(
       int local_hardware_id) const override;
 
+  tsl::RCReference<DeviceList> MakeDeviceList(
+      absl::Span<Device* const> devices) const override;
+
   Compiler* GetDefaultCompiler() override {
     DCHECK(this);
     return &default_compiler_;

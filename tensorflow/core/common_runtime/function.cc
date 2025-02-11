@@ -427,12 +427,18 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     string executor_type;
     bool allow_small_function_optimizations = false;
     bool allow_control_flow_sync_execution = false;
+    bool function_runs_at_most_once = false;
 
     ~Item() {
       delete this->func_graph;
       delete this->exec;
     }
   };
+
+  DoneCallback DeleteExecutorStateAsync(const Item* item, DoneCallback done,
+                                        Handle handle);
+  absl::Status DeleteExecutorStateSync(const Item* item, Handle handle);
+
   std::unique_ptr<absl::flat_hash_map<Handle, std::unique_ptr<Item>>> items_
       TF_GUARDED_BY(mu_);
   std::unique_ptr<FunctionHandleCache> function_handle_cache_;
@@ -845,6 +851,7 @@ absl::Status FunctionLibraryRuntimeImpl::Instantiate(
           options.allow_small_function_optimizations;
       item->allow_control_flow_sync_execution =
           options.allow_control_flow_sync_execution;
+      item->function_runs_at_most_once = options.function_runs_at_most_once;
       if (options.lib_def) {
         TF_ASSIGN_OR_RETURN(
             FunctionLibraryDefinition reachable_lib_def,
@@ -942,6 +949,7 @@ absl::Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
     DeleteNonCachedKernel(kernel);
   };
   params.session_metadata = session_metadata_;
+
   std::unique_ptr<Executor> exec;
 
   // When the instantiation options request small function optimizations, all
@@ -1010,6 +1018,25 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
   exec_args->stack_trace = run_opts.stack_trace;
 }
 
+FunctionLibraryRuntimeImpl::DoneCallback
+FunctionLibraryRuntimeImpl::DeleteExecutorStateAsync(const Item* item,
+                                                     DoneCallback done,
+                                                     Handle handle) {
+  CHECK(item->function_runs_at_most_once);  // Crash OK
+  done = [this, handle, original_done_cb = std::move(done)](
+             const absl::Status& status) mutable {
+    TF_CHECK_OK(ReleaseHandle(handle));
+    original_done_cb(status);
+  };
+  return done;
+}
+
+absl::Status FunctionLibraryRuntimeImpl::DeleteExecutorStateSync(
+    const Item* item, Handle handle) {
+  CHECK(item->function_runs_at_most_once);  // Crash OK
+  return ReleaseHandle(handle);
+}
+
 void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
                                            absl::Span<const Tensor> args,
                                            std::vector<Tensor>* rets,
@@ -1058,6 +1085,9 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   // computation is done and stored in *rets, we send the return values back
   // to the source_device (caller) so that the ProcFLR can receive them later.
   std::vector<Tensor>* remote_args = new std::vector<Tensor>;
+  if (item->function_runs_at_most_once) {
+    done = DeleteExecutorStateAsync(item, std::move(done), handle);
+  }
   ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
       source_device, target_device, "arg_", src_incarnation, args.size(),
       device_context, args_alloc_attrs, rendezvous, remote_args,
@@ -1167,6 +1197,9 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
       tsl::profiler::TraceMeLevel::kInfo);
 
   bool allow_dead_tensors = run_opts.allow_dead_tensors;
+  if (item->function_runs_at_most_once) {
+    done = DeleteExecutorStateAsync(item, std::move(done), handle);
+  }
   item->exec->RunAsync(
       // Executor args
       exec_args,
@@ -1239,6 +1272,9 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
       tsl::profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
       tsl::profiler::TraceMeLevel::kInfo);
 
+  if (item->function_runs_at_most_once) {
+    done = DeleteExecutorStateAsync(item, std::move(done), handle);
+  }
   item->exec->RunAsync(exec_args, std::move(done));
 }
 
@@ -1299,6 +1335,9 @@ absl::Status FunctionLibraryRuntimeImpl::RunSync(Options opts, Handle handle,
   ExecutorArgsFromOptions(opts, &frame, &exec_args);
 
   TF_RETURN_IF_ERROR(item->exec->Run(exec_args));
+  if (item->function_runs_at_most_once) {
+    TF_RETURN_IF_ERROR(DeleteExecutorStateSync(item, handle));
+  }
   return frame.ConsumeRetvals(rets, opts.allow_dead_tensors);
 }
 
@@ -1313,7 +1352,11 @@ absl::Status FunctionLibraryRuntimeImpl::RunSync(
 
   Executor::Args exec_args;
   ExecutorArgsFromOptions(opts, call_frame, &exec_args);
-  return item->exec->Run(exec_args);
+  TF_RETURN_IF_ERROR(item->exec->Run(exec_args));
+  if (item->function_runs_at_most_once) {
+    TF_RETURN_IF_ERROR(DeleteExecutorStateSync(item, handle));
+  }
+  return absl::OkStatus();
 }
 
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) const {

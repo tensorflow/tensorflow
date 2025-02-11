@@ -164,6 +164,13 @@ message XnnConvolutionThunkProto {
   ShapeBufferAllocationSliceProto output_buffer_shape = 6;
 }
 
+message XnnFusionThunkProtoImpl {
+  repeated ShapeBufferAllocationSliceProto arguments_shapes = 1;
+  repeated ShapeBufferAllocationSliceProto results_shapes = 2;
+  // TODO(basioli) something for Builder?
+  // TODO(basioli) should we support OneUseBuilder?
+}
+
 message XnnFusionThunkProto {
   message Options {
     bool use_threadpool = 1;
@@ -174,6 +181,7 @@ message XnnFusionThunkProto {
   oneof impl {
     XnnDotThunkProto xnn_dot_thunk = 2;
     XnnConvolutionThunkProto xnn_convolution_thunk = 3;
+    XnnFusionThunkProtoImpl xnn_fusion_thunk = 4;
   }
 }
 

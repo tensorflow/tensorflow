@@ -789,6 +789,10 @@ bool HloDataflowAnalysis::UpdateRecvDoneValueSet(HloInstruction* recv_done) {
 
 bool HloDataflowAnalysis::UpdateCallValueSet(HloInstruction* call) {
   CHECK_EQ(call->opcode(), HloOpcode::kCall);
+  if (!HloInstruction::IsThreadIncluded(call->to_apply()->execution_thread(),
+                                        execution_threads_)) {
+    return false;
+  }
   InstructionValueSet& value_set = GetInstructionValueSet(call);
   InstructionValueSet& root_value_set =
       GetInstructionValueSet(call->to_apply()->root_instruction());
@@ -1456,7 +1460,7 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
          computation->MakeInstructionPostOrder()) {
       // Create an empty shape tree.
       value_sets_.insert({instruction, std::make_unique<InstructionValueSet>(
-                                           instruction->shape())});
+                                           &instruction->shape())});
 
       // For each sub-shape of the instruction shape, add a new HloValue to its
       // HloValueSet. should_define may be provided to define a subset of

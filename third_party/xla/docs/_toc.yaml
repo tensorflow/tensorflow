@@ -10,6 +10,8 @@ toc:
     path: /xla/operation_semantics
   - title: XLA architecture
     path: /xla/architecture
+  - title: XLA terminology
+    path: /xla/terminology
 - title: Developer details
   # These should be in alphabetical order unless otherwise noted.
   section:

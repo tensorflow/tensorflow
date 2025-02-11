@@ -613,6 +613,10 @@ absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
       return se::dnn::ToDataType<tsl::float8_e4m3fn>::value;
     case F8E5M2:
       return se::dnn::ToDataType<tsl::float8_e5m2>::value;
+    case F4E2M1FN:
+      return se::dnn::ToDataType<tsl::float4_e2m1fn>::value;
+    case F8E8M0FNU:
+      return se::dnn::ToDataType<tsl::float8_e8m0fnu>::value;
     default:
       break;
   }

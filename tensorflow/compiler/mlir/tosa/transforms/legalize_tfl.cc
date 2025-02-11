@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
+#include "tensorflow/lite/kernels/internal/reference/gelu.h"
 
 #define PASS_NAME "tosa-legalize-tfl"
 #define DEBUG_TYPE PASS_NAME
@@ -215,6 +216,8 @@ LogicalResult ConvertTFLGeluOp::matchAndRewrite(
   auto tfl_gelu_op = cast<TFL::GeluOp>(op);
   Location loc = op->getLoc();
 
+  auto approximate = tfl_gelu_op.getApproximateAttr().getValue();
+
   Value input = tfl_gelu_op.getInput();
   RankedTensorType input_type = dyn_cast<RankedTensorType>(input.getType());
   RankedTensorType output_type =
@@ -236,11 +239,6 @@ LogicalResult ConvertTFLGeluOp::matchAndRewrite(
   }
 
   if (out_quant_type) {
-    // The formal definition of gelu.
-    auto gelu_func = [](double x) -> double {
-      return 0.5 * x * (1.0 + std::erf(x / std::sqrt(2)));
-    };
-
     if (in_quant_type.getStorageTypeIntegralWidth() != 8) {
       return rewriter.notifyMatchFailure(
           op, "current tfl.gelu only support 8-bit quantized type");
@@ -248,7 +246,9 @@ LogicalResult ConvertTFLGeluOp::matchAndRewrite(
 
     Value table_const = getTosaConst8bitTable(
         rewriter, op, in_quant_type.getScale(), in_quant_type.getZeroPoint(),
-        out_quant_type.getScale(), out_quant_type.getZeroPoint(), gelu_func);
+        out_quant_type.getScale(), out_quant_type.getZeroPoint(),
+        approximate ? tflite::reference_ops::GeluTransformApproximate
+                    : tflite::reference_ops::GeluTransform);
 
     CreateReplaceOpAndInfer<tosa::TableOp>(rewriter, op, output_type, input,
                                            table_const);
@@ -1346,7 +1346,6 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
   SmallVector<int64_t, 4> input_size_vals(input_type.getShape().begin(),
                                           input_type.getShape().end());
   input_size_vals.back() = ic_slice_size;
-  DenseI64ArrayAttr input_size = rewriter.getDenseI64ArrayAttr(input_size_vals);
   auto input_slice_ty =
       RankedTensorType::get(input_size_vals, input_type.getElementType());
 
@@ -1362,7 +1361,6 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
 
   // Bias size vector
   int64_t bias_size_val = bias_type.getDimSize(bias_slice_dim) / num_groups;
-  DenseI64ArrayAttr bias_size = rewriter.getDenseI64ArrayAttr(bias_size_val);
   auto bias_slice_ty =
       RankedTensorType::get(bias_size_val, bias_type.getElementType());
 
@@ -1385,12 +1383,11 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
     // Slice the input
     SmallVector<int64_t, 4> input_start_vals(rank, 0);
     input_start_vals.back() = i * ic_slice_size;
-    DenseI64ArrayAttr input_start =
-        rewriter.getDenseI64ArrayAttr(input_start_vals);
 
     auto slice_input = rewriter.createOrFold<tosa::SliceOp>(
-        op->getLoc(), verified_input_slice_ty, op.getInput(), input_start,
-        input_size);
+        op->getLoc(), verified_input_slice_ty, op.getInput(),
+        getTosaConstShape(rewriter, op->getLoc(), input_start_vals),
+        getTosaConstShape(rewriter, op->getLoc(), input_size_vals));
 
     // Slice the filter
     SmallVector<int64_t, 4> filter_start_vals(rank, 0);
@@ -1399,15 +1396,16 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
         rewriter.getDenseI64ArrayAttr(filter_start_vals);
 
     auto slice_filter = rewriter.createOrFold<tosa::SliceOp>(
-        op->getLoc(), verified_filter_slice_ty, op.getFilter(), filter_start,
-        filter_size);
+        op->getLoc(), verified_filter_slice_ty, op.getFilter(),
+        getTosaConstShape(rewriter, op->getLoc(), filter_start_vals),
+        getTosaConstShape(rewriter, op->getLoc(), filter_size_vals));
 
     // Slice the bias
-    DenseI64ArrayAttr bias_start =
-        rewriter.getDenseI64ArrayAttr(i * oc_slice_size);
+    int64_t bias_start_val = i * oc_slice_size;
     auto slice_bias = rewriter.createOrFold<tosa::SliceOp>(
-        op->getLoc(), verified_bias_slice_ty, op.getBias(), bias_start,
-        bias_size);
+        op->getLoc(), verified_bias_slice_ty, op.getBias(),
+        getTosaConstShape(rewriter, op->getLoc(), bias_start_val),
+        getTosaConstShape(rewriter, op->getLoc(), bias_size_val));
 
     // Create a convolution for each set of slices
     auto conv = rewriter.create<TFL::Conv2DOp>(
@@ -2360,7 +2358,8 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
     auto e_ty = shape_ty.getElementType();
     Value dim = rewriter.createOrFold<tosa::SliceOp>(
         op->getLoc(), RankedTensorType::get({1}, e_ty), shape,
-        rewriter.getDenseI64ArrayAttr({i}), rewriter.getDenseI64ArrayAttr({1}));
+        getTosaConstShape(rewriter, op->getLoc(), {i}),
+        getTosaConstShape(rewriter, op->getLoc(), {1}));
     dim = rewriter.createOrFold<tosa::ReshapeOp>(
         op->getLoc(), RankedTensorType::get({}, e_ty), dim,
         rewriter.getDenseI64ArrayAttr({}));
@@ -2847,11 +2846,10 @@ LogicalResult ConvertTFLSliceOp::matchAndRewrite(
     size_vals.push_back(size);
   }
 
-  DenseI64ArrayAttr begin = rewriter.getDenseI64ArrayAttr(begin_vals);
-  DenseI64ArrayAttr size = rewriter.getDenseI64ArrayAttr(size_vals);
-
-  CreateReplaceOpAndInfer<tosa::SliceOp>(rewriter, op, output_type, input,
-                                         begin, size);
+  CreateReplaceOpAndInfer<tosa::SliceOp>(
+      rewriter, op, output_type, input,
+      getTosaConstShape(rewriter, op->getLoc(), begin_vals),
+      getTosaConstShape(rewriter, op->getLoc(), size_vals));
   return success();
 }
 
@@ -4369,9 +4367,9 @@ LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
     dim += input_type.getRank();
   }
 
-  CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, arg_max_op.getType(),
-                                          arg_max_op.getInput(),
-                                          rewriter.getI32IntegerAttr(dim));
+  CreateReplaceOpAndInfer<tosa::ArgMaxOp>(
+      rewriter, op, arg_max_op.getType(), arg_max_op.getInput(),
+      rewriter.getI32IntegerAttr(dim), rewriter.getStringAttr("PROPAGATE"));
 
   return success();
 }
@@ -4414,7 +4412,8 @@ LogicalResult ConvertTFLArgMinOp::matchAndRewrite(
 
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, arg_max_op.getType(),
                                           input,
-                                          rewriter.getI32IntegerAttr(dim));
+                                          rewriter.getI32IntegerAttr(dim),
+                                          rewriter.getStringAttr("PROPAGATE"));
 
   return success();
 }
@@ -4518,10 +4517,10 @@ LogicalResult ConvertTFLRealOp::matchAndRewrite(
   llvm::SmallVector<int64_t> size = to_vector(input_ty.getShape());
   size.push_back(1);
   auto slice_ty = RankedTensorType::get(size, rewriter.getF32Type());
-  auto slice_op =
-      CreateOpAndInfer<tosa::SliceOp>(rewriter, op->getLoc(), slice_ty, casted,
-                                      rewriter.getDenseI64ArrayAttr(start),
-                                      rewriter.getDenseI64ArrayAttr(size));
+  auto slice_op = CreateOpAndInfer<tosa::SliceOp>(
+      rewriter, op->getLoc(), slice_ty, casted,
+      getTosaConstShape(rewriter, op->getLoc(), start),
+      getTosaConstShape(rewriter, op->getLoc(), size));
   CreateReplaceOpAndInfer<tosa::ReshapeOp>(
       rewriter, op, output_ty, slice_op,
       rewriter.getDenseI64ArrayAttr(output_ty.getShape()));
@@ -4575,10 +4574,10 @@ LogicalResult ConvertTFLImagOp::matchAndRewrite(
   size.push_back(1);
 
   auto slice_ty = RankedTensorType::get(size, rewriter.getF32Type());
-  auto slice_op =
-      CreateOpAndInfer<tosa::SliceOp>(rewriter, op->getLoc(), slice_ty, casted,
-                                      rewriter.getDenseI64ArrayAttr(start),
-                                      rewriter.getDenseI64ArrayAttr(size));
+  auto slice_op = CreateOpAndInfer<tosa::SliceOp>(
+      rewriter, op->getLoc(), slice_ty, casted,
+      getTosaConstShape(rewriter, op->getLoc(), start),
+      getTosaConstShape(rewriter, op->getLoc(), size));
   CreateReplaceOpAndInfer<tosa::ReshapeOp>(
       rewriter, op, output_ty, slice_op,
       rewriter.getDenseI64ArrayAttr(output_ty.getShape()));
@@ -4627,8 +4626,8 @@ LogicalResult ConvertTFLRFFT2dOp::matchAndRewrite(
     slice_size.push_back(fft_length[1]);
     input = CreateOpAndInfer<tosa::SliceOp>(
         rewriter, loc, fp32_ty, input,
-        rewriter.getDenseI64ArrayAttr(slice_begin),
-        rewriter.getDenseI64ArrayAttr(slice_size));
+        getTosaConstShape(rewriter, op->getLoc(), slice_begin),
+        getTosaConstShape(rewriter, op->getLoc(), slice_size));
   }
 
   auto rfft2d =

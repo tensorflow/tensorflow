@@ -104,7 +104,7 @@ class ConvolutionTest : public HloTestBase,
     std::ostringstream stream;
     std::for_each(
         fused_ops.begin(), fused_ops.end(),
-        [&](const absl::string_view& arg) { stream << "\"" << arg << "\","; });
+        [&](absl::string_view arg) { stream << "\"" << arg << "\","; });
     std::string fusions = stream.str();
     if (fused_ops.size() > 0) {
       fusions.pop_back();

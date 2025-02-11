@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -224,6 +223,103 @@ std::string CostValue::ToString() const {
   }
 }
 
+OpCostManager::CalculationNode::Result::Result(bool track_calculation_details)
+    : track_calculation_details_(track_calculation_details) {}
+
+OpCostManager::CalculationNode::Result::Result(bool track_calculation_details,
+                                               absl::string_view calculator,
+                                               CostValue value)
+    : track_calculation_details_(track_calculation_details) {
+  AddCalculatorResult(calculator, value, /*set_final_value=*/value.IsOk());
+}
+
+std::string OpCostManager::CalculationNode::Result::ToString() const {
+  std::string str;
+  if (HasValue()) {
+    absl::StrAppend(&str, "Result(value=", Value(), ", source=", ValueSource());
+  } else {
+    absl::StrAppend(&str, "Result(value=missing");
+  }
+
+  if (track_calculation_details_) {
+    absl::StrAppend(&str, ", calculator_value_map=[",
+                    absl::StrJoin(calculator_to_value_map_, ", ",
+                                  [](std::string* out, const auto& pair) {
+                                    absl::StrAppend(out, pair.first, ": ",
+                                                    pair.second.ToString());
+                                  }),
+                    "]");
+  }
+
+  absl::StrAppend(&str, ")");
+
+  return str;
+}
+
+bool OpCostManager::CalculationNode::Result::Merge(const Result& other,
+                                                   bool merge_final_value) {
+  bool final_value_added = false;
+  if (merge_final_value && !HasValue() && other.HasValue()) {
+    AddCalculatorResult(other.ValueSource(),
+                        CostValue::MakeValue(other.Value()),
+                        /*set_final_value*/ true);
+    final_value_added = true;
+  }
+
+  for (const auto& [calculator, value] : other.calculator_to_value_map_) {
+    if (final_value_added && other.ValueSource() == calculator) {
+      // We already added this calculator above.
+      continue;
+    }
+    AddCalculatorResult(calculator, value, /*set_final_value=*/false);
+  }
+
+  return final_value_added;
+}
+
+bool OpCostManager::CalculationNode::Result::HasValue() const {
+  return value_.has_value();
+}
+
+double OpCostManager::CalculationNode::Result::Value() const {
+  CHECK(value_.has_value());
+  return *value_;
+}
+
+std::string OpCostManager::CalculationNode::Result::ValueSource() const {
+  CHECK(value_source_.has_value());
+  return *value_source_;
+}
+
+std::string OpCostManager::CalculationNode::Result::GetCalculatorResult(
+    absl::string_view calculator_name) const {
+  auto it = calculator_to_value_map_.find(calculator_name);
+  if (it == calculator_to_value_map_.end()) {
+    return "na";
+  }
+  return it->second.ToString();
+}
+
+const OpCostManager::CalculationNode::Result::CalculatorMapTy&
+OpCostManager::CalculationNode::Result::GetCalculatorValueMap() const {
+  return calculator_to_value_map_;
+}
+
+void OpCostManager::CalculationNode::Result::AddCalculatorResult(
+    absl::string_view calculator_name, CostValue value, bool set_final_value) {
+  if (set_final_value) {
+    value_ = value.value();
+    value_source_ = calculator_name;
+  }
+
+  if (!track_calculation_details_) {
+    return;
+  }
+
+  CHECK(calculator_to_value_map_.insert({std::string(calculator_name), value})
+            .second);
+}
+
 namespace {
 
 // Implementation for leaf calculation nodes.
@@ -240,9 +336,8 @@ class CalculationLeaf : public OpCostManager::CalculationNode {
 
   ~CalculationLeaf() override = default;
 
-  std::optional<double> GetMetricValue(
-      const CostMetricId& metric_id,
-      LeafCalculatorValueMap* calculator_value_map) override {
+  Result GetMetricValue(bool track_calculation_details,
+                        const CostMetricId& metric_id) override {
     MetricCalculator* metric_calculator = nullptr;
 
     // Check the calculator cost cache.
@@ -276,19 +371,11 @@ class CalculationLeaf : public OpCostManager::CalculationNode {
 
     // Get the CostValue.
     CostValue cost_value = metric_calculator->Calculate(metric_id);
-    if (calculator_value_map) {
-      CHECK(calculator_value_map->insert({name_, cost_value}).second)
-          << "Duplicate leaf calculator name " << name_;
-    }
 
     VLOG(2) << name_ << " calculated a value of " << cost_value.ToString()
             << " for " << metric_id.ToString();
 
-    if (!cost_value.IsOk()) {
-      return std::nullopt;
-    }
-
-    return cost_value.value();
+    return Result(track_calculation_details, name_, cost_value);
   }
 
   absl::string_view Name() const override { return name_; }
@@ -331,42 +418,40 @@ class DelegationCalculationNode : public OpCostManager::CalculationNode {
 
   ~DelegationCalculationNode() override = default;
 
-  std::optional<double> GetMetricValue(
-      const CostMetricId& metric_id,
-      LeafCalculatorValueMap* calculator_value_map) override {
-    bool analysis_logging_enabled = calculator_value_map;
-    DelegationInfo delegation_info =
-        delegation_order_fn_(metric_id.instruction(), analysis_logging_enabled);
-    std::optional<double> final_result = std::nullopt;
+  Result GetMetricValue(bool track_calculation_details,
+                        const CostMetricId& metric_id) override {
+    DelegationInfo delegation_info = delegation_order_fn_(
+        metric_id.instruction(),
+        /*enable_analysis_logging=*/track_calculation_details);
+    Result final_result(track_calculation_details);
     for (CalculatorIndex calculator_index : delegation_info.order) {
       CHECK_LT(calculator_index, children_.size());
       VLOG(3) << name_ << " delegating to "
               << children_[calculator_index]->Name() << " to compute "
               << metric_id.ToString();
-      std::optional<double> result =
-          children_[calculator_index]->GetMetricValue(metric_id,
-                                                      calculator_value_map);
-      if (!final_result.has_value() && result.has_value()) {
-        final_result = result.value();
+      if (final_result.Merge(children_[calculator_index]->GetMetricValue(
+                                 track_calculation_details, metric_id),
+                             /*merge_final_value=*/true)) {
         VLOG(3) << name_ << " selecting the value from "
                 << children_[calculator_index]->Name() << " for metric "
                 << metric_id.ToString();
-        if (!analysis_logging_enabled) {
+        if (!track_calculation_details) {
           break;
         }
       }
     }
 
     // Go through the remaining calculators for logging purposes.
-    if (analysis_logging_enabled) {
+    if (track_calculation_details) {
       for (CalculatorIndex calculator_index :
            delegation_info.additional_calculators_to_log) {
         CHECK_LT(calculator_index, children_.size());
         VLOG(3) << name_ << " asking " << children_[calculator_index]->Name()
                 << " to compute " << metric_id.ToString()
                 << " for analysis logging";
-        children_[calculator_index]->GetMetricValue(metric_id,
-                                                    calculator_value_map);
+        final_result.Merge(children_[calculator_index]->GetMetricValue(
+                               track_calculation_details, metric_id),
+                           /*merge_final_value=*/false);
       }
     }
 
@@ -466,35 +551,30 @@ double OpCostManager::GetMetricValue(const CostMetricId& metric_id) {
     }
   }
 
-  OpCostManager::CalculationNode::LeafCalculatorValueMap
-      calculator_value_map_storage;
-  OpCostManager::CalculationNode::LeafCalculatorValueMap* calculator_value_map =
-      options_.enable_analysis_logging ? &calculator_value_map_storage
-                                       : nullptr;
-
   VLOG(3) << "OpCostManager delegating to " << root_->Name() << " to compute "
           << metric_id.ToString();
-  std::optional<double> value =
-      root_->GetMetricValue(metric_id, calculator_value_map);
+  CalculationNode::Result result =
+      root_->GetMetricValue(options_.enable_analysis_logging, metric_id);
   // If users don't want to crash, they should register a calculator that
   // computes a default cost.
-  LOG_IF(FATAL, !value.has_value())
+  LOG_IF(FATAL, !result.HasValue())
       << "Unable to compute a cost for " << metric_id.ToString();
   if (options_.enable_cache) {
-    metric_cache_[metric_id] = value.value();
+    metric_cache_[metric_id] = result.Value();
     VLOG(4) << "Added cost for " << metric_id.ToString()
             << " to the OpCostManager cache";
   }
 
   LOG_IF(INFO, options_.enable_analysis_logging)
-      << AnalysisLoggingLine(metric_id, *calculator_value_map);
+      << AnalysisLoggingLine(metric_id, result);
 
-  VLOG(1) << "Cost for " << metric_id.ToString() << " is " << value.value();
-  return value.value();
+  VLOG(1) << "Cost for " << metric_id.ToString() << " is " << result.Value();
+  return result.Value();
 }
 
 std::string OpCostManager::AnalysisLoggingColumns() const {
   std::vector<std::string> columns = CostMetricId::LoggingColumnNames();
+  columns.push_back("selected_calculator");
   columns.insert(columns.end(), leaf_calculator_names_.begin(),
                  leaf_calculator_names_.end());
 
@@ -503,16 +583,11 @@ std::string OpCostManager::AnalysisLoggingColumns() const {
 
 std::string OpCostManager::AnalysisLoggingLine(
     const CostMetricId& metric_id,
-    const OpCostManager::CalculationNode::LeafCalculatorValueMap&
-        calculator_costs) const {
+    const CalculationNode::Result& result) const {
   std::vector<std::string> columns = metric_id.LoggingColumns();
+  columns.push_back(result.HasValue() ? result.ValueSource() : "na");
   for (const std::string& calculator_name : leaf_calculator_names_) {
-    auto it = calculator_costs.find(calculator_name);
-    if (it != calculator_costs.end()) {
-      columns.push_back(it->second.ToString());
-    } else {
-      columns.push_back("na");
-    }
+    columns.push_back(result.GetCalculatorResult(calculator_name));
   }
   return absl::StrCat(kLoggingAnalysisId, ": ", absl::StrJoin(columns, "\t"));
 }

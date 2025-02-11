@@ -746,6 +746,7 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ] + if_cuda([

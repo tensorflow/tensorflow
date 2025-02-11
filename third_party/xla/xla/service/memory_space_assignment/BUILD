@@ -107,7 +107,6 @@ xla_cc_test(
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_value",
-        "//xla/service:pattern_matcher",
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
         "//xla/tests:test_utils",

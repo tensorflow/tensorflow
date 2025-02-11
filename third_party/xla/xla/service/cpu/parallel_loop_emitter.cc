@@ -57,6 +57,10 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   for (int i = LayoutUtil::MinorToMajor(shape_).size() - 1; i >= 0; --i) {
     const int64_t dimension = LayoutUtil::Minor(shape_.layout(), i);
     const int bounds_index = num_dims - 1 - i;
+    // Only unroll the most minor dimension, this seems to give us good runtime
+    // performance with a large improvement in compile time.
+    auto unroll_mode = (i == 0) ? llvm_ir::UnrollMode::kDefaultUnroll
+                                : llvm_ir::UnrollMode::kNoUnroll;
     if (bounds_index < dynamic_loop_bounds_->size()) {
       // Emit dynamic loop bounds for this dimension. Dynamic loop bounds
       // are read from ir function dynamic loop bounds argument.
@@ -65,14 +69,14 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
 
       std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
           /*suffix=*/absl::StrFormat("dim.%d", dimension), start_index,
-          end_index);
+          end_index, unroll_mode);
       array_multi_index[dimension] = loop->GetIndVarValue();
     } else {
       // Emit static loop bounds for this dimension.
       std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
           /*start_index=*/0,
           /*end_index=*/shape_.dimensions(dimension),
-          /*suffix=*/absl::StrFormat("dim.%d", dimension));
+          /*suffix=*/absl::StrFormat("dim.%d", dimension), unroll_mode);
       array_multi_index[dimension] = loop->GetIndVarValue();
     }
   }

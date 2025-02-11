@@ -158,7 +158,6 @@ py_strict_library(
     srcs = [
         "wrap_converter.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_converter_api",

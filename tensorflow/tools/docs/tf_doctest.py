@@ -214,9 +214,4 @@ def setUpModule():
 
 
 if __name__ == '__main__':
-  # Use importlib to import python submodule of tensorflow.
-  # We delete python submodule in root __init__.py file. This means
-  # normal import won't work for some Python versions.
-  for pkg in PACKAGES:
-    recursive_import(importlib.import_module(pkg[:-1]))
   absltest.main()

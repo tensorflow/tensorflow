@@ -24,8 +24,8 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {

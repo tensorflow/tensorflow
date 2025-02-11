@@ -123,7 +123,7 @@ const ::litert::internal::FlatbufferWrapper& GetTflFlatbuffer(
 //
 
 // // For requesting opaque data stored within IR.
-using BufferProvider = std::function<uint8_t*(size_t size)>;
+using ScratchBufferProvider = std::function<uint8_t*(size_t size)>;
 
 // TENSOR TYPE
 
@@ -165,7 +165,7 @@ template <class Scales, class ZeroPoints>
 Quantization MakePerChannelQuantization(const Scales& scales,
                                         const ZeroPoints& zero_points,
                                         int32_t quantized_dim,
-                                        BufferProvider buffer_provider) {
+                                        ScratchBufferProvider buffer_provider) {
   const auto size = std::size(scales);
   ABSL_DCHECK_EQ(size, std::size(zero_points));
 
@@ -354,19 +354,23 @@ class LiteRtTensorT {
 
   // Get a new buffer that will live as long as this tensor. Used for storing
   // various buffers passed through c-api (dims, quantization etc).
-  uint8_t* RequestBuffer(size_t size) {
+  // NOTE: This is just scratch data unrelated to weights buffer.
+  uint8_t* RequestScratchBuffer(size_t size) {
     user_data_.push_back(std::make_unique<uint8_t[]>(size));
     return user_data_.back().get();
   }
 
-  // Allow for implicit conversion to bufer provider.
+  // Allow for implicit conversion to scratch buffer provider.
+  // NOTE: This is just scratch data unrelated to weights buffer.
   // NOLINTNEXTLINE
-  operator BufferProvider() & {
-    return [this](auto s) { return this->RequestBuffer(s); };
+  operator ScratchBufferProvider() & {
+    return [this](auto s) { return this->RequestScratchBuffer(s); };
   }
 
   // IR is generally, default constructible and movable but not copyable.
   LiteRtTensorT() = default;
+  LiteRtTensorT(::litert::internal::BufferManager* buffer_manager)
+      : weights_(buffer_manager) {}
   LiteRtTensorT(const LiteRtTensorT&) = delete;
   LiteRtTensorT(LiteRtTensorT&&) = default;
   LiteRtTensorT& operator=(const LiteRtTensorT&) = delete;
@@ -556,7 +560,13 @@ class LiteRtSubgraphT {
   // reference to it.
   template <class... Args>
   LiteRtTensorT& EmplaceTensor(Args&&... args) {
-    return tensors_.EmplaceBack(std::forward<Args>(args)...);
+    if (buffer_manager_ == nullptr) {
+      std::cerr << "Emplacing tensor without buffer manager \n";
+      return tensors_.EmplaceBack(std::forward<Args>(args)...);
+    } else {
+      // std::cerr << "Emplacing tensor with buffer manager \n";
+      return tensors_.EmplaceBack(buffer_manager_, std::forward<Args>(args)...);
+    }
   }
 
   // Construct a new op which will be owned by this subgraph and get a
@@ -579,12 +589,22 @@ class LiteRtSubgraphT {
 
   // IR is generally, default constructible and movable but not copyable.
   LiteRtSubgraphT() = default;
+  LiteRtSubgraphT(::litert::internal::BufferManager* buffer_manager)
+      : buffer_manager_(buffer_manager) {};
   LiteRtSubgraphT(const LiteRtSubgraphT&) = delete;
   LiteRtSubgraphT(LiteRtSubgraphT&&) = default;
   LiteRtSubgraphT& operator=(const LiteRtSubgraphT&) = delete;
   LiteRtSubgraphT& operator=(LiteRtSubgraphT&&) = default;
 
+  // Get the buffer manager for this subgraph.
+  ::litert::internal::BufferManager* GetBufferManager() const {
+    return buffer_manager_;
+  }
+
  private:
+  // If null, tensors emplaced will own their own buffer managers.
+  ::litert::internal::BufferManager* buffer_manager_ = nullptr;
+
   LiteRtTensorT::Alloc tensors_;
 
   LiteRtOpT::Alloc ops_;
@@ -719,11 +739,12 @@ class LiteRtModelT {
   // Build a new subgraph and get a stable reference to it.
   template <class... Args>
   LiteRtSubgraphT& EmplaceSubgraph(Args&&... args) {
-    return subgraphs_.EmplaceBack(std::forward<Args>(args)...);
+    return subgraphs_.EmplaceBack(Buffers(), std::forward<Args>(args)...);
   }
 
   // Transfers given subgraphs into this model.
   void TransferSubgraphs(LiteRtSubgraphT::Alloc&& subgraphs) {
+    // TODO: Consider mergeing buffer managers here.
     subgraphs_.Transfer(std::move(subgraphs));
   }
 

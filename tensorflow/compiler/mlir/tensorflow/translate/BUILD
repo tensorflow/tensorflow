@@ -66,10 +66,7 @@ cc_library(
     hdrs = ["mlir_roundtrip_flags.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:mlir_roundtrip_flags",
     ],
 )
 

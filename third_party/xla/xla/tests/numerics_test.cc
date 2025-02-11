@@ -158,7 +158,8 @@ XLA_TEST_F(NumericsTest,
                                   /*run_hlo_passes=*/false));
 
   // Only compare the first element.
-  EXPECT_EQ(reference_result.data<float>()[0], test_result.data<float>()[0]);
+  EXPECT_FLOAT_EQ(reference_result.data<float>()[0],
+                  test_result.data<float>()[0]);
 }
 
 }  // namespace

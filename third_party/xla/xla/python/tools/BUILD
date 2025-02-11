@@ -34,7 +34,6 @@ pytype_strict_library(
     name = "types",
     srcs = ["types.py"],
     # copybara:uncomment pytype_srcs = ["_types.pyi"],
-    srcs_version = "PY3",
     # Cannot build this on OSS because the ":xla_data_proto_py_pb2"
     # dependency isn't part of the public API.
     tags = ["no_oss"],
@@ -43,7 +42,7 @@ pytype_strict_library(
         ":_types",  # buildcleaner: keep
         "//third_party/py/numpy",
         "//xla:xla_data_proto_py",
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
     ],
 )
 
@@ -77,8 +76,6 @@ py_strict_test(
     name = "types_test",
     size = "small",
     srcs = ["types_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     # Cannot build this on OSS because the ":xla_data_proto_py_pb2"
     # dependency isn't part of the public API.
     tags = ["no_oss"],

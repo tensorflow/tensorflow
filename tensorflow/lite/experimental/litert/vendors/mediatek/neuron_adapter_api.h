@@ -15,11 +15,11 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_MEDIATEK_NEURON_ADAPTER_API_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_MEDIATEK_NEURON_ADAPTER_API_H_
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 
+#include "neuron/api/NeuronAdapter.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
@@ -30,124 +30,6 @@ struct AHardwareBuffer {};
 #endif
 
 namespace litert::mediatek {
-
-// /////////////////////////////////////////////////////////////////////////////
-//
-// A minimal set of definitions for the NeuronAdapter API, from public domain
-// sources.
-//
-// /////////////////////////////////////////////////////////////////////////////
-
-struct NeuronRuntimeVersion {
-  uint8_t major;
-  uint8_t minor;
-  uint8_t patch;
-};
-
-enum NeuronOperationType {
-  NEURON_ADD = 0,
-};
-
-struct NeuronOperandType {
-  int32_t type;
-  // NOLINTNEXTLINE
-  uint32_t dimensionCount;
-  const uint32_t* dimensions;
-  float scale;
-  // NOLINTNEXTLINE
-  int32_t zeroPoint;
-};
-
-struct NeuronModel;
-struct NeuronCompilation;
-struct NeuronExecution;
-struct NeuronMemory;
-
-static constexpr int NEURON_NO_ERROR = 0;
-static constexpr int NEURON_FLOAT32 = 0;
-static constexpr int NEURON_INT32 = 1;
-static constexpr int NEURON_BOOL = 6;
-static constexpr int NEURON_TENSOR_FLOAT32 = 3;
-static constexpr int NEURON_TENSOR_INT32 = 4;
-static constexpr int NEURON_PRIORITY_HIGH = 110;
-static constexpr int NEURON_PREFER_SUSTAINED_SPEED = 2;
-
-int NeuronCompilation_create(NeuronModel* model,
-                             NeuronCompilation** compilation);
-int NeuronCompilation_createWithOptions(NeuronModel* model,
-                                        NeuronCompilation** compilation,
-                                        const char* options);
-int NeuronCompilation_finish(NeuronCompilation* compilation);
-int NeuronCompilation_getCompiledNetworkSize(NeuronCompilation* compilation,
-                                             size_t* size);
-int NeuronCompilation_getInputPaddedDimensions(NeuronCompilation* compilation,
-                                               int32_t index,
-                                               uint32_t* dimensions);
-int NeuronCompilation_getInputPaddedSize(NeuronCompilation* compilation,
-                                         int32_t index, size_t* size);
-int NeuronCompilation_getOutputPaddedDimensions(NeuronCompilation* compilation,
-                                                int32_t index,
-                                                uint32_t* dimensions);
-int NeuronCompilation_getOutputPaddedSize(NeuronCompilation* compilation,
-                                          int32_t index, size_t* size);
-int NeuronCompilation_setOptimizationString(NeuronCompilation* compilation,
-                                            const char* optimizationString);
-int NeuronCompilation_setPreference(NeuronCompilation* compilation,
-                                    int32_t preference);
-int NeuronCompilation_setPriority(NeuronCompilation* compilation, int priority);
-int NeuronCompilation_storeCompiledNetwork(NeuronCompilation* compilation,
-                                           void* buffer, size_t size);
-int NeuronExecution_compute(NeuronExecution* execution);
-int NeuronExecution_create(NeuronCompilation* compilation,
-                           NeuronExecution** execution);
-int NeuronExecution_setBoostHint(NeuronExecution* execution,
-                                 uint8_t boostValue);
-int NeuronExecution_setInputFromMemory(NeuronExecution* execution,
-                                       uint32_t index,
-                                       const NeuronOperandType* type,
-                                       const NeuronMemory* memory,
-                                       size_t offset, size_t length);
-int NeuronExecution_setOutputFromMemory(NeuronExecution* execution,
-                                        uint32_t index,
-                                        const NeuronOperandType* type,
-                                        const NeuronMemory* memory,
-                                        size_t offset, size_t length);
-int NeuronMemory_createFromAHardwareBuffer(const AHardwareBuffer* ahwb,
-                                           NeuronMemory** memory);
-int NeuronMemory_createFromFd(size_t size, int protect, int fd, size_t offset,
-                              NeuronMemory** memory);
-int NeuronModel_addOperand(NeuronModel* model, const NeuronOperandType* type);
-int NeuronModel_addOperation(NeuronModel* model, NeuronOperationType type,
-                             uint32_t inputCount, const uint32_t* inputs,
-                             uint32_t outputCount, const uint32_t* outputs);
-int NeuronModel_create(NeuronModel** model);
-int NeuronModel_finish(NeuronModel* model);
-int NeuronModel_getExtensionOperandType(NeuronModel* model,
-                                        const char* extensionName,
-                                        uint16_t operandCodeWithinExtension,
-                                        int32_t* type);
-int NeuronModel_getExtensionOperationType(NeuronModel* model,
-                                          const char* extensionName,
-                                          uint16_t operationCodeWithinExtension,
-                                          int32_t* type);
-int NeuronModel_identifyInputsAndOutputs(NeuronModel* model,
-                                         uint32_t inputCount,
-                                         const uint32_t* inputs,
-                                         uint32_t outputCount,
-                                         const uint32_t* outputs);
-int NeuronModel_restoreFromCompiledNetwork(NeuronModel** model,
-                                           NeuronCompilation** compilation,
-                                           const void* buffer, size_t size);
-int NeuronModel_setName(NeuronModel* model, const char* name);
-int NeuronModel_setOperandValue(NeuronModel* model, int32_t index,
-                                const void* buffer, size_t length);
-int Neuron_getVersion(NeuronRuntimeVersion* version);
-void NeuronCompilation_free(NeuronCompilation* compilation);
-void NeuronExecution_free(NeuronExecution* execution);
-void NeuronMemory_free(NeuronMemory* memory);
-void NeuronModel_free(NeuronModel* model);
-
-// /////////////////////////////////////////////////////////////////////////////
 
 using NeuronModelPtr = std::unique_ptr<NeuronModel, void (*)(NeuronModel*)>;
 using NeuronCompilationPtr =
@@ -197,6 +79,11 @@ class NeuronAdapterApi {
   void* dlib_handle_ = nullptr;
   std::unique_ptr<Api> api_;
 };
+
+// This is not part of the provided NeuronAdapter header for some reason.
+int NeuronCompilation_createWithOptions(NeuronModel* model,
+                                        NeuronCompilation** compilation,
+                                        const char* options);
 
 // A convenient struct for holding function pointers to NeuronAdapter API
 // symbols. These function pointers will be loaded to the shared library on

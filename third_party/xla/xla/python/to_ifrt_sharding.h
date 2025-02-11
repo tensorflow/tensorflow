@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/sharding.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -41,6 +41,12 @@ absl::StatusOr<std::shared_ptr<const xla::ifrt::Sharding>> GetIfrtHloSharding(
 absl::StatusOr<std::shared_ptr<const xla::ifrt::Sharding>>
 GetIfrtConcreteEvenSharding(nanobind::handle sharding, xla::ifrt::DType dtype,
                             const xla::ifrt::Shape& shape);
+
+// Converts a JAX Sharding into `xla::ifrt::ConcreteSharding`.
+absl::StatusOr<std::shared_ptr<const xla::ifrt::Sharding>>
+GetIfrtConcreteSharding(nanobind::handle sharding,
+                        const xla::ifrt::Shape& shape,
+                        std::vector<xla::ifrt::Shape> shard_shapes);
 
 }  // namespace xla
 

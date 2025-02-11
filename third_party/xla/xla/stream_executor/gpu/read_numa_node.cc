@@ -26,17 +26,17 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-int ReadNumaNode(const std::string& pci_bus_id, int device_ordinal) {
-  if (!tsl::port::NUMAEnabled()) {
-    // NUMA is not currently enabled. Return node 0.
-    return 0;
+std::optional<int> ReadNumaNode(absl::string_view pci_bus_id,
+                                int device_ordinal) {
+  if (tsl::port::NUMANumNodes() < 2) {
+    // NUMA support is not currently enabled, or there is only one node.
+    return tsl::port::kNUMANoAffinity;
   }
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
-  static const int kUnknownNumaNode = -1;
 
   if (pci_bus_id.empty()) {
     LOG(INFO) << "no PCI bus ID for device ordinal: " << device_ordinal;
-    return kUnknownNumaNode;
+    return std::nullopt;
   }
 
   std::string filename =
@@ -49,12 +49,13 @@ int ReadNumaNode(const std::string& pci_bus_id, int device_ordinal) {
   if (file == nullptr) {
     LOG(INFO) << "could not open file to read NUMA node: " << filename
               << "\nYour kernel may have been built without NUMA support.";
-    return kUnknownNumaNode;
+    return std::nullopt;
   }
 
   std::string content;
   char buf[32];
   size_t did_read = fread(buf, sizeof(buf[0]), sizeof(buf) - 1, file);
+  fclose(file);
   buf[did_read] = '\0';
   content = buf;
 
@@ -63,15 +64,13 @@ int ReadNumaNode(const std::string& pci_bus_id, int device_ordinal) {
     if (value < 0) {  // See http://b/18228951 for details on this path.
       LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
                 << value
-                << "), but there must be at least one NUMA node"
-                   ", so returning NUMA node zero."
+                << "), but there must be at least one NUMA node so this will "
+                   " be massaged to NUMA node zero in some places."
                    " See more at "
                    "https://github.com/torvalds/linux/blob/v6.0/Documentation/"
                    "ABI/testing/sysfs-bus-pci#L344-L355";
-      fclose(file);
-      return 0;
+      return tsl::port::kNUMANoAffinity;
     }
-    fclose(file);
     return value;
   }
 
@@ -79,8 +78,7 @@ int ReadNumaNode(const std::string& pci_bus_id, int device_ordinal) {
       << "could not convert SysFS file contents to integral NUMA node value: "
       << content;
 
-  fclose(file);
-  return kUnknownNumaNode;
+  return std::nullopt;
 }
 
 }  // namespace stream_executor::gpu

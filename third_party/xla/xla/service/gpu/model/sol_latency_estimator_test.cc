@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
@@ -49,8 +50,7 @@ class SolLatencyEstimatorTest : public HloTestBase,
  protected:
   SolLatencyEstimatorTest()
       : shape_size_fn_(HloCostAnalysis::DefaultShapeSize),
-        gpu_device_info_(
-            backend().default_stream_executor()->GetDeviceDescription()),
+        gpu_device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo()),
         sol_flags_({
             /*nccl_op_launch_time=*/absl::Microseconds(100),
             /*nic_speed_gbps=*/100,
@@ -66,7 +66,7 @@ class SolLatencyEstimatorTest : public HloTestBase,
   }
 
   HloCostAnalysis::ShapeSizeFunction shape_size_fn_;
-  const se::DeviceDescription& gpu_device_info_;
+  const se::DeviceDescription gpu_device_info_;
   const SolGPUCostModel::Config sol_flags_;
 };
 
@@ -85,7 +85,7 @@ std::vector<EstimatorTestCase> GetSolLatencyEstimatorTestCases() {
   EstimatorTestCase all_gather_intra_host = {
       /*test_name=*/"all_gather_intra_host",
       /*module_string=*/R"(
-HloModule m
+HloModule m, num_partitions=16
 
 ENTRY main {
   p = bf16[16000,1000] parameter(0)
@@ -98,13 +98,13 @@ ENTRY main {
 
 })",
       /*opcode=*/HloOpcode::kAllGatherStart,
-      /*expected_latency=*/absl::Microseconds(1345),
+      /*expected_latency=*/absl::Microseconds(2303),
   };
 
   EstimatorTestCase all_gather_inter_host_pairwise = {
       /*test_name=*/"all_gather_intra_host_pairwise",
       /*module_string=*/R"(
-HloModule m
+HloModule m, num_partitions=16
 
 ENTRY main {
   p = bf16[16000,4000] parameter(0)
@@ -116,13 +116,13 @@ ENTRY main {
   ROOT ag-done = bf16[16000,8000] all-gather-done(ag-start)
 })",
       /*opcode=*/HloOpcode::kAllGatherStart,
-      /*expected_latency=*/absl::Microseconds(1345),
+      /*expected_latency=*/absl::Microseconds(2178),
   };
 
   EstimatorTestCase all_gather_all_ranks = {
       /*test_name=*/"all_gather_all_ranks",
       /*module_string=*/R"(
-HloModule m
+HloModule m, num_partitions=16
 
 ENTRY main {
   p = bf16[16000,500] parameter(0)
@@ -134,13 +134,13 @@ ENTRY main {
   ROOT ag-done = bf16[16000,8000] all-gather-done(ag-start)
 })",
       /*opcode=*/HloOpcode::kAllGatherStart,
-      /*expected_latency=*/absl::Microseconds(1345),
+      /*expected_latency=*/absl::Microseconds(2324),
   };
 
   EstimatorTestCase reduce_scatter_all_ranks = {
       /*test_name=*/"reduce_scatter_all_ranks",
       /*module_string=*/R"(
-HloModule m
+HloModule m, num_partitions=128
 
 add {
   param_0 = bf16[] parameter(0)

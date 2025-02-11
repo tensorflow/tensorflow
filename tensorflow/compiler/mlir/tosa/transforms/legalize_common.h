@@ -188,14 +188,16 @@ std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems);
+                                        ElementsAttr axes_elems,
+                                        StringRef nan_mode = "PROPAGATE");
 
 // Lowers ReduceMax to a sequence of TOSA ops.
 std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems);
+                                        ElementsAttr axes_elems,
+                                        StringRef nan_mode = "PROPAGATE");
 
 // Lowers ReduceProd to a sequence of TOSA ops.
 std::optional<Value> convertReduceProdOp(PatternRewriter& rewriter,

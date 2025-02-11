@@ -258,12 +258,6 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
 
   bool IsDeleted() override { return is_deleted_; }
 
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) override {
-    return absl::UnimplementedError(
-        "CopyToDevice not supported by InterpreterLiteralWrapperBuffer.");
-  }
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override {
     return absl::UnimplementedError(
@@ -406,7 +400,12 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
 class InterpreterClient final : public PjRtClient {
  public:
   InterpreterClient()
-      : interpreter_device_{this},
+      : InterpreterClient([]() { return std::make_unique<HloEvaluator>(); }) {}
+  explicit InterpreterClient(
+      absl::AnyInvocable<std::unique_ptr<HloEvaluator>() const>
+          hlo_evaluator_factory)
+      : hlo_evaluator_factory_(std::move(hlo_evaluator_factory)),
+        interpreter_device_{this},
         interpreter_memory_space_{this},
         devices_({&interpreter_device_}),
         memory_spaces_({&interpreter_memory_space_}) {}
@@ -487,6 +486,8 @@ class InterpreterClient final : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> RunBackend(
       std::unique_ptr<HloModule> hlo_module, CompileOptions& options);
 
+  absl::AnyInvocable<std::unique_ptr<HloEvaluator>() const>
+      hlo_evaluator_factory_;
   InterpreterDevice interpreter_device_;
   InterpreterMemorySpace interpreter_memory_space_;
   // Pointer array of devices (just one) so that we can create a span of it.

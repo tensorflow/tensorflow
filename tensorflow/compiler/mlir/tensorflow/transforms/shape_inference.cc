@@ -94,13 +94,13 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/types/dialect.h"
-#include "tsl/platform/errors.h"
 
 #define DEBUG_TYPE "tf-shape-inference"
 

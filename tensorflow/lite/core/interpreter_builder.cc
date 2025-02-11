@@ -151,6 +151,21 @@ std::map<std::string, uint32_t> GetMapFromTensorMap(
   return result;
 }
 
+// Helper that returns std::vector that corresponds to vector of TensorMap.
+std::vector<std::string> GetVectorFromTensorMap(
+    const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>*
+        tensor_map) {
+  if (!tensor_map) return {};
+  std::vector<std::string> result;
+  result.reserve(tensor_map->size());
+  for (const auto tensor : *tensor_map) {
+    if (tensor != nullptr && tensor->name() != nullptr) {
+      result.push_back(tensor->name()->c_str());
+    }
+  }
+  return result;
+}
+
 inline bool ShouldCreateLazyDelegateProviders(int num_fp32_tensors) {
 #if defined(XNNPACK_DELEGATE_ENABLE_QS8) || defined(XNNPACK_DELEGATE_ENABLE_QU8)
   return true;
@@ -578,6 +593,10 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
     auto& signature_def = signature_defs.back();
     signature_def.inputs = GetMapFromTensorMap(fb_signature_def->inputs());
     signature_def.outputs = GetMapFromTensorMap(fb_signature_def->outputs());
+    signature_def.input_names =
+        GetVectorFromTensorMap(fb_signature_def->inputs());
+    signature_def.output_names =
+        GetVectorFromTensorMap(fb_signature_def->outputs());
     signature_def.signature_key = fb_signature_def->signature_key()->c_str();
     signature_def.subgraph_index = fb_signature_def->subgraph_index();
   }

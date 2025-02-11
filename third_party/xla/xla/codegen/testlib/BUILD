@@ -72,12 +72,11 @@ pytype_strict_library(
         "__init__.py",
         "utilities.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":_extension",
         "//third_party/py/numpy",
         "//xla/python:xla_extension",
-        "@ml_dtypes",  # buildcleaner: keep (transitively depend on it via xla_extension)
+        "@ml_dtypes_py//ml_dtypes",  # buildcleaner: keep (transitively depend on it via xla_extension)
     ],
 )
 
@@ -85,8 +84,6 @@ py_strict_test(
     name = "kernel_runner_test_py",
     srcs = ["kernel_runner_test.py"],
     main = "kernel_runner_test.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_oss",
     ],

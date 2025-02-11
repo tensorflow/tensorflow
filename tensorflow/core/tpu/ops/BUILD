@@ -40,7 +40,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
     ],
     alwayslink = 1,
 )
@@ -179,9 +179,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:logging",
     ],
     alwayslink = 1,
 )
@@ -224,7 +224,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/lib/core:status",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:errors",
     ],
     alwayslink = 1,
 )

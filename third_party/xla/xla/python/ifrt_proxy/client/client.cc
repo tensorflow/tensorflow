@@ -390,6 +390,11 @@ absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(
   return *std::move(assignment_to_return);
 }
 
+tsl::RCReference<xla::ifrt::DeviceList> Client::MakeDeviceList(
+    absl::Span<xla::ifrt::Device* const> devices) const {
+  return xla::ifrt::BasicDeviceList::Create(devices);
+}
+
 }  // namespace proxy
 }  // namespace ifrt
 }  // namespace xla

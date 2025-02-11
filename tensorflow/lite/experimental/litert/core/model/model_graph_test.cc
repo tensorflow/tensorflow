@@ -23,6 +23,7 @@
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/core/model/graph_validation.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 
@@ -98,6 +99,14 @@ LiteRtTensorT TestTensor() {
   return tensor;
 }
 
+LiteRtTensorT& TestTensor(LiteRtTensorT& tensor) {
+  tensor.Type().first = kLiteRtRankedTensorType;
+  tensor.Type().second.ranked_tensor_type.element_type = kType;
+  tensor.Type().second.ranked_tensor_type.layout.dimensions[0] = kDims[0];
+  tensor.Type().second.ranked_tensor_type.layout.rank = kRank;
+  return tensor;
+}
+
 LiteRtOpT TestOp() {
   LiteRtOpT op;
   op.SetOpCode(kOpCode);
@@ -115,6 +124,34 @@ TEST(ModelGraphTest, MakeCloneTensor) {
   LiteRtSubgraphT subgraph;
   auto& dest = MakeClone(subgraph, TestTensor());
   EXPECT_THAT(dest, HasRankedType(kType, kDimsSpan));
+}
+
+TEST(ModelGraphTest, CloneCstSameManager) {
+  OwningBufferRef<uint8_t> buffer("DATA");
+  LiteRtModelT model;
+  const auto num_buffers = model.Buffers()->NumBuffers();
+  auto& sg = model.EmplaceSubgraph();
+  auto& src = TestTensor(sg.EmplaceTensor());
+  SetWeightsFromUnownedBuffer(src.Weights(), buffer);
+  auto& dest = MakeClone(sg, src);
+  EXPECT_EQ(dest.Weights().Buffer().StrView(), buffer.StrView());
+  EXPECT_EQ(model.Buffers()->NumBuffers(), num_buffers + 1);
+  EXPECT_EQ(dest.Weights().GetBufferId(), src.Weights().GetBufferId());
+  EXPECT_EQ(dest.Weights().GetBufferManager(),
+            src.Weights().GetBufferManager());
+  EXPECT_EQ(dest.Weights().Buffer().Data(), src.Weights().Buffer().Data());
+}
+
+TEST(ModelGraphTest, CloneCstDifferentManager) {
+  OwningBufferRef<uint8_t> buffer("DATA");
+  LiteRtSubgraphT sg;
+  auto& src = TestTensor(sg.EmplaceTensor());
+  SetWeightsFromUnownedBuffer(src.Weights(), buffer);
+  auto& dest = MakeClone(sg, src);
+  EXPECT_EQ(dest.Weights().Buffer().StrView(), buffer.StrView());
+  EXPECT_NE(dest.Weights().GetBufferManager(),
+            src.Weights().GetBufferManager());
+  EXPECT_NE(dest.Weights().Buffer().Data(), src.Weights().Buffer().Data());
 }
 
 TEST(ModelGraphTest, CloneOp) {

@@ -105,7 +105,6 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "tf_item",
     srcs = ["item.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tf_item",
@@ -142,7 +141,6 @@ tf_py_strict_test(
     name = "item_test",
     size = "small",
     srcs = ["item_test.py"],
-    python_version = "PY3",
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
@@ -168,7 +166,6 @@ tf_py_strict_test(
     name = "datasets_test",
     size = "medium",
     srcs = ["datasets_test.py"],
-    python_version = "PY3",
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
@@ -190,7 +187,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "tf_cluster",
     srcs = ["cluster.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tf_cluster",
@@ -237,7 +233,6 @@ cuda_py_strict_test(
     name = "cluster_test",
     size = "small",
     srcs = ["cluster_test.py"],
-    python_version = "PY3",
     shard_count = 5,
     tags = [
         "grappler",
@@ -263,7 +258,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "tf_optimizer",
     srcs = ["tf_optimizer.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tf_optimizer",
@@ -322,7 +316,6 @@ tf_py_strict_test(
     name = "tf_optimizer_test",
     size = "small",
     srcs = ["tf_optimizer_test.py"],
-    python_version = "PY3",
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
@@ -349,7 +342,6 @@ tf_py_strict_test(
     name = "memory_optimizer_test",
     size = "medium",
     srcs = ["memory_optimizer_test.py"],
-    python_version = "PY3",
     tags = [
         "grappler",
     ],
@@ -375,7 +367,6 @@ cuda_py_strict_test(
     name = "constant_folding_test",
     size = "medium",
     srcs = ["constant_folding_test.py"],
-    python_version = "PY3",
     tags = [
         "grappler",
     ],
@@ -400,7 +391,6 @@ cuda_py_strict_test(
     name = "arithmetic_optimizer_test",
     size = "small",
     srcs = ["arithmetic_optimizer_test.py"],
-    python_version = "PY3",
     tags = [
         "grappler",
     ],
@@ -451,7 +441,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "cost_analyzer",
     srcs = ["cost_analyzer.py"],
-    srcs_version = "PY3",
     deps = [
         ":_pywrap_cost_analyzer",
         ":tf_cluster",
@@ -462,8 +451,6 @@ py_strict_library(
 py_strict_binary(
     name = "cost_analyzer_tool",
     srcs = ["cost_analyzer_tool.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":cost_analyzer",
         ":tf_optimizer",
@@ -480,7 +467,6 @@ tf_py_strict_test(
     name = "cost_analyzer_test",
     size = "small",
     srcs = ["cost_analyzer_test.py"],
-    python_version = "PY3",
     tags = [
         "grappler",
         "no_cuda_on_cpu_tap",
@@ -511,7 +497,6 @@ py_strict_library(
     srcs = [
         "model_analyzer.py",
     ],
-    srcs_version = "PY3",
     deps = [":_pywrap_model_analyzer"],
 )
 
@@ -540,7 +525,6 @@ cuda_py_strict_test(
     srcs = [
         "auto_mixed_precision_test.py",
     ],
-    python_version = "PY3",
     tags = ["grappler"],
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
@@ -579,7 +563,6 @@ cuda_py_strict_test(
     name = "remapper_test",
     size = "medium",
     srcs = ["remapper_test.py"],
-    python_version = "PY3",
     tags = ["grappler"],
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
@@ -622,8 +605,6 @@ tf_python_pybind_extension(
 py_strict_binary(
     name = "graph_analyzer",
     srcs = ["graph_analyzer.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":_pywrap_graph_analyzer",
         "@absl_py//absl:app",

@@ -194,8 +194,6 @@ py_strict_library(
 py_strict_test(
     name = "asserts_test",
     srcs = ["asserts_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":asserts",
         ":functions",
@@ -211,8 +209,6 @@ py_strict_test(
 py_strict_test(
     name = "break_statements_test",
     srcs = ["break_statements_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":break_statements",
         #internal proto upb dep
@@ -225,8 +221,6 @@ py_strict_test(
 py_strict_test(
     name = "call_trees_test",
     srcs = ["call_trees_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":call_trees",
         ":functions",
@@ -239,8 +233,6 @@ py_strict_test(
 py_strict_test(
     name = "conditional_expressions_test",
     srcs = ["conditional_expressions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":conditional_expressions",
         #internal proto upb dep
@@ -252,8 +244,6 @@ py_strict_test(
 py_strict_test(
     name = "continue_statements_test",
     srcs = ["continue_statements_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":continue_statements",
         #internal proto upb dep
@@ -266,8 +256,6 @@ py_strict_test(
 py_strict_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":break_statements",
         ":continue_statements",
@@ -289,8 +277,6 @@ py_strict_test(
 py_strict_test(
     name = "directives_test",
     srcs = ["directives_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":directives",
         #internal proto upb dep
@@ -304,7 +290,6 @@ py_strict_test(
 py_strict_test(
     name = "functions_test",
     srcs = ["functions_test.py"],
-    python_version = "PY3",
     deps = [
         ":functions",
         ":return_statements",
@@ -321,8 +306,6 @@ py_strict_test(
 py_strict_test(
     name = "lists_test",
     srcs = ["lists_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":directives",
         ":lists",
@@ -341,8 +324,6 @@ py_strict_test(
 py_strict_test(
     name = "logical_expressions_test",
     srcs = ["logical_expressions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":logical_expressions",
         #internal proto upb dep
@@ -356,8 +337,6 @@ py_strict_test(
 py_strict_test(
     name = "return_statements_test",
     srcs = ["return_statements_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":functions",
         ":return_statements",
@@ -371,8 +350,6 @@ py_strict_test(
 py_strict_test(
     name = "slices_test",
     srcs = ["slices_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":directives",
         ":slices",
@@ -389,8 +366,6 @@ py_strict_test(
 py_strict_test(
     name = "variables_test",
     srcs = ["variables_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":variables",
         #internal proto upb dep

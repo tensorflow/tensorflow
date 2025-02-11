@@ -21,12 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/status/status.h"
 #include "absl/synchronization/blocking_counter.h"
-#include "absl/time/time.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -161,6 +158,39 @@ static void BM_PopTask(benchmark::State& state) {
 }
 
 BENCHMARK(BM_PopTask);
+
+static void BM_PopTaskMultiThreaded(benchmark::State& state) {
+  size_t num_threads = state.range(0);
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "benchmark",
+                                  num_threads);
+
+  for (auto _ : state) {
+    absl::BlockingCounter counter(num_threads);
+    WorkQueue queue(/*num_tasks=*/1024 * 10, /*num_partitions=*/num_threads);
+
+    for (size_t i = 0; i < num_threads; ++i) {
+      threads.Schedule([i, &queue, &counter] {
+        Worker worker(i, &queue);
+        while (std::optional<size_t> task = worker.Pop()) {
+        }
+        counter.DecrementCount();
+      });
+    }
+
+    counter.Wait();
+  }
+
+  state.SetItemsProcessed(state.iterations() * 1024 * 10);
+}
+
+BENCHMARK(BM_PopTaskMultiThreaded)
+    ->MeasureProcessCPUTime()
+    ->Arg(2)
+    ->Arg(4)
+    ->Arg(8)
+    ->Arg(16)
+    ->Arg(32)
+    ->Arg(64);
 
 }  // namespace
 }  // namespace xla::cpu

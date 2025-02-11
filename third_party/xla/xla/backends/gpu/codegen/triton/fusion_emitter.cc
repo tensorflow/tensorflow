@@ -91,6 +91,7 @@ limitations under the License.
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -963,6 +964,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
                           block_level_parameters.output_tile_sizes,
                           /*constraints_are_known_satisfied=*/false,
                           /*compute_all_tile_offset_indexing_maps=*/true));
+  VLOG(3) << "Tiled HLO computation: " << tiled_hlo_computation.ToString();
 
   SmallVector<Value, 3> tile_multi_index =
       ir_emitter_triton_internal::ComputeDelinearizedTileIndex(
@@ -1099,7 +1101,7 @@ absl::StatusOr<TritonModule> CreateTritonModule(
     if (type == U16) {
       ir_type = b.getI16Type();
     } else if (type == S4) {
-        ir_type = b.getI4Type();
+      ir_type = b.getI4Type();
     } else {
       TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
     }
@@ -1147,13 +1149,17 @@ absl::StatusOr<TritonModule> CreateTritonModule(
   b.create<ttir::ReturnOp>();
 
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
+    auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir");
     DumpToFileInDirOrStdout(
-        *hlo_computation->parent(), "triton_ir", "before_validation.ttir",
+        *hlo_computation->parent(), "", suffix,
         DumpTritonIR(triton_module.get(),
                      fusion->GetModule()
                          ->config()
                          .debug_options()
                          .xla_gpu_unsupported_annotate_with_emitter_loc()));
+    std::string fusion_suffix = absl::StrCat(hlo_computation->name(), ".hlo");
+    DumpToFileInDirOrStdout(*hlo_computation->parent(), "", fusion_suffix,
+                            hlo_computation->ToString());
   }
 
   if (mlir::failed(mlir::verify(*triton_module))) {
@@ -1177,8 +1183,9 @@ absl::StatusOr<TritonModule> CreateTritonModule(
   // TODO(loislo): Remove this dump once we have the Triton IR dump in
   // CompileTritonToLLVM after the Triton optimization passes.
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
+    std::string suffix = absl::StrCat(fusion->name(), ".ttir");
     DumpToFileInDirOrStdout(
-        *hlo_computation->parent(), "triton_ir", "ttir",
+        *hlo_computation->parent(), "", suffix,
         DumpTritonIR(triton_module.get(),
                      fusion->GetModule()
                          ->config()
@@ -1232,8 +1239,13 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel) {
   const auto& cc = device_info.gpu_compute_capability();
-  const std::string arch_name =
+  std::string arch_name =
       std::visit([](auto& cc) { return cc.ToString(); }, cc);
+  if (arch_name == "12.0") {
+    LOG(WARNING) << "Triton does not support sm_120 yet. Passing CC 10.0 to "
+                    "avoid spurious \"unsupported conversion\" errors";
+    arch_name = "10.0";
+  }
   if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
     auto ccCuda = std::get<se::CudaComputeCapability>(cc);
     if (!ccCuda.IsAtLeastAmpere()) {
@@ -1290,7 +1302,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   pm.addPass(mlir::createLowerAffinePass());
 
   // Lower xla_gpu.apply_indexing into arithmetic ops.
-  pm.addPass(CreateSimplifyAffinePass());
+  pm.addPass(emitters::CreateSimplifyAffinePass());
   pm.addPass(CreateConvertIndexTypePass());
 
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;

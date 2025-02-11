@@ -31,7 +31,6 @@ namespace stablehlo_ext {
 #include "stablehlo_ext/transforms/passes.h.inc"
 
 void createChloLegalizeToStablehloPipeline(OpPassManager &pm);
-std::unique_ptr<OperationPass<func::FuncOp>> createStablehloFlattenTuplePass();
 
 #define GEN_PASS_REGISTRATION
 #include "stablehlo_ext/transforms/passes.h.inc"

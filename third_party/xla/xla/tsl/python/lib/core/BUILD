@@ -26,7 +26,7 @@ cc_library(
     copts = ["-fexceptions"],  # Required for pybind11.
     # Requires data dependency in order to load py module from C++.
     data = [
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
     ],
     features = [
         "-use_header_modules",  # Required for pybind11.

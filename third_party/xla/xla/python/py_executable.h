@@ -48,8 +48,8 @@ limitations under the License.
 #include "xla/python/py_client.h"
 #include "xla/python/traceback.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 

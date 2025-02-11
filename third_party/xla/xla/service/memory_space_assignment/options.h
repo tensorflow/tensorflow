@@ -94,6 +94,16 @@ struct PostAllocationTransformationUpdate {
   std::string ToString() const;
 };
 
+// The different modes for window prefetch. kWindowExposure is currently the
+// default mode, where the window buffer is exposed from the reserved scoped
+// memory. kWindowPrefetch is a mode where the window buffer is not only exposed
+// from the reserved scoped memory, but also has the content prefetched into
+// alternate memory.
+enum class WindowPrefetchMode {
+  kWindowExposure,
+  kWindowPrefetch,
+};
+
 // The different options to be passed to the Run() API.
 struct Options {
   // The backend-specific integer value that describes the default memory.
@@ -359,6 +369,9 @@ struct Options {
   // and gives MSA more flexibility in choosing the prefetch time and how much
   // data to prefetch.
   bool enable_window_prefetch = false;
+
+  // The mode to use for window prefetching.
+  WindowPrefetchMode window_prefetch_mode = WindowPrefetchMode::kWindowExposure;
 
   MsaSortOrderOverrides msa_sort_order_overrides;
 };

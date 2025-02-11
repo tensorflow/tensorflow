@@ -1,6 +1,7 @@
 load("//xla:xla.bzl", "xla_cc_test")
 load(
     "//xla/tsl:tsl.bzl",
+    "if_oss",
     "internal_visibility",
 )
 load(
@@ -72,6 +73,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:env",
     ],
 )
@@ -79,12 +81,14 @@ cc_library(
 xla_cc_test(
     name = "event_loop_test",
     srcs = ["event_loop_test.cc"],
+    tags = if_oss(["not_run:arm"]),
     deps = [
         ":event_loop",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -172,6 +176,7 @@ cc_library(
 xla_cc_test(
     name = "socket_bulk_transport_test",
     srcs = ["socket_bulk_transport_test.cc"],
+    tags = if_oss(["not_run:arm"]),
     deps = [
         ":event_loop",
         ":socket_bulk_transport",
@@ -207,6 +212,7 @@ cc_library(
 xla_cc_test(
     name = "socket-server_test",
     srcs = ["socket-server_test.cc"],
+    tags = if_oss(["not_run:arm"]),
     deps = [
         ":event_loop",
         ":socket-server",

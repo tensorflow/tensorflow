@@ -28,8 +28,8 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 

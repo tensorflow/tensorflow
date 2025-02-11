@@ -44,9 +44,10 @@ namespace xla::gpu {
 
 bool SupportsBF16(const stream_executor::GpuComputeCapability& cc);
 
-absl::Status CreateTritonIrAndFileCheck(
-    HloTestBase* test, absl::string_view hlo_text,
-    absl::string_view triton_fusion_name, absl::string_view filecheck_pattern);
+absl::Status CreateTritonIrAndFileCheck(HloTestBase* test,
+                                        absl::string_view hlo_text,
+                                        absl::string_view triton_fusion_name,
+                                        absl::string_view filecheck_pattern);
 
 absl::Status CreateTritonIrAndFileCheck(
     const HloComputation& computation,
@@ -146,6 +147,9 @@ std::string TritonSupportTestTypeAndOpcodeAndDeviceToString(
 std::string TritonSupportTestTwoTypesAndDeviceToString(
     const ::testing::TestParamInfo<std::tuple<PrimitiveType, PrimitiveType,
                                               se::GpuComputeCapability>>& data);
+
+std::string TritonSupportTestDeviceToString(
+    const ::testing::TestParamInfo<se::GpuComputeCapability>& data);
 
 std::string TritonSupportTestTypeToString(
     const ::testing::TestParamInfo<PrimitiveType>& data);

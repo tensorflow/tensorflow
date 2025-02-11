@@ -246,6 +246,7 @@ cc_library(
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_proto_cc_impl",
         "//xla/backends/cpu/runtime:thunk_proto_serdes",
+        "//xla/backends/cpu/transforms:xnn_graph_fusion",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/analysis:indexed_array_analysis",
         "//xla/hlo/ir:hlo",

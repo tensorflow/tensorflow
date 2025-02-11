@@ -57,7 +57,7 @@ limitations under the License.
 #include "xla/python/sharding.h"
 #include "xla/python/types.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 

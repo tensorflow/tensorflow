@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/service/cost_modelling/op_cost.h"
 
 #include <memory>
-#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/map_util.h"
+#include "xla/service/cost_modelling/op_cost_test_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
@@ -37,8 +38,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::AllOf;
 using ::testing::ElementsAre;
-using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
 class MetricCalculatorFromMap : public MetricCalculator {
@@ -84,10 +85,11 @@ std::unique_ptr<OpCostCalculator> CreateOpCostCalculatorFromMap(
 
 class OpCostTest : public HloRunnerAgnosticTestBase {
  protected:
+  using CalculatorValues = std::vector<std::pair<std::string, CostValue>>;
+
   OpCostTest()
-      : HloRunnerAgnosticTestBase(
-            std::make_unique<HloRunner>(
-                PlatformUtil::GetDefaultPlatform().value())) {}
+      : HloRunnerAgnosticTestBase(std::make_unique<HloRunner>(
+            PlatformUtil::GetDefaultPlatform().value())) {}
 
   void SetUp() override {
     HloRunnerAgnosticTestBase::SetUp();
@@ -156,22 +158,22 @@ void RunLeafNodeCacheTest(const HloInstruction& instruction,
 
   // We should repeatably get the same results.
   for (int i = 0; i < 2; ++i) {
-    EXPECT_EQ(node->GetMetricValue(CostMetricId::LatencySeconds(instruction),
-                                   nullptr),
-              100.0);
-    EXPECT_EQ(node->GetMetricValue(CostMetricId::ComputeSeconds(instruction),
-                                   nullptr),
-              std::nullopt);
-    EXPECT_EQ(node->GetMetricValue(
-                  CostMetricId::OperandBytesAccessed(
-                      instruction, /*operand_num=*/0, ShapeIndex({0})),
-                  nullptr),
-              std::nullopt);
-    EXPECT_EQ(node->GetMetricValue(
-                  CostMetricId::OperandBytesAccessed(
-                      instruction, /*operand_num=*/0, ShapeIndex({1})),
-                  nullptr),
-              50.0);
+    EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/false,
+                                     CostMetricId::LatencySeconds(instruction)),
+                HasCalculationValue(100.0, "leaf-calculator"));
+    EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/false,
+                                     CostMetricId::ComputeSeconds(instruction)),
+                MissingCalculationValue());
+    EXPECT_THAT(node->GetMetricValue(
+                    /*track_calculation_details=*/false,
+                    CostMetricId::OperandBytesAccessed(
+                        instruction, /*operand_num=*/0, ShapeIndex({0}))),
+                MissingCalculationValue());
+    EXPECT_THAT(node->GetMetricValue(
+                    /*track_calculation_details=*/false,
+                    CostMetricId::OperandBytesAccessed(
+                        instruction, /*operand_num=*/0, ShapeIndex({1}))),
+                HasCalculationValue(50.0, "leaf-calculator"));
   }
 
   EXPECT_EQ(node->Name(), "leaf-calculator");
@@ -192,18 +194,16 @@ TEST_F(OpCostTest, LeafNodeWithValueMap) {
   std::unique_ptr<OpCostManager::CalculationNode> node =
       CreateTestLeaf(*result_, /*enable_cache=*/false);
 
-  OpCostManager::CalculationNode::LeafCalculatorValueMap value_map;
-  EXPECT_EQ(
-      node->GetMetricValue(CostMetricId::LatencySeconds(*result_), &value_map),
-      100.0);
-  EXPECT_THAT(value_map, UnorderedElementsAre(Pair(
-                             "leaf-calculator", CostValue::MakeValue(100.0))));
-  value_map.clear();
-  EXPECT_EQ(
-      node->GetMetricValue(CostMetricId::ComputeSeconds(*result_), &value_map),
-      std::nullopt);
-  EXPECT_THAT(value_map, UnorderedElementsAre(
-                             Pair("leaf-calculator", CostValue::MakeError())));
+  EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/true,
+                                   CostMetricId::LatencySeconds(*result_)),
+              AllOf(HasCalculationValue(100.0, "leaf-calculator"),
+                    HasCalculatorMapValues(CalculatorValues(
+                        {{"leaf-calculator", CostValue::MakeValue(100.0)}}))));
+  EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/true,
+                                   CostMetricId::ComputeSeconds(*result_)),
+              AllOf(MissingCalculationValue(),
+                    HasCalculatorMapValues(CalculatorValues(
+                        {{"leaf-calculator", CostValue::MakeError()}}))));
 }
 
 // Creates a delegation node that delegates between leaf0, leaf1, leaf2, and
@@ -272,21 +272,21 @@ TEST_F(OpCostTest, DelegationNodeDefaultOrder) {
   // We should repeatably get the same results.
   for (int i = 0; i < 2; ++i) {
     // The default delegation order is 0, 1, 2, 3, so the latency comes from
-    // leaf1.
-    EXPECT_EQ(
-        node->GetMetricValue(CostMetricId::LatencySeconds(*result_), nullptr),
-        100.0);
+    // leaf0.
+    EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/false,
+                                     CostMetricId::LatencySeconds(*result_)),
+                HasCalculationValue(100.0, "leaf0"));
     // The default delegation order is 0, 1, 2, 3. Since leaf0 returns an error
     // for compute, the compute comes from leaf1.
-    EXPECT_EQ(
-        node->GetMetricValue(CostMetricId::ComputeSeconds(*result_), nullptr),
-        10.0);
+    EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/false,
+                                     CostMetricId::ComputeSeconds(*result_)),
+                HasCalculationValue(10.0, "leaf1"));
     // None of the calculators compute a value for operand bytes accessed.
-    EXPECT_EQ(
-        node->GetMetricValue(CostMetricId::OperandBytesAccessed(
-                                 *result_, /*operand_num=*/0, ShapeIndex({1})),
-                             nullptr),
-        std::nullopt);
+    EXPECT_THAT(node->GetMetricValue(
+                    /*track_calculation_details=*/false,
+                    CostMetricId::OperandBytesAccessed(
+                        *result_, /*operand_num=*/0, ShapeIndex({1}))),
+                MissingCalculationValue());
   }
 
   EXPECT_EQ(node->Name(), "delegation-node");
@@ -309,23 +309,23 @@ TEST_F(OpCostTest, DelegationNodeCustomDelegationFn) {
   // We should repeatably get the same results.
   for (int i = 0; i < 2; ++i) {
     // The delegation order is 3, 0, 2, so the latency comes from leaf3.
-    EXPECT_EQ(
-        node->GetMetricValue(CostMetricId::LatencySeconds(*result_), nullptr),
-        400.0);
+    EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/false,
+                                     CostMetricId::LatencySeconds(*result_)),
+                HasCalculationValue(400.0, "leaf3"));
 
     // The delegation order is 3, 0, 2. Since leaf3 returns not found for
     // compute, and leaf0 returns an error for compute, the compute comes from
     // leaf2.
-    EXPECT_EQ(
-        node->GetMetricValue(CostMetricId::ComputeSeconds(*result_), nullptr),
-        20.0);
+    EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/false,
+                                     CostMetricId::ComputeSeconds(*result_)),
+                HasCalculationValue(20.0, "leaf2"));
 
     // None of the calculators compute a value for operand bytes accessed.
-    EXPECT_EQ(
-        node->GetMetricValue(CostMetricId::OperandBytesAccessed(
-                                 *result_, /*operand_num=*/0, ShapeIndex({1})),
-                             nullptr),
-        std::nullopt);
+    EXPECT_THAT(
+        node->GetMetricValue(/*track_calculation_details=*/false,
+                             CostMetricId::OperandBytesAccessed(
+                                 *result_, /*operand_num=*/0, ShapeIndex({1}))),
+        MissingCalculationValue());
   }
 
   EXPECT_EQ(node->Name(), "delegation-node");
@@ -345,43 +345,41 @@ TEST_F(OpCostTest, DelegationNodeWithValueMap) {
 
   std::unique_ptr<OpCostManager::CalculationNode> node =
       CreateTestDelegationNode(*result_, std::move(delegation_order_fn));
-  OpCostManager::CalculationNode::LeafCalculatorValueMap value_map;
 
   // The delegation order is 3, 0, so the latency comes from leaf3.
-  value_map.clear();
-  EXPECT_EQ(
-      node->GetMetricValue(CostMetricId::LatencySeconds(*result_), &value_map),
-      400.0);
-  EXPECT_THAT(value_map,
-              UnorderedElementsAre(Pair("leaf0", CostValue::MakeValue(100.0)),
-                                   Pair("leaf1", CostValue::MakeValue(200.0)),
-                                   Pair("leaf2", CostValue::MakeValue(300.0)),
-                                   Pair("leaf3", CostValue::MakeValue(400.0))));
+  EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/true,
+                                   CostMetricId::LatencySeconds(*result_)),
+              AllOf(HasCalculationValue(400.0, "leaf3"),
+                    HasCalculatorMapValues(CalculatorValues({
+                        {"leaf0", CostValue::MakeValue(100.0)},
+                        {"leaf1", CostValue::MakeValue(200.0)},
+                        {"leaf2", CostValue::MakeValue(300.0)},
+                        {"leaf3", CostValue::MakeValue(400.0)},
+                    }))));
 
   // The delegation order is 3, 0, but neither of those leaves calculate a value
   // for compute.
-  value_map.clear();
-  EXPECT_EQ(
-      node->GetMetricValue(CostMetricId::ComputeSeconds(*result_), &value_map),
-      std::nullopt);
-  EXPECT_THAT(value_map,
-              UnorderedElementsAre(Pair("leaf0", CostValue::MakeError()),
-                                   Pair("leaf1", CostValue::MakeValue(10.0)),
-                                   Pair("leaf2", CostValue::MakeValue(20.0)),
-                                   Pair("leaf3", CostValue::MakeNotFound())));
+  EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/true,
+                                   CostMetricId::ComputeSeconds(*result_)),
+              AllOf(MissingCalculationValue(),
+                    HasCalculatorMapValues(CalculatorValues({
+                        {"leaf0", CostValue::MakeError()},
+                        {"leaf1", CostValue::MakeValue(10.0)},
+                        {"leaf2", CostValue::MakeValue(20.0)},
+                        {"leaf3", CostValue::MakeNotFound()},
+                    }))));
 
   // None of the calculators compute a value for operand bytes accessed.
-  value_map.clear();
-  EXPECT_EQ(
-      node->GetMetricValue(CostMetricId::OperandBytesAccessed(
-                               *result_, /*operand_num=*/0, ShapeIndex({1})),
-                           &value_map),
-      std::nullopt);
-  EXPECT_THAT(value_map,
-              UnorderedElementsAre(Pair("leaf0", CostValue::MakeNotFound()),
-                                   Pair("leaf1", CostValue::MakeNotFound()),
-                                   Pair("leaf2", CostValue::MakeNotFound()),
-                                   Pair("leaf3", CostValue::MakeNotFound())));
+  EXPECT_THAT(
+      node->GetMetricValue(/*track_calculation_details=*/true,
+                           CostMetricId::OperandBytesAccessed(
+                               *result_, /*operand_num=*/0, ShapeIndex({1}))),
+      AllOf(MissingCalculationValue(), HasCalculatorMapValues(CalculatorValues({
+                                           {"leaf0", CostValue::MakeNotFound()},
+                                           {"leaf1", CostValue::MakeNotFound()},
+                                           {"leaf2", CostValue::MakeNotFound()},
+                                           {"leaf3", CostValue::MakeNotFound()},
+                                       }))));
 }
 
 TEST_F(OpCostTest, DelegationNodeDifferentOrdersForDifferentInstructions) {
@@ -420,15 +418,15 @@ TEST_F(OpCostTest, DelegationNodeDifferentOrdersForDifferentInstructions) {
 
   // For the result_ instruction, the delegation order is 0, 1, so the latency
   // comes from leaf0.
-  EXPECT_EQ(
-      node->GetMetricValue(CostMetricId::LatencySeconds(*result_), nullptr),
-      100.0);
+  EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/false,
+                                   CostMetricId::LatencySeconds(*result_)),
+              HasCalculationValue(100.0, "leaf0"));
 
   // For the tuple1_ instruction, the delegation order is 1, 0, so the latency
   // comes from leaf1.
-  EXPECT_EQ(
-      node->GetMetricValue(CostMetricId::LatencySeconds(*tuple1_), nullptr),
-      200.0);
+  EXPECT_THAT(node->GetMetricValue(/*track_calculation_details=*/false,
+                                   CostMetricId::LatencySeconds(*tuple1_)),
+              HasCalculationValue(200.0, "leaf1"));
 }
 
 // Implements the test for the OpCostManagerNoCache and OpCostManagerWithCache

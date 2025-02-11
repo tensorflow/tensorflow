@@ -32,9 +32,9 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -171,6 +171,8 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
   output.set_use_auto_spmd_partitioning(use_auto_spmd_partitioning());
   output.set_exec_time_optimization_effort(exec_time_optimization_effort());
   output.set_memory_fitting_effort(memory_fitting_effort());
+  output.set_optimization_level(optimization_level());
+  output.set_memory_fitting_level(memory_fitting_level());
   output.set_deduplicate_hlo(deduplicate_hlo());
   if (has_device_assignment()) {
     device_assignment().Serialize(output.mutable_device_assignment());
@@ -228,6 +230,8 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_exec_time_optimization_effort(
       input.exec_time_optimization_effort());
   output.set_memory_fitting_effort(input.memory_fitting_effort());
+  output.set_optimization_level(input.optimization_level());
+  output.set_memory_fitting_level(input.memory_fitting_level());
   output.set_deduplicate_hlo(input.deduplicate_hlo());
   if (input.has_device_assignment()) {
     TF_ASSIGN_OR_RETURN(
@@ -287,6 +291,9 @@ ExecutionOptions CreateExecutionOptions(
       build_options.exec_time_optimization_effort());
   execution_options.set_memory_fitting_effort(
       build_options.memory_fitting_effort());
+  execution_options.set_optimization_level(build_options.optimization_level());
+  execution_options.set_memory_fitting_level(
+      build_options.memory_fitting_level());
   execution_options.set_deduplicate_hlo(build_options.deduplicate_hlo());
   if (!build_options.allow_spmd_sharding_propagation_to_parameters().empty()) {
     execution_options.mutable_allow_spmd_sharding_propagation_to_parameters()

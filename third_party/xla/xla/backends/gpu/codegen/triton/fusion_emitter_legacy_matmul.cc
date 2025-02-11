@@ -616,19 +616,33 @@ absl::StatusOr<Value> EmitBroadcast(EmitterLocOpBuilder b,
                                     Value input) {
   TF_RET_CHECK(analysis != nullptr);
   std::vector<int64_t> out_shape;
+
+  auto tensor_input = mlir::dyn_cast<TensorValue>(input);
+
+  // The broadcasted dimension could be a non-trivial like broadcast + bitcast.
+  // For example:
+  // s8[2,256,128]broadcast(s8[2,128])
+  // s8[512,128]bitcast(s8[2,256,128])
+  // I.e. we broadcast the first dimension from 2 to 512.
+  // When this is the case we don't need to expand the tile because it is
+  // already 2d but we still need to broadcast it.
+  bool non_trivial_broadcast = false;
+
   for (const DimProperties& dim : side.tiled_dims) {
     const TensorIterationSpec::DimIterationSpec* spec =
         analysis->IterSpec(side.scope, &broadcast, dim.index);
     if (spec != nullptr && spec->at(0).stride > 0) {
       out_shape.push_back(dim.block_size);
+      non_trivial_broadcast |= spec->at(0).subfragments.size() != 1;
     }
   }
-  auto tensor_input = mlir::dyn_cast<TensorValue>(input);
+
   if (!tensor_input) {
     // Input is scalar.
     return Splat(b, input, out_shape);
   }
-  if (tensor_input.getType().getRank() == out_shape.size()) {
+  if (!non_trivial_broadcast &&
+      tensor_input.getType().getRank() == out_shape.size()) {
     // No dimensions to broadcast.
     return input;
   }
@@ -643,9 +657,11 @@ absl::StatusOr<Value> EmitBroadcast(EmitterLocOpBuilder b,
           analysis->IterSpec(side.scope, broadcast.operand(0), dim.index);
       // A dimension is broadcasted if it's either absent in the input or
       // if its size is increased from the input to the output.
-      if (input_spec == nullptr ||
-          output_spec->at(0).count > input_spec->at(0).count) {
-        expanded_input = b.create<mt::ExpandDimsOp>(expanded_input, dim_idx);
+      if (tensor_input.getType().getRank() != out_shape.size()) {
+        if (input_spec == nullptr ||
+            output_spec->at(0).count > input_spec->at(0).count) {
+          expanded_input = b.create<mt::ExpandDimsOp>(expanded_input, dim_idx);
+        }
       }
       ++dim_idx;
     }
@@ -1001,10 +1017,8 @@ class MatMulEmitterHelper {
         dims_(dims),
         launch_config_(launch_config) {}
 
-  // TODO(b/266862493): Accumulator can be integer too.
-  // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
-  absl::StatusOr<mlir::FloatType> GetDotAccumulatorType(
-      EmitterLocOpBuilder& b) {
+  // TODO(b/266862493): Add support for more types as needed.
+  absl::StatusOr<mlir::Type> GetDotAccumulatorType(EmitterLocOpBuilder& b) {
     const PrecisionConfig::Algorithm algorithm =
         dot_instr_->precision_config().algorithm();
 
@@ -1028,8 +1042,11 @@ class MatMulEmitterHelper {
           TritonType(b, dot_instr_->operand(1)->shape().element_type()));
       TF_RET_CHECK(lhs_ty == rhs_ty);
       Type dot_input_ty = lhs_ty;
-      // TODO(b/266862493): Accumulator can be integer too.
-      // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
+
+      // Currently allowing 8x8-bit ints -> i32.
+      if (dot_input_ty == b.getIntegerType(8) && dot_output_ty.isInteger(32)) {
+        return b.getI32Type();
+      }
       return (dot_output_ty.isF64() && dot_input_ty.isF64()) ? b.getF64Type()
                                                              : b.getF32Type();
     }
@@ -1146,8 +1163,14 @@ class MatMulEmitterHelper {
       }
       // Only the contracting dimensions are advanced.
       if (dim.index == contracting_dimension) {
-        increments.push_back(
-            CreateConst(b, b.getI32Type(), dim.block_size * dim.split_value));
+        const TensorIterationSpec::DimIterationSpec* spec =
+            analysis_.IterSpec(side.scope, &hlo, dim.index);
+        if (spec->at(0).broadcast_multiplier > 1) {
+          increments.push_back(Cst32(b, 1));
+        } else {
+          increments.push_back(
+              CreateConst(b, b.getI32Type(), dim.block_size * dim.split_value));
+        }
       } else {
         increments.push_back(CreateConst(b, b.getI32Type(), 0));
       }
@@ -1346,7 +1369,19 @@ class MatMulEmitterHelper {
           b, side, properties, pid_offset, specs.front(), bases, tensor_params,
           boundary_checks));
     }
-    tensor_params.block_dims.push_back(properties.block_size);
+    if (specs.back()->at(0).broadcast_multiplier > 1) {
+      if (properties.block_size != specs.back()->at(0).broadcast_multiplier) {
+        return UncompilableMatmul(
+            "Broadcast has a different size than the block size.");
+      }
+      if (properties.split_value > 1) {
+        return UncompilableMatmul(
+            "Broadcasted dimension is split, which is not supported yet.");
+      }
+      tensor_params.block_dims.push_back(1);
+    } else {
+      tensor_params.block_dims.push_back(properties.block_size);
+    }
     tensor_params.dim_order.emplace(tensor_params.dim_order.begin(),
                                     tensor_params.dim_order.size());
     return absl::OkStatus();
@@ -2193,7 +2228,7 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
   MatMulEmitterHelper emitter(libdevice_path, device_info, dot_instr, index_ty,
                               dims, launch_config, analysis);
 
-  TF_ASSIGN_OR_RETURN(mlir::FloatType acc_ty, emitter.GetDotAccumulatorType(b));
+  TF_ASSIGN_OR_RETURN(mlir::Type acc_ty, emitter.GetDotAccumulatorType(b));
 
   ma::ConstantOp accumulator_init =
       CreateConst(b, acc_ty, 0, {block_m, block_n});

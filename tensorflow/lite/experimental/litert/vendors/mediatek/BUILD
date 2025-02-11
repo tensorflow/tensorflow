@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//tensorflow/lite/experimental/litert/vendors/mediatek:mediatek_build_defs.bzl", "litert_cc_lib_with_mtk")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
 )
 
-cc_library(
+litert_cc_lib_with_mtk(
     name = "neuron_adapter_api",
     srcs = [
         "neuron_adapter_api.cc",
@@ -25,13 +27,18 @@ cc_library(
     hdrs = [
         "neuron_adapter_api.h",
     ],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+        "notap",
+    ],
     deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        # copybara:uncomment "//third_party/neuro_pilot:latest_host_headers",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
-        "//tensorflow/lite/experimental/litert/tools:dump",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )

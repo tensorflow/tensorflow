@@ -122,8 +122,8 @@ limitations under the License.
 #include "xla/python/weakref_lru_cache.h"
 #include "xla/python/xla_compiler.h"
 #include "xla/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/status.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
 

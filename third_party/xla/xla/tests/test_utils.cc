@@ -382,6 +382,4 @@ std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
       shape, lhs, rhs, dot_dimension_numbers, precision_config);
 }
 
-bool IsMlirLoweringEnabled() { return false; }
-
 }  // namespace xla

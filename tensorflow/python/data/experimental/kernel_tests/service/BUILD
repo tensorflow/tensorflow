@@ -364,7 +364,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "multi_process_cluster",
     srcs = ["multi_process_cluster.py"],
-    srcs_version = "PY3",
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
@@ -399,7 +398,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "test_base",
     srcs = ["test_base.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/experimental/ops:data_service_ops",

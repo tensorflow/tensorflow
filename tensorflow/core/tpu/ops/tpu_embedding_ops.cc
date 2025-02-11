@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
@@ -35,8 +37,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/ops/tpu_embedding_shape_util.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 

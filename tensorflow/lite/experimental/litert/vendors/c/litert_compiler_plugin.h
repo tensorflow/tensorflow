@@ -65,14 +65,12 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops);
 
-// Prepare result to pass to the runtime for given partition and, optionally,
-// for a given SoC model (parameter `soc_model` can be NULL to specify a default
-// SoC model). The given subgraphs are valid sub-DAG within the ops selected in
-// partition step.
+// Prepare result to pass to the runtime for given model containing partitioned
+// subgraphs. Optionally, handles a SoC model (parameter `soc_model` can be NULL
+// to specify a default SoC model).
 LiteRtStatus LiteRtCompilerPluginCompile(LiteRtCompilerPlugin compiler_plugin,
                                          const char* soc_model,
-                                         LiteRtSubgraph* partitions,
-                                         LiteRtParamIndex num_partitions,
+                                         LiteRtModel partitions,
                                          LiteRtCompiledResult* compiled_result);
 
 //

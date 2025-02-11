@@ -361,8 +361,7 @@ LiteRtStatus Compile(Context& ctx) {
   ctx.Dump().Start("Compiling");
   DumpCompilationRequest(ctx.Dump(), ctx.SocModelTarget(),
                          model.NumSubgraphs());
-  auto compilation_result =
-      plugin->Compile(model.Subgraphs(), ctx.SocModelTarget());
+  auto compilation_result = plugin->Compile(&model, ctx.SocModelTarget());
   if (!compilation_result) {
     ctx.Dump().Fail();
     return compilation_result.Error().Status();

@@ -18,6 +18,7 @@ xla_cc_test(
     deps = [
         ":cpu_client",
         "//xla/pjrt:pjrt_client_test_common",
+        "//xla/tsl/platform:test_main",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -34,6 +35,7 @@ cc_library(
         "//xla:util",
         "//xla/service/cpu:cpu_event",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
@@ -43,7 +45,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -55,9 +56,9 @@ xla_cc_test(
         "//xla:util",
         "//xla/service/cpu:cpu_event",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -85,6 +86,8 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -98,8 +101,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
@@ -221,8 +222,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:denormal",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:setround",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
@@ -256,6 +255,7 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

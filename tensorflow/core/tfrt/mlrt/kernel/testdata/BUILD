@@ -20,8 +20,6 @@ filegroup(
 py_strict_binary(
     name = "gen_checkpoint",
     srcs = ["gen_checkpoint.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager/polymorphic_function",

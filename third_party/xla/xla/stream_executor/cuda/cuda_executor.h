@@ -191,6 +191,9 @@ class CudaExecutor : public GpuExecutor {
   // The minor version of the compute capability for device_.
   int cc_minor_;
 
+  // The NUMA node of the CPU closest to device_
+  int numa_node_;
+
   // Reader/writer lock for mutable data structures on this object.
   absl::Mutex mu_;
 

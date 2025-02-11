@@ -19,7 +19,6 @@ package(
 py_strict_library(
     name = "pywrap_tf_session",
     srcs = ["pywrap_tf_session.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tf_session",
@@ -146,7 +145,6 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "client",
     srcs = ["client_lib.py"],
-    srcs_version = "PY3",
     deps = [
         ":_pywrap_device_lib",
         "//tensorflow/core:protos_all_py",
@@ -163,7 +161,6 @@ tf_py_strict_test(
     name = "events_writer_test",
     size = "small",
     srcs = ["events_writer_test.py"],
-    python_version = "PY3",
     deps = [
         ":_pywrap_events_writer",
         "//tensorflow/core:protos_all_py",
@@ -179,7 +176,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "device_lib",
     srcs = ["device_lib.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//third_party/mlperf/submissions/training/v0_7/models:__subpackages__",
@@ -216,7 +212,6 @@ cuda_py_strict_test(
     srcs = [
         "device_lib_test.py",
     ],
-    python_version = "PY3",
     deps = [
         ":device_lib",
         "//tensorflow/core:protos_all_py",
@@ -281,7 +276,6 @@ tf_cuda_library(
 py_strict_library(
     name = "session",
     srcs = ["session.py"],
-    srcs_version = "PY3",
     # copybara:uncomment_begin(google-only)
     # visibility = [
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
@@ -322,7 +316,6 @@ py_strict_library(
 py_strict_library(
     name = "timeline",
     srcs = ["timeline.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -349,7 +342,6 @@ tf_py_strict_test(
     size = "medium",
     srcs = ["session_test.py"],
     grpc_enabled = True,
-    python_version = "PY3",
     tags = [
         "no_gpu",  # b/127001953
         "no_oss",  # b/198485096
@@ -400,7 +392,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["session_clusterspec_prop_test.py"],
     grpc_enabled = True,
-    python_version = "PY3",
     tags = [
         "no_gpu",
         "no_oss",
@@ -432,7 +423,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["session_list_devices_test.py"],
     grpc_enabled = True,
-    python_version = "PY3",
     tags = [
         "no_gpu",
         "no_pip_gpu",
@@ -454,7 +444,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["session_partial_run_test.py"],
     grpc_enabled = True,
-    python_version = "PY3",
     tags = [
         "no_gpu",
         "no_windows",
@@ -476,7 +465,6 @@ cuda_py_strict_test(
     name = "timeline_test",
     size = "small",
     srcs = ["timeline_test.py"],
-    python_version = "PY3",
     tags = [
         "gpu_cupti",
         "no_gpu",  # b/154742661
@@ -499,7 +487,6 @@ cuda_py_strict_test(
     name = "virtual_gpu_test",
     size = "small",
     srcs = ["virtual_gpu_test.py"],
-    python_version = "PY3",
     tags = [
         "no_gpu",  # b/127386241
         "no_windows_gpu",
@@ -523,7 +510,6 @@ cuda_py_benchmark_test(
     srcs = ["session_benchmark.py"],
     grpc_enabled = True,
     main = "session_benchmark.py",
-    python_version = "PY3",
     deps = [
         ":session",
         "//tensorflow/python/framework:dtypes",

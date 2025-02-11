@@ -13,19 +13,15 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,13 +29,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-using CycleType = SourceTargetPairs::CycleType;
+using CycleType = collective_permute_cycle::CycleType;
 // Finds and returns the non-constant operand in instr.
 // CHECK-fails if instr doesn't have exactly one unique non-constant operand.
 static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
@@ -98,10 +95,10 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
       if (inst->frontend_attributes().map().contains(kSendRecvValidationAttr)) {
         continue;
       }
-      SourceTargetPairs::CycleType cycleType =
+      CycleType cycleType =
           GetCycleTypeAndIndices(inst->source_target_pairs()).first;
 
-      if (cycleType == CycleType::kUnknown) {
+      if (cycleType == CycleType::kNone) {
         continue;
       }
 

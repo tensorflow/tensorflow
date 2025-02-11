@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -22,7 +23,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
 #include "tensorflow/dtensor/cc/dtensor_operation.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace dtensor {

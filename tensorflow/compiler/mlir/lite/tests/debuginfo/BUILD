@@ -45,7 +45,6 @@ py_strict_binary(
     name = "saved_model_error",
     srcs = ["saved_model_error.py"],
     main = "saved_model_error.py",
-    python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "@absl_py//absl:app",
@@ -56,7 +55,6 @@ py_strict_binary(
     name = "concrete_function_error",
     srcs = ["concrete_function_error.py"],
     main = "concrete_function_error.py",
-    python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "@absl_py//absl:app",

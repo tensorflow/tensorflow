@@ -242,6 +242,18 @@ LiteRtStatus QnnManager::GenerateContextBinary(
   return kLiteRtStatusOk;
 }
 
+LiteRtStatus QnnManager::ValidateOp(const Qnn_OpConfig_t& op_config) {
+  if (Qnn_ErrorHandle_t error =
+          Api()->backendValidateOpConfig(BackendHandle(), op_config);
+      QNN_SUCCESS != error) {
+    LITERT_LOG(LITERT_ERROR, "Failed to validate op %s\n, error: %lld",
+               op_config.v1.name, static_cast<long long>(error));
+    return kLiteRtStatusErrorInvalidLegalization;
+  }
+
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
                               std::optional<std::string> shared_library_dir,
                               std::optional<QnnHtpDevice_Arch_t> soc_model) {

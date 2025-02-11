@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/util.h"
 #include "tensorflow/core/util/work_sharder.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

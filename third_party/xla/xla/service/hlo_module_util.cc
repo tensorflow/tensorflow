@@ -131,6 +131,8 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
         execution_options->exec_time_optimization_effort());
     config->set_memory_fitting_effort(
         execution_options->memory_fitting_effort());
+    config->set_optimization_level(execution_options->optimization_level());
+    config->set_memory_fitting_level(execution_options->memory_fitting_level());
     config->set_deduplicate_hlo(execution_options->deduplicate_hlo());
     config->set_seed(execution_options->seed());
     config->set_launch_id(execution_options->launch_id());

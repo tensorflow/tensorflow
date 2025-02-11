@@ -38,16 +38,20 @@ CollectiveDeviceListProto CreateDeviceListProto(
 }
 
 TEST(CollectiveDeviceListTest, DefaultListToString) {
-  CollectiveDeviceList list({{1, 2}, {3, 4}});
-  ASSERT_EQ(list.ToString(), "{{1,2},{3,4}}");
+  EXPECT_EQ(CollectiveDeviceList().ToString(), "{}");
+  EXPECT_EQ(CollectiveDeviceList({{1, 2}, {3, 4}}).ToString(), "{{1,2},{3,4}}");
+  EXPECT_EQ(CollectiveDeviceList({{1, 2, 3, 4, 5, 6, 7}}).ToString(),
+            "{{1,2,3,4,5,6,7}}");
 }
 
-TEST(CollectiveDeviceListTest, DefaultListToString2) {
-  CollectiveDeviceList list({{1, 2, 3, 4, 5, 6, 7}});
-  EXPECT_EQ(list.ToString(), "{{1,2,3,4,5,6,7}}");
+TEST(CollectiveDeviceListTest, DeepCopy) {
+  CollectiveDeviceList orig({{1, 2, 3, 4, 5, 6, 7}});
+  CollectiveDeviceList copy = orig;
+  EXPECT_EQ(&orig.replica_groups(), &copy.replica_groups());
 }
 
 TEST(CollectiveDeviceListTest, DefaultListToProto) {
+  EXPECT_THAT(CollectiveDeviceList().ToProto().replica_groups().size(), 0);
   CollectiveDeviceList list({{1, 2}, {3, 4}});
   CollectiveDeviceListProto proto = list.ToProto();
   EXPECT_THAT(proto.replica_groups().size(), 2);

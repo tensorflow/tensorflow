@@ -18,14 +18,17 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <numeric>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/shape.h"
@@ -41,21 +44,14 @@ absl::InlinedVector<BufferUse, 4> DotBufferUses(const DotSlices& slices) {
           BufferUse::Write(slices.out_buffer)};
 }
 
+std::string MakeVectorString(absl::Span<const int64_t> values) {
+  return absl::StrCat("[", absl::StrJoin(values, ","), "]");
+}
+
 absl::StatusOr<DotShape> GetDotShape(const DotDimensionNumbers& dot_dimensions,
                                      const Shape& lhs_shape,
                                      const Shape& rhs_shape,
                                      const Shape& out_shape) {
-  // All shapes must be in dim0-major layout.
-  if (!LayoutUtil::IsMonotonicWithDim0Major(lhs_shape.layout()) ||
-      !LayoutUtil::IsMonotonicWithDim0Major(rhs_shape.layout()) ||
-      !LayoutUtil::IsMonotonicWithDim0Major(out_shape.layout())) {
-    return InvalidArgument(
-        "DotThunk requires all operands and outputs to be in "
-        "dim0-major layout: lhs_shape=[%s], rhs_shape=[%s], out_shape=[%s]",
-        lhs_shape.ToString(true), rhs_shape.ToString(true),
-        out_shape.ToString(true));
-  }
-
   // Batch dimensions must be contiguous and start at 0.
   std::vector<int64_t> batch_dims(dot_dimensions.lhs_batch_dimensions().size());
   absl::c_iota(batch_dims, 0);
@@ -70,6 +66,35 @@ absl::StatusOr<DotShape> GetDotShape(const DotDimensionNumbers& dot_dimensions,
   }
 
   int64_t num_batch_dims = batch_dims.size();
+
+  absl::Span<const int64_t> lhs_major_batch_dims =
+      lhs_shape.layout().minor_to_major().last(num_batch_dims);
+  absl::Span<const int64_t> rhs_major_batch_dims =
+      rhs_shape.layout().minor_to_major().last(num_batch_dims);
+  absl::Span<const int64_t> out_major_batch_dims =
+      out_shape.layout().minor_to_major().last(num_batch_dims);
+
+  for (const int64_t batch_dim : batch_dims) {
+    if (!absl::c_linear_search(lhs_major_batch_dims, batch_dim)) {
+      return InvalidArgument(
+          "LHS batch dims %s must be in the most major dimensions %s",
+          MakeVectorString(batch_dims),
+          MakeVectorString(lhs_shape.layout().minor_to_major()));
+    }
+    if (!absl::c_linear_search(rhs_major_batch_dims, batch_dim)) {
+      return InvalidArgument(
+          "RHS batch dims %s must be in the most major dimensions %s",
+          MakeVectorString(batch_dims),
+          MakeVectorString(rhs_shape.layout().minor_to_major()));
+    }
+    if (!absl::c_linear_search(out_major_batch_dims, batch_dim)) {
+      return InvalidArgument(
+          "Output batch dims %s must be in the most major dimensions %s",
+          MakeVectorString(batch_dims),
+          MakeVectorString(out_shape.layout().minor_to_major()));
+    }
+  }
+
   int64_t batch_size =
       std::accumulate(out_shape.dimensions().begin(),
                       out_shape.dimensions().begin() + num_batch_dims, 1LL,
@@ -138,7 +163,8 @@ absl::StatusOr<DotCanonicalDims> GetDotCanonicalDims(
       /*lhs_canonical=*/dot_shape.lhs_matmul_shape.rank() <= 1 ||
           lhs_contracting_dims[0] == 1,
       /*rhs_column_major=*/is_column_major(dot_shape.rhs_matmul_shape),
-      /*rhs_canonical=*/rhs_contracting_dims[0] == 0};
+      /*rhs_canonical=*/rhs_contracting_dims[0] == 0,
+      /*output_column_major=*/is_column_major(dot_shape.out_matmul_shape)};
 }
 
 }  // namespace xla::cpu

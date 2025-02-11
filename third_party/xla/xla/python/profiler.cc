@@ -36,9 +36,9 @@ limitations under the License.
 #include "xla/python/profiler/profile_data.h"
 #include "xla/python/profiler_utils.h"
 #include "xla/python/xplane_to_profile_instructions.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/lib/traceme.h"

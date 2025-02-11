@@ -295,6 +295,10 @@ def register_custom_call_partitioner(
     c_api: Optional[Any] = ...,
 ) -> None: ...
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
+def register_custom_call_as_batch_partitionable(
+    target_name: str,
+    c_api: Optional[Any] = ...,
+) -> None: ...
 
 class AutotuneCacheMode(enum.IntEnum):
   UNSPECIFIED: AutotuneCacheMode

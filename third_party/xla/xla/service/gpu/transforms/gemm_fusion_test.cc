@@ -33,8 +33,10 @@ limitations under the License.
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
@@ -1030,12 +1032,14 @@ ENTRY e {
                                  computation->parameter_instruction(0), 0),
               ElementsAre(FieldsAre(/*stride=*/24, /*count=*/6,
                                     /*slice_start=*/2, /*sliced_count=*/3,
-                                    /*subfragments=*/ElementsAre(3))));
+                                    /*subfragments=*/ElementsAre(3),
+                                    /*broadcast_multiplier=*/1)));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS,
                                  computation->parameter_instruction(0), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24,
                                     /*slice_start=*/16, /*sliced_count=*/7,
-                                    /*subfragments=*/ElementsAre(7))));
+                                    /*subfragments=*/ElementsAre(7),
+                                    /*broadcast_multiplier=*/1)));
 }
 
 TEST_F(GemmFusionTest, FusedConcatenationIsAnalyzedCorrectly) {
@@ -1067,35 +1071,41 @@ e {
                                  computation->parameter_instruction(1), 0),
               ElementsAre(FieldsAre(/*stride=*/1536, /*count=*/153,
                                     /*slice_start=*/0, /*sliced_count=*/153,
-                                    /*subfragments=*/ElementsAre(153))));
+                                    /*subfragments=*/ElementsAre(153),
+                                    /*broadcast_multiplier=*/1)));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(1), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/1536,
                                     /*slice_start=*/0, /*sliced_count=*/1536,
-                                    /*subfragments=*/ElementsAre(1536))));
+                                    /*subfragments=*/ElementsAre(1536),
+                                    /*broadcast_multiplier=*/1)));
 
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(2), 0),
               ElementsAre(FieldsAre(/*stride=*/128, /*count=*/153,
                                     /*slice_start=*/0, /*sliced_count=*/153,
-                                    /*subfragments=*/ElementsAre(153))));
+                                    /*subfragments=*/ElementsAre(153),
+                                    /*broadcast_multiplier=*/1)));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(2), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/128,
                                     /*slice_start=*/-1536, /*sliced_count=*/128,
-                                    /*subfragments=*/ElementsAre(128))));
+                                    /*subfragments=*/ElementsAre(128),
+                                    /*broadcast_multiplier=*/1)));
 
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(3), 0),
               ElementsAre(FieldsAre(/*stride=*/256, /*count=*/153,
                                     /*slice_start=*/0, /*sliced_count=*/153,
-                                    /*subfragments=*/ElementsAre(153))));
+                                    /*subfragments=*/ElementsAre(153),
+                                    /*broadcast_multiplier=*/1)));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(3), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/256,
                                     /*slice_start=*/-1536 - 128,
                                     /*sliced_count=*/256,
-                                    /*subfragments=*/ElementsAre(256))));
+                                    /*subfragments=*/ElementsAre(256),
+                                    /*broadcast_multiplier=*/1)));
 }
 
 TEST_F(GemmFusionTest, IndivisibleConcatenationIsNotFused) {
@@ -1245,6 +1255,22 @@ e {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
                                     m::GetTupleElement()))));
+}
+
+TEST_F(GemmFusionTest, DoNotFuseNonProfitableDot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[1024] parameter(0)
+  b0 = bf16[16,64] bitcast(p0)
+  p1 = bf16[1024] parameter(1)
+  b1 = bf16[64,16] bitcast(p1)
+  ROOT d = bf16[16,16] dot(b0, b1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                    .value();
+  EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
 }
 
 // A test fixture class for testing the threshold for small matrices.

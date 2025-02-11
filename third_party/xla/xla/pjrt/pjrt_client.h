@@ -865,19 +865,9 @@ class PjRtClient {
         platform_name());
   }
 
-  // TODO(b/277820585): remove BufferFromHostLiteral with PjRtDevice after the
-  // migration is done.
-
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for GetReadyFuture().Await()
   // completes on the return value before letting literal go out of scope.
-  ABSL_DEPRECATED("Use BufferFromHostLiteral with a PjRtMemorySpace instead")
-  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) {
-    TF_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
-    return BufferFromHostLiteral(literal, memory_space);
-  }
-
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space) {
     return tsl::errors::Unimplemented(
@@ -1247,16 +1237,6 @@ class PjRtBuffer {
 
   // True if and only if Delete or Release has previously been called.
   virtual bool IsDeleted() = 0;
-
-  // Copies the buffer to device `dst_device`, performing a d2d transfer when
-  // `dst_device` is sharing the same Client, and performing a d2h and h2d copy
-  // if `dst_device` lives on a different Client.
-  // Returns an error if the buffer is already on dst_device.
-  //
-  // See note on semantics of cross-device copies in the class definition
-  // comment for PjRtClient.
-  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) = 0;
 
   // Copies the buffer to memory space `dst_memory_space`.
   //

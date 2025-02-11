@@ -126,7 +126,7 @@ Expected<TensorType> MapTensorType(const TflTensorType& tfl_tensor_type) {
 }
 
 Expected<Quantization> MapQuantization(const TflQuantization* tfl_quantization,
-                                       BufferProvider buffer_provider) {
+                                       ScratchBufferProvider buffer_provider) {
   if (!IsQuantized(tfl_quantization)) {
     return MakeEmptyQuantization();
   }

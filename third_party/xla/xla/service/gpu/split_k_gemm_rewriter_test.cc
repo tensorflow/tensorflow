@@ -552,7 +552,8 @@ ENTRY e {
       *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
       ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2560, /*slice_start=*/0,
                             /*slice_limit=*/2560,
-                            /*subfragments=*/ElementsAre(20, 4, 4, 4, 2))));
+                            /*subfragments=*/ElementsAre(20, 4, 4, 4, 2),
+                            /*broadcast_multiplier=*/1)));
 }
 
 TEST_F(SplitKTest, FragmentedKUnsupported) {

@@ -23,11 +23,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/time/time.h"
+#include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -35,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -52,6 +58,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -1374,6 +1381,249 @@ TEST_F(GemmFusionAutotunerTest,
       }));
 }
 
+// Implements KeyValueStoreInterface for testing. When attempting to get a key
+// that is not present using `Get`, the key is inserted and we return a dummy
+// value. This actually is a valid implementation of the interface, and
+// convenient for testing.
+//
+// To fail gracefully if a key is not found, use `TryGet` instead.
+class KeyValueStoreForTest : public KeyValueStoreInterface {
+ public:
+  explicit KeyValueStoreForTest(std::string dummy_value)
+      : dummy_value_(dummy_value) {}
+
+  absl::StatusOr<std::string> Get(absl::string_view key,
+                                  absl::Duration timeout) override {
+    if (auto v = storage_.find(key); v != storage_.end()) {
+      return v->second;
+    }
+
+    TF_RETURN_IF_ERROR(Set(key, dummy_value_));
+    return dummy_value_;
+  }
+
+  absl::StatusOr<std::string> TryGet(absl::string_view key) override {
+    if (auto v = storage_.find(key); v != storage_.end()) {
+      return v->second;
+    }
+
+    return absl::NotFoundError(absl::StrCat("Key not found: ", key));
+  }
+
+  absl::Status Set(absl::string_view key, absl::string_view value) override {
+    if (storage_.contains(key)) {
+      return absl::AlreadyExistsError(
+          absl::StrCat("Key already exists: ", key));
+    }
+
+    storage_.insert({std::string(key), std::string(value)});
+    return absl::OkStatus();
+  }
+
+  const absl::flat_hash_map<std::string, std::string>& storage() const {
+    return storage_;
+  }
+
+ private:
+  absl::flat_hash_map<std::string, std::string> storage_;
+  std::string dummy_value_;
+};
+
+// Produces dummy autotuning results for the provided cache key.
+absl::StatusOr<AutotuneResults> GetDummyAutotuneResultsForCacheKey(
+    const AutotuneCacheKey& cache_key) {
+  TF_ASSIGN_OR_RETURN(AutotuneResults autotune_results,
+                      ParseTextProto<AutotuneResults>(R"pb(
+                        version: 3
+                        results {
+                          device: "..."
+                          hlo: "..."
+                          result {
+                            custom_kernel_fusion { kernel_index: 1 }
+                            run_time { nanos: 14 }
+                          }
+                        })pb"));
+  autotune_results.mutable_results(0)->set_device(
+      std::string(cache_key.GetModelStr()));
+  autotune_results.mutable_results(0)->set_hlo(std::string(cache_key.GetHlo()));
+
+  return autotune_results;
+}
+
+// Produces a MultiProcessKeyValueStore from the provided autotuning results,
+// and for the provided number of processes.
+absl::StatusOr<MultiProcessKeyValueStore> KeyValueStoreFromAutotuneResults(
+    const AutotuneResults& autotune_results, int process_count) {
+  TF_ASSIGN_OR_RETURN(std::string autotune_results_str,
+                      AutotuneResultsToString(autotune_results,
+                                              /*as_textproto=*/true));
+
+  MultiProcessKeyValueStore multi_process_key_value_store;
+  multi_process_key_value_store.key_value_store =
+      std::make_shared<KeyValueStoreForTest>(autotune_results_str);
+  multi_process_key_value_store.process_count = process_count;
+
+  return multi_process_key_value_store;
+}
+
+class GemmFusionShardedAutotunerTest : public GemmFusionAutotunerTest {
+ protected:
+  AutotuneConfig GetAutotuneConfigForTest() const {
+    return AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
+                                       backend().memory_allocator()},
+                          GetDebugOptionsForTest()};
+  }
+
+  GemmFusionAutotuner GemmFusionAutotunerForKeyValueStore(
+      MultiProcessKeyValueStore& multi_process_key_value_store) const {
+    return GemmFusionAutotuner(GetAutotuneConfigForTest(), GetToolkitVersion(),
+                               /*thread_pool=*/{},
+                               multi_process_key_value_store);
+  }
+};
+
+TEST_F(
+    GemmFusionShardedAutotunerTest,
+    AutotuningSucceedsWhenKeyValueStoreAlreadyContainsAutotuningResultsForTheInputModule) {  // NOLINT(whitespace/line_length)
+  if (isRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm.";
+  }
+  const std::string kHlo = R"(
+  HloModule module
+
+  computation {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    convert0 = f32[1024,1024]{1,0} convert(p0)
+    p1 = bf16[1024,1024]{1,0} parameter(1)
+    convert1 = f32[1024,1024]{1,0} convert(p1)
+    ROOT dot = f32[1024,1024]{1,0} dot(convert0, convert1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  ENTRY main {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    p1 = bf16[1024,1024]{1,0} parameter(1)
+    ROOT fusion = f32[1024,1024]{1,0} fusion(p0, p1),
+      kind=kCustom, calls=computation,
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+
+  const int kProcessCount = 2;
+  AutotuneConfig autotune_config = GetAutotuneConfigForTest();
+  AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
+                             *module->entry_computation()->root_instruction());
+  TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
+                          GetDummyAutotuneResultsForCacheKey(cache_key));
+  TF_ASSERT_OK_AND_ASSIGN(
+      MultiProcessKeyValueStore multi_process_key_value_store,
+      KeyValueStoreFromAutotuneResults(autotune_results_override,
+                                       kProcessCount));
+  GemmFusionAutotuner autotuner =
+      GemmFusionAutotunerForKeyValueStore(multi_process_key_value_store);
+
+  // Run the autotuner once to populate the key-value store.
+  EXPECT_THAT(autotuner.Run(module->Clone().get()),
+              ::tsl::testing::IsOkAndHolds(true));
+
+  auto& key_value_store = *static_cast<KeyValueStoreForTest*>(
+      multi_process_key_value_store.key_value_store.get());
+
+  // The key-value store should now contain a single entry for each process.
+  ASSERT_THAT(key_value_store.storage(), ::testing::SizeIs(kProcessCount));
+
+  // Running the autotuner a second time on the same module should succeed and
+  // modify the HLO again, but we should hit the cache (i.e., the key-value
+  // store should still contain a single entry for each process).
+  EXPECT_THAT(autotuner.Run(module.get()), ::tsl::testing::IsOkAndHolds(true));
+  ASSERT_THAT(key_value_store.storage(), ::testing::SizeIs(kProcessCount));
+}
+
+TEST_F(
+    GemmFusionShardedAutotunerTest,
+    AutotuningStoresDifferentResultsForTheSameFusionInDifferentModules) {  // NOLINT(whitespace/line_length)
+  if (isRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm.";
+  }
+  const std::string kHlo1 = R"(
+  HloModule module
+
+  computation {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    convert0 = f32[1024,1024]{1,0} convert(p0)
+    p1 = bf16[1024,1024]{1,0} parameter(1)
+    convert1 = f32[1024,1024]{1,0} convert(p1)
+    ROOT dot = f32[1024,1024]{1,0} dot(convert0, convert1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  ENTRY main {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    p1 = bf16[1024,1024]{1,0} parameter(1)
+    ROOT fusion = f32[1024,1024]{1,0} fusion(p0, p1),
+      kind=kCustom, calls=computation,
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  })";
+
+  // Like kHlo1, but with 'abs' at the ROOT.
+  const std::string kHlo2 = R"(
+  HloModule module
+
+  computation {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    convert0 = f32[1024,1024]{1,0} convert(p0)
+    p1 = bf16[1024,1024]{1,0} parameter(1)
+    convert1 = f32[1024,1024]{1,0} convert(p1)
+    ROOT dot = f32[1024,1024]{1,0} dot(convert0, convert1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  ENTRY main {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    p1 = bf16[1024,1024]{1,0} parameter(1)
+    fusion = f32[1024,1024]{1,0} fusion(p0, p1),
+      kind=kCustom, calls=computation,
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    ROOT abs = f32[1024,1024]{1,0} abs(fusion)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module1,
+                          ParseAndReturnVerifiedModule(kHlo1));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module2,
+                          ParseAndReturnVerifiedModule(kHlo2));
+
+  const int kProcessCount = 2;
+  AutotuneConfig autotune_config = GetAutotuneConfigForTest();
+  AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
+                             *module1->entry_computation()->root_instruction());
+  TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
+                          GetDummyAutotuneResultsForCacheKey(cache_key));
+  TF_ASSERT_OK_AND_ASSIGN(
+      MultiProcessKeyValueStore multi_process_key_value_store,
+      KeyValueStoreFromAutotuneResults(autotune_results_override,
+                                       kProcessCount));
+  GemmFusionAutotuner autotuner =
+      GemmFusionAutotunerForKeyValueStore(multi_process_key_value_store);
+
+  // Run the autotuner on the first module.
+  EXPECT_THAT(autotuner.Run(module1.get()), ::tsl::testing::IsOkAndHolds(true));
+
+  auto& key_value_store = *static_cast<KeyValueStoreForTest*>(
+      multi_process_key_value_store.key_value_store.get());
+
+  // The key-value store should now contain a single entry for each process.
+  ASSERT_THAT(key_value_store.storage(), ::testing::SizeIs(kProcessCount));
+
+  // Running the autotuner on the second module should *not* hit the cached
+  // results in the key-value store. I.e., the key-value store should now
+  // contain a second entry for each process).
+  EXPECT_THAT(autotuner.Run(module2.get()), ::tsl::testing::IsOkAndHolds(true));
+  ASSERT_THAT(key_value_store.storage(), ::testing::SizeIs(2 * kProcessCount));
+}
+
 TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
   if (isRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
@@ -1407,20 +1657,7 @@ TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
   AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
                              *module->entry_computation()->root_instruction());
   TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
-                          ParseTextProto<AutotuneResults>(R"pb(
-                            version: 3
-                            results {
-                              device: "..."
-                              hlo: "..."
-                              result {
-                                custom_kernel_fusion { kernel_index: 1 }
-                                run_time { nanos: 14 }
-                              }
-                            })pb"));
-  autotune_results_override.mutable_results(0)->set_device(
-      std::string(cache_key.GetModelStr()));
-  autotune_results_override.mutable_results(0)->set_hlo(
-      std::string(cache_key.GetHlo()));
+                          GetDummyAutotuneResultsForCacheKey(cache_key));
 
   GemmFusionAutotunerRewriterVisitor visitor(autotune_config);
 

@@ -48,12 +48,12 @@ limitations under the License.
 #include "xla/python/py_device.h"
 #include "xla/python/traceback.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -171,7 +171,8 @@ struct ShardedBufferAdapter<ExecuteShardedArg> {
             ifrt::OpaqueSharding::Create(
                 ifrt::BasicDeviceList::Create(std::move(devices)),
                 ifrt::MemoryKind()),
-            absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
+            absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput,
+            ifrt::SingleDeviceShardSemantics::kAddressableShards);
     TF_CHECK_OK(ifrt_array.status());
     return *ifrt_array;
   }
@@ -190,7 +191,8 @@ void PopulateExecuteShardedResults(
     outputs[buffer_id].reserve(num_computations);
     auto exploded_arrays =
         ifrt_arrays[buffer_id]->DisassembleIntoSingleDeviceArrays(
-            ifrt::ArrayCopySemantics::kReuseInput);
+            ifrt::ArrayCopySemantics::kReuseInput,
+            ifrt::SingleDeviceShardSemantics::kAddressableShards);
     TF_CHECK_OK(exploded_arrays.status());
     for (auto& exploded_array : *exploded_arrays) {
       outputs[buffer_id].push_back(PyArray::MakeFromSingleDeviceArray(
@@ -343,7 +345,8 @@ std::vector<nb::object> PyExecuteResults::ConsumeWithHandlers(
       tsl::profiler::TraceMe traceme("ConsumeWithHandlers fallback.");
       auto disassembled_arrays =
           ifrt_arrays[buffer_id]->DisassembleIntoSingleDeviceArrays(
-              ifrt::ArrayCopySemantics::kReuseInput);
+              ifrt::ArrayCopySemantics::kReuseInput,
+              ifrt::SingleDeviceShardSemantics::kAddressableShards);
       TF_CHECK_OK(disassembled_arrays.status());
       nb::list bufs =
           nb::steal<nb::list>(PyList_New(disassembled_arrays->size()));

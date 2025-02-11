@@ -285,6 +285,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
         "@tf_runtime//:hostcontext",
     ],
 )

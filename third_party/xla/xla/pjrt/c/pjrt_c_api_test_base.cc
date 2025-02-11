@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/status.h"
-#include "tsl/platform/status.h"
 
 namespace pjrt {
 namespace {
@@ -181,7 +180,14 @@ PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
   std::vector<float> float_data(4);
   std::iota(float_data.begin(), float_data.end(), 41.0f);
+  return create_buffer_from_data(float_data, shape, device);
+}
 
+std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
+          xla::PjRtFuture<>>
+PjrtCApiTestBase::create_buffer_from_data(const std::vector<float>& float_data,
+                                          const xla::Shape& shape,
+                                          PJRT_Device* device) {
   PJRT_Client_BufferFromHostBuffer_Args args = CreateBufferFromHostBufferArgs(
       float_data, shape,
       xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, device);

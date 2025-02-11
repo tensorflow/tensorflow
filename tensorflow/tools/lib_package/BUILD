@@ -165,11 +165,6 @@ genrule(
         "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-    }) + select({
-        "@local_xla//xla/tsl:with_numa_support": [
-            "@hwloc//:COPYING",
-        ],
-        "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
         "@local_config_nccl//:LICENSE",
@@ -209,11 +204,6 @@ genrule(
         "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-    }) + select({
-        "@local_xla//xla/tsl:with_numa_support": [
-            "@hwloc//:COPYING",
-        ],
-        "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
         "@local_config_nccl//:LICENSE",

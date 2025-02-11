@@ -743,6 +743,13 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
     const dnn::TensorDescriptor& dv_desc, double scale,
     dnn::FMHAMaskKind mask_type);
 
+absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
+    dnn::DnnSupport& dnn_support, const dnn::TensorDescriptor& lhs_data,
+    const dnn::TensorDescriptor& lhs_scale,
+    const dnn::TensorDescriptor& rhs_data,
+    const dnn::TensorDescriptor& rhs_scale, dnn::DataType result_type,
+    int block_size);
+
 }  // namespace gpu
 }  // namespace stream_executor
 

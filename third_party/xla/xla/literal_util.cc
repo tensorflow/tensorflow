@@ -37,12 +37,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/bitmap.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/status.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -113,6 +113,16 @@ Literal CreateScalar(PrimitiveType primitive_type, Args... args) {
 template <PrimitiveType kType>
 struct ZeroProvider {
   NativeT<kType> operator()() const { return static_cast<NativeT<kType>>(0); }
+};
+
+// Use template specialization for the E8M0 type, as it has no zero
+// representation, so static_cast<> returns NaN. The actual zero-like value
+// is 2^-127.
+template <>
+struct ZeroProvider<F8E8M0FNU> {
+  NativeT<F8E8M0FNU> operator()() const {
+    return Eigen::numext::bit_cast<NativeT<F8E8M0FNU>>('\0');
+  }
 };
 
 template <PrimitiveType kType>

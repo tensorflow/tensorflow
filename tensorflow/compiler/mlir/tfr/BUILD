@@ -294,13 +294,11 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "composite",
     srcs = ["python/composite.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "tfr_gen",
     srcs = ["python/tfr_gen.py"],
-    srcs_version = "PY3",
     deps = [
         ":tfr_wrapper",
         "//tensorflow:tensorflow_py",  # buildcleaner: keep
@@ -330,8 +328,6 @@ tf_py_strict_test(
     name = "tfr_gen_test",
     size = "medium",
     srcs = ["python/tfr_gen_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":composite",
         ":tfr_gen",
@@ -349,7 +345,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "op_reg_gen",
     srcs = ["python/op_reg_gen.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/autograph/pyct:transformer",
@@ -364,8 +359,6 @@ tf_py_strict_test(
     name = "op_reg_gen_test",
     size = "small",
     srcs = ["python/op_reg_gen_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":composite",
         ":op_reg_gen",
@@ -377,7 +370,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "test_utils",
     srcs = ["python/test_utils.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/eager:backprop",

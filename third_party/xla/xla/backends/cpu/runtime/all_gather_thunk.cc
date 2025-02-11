@@ -49,8 +49,9 @@ absl::StatusOr<std::unique_ptr<AllGatherThunk>> AllGatherThunk::Create(
 
 AllGatherThunk::AllGatherThunk(Info info, OpParams op_params,
                                OpBuffers op_buffers, OpResources op_resources)
-    : CollectiveThunk(Kind::kAllGather, std::move(info), std::move(op_params),
-                      std::move(op_buffers), std::move(op_resources)) {}
+    : CollectiveThunk(CollectiveKind::kAllGather, std::move(info),
+                      std::move(op_params), std::move(op_buffers),
+                      std::move(op_resources)) {}
 
 tsl::AsyncValueRef<AllGatherThunk::ExecuteEvent> AllGatherThunk::Execute(
     const ExecuteParams& params) {

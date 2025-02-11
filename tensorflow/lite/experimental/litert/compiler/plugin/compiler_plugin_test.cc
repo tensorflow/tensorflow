@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/core/build_stamp.h"
@@ -122,7 +123,7 @@ TEST(CompilerPluginTest, Compile) {
   auto model_wrap = testing::LoadTestFileModel("mul_simple.tflite");
   auto& model = *model_wrap.Get();
 
-  auto result = plugins->front().Compile(model.Subgraphs());
+  auto result = plugins->front().Compile(&model);
   ASSERT_TRUE(result);
 
   auto byte_code = result->ByteCode();
@@ -169,6 +170,28 @@ TEST(PartitionModelTest, Simple) {
   EXPECT_EQ(subgraphs.Elements().front()->Ops().size(), 2);
 }
 
+TEST(PartitionModelTest, PartitionDirect) {
+  auto model_wrap = testing::LoadTestFileModel("mul_simple.tflite");
+  auto& model = *model_wrap.Get();
+
+  std::vector<LiteRtOp> selected_ops = {
+      model.MainSubgraph()->Ops().front(),
+      model.MainSubgraph()->Ops().back(),
+  };
+
+  auto partition_result = PartitionModelDirect(std::move(selected_ops), model);
+  ASSERT_TRUE(partition_result);
+  ASSERT_EQ(model.NumSubgraphs(), 1);
+
+  const auto& [ops, subgraphs] = *partition_result;
+
+  EXPECT_EQ(ops.size(), 1);
+  EXPECT_EQ(ops.front()->OpCode(), kLiteRtOpCodeTflCustom);
+
+  EXPECT_EQ(subgraphs.Size(), 1);
+  EXPECT_EQ(subgraphs.Elements().front()->Ops().size(), 2);
+}
+
 TEST(PartitionModelTest, MultiSubgraph) {
   auto model_wrap = testing::LoadTestFileModel("multi_subgraph_mul.tflite");
   auto& model = *model_wrap.Get();
@@ -192,6 +215,43 @@ TEST(PartitionModelTest, MultiSubgraph) {
   EXPECT_EQ(subgraphs.Elements().back()->Ops().size(), 1);
 }
 
+TEST(PartitionModelTest, CstMultiSubgraph) {
+  auto model_wrap = testing::LoadTestFileModel("multi_use_cst.tflite");
+  auto& model = *model_wrap.Get();
+  ASSERT_EQ(model.MainSubgraph()->Ops().size(), 3);
+
+  std::vector<LiteRtOp> selected_ops = {
+      model.MainSubgraph()->Ops().front(),
+      model.MainSubgraph()->Ops().back(),
+  };
+  auto partition_result = PartitionModelDirect(std::move(selected_ops), model);
+  ASSERT_TRUE(partition_result);
+
+  const auto& [ops, subgraphs] = *partition_result;
+
+  EXPECT_EQ(ops.size(), 2);
+  EXPECT_EQ(ops.front()->OpCode(), kLiteRtOpCodeTflCustom);
+  EXPECT_EQ(ops.back()->OpCode(), kLiteRtOpCodeTflCustom);
+
+  EXPECT_EQ(subgraphs.Size(), 2);
+  EXPECT_EQ(subgraphs.Elements().front()->Ops().size(), 1);
+  EXPECT_EQ(subgraphs.Elements().back()->Ops().size(), 1);
+
+  const auto& cst_1 =
+      subgraphs.Elements().front()->Ops().front()->Input(1).Weights();
+  const auto& cst_2 =
+      subgraphs.Elements().back()->Ops().front()->Input(1).Weights();
+
+  // Both weights should have the same object managed by the same buffer
+  // manager.
+  ASSERT_EQ(cst_1.GetBufferManager(), model.Buffers());
+  ASSERT_EQ(cst_2.GetBufferManager(), model.Buffers());
+  ASSERT_GT(cst_1.Buffer().Size(), 0);
+  ASSERT_GT(cst_2.Buffer().Size(), 0);
+  EXPECT_EQ(cst_1.GetBufferId(), cst_2.GetBufferId());
+  ASSERT_EQ(cst_1.Buffer().Data(), cst_2.Buffer().Data());
+}
+
 TEST(ApplyTest, Simple) {
   auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
   ASSERT_EQ(plugins->size(), 1);
@@ -211,6 +271,30 @@ TEST(ApplyTest, Simple) {
   EXPECT_TRUE(model.FindOpAsset(op));
 
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
+}
+
+TEST(ApplyTest, WithPartition) {
+  auto model_wrap = testing::LoadTestFileModel("mul_simple.tflite");
+  auto& model = *model_wrap.Get();
+
+  auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
+  ASSERT_EQ(plugins->size(), 1);
+  auto& plugin = plugins->front();
+
+  auto partition_result = PartitionModel(plugin, model);
+  ASSERT_TRUE(partition_result);
+  ASSERT_EQ(model.NumSubgraphs(), 1);
+
+  ASSERT_TRUE(ApplyPluginWithPartition(plugins->front(), model,
+                                       std::move(*partition_result)));
+
+  auto& subgraph = model.Subgraph(0);
+  ASSERT_EQ(subgraph.Ops().size(), 1);
+
+  auto* op = subgraph.Ops().front();
+
+  EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
+  EXPECT_TRUE(model.FindOpAsset(op));
 }
 
 TEST(ApplyTest, MultiSubgraph) {

@@ -52,6 +52,8 @@ const char* AllocTypeName(TfLiteAllocationType type) {
       return "kTfLiteCustom";
     case kTfLiteVariantObject:
       return "kTfLiteVariantObject";
+    case kTfLiteNonCpu:
+      return "kTfLiteNonCpu";
   }
   return "(invalid)";
 }

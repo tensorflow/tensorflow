@@ -23,7 +23,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["decode_proto_op_test.py"],
     data = if_oss([":libtestexample.so"]),
-    python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/78026780)
         "no_windows",  # TODO(b/78028010)
@@ -41,7 +40,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["encode_proto_op_test.py"],
     data = if_oss([":libtestexample.so"]),
-    python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/78026780)
         "no_windows",  # TODO(b/78028010)
@@ -58,7 +56,6 @@ py_strict_library(
     name = "proto_op_test_base",
     testonly = 1,
     srcs = ["proto_op_test_base.py"],
-    srcs_version = "PY3",
     deps = [
         ":test_example_proto_py",
         "//tensorflow/core:protos_all_py",
@@ -70,7 +67,6 @@ py_strict_library(
     name = "decode_proto_op_test_base",
     testonly = 1,
     srcs = ["decode_proto_op_test_base.py"],
-    srcs_version = "PY3",
     deps = [
         ":proto_op_test_base",
         ":test_example_proto_py",
@@ -85,7 +81,6 @@ py_strict_library(
     name = "encode_proto_op_test_base",
     testonly = 1,
     srcs = ["encode_proto_op_test_base.py"],
-    srcs_version = "PY3",
     deps = [
         ":proto_op_test_base",
         ":test_example_proto_py",
@@ -98,10 +93,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
-    name = "py_test_deps",
-    srcs_version = "PY3",
-)
+py_strict_library(name = "py_test_deps")
 
 tf_proto_library(
     name = "test_example_proto",
@@ -132,7 +124,6 @@ py_strict_library(
     name = "descriptor_source_test_base",
     testonly = 1,
     srcs = ["descriptor_source_test_base.py"],
-    srcs_version = "PY3",
     deps = [
         ":proto_op_test_base",
         "//tensorflow/python/framework:dtypes",
@@ -146,7 +137,6 @@ tf_py_strict_test(
     name = "descriptor_source_test",
     size = "small",
     srcs = ["descriptor_source_test.py"],
-    python_version = "PY3",
     tags = [
         "no_pip",
     ],

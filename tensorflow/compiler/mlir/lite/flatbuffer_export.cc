@@ -1096,6 +1096,10 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
       require_use_buffer_offset_ = true;
       return empty_buffer_;
     }
+    if (custom_option_alignment_.has_value()) {
+      builder_.ForceVectorAlignment(tensor_data.size(), sizeof(uint8_t),
+                                    custom_option_alignment_.value());
+    }
     auto buffer_data = builder_.CreateVector(
         reinterpret_cast<const uint8_t*>(tensor_data.data()),
         tensor_data.size());
@@ -2465,6 +2469,14 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::AddOpV1>(inst)) {
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_ADD);
+    }
+    if (auto sub_op = llvm::dyn_cast<mlir::vhlo::SubtractOpV1>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_SUBTRACT);
+    }
+    if (auto or_op = llvm::dyn_cast<mlir::vhlo::OrOpV1>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_OR);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::MulOpV1>(inst)) {
       return BuildStablehloOperatorwithoutOptions(
@@ -3871,6 +3883,7 @@ std::optional<std::string> Translator::Translate(
   // will prevent running export twice, if the module size is known to be
   // greater than 2GB.
   if (mlir::TFL::GetApproximateModuleSize(module) > flatbuffer_size_max) {
+    llvm::errs() << "Module size is greater than 2GB\n";
     new_converter_flags.set_use_buffer_offset(true);
   }
 

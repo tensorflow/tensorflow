@@ -97,7 +97,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "bias_op_base",
     srcs = ["bias_op_base.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -373,7 +372,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "cudnn_deterministic_base",
     srcs = ["cudnn_deterministic_base.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
@@ -903,7 +901,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "xent_op_test_base",
     srcs = ["xent_op_test_base.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:config",

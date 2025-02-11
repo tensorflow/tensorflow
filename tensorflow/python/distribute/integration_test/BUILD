@@ -37,7 +37,6 @@ cuda_py_strict_test(
     name = "mwms_peer_failure_test",
     size = "medium",
     srcs = ["mwms_peer_failure_test.py"],
-    python_version = "PY3",
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
@@ -76,7 +75,6 @@ tpu_py_strict_test(
     disable_mlir_bridge = True,
     disable_tfrt = False,
     disable_v2 = True,
-    python_version = "PY3",
     tags = ["no_oss"],
     deps = [
         "//tensorflow:tensorflow_py",

@@ -61,7 +61,7 @@ xla_test(
     srcs = if_cuda_is_configured(["cudnn_test.cc"]),
     backends = [
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
     ],
     deps = [
         "//xla:comparison_util",
@@ -185,6 +185,7 @@ xla_test(
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "//xla/service:hlo_runner_interface",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu/transforms:dynamic_slice_fusion_rewriter",
@@ -194,6 +195,9 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_utils",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",

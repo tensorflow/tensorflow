@@ -413,6 +413,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   static constexpr const char* const kGradientOp = "SymbolicGradient";
   static constexpr const char* const kFuncAttr = "f";
 
+  static constexpr const char* const kFunctionRunsAtMostOnce =
+      "function_runs_at_most_once";
+
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
   FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   explicit FunctionLibraryDefinition(
@@ -869,6 +872,11 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     // TPU/XLA devices. So this is mainly used to handle the case of multi-CPU
     // and GPU (non-XLA) graphs.
     bool int_args_and_retvals_on_device = false;
+
+    // Indicates that the specified function will run at most once. This allows
+    // use to add extra optimizations such as clearing the executor state to
+    // reduce memory consumption.
+    bool function_runs_at_most_once = false;
 
     // This interface is EXPERIMENTAL and subject to change.
     //

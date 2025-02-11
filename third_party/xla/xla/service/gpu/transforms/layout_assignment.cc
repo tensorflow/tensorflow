@@ -398,13 +398,16 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
   const bool is_s8_to_s32 = output_type == PrimitiveType::S32 &&
                             lhs.type == PrimitiveType::S8 &&
                             rhs.type == PrimitiveType::S8;
-  const bool is_fp8_to_fp8 = (lhs.type == PrimitiveType::F8E4M3FN ||
-                              lhs.type == PrimitiveType::F8E5M2FNUZ) &&
-                             (rhs.type == PrimitiveType::F8E4M3FN ||
-                              rhs.type == PrimitiveType::F8E5M2FNUZ);
+  const bool is_fp8 = (lhs.type == PrimitiveType::F8E4M3FN ||
+                       lhs.type == PrimitiveType::F8E5M2FNUZ) &&
+                      (rhs.type == PrimitiveType::F8E4M3FN ||
+                       rhs.type == PrimitiveType::F8E5M2FNUZ);
+
+  const se::CudaComputeCapability* cc =
+      std::get_if<se::CudaComputeCapability>(&gpu_version_);
   const bool both_operands_require_minor_contraction_dims =
       (is_bf16_to_bf16 && xla_gpu_ensure_minor_dot_contraction_dims) ||
-      is_s8_to_s32 || is_fp8_to_fp8;
+      is_s8_to_s32 || (is_fp8 && !(cc && cc->IsBlackwell()));
 
   for (const Side& side : {lhs, rhs}) {
     if ((IsPackedInstruction(side.operand) && pack_along_contracting_dims) ||

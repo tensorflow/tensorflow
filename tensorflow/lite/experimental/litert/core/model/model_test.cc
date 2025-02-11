@@ -60,8 +60,10 @@ TEST(ModelTest, MetadataDNE) {
 
 TEST(ModelTest, EmplaceSubgraph) {
   LiteRtModelT model;
-  model.EmplaceSubgraph();
+  auto& sg = model.EmplaceSubgraph();
   EXPECT_EQ(model.Subgraphs().size(), 1);
+  auto& tensor = sg.EmplaceTensor();
+  EXPECT_EQ(tensor.Weights().GetBufferManager(), model.Buffers());
 }
 
 TEST(ModelTest, Signature) {
@@ -236,7 +238,7 @@ TEST(ModelQuantizationTypeTest, MakePerChannel) {
   LiteRtTensorT tensor;
   const auto quant = MakePerChannelQuantization(
       kScale, kZero, kQdim,
-      [&tensor](auto s) { return tensor.RequestBuffer(s); });
+      [&tensor](auto s) { return tensor.RequestScratchBuffer(s); });
 
   ASSERT_EQ(quant.first, kLiteRtQuantizationPerChannel);
   const auto& per_channel = quant.second.per_channel;

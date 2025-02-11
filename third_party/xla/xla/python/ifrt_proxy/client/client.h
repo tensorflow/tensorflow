@@ -132,6 +132,8 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return absl::UnimplementedError(
         "LookupAddressableDevice is not supported for the IFRT proxy client.");
   }
+  tsl::RCReference<xla::ifrt::DeviceList> MakeDeviceList(
+      absl::Span<xla::ifrt::Device* const> devices) const override;
   xla::ifrt::Compiler* GetDefaultCompiler() override {
     return &default_compiler_;
   }

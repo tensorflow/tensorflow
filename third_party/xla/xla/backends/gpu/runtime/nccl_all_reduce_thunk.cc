@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -109,7 +110,7 @@ NcclAllReduceStartThunk::NcclAllReduceStartThunk(
     : NcclAllReduceReduceScatterThunkBase(
           Thunk::kNcclAllReduceStart, thunk_info,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
-          IsSyncCollective(inst)) {}
+          IsGPUSyncCollective(*inst)) {}
 
 absl::Status NcclAllReduceStartThunk::CheckImplementable(
     const HloAllReduceInstruction* inst, int64_t replica_count,
@@ -142,9 +143,7 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
     : NcclAllReduceReduceScatterThunkBase(
           Thunk::kNcclReduceScatterStart, thunk_info,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
-          inst->backend_config<GpuBackendConfig>()
-              ->collective_backend_config()
-              .is_sync()) {}
+          IsGPUSyncCollective(*inst)) {}
 
 /*static*/ absl::Status NcclReduceScatterStartThunk::CheckImplementable(
     const HloReduceScatterInstruction* inst, int64_t replica_count,

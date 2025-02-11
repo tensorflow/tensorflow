@@ -37,18 +37,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/source_target_pairs.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-using CycleType = SourceTargetPairs::CycleType;
+using CycleType = collective_permute_cycle::CycleType;
 
 absl::StatusOr<ReductionKind> StringToReductionKind(
     absl::string_view reduction_kind) {
@@ -798,14 +797,6 @@ HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
   return nullptr;
 }
 
-bool IsSyncCollective(const HloInstruction* instr) {
-  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>();
-  if (!backend_config.ok()) {
-    return false;
-  }
-  return backend_config->collective_backend_config().is_sync();
-}
-
 using SourceTargetPairType = std::pair<int64_t, int64_t>;
 using SourceTargetPairsType = std::vector<SourceTargetPairType>;
 
@@ -853,7 +844,7 @@ std::pair<CycleType, std::set<int>> GetCycleTypeAndIndices(
       final_results.insert(index);
     }
   }
-  CycleType cycle_type = final_results.empty() ? CycleType::kUnknown
+  CycleType cycle_type = final_results.empty() ? CycleType::kNone
                          : is_forward_cycle    ? CycleType::kForward
                                                : CycleType::kBackward;
   return std::make_pair(cycle_type, final_results);

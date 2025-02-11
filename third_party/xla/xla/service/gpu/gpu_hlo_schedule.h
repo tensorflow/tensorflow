@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -27,6 +28,10 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+// Converts sync collective instructions to a pair of async start and done
+// instructions.
+absl::Status RunAsyncCollectivesConversionPasses(HloModule* module);
 
 struct ScheduleMetadata {
   int64_t scheduler_mem_limit;

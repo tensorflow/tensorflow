@@ -82,8 +82,7 @@ absl::string_view BlockBuilder::Finish() {
   return absl::string_view(buffer_);
 }
 
-void BlockBuilder::Add(const absl::string_view& key,
-                       const absl::string_view& value) {
+void BlockBuilder::Add(absl::string_view key, absl::string_view value) {
   absl::string_view last_key_piece(last_key_);
   assert(!finished_);
   assert(counter_ <= options_->block_restart_interval);

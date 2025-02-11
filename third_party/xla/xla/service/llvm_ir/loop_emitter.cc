@@ -128,10 +128,15 @@ IrArray::Index LoopEmitter::EmitStaticIndex(ForLoopNest* loop_nest,
   std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
   for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
+    // Only unroll the most minor dimension, this seems to give us good runtime
+    // performance with a large improvement in compile time.
+    auto unroll_mode = (i == shape_.rank() - 1)
+                           ? llvm_ir::UnrollMode::kDefaultUnroll
+                           : llvm_ir::UnrollMode::kNoUnroll;
     std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape_.dimensions(dimension),
-        /*suffix=*/absl::StrFormat("dim.%d", dimension));
+        /*suffix=*/absl::StrFormat("dim.%d", dimension), unroll_mode);
     array_multi_index[dimension] = loop->GetIndVarValue();
   }
   return IrArray::Index(array_multi_index, shape_, index_type);
@@ -147,10 +152,15 @@ IrArray::Index LoopEmitter::EmitDynamicIndex(ForLoopNest* loop_nest,
   std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
   for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
+    // Only unroll the most minor dimension, this seems to give us good runtime
+    // performance with a large improvement in compile time.
+    auto unroll_mode = (i == shape_.rank() - 1)
+                           ? llvm_ir::UnrollMode::kDefaultUnroll
+                           : llvm_ir::UnrollMode::kNoUnroll;
     std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
         /*suffix=*/absl::StrFormat("dim.%d", dimension),
         /*start_index=*/llvm::ConstantInt::get(index_type, 0),
-        /*end_index=*/dynamic_dims_[dimension]);
+        /*end_index=*/dynamic_dims_[dimension], unroll_mode);
     array_multi_index[dimension] = loop->GetIndVarValue();
   }
   return IrArray::Index(array_multi_index, shape_, index_type);

@@ -155,6 +155,9 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   absl::StatusOr<ifrt::Device*> LookupAddressableDevice(
       int local_hardware_id) const override;
 
+  tsl::RCReference<ifrt::DeviceList> MakeDeviceList(
+      absl::Span<ifrt::Device* const> devices) const override;
+
   ifrt::Compiler* GetDefaultCompiler() override;
 
   absl::StatusOr<std::shared_ptr<ifrt::Topology>> GetTopologyForDevices(

@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace internal {

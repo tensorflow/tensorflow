@@ -51,8 +51,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "xla/hlo/builder/sharding_builder.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tf2xla {

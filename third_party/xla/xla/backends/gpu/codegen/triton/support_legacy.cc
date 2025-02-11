@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/variant_visitor.h"
 #include "xla/stream_executor/device_description.h"
@@ -88,6 +89,14 @@ bool IsTritonSupportedDotOutputType(
                                        },
                                        [](const se::RocmComputeCapability& cc) {
                                          return cc.has_bf16_dtype_support();
+                                       }},
+                        gpu_version);
+    case S32:
+      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                                         return cc.IsAtLeastAmpere();
+                                       },
+                                       [](const se::RocmComputeCapability& cc) {
+                                         return false;
                                        }},
                         gpu_version);
     default:
@@ -251,6 +260,32 @@ bool IsDotAlgorithmSupportedByTriton(
   }
 }
 
+CodegenDecision AreDotInputAndOutputTypesSupportedAndCompatible(
+    const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
+  auto output_type = dot.shape().element_type();
+  auto lhs_type = dot.operand(0)->shape().element_type();
+  auto rhs_type = dot.operand(1)->shape().element_type();
+
+  // TODO(b/266862493): Support more output types.
+  if (!IsTritonSupportedDotOutputType(output_type, gpu_version)) {
+    return CodegenDecision::Forbid("Unsupported output data type for Dot op.");
+  }
+
+  if (!IsTritonSupportedDataType(lhs_type, gpu_version) ||
+      !IsTritonSupportedDataType(rhs_type, gpu_version)) {
+    return CodegenDecision::Forbid("Unsupported input data type for Dot op.");
+  }
+
+  if (output_type == PrimitiveType::S32 &&
+      !(primitive_util::Is8BitIntegralType(lhs_type) &&
+        primitive_util::Is8BitIntegralType(rhs_type))) {
+    return CodegenDecision::Forbid(
+        "Currently, S32 output is only supported for 8-bit integral inputs.");
+  }
+
+  return CodegenDecision::Allow();
+}
+
 // Filters GEMMs which can be handled using Triton.
 CodegenDecision CanTritonHandleGEMM(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
@@ -278,17 +313,10 @@ CodegenDecision CanTritonHandleGEMM(
     }
   }
 
-  // TODO(b/266862493): Support more output types.
-  if (!IsTritonSupportedDotOutputType(dot.shape().element_type(),
-                                      gpu_version)) {
-    return CodegenDecision::Forbid("Unsupported output data type for Dot op.");
-  }
-
-  if (!IsTritonSupportedDataType(dot.operand(0)->shape().element_type(),
-                                 gpu_version) ||
-      !IsTritonSupportedDataType(dot.operand(1)->shape().element_type(),
-                                 gpu_version)) {
-    return CodegenDecision::Forbid("Unsupported input data type for Dot op.");
+  if (auto decision =
+          AreDotInputAndOutputTypesSupportedAndCompatible(dot, gpu_version);
+      !decision.CanFuse()) {
+    return decision;
   }
 
   const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();

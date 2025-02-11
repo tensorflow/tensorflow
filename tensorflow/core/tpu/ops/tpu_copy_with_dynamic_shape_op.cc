@@ -16,10 +16,10 @@ limitations under the License.
 // Op that copy dynamic shape tensor to device.
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

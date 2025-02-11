@@ -31,12 +31,9 @@ limitations under the License.
 #include "absl/container/fixed_array.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/time/time.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/math/math_util.h"
-#include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
@@ -80,7 +77,7 @@ class WorkQueue {
   };
 
   absl::FixedArray<Partition, 32> partitions_;
-  alignas(kAtomicAlignment) std::atomic<size_t> empty_;
+  alignas(kAtomicAlignment) std::atomic<bool> empty_;
 };
 
 // Worker processes tasks from the work queue starting from the assigned
@@ -147,13 +144,14 @@ inline std::optional<size_t> WorkQueue::Pop(size_t partition_index) {
 
   // Check if partition is already empty.
   if (size_t index = partition.index.load(std::memory_order_relaxed);
-      index >= partition.end) {
+      ABSL_PREDICT_FALSE(index >= partition.end)) {
     return std::nullopt;
   }
 
   // Try to acquire the next task in the partition.
   size_t index = partition.index.fetch_add(1, std::memory_order_relaxed);
-  return index >= partition.end ? std::nullopt : std::make_optional(index);
+  return ABSL_PREDICT_FALSE(index >= partition.end) ? std::nullopt
+                                                    : std::make_optional(index);
 }
 
 inline Worker::Worker(size_t worker_index, WorkQueue* queue)
@@ -163,12 +161,9 @@ inline Worker::Worker(size_t worker_index, WorkQueue* queue)
 
 inline std::optional<size_t> Worker::Pop() {
   std::optional<size_t> task = queue_->Pop(partition_index_);
-  if (task) return task;
+  if (ABSL_PREDICT_TRUE(task)) return task;
 
-  // If work queue is empty, we are not going to find any more tasks.
-  if (queue_->empty()) return std::nullopt;
-
-  while (!task.has_value()) {
+  while (!task.has_value() && !queue_->empty()) {
     // Wrap around to the first partition.
     if (ABSL_PREDICT_FALSE(++partition_index_ >= queue_->num_partitions())) {
       partition_index_ = 0;
