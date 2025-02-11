@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//tensorflow/lite/experimental/litert/build_common:special_rule.bzl", "gles_linkopts")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -92,7 +94,7 @@ cc_test(
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
-    }),
+    }) + gles_linkopts(),
     deps = [
         ":dispatch_delegate",
         "@com_google_googletest//:gtest_main",

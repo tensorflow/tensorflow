@@ -25,6 +25,10 @@
 #include <variant>
 #include <vector>
 
+#if LITERT_HAS_OPENGL_SUPPORT
+#include <GLES3/gl31.h>
+#include <GLES3/gl32.h>
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 #include "absl/types/span.h"
 #include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -34,6 +38,9 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#if LITERT_HAS_OPENGL_SUPPORT
+#include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 #include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
 
 class LiteRtTensorBufferT {
@@ -79,6 +86,13 @@ class LiteRtTensorBufferT {
       const LiteRtRankedTensorType& tensor_type, cl_mem buffer,
       size_t opencl_buffer_size, LiteRtOpenClDeallocator deallocator = nullptr);
 
+#if LITERT_HAS_OPENGL_SUPPORT
+  static litert::Expected<Ptr> CreateFromGlBuffer(
+      const LiteRtRankedTensorType& tensor_type, GLenum target, GLuint id,
+      size_t bytes_size, size_t offset,
+      LiteRtGlBufferDeallocator deallocator = nullptr);
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+
   static litert::Expected<Ptr> CreateManaged(
       LiteRtTensorBufferType buffer_type,
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
@@ -107,6 +121,9 @@ class LiteRtTensorBufferT {
   litert::Expected<std::pair<void*, int>> GetDmaBufBuffer();
   litert::Expected<std::pair<void*, int>> GetFastRpcBuffer();
   litert::Expected<litert::internal::OpenClBuffer*> GetOpenClBuffer();
+#if LITERT_HAS_OPENGL_SUPPORT
+  litert::Expected<litert::internal::GlBuffer*> GetGlBuffer();
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 
   litert::Expected<void*> Lock();
   litert::Expected<void> Unlock();
@@ -182,6 +199,11 @@ class LiteRtTensorBufferT {
   static litert::Expected<Ptr> CreateManagedOpenClBuffer(
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
 
+#if LITERT_HAS_OPENGL_SUPPORT
+  static litert::Expected<Ptr> CreateManagedGlBuffer(
+      const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+
   litert::Expected<void> IsValid();
 
   LiteRtRankedTensorType tensor_type_;
@@ -191,7 +213,12 @@ class LiteRtTensorBufferT {
   size_t buffer_size_;
   size_t buffer_offset_;
   std::variant<HostBuffer, AhwbBuffer, IonBuffer, DmaBufBuffer, FastRpcBuffer,
-               litert::internal::OpenClBuffer>
+               litert::internal::OpenClBuffer
+#if LITERT_HAS_OPENGL_SUPPORT
+               ,
+               litert::internal::GlBuffer
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+               >
       buffer_;
   std::optional<litert::Event> event_;
   mutable std::atomic_int_fast32_t ref_;

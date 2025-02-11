@@ -21,3 +21,11 @@ def lite_rt_friends():
     visibility to LiteRT APIs"""
 
     return []
+
+def gles_deps():
+    """This is a no-op outside of Google."""
+    return []
+
+def gles_linkopts():
+    """This is a no-op outside of Google."""
+    return []

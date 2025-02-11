@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
@@ -23,3 +25,15 @@ exports_files(srcs = [
     "export_litert_runtime_only_darwin.lds",
     "export_litert_runtime_only_linux.lds",
 ])
+
+bzl_library(
+    name = "special_rule_bzl",
+    srcs = ["special_rule.bzl"],
+    visibility = ["//visibility:private"],
+)
+
+bzl_library(
+    name = "litert_build_defs_bzl",
+    srcs = ["litert_build_defs.bzl"],
+    visibility = ["//visibility:private"],
+)

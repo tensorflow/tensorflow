@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "gtest_main_no_heapcheck_deps")
+load("//tensorflow/lite/experimental/litert/build_common:special_rule.bzl", "gles_deps", "gles_linkopts")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
@@ -38,6 +41,7 @@ cc_library(
         "ahwb_buffer.cc",
         "dmabuf_buffer.cc",
         "fastrpc_buffer.cc",
+        "gl_buffer.cc",
         "ion_buffer.cc",
         "open_cl_buffer.cc",
         "tensor_buffer.cc",
@@ -47,6 +51,7 @@ cc_library(
         "dmabuf_buffer.h",
         "event.h",
         "fastrpc_buffer.h",
+        "gl_buffer.h",
         "ion_buffer.h",
         "open_cl_buffer.h",
         "tensor_buffer.h",
@@ -54,6 +59,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer.h",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_requirements.h",
     ],
+    linkopts = gles_linkopts(),
     deps = [
         ":environment",
         "//tensorflow/lite/experimental/litert/c:litert_common",
@@ -68,11 +74,17 @@ cc_library(
         "//tensorflow/lite/experimental/litert/runtime/opencl:opencl_wrapper",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@opencl_headers",
-    ],
+    ] + gles_deps() + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -237,4 +249,21 @@ cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_test(
+    name = "gl_buffer_test",
+    srcs = ["gl_buffer_test.cc"],
+    tags = [
+        "notap",
+    ],
+    deps = [
+        ":tensor_buffer",
+    ] + gtest_main_no_heapcheck_deps() + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+            "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
+        ],
+        "//conditions:default": [],
+    }),
 )
