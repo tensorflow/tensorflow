@@ -362,3 +362,16 @@ LiteRtStatus LiteRtGetGatherBatchDimsOption(LiteRtOp op, int32_t* batch_dims) {
   *batch_dims = opts.AsGatherOptions()->batch_dims;
   return kLiteRtStatusOk;
 }
+
+LiteRtStatus LiteRtGetMeanKeepDimsOption(LiteRtOp op, bool* keepdims) {
+  if (op->OpCode() != kLiteRtOpCodeTflMean) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = detail::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  // Mean OP options is stored as ReducerOptions.
+  *keepdims = opts.AsReducerOptions()->keep_dims;
+  return kLiteRtStatusOk;
+}

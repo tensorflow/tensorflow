@@ -71,6 +71,7 @@ const auto kSupportedOps =
                     "simple_dynamic_update_slice_op.tflite",
                     "simple_pack_op.tflite",
                     "simple_gather_op.tflite",
+                    "simple_mean_op.tflite",
                     kFeedForwardModel,
                     kKeyEinsumModel,
                     kQueryEinsumModel,

@@ -43,8 +43,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gather_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gelu_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/matmul_op_builder.h"
-// #include
-// "third_party/tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/mean_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/mean_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/quantize_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reduce_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
@@ -339,14 +338,14 @@ LiteRtStatus ConvertOp(
                                          output_tensors, adj_x, adj_y);
       break;
     }
-    // TODO: Add options in C api.
-    // case LiteRtOpCode::kLiteRtOpCodeTflMean: {
-    //   bool keep_dims =
-    //       detail::GetTflOptions(*litert_op.Get()).AsReducerOptions()->keep_dims;
-    //   op_wrappers = ::qnn::BuildMeanOp(tensor_pool, input_tensors,
-    //                                    output_tensors, keep_dims);
-    //   break;
-    // }
+    case LiteRtOpCode::kLiteRtOpCodeTflMean: {
+      bool keep_dims{};
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetMeanKeepDimsOption(litert_op.Get(), &keep_dims));
+      op_wrappers = ::qnn::BuildMeanOp(tensor_pool, input_tensors,
+                                       output_tensors, keep_dims);
+      break;
+    }
     case LiteRtOpCode::kLiteRtOpCodeTflQuantize: {
       op_wrappers =
           ::qnn::BuildQuantizeOp(tensor_pool, input_tensors, output_tensors);

@@ -261,4 +261,17 @@ TEST(GetOpOptionTest, TestGetGatherOptions) {
   ASSERT_EQ(batch_dims, 0);
 }
 
+TEST(GetOpOptionTest, TestGetMeanOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_mean_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  bool keepdims;
+  LITERT_ASSERT_OK(LiteRtGetMeanKeepDimsOption(op, &keepdims));
+  ASSERT_EQ(keepdims, false);
+}
+
 }  // namespace

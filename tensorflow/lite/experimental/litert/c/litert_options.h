@@ -187,6 +187,15 @@ LiteRtStatus LiteRtGetPackAxisOption(LiteRtOp op, int32_t* axis);
 LiteRtStatus LiteRtGetGatherAxisOption(LiteRtOp op, int32_t* axis);
 LiteRtStatus LiteRtGetGatherBatchDimsOption(LiteRtOp op, int32_t* batch_dims);
 
+//==============================================================================
+//
+// Get option APIs for LiteRt Mean op.
+//  Options:
+// - keepdimsOption : bool
+//
+//==============================================================================
+LiteRtStatus LiteRtGetMeanKeepDimsOption(LiteRtOp op, bool* keepdims);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
