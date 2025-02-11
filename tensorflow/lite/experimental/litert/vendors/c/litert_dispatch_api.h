@@ -92,6 +92,23 @@ typedef LiteRtStatus (*LiteRtDispatchDetachOutputT)(
 typedef LiteRtStatus (*LiteRtDispatchInvokeT)(
     LiteRtDispatchInvocationContext invocation_context);
 
+typedef LiteRtStatus (*LiteRtDispatchStartMetricsCollectionT)(
+    LiteRtDispatchInvocationContext invocation_context, int detail_level);
+
+typedef LiteRtStatus (*LiteRtDispatchStopMetricsCollectionT)(
+    LiteRtDispatchInvocationContext invocation_context,
+    LiteRtDispatchMetrics* metrics);
+
+typedef LiteRtStatus (*LiteRtDispatchGetNumMetricsT)(
+    LiteRtDispatchMetrics metrics, int* num_metrics);
+
+typedef LiteRtStatus (*LiteRtDispatchGetMetricT)(LiteRtDispatchMetrics metrics,
+                                                 int metric_index,
+                                                 LiteRtMetric* metric);
+
+typedef LiteRtStatus (*LiteRtDispatchDestroyMetricsT)(
+    LiteRtDispatchMetrics metrics);
+
 typedef struct LiteRtDispatchInterface {
   LiteRtDispatchInitializeT initialize;
   LiteRtDispatchGetVendorIdT get_vendor_id;
@@ -110,6 +127,11 @@ typedef struct LiteRtDispatchInterface {
   LiteRtDispatchDetachInputT detach_input;
   LiteRtDispatchDetachOutputT detach_output;
   LiteRtDispatchInvokeT invoke;
+  LiteRtDispatchStartMetricsCollectionT start_metrics_collection;
+  LiteRtDispatchStopMetricsCollectionT stop_metrics_collection;
+  LiteRtDispatchGetNumMetricsT get_num_metrics;
+  LiteRtDispatchGetMetricT get_metric;
+  LiteRtDispatchDestroyMetricsT destroy_metrics;
 } LiteRtDispatchInterface;
 
 // /////////////////////////////////////////////////////////////////////////////

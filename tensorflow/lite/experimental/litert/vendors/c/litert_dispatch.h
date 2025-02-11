@@ -36,6 +36,7 @@ extern "C" {
 
 LITERT_DEFINE_HANDLE(LiteRtDispatchDeviceContext);
 LITERT_DEFINE_HANDLE(LiteRtDispatchInvocationContext);
+LITERT_DEFINE_HANDLE(LiteRtDispatchMetrics);
 
 typedef uint64_t LiteRtTensorBufferHandle;
 
@@ -57,6 +58,11 @@ typedef struct LiteRtDispatchOption {
   const char* name;
   LiteRtAny value;
 } LiteRtDispatchOption;
+
+typedef struct LiteRtMetric {
+  const char* name;
+  LiteRtAny value;
+} LiteRtMetric;
 
 // This option can be used to specify a directory from where to load shared
 // libraries.
@@ -167,6 +173,26 @@ LiteRtStatus LiteRtDispatchDetachOutput(
 
 LiteRtStatus LiteRtDispatchInvoke(
     LiteRtDispatchInvocationContext invocation_context);
+
+// Start collection of HW-specific metrics at a specific level of detail (>= 0).
+LiteRtStatus LiteRtDispatchStartMetricsCollection(
+    LiteRtDispatchInvocationContext invocation_context, int detail_level);
+
+// Stop collection of HW-specific metrics and report the collected
+// metrics. Note: The caller is responsible for deallocating the returned
+// metrics by calling `LiteRtDispatchDestroyMetrics`.
+LiteRtStatus LiteRtDispatchStopMetricsCollection(
+    LiteRtDispatchInvocationContext invocation_context,
+    LiteRtDispatchMetrics* metrics);
+
+LiteRtStatus LiteRtDispatchGetNumMetrics(LiteRtDispatchMetrics metrics,
+                                         int* num_metrics);
+
+// Fetch a specific metric. The runtime owns the returned object.
+LiteRtStatus LiteRtDispatchGetMetric(LiteRtDispatchMetrics metrics,
+                                     int metric_index, LiteRtMetric* metric);
+
+LiteRtStatus LiteRtDispatchDestroyMetrics(LiteRtDispatchMetrics metrics);
 
 // /////////////////////////////////////////////////////////////////////////////
 // Async Execution API
