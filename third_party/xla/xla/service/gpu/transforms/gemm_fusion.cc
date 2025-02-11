@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -736,6 +737,15 @@ absl::StatusOr<Decision> CreateDotFusion(
     }
   }
 
+  bool should_use_triton_gemm_any =
+      dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any();
+
+  // TODO(b/395903738): Remove this once F16 -> F8E5M2 conversion is fixed.
+  if (auto* cc = std::get_if<se::CudaComputeCapability>(&gpu_version)) {
+    should_use_triton_gemm_any =
+        should_use_triton_gemm_any && cc->IsAtLeastHopper();
+  }
+
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
@@ -744,8 +754,7 @@ absl::StatusOr<Decision> CreateDotFusion(
       algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
       algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ||
       algorithm == PrecisionConfig::ALG_DOT_F32_F32_F32 ||
-      dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
-      dot.sparse_operands()) {
+      should_use_triton_gemm_any || dot.sparse_operands()) {
     return Decision::Allow();
   }
 

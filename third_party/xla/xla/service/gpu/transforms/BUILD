@@ -1702,6 +1702,7 @@ cc_library(
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service/gpu:triton_tiling_propagation",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
