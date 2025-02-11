@@ -1507,7 +1507,7 @@ class TritonGemmTestAny : public TritonGemmTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_triton_gemm_any(true);
+    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
     return debug_options;
   }
 };
@@ -4089,7 +4089,7 @@ class TritonGemmContractionDims : public TritonGemmTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_ensure_minor_dot_contraction_dims(true);
-    debug_options.set_xla_gpu_triton_gemm_any(true);
+    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
 
     return debug_options;
   }
