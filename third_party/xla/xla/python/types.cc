@@ -116,6 +116,7 @@ const CustomDtypes& GetCustomDtypes() {
 
 }  // namespace
 
+// 2DO Consider renaming this to NbDtypeToXlaPrimitiveType.
 absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
   static auto& builtin_dtypes =
       *new absl::flat_hash_map<std::tuple<char, char, int>, PrimitiveType>({
@@ -378,6 +379,10 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
 }
 
 absl::StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype) {
+  // String does not have a corresponding XLA primitive type.
+  if (dtype.kind() == 'T') {
+    return ifrt::DType(ifrt::DType::kString);
+  }
   TF_ASSIGN_OR_RETURN(auto primitive_type, DtypeToPrimitiveType(dtype));
   return ifrt::ToDType(primitive_type);
 }
