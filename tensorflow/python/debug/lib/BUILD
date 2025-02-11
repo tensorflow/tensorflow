@@ -357,15 +357,11 @@ cuda_py_strict_test(
     name = "debug_v2_ops_test",
     size = "medium",
     srcs = ["debug_v2_ops_test.py"],
-<<<<<<< HEAD
     python_version = "PY3",
     tags = [
         "no_windows_gpu",
         "cuda-only", #TODO(ROCm) Re-enable after issue is fixed.
     ],
-=======
-    tags = ["no_windows_gpu"],
->>>>>>> google/master
     deps = [
         ":debug_events_reader",
         ":debug_events_writer",

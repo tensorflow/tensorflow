@@ -48,11 +48,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-<<<<<<< HEAD
 _VERSION = '2.19.0.620-dev20241212'
-=======
-_VERSION = '2.20.0'
->>>>>>> google/master
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly

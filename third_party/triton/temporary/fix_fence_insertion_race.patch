@@ -8,7 +8,7 @@ diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dia
 @@ -43,6 +43,7 @@ public:
      if (::triton::tools::getBoolEnv("DISABLE_MMA_V3"))
        return;
-     ModuleOp mod = getOperation();
+     ModuleOp mod = getOperation(); 
 +    DenseSet<std::pair<Operation *, unsigned>> trace;
      mod.walk([&](Operation *op) {
        if (!isa<ttng::WarpGroupDotOp>(op) &&

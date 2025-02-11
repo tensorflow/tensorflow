@@ -123,14 +123,11 @@ py_strict_test(
 py_strict_test(
     name = "tensor_list_test",
     srcs = ["tensor_list_test.py"],
-<<<<<<< HEAD
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
         "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
-=======
->>>>>>> google/master
     deps = [
         ":tensor_list",
         #internal proto upb dep

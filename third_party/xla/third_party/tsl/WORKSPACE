@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for tf_vendored rule
+workspace(name = "local_tsl")

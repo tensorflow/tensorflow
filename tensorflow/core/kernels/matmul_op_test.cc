@@ -17,7 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/match.h"
+#include "absl/strings/match.h" 
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "xla/tsl/platform/status.h"
@@ -373,11 +373,6 @@ static auto GetActivations(DataType dtype) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64WithActivation) {
   for (const string& activation : GetActivations(this->kTValueType)) {
-    if (this->kTValueType == DT_HALF) {
-      GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip investigate "
-                      "issue with Eigen::half";
-    }
-
     this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, false,
                                             activation);
     this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, false,
@@ -391,10 +386,6 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64WithActivation) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256WithActivation) {
   for (const string& activation : GetActivations(this->kTValueType)) {
-    if (this->kTValueType == DT_HALF) {
-      GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip investigate "
-                      "issue with Eigen::half";
-    }
     this->VerifyConv2DWithBiasAndActivation(1, 256, 256, false, false,
                                             activation);
   }
@@ -402,10 +393,6 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256WithActivation) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1WithActivation) {
   for (const string& activation : GetActivations(this->kTValueType)) {
-    if (this->kTValueType == DT_HALF) {
-      GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip investigate "
-                      "issue with Eigen::half";
-    }
     this->VerifyConv2DWithBiasAndActivation(256, 256, 1, false, false,
                                             activation);
   }
@@ -413,10 +400,6 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1WithActivation) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1WithActivation) {
   for (const string& activation : GetActivations(this->kTValueType)) {
-    if (this->kTValueType == DT_HALF) {
-      GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip investigate "
-                      "issue with Eigen::half";
-    }
     this->VerifyConv2DWithBiasAndActivation(1, 256, 1, false, false,
                                             activation);
   }

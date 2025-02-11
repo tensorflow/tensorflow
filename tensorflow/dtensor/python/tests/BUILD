@@ -76,13 +76,10 @@ py_strict_test(
     srcs = [
         "api_test.py",
     ],
-<<<<<<< HEAD
     python_version = "PY3",
     tags = [
         "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
-=======
->>>>>>> google/master
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",

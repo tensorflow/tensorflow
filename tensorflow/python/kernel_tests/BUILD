@@ -59,11 +59,8 @@ tf_py_strict_test(
     name = "collective_ops_multi_worker_test",
     size = "medium",
     srcs = ["collective_ops_multi_worker_test.py"],
-<<<<<<< HEAD
     python_version = "PY3",
-=======
-    tags = ["no_rocm"],
->>>>>>> google/master
+    tags = [], # "no_rocm"
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/distribute:combinations",

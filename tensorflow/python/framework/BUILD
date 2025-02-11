@@ -2456,12 +2456,8 @@ tf_py_strict_test(
     size = "small",
     srcs = ["importer_test.py"],
     main = "importer_test.py",
-<<<<<<< HEAD
     python_version = "PY3",
-    tags = [],
-=======
-    tags = ["no_rocm"],
->>>>>>> google/master
+    tags = [], # "no_rocm" 
     deps = [
         ":constant_op",
         ":device",

@@ -315,7 +315,6 @@ class ParametricDotTest : public DotOperationTest,
       absl::string_view name(
           ::testing::UnitTest::GetInstance()->current_test_info()->name());
       if (name.find("TestF16/270x270x520_MajorToMinor") != std::string::npos) {
-        GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
         execution_options_.mutable_debug_options()->set_xla_gpu_autotune_level(
             0);
         DotTestParam param = GetParam();

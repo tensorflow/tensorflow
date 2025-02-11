@@ -740,8 +740,8 @@ LogicalResult convertSparseWGMMA(SparseDotOp op, SparseDotOp::Adaptor adaptor,
     int64_t swizzling =
         getSwizzlingFromLayout(sharedLayout, shape[ord[0]] * byteSize);
     Value baseDesc = createDescriptor(rewriter, loc, swizzling, shape[ord[1]]);
-    baseDesc =
-        add(baseDesc, lshr(ptrtoint(i64_ty, sharedObj.base), int_val(64, 4)));
+    baseDesc = add(baseDesc,
+                   lshr(ptrtoint(i64_ty, sharedObj.getBase()), int_val(64, 4)));
     return std::make_tuple(shape, ord, baseDesc);
   };
 

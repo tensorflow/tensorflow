@@ -322,11 +322,9 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_v100",
-<<<<<<< HEAD
+
         # "gpu_b100",  # TODO: Weekly sync 24-12-10 duplication
-=======
         "gpu_b200",
->>>>>>> google/master
         "gpu_amd_any",
     ],
     tags = ["cuda-only"], # TODO(rocm) 240729 Test checks only for cuda capability
