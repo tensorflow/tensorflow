@@ -59,7 +59,14 @@ jobs:
             kokoro_job_name: "jax-linux-x86-cpu",
             pretty_name: "JAX Linux x86 CPU",
             repo: "jax-ml/jax",
-          }
+          },
+          {
+            pool: "linux-x86-g2-16-l4-1gpu",
+            container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
+            kokoro_job_name: "jax-linux-x86-gpu-t4",
+            pretty_name: "JAX Linux x86 GPU T4",
+            repo: "jax-ml/jax",
+          },
         ]
     name: ${{ matrix.job_info.pretty_name }}
     runs-on: ${{ matrix.job_info.pool }}

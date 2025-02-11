@@ -98,6 +98,7 @@ class BuildType(enum.Enum):
 
   JAX_CPU_SELF_HOSTED = enum.auto()
   JAX_GPU = enum.auto()
+  JAX_X86_GPU_T4_SELF_HOSTED = enum.auto()
 
   TENSORFLOW_CPU_SELF_HOSTED = enum.auto()
   TENSORFLOW_GPU = enum.auto()
@@ -414,6 +415,26 @@ _JAX_GPU_BUILD = Build(
     ),
 )
 
+_JAX_GPU_SELF_HOSTED_BUILD = Build(
+    type_=BuildType.JAX_X86_GPU_T4_SELF_HOSTED,
+    repo="google/jax",
+    image_url=None,
+    configs=("rbe_linux_x86_64_cuda",),
+    target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
+    build_tag_filters=("-multiaccelerator",),
+    test_tag_filters=("-multiaccelerator",),
+    test_env=dict(
+        JAX_SKIP_SLOW_TESTS=1,
+        TF_CPP_MIN_LOG_LEVEL=0,
+        JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
+    ),
+    options=dict(
+        **_DEFAULT_BAZEL_OPTIONS,
+        override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
+        repo_env="HERMETIC_PYTHON_VERSION=3.10",
+    ),
+)
+
 _TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
     type_=BuildType.TENSORFLOW_CPU_SELF_HOSTED,
     repo="tensorflow/tensorflow",
@@ -473,6 +494,7 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "xla-linux-arm64-cpu": _CPU_ARM64_SELF_HOSTED_BUILD,
     "xla-linux-x86-gpu-t4": _GPU_T4_SELF_HOSTED_BUILD,
     "jax-linux-x86-cpu": _JAX_CPU_SELF_HOSTED_BUILD,
+    "jax-linux-x86-gpu-t4": _JAX_GPU_SELF_HOSTED_BUILD,
     "tensorflow-linux-x86-cpu": _TENSORFLOW_CPU_SELF_HOSTED_BUILD,
 }
 
