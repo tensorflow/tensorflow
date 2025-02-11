@@ -19,7 +19,6 @@ py_strict_library(
         # Include the TF upgrade script to users can run it directly after install TF
         "//tensorflow/tools/compatibility:tf_upgrade_v2",
     ],
-    srcs_version = "PY3",
     deps = [
         ":saved_model_aot_compile",
         ":saved_model_utils",
@@ -43,7 +42,6 @@ py_strict_library(
 py_strict_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/lib/io:file_io",
@@ -56,8 +54,6 @@ py_strict_test(
     name = "saved_model_utils_test",
     size = "small",
     srcs = ["saved_model_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],
     deps = [
@@ -76,7 +72,6 @@ py_strict_test(
 py_strict_library(
     name = "freeze_graph_lib",
     srcs = ["freeze_graph.py"],
-    srcs_version = "PY3",
     deps = [
         ":saved_model_utils",
         "//tensorflow/core:protos_all_py",
@@ -96,8 +91,6 @@ py_strict_library(
 py_strict_binary(
     name = "freeze_graph",
     srcs = ["freeze_graph.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [":freeze_graph_lib"] + if_pywrap(
         if_true = ["//tensorflow/python:_pywrap_tensorflow"],
     ),
@@ -106,15 +99,12 @@ py_strict_binary(
 py_strict_binary(
     name = "import_pb_to_tensorboard",
     srcs = ["import_pb_to_tensorboard.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [":import_pb_to_tensorboard_lib"],
 )
 
 py_strict_library(
     name = "import_pb_to_tensorboard_lib",
     srcs = ["import_pb_to_tensorboard.py"],
-    srcs_version = "PY3",
     deps = [
         ":saved_model_utils",
         "//tensorflow/python/client:session",
@@ -135,8 +125,6 @@ py_strict_test(
     name = "freeze_graph_test",
     size = "small",
     srcs = ["freeze_graph_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":freeze_graph_lib",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -168,15 +156,12 @@ py_strict_test(
 py_strict_binary(
     name = "inspect_checkpoint",
     srcs = ["inspect_checkpoint.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [":inspect_checkpoint_lib"],
 )
 
 py_strict_library(
     name = "inspect_checkpoint_lib",
     srcs = ["inspect_checkpoint.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:flags",
@@ -189,7 +174,6 @@ py_strict_library(
 py_strict_library(
     name = "strip_unused_lib",
     srcs = ["strip_unused_lib.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:graph_util",
@@ -200,14 +184,11 @@ py_strict_library(
 py_strict_library(
     name = "module_util",
     srcs = ["module_util.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_binary(
     name = "strip_unused",
     srcs = ["strip_unused.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":strip_unused_lib",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -219,8 +200,6 @@ py_strict_test(
     name = "strip_unused_test",
     size = "small",
     srcs = ["strip_unused_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = ["notap"],
     deps = [
         ":strip_unused_lib",
@@ -241,7 +220,6 @@ py_strict_test(
 py_strict_library(
     name = "optimize_for_inference_lib",
     srcs = ["optimize_for_inference_lib.py"],
-    srcs_version = "PY3",
     deps = [
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
@@ -258,15 +236,12 @@ py_strict_library(
 py_strict_binary(
     name = "optimize_for_inference",
     srcs = ["optimize_for_inference.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [":optimize_for_inference_main_lib"],
 )
 
 py_strict_library(
     name = "optimize_for_inference_main_lib",
     srcs = ["optimize_for_inference.py"],
-    srcs_version = "PY3",
     deps = [
         ":optimize_for_inference_lib",
         "//tensorflow/core:protos_all_py",
@@ -281,8 +256,6 @@ py_strict_test(
     name = "optimize_for_inference_test",
     size = "small",
     srcs = ["optimize_for_inference_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":optimize_for_inference_lib",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -307,7 +280,6 @@ py_strict_test(
 py_strict_library(
     name = "selective_registration_header_lib",
     srcs = ["selective_registration_header_lib.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         # copybara:comment_begin(oss-only)
@@ -323,8 +295,6 @@ py_strict_library(
 py_strict_binary(
     name = "print_selective_registration_header",
     srcs = ["print_selective_registration_header.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [":print_selective_registration_header_lib"],
 )
@@ -332,7 +302,6 @@ py_strict_binary(
 py_strict_library(
     name = "print_selective_registration_header_lib",
     srcs = ["print_selective_registration_header.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":selective_registration_header_lib",
@@ -343,8 +312,6 @@ py_strict_library(
 py_strict_test(
     name = "print_selective_registration_header_test",
     srcs = ["print_selective_registration_header_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":selective_registration_header_lib",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -357,8 +324,6 @@ py_strict_test(
 py_strict_binary(
     name = "saved_model_cli",
     srcs = ["saved_model_cli.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [":saved_model_cli_lib"] + if_pywrap(
         if_true = ["//tensorflow/python:_pywrap_tensorflow"],
     ),
@@ -367,7 +332,6 @@ py_strict_binary(
 py_strict_library(
     name = "saved_model_cli_lib",
     srcs = ["saved_model_cli.py"],
-    srcs_version = "PY3",
     deps = [
         # Note: if you make any changes here, make corresponding changes to the
         # deps of the "tools_pip" target in this file.  Otherwise release builds
@@ -407,7 +371,6 @@ py_strict_library(
 py_strict_library(
     name = "saved_model_aot_compile",
     srcs = ["saved_model_aot_compile.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/compiler/tf2xla:tf2xla_proto_py",
         "//tensorflow/core:protos_all_py",
@@ -433,8 +396,6 @@ py_strict_test(
     data = [
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "noasan",  # TODO(b/222716501)
     ],
@@ -464,7 +425,6 @@ py_strict_test(
 py_strict_binary(
     name = "make_aot_compile_models",
     srcs = ["make_aot_compile_models.py"],
-    python_version = "PY3",
     deps = [
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",

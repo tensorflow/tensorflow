@@ -61,7 +61,6 @@ tf_py_strict_test(
     name = "plugin_asset_test",
     size = "small",
     srcs = ["plugin_asset_test.py"],
-    python_version = "PY3",
     deps = [
         ":plugin_asset",
         "//tensorflow/python/framework:ops",
@@ -74,7 +73,6 @@ tf_py_strict_test(
     name = "summary_iterator_test",
     size = "small",
     srcs = ["summary_iterator_test.py"],
-    python_version = "PY3",
     deps = [
         ":summary_iterator",
         ":summary_py",
@@ -89,7 +87,6 @@ tf_py_strict_test(
     name = "summary_test",
     size = "small",
     srcs = ["summary_test.py"],
-    python_version = "PY3",
     deps = [
         ":summary_py",
         "//tensorflow/core:protos_all_py",
@@ -111,7 +108,6 @@ tf_py_strict_test(
     name = "summary_v2_test",
     size = "small",
     srcs = ["summary_v2_test.py"],
-    python_version = "PY3",
     deps = [
         ":summary_py",
         "//tensorflow/python/framework:constant_op",

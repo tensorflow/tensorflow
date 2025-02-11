@@ -12,7 +12,6 @@ package(
 pytype_strict_library(
     name = "ops",
     srcs = ["tpu_ops.py"],
-    srcs_version = "PY3",
     visibility = [
         "//smartass:__subpackages__",
         "//tensorflow:__subpackages__",

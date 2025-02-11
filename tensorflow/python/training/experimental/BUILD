@@ -10,7 +10,6 @@ package(
 py_strict_library(
     name = "loss_scale",
     srcs = ["loss_scale.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
@@ -33,7 +32,6 @@ py_strict_library(
 py_strict_library(
     name = "loss_scale_optimizer",
     srcs = ["loss_scale_optimizer.py"],
-    srcs_version = "PY3",
     deps = [
         ":loss_scale",
         "//tensorflow/python/distribute:distribute_lib",
@@ -51,7 +49,6 @@ py_strict_test(
     name = "loss_scale_optimizer_test",
     size = "small",
     srcs = ["loss_scale_optimizer_test.py"],
-    python_version = "PY3",
     deps = [
         ":loss_scale",
         ":loss_scale_optimizer",
@@ -78,7 +75,6 @@ py_strict_test(
     name = "loss_scale_test",
     size = "medium",
     srcs = ["loss_scale_test.py"],
-    python_version = "PY3",
     deps = [
         ":loss_scale",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -103,14 +99,12 @@ py_strict_test(
 py_strict_library(
     name = "mixed_precision_global_state",
     srcs = ["mixed_precision_global_state.py"],
-    srcs_version = "PY3",
     deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_strict_library(
     name = "mixed_precision",
     srcs = ["mixed_precision.py"],
-    srcs_version = "PY3",
     deps = [
         ":loss_scale_optimizer",
         ":mixed_precision_global_state",
@@ -126,7 +120,6 @@ cuda_py_strict_test(
     name = "mixed_precision_test",
     size = "small",
     srcs = ["mixed_precision_test.py"],
-    python_version = "PY3",
     deps = [
         ":loss_scale_optimizer",
         ":mixed_precision",
