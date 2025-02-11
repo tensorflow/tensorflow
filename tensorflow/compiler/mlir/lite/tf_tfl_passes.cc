@@ -257,7 +257,7 @@ void AddPreQuantizationStableHloToTfPasses(
 
   // Canonicalize, CSE etc.
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::createCanonicalizerPass());
+      mlir::stablehlo::createStablehloAggressiveSimplificationPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   // DCE for private symbols.
   pass_manager.addPass(mlir::createSymbolDCEPass());
