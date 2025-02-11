@@ -549,13 +549,10 @@ cc_library(
     srcs = ["symbolic_tiled_hlo_instruction.cc"],
     hdrs = ["symbolic_tiled_hlo_instruction.h"],
     deps = [
-        ":affine_map_evaluator",
         ":symbolic_tile",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
     ],
 )
 

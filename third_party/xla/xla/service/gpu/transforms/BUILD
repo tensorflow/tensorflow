@@ -2259,6 +2259,7 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_indexing_utils",
         "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu/model:symbolic_tile",
         "//xla/service/gpu/model:symbolic_tile_analysis",
         "//xla/service/gpu/model:symbolic_tiled_hlo_instruction",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
