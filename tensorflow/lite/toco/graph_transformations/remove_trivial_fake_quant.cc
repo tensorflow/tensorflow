@@ -65,9 +65,8 @@ bool IsFakeQuantTrivial(GraphTransformation* transformation, const Model& model,
 }  // namespace
 
 // Removes FakeQuant ops that are trivial (have no effect, are redundant, etc).
-::tensorflow::Status RemoveTrivialFakeQuant::Run(Model* model,
-                                                 std::size_t op_index,
-                                                 bool* modified) {
+absl::Status RemoveTrivialFakeQuant::Run(Model* model, std::size_t op_index,
+                                         bool* modified) {
   *modified = false;
   const auto op_it = model->operators.begin() + op_index;
   auto* op = op_it->get();
