@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/acceleration/configuration/configuration.pb.h"
 
 namespace tflite {
 namespace {
