@@ -159,7 +159,7 @@ EXTRA_PACKAGES['and-cuda'] = [
     'nvidia-curand-cu12 == 10.3.6.82',
     'nvidia-cusolver-cu12 == 11.6.3.83',
     'nvidia-cusparse-cu12 == 12.5.1.3',
-    'nvidia-nccl-cu12 == 2.23.4',
+    'nvidia-nccl-cu12 == 2.25.1',
     'nvidia-nvjitlink-cu12 == 12.5.82',
 ]
 
