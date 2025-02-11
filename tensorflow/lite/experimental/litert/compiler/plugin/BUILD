@@ -35,6 +35,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core:environment",
         "//tensorflow/lite/experimental/litert/core:filesystem",
         "//tensorflow/lite/experimental/litert/core/model",
+        "//tensorflow/lite/experimental/litert/core/model:buffer_manager",
         "//tensorflow/lite/experimental/litert/core/model:ir_allocator",
         "//tensorflow/lite/experimental/litert/core/model:model_serialize",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
