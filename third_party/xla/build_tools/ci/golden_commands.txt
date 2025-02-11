@@ -57,17 +57,7 @@ bazel analyze-profile profile.json.gz
 bazel test --build_tag_filters= --test_tag_filters= --config=release_cpu_linux --config=rbe_linux_cpu --config=linux_cpu_pycpp_test_filters --verbose_failures --test_output=errors --override_repository=xla=$GITHUB_WORKSPACE/openxla/xla --profile=profile.json.gz -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/compiler/tensorrt/...
 bazel analyze-profile profile.json.gz
 # END BuildType.TENSORFLOW_CPU_SELF_HOSTED
-# BEGIN BuildType.TENSORFLOW_GPU
-$KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
-git clone --depth=1 https://github.com/tensorflow/tensorflow ./github/tensorflow
-parallel --ungroup --retries 3 --delay 15 --nonall -- docker pull us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest
-docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/tensorflow us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest bash
-docker exec xla_ci bazel test --build_tag_filters=-no_oss,+gpu --test_tag_filters=-no_oss,+gpu --config=release_gpu_linux --config=rbe_linux_cuda --config=linux_cuda_pycpp_test_filters --verbose_failures --test_output=errors --override_repository=xla=/github/xla --profile=profile.json.gz -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/compiler/tensorrt/...
-docker exec xla_ci bazel analyze-profile profile.json.gz
-docker stop xla_ci
-# END BuildType.TENSORFLOW_GPU
 # BEGIN BuildType.TENSORFLOW_X86_GPU_T4_SELF_HOSTED
-parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --build_tag_filters=-no_oss,+gpu --test_tag_filters=-no_oss,+gpu --config=release_gpu_linux --config=rbe_linux_cuda --config=linux_cuda_pycpp_test_filters --verbose_failures --test_output=errors --override_repository=xla=$GITHUB_WORKSPACE/openxla/xla --profile=profile.json.gz --nobuild -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/compiler/tensorrt/...
 bazel test --build_tag_filters=-no_oss,+gpu --test_tag_filters=-no_oss,+gpu --config=release_gpu_linux --config=rbe_linux_cuda --config=linux_cuda_pycpp_test_filters --verbose_failures --test_output=errors --override_repository=xla=$GITHUB_WORKSPACE/openxla/xla --profile=profile.json.gz -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/compiler/tensorrt/...
 bazel analyze-profile profile.json.gz
 # END BuildType.TENSORFLOW_X86_GPU_T4_SELF_HOSTED

@@ -101,7 +101,6 @@ class BuildType(enum.Enum):
   JAX_X86_GPU_T4_SELF_HOSTED = enum.auto()
 
   TENSORFLOW_CPU_SELF_HOSTED = enum.auto()
-  TENSORFLOW_GPU = enum.auto()
   TENSORFLOW_X86_GPU_T4_SELF_HOSTED = enum.auto()
 
 
@@ -214,7 +213,7 @@ class Build:
     # manually).
     if self.type_ not in (
         BuildType.TENSORFLOW_CPU_SELF_HOSTED,
-        BuildType.TENSORFLOW_GPU,
+        BuildType.TENSORFLOW_X86_GPU_T4_SELF_HOSTED,
         BuildType.MACOS_CPU_X86,
     ):
       cmds.append(
@@ -460,32 +459,6 @@ _TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
     ),
 )
 
-_TENSORFLOW_GPU_BUILD = Build(
-    type_=BuildType.TENSORFLOW_GPU,
-    repo="tensorflow/tensorflow",
-    image_url=_ML_BUILD_IMAGE,
-    configs=(
-        "release_gpu_linux",
-        "rbe_linux_cuda",
-        "linux_cuda_pycpp_test_filters",
-    ),
-    target_patterns=(
-        "//tensorflow/compiler/...",
-        "-//tensorflow/compiler/tf2tensorrt/...",
-        "//tensorflow/python/...",
-        "-//tensorflow/python/distribute/...",
-        "-//tensorflow/python/compiler/tensorrt/...",
-    ),
-    build_tag_filters=("-no_oss", "+gpu"),
-    test_tag_filters=("-no_oss", "+gpu"),
-    options=dict(
-        verbose_failures=True,
-        test_output="errors",
-        override_repository="xla=/github/xla",
-        profile="profile.json.gz",
-    ),
-)
-
 _TENSORFLOW_GPU_SELF_HOSTED_BUILD = Build(
     type_=BuildType.TENSORFLOW_X86_GPU_T4_SELF_HOSTED,
     repo="tensorflow/tensorflow",
@@ -517,7 +490,6 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
     "tensorflow/xla/macos/github_continuous/cpu_py39_full": _MACOS_X86_BUILD,
     "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
-    "tensorflow/xla/tensorflow/gpu/build_gpu": _TENSORFLOW_GPU_BUILD,
     "xla-linux-x86-cpu": _CPU_X86_SELF_HOSTED_BUILD,
     "xla-linux-arm64-cpu": _CPU_ARM64_SELF_HOSTED_BUILD,
     "xla-linux-x86-gpu-t4": _GPU_T4_SELF_HOSTED_BUILD,
