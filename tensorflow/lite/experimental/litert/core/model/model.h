@@ -862,6 +862,10 @@ class LiteRtModelT {
   TflFlatbuffer tfl_flatbuffer_;
 };
 
+// Get the custom op code from a given op if it is a custom op.
+std::optional<std::string> GetCustomOpCode(const LiteRtModelT& model,
+                                           const LiteRtOpT& op);
+
 // Lookup subgraph by signature name.
 ::litert::Expected<LiteRtSubgraph> LookupSubgraph(
     const LiteRtModelT& model, absl::string_view signature_key);
