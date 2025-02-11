@@ -402,10 +402,6 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
     return kTfLiteError;
   }
 
-  // Set the non-CPU allocation flag for the tensor.
-  TfLiteOpaqueTensorSetNonCpuAllocation(
-      const_cast<TfLiteOpaqueTensor*>(tfl_opaque_tensor));
-
   return RegisterLiteRtTensorBuffer(TensorBuffer(litert_tensor_buffer),
                                     *tensor_buffer_size, buffer_index,
                                     is_input);
