@@ -29,12 +29,17 @@ jobs:
           {
             os: "linux-x86-n2-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            pretty_name: "XLA Linux x86 CPU",
+            pretty_name: "XLA Linux x86 CPU with 16 vcpu",
           },
           {
             os: "linux-arm64-c4a-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
             pretty_name: "XLA Linux ARM64 CPU",
+          },
+          {
+            os: "linux-x86-n2-128",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 CPU with 128 vcpu",
           }
         ]
     name: ${{ matrix.job_info.pretty_name }}
@@ -43,7 +48,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - name: Print machine specs
         run: |
