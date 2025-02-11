@@ -176,6 +176,17 @@ LiteRtStatus LiteRtGetSumKeepDimsOption(LiteRtOp op, bool* keepdims);
 //==============================================================================
 LiteRtStatus LiteRtGetPackAxisOption(LiteRtOp op, int32_t* axis);
 
+//==============================================================================
+//
+// Get option APIs for LiteRt Gather op.
+//  Options:
+// - axisOption : int32_t
+// - batch_dims : int32_t
+//
+//==============================================================================
+LiteRtStatus LiteRtGetGatherAxisOption(LiteRtOp op, int32_t* axis);
+LiteRtStatus LiteRtGetGatherBatchDimsOption(LiteRtOp op, int32_t* batch_dims);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

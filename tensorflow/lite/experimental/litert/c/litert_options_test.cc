@@ -244,4 +244,21 @@ TEST(GetOpOptionTest, TestGetPackOptions) {
   ASSERT_EQ(axis, 0);
 }
 
+TEST(GetOpOptionTest, TestGetGatherOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_gather_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  int32_t axis;
+  LITERT_ASSERT_OK(LiteRtGetGatherAxisOption(op, &axis));
+  ASSERT_EQ(axis, 0);
+
+  int32_t batch_dims;
+  LITERT_ASSERT_OK(LiteRtGetGatherBatchDimsOption(op, &batch_dims));
+  ASSERT_EQ(batch_dims, 0);
+}
+
 }  // namespace

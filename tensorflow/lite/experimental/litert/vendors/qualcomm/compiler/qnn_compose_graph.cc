@@ -17,6 +17,7 @@
 #include <alloca.h>
 #include <stdio.h>
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -26,9 +27,12 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/c/litert_options.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/cast_op_builder.h"
@@ -36,8 +40,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/elementwise_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/embedding_lookup_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/fully_connected_op_builder.h"
-// #include
-// "third_party/tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gather_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gather_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gelu_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/matmul_op_builder.h"
 // #include
@@ -52,6 +55,9 @@
 // "third_party/tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/split_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/tanh_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/transpose_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 namespace litert::qnn {
@@ -307,16 +313,16 @@ LiteRtStatus ConvertOp(
                                                  output_tensors, keep_num_dims);
       break;
     }
-    // TODO: Add gather options in C api.
-    // case LiteRtOpCode::kLiteRtOpCodeTflGather: {
-    //   int32_t axis =
-    //       detail::GetTflOptions(*litert_op.Get()).AsGatherOptions()->axis;
-    //   int32_t batch_dims =
-    //       detail::GetTflOptions(*litert_op.Get()).AsGatherOptions()->batch_dims;
-    //   op_wrappers = ::qnn::BuildGatherOp(tensor_pool, input_tensors,
-    //                                      output_tensors, axis, batch_dims);
-    //   break;
-    // }
+    case LiteRtOpCode::kLiteRtOpCodeTflGather: {
+      int32_t axis{};
+      LITERT_RETURN_IF_ERROR(LiteRtGetGatherAxisOption(litert_op.Get(), &axis));
+      int32_t batch_dims{};
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetGatherBatchDimsOption(litert_op.Get(), &batch_dims));
+      op_wrappers = ::qnn::BuildGatherOp(tensor_pool, input_tensors,
+                                         output_tensors, axis, batch_dims);
+      break;
+    }
     case LiteRtOpCode::kLiteRtOpCodeTflGelu: {
       op_wrappers =
           ::qnn::BuildGeluOp(tensor_pool, input_tensors, output_tensors);
