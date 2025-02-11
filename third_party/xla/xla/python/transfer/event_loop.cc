@@ -26,6 +26,7 @@ limitations under the License.
 #include <atomic>
 #include <cerrno>
 #include <memory>
+#include <queue>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,6 +39,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tsl/platform/env.h"
 
 namespace aux {
@@ -66,12 +69,22 @@ class PollEventLoopImpl : public PollEventLoop {
     WakeInternal();
   }
 
+  void ScheduleAt(absl::Time t, absl::AnyInvocable<void() &&> cb) override {
+    absl::MutexLock l(&mu_);
+    bool needs_wake = timeout_cbs_.empty() || timeout_cbs_.top().t > t;
+    timeout_cbs_.push({t, std::move(cb)});
+    if (needs_wake) {
+      WakeInternal();
+    }
+  }
+
  private:
   void Run() {
     // TODO(parkers): switch to epoll if handlers.size() is too big.
     std::vector<Handler*> handlers;
     std::vector<Handler*> new_handlers;
     std::vector<pollfd> fds;
+    absl::Time wake_time = absl::InfiniteFuture();
     while (true) {
       fds.resize(handlers.size() + 1);
       for (size_t i = 0; i < handlers.size(); ++i) {
@@ -79,7 +92,16 @@ class PollEventLoopImpl : public PollEventLoop {
         handlers[i]->PopulatePollInfo(fds[i]);
       }
       fds[handlers.size()] = {.fd = event_fd_, .events = POLLIN, .revents = 0};
-      poll(&fds[0], fds.size(), -1);
+      {
+        auto poll_time = absl::Now();
+        if (wake_time < poll_time) {
+        } else if (wake_time < absl::InfiniteFuture()) {
+          auto poll_duration = absl::ToTimespec(wake_time - poll_time);
+          ppoll(&fds[0], fds.size(), &poll_duration, nullptr);
+        } else {
+          poll(&fds[0], fds.size(), -1);
+        }
+      }
       absl::InlinedVector<Handler*, 4> inserts;
       absl::flat_hash_set<Handler*> wakes;
       std::vector<absl::AnyInvocable<void() &&>> cbs;
@@ -93,6 +115,15 @@ class PollEventLoopImpl : public PollEventLoop {
         std::swap(wakes_, wakes);
         std::swap(inserts, inserts_);
         std::swap(cbs, cbs_);
+        {
+          auto woken_time = absl::Now();
+          while (!timeout_cbs_.empty() && timeout_cbs_.top().t < woken_time) {
+            cbs.push_back(std::move(std::move(timeout_cbs_.top().cb)));
+            timeout_cbs_.pop();
+          }
+          wake_time = timeout_cbs_.empty() ? absl::InfiniteFuture()
+                                           : timeout_cbs_.top().t;
+        }
         needs_wake_ = true;
       }
       for (auto& cb : cbs) {
@@ -125,6 +156,17 @@ class PollEventLoopImpl : public PollEventLoop {
   bool needs_wake_ = true;
   int event_fd_ = eventfd(0, EFD_CLOEXEC);
   std::vector<absl::AnyInvocable<void() &&>> cbs_;
+  struct TimeoutWork {
+    absl::Time t;
+    mutable absl::AnyInvocable<void() &&> cb;
+  };
+  struct TimeoutOrder {
+    bool operator()(const TimeoutWork& a, const TimeoutWork& b) const {
+      return a.t < b.t;
+    }
+  };
+  std::priority_queue<TimeoutWork, std::vector<TimeoutWork>, TimeoutOrder>
+      timeout_cbs_;
   absl::InlinedVector<Handler*, 4> inserts_;
   absl::flat_hash_set<Handler*> wakes_;
   std::unique_ptr<tsl::Thread> thread_;

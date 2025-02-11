@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tsl/platform/statusor.h"
 
 namespace aux {
@@ -152,6 +154,15 @@ TEST(EventLoopTest, TestSchedule) {
   PollEventLoop::GetDefault()->Schedule(
       [&done_notify]() { done_notify.Notify(); });
   done_notify.WaitForNotification();
+}
+
+TEST(EventLoopTest, TestScheduleAt) {
+  absl::Notification done_notify;
+  auto wake_time = absl::Now() + absl::Seconds(2);
+  PollEventLoop::GetDefault()->ScheduleAt(
+      wake_time, [&done_notify]() { done_notify.Notify(); });
+  done_notify.WaitForNotification();
+  ASSERT_GE(absl::Now(), wake_time);
 }
 
 }  // namespace
