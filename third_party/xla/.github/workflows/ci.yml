@@ -47,7 +47,7 @@ jobs:
             repo: "openxla/xla",
           },
           {
-            pool: "linux-arm64-c4a-16",
+            pool: "linux-arm64-t2a-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
             kokoro_job_name: "xla-linux-arm64-cpu",
             pretty_name: "XLA Linux ARM64 CPU",
