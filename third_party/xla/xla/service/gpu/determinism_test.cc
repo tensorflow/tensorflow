@@ -126,6 +126,9 @@ class DeterminismTest : public GpuCodegenTest {
       return backend().default_stream_executor()->AsDnn();
     });
     EXPECT_CALL(executor, device_ordinal).WillRepeatedly([]() { return 0; });
+    EXPECT_CALL(executor, SynchronizeAllActivity).WillRepeatedly([&]() -> bool {
+      return true;
+    });
 
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_string));
