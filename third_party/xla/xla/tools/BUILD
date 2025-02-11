@@ -700,6 +700,87 @@ cc_library(
     ]),
 )
 
+cc_library(
+    name = "collective_perf_table_gen",
+    srcs = ["collective_perf_table_gen.cc"],
+    hdrs = ["collective_perf_table_gen.h"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/service:backend",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/service/gpu/model:hlo_op_profiler_lib",
+        "//xla/service/gpu/model:hlo_op_profiles",
+        "//xla/tools/multihost_hlo_runner:create_client",
+        "//xla/tools/multihost_hlo_runner:functional_hlo_runner",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "collective_perf_table_gen_main_lib",
+    testonly = True,
+    srcs = ["collective_perf_table_gen_main.cc"],
+    compatible_with = None,
+    tags = [
+        "no_mac",
+    ],
+    deps = [
+        ":collective_perf_table_gen",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:platform_port",
+    ] + if_cuda([
+        "//xla/service:gpu_plugin",
+        "//xla/stream_executor:cuda_platform",
+    ]),
+    alwayslink = True,
+)
+
+xla_test(
+    name = "collective_perf_table_gen_test",
+    srcs = ["collective_perf_table_gen_test.cc"],
+    backends = ["gpu"],
+    local_defines = if_cuda(["GOOGLE_CUDA"]),
+    deps = [
+        ":collective_perf_table_gen",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_binary(
+    name = "collective_perf_table_gen_main",
+    testonly = True,
+    tags = [
+        "no_mac",
+    ],
+    deps = [
+        ":collective_perf_table_gen_main_lib",
+    ],
+)
+
 xla_cc_binary(
     name = "matmul_perf_table_gen_main",
     testonly = True,

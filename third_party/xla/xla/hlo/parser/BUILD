@@ -61,7 +61,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 

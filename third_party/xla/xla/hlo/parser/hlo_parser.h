@@ -124,6 +124,10 @@ absl::StatusOr<Layout> ParseLayout(absl::string_view str);
 absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
     absl::string_view str);
 
+// Parses and returns a `CollectiveDeviceList` from a `str`.
+absl::StatusOr<CollectiveDeviceList> ParseCollectiveDeviceListOnly(
+    absl::string_view str);
+
 class HloParser {
  public:
   // Runs the parser and constructs the resulting HLO in the given (empty)
