@@ -238,7 +238,7 @@ TEST(ModelQuantizationTypeTest, MakePerChannel) {
   LiteRtTensorT tensor;
   const auto quant = MakePerChannelQuantization(
       kScale, kZero, kQdim,
-      [&tensor](auto s) { return tensor.RequestBuffer(s); });
+      [&tensor](auto s) { return tensor.RequestScratchBuffer(s); });
 
   ASSERT_EQ(quant.first, kLiteRtQuantizationPerChannel);
   const auto& per_channel = quant.second.per_channel;

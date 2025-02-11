@@ -123,7 +123,7 @@ const ::litert::internal::FlatbufferWrapper& GetTflFlatbuffer(
 //
 
 // // For requesting opaque data stored within IR.
-using BufferProvider = std::function<uint8_t*(size_t size)>;
+using ScratchBufferProvider = std::function<uint8_t*(size_t size)>;
 
 // TENSOR TYPE
 
@@ -165,7 +165,7 @@ template <class Scales, class ZeroPoints>
 Quantization MakePerChannelQuantization(const Scales& scales,
                                         const ZeroPoints& zero_points,
                                         int32_t quantized_dim,
-                                        BufferProvider buffer_provider) {
+                                        ScratchBufferProvider buffer_provider) {
   const auto size = std::size(scales);
   ABSL_DCHECK_EQ(size, std::size(zero_points));
 
@@ -354,15 +354,17 @@ class LiteRtTensorT {
 
   // Get a new buffer that will live as long as this tensor. Used for storing
   // various buffers passed through c-api (dims, quantization etc).
-  uint8_t* RequestBuffer(size_t size) {
+  // NOTE: This is just scratch data unrelated to weights buffer.
+  uint8_t* RequestScratchBuffer(size_t size) {
     user_data_.push_back(std::make_unique<uint8_t[]>(size));
     return user_data_.back().get();
   }
 
-  // Allow for implicit conversion to bufer provider.
+  // Allow for implicit conversion to scratch buffer provider.
+  // NOTE: This is just scratch data unrelated to weights buffer.
   // NOLINTNEXTLINE
-  operator BufferProvider() & {
-    return [this](auto s) { return this->RequestBuffer(s); };
+  operator ScratchBufferProvider() & {
+    return [this](auto s) { return this->RequestScratchBuffer(s); };
   }
 
   // IR is generally, default constructible and movable but not copyable.
