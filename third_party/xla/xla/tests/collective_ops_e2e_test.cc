@@ -167,6 +167,9 @@ class CollectiveOpsWithFlagsBase : public CollectiveOpsTestE2E {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
 
+    // Disable autotuning which is unnecessary.
+    debug_options.set_xla_gpu_autotune_level(0);
+
     // Enable or disable all async collectives based on test parameter.
     if (!enable_async_) {
       for (auto option :

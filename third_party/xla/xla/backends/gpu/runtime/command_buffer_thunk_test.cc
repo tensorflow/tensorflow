@@ -1484,6 +1484,7 @@ class CmdBufferTest : public HloTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(0);
     debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
     debug_options.set_xla_gpu_graph_min_graph_size(1);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
