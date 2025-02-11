@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -28,7 +28,6 @@ namespace functor {
 
 // Explicit instantiation of the GPU functor.
 typedef Eigen::GpuDevice GPUDevice;
-
 template class FillProjectiveTransform<GPUDevice, uint8>;
 template class FillProjectiveTransform<GPUDevice, int32>;
 template class FillProjectiveTransform<GPUDevice, int64>;
@@ -40,4 +39,4 @@ template class FillProjectiveTransform<GPUDevice, double>;
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

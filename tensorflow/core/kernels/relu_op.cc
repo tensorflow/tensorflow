@@ -116,9 +116,7 @@ TF_CALL_half(DECLARE_GPU_NO_MLIR_SPEC);
 TF_CALL_float(DECLARE_GPU_NO_MLIR_SPEC);
 TF_CALL_double(DECLARE_GPU_NO_MLIR_SPEC);
 #endif
-#if GOOGLE_CUDA  //No Rocm for now
 TF_CALL_bfloat16(DECLARE_GPU_NO_MLIR_SPEC);
-#endif
 #undef DECLARE_GPU_NO_MLIR_SPEC
 }  // namespace functor
 
@@ -138,9 +136,7 @@ TF_CALL_half(REGISTER_GPU_NO_MLIR_KERNELS);
 TF_CALL_float(REGISTER_GPU_NO_MLIR_KERNELS);
 TF_CALL_double(REGISTER_GPU_NO_MLIR_KERNELS);
 #endif
-#if GOOGLE_CUDA  //No Rocm for now
 TF_CALL_bfloat16(REGISTER_GPU_NO_MLIR_KERNELS);
-#endif
 #undef REGISTER_GPU_NO_MLIR_KERNELS
 
 // Forward declarations of the functor specializations for GPU.
@@ -210,9 +206,7 @@ void Relu<GPUDevice, qint8>::operator()(
 extern template struct Relu<GPUDevice, qint8>;
 
 TF_CALL_GPU_NUMBER_TYPES_NO_BF16(DECLARE_GPU_SPEC);
-#if GOOGLE_CUDA
 TF_CALL_bfloat16(DECLARE_GPU_SPEC);
-#endif
 }  // namespace functor
 
 // Registration of the GPU implementations.
@@ -246,9 +240,7 @@ TF_CALL_bfloat16(DECLARE_GPU_SPEC);
       SeluGradOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES_NO_BF16(REGISTER_GPU_KERNELS);
-#if GOOGLE_CUDA
 TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
-#endif
 #undef REGISTER_GPU_KERNELS
 
 template <typename Device>

@@ -70,9 +70,9 @@ class ReluTest(test.TestCase):
       self.skipTest("No GPU available")
     for t in [
         np.float16,
+        dtypes.bfloat16.as_numpy_dtype,
         np.float32,
         np.float64,
-        dtypes.bfloat16.as_numpy_dtype,
     ]:
       self._testRelu(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
@@ -550,17 +550,25 @@ class GeluTest(test.TestCase):
   def testNumbersGPU(self):
     if not test.is_gpu_available():
       self.skipTest("No GPU available")
-    for t in [np.float16, np.float32, np.float64]:
+    for t in [np.float16, dtypes.bfloat16.as_numpy_dtype, np.float32, np.float64]:
       self._testGelu(np.array([[-9, 7, -5, 3, -1],
                                [1, -3, 5, -7, 9]]).astype(t))
 
   def testGradients(self):
-    for t in [np.float16, np.float32, np.float64]:
+    for t in [np.float16, dtypes.bfloat16.as_numpy_dtype, np.float32, np.float64]:
+
+      is_f16 = t == np.float16 
+      is_bf16 = t == dtypes.bfloat16.as_numpy_dtype
       for gpu in [True, False]:
         if gpu and not test.is_gpu_available():
           continue
-        delta = 2e-2 if t == np.float16 else 1e-3
-        tol = 2e-2 if t == np.float16 else (1e-4 if t == np.float32 else 1e-6)
+        delta = 2e-2 if is_f16 or is_bf16 else 1e-3
+        tol = 3e-2 if is_bf16 else \
+              2e-2 if is_f16 else \
+              1e-4 if t == np.float32 else 1e-6
+        if is_bf16 and not gpu:
+          tol = 0.1 # really bad accuracy on CPU for bf16
+
         def approx_gelu(x):
           return nn_ops.gelu(x, approximate=True)
         with self.session(use_gpu=gpu):
@@ -571,7 +579,8 @@ class GeluTest(test.TestCase):
           err = gradient_checker_v2.max_error(
               e1, e2)
           print(e1, e2)
-          print("gelu", t, "GPU" if gpu else "CPU", "gradient err = ", err)
+          print("gelu", t, "GPU" if gpu else "CPU", \
+                "gradient err = ", err, " tol = ", tol)
           self.assertLess(err, tol)
 
 class SeluTest(test.TestCase):

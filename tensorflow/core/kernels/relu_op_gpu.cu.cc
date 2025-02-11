@@ -234,68 +234,65 @@ struct Relu<Device, qint8> {
         reinterpret_cast<int32*>(output.data())));
   }
 };
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <class T>
-__global__ void GeluKernel(const T* in, T* out, int32 count) {
+__global__ void GeluKernel(const T* __restrict__ in, 
+                           T* __restrict__ out, int32 count) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i >= count) return;
-  const auto scale = static_cast<T>(0.7978845608028654);
-  const auto p1 = scale;
-  const auto p3 = static_cast<T>(0.044715 * 0.7978845608028654);
-  T x = in[i];
-  out[i] = 0.5 * x * (1 + tanh(p1 * x + p3 * x * x * x));
+
+  constexpr bool is_half = std::is_same_v<T, Eigen::half>;
+  if constexpr(is_half || std::is_same_v<T, Eigen::bfloat16>) {
+    using NT = std::conditional_t< is_half, half, bfloat16 >;
+    auto *xin = reinterpret_cast<const NT*>(in);
+    auto *xout = reinterpret_cast<NT*>(out);
+    const float scale = 0.7978845608028654;
+    const float p1 = scale;
+    const float p3 = 0.044715 * 0.7978845608028654;
+    float x = xin[i];
+    float out = 0.5f * x * (1.f + tanh(p1 * x + p3 * x * x * x));
+    xout[i] = static_cast<NT>(out);
+  } else {
+    const auto scale = static_cast<T>(0.7978845608028654);
+    const auto p1 = scale;
+    const auto p3 = static_cast<T>(0.044715 * 0.7978845608028654);
+    T x = in[i];
+    out[i] = 0.5 * x * (1. + tanh(p1 * x + p3 * x * x * x));
+  }
 }
 
 template <class T>
-__global__ void GeluGradKernel(const T* gradient, const T* feature, T* backprop,
-                               int32 count) {
+__global__ void GeluGradKernel(const T* __restrict__ gradient, 
+        const T* __restrict__ feature, T* __restrict__ backprop, int32 count) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i >= count) return;
 
-  const T p1 = static_cast<T>(0.7978845608028654);
-  const T p3 = static_cast<T>(0.044715 * 0.7978845608028654);
-  T x = feature[i];
-  T z = p1 * x + p3 * x * x * x;
-  T g = gradient[i];
-  T cz = 1. / cosh(z);
-  backprop[i] = static_cast<T>(
+  constexpr bool is_half = std::is_same_v<T, Eigen::half>;
+  if constexpr(is_half || std::is_same_v<T, Eigen::bfloat16>) {
+    using NT = std::conditional_t< is_half, half, bfloat16 >;
+    const float scale = 0.7978845608028654;
+    const float p1 = scale;
+    const float p3 = 0.044715 * 0.7978845608028654;
+    auto *xgrad = reinterpret_cast<const NT*>(gradient);
+    auto *xfeature = reinterpret_cast<const NT*>(feature);
+    auto *xbackprop = reinterpret_cast<NT*>(backprop);
+    float x = xfeature[i];
+    float z = p1 * x + p3 * x * x * x;
+    float g = xgrad[i];
+    float cz = 1.f / cosh(z);
+    float out = g * 0.5f * (1.f + tanh(z) + 
+                                          x * (p1 + 3 * p3 * x * x) * cz * cz);
+    xbackprop[i] = static_cast< NT >(out);
+  } else {
+    const T p1 = static_cast<T>(0.7978845608028654);
+    const T p3 = static_cast<T>(0.044715 * 0.7978845608028654);
+    T x = feature[i];
+    T z = p1 * x + p3 * x * x * x;
+    T g = gradient[i];
+    T cz = 1. / cosh(z);
+    backprop[i] = static_cast<T>(
       g * 0.5 * (1. + tanh(z) + x * (p1 + 3 * p3 * x * x) * cz * cz));
-}
-
-template <>
-__global__ void GeluKernel<Eigen::half>(const Eigen::half* _in,
-                                        Eigen::half* _out, int32 count) {
-  int i = threadIdx.x + blockIdx.x * blockDim.x;
-  if (i >= count) return;
-  const half* in = reinterpret_cast<const half*>(_in);
-  half* out = reinterpret_cast<half*>(_out);
-  const float scale = 0.7978845608028654;
-  const float p1 = scale;
-  const float p3 = 0.044715 * 0.7978845608028654;
-  float x = in[i];
-  out[i] = 0.5 * x * (1 + tanh(p1 * x + p3 * x * x * x));
-}
-
-template <>
-__global__ void GeluGradKernel<Eigen::half>(const Eigen::half* _gradient,
-                                            const Eigen::half* _feature,
-                                            Eigen::half* _backprop,
-                                            int32 count) {
-  int i = threadIdx.x + blockIdx.x * blockDim.x;
-  if (i >= count) return;
-  const float scale = 0.7978845608028654;
-  const float p1 = scale;
-  const float p3 = 0.044715 * 0.7978845608028654;
-  const half* gradient = reinterpret_cast<const half*>(_gradient);
-  const half* feature = reinterpret_cast<const half*>(_feature);
-  half* backprop = reinterpret_cast<half*>(_backprop);
-  float x = feature[i];
-  float z = p1 * x + p3 * x * x * x;
-  float g = gradient[i];
-  float cz = 1. / cosh(z);
-  backprop[i] = g * 0.5 * (1. + tanh(z) + x * (p1 + 3 * p3 * x * x) * cz * cz);
+  }
 }
 
 template <typename T>
@@ -338,9 +335,7 @@ TF_CALL_half(DEFINE_GPU_NO_MLIR_KERNELS);
 TF_CALL_float(DEFINE_GPU_NO_MLIR_KERNELS);
 TF_CALL_double(DEFINE_GPU_NO_MLIR_KERNELS);
 #endif
-#if GOOGLE_CUDA
 TF_CALL_bfloat16(DEFINE_GPU_NO_MLIR_KERNELS);
-#endif
 #undef DEFINE_GPU_NO_MLIR_KERNELS
 
 // Definition of the GPU implementations declared in relu_op.cc.
@@ -356,9 +351,7 @@ TF_CALL_bfloat16(DEFINE_GPU_NO_MLIR_KERNELS);
   template struct functor::GeluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES_NO_BF16(DEFINE_GPU_KERNELS);
-#if GOOGLE_CUDA
 TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
-#endif
 template struct functor::Relu<GPUDevice, qint8>;
 
 }  // end namespace tensorflow

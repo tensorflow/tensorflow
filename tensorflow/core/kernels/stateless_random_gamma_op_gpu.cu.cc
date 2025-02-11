@@ -183,4 +183,4 @@ TF_CALL_double(REGISTER_GPU_SPEC);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
