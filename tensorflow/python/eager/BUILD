@@ -132,7 +132,7 @@ filegroup(
 # Transitive dependencies of this target will be included in the pip package.
 py_strict_library(
     name = "eager_pip",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
     deps = [
         ":backprop",
         ":benchmarks_test_base",
@@ -407,10 +407,7 @@ cuda_py_strict_test(
 py_strict_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
-    visibility = [
-        "//tensorflow:internal",
-        "//tensorflow/core/profiler:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
         "//tensorflow/python/util:deprecation",

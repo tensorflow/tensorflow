@@ -151,7 +151,7 @@ def _tf_repositories():
     # c) TF's automation will then upload the mirrored archive. For more information as well as
     # how to manually upload a mirror if necessary, see go/tf_mirror_md.
 
-    # LINT.IfChange
+    # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
         sha256 = "435a5360d1c30b5130270afff32b398b239713e97f1aa7ea1e0a02c6c5247e17",
@@ -175,12 +175,14 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/Maratyszcza/FXdiv/archive/63058eff77e11aa15bf531df5dd34395ec3017c8.zip"),
     )
 
+    # LINT.IfChange(pthreadpool)
     tf_http_archive(
         name = "pthreadpool",
         sha256 = "cb668c32d6e05099492cc7ea19168e2dad0d1dcc4cbaa0e34fd4b38d39f0e03e",
         strip_prefix = "pthreadpool-f94ab76fe99754960035d520dce28e15b647e8cf",
-        urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/f94ab76fe99754960035d520dce28e15b647e8cf.zip"),
+        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/f94ab76fe99754960035d520dce28e15b647e8cf.zip"),
     )
+    # LINT.ThenChange(//tensorflow/lite/cmake/DownloadPThreadPool.cmake)
 
     tf_http_archive(
         name = "cpuinfo",
