@@ -20,4 +20,19 @@
 
 set -euox pipefail -o history
 
+capture_test_logs() {
+  mkdir -p "$KOKORO_ARTIFACTS_DIR"
+  pwd; ls -l github/xla/
+  # copy all test.log and test.xml files to the kokoro artifacts directory
+  sudo find -L github/xla/bazel-testlogs \( -name "test.log" -o -name "test.xml" \) -exec cp --parents {} "$KOKORO_ARTIFACTS_DIR" \;
+  # Rename the copied test.log and test.xml files to sponge_log.log and sponge_log.xml
+  sudo find -L "$KOKORO_ARTIFACTS_DIR" -name "test.log" -exec rename 's/test.log/sponge_log.log/' {} \;
+  sudo find -L "$KOKORO_ARTIFACTS_DIR" -name "test.xml" -exec rename 's/test.xml/sponge_log.xml/' {} \;
+
+  sudo find -L github/xla/bazel-testlogs -type f -printf "%T@ %p\n"
+}
+
+# Run capture_test_logs when the script exits
+trap capture_test_logs EXIT
+
 "$KOKORO_ARTIFACTS_DIR"/github/xla/build_tools/ci/build.py
