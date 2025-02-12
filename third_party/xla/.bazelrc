@@ -1,3 +1,9 @@
+# Disable Bzlmod for now
+common --noenable_bzlmod
+
+# TODO: Migrate for https://github.com/bazelbuild/bazel/issues/7260
+common --noincompatible_enable_cc_toolchain_resolution
+
 # Load the TensorFlow bazelrc
 import %workspace%/tensorflow.bazelrc
 import %workspace%/warnings.bazelrc

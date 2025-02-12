@@ -2985,18 +2985,17 @@ def tf_genrule_cmd_append_to_srcs(to_append):
             " >> $(@)")
 
 def _local_exec_transition_impl(settings, attr):
+    modify_execution_info = settings["//command_line_option:modify_execution_info"]
     return {
         # Force all targets in the subgraph to build on the local machine.
-        "//command_line_option:modify_execution_info": ".*=+no-remote-exec",
+        "//command_line_option:modify_execution_info": modify_execution_info + [".*=+no-remote-exec"],
     }
 
 # A transition that forces all targets in the subgraph to be built locally.
 _local_exec_transition = transition(
     implementation = _local_exec_transition_impl,
-    inputs = [],
-    outputs = [
-        "//command_line_option:modify_execution_info",
-    ],
+    inputs = ["//command_line_option:modify_execution_info"],
+    outputs = ["//command_line_option:modify_execution_info"],
 )
 
 def _local_genrule_impl(ctx):
@@ -3223,7 +3222,6 @@ def pybind_extension_opensource(
             compatible_with = compatible_with,
             deprecation = deprecation,
             features = features + ["-use_header_modules"],
-            licenses = licenses,
             restricted_to = restricted_to,
             shared_lib_name = so_file,
             testonly = testonly,
