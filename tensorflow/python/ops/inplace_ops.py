@@ -20,7 +20,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
+# from tensorflow.python.ops.array_ops import expand_dims_v2
 from tensorflow.python.util import deprecation
+
+tensor_scatter_nd_update = array_ops.tensor_scatter_nd_update
 
 
 def _inplace_helper(x, i, v, op):
@@ -60,10 +63,6 @@ def _inplace_helper(x, i, v, op):
   return op(x, i, v)
 
 
-@deprecation.deprecated(
-    None,
-    ('Prefer tf.tensor_scatter_nd_update, which offers the same functionality '
-     'with well-defined read-write semantics.'))
 def alias_inplace_update(x, i, v):
   """Applies an inplace update on input x at index i with value v. Aliases x.
 
@@ -82,8 +81,19 @@ def alias_inplace_update(x, i, v):
   Returns:
     Returns x.
 
+  for v1, v2 in zip(iter_out_states_values, single_out_state.Flatten()):
+  if self.params.use_inplace_update:
+    # We use inplace update because it is supported on DarwiNN TPUs and
+    # does not get offloaded to r52.
+    next_iter_out_states_value = tf.InplaceUpdate(v1, iter_i, v2)
+    tf.InplaceUpdate(x, i, v)
+  else:
+    # Replace along the 0th index
+    next_iter_out_states_value = tf.tensor_scatter_nd_update(
+        x, tf.expand_dims(tf.expand_dims(i, 0), 0),
+        tf.expand_dims(v, 0))
   """
-  return _inplace_helper(x, i, v, gen_array_ops.inplace_update)
+  return tensor_scatter_nd_update(x, i, v)
 
 
 @deprecation.deprecated(
