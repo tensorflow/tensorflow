@@ -24,6 +24,8 @@
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -130,7 +132,13 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
       .WillOnce(MockClientSessionReturnResponse(response));
 
   MockClient client;
+  ON_CALL(client, MakeDeviceList(_))
+      .WillByDefault([](absl::Span<xla::ifrt::Device* const> devices) {
+        return xla::ifrt::BasicDeviceList::Create(devices);
+      });
+
   MockDevice mock_device;
+  ON_CALL(mock_device, client()).WillByDefault(Return(&client));
 
   auto sharding = xla::ifrt::SingleDeviceSharding::Create(
       &mock_device, xla::ifrt::MemoryKind());

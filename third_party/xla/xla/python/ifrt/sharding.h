@@ -263,10 +263,7 @@ class SingleDeviceSharding final
   static char ID;  // NOLINT
 
  private:
-  explicit SingleDeviceSharding(Device* device, MemoryKind memory_kind)
-      : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
-            BasicDeviceList::Create({device}), memory_kind,
-            /*is_fully_replicated=*/true) {}
+  explicit SingleDeviceSharding(Device* device, MemoryKind memory_kind);
 
   void Hash(absl::HashState state) const override;
 };

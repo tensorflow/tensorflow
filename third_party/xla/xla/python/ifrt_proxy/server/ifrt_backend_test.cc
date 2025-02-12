@@ -252,6 +252,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     std::vector<xla::ifrt::Device*> raw_device_ptrs;
     for (int i = 0; i < 2; ++i) {
       auto mock_device = std::make_unique<xla::ifrt::MockDevice>();
+      ON_CALL(*mock_device, client()).WillByDefault(Return(mock_client.get()));
       ON_CALL(*mock_device, Id()).WillByDefault(Return(DeviceId(i)));
       ON_CALL(*mock_device, IsAddressable()).WillByDefault(Return(true));
       raw_device_ptrs.push_back(mock_device.get());
@@ -270,6 +271,10 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
               }
               return mock_devices_[id.value()].get();
             }));
+    ON_CALL(*mock_client, MakeDeviceList(_))
+        .WillByDefault([](absl::Span<xla::ifrt::Device* const> devices) {
+          return xla::ifrt::BasicDeviceList::Create(devices);
+        });
 
     // Remembering a raw pointer to the mock client here is OK, since most tests
     // anyway have to make the basic and tacit assumption that the backend will
@@ -1348,8 +1353,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
 // TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
 #if defined(PLATFORM_GOOGLE)
 TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
-  MockDevice device;
-  ON_CALL(device, Id()).WillByDefault(Return(DeviceId(0)));
+  TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::Device* const device,
+                          mock_client_->LookupDevice(DeviceId(0)));
 
   MockLoadedExecutable* executable;
   uint64_t handle;
@@ -1365,7 +1370,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
   constexpr int kNumOutputs = 2;
 
   Shape shape({2, 2});
-  auto sharding = SingleDeviceSharding::Create(&device, MemoryKind());
+  auto sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
   auto make_array = [&]() {
     auto array = tsl::MakeRef<MockArray>();
@@ -1422,7 +1427,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
               )pb"))));
   TF_ASSERT_OK_AND_ASSIGN(
       auto sharding_proto,
-      SingleDeviceSharding::Create(&device, MemoryKind())->ToProto());
+      SingleDeviceSharding::Create(device, MemoryKind())->ToProto());
   for (const auto& output :
        response->loaded_executable_execute_response().outputs()) {
     EXPECT_THAT(output.sharding(), EquivToProto(sharding_proto));

@@ -174,10 +174,15 @@ TEST_F(LoadedExecutableTest, Metadata) {
 // TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
 #if defined(PLATFORM_GOOGLE)
 TEST_F(LoadedExecutableTest, Execute) {
-  MockDevice device;
-  ON_CALL(device, Id()).WillByDefault(Return(DeviceId(1)));
-
   MockClient client;
+  ON_CALL(client, MakeDeviceList(_))
+      .WillByDefault([](absl::Span<xla::ifrt::Device* const> devices) {
+        return xla::ifrt::BasicDeviceList::Create(devices);
+      });
+
+  MockDevice device;
+  ON_CALL(device, client()).WillByDefault(Return(&client));
+  ON_CALL(device, Id()).WillByDefault(Return(DeviceId(1)));
   ON_CALL(client, LookupDevice(DeviceId(1))).WillByDefault(Return(&device));
 
   LoadedExecutable executable(
