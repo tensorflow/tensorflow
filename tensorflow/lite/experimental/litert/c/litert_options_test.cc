@@ -274,4 +274,17 @@ TEST(GetOpOptionTest, TestGetMeanOptions) {
   ASSERT_EQ(keepdims, false);
 }
 
+TEST(GetOpOptionTest, TestGetSplitOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_split_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  int32_t num_splits;
+  LITERT_ASSERT_OK(LiteRtGetSplitNumSplitsOption(op, &num_splits));
+  ASSERT_EQ(num_splits, 3);
+}
+
 }  // namespace

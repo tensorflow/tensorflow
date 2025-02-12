@@ -375,3 +375,15 @@ LiteRtStatus LiteRtGetMeanKeepDimsOption(LiteRtOp op, bool* keepdims) {
   *keepdims = opts.AsReducerOptions()->keep_dims;
   return kLiteRtStatusOk;
 }
+
+LiteRtStatus LiteRtGetSplitNumSplitsOption(LiteRtOp op, int32_t* num_splits) {
+  if (op->OpCode() != kLiteRtOpCodeTflSplit) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = detail::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *num_splits = opts.AsSplitOptions()->num_splits;
+  return kLiteRtStatusOk;
+}
