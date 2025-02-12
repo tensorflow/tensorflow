@@ -54,7 +54,10 @@ TEST_F(CollectivePerfTableGenTest, EmptyConfigReturnsEmptyProto) {
 }
 
 TEST_F(CollectivePerfTableGenTest, ConstantStepGeneratesConfigs) {
-  cfg_.collective_types = {CollectivePerfTableGen::CollectiveType::ALL_REDUCE};
+  cfg_.collective_types = {
+      CollectivePerfTableGen::CollectiveType::ALL_REDUCE,
+      CollectivePerfTableGen::CollectiveType::ALL_GATHER,
+  };
   IotaReplicaGroupList iota(1, 1);
   cfg_.replica_groups_list = {iota};
   CollectivePerfTableGen::StepSpec spec{
@@ -70,11 +73,14 @@ TEST_F(CollectivePerfTableGenTest, ConstantStepGeneratesConfigs) {
 
   DeviceHloInstructionProfiles profiles = gen->ComputeTable();
   EXPECT_EQ(profiles.entries_size(), 1);
-  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 5);
+  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 10);
 }
 
 TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigs) {
-  cfg_.collective_types = {CollectivePerfTableGen::CollectiveType::ALL_REDUCE};
+  cfg_.collective_types = {
+      CollectivePerfTableGen::CollectiveType::ALL_REDUCE,
+      CollectivePerfTableGen::CollectiveType::ALL_GATHER,
+  };
   IotaReplicaGroupList iota(1, 1);
   cfg_.replica_groups_list = {iota};
   CollectivePerfTableGen::StepSpec spec{
@@ -90,7 +96,7 @@ TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigs) {
 
   DeviceHloInstructionProfiles profiles = gen->ComputeTable();
   EXPECT_EQ(profiles.entries_size(), 1);
-  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 4);
+  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 8);
 }
 
 }  // namespace

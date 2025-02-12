@@ -78,6 +78,10 @@ int64_t GetInputDim(CollectivePerfTableGen::CollectiveType type,
     case CollectivePerfTableGen::CollectiveType::ALL_REDUCE:
       dim_size = tensor_size_bytes / kBytesPerElem;
       break;
+    case CollectivePerfTableGen::CollectiveType::ALL_GATHER:
+      dim_size = tensor_size_bytes /
+                 (kBytesPerElem * replica_groups.num_devices_per_group());
+      break;
     default:
       LOG(FATAL) << "Unsupported collective type.";
   }
@@ -91,6 +95,7 @@ int64_t GetOutputDim(CollectivePerfTableGen::CollectiveType type,
   CHECK_EQ(tensor_size_bytes % kBytesPerElem, 0);
   switch (type) {
     case CollectivePerfTableGen::CollectiveType::ALL_REDUCE:
+    case CollectivePerfTableGen::CollectiveType::ALL_GATHER:
       dim_size = tensor_size_bytes / kBytesPerElem;
       break;
     default:
@@ -102,10 +107,11 @@ int64_t GetOutputDim(CollectivePerfTableGen::CollectiveType type,
 std::string GetHlo(CollectivePerfTableGen::CollectiveType type,
                    int64_t input_dim, int64_t output_dim,
                    const IotaReplicaGroupList& replica_groups) {
+  CHECK_EQ(kBytesPerElem, 4);
+
   std::string hlo;
   switch (type) {
     case CollectivePerfTableGen::CollectiveType::ALL_REDUCE:
-      CHECK_EQ(kBytesPerElem, 4);
       hlo = absl::Substitute(R"(
         HloModule m
 
@@ -117,11 +123,24 @@ std::string GetHlo(CollectivePerfTableGen::CollectiveType type,
 
         ENTRY e {
           p0 = $0[$1] parameter(0)
-          ROOT _ = $0[$2] $3(p0), replica_groups=$4,
+          ROOT _ = $0[$2] all-reduce(p0), replica_groups=$3,
             to_apply=add, use_global_device_ids=true, channel_id=1
         }
       )",
-                             "f32", input_dim, output_dim, "all-reduce",
+                             "f32", input_dim, output_dim,
+                             replica_groups.ToString());
+      break;
+    case CollectivePerfTableGen::CollectiveType::ALL_GATHER:
+      hlo = absl::Substitute(R"(
+        HloModule m
+
+        ENTRY e {
+          p0 = $0[$1] parameter(0)
+          ROOT _ = $0[$2] all-gather(p0), replica_groups=$3,
+            use_global_device_ids=true, channel_id=1, dimensions={0}
+        }
+      )",
+                             "f32", input_dim, output_dim,
                              replica_groups.ToString());
       break;
     default:

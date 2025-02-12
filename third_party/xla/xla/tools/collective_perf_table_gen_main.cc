@@ -121,6 +121,10 @@ std::vector<CollectivePerfTableGen::CollectiveType> ParseCollectives(
       types.push_back(CollectivePerfTableGen::CollectiveType::ALL_REDUCE);
       continue;
     }
+    if (token == "ALL_GATHER") {
+      types.push_back(CollectivePerfTableGen::CollectiveType::ALL_GATHER);
+      continue;
+    }
   }
   CHECK_GT(types.size(), 0);
   return types;
@@ -147,7 +151,6 @@ CollectivePerfTableGen::StepSpec ParseStepSpec(absl::string_view unparsed) {
 
 }  // namespace
 
-// TODO(b/390097558): Add support for other collectives: AG, RS.
 // TODO(b/390097558): Add an option to generate perf table for collective which
 // gets overlap to model resource contention.
 int main(int argc, char* argv[]) {
@@ -167,7 +170,7 @@ int main(int argc, char* argv[]) {
                 "across the distributed system you run it on."),
       tsl::Flag("collectives", &collectives_unparsed,
                 "Comma separated list of collectives to generate perf table "
-                "for. Allowed values: ALL_REDUCE."),
+                "for. Allowed values: ALL_REDUCE, ALL_GATHER."),
       tsl::Flag("tensor_size_bytes_spec", &tensor_size_bytes_spec_unparsed,
                 "Spec for a search sweep over transfer sizes. Format example: "
                 "start=1,stop=8,factor=2 generates {1,2,4,8}."),

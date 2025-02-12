@@ -52,6 +52,7 @@ class CollectivePerfTableGen {
   enum class CollectiveType {
     UNSPECIFIED,
     ALL_REDUCE,
+    ALL_GATHER,
   };
 
   struct Config {
