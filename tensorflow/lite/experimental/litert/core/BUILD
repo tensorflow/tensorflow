@@ -134,6 +134,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_detail",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

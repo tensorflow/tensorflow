@@ -114,6 +114,25 @@ cc_library(
 )
 
 cc_library(
+    name = "simple_cascade_model_npu",
+    testonly = 1,
+    srcs = [],
+    hdrs = [
+        "testdata/simple_model_test_vectors.h",
+    ],
+    data = [
+        "testdata/simple_cascade_model_npu.tflite",
+        "testdata/simple_model_google_tensor.bin",
+        "testdata/simple_model_mtk.bin",
+        "testdata/simple_model_qualcomm.bin",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_layout",
+    ],
+)
+
+cc_library(
     name = "test_models",
     hdrs = ["test_models.h"],
     deps = [
