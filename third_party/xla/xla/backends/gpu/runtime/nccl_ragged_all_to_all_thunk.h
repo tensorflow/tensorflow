@@ -41,7 +41,7 @@ namespace gpu {
 
 struct NcclRaggedAllToAllConfig {
   NcclCollectiveConfig config;
-  int64_t num_ragged_rows = 1;
+  int64_t num_total_updates = 1;
   int64_t ragged_row_element_size = 1;
 };
 
@@ -112,15 +112,17 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
 
 absl::Status RunRaggedAllToAll(
     GpuCollectives* collectives, int64_t ragged_row_element_size,
-    const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    Communicator* comm, const std::vector<int64_t*>& ragged_metadata_allocs,
+    int64_t num_total_updates, const std::vector<DeviceBufferPair>& buffers,
+    se::Stream& stream, Communicator* comm,
+    const std::vector<int64_t*>& ragged_metadata_allocs,
     const se::DeviceMemoryBase& output_offsets_device_buffer);
 
 absl::Status RunMemCpyRaggedAllToAll(
     GpuCollectives* collectives, int64_t ragged_row_element_size,
-    const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    Communicator* comm, const std::vector<int64_t*>& ragged_metadata_allocs,
-    uint64_t* send_pointer, uint64_t receive_pointer_map[]);
+    int64_t num_total_updates, const std::vector<DeviceBufferPair>& buffers,
+    se::Stream& stream, Communicator* comm,
+    const std::vector<int64_t*>& ragged_metadata_allocs, uint64_t* send_pointer,
+    uint64_t receive_pointer_map[]);
 
 }  // namespace gpu
 }  // namespace xla

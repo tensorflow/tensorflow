@@ -1945,4 +1945,48 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
   return new_indexing_map;
 }
 
+IndexingMap ConvertRangeVariablesToDimensions(
+    const IndexingMap& map, ArrayRef<int64_t> range_var_indices) {
+  CHECK(std::is_sorted(range_var_indices.begin(), range_var_indices.end()));
+  auto* mlir_context = map.GetMLIRContext();
+
+  AffineMap affine_map = map.GetAffineMap();
+  // Update the affine map and the variables.
+  std::vector<IndexingMap::Variable> dims = map.GetDimVars();
+  std::vector<IndexingMap::Variable> range_vars;
+  std::vector<IndexingMap::Variable> rt_vars = map.GetRTVars();
+  SmallVector<AffineExpr, 4> symbol_replacements;
+  symbol_replacements.reserve(affine_map.getNumSymbols());
+  int64_t range_var_count = 0;
+  int64_t range_var_indices_count = range_var_indices.size();
+  for (int i = 0; i < affine_map.getNumSymbols(); ++i) {
+    auto range_var = map.GetRangeVar(i);
+    if (range_var_count < range_var_indices_count &&
+        i == range_var_indices[range_var_count]) {
+      symbol_replacements.push_back(getAffineDimExpr(
+          affine_map.getNumDims() + range_var_count, mlir_context));
+      dims.push_back(range_var);
+      range_var_count++;
+    } else {
+      symbol_replacements.push_back(
+          getAffineSymbolExpr(i - range_var_count, mlir_context));
+      range_vars.push_back(range_var);
+    }
+  }
+  AffineMap converted_affine_map = affine_map.replaceDimsAndSymbols(
+      {}, symbol_replacements,
+      affine_map.getNumDims() + range_var_indices_count,
+      affine_map.getNumSymbols() - range_var_indices_count);
+
+  // Update the constraints.
+  std::vector<std::pair<AffineExpr, Interval>> constraints;
+  constraints.reserve(map.GetConstraintsCount());
+  for (auto constraint : map.GetConstraints()) {
+    constraints.push_back({constraint.first.replaceSymbols(symbol_replacements),
+                           constraint.second});
+  }
+  return IndexingMap{converted_affine_map, std::move(dims),
+                     std::move(range_vars), std::move(rt_vars), constraints};
+}
+
 }  // namespace xla
