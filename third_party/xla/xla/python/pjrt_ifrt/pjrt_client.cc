@@ -985,6 +985,20 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
   DCHECK(this);
+  DCHECK(!arrays.empty());
+  DType dtype = arrays[0]->dtype();
+  return AssembleArrayFromSingleDeviceArrays(
+      dtype, std::move(shape), std::move(sharding), arrays,
+      array_copy_semantics, single_device_shard_semantics);
+}
+
+absl::StatusOr<tsl::RCReference<Array>>
+PjRtClient::AssembleArrayFromSingleDeviceArrays(
+    DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
+    absl::Span<tsl::RCReference<Array>> arrays,
+    ArrayCopySemantics array_copy_semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  DCHECK(this);
   if (llvm::isa<const SingleDeviceSharding>(sharding.get())) {
     // Assemble with SingleDeviceSharding is No-op.
     if (arrays.size() != 1) {
@@ -1016,14 +1030,13 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
         "single-shard arrays: %d vs. %d",
         sharding->devices()->AddressableDeviceList()->size(), arrays.size());
   }
-  if (arrays[0]->dtype().kind() == DType::kString) {
+  if (dtype.kind() == DType::kString) {
     return AssembleStringArrayFromSingleDeviceStringArrays(
         shape, sharding, arrays, array_copy_semantics,
         single_device_shard_semantics);
   }
   PjRtArray::PjRtBuffers buffers;
   buffers.reserve(arrays.size());
-  DType dtype = arrays[0]->dtype();
   for (int i = 0; i < arrays.size(); ++i) {
     if (!llvm::isa<PjRtCompatibleArray>(arrays[i].get())) {
       return InvalidArgument(

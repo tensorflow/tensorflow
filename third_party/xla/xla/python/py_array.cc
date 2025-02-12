@@ -224,10 +224,20 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
     // TODO(hyeontaek): Return a absl::Status.
     throw nb::value_error(ifrt_sharding.status().ToString().c_str());
   }
-  auto ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
-      ifrt::Shape(shape), *std::move(ifrt_sharding),
-      absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput,
-      ifrt::SingleDeviceShardSemantics::kAddressableShards);
+  absl::StatusOr<tsl::RCReference<ifrt::Array>> ifrt_array;
+  // TODO(emilyaf): Always call the version that takes `dtype` once tokens are
+  // handled correctly.
+  if (ifrt_arrays.empty()) {
+    ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
+        ifrt_dtype.value(), ifrt::Shape(shape), *std::move(ifrt_sharding),
+        absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput,
+        ifrt::SingleDeviceShardSemantics::kAddressableShards);
+  } else {
+    ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
+        ifrt::Shape(shape), *std::move(ifrt_sharding),
+        absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput,
+        ifrt::SingleDeviceShardSemantics::kAddressableShards);
+  }
   if (!ifrt_array.ok()) {
     // TODO(hyeontaek): Return a absl::Status.
     throw nb::value_error(ifrt_array.status().ToString().c_str());

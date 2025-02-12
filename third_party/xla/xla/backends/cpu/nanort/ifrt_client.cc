@@ -1296,6 +1296,21 @@ NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
                                              array_copy_semantics);
 }
 
+absl::StatusOr<tsl::RCReference<ifrt::Array>>
+NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
+    ifrt::DType dtype, ifrt::Shape shape,
+    absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
+    absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+    ifrt::ArrayCopySemantics array_copy_semantics,
+    ifrt::SingleDeviceShardSemantics single_device_shard_semantics) {
+  // NanoRT devices always have at least one buffer, so we can use the buffer
+  // dtype.
+  TF_RET_CHECK(!arrays.empty());
+  TF_RET_CHECK(dtype == arrays.front()->dtype());
+  return AssembleArrayFromSingleDeviceArrays(shape, sharding, arrays,
+                                             array_copy_semantics);
+}
+
 absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
 NanoIfrtClient::CopyArrays(
     absl::Span<tsl::RCReference<ifrt::Array>> arrays,

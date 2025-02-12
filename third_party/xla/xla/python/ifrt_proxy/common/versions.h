@@ -42,6 +42,10 @@ enum {
   // related to LoadedExecutable.
   kClientHandlesExecutableOptimization,
 
+  // kAssembleArrayFromSingleDeviceArraysWithDType adds a DType argument to
+  // AssembleArrayFromSingleDeviceArrays to support non-addressable arrays.
+  kAssembleArrayFromSingleDeviceArraysWithDType,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,

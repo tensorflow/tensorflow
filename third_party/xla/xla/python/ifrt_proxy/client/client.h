@@ -83,6 +83,12 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;
+  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
+  AssembleArrayFromSingleDeviceArrays(
+      DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
+      absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
       absl::Span<tsl::RCReference<Array>> arrays,

@@ -251,6 +251,17 @@ Client::AssembleArrayFromSingleDeviceArrays(
       array_copy_semantics, single_device_shard_semantics);
 }
 
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
+Client::AssembleArrayFromSingleDeviceArrays(
+    DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
+    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+    ArrayCopySemantics array_copy_semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  return Array::AssembleArrayFromSingleDeviceArrays(
+      this, rpc_helper_, std::move(shape), sharding, arrays,
+      array_copy_semantics, single_device_shard_semantics);
+}
+
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 Client::CopyArrays(
     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
