@@ -288,6 +288,8 @@ cc_library(
         ":optimize",
         ":rename_entrypoint_to_main",
         ":smuggle_disallowed_ops",
+        ":stablehlo_fuse_convolution_pass",
+        ":stablehlo_optimize",
         ":stablehlo_unfuse_batch_norm_pass",
         ":tf_stablehlo",
         ":unfold_splat_constant_pass",
@@ -469,7 +471,7 @@ cc_library(
 cc_library(
     name = "fuse_convolution_pass",
     srcs = [
-        "transforms/fuse_convolution_pass.cc",
+        "transforms/mhlo_passes/fuse_convolution_pass.cc",
     ],
     hdrs = [
         "transforms/stablehlo_passes.h",
@@ -491,6 +493,34 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "stablehlo_fuse_convolution_pass",
+    srcs = [
+        "transforms/stablehlo_fuse_convolution_pass.cc",
+    ],
+    hdrs = [
+        "transforms/stablehlo_passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/lite:validators",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = 1,
 )
@@ -648,7 +678,7 @@ cc_library(
 cc_library(
     name = "optimize",
     srcs = [
-        "transforms/optimize.cc",
+        "transforms/mhlo_passes/optimize.cc",
     ],
     hdrs = [
         "transforms/stablehlo_passes.h",
@@ -665,6 +695,31 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "stablehlo_optimize",
+    srcs = [
+        "transforms/stablehlo_optimize.cc",
+    ],
+    hdrs = [
+        "transforms/stablehlo_passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:base",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = 1,
 )
@@ -1117,6 +1172,8 @@ tf_cc_binary(
         ":optimize",
         ":passes_inc_gen",
         ":prepare_hlo",
+        ":stablehlo_fuse_convolution_pass",
+        ":stablehlo_optimize",
         ":stablehlo_unfuse_batch_norm_pass",
         ":tf_legalize_hlo",
         ":tf_stablehlo",
