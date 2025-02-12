@@ -584,7 +584,7 @@ TEST_F(WhileLoopUnrollerTest, GetUnrollableLoops) {
   EXPECT_EQ(unrollable_loops.size(), 2);
 }
 
-TEST_F(WhileLoopUnrollerTest, UnrollMutipleLoops) {
+TEST_F(WhileLoopUnrollerTest, UnrollMultipleLoops) {
   std::string hlo_string = R"(
   HloModule SimpleLoop
   SimpleLoop.body {
@@ -1178,6 +1178,25 @@ TEST_F(WhileLoopUnrollerTest,
                    .has_value());
 }
 
+TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDSClamp) {
+  // In this version of the test, our dimension of interest gets incremented by
+  // three at time to that it takes on values {0, 3}. The DS has slice size
+  // two. However, because the dimension size is only 4, the second write gets
+  // clamped to have start index 2 and all index values {0, 1, 2, 3} are
+  // retrieved by the DS.
+  auto module = MakeModuleWithDS(/*start=*/0, /*stop=*/6, /*step=*/3,
+                                 /*slice_size=*/2, /*dim_size=*/4);
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
+  EXPECT_TRUE(config.has_value());
+  HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
+  HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
+  HloInstruction* instr = body->GetInstructionWithName("slice");
+  EXPECT_TRUE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
+                  instr, input, HloOpcode::kDynamicSlice, config.value())
+                  .has_value());
+}
+
 TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDUS) {
   auto module = MakeModuleWithDUS(/*start=*/0, /*stop=*/3, /*step=*/1,
                                   /*slice_size=*/1, /*dim_size=*/3);
@@ -1219,6 +1238,20 @@ TEST_F(WhileLoopUnrollerTest,
   EXPECT_FALSE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
                    instr, input, HloOpcode::kDynamicUpdateSlice, config.value())
                    .has_value());
+}
+
+TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDUSClamp) {
+  auto module = MakeModuleWithDUS(/*start=*/0, /*stop=*/6, /*step=*/3,
+                                  /*slice_size=*/2, /*dim_size=*/4);
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
+  EXPECT_TRUE(config.has_value());
+  HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
+  HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
+  HloInstruction* instr = body->GetInstructionWithName("slice");
+  EXPECT_TRUE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
+                  instr, input, HloOpcode::kDynamicUpdateSlice, config.value())
+                  .has_value());
 }
 
 // Unroller pass must remove all the DynamicGte custom-calls.
