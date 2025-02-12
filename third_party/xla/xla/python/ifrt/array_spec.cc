@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
@@ -32,12 +33,12 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-absl::StatusOr<ArraySpec> ArraySpec::FromProto(
-    DeviceList::LookupDeviceFunc lookup_device, const ArraySpecProto& proto) {
+absl::StatusOr<ArraySpec> ArraySpec::FromProto(Client* client,
+                                               const ArraySpecProto& proto) {
   TF_ASSIGN_OR_RETURN(auto dtype, DType::FromProto(proto.dtype()));
   TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
   TF_ASSIGN_OR_RETURN(auto sharding,
-                      Sharding::FromProto(lookup_device, proto.sharding()));
+                      Sharding::FromProto(client, proto.sharding()));
   std::shared_ptr<const xla::PjRtLayout> layout;
   if (proto.has_layout()) {
     TF_ASSIGN_OR_RETURN(layout, xla::PjRtLayout::Deserialize(proto.layout()));

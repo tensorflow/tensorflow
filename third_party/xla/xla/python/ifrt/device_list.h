@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -41,12 +40,6 @@ namespace ifrt {
 class DeviceList : public tsl::ReferenceCounted<DeviceList>,
                    public llvm::RTTIExtends<DeviceList, llvm::RTTIRoot> {
  public:
-  // Function that matches the semantics of `Client::LookupDevice()`.
-  // TODO(hyeontaek): Remove this type. In the future, a deserialization option
-  // will take `Client*` to allow constructing a complex `DeviceList` that is
-  // not just `BasicDeviceList`.
-  using LookupDeviceFunc = absl::FunctionRef<absl::StatusOr<Device*>(DeviceId)>;
-
   // Not copyable or movable. `DeviceList` is a runtime object that may contain
   // runtime-specific state that cannot be trivially copied or moved.
   DeviceList(const DeviceList&) = delete;
@@ -55,10 +48,10 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   DeviceList& operator=(DeviceList&&) = delete;
 
   // Constructs `DeviceList` from `DeviceListProto`. Devices are looked up using
-  // `lookup_device`. Device ids in the proto must be consistent with the
-  // devices returned by `lookup_device`.
+  // `client`. Device ids in the proto must be consistent with the devices
+  // returned by `client`.
   static absl::StatusOr<tsl::RCReference<DeviceList>> FromProto(
-      LookupDeviceFunc lookup_device, const DeviceListProto& proto);
+      xla::ifrt::Client* client, const DeviceListProto& proto);
 
   // Returns a `DeviceListProto` representation.
   DeviceListProto ToProto() const;
@@ -136,15 +129,6 @@ class BasicDeviceList : public llvm::RTTIExtends<BasicDeviceList, DeviceList> {
       std::initializer_list<Device*> devices);
 
   ~BasicDeviceList() override = default;
-
-  // Constructs `DeviceList` from `DeviceListProto`. Devices are looked up
-  // using `lookup_device`. Device ids in the proto must be consistent with
-  // the devices returned by `lookup_device`.
-  static absl::StatusOr<tsl::RCReference<DeviceList>> FromProto(
-      LookupDeviceFunc lookup_device, const DeviceListProto& proto);
-
-  // Returns a `DeviceListProto` representation.
-  DeviceListProto ToProto() const;
 
   absl::Span<Device* const> devices() const override { return devices_; }
 

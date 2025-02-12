@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
@@ -73,7 +74,7 @@ class SingleDeviceShardingSerDes
           "Failed to parse serialized SimpleDeviceSharding");
     }
     TF_ASSIGN_OR_RETURN(Device * device,
-                        deserialize_sharding_options->lookup_device(
+                        deserialize_sharding_options->client->LookupDevice(
                             DeviceId(proto.device_id())));
     MemoryKind memory_kind;
     if (proto.has_memory_kind()) {
@@ -115,10 +116,9 @@ class OpaqueShardingSerDes
       return absl::InvalidArgumentError(
           "Failed to parse serialized OpaqueSharding");
     }
-    TF_ASSIGN_OR_RETURN(
-        auto devices,
-        DeviceList::FromProto(deserialize_sharding_options->lookup_device,
-                              proto.devices()));
+    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
+                                          deserialize_sharding_options->client,
+                                          proto.devices()));
     MemoryKind memory_kind;
     if (proto.has_memory_kind()) {
       memory_kind = MemoryKind(proto.memory_kind());
@@ -172,10 +172,9 @@ class ConcreteShardingSerDes
       return absl::InvalidArgumentError(
           "Failed to parse serialized ConcreteSharding");
     }
-    TF_ASSIGN_OR_RETURN(
-        auto devices,
-        DeviceList::FromProto(deserialize_sharding_options->lookup_device,
-                              proto.devices()));
+    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
+                                          deserialize_sharding_options->client,
+                                          proto.devices()));
     MemoryKind memory_kind;
     if (proto.has_memory_kind()) {
       memory_kind = MemoryKind(proto.memory_kind());
@@ -248,10 +247,9 @@ class ConcreteEvenShardingSerDes
       return absl::InvalidArgumentError(
           "Failed to parse serialized ConcreteEvenSharding");
     }
-    TF_ASSIGN_OR_RETURN(
-        auto devices,
-        DeviceList::FromProto(deserialize_sharding_options->lookup_device,
-                              proto.devices()));
+    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
+                                          deserialize_sharding_options->client,
+                                          proto.devices()));
     MemoryKind memory_kind;
     if (proto.has_memory_kind()) {
       memory_kind = MemoryKind(proto.memory_kind());
@@ -298,10 +296,9 @@ class ShardingParamShardingSerDes
       return absl::InvalidArgumentError(
           "Failed to parse serialized ShardingParamSharding");
     }
-    TF_ASSIGN_OR_RETURN(
-        auto devices,
-        DeviceList::FromProto(deserialize_sharding_options->lookup_device,
-                              proto.devices()));
+    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
+                                          deserialize_sharding_options->client,
+                                          proto.devices()));
     MemoryKind memory_kind;
     if (proto.has_memory_kind()) {
       memory_kind = MemoryKind(proto.memory_kind());

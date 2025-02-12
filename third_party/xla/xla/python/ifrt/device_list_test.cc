@@ -23,7 +23,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
@@ -44,11 +43,8 @@ class DeviceListTest : public test_util::DeviceTest {};
 TEST_P(DeviceListTest, ToFromProto) {
   auto device_list = GetDevices({0, 1});
   DeviceListProto proto = device_list->ToProto();
-  auto lookup_device_func = [&](DeviceId device_id) -> absl::StatusOr<Device*> {
-    return client()->LookupDevice(device_id);
-  };
   TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,
-                          DeviceList::FromProto(lookup_device_func, proto));
+                          DeviceList::FromProto(client(), proto));
   EXPECT_EQ(*device_list_copy, *device_list);
 }
 

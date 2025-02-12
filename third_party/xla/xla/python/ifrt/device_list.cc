@@ -24,11 +24,13 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/base/optimization.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -41,16 +43,15 @@ char DeviceList::ID = 0;
 char BasicDeviceList::ID = 0;
 
 absl::StatusOr<tsl::RCReference<DeviceList>> DeviceList::FromProto(
-    LookupDeviceFunc lookup_device, const DeviceListProto& proto) {
-  // TODO(hyeontaek): Define SerDes for `DeviceList` and use it to remove this
-  // layering inversion.
-  BasicDeviceList::Devices devices;
+    xla::ifrt::Client* client, const DeviceListProto& proto) {
+  absl::InlinedVector<Device*, 1> devices;
   devices.reserve(proto.device_ids_size());
   for (int device_id : proto.device_ids()) {
-    TF_ASSIGN_OR_RETURN(Device * device, lookup_device(DeviceId(device_id)));
+    TF_ASSIGN_OR_RETURN(Device* const device,
+                        client->LookupDevice(DeviceId(device_id)));
     devices.push_back(device);
   }
-  return BasicDeviceList::Create(std::move(devices));
+  return client->MakeDeviceList(devices);
 }
 
 DeviceListProto DeviceList::ToProto() const {

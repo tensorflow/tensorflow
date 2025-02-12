@@ -24,13 +24,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
-#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 
 namespace xla {
 namespace ifrt {
+
+class Client;
 
 // Specification of an array that groups the static properties of an `Array`
 // together. Typically used for describing expected or requested static
@@ -73,8 +74,8 @@ struct ArraySpec {
   }
 
   // Constructs `ArraySpec` from `ArraySpecProto`.
-  static absl::StatusOr<ArraySpec> FromProto(
-      DeviceList::LookupDeviceFunc lookup_device, const ArraySpecProto& proto);
+  static absl::StatusOr<ArraySpec> FromProto(Client* client,
+                                             const ArraySpecProto& proto);
 
   // Returns a `ArraySpecProto` representation.
   absl::StatusOr<ArraySpecProto> ToProto() const;

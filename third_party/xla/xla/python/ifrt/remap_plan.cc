@@ -295,21 +295,21 @@ absl::Status RemapPlan::Validate() const {
   return absl::OkStatus();
 }
 
-absl::StatusOr<RemapPlan> RemapPlan::FromProto(
-    DeviceList::LookupDeviceFunc lookup_device, const RemapPlanProto& proto) {
+absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
+                                               const RemapPlanProto& proto) {
   RemapPlan plan;
 
   plan.input_specs.reserve(proto.input_specs_size());
   for (const auto& input_spec_proto : proto.input_specs()) {
     TF_ASSIGN_OR_RETURN(ArraySpec input_spec,
-                        ArraySpec::FromProto(lookup_device, input_spec_proto));
+                        ArraySpec::FromProto(client, input_spec_proto));
     plan.input_specs.push_back(std::move(input_spec));
   }
 
   plan.output_specs.reserve(proto.output_specs_size());
   for (const auto& output_spec_proto : proto.output_specs()) {
     TF_ASSIGN_OR_RETURN(ArraySpec output_spec,
-                        ArraySpec::FromProto(lookup_device, output_spec_proto));
+                        ArraySpec::FromProto(client, output_spec_proto));
     plan.output_specs.push_back(std::move(output_spec));
   }
 

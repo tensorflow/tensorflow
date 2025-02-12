@@ -220,13 +220,12 @@ class LoadedExecutable::OutputSpecCache {
       }
     }
     std::vector<ArraySpec> data;
-    const auto lookup_device =
-        absl::bind_front(&Client::LookupDevice, parent_->client());
     for (const auto& output : outputs) {
       TF_ASSIGN_OR_RETURN(auto dtype, DType::FromProto(output.dtype()));
       TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(output.shape()));
       TF_ASSIGN_OR_RETURN(
-          auto sharding, Sharding::FromProto(lookup_device, output.sharding()));
+          auto sharding,
+          Sharding::FromProto(parent_->client(), output.sharding()));
       data.push_back(ArraySpec{/*dtype=*/dtype, /*shape=*/std::move(shape),
                                /*sharding=*/std::move(sharding)});
     }

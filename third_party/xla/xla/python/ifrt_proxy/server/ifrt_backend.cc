@@ -634,9 +634,8 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
       request->mutable_make_array_from_host_buffer_request();
 
   TF_ASSIGN_OR_RETURN(
-      auto sharding, Sharding::FromProto(
-                         absl::bind_front(&Client::LookupDevice, client_.get()),
-                         make_array_request->sharding()));
+      auto sharding,
+      Sharding::FromProto(client_.get(), make_array_request->sharding()));
 
   const auto byte_strides = [&]() -> std::optional<std::vector<int64_t>> {
     if (!make_array_request->has_byte_strides()) return std::nullopt;
@@ -719,9 +718,8 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
 
   TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(assemble_request.shape()));
   TF_ASSIGN_OR_RETURN(
-      auto sharding, Sharding::FromProto(
-                         absl::bind_front(&Client::LookupDevice, client_.get()),
-                         assemble_request.sharding()));
+      auto sharding,
+      Sharding::FromProto(client_.get(), assemble_request.sharding()));
   TF_ASSIGN_OR_RETURN(
       auto array_copy_semantics,
       FromArrayCopySemanticsProto(assemble_request.copy_semantics()));
@@ -779,11 +777,8 @@ IfrtBackend::HandleRemapArraysRequest(std::unique_ptr<IfrtRequest> request) {
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
-      RemapPlan plan,
-      RemapPlan::FromProto(
-          absl::bind_front(&Client::LookupDevice, client_.get()),
-          remap_request.plan()));
+  TF_ASSIGN_OR_RETURN(RemapPlan plan, RemapPlan::FromProto(
+                                          client_.get(), remap_request.plan()));
   TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
                                           remap_request.copy_semantics()));
 
@@ -1164,9 +1159,8 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
                       std::move(request))]() -> absl::StatusOr<Response> {
     const CompileRequest& compile_request = request->compile_request();
 
-    auto lookup_fn = absl::bind_front(&Client::LookupDevice, client_.get());
     auto deserialize_program_options =
-        std::make_unique<DeserializeProgramOptions>(lookup_fn);
+        std::make_unique<DeserializeProgramOptions>(client_.get());
 
     TF_ASSIGN_OR_RETURN(
         auto program,

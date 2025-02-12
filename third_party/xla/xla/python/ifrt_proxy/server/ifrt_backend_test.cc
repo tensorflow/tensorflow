@@ -197,7 +197,7 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_program_options =
         llvm::cast<DeserializeProgramOptions>(options.get());
-    CHECK_OK(deserialize_program_options->lookup_device(DeviceId(0)));
+    CHECK_OK(deserialize_program_options->client->LookupDevice(DeviceId(0)));
 
     return std::make_unique<TestProgram>();
   }
