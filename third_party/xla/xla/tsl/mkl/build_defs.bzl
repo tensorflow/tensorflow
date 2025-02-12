@@ -152,6 +152,15 @@ def if_mkldnn_aarch64_acl_openmp(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+# Temporarily disable Graph API on aarch64 until we change the aarch64 BUILD
+# file to support Graph API.
+def if_graph_api(if_true, if_false = []):
+    """Returns `if_true` if Graph API is used with oneDNN."""
+    return select({
+        "@local_xla//xla/tsl:linux_x86_64": if_true,
+        "//conditions:default": if_false,
+    })
+
 def _enable_local_mkl(repository_ctx):
     return _TF_MKL_ROOT in repository_ctx.os.environ
 
