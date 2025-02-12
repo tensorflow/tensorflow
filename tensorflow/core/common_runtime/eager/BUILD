@@ -250,7 +250,6 @@ tf_cuda_library(
             "@com_google_absl//absl/synchronization",
             "@com_google_absl//absl/time",
             "@local_tsl//tsl/platform:mutex",
-            "@local_xla//xla/pjrt:pjrt_stream_executor_client",
             "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
             "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
             "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
