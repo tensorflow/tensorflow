@@ -1154,7 +1154,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
                          [this](const BufferAllocation::Slice& slice_1,
                                 const BufferAllocation::Slice& slice_2) {
                            return VerifySliceEquality(slice_1, slice_2);
-                         });
+                         }) &&
+           thunk_1.invariant_arguments() == thunk_2.invariant_arguments();
   }
 
   bool VerifyConvolutionThunkEquality(const ConvolutionThunk& thunk_1,

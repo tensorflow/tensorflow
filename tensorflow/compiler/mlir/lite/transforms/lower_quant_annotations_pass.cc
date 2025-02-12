@@ -278,7 +278,12 @@ class RewriteFakeQuantCompositeOp
     ShapedType input_shaped_type = cast<ShapedType>(op.getOperand(0).getType());
     Type input_element_type = input_shaped_type.getElementType();
     Type quantized_element_type;
-    if (scales.size() == 1) {
+    if (scales.empty()) {
+      auto driver = op.getOperand(0);
+      rewriter.replaceAllOpUsesWith(op.getOperation(), driver);
+      rewriter.eraseOp(op.getOperation());
+      return success();
+    } else if (scales.size() == 1) {
       quantized_element_type = GetPerTensorQuantizedTensorType(
           rewriter, scales[0], zero_points[0],
           /*expressed_type=*/input_element_type, num_bits, op->getLoc(),
