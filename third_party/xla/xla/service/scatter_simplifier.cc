@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,19 @@ limitations under the License.
 #include "xla/service/scatter_simplifier.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/permutation_util.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
@@ -36,7 +39,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
+absl::StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
     HloInstruction* updates, absl::Span<const int64_t> update_window_dims,
     absl::Span<const int64_t> inserted_window_dims,
     int64_t scatter_indices_size) {
@@ -92,7 +95,7 @@ std::vector<int64_t> MakeUpdatePermutation(
 
 // Transforms the scatter_updates field of scatter. scatter_indices_size is the
 // size of the scatter dimension in scatter_indices.
-StatusOr<std::vector<HloInstruction*>> TransformScatterUpdates(
+absl::StatusOr<std::vector<HloInstruction*>> TransformScatterUpdates(
     HloScatterInstruction* scatter,
     const std::vector<int64_t>& update_permutation,
     int64_t scatter_indices_size) {
@@ -128,7 +131,7 @@ ScatterDimensionNumbers MakeScatterDimensionNumbers(
 
 }  // namespace
 
-StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
+absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
     HloInstruction* inst) {
   auto* scatter = Cast<HloScatterInstruction>(inst);
 
@@ -138,10 +141,26 @@ StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
         "got ",
         scatter->called_computations().size());
   }
+  HloComputation* called_computation = scatter->called_computations().front();
 
   const auto& attrs = scatter->scatter_dimension_numbers();
   const int operand_rank =
       attrs.update_window_dims().size() + attrs.inserted_window_dims().size();
+  // Rewrite the scatter into the scalar operand.
+  if (operand_rank == 0) {
+    absl::InlinedVector<HloInstruction*, 2> scatter_operands_and_updates;
+    scatter_operands_and_updates.reserve(2 * scatter->operand_count());
+    absl::c_copy(scatter->scatter_operands(),
+                 std::back_inserter(scatter_operands_and_updates));
+    absl::c_copy(scatter->scatter_updates(),
+                 std::back_inserter(scatter_operands_and_updates));
+
+    auto* call_op = scatter->AddInstruction(HloInstruction::CreateCall(
+        scatter->shape(), scatter_operands_and_updates, called_computation));
+    TF_RETURN_IF_ERROR(scatter->ReplaceAllUsesWith(call_op));
+    TF_ASSIGN_OR_RETURN(auto map, CallInliner::Inline(call_op));
+    return map[call_op];
+  }
 
   // We permute updates and operands according to scatter_dims_to_operand_dims.
   auto [operand_permutation, operand_permutation_inverse] =
@@ -175,7 +194,7 @@ StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
   }
   auto* result = scatter->AddInstruction(HloInstruction::CreateScatter(
       output_shape, scatter_operands, scatter_indices, scatter_updates,
-      scatter->called_computations().front(), dim_numbers,
+      called_computation, dim_numbers,
       // TODO(unknown): Is this still correct?
       scatter->indices_are_sorted(), scatter->unique_indices()));
 
@@ -202,26 +221,31 @@ StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
   return MaybeMakeTuple(result_items);
 }
 
+bool ScatterSimplifier::IsSimplifiedScatter(
+    const HloScatterInstruction* scatter) {
+  const auto& dims = scatter->scatter_dimension_numbers();
+  auto operand_rank = scatter->scatter_operands().front()->shape().rank();
+  if (operand_rank == 0) return false;
+
+  bool standard_index_vector_dim =
+      dims.index_vector_dim() == scatter->scatter_indices()->shape().rank() - 1;
+  int64_t num_scatter_dims =
+      scatter->scatter_updates().front()->shape().rank() -
+      dims.update_window_dims().size();
+  bool scatter_indices_ordered =
+      IsIdentityPermutation(dims.scatter_dims_to_operand_dims());
+  bool first_dim_not_in_update_window_dims =
+      !absl::c_linear_search(dims.update_window_dims(), 0);
+  bool update_window_dims_sorted = absl::c_is_sorted(dims.update_window_dims());
+
+  return standard_index_vector_dim && num_scatter_dims <= 1 &&
+         scatter_indices_ordered && first_dim_not_in_update_window_dims &&
+         update_window_dims_sorted && dims.inserted_window_dims().empty();
+}
+
 bool ScatterSimplifier::InstructionMatchesPattern(HloInstruction* inst) {
-  if (auto* scatter = DynCast<HloScatterInstruction>(inst)) {
-    const auto& dims = scatter->scatter_dimension_numbers();
-
-    bool nonstandard_index_vector_dim =
-        dims.index_vector_dim() !=
-        scatter->scatter_indices()->shape().rank() - 1;
-    int64_t num_scatter_dims =
-        scatter->scatter_updates().front()->shape().rank() -
-        dims.update_window_dims().size();
-    bool scatter_indices_reordered =
-        !IsIdentityPermutation(dims.scatter_dims_to_operand_dims());
-    bool scatter_dim_not_first =
-        absl::c_linear_search(dims.update_window_dims(), 0);
-
-    return nonstandard_index_vector_dim || num_scatter_dims > 1 ||
-           scatter_indices_reordered || scatter_dim_not_first ||
-           !dims.inserted_window_dims().empty();
-  }
-  return false;
+  auto* scatter = DynCast<HloScatterInstruction>(inst);
+  return scatter && !IsSimplifiedScatter(scatter);
 }
 
 }  // namespace xla

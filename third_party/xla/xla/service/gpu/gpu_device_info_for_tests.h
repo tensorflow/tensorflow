@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,15 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_DEVICE_INFO_FOR_TESTS_H_
 #define XLA_SERVICE_GPU_GPU_DEVICE_INFO_FOR_TESTS_H_
 
-#include "xla/service/gpu/gpu_device_info.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
 
 class TestGpuDeviceInfo {
  public:
-  static GpuDeviceInfo RTXA6000DeviceInfo();
-  static GpuDeviceInfo AMDMI210DeviceInfo();
+  static stream_executor::DeviceDescription RTXA6000DeviceInfo(
+      stream_executor::GpuComputeCapability cc =
+          stream_executor::CudaComputeCapability(8, 9));
+  static stream_executor::DeviceDescription AMDMI210DeviceInfo();
+  // Returns deafult RTXA6000 or AMDMI210 device info
+  static stream_executor::DeviceDescription CudaOrRocmDeviceInfo();
 };
 
 }  // namespace gpu

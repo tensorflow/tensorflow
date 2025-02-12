@@ -51,6 +51,48 @@ REGISTER_OP("BatchFunction")
     .Attr("low_priority_batch_timeout_micros: int = 0")
     .Attr("low_priority_allowed_batch_sizes: list(int) = []")
     .Attr("low_priority_max_enqueued_batches: int = 0")
+    // Policy that determines the mixed priority batching behavior when low
+    // priority batch parameters are present.
+    //
+    // low_priority_padding_with_next_allowed_batch_size: If high priority
+    // batches time out without reaching the max batch size, low priority inputs
+    // pad the high priority batches up to the next allowed batch size. A low
+    // priority only batch gets schedule only when the low priority input times
+    // out or reaches the max batch size while there is no high priority input
+    // waiting to be processed.
+    // low_priority_padding_with_max_batch_size: Same as above but pad up to the
+    // max batch size.
+    // priority_isolation: High priority and low priority inputs never share the
+    // same batch, i.e., no low priority input padding high priority batches.
+    // Low priority inputs get scheduled only as part of low priority only
+    // batches as described above.
+    // priority_merge: High and low priority inputs are queued separately but
+    // when a batch needs to be scheduled, the two queues are treated as one
+    // merged flat list of inputs with high priority inputs at the front of the
+    // list of tasks to use for the next batch. If all inputs are of the same
+    // priority, the behavior is the same as disabling prioritization.
+    .Attr(
+        "mixed_priority_policy: "
+        "{'low_priority_padding_with_max_batch_size', "
+        "'low_priority_padding_with_next_allowed_batch_size', "
+        "'priority_isolation', 'priority_merge'} = "
+        "'low_priority_padding_with_max_batch_size'")
+    // The policy that a batch scheduler is using when deciding what to do when,
+    // say, 18 requests need to be batched, but only 16 and 32 batch sizes are
+    // allowed. The following options are available.
+    //
+    //   - PAD_UP: pad to size 32.
+    //   - BATCH_DOWN: schedule a batch of size 16 and leave 2 requests in the
+    //     batch buffer.
+    //   - MINIMIZE_TPU_COST_PER_REQUEST: a smarter greedy policy that chooses
+    //     to either PAD_UP or BATCH_DOWN so as to minimize the TPU costs per
+    //     real request. In this case, it would compare (batch_16_cost / 16) and
+    //     (batch_32_cost / 18).
+    //
+    // WARNING: Not all batch schedulers might support this attribute.
+    .Attr(
+        "batch_padding_policy: "
+        "{'PAD_UP', 'BATCH_DOWN', 'MINIMIZE_TPU_COST_PER_REQUEST'} = 'PAD_UP'")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
@@ -94,7 +136,7 @@ REGISTER_OP("Batch")
           "batch_index",
           {c->MakeShape({shape_inference::DimensionOrConstant(c->UnknownDim()),
                          shape_inference::DimensionOrConstant(3)})}));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .SetIsDistributedCommunication();
 
@@ -112,7 +154,7 @@ REGISTER_OP("Unbatch")
       TF_RETURN_IF_ERROR(
           c->ReplaceDim(c->input(0), 0, c->UnknownDim(), &out_shape));
       c->set_output(0, out_shape);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("UnbatchGrad")
@@ -126,7 +168,7 @@ REGISTER_OP("UnbatchGrad")
     .Attr("T: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(2))));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

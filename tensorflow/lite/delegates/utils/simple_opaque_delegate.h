@@ -31,7 +31,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_SIMPLE_OPAQUE_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_SIMPLE_OPAQUE_DELEGATE_H_
 
+#include <stdint.h>
+
 #include <memory>
+#include <utility>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
@@ -76,15 +79,14 @@ class SimpleOpaqueDelegateKernelInterface {
 // - Initialize
 // - Name
 // - CreateDelegateKernelInterface
-// - DelegateOptions
 class SimpleOpaqueDelegateInterface {
  public:
   virtual ~SimpleOpaqueDelegateInterface() = default;
 
   // Returns true if 'node' is supported by the delegate. False otherwise.
   virtual bool IsNodeSupportedByDelegate(
-      const TfLiteRegistrationExternal* registration_external,
-      const TfLiteOpaqueNode* node, TfLiteOpaqueContext* context) const = 0;
+      const TfLiteOperator* registration_external, const TfLiteOpaqueNode* node,
+      TfLiteOpaqueContext* context) const = 0;
 
   // Initialize the delegate before finding and replacing TfLite nodes with
   // delegate kernels, for example, retrieving some TFLite settings from
@@ -102,6 +104,32 @@ class SimpleOpaqueDelegateInterface {
   // Caller takes ownership of the returned object.
   virtual std::unique_ptr<SimpleOpaqueDelegateKernelInterface>
   CreateDelegateKernelInterface() = 0;
+
+  /// Optional method for supporting hardware buffers.
+  /// Copies the data from delegate buffer handle into raw memory of the given
+  /// `tensor`. Note that the delegate is allowed to allocate the raw bytes as
+  /// long as it follows the rules for kTfLiteDynamic tensors.
+  virtual TfLiteStatus CopyFromBufferHandle(TfLiteOpaqueContext* context,
+                                            TfLiteBufferHandle buffer_handle,
+                                            TfLiteOpaqueTensor* tensor) {
+    return kTfLiteError;
+  }
+
+  /// Optional method for supporting hardware buffers.
+  /// Copies the data from raw memory of the given `tensor` to delegate buffer
+  /// handle.
+  virtual TfLiteStatus CopyToBufferHandle(TfLiteOpaqueContext* context,
+                                          TfLiteBufferHandle buffer_handle,
+                                          const TfLiteOpaqueTensor* tensor) {
+    return kTfLiteError;
+  }
+
+  /// Optional method for supporting hardware buffers.
+  /// Frees the Delegate Buffer Handle. Note: This only frees the handle, but
+  /// this doesn't release the underlying resource (e.g. textures). The
+  /// resources are either owned by application layer or the delegate.
+  virtual void FreeBufferHandle(TfLiteOpaqueContext* context,
+                                TfLiteBufferHandle* handle) {}
 };
 
 // Factory class that provides static methods to deal with SimpleDelegate

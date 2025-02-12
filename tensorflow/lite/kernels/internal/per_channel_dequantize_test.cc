@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -116,6 +119,35 @@ TEST(PerChannelDequantize, TestInt8ToFloat_4DDim3) {
                           {-63.5, -32,   -62.5, -31.5, -124,  62,    30.75,
                            63,    31.25, 127,   -63.5, -32,   -62.5, -31.5,
                            -124,  62,    30.75, 63,    31.25, 127})));
+}
+
+TEST(PerChannelDequantize, TestInt4ToFloat_2D) {
+  const std::vector<float> scales = {0.5, 0.25};
+  const std::vector<int> zero_points = {-1, -1};
+  const int quantized_dimension = 0;
+
+  const RuntimeShape unpacked_shape({2, 4});
+
+  const std::vector<int8_t> packed_int4_input = {-1, 0, 65, -127};
+  std::vector<float> output(8, -1);
+  const size_t bytes_unpacked = packed_int4_input.size() * 2;
+  auto unpacked_input_data = std::make_unique<int8_t[]>(bytes_unpacked);
+  tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+      packed_int4_input.data(), bytes_unpacked, unpacked_input_data.get());
+  EXPECT_THAT(std::vector<int8_t>(unpacked_input_data.get(),
+                                  unpacked_input_data.get() + bytes_unpacked),
+              ElementsAreArray(ArrayFloatNear({-1, -1, 0, 0, 1, 4, 1, -8})));
+
+  PerChannelDequantizationParams op_params;
+  op_params.zero_point = zero_points.data();
+  op_params.scale = scales.data();
+  op_params.quantized_dimension = quantized_dimension;
+  reference_ops::PerChannelDequantize(op_params, unpacked_shape,
+                                      unpacked_input_data.get(), unpacked_shape,
+                                      output.data());
+  // This comes from (UNPACKED - zero_point) * scale.
+  EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear(
+                          {0, 0, 0.5, 0.5, 0.5, 1.25, 0.5, -1.75})));
 }
 
 }  // namespace

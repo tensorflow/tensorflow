@@ -1,5 +1,5 @@
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -109,6 +109,7 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
@@ -232,7 +233,12 @@ tf_cc_binary(
         ":load_proto",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/core:ops",  # Ops need to be registered for import.
+        "//tensorflow/core/framework:graph_debug_info_proto_cc",
+        "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/log",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",

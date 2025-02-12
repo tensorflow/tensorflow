@@ -23,9 +23,9 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #endif  // IS_SLIM_BUILD
+#include "xla/tsl/lib/io/record_reader.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/io/record_reader.h"
 
 namespace tensorflow {
 namespace io {

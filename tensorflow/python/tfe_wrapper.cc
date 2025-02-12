@@ -17,8 +17,10 @@ limitations under the License.
 
 // Must be included first
 // clang-format off
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "pybind11/attr.h"  // from @pybind11
-#include "tsl/python/lib/core/numpy.h" //NOLINT
+#include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "Python.h"
@@ -54,6 +56,13 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
+
+// TODO(b/309152522): Remove this switch once it works on Windows.
+#define IS_OSS true
+
+#if !IS_OSS
+#include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
+#endif
 
 namespace py = pybind11;
 
@@ -372,8 +381,7 @@ py::object TFE_Py_ExecuteCancelable_wrapper(
 
 static py::object TF_ListPhysicalDevices() {
   std::vector<string> devices;
-  tensorflow::Status s =
-      tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
+  absl::Status s = tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
   MaybeRaiseRegisteredFromStatus(s);
   PyObject* result = PyList_New(devices.size());
   int i = 0;
@@ -387,7 +395,7 @@ static py::object TF_ListPhysicalDevices() {
 
 static py::object TF_ListPluggablePhysicalDevices() {
   std::vector<string> devices;
-  tensorflow::Status s =
+  absl::Status s =
       tensorflow::DeviceFactory::ListPluggablePhysicalDevices(&devices);
   MaybeRaiseRegisteredFromStatus(s);
   Safe_PyObjectPtr result(PyList_New(devices.size()));
@@ -403,7 +411,7 @@ static py::object TF_ListPluggablePhysicalDevices() {
 static std::unordered_map<string, string> TF_GetDeviceDetails(int index) {
   tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
   std::unordered_map<string, string> device_details;
-  tensorflow::Status s =
+  absl::Status s =
       tensorflow::DeviceFactory::GetAnyDeviceDetails(index, &device_details);
   tensorflow::Set_TF_Status_from_Status(status.get(), s);
   MaybeRaiseRegisteredFromTFStatus(status.get());
@@ -415,18 +423,46 @@ static py::object TFE_ClearScalarCache() {
   return py::none();
 }
 
+static Device* GetDevice(EagerContext* context, const char* device_name,
+                         const char* platform_name,
+                         const std::vector<Device*>& devices) {
+  auto device_name_str = platform_name != nullptr
+                             ? absl::StrCat("/device:", platform_name, ":0")
+                             : std::string(device_name);
+  DeviceNameUtils::ParsedName input_device_name;
+  if (!DeviceNameUtils::ParseFullOrLocalName(device_name_str,
+                                             &input_device_name)) {
+    ThrowValueError(absl::StrFormat("Failed parsing derived device name: '%s'",
+                                    device_name_str)
+                        .c_str());
+  }
+  auto selected_device = absl::c_find_if(devices, [&](const Device* d) {
+    return DeviceNameUtils::AreCompatibleDevNames(input_device_name,
+                                                  d->parsed_name());
+  });
+  if (selected_device == devices.end()) {
+    return nullptr;
+  }
+  return *selected_device;
+}
+
 // Returns compiler IR for a given function.
 static py::bytes TFE_GetCompilerIr(py::handle& ctx,
                                    const char* concrete_function_name,
                                    const char* stage, const char* device_name,
                                    py::handle& flat_arg_inputs,
-                                   py::handle& captured_inputs) {
+                                   py::handle& captured_inputs,
+                                   const char* platform_name) {
   EagerContext* context = ContextFromInterface(
       reinterpret_cast<ImmediateExecutionContext*>(InputTFE_Context(ctx)));
 
   std::string s_stage(stage);
   IrExportStage selected_stage = [&] {
-    if (s_stage == "hlo") {
+    if (s_stage == "stablehlo") {
+      return IrExportStage::STABLEHLO;
+    } else if (s_stage == "stablehlo_serialized") {
+      return IrExportStage::STABLEHLO_SERIALIZED;
+    } else if (s_stage == "hlo") {
       return IrExportStage::HLO;
     } else if (s_stage == "hlo_no_metadata") {
       return IrExportStage::HLO_NO_METADATA;
@@ -504,27 +540,24 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
         TensorHandleFromInterface(abstract_tensor_handle));
   }
 
-  DeviceNameUtils::ParsedName input_device_name;
-  if (!DeviceNameUtils::ParseFullOrLocalName(device_name, &input_device_name)) {
-    ThrowValueError(
-        absl::StrFormat("Failed parsing device name: '%s'", device_name)
-            .c_str());
-  }
-
+  absl::StatusOr<std::string> hlo_str;
   std::vector<Device*> devices = context->local_device_mgr()->ListDevices();
-  auto selected_device = absl::c_find_if(devices, [&](const Device* d) {
-    return DeviceNameUtils::AreCompatibleDevNames(input_device_name,
-                                                  d->parsed_name());
-  });
-  if (selected_device == devices.end()) {
+  Device* selected_device =
+      GetDevice(context, device_name, platform_name, devices);
+  if (selected_device != nullptr) {
+    hlo_str =
+        GetCompilerIr(selected_stage, context->pflr(), concrete_function_name,
+                      selected_device, context, flat_args,
+                      captured_input_handles, compiler_arg_source);
+  } else if (platform_name != nullptr) {
+    hlo_str = GetCompilerIr(
+        selected_stage, context->pflr(), concrete_function_name, platform_name,
+        context, flat_args, captured_input_handles, compiler_arg_source);
+  } else {
     ThrowValueError(
         absl::StrFormat("No matching device found for '%s'", device_name)
             .c_str());
   }
-
-  StatusOr<std::string> hlo_str = GetCompilerIr(
-      selected_stage, context->pflr(), concrete_function_name, *selected_device,
-      context, flat_args, captured_input_handles, compiler_arg_source);
 
   if (!hlo_str.ok()) {
     ThrowValueError(absl::StrFormat("Failed getting HLO text: '%s'",
@@ -837,6 +870,62 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                                     function_name, &buf, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
+// TODO(b/309152522): Remove the switch once it works on Windows.
+#if !IS_OSS
+  pybind11_protobuf::ImportNativeProtoCasters();
+  m.def(
+      "TFE_ContextAddFunctionDefNoSerialization",
+      [](py::handle& ctx, tensorflow::FunctionDef function_def) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        // Annotate eager runtime construction context to the given
+        // `function_def` as an attribute.
+        tensorflow::AttrValue value;
+        SetAttrValue("kEagerRuntime", &value);
+        (*function_def.mutable_attr())["_construction_context"] = value;
+        status->status = tensorflow::unwrap(tensorflow::InputTFE_Context(ctx))
+                             ->AddFunctionDef(function_def);
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        return;
+      },
+      pybind11::arg("ctx"), pybind11::arg("function_def"));
+
+  m.def("TFE_ContextGetFunctionDefNoSerialization",
+        [](py::handle& ctx,
+           const char* function_name) -> tensorflow::FunctionDef {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          const tensorflow::FunctionDef* ctx_function_def =
+              tensorflow::unwrap(tensorflow::InputTFE_Context(ctx))
+                  ->FindFunctionDef(function_name);
+          if (ctx_function_def == nullptr) {
+            status->status = absl::NotFoundError(absl::StrCat(
+                "Unable to find FunctionDef with name: ", function_name));
+            tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+            tensorflow::FunctionDef function_def;
+            return function_def;
+          }
+          status->status = absl::OkStatus();
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return *ctx_function_def;
+        });
+#else
+  // Defining this function to make type checker happy, as there's an entry in
+  // _pywrap_tfe.pyi.
+  m.def("TFE_ContextGetFunctionDefNoSerialization",
+        [](py::handle& ctx, const char* function_name) -> int {
+          LOG(FATAL) << "This function cannot be called.";
+          return -1;
+        });
+  m.def("TFE_ContextAddFunctionDefNoSerialization",
+        // Opensource fails whenever a protobuf is used as argument. The
+        // disrepency in the type is to make opensource tests pass.
+        [](py::handle& ctx, int function_def) {
+          LOG(FATAL) << "This function cannot be called.";
+          return -1;
+        });
+
+#endif
   m.def("TFE_ContextGetGraphDebugInfo",
         [](py::handle& ctx, const char* function_name, TF_Buffer& buf) {
           tensorflow::Safe_TF_StatusPtr status =
@@ -919,7 +1008,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           TFE_ContextSetServerDefWithTimeoutAndRetries(
               tensorflow::InputTFE_Context(ctx), keep_alive_secs,
               buf.get()->data, buf.get()->length, timeout, retries,
-              status.get());
+              status.get(), /*clear_existing_contexts=*/false);
           Py_END_ALLOW_THREADS;
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });

@@ -31,12 +31,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -48,8 +49,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -75,7 +74,7 @@ DTensorMlirPassRunner::DTensorMlirPassRunner()
   dtensor::CreateDTensorMLIRPass(pipeline_options, &pass_manager_);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 DTensorMlirPassRunner::ImportGraphToMlir(
     const DeviceSet& device_set, absl::string_view name, bool is_func,
     const dtensor::Mesh& default_mesh,
@@ -96,8 +95,9 @@ DTensorMlirPassRunner::ImportGraphToMlir(
   import_config.control_outputs = {"eager_operation"};
 
   // Imports GraphDef to TF MLIR.
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref =
-      ConvertGraphToMlir(graph, debug_info, flib_def, import_config, &context_);
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref =
+      tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+          graph, debug_info, flib_def, import_config, &context_);
 
   // Adds DTensor attributes to ModuleOp.
   mlir::ModuleOp module = module_ref.value().get();
@@ -141,7 +141,7 @@ DTensorMlirPassRunner::ImportGraphToMlir(
   return module_ref;
 }
 
-Status DTensorMlirPassRunner::Run(mlir::ModuleOp module) {
+absl::Status DTensorMlirPassRunner::Run(mlir::ModuleOp module) {
   // Executes and collects results from the passes.
   mlir::StatusScopedDiagnosticHandler diag_handler(&context_);
 
@@ -152,7 +152,7 @@ Status DTensorMlirPassRunner::Run(mlir::ModuleOp module) {
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
   if (logging_enabled_) pass_manager_.getContext()->enableMultithreading();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

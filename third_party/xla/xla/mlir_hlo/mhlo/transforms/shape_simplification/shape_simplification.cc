@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -183,7 +184,8 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
     for (auto shape : broadcastOp.getShapes()) {
       auto shapeOfOp = shape.getDefiningOp<ShapeOfOp>();
       if (!shapeOfOp) return failure();
-      auto shapedType = shapeOfOp->getOperandTypes().front().cast<ShapedType>();
+      auto shapedType =
+          mlir::cast<ShapedType>(shapeOfOp->getOperandTypes().front());
 
       // Abort on the existence of unranked shapes as they require more logic.
       if (!shapedType.hasRank()) return failure();
@@ -240,7 +242,7 @@ struct ShapeSimplification
                  ExtractFromBroadcastedTensorCanonicalizationPattern>(context);
 
     auto func = getOperation();
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+    if (failed(applyPatternsGreedily(func, std::move(patterns))))
       return signalPassFailure();
   }
 };

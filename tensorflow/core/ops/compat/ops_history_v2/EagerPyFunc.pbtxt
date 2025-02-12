@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "EagerPyFunc"
   input_arg {
     name: "input"

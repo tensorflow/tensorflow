@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <memory>
-#include <vector>
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -55,7 +53,7 @@ void RecursiveRemove(Operation* op,
   erase_list.push_back(op);
 
   for (auto& use : op->getOpOperands()) {
-    if (auto op_result = use.get().dyn_cast<mlir::OpResult>()) {
+    if (auto op_result = mlir::dyn_cast<mlir::OpResult>(use.get())) {
       Operation* def = op_result.getDefiningOp();
       if (!dead_ops.insert(def).second) continue;
       RecursiveRemove(def, erase_list, dead_ops);

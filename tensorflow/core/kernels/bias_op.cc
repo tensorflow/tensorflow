@@ -31,14 +31,10 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_stream.h"
-#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -459,7 +455,8 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
     se::DeviceMemoryBase output_ptr(output->flat<T>().data(),
                                     output->NumElements() * sizeof(T));
-    stream->ThenMemZero(&output_ptr, output->NumElements() * sizeof(T));
+    OP_REQUIRES_OK(context, stream->MemZero(&output_ptr,
+                                            output->NumElements() * sizeof(T)));
     if (output_backprop.NumElements() <= 0) return;
     if (OpDeterminismRequired()) {
       // ComputeWithReduceSum is the only deterministic algorithm.
@@ -485,12 +482,13 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
       BiasGradGPUProfileResult best_result;
 
       // Initialize the timer.
-      StatusOr<se::gpu::GpuTimer> timer =
-          se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(stream));
+      StatusOr<std::unique_ptr<se::EventBasedTimer>> timer =
+          stream->CreateEventBasedTimer(false);
       OP_REQUIRES_OK(context, timer.status());
       ComputeWithCustomKernel(context, output_backprop, batch, width, height,
                               depth, channel, output);
-      StatusOr<absl::Duration> bias_duration = timer->GetElapsedDuration();
+      StatusOr<absl::Duration> bias_duration =
+          timer.value()->GetElapsedDuration();
       OP_REQUIRES_OK(context, bias_duration.status());
       int64_t elapsed_microseconds = absl::ToInt64Microseconds(*bias_duration);
 
@@ -502,13 +500,13 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
       }
 
       // Try reduction and profile.
-      StatusOr<se::gpu::GpuTimer> reduction_timer =
-          se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(stream));
+      StatusOr<std::unique_ptr<se::EventBasedTimer>> reduction_timer =
+          stream->CreateEventBasedTimer(false);
       OP_REQUIRES_OK(context, reduction_timer.status());
       ComputeWithReduceSum(context, output_backprop, batch, width, height,
                            depth, channel, output);
       StatusOr<absl::Duration> reduction_duration =
-          reduction_timer->GetElapsedDuration();
+          reduction_timer.value()->GetElapsedDuration();
       OP_REQUIRES_OK(context, reduction_duration.status());
 
       elapsed_microseconds += absl::ToInt64Microseconds(*reduction_duration);

@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt -split-input-file %s | FileCheck %s
-// RUN: mlir-hlo-opt -split-input-file %s | mlir-hlo-opt | FileCheck %s
+// RUN: mlir-hlo-opt -split-input-file %s | mlir-hlo-opt -split-input-file | FileCheck %s
 
 // -----
 
@@ -142,28 +142,22 @@ func.func @type_convert_ops(%arg0 : tensor<2xf32>) -> () {
 // CHECK-LABEL: func @no_attr_ops
 func.func @no_attr_ops(%arg0 : tensor<4xf32>, %arg1 : !mhlo.token,
                        %arg2 : tensor<4xi32>, %arg3 : index) -> !mhlo.token {
-  // CHECK:      %0 = mhlo.add_dependency %arg0, %arg1 : (tensor<4xf32>, !mhlo.token) -> tensor<4xf32>
-  // CHECK-NEXT: %1 = mhlo.clamp %arg0, %arg0, %arg0 : tensor<4xf32>
-  // CHECK-NEXT: %2 = mhlo.complex %arg0, %arg0 : tensor<4xcomplex<f32>>
-  // CHECK-NEXT: %3 = mhlo.compute_reshape_shape %arg3, %arg2 : (index, tensor<4xi32>) -> tensor<4xi32>
-  // CHECK-NEXT: %4 = mhlo.copy %3 : tensor<4xi32>
-  // CHECK-NEXT: %5 = mhlo.uniform_quantize %arg0 : (tensor<4xf32>) -> tensor<4x!quant.uniform<u8:f32, 3.400000e+01:16>>
-  // CHECK-NEXT: %6 = mhlo.uniform_dequantize %5 : (tensor<4x!quant.uniform<u8:f32, 3.400000e+01:16>>) -> tensor<4xf32>
-  // CHECK-NEXT: %7 = mhlo.after_all %arg1, %arg1 : !mhlo.token
-  // CHECK-NEXT: %8 = mhlo.after_all : !mhlo.token
-  // CHECK-NEXT: %9 = mhlo.cstr_reshapable %arg3, %arg2 : (index, tensor<4xi32>) -> !shape.witness
-  // CHECK-NEXT: %10 = mhlo.compute_reshape_shape %arg3, %arg2 : (index, tensor<4xi32>) -> tensor<4xi32>
+  // CHECK:      mhlo.add_dependency %arg0, %arg1 : (tensor<4xf32>, !mhlo.token) -> tensor<4xf32>
+  // CHECK-NEXT: mhlo.clamp %arg0, %arg0, %arg0 : tensor<4xf32>
+  // CHECK-NEXT: mhlo.complex %arg0, %arg0 : tensor<4xcomplex<f32>>
+  // CHECK-NEXT: mhlo.copy %arg2 : tensor<4xi32>
+  // CHECK-NEXT: mhlo.uniform_quantize %arg0 : (tensor<4xf32>) -> tensor<4x!quant.uniform<u8:f32, 3.400000e+01:16>>
+  // CHECK-NEXT: mhlo.uniform_dequantize %[[_:[0-9]+]] : (tensor<4x!quant.uniform<u8:f32, 3.400000e+01:16>>) -> tensor<4xf32>
+  // CHECK-NEXT: mhlo.after_all %arg1, %arg1 : !mhlo.token
+  // CHECK-NEXT: mhlo.after_all : !mhlo.token
   %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<4xf32>, !mhlo.token) -> tensor<4xf32>
   %1 = "mhlo.clamp"(%arg0, %arg0, %arg0) : (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   %2 = "mhlo.complex"(%arg0, %arg0) {} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xcomplex<f32>>
-  %3 = "mhlo.compute_reshape_shape"(%arg3, %arg2) : (index, tensor<4xi32>) -> tensor<4xi32>
-  %4 = "mhlo.copy"(%3) : (tensor<4xi32>) -> tensor<4xi32>
-  %5 = "mhlo.uniform_quantize"(%arg0) : (tensor<4xf32>) -> tensor<4x!quant.uniform<ui8:f32, 34.0:16>>
-  %6 = "mhlo.uniform_dequantize"(%5) : (tensor<4x!quant.uniform<ui8:f32, 34.0:16>>) -> tensor<4xf32>
-  %7 = "mhlo.after_all"(%arg1, %arg1) : (!mhlo.token, !mhlo.token) -> !mhlo.token
-  %8 = "mhlo.after_all"() : () -> !mhlo.token
-  %9 = "mhlo.cstr_reshapable"(%arg3, %arg2) : (index, tensor<4xi32>) -> !shape.witness
-  %10 = "mhlo.compute_reshape_shape"(%arg3, %arg2) : (index, tensor<4xi32>) -> tensor<4xi32>
+  %3 = "mhlo.copy"(%arg2) : (tensor<4xi32>) -> tensor<4xi32>
+  %4 = "mhlo.uniform_quantize"(%arg0) : (tensor<4xf32>) -> tensor<4x!quant.uniform<ui8:f32, 34.0:16>>
+  %5 = "mhlo.uniform_dequantize"(%4) : (tensor<4x!quant.uniform<ui8:f32, 34.0:16>>) -> tensor<4xf32>
+  %6 = "mhlo.after_all"(%arg1, %arg1) : (!mhlo.token, !mhlo.token) -> !mhlo.token
+  %7 = "mhlo.after_all"() : () -> !mhlo.token
   "mhlo.return"(%arg1) : (!mhlo.token) -> ()
 }
 
@@ -223,29 +217,31 @@ func.func @compare_op(%arg0 : tensor<3xi32>) -> () {
 // CHECK-LABEL: func @extensions
 func.func @extensions(%arg0 : tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>,
                 %arg1 : tensor<i32>) -> () {
-  // CHECK:      %0 = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
-  %0 = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
+  // CHECK:      %0 = "mhlo.set_dimension_size"(%arg0, %arg1) <{dimension = 1 : i64}> : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<?x?xf32>
+  %0 = "mhlo.set_dimension_size"(%arg0, %arg1) <{dimension = 1 : i64}> : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<?x?xf32>
   "mhlo.return"() : () -> ()
 }
 
 // -----
 
 #CSR = #sparse_tensor.encoding<{
-  lvlTypes = ["dense", "compressed"]
+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
 }>
 
 #DCSR = #sparse_tensor.encoding<{
-  lvlTypes = ["compressed", "compressed"]
+  map = (d0, d1) -> (d0 : compressed, d1 : compressed)
 }>
 
+// CHECK: #[[$CSR:.*]] = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>
+// CHECK: #[[$DCSR:.*]] = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>
 // CHECK-LABEL: func @encodings
 func.func @encodings(%arg0: tensor<10x20xf32, #CSR>,
                      %arg1: tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32> {
-  // CHECK:      %0 = mhlo.add %arg0, %arg1 : (tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>, tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>) -> tensor<10x20xf32>
-  // CHECK-NEXT: %1 = mhlo.add %arg1, %arg1 : tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>
-  // CHECK-NEXT: %2 = mhlo.abs %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>) -> tensor<10x20xf32>
-  // CHECK-NEXT: %3 = mhlo.abs %arg0 : tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>
-  // CHECK-NEXT: %4 = mhlo.complex %arg0, %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) -> tensor<10x20xcomplex<f32>>
+  // CHECK:      %0 = mhlo.add %arg0, %arg1 : (tensor<10x20xf32, #[[$CSR]]>, tensor<10x20xf32, #[[$DCSR]]>) -> tensor<10x20xf32>
+  // CHECK-NEXT: %1 = mhlo.add %arg1, %arg1 : tensor<10x20xf32, #[[$DCSR]]
+  // CHECK-NEXT: %2 = mhlo.abs %arg0 : (tensor<10x20xf32, #[[$CSR]]>) -> tensor<10x20xf32>
+  // CHECK-NEXT: %3 = mhlo.abs %arg0 : tensor<10x20xf32, #[[$CSR]]>
+  // CHECK-NEXT: %4 = mhlo.complex %arg0, %arg0 : (tensor<10x20xf32, #[[$CSR]]>, tensor<10x20xf32, #[[$CSR]]>) -> tensor<10x20xcomplex<f32>>
   %0 = "mhlo.add"(%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
                                    tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32>
   %1 = "mhlo.add"(%arg1, %arg1) : (tensor<10x20xf32, #DCSR>,

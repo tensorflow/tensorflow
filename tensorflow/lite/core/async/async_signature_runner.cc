@@ -137,6 +137,16 @@ TfLiteStatus AsyncSignatureRunner::SetAttributes(
   return async_subgraph_->SetAttributes(tensor_index, attrs);
 }
 
+TfLiteStatus AsyncSignatureRunner::SetBufferAttributes(
+    const TfLiteBackendBuffer* buffer, const TfLiteAttributeMap* attrs) {
+  return async_subgraph_->SetBufferAttributes(buffer, attrs);
+}
+
+TfLiteStatus AsyncSignatureRunner::GetBufferAttributes(
+    const TfLiteBackendBuffer* buffer, TfLiteAttributeMap* attrs) {
+  return async_subgraph_->GetBufferAttributes(buffer, attrs);
+}
+
 TfLiteStatus AsyncSignatureRunner::PrepareBackends() {
   return async_subgraph_->Prepare();
 }

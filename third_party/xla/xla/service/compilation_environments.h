@@ -1,4 +1,5 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+#include "tsl/platform/status.h"
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,14 +20,14 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <string_view>
 #include <typeindex>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -46,8 +47,9 @@ namespace xla {
 // CompilationEnvironments is not thread-safe.
 class CompilationEnvironments {
  public:
-  using ProcessNewEnvFn = std::function<std::unique_ptr<tsl::protobuf::Message>(
-      std::unique_ptr<tsl::protobuf::Message>)>;
+  using ProcessNewEnvFn =
+      std::function<absl::StatusOr<std::unique_ptr<tsl::protobuf::Message>>(
+          std::unique_ptr<tsl::protobuf::Message>)>;
 
   CompilationEnvironments() = default;
   CompilationEnvironments(const CompilationEnvironments& rhs) { *this = rhs; }
@@ -55,8 +57,8 @@ class CompilationEnvironments {
   ~CompilationEnvironments() = default;
 
   // Deserializes the given CompilationEnvironments proto.
-  static StatusOr<std::unique_ptr<CompilationEnvironments>> CreateFromProto(
-      const CompilationEnvironmentsProto& proto);
+  static absl::StatusOr<std::unique_ptr<CompilationEnvironments>>
+  CreateFromProto(const CompilationEnvironmentsProto& proto);
 
   // Whenever an environment is added to CompilationEnvironments, even when
   // GetEnv() adds a lazily initialized one, it is passed to the function
@@ -83,7 +85,7 @@ class CompilationEnvironments {
   // All added environments are processed via registered ProcessNewEnvFns. If
   // such a function was not regitered for env's proto descriptor or env's
   // proto type is unknown, an error will be returned.
-  Status AddEnv(std::unique_ptr<tsl::protobuf::Message> env);
+  absl::Status AddEnv(std::unique_ptr<tsl::protobuf::Message> env);
 
   // Returns the CompilationEnvironment corresponding to T. If such an
   // environment has not been added, ProcessNewEnvFn(nullptr) will be added and
@@ -96,6 +98,8 @@ class CompilationEnvironments {
   T& GetMutableEnv();
   template <typename T>
   const T& GetEnv();
+  template <typename T>
+  bool HasEnv();
 
   // Removes all added environments.
   void Clear() { environments_.clear(); }
@@ -113,14 +117,14 @@ class CompilationEnvironments {
   // track stats about how many such environments are created by
   // CompilationEnvironments.
   static void DefaultEnvCreatedByCompilationEnvironments(
-      std::string_view env_type);
+      absl::string_view env_type);
 
   // Called by AddEnv(), to globally track stats about how many environments
   // are added to CompilationEnvironments.
-  static void EnvAdded(std::string_view env_type);
+  static void EnvAdded(absl::string_view env_type);
 
-  Status AddEnvImpl(const tsl::protobuf::Descriptor& descriptor,
-                    std::unique_ptr<tsl::protobuf::Message> env);
+  absl::Status AddEnvImpl(const tsl::protobuf::Descriptor& descriptor,
+                          std::unique_ptr<tsl::protobuf::Message> env);
 
   absl::flat_hash_map<const tsl::protobuf::Descriptor*,
                       std::unique_ptr<tsl::protobuf::Message>>
@@ -138,12 +142,24 @@ T& CompilationEnvironments::GetMutableEnv() {
     DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
     it = environments_.find(descriptor);
   }
+
+  // TODO(b/302086111): Remove after XLA has an updated protobuf version.
+#if TSL_IS_IN_OSS
   return tensorflow::down_cast<T&>(*it->second);
+#else
+  return tsl::protobuf::DownCastToGenerated<T>(*it->second);
+#endif
 }
 
 template <typename T>
 const T& CompilationEnvironments::GetEnv() {
   return GetMutableEnv<T>();
+}
+
+template <typename T>
+bool CompilationEnvironments::HasEnv() {
+  auto descriptor = T::descriptor();
+  return environments_.find(descriptor) != environments_.end();
 }
 
 }  // namespace xla

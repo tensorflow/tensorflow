@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,29 +16,7 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_HLO_TO_MHLO_HLO_TO_MLIR_HLO_H_
 #define XLA_TRANSLATE_HLO_TO_MHLO_HLO_TO_MLIR_HLO_H_
 
-#include "xla/status.h"
-
-namespace mlir {
-class ModuleOp;
-}  // namespace mlir
-
-namespace xla {
-class HloModule;
-class HloModuleProto;
-
-// Converts an HLO module proto to a MLIR module in HLO dialect.
-// If import_all_computation is set to true, imports all computations
-// irrespective if transitively called from entry computation.
-Status ConvertHloToMlirHlo(mlir::ModuleOp module,
-                           xla::HloModuleProto const* hlo_module,
-                           bool import_all_computations = false);
-
-// Converts an HLO module to a MLIR module in HLO dialect.
-// If import_all_computation is set to true, imports all computations
-// irrespective if transitively called from entry computation.
-Status ConvertHloToMlirHlo(mlir::ModuleOp module, xla::HloModule* hlo_module,
-                           bool import_all_computations = false);
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 
 #endif  // XLA_TRANSLATE_HLO_TO_MHLO_HLO_TO_MLIR_HLO_H_

@@ -10,8 +10,8 @@ module @asset attributes {tf_saved_model.semantics} {
 
   // CHECK: func @init()
   func.func @init(%arg0: tensor<!tf_type.string> {tf_saved_model.bound_input = @asset0}, %arg1: tensor<!tf_type.string> {tf_saved_model.bound_input = @asset1}) attributes {tf_saved_model.exported_names = ["init"]} {
-    // CHECK-DAG: %[[ASSET0:.*]] = "tf.Const"() {value = dense<"foo/bar/assets/test0.txt"> : tensor<!tf_type.string>}
-    // CHECK-DAG: %[[ASSET1:.*]] = "tf.Const"() {value = dense<"foo/bar/assets/test1.txt"> : tensor<!tf_type.string>}
+    // CHECK-DAG: %[[ASSET0:.*]] = "tf.Const"() <{value = dense<"foo/bar/assets/test0.txt"> : tensor<!tf_type.string>}>
+    // CHECK-DAG: %[[ASSET1:.*]] = "tf.Const"() <{value = dense<"foo/bar/assets/test1.txt"> : tensor<!tf_type.string>}>
 
     // CHECK: %[[VAR0:.*]] = "tf.VarHandleOp"()
     %0 = "tf.VarHandleOp"() {container = "", shared_name = "var0"} : () -> tensor<!tf_type.resource<tensor<!tf_type.string>>>

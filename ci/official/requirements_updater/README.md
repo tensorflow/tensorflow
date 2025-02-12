@@ -1,75 +1,71 @@
-### Hermetic Python
+## Managing hermetic Python
 
-Hermetic Python allows us not to rely on system-installed python and
-system-installed python packages, instead we register our own python toolchain.
-See https://github.com/bazelbuild/rules_python/ for more details.
+To make sure that TensorFlow's build is reproducible, behaves uniformly across
+supported platforms (Linux, Windows, MacOS) and is properly isolated from
+specifics of a local system, we rely on hermetic Python (see
+[rules_python](https://github.com/bazelbuild/rules_python)) for all build
+and test commands executed via Bazel. This means that your system Python
+installation will be ignored during the build and Python interpreter itself
+as well as all the Python dependencies will be managed by bazel directly.
 
-#### Hermetic Python toolchain details
+### Specifying Python version
 
-By default, Python 3.9 is used.
-
-To set your own version for hermetic Python toolchain, use `TF_PYTHON_VERSION`
-environment variable, e.g.
-
-```
-export TF_PYTHON_VERSION=3.10
-```
-
-To set a version from argument line, add to your command
+The hermetic Python version is controlled by `HERMETIC_PYTHON_VERSION`
+environment variable, which could be setin one of the following ways:
 
 ```
---repo_env=TF_PYTHON_VERSION=3.10
+# Either add an entry to your `.bazelrc` file
+build --repo_env=HERMETIC_PYTHON_VERSION=3.12
+
+# OR pass it directly to your specific build command
+bazel build <target> --repo_env=HERMETIC_PYTHON_VERSION=3.12
+
+# OR set the environment variable globally in your shell:
+export HERMETIC_PYTHON_VERSION=3.12
 ```
 
-### Requirements updater
+You may run builds and tests against different versions of Python sequentially
+on the same machine by simply switching the value of `HERMETIC_PYTHON_VERSION`
+between the runs. All the python-agnostic parts of the build cache from the
+previous build will be preserved and reused for the subsequent builds.
 
-Requirements updater is a standalone tool intended to simplify process of
-updating requirements for multiple versions of Python.
+### Specifying Python dependencies
 
-#### How to update/add requirements
+During bazel build all TensorFlow's Python dependencies are pinned to their
+specific versions. This is necessary to ensure reproducibility of the build.
+The pinned versions of the full transitive closure of TensorFlow's dependencies
+together with their corresponding hashes are specified in
+`requirements_lock_<python version>.txt` files (e.g.
+`requirements_lock_3_12.txt` for `Python 3.12`).
 
-By default, the name of the input requirements file is `requirements.in`,
-but it can be set using the `REQUIREMENTS_FILE_NAME` variable, for example:
-```
-export REQUIREMENTS_FILE_NAME=`my_requirements.in`
-```
-
-To set a version from the argument line, add to your command
-```
---repo_env=REQUIREMENTS_FILE_NAME=`my_requirements.in`
-```
-
-#### How to run the updater
-
-```
-bash updater.sh
-```
-
-### How to add a new Python version
-
-1) In the `WORKSPACE` file add a new version to `python_versions` argument of
-the `python_register_multi_toolchains` function.
-
-2) In `BUILD.bazel` file add a load statement for the new version, e.g.
+To update the lock files, make sure
+`ci/official/requirements_updater/requirements.in` contains the desired direct
+dependencies list and then execute the following command (which will call
+[pip-compile](https://pypi.org/project/pip-tools/) under the hood):
 
 ```
-load("@python//3.11:defs.bzl",
-     compile_pip_requirements_3_11 = "compile_pip_requirements")
+bazel run //ci/official/requirements_updater:requirements.update --repo_env=HERMETIC_PYTHON_VERSION=3.12
 ```
 
-Add a new entry for the loaded `compile_pip_requirements`, e.g.
+where `3.12` is the `Python` version you wish to update.
+
+Note, since it is still `pip` and `pip-compile` tools used under the hood, so
+most of the command line arguments and features supported by those tools will be
+acknowledged by the Bazel requirements updater command as well. For example, if
+you wish the updater to consider pre-release versions simply pass `--pre`
+argument to the bazel command:
 
 ```
-compile_pip_requirements_3_11(
-    name = "requirements_3_11",
-    extra_args = ["--allow-unsafe"],
-    requirements_in = "requirements.in",
-    requirements_txt = "requirements_lock_3_11.txt",
-)
+bazel run //ci/official/requirements_updater:requirements.update --repo_env=HERMETIC_PYTHON_VERSION=3.12 -- --pre
 ```
 
-3) Add the version to `SUPPORTED_VERSIONS` in `updater.sh`, after that run the
- requirements updater tool.
+If you need to upgrade all of the packages in requirements lock file, just pass
+the `--upgrade` parameter:
 
-4) As a result, a new `requirements_lock_3_11.txt` file should appear under the
-root of tensorflow directory.
+```
+bazel run //ci/official/requirements_updater:requirements.update --repo_env=HERMETIC_PYTHON_VERSION=3.12 -- --upgrade
+```
+
+For the full set of supported parameters please check
+[pip-compile](https://pip-tools.readthedocs.io/en/latest/cli/pip-compile/)
+documentation

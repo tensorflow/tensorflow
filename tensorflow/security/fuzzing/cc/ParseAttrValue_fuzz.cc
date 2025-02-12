@@ -12,14 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdint>
-#include <cstdlib>
 #include <string>
 #include <string_view>
 
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 // This is a fuzzer for tensorflow::ParseAttrValue.
 

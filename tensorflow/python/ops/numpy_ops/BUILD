@@ -14,7 +14,6 @@ package(
 py_strict_library(
     name = "numpy",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     deps = [
         ":np_array_ops",
         ":np_arrays",

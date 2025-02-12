@@ -90,11 +90,11 @@ void TF_OpDefinitionBuilderSetShapeInferenceFunction(
                                  TF_Status* status)) {
   auto* cc_builder = reinterpret_cast<OpDefBuilder*>(builder);
   cc_builder->SetShapeFn(
-      [shape_inference_func](InferenceContext* ctx) -> tensorflow::Status {
+      [shape_inference_func](InferenceContext* ctx) -> absl::Status {
         TF_Status* c_status = TF_NewStatus();
         auto c_ctx = reinterpret_cast<TF_ShapeInferenceContext*>(ctx);
         shape_inference_func(c_ctx, c_status);
-        tensorflow::Status result = ::tensorflow::StatusFromTF_Status(c_status);
+        absl::Status result = ::tensorflow::StatusFromTF_Status(c_status);
         TF_DeleteStatus(c_status);
         return result;
       });

@@ -13,6 +13,4 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import List
-
-def run_tac(arg0: str, arg1: List[str], arg2: str) -> bool: ...
+def run_tac(arg0: str, arg1: list[str], arg2: str) -> bool: ...

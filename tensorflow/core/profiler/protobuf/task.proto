@@ -9,7 +9,7 @@ option cc_enable_arenas = true;
 // 'Task' contains information about a task that profiler traced.
 message Task {
   // The most recent changelist number from the client that built the binary.
-  optional int32 changelist = 1;
+  optional int64 changelist = 1;
   // True if the client that built the binary was mint (no local changes).
   optional bool clean_build = 2;
   // Build time (in ns relative to the Unix epoch).

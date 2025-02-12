@@ -15,6 +15,7 @@ visibility = [
     # copybara:uncomment "//learning/brain/contrib/eager/numlib/benchmarks/kumamon:__subpackages__",
     # copybara:uncomment "//learning/brain/mobile/lite/tooling/model_analyzer:__subpackages__",
     # copybara:uncomment "//tensorflow_serving/model_servers:__subpackages__",
+    # copybara:uncomment "//third_party/odml/model_customization/quantization:__subpackages__",
 ]
 
 package(
@@ -31,13 +32,11 @@ tf_py_build_info_genrule(
 py_strict_library(
     name = "build_info",
     srcs = ["build_info.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "self_check",
     srcs = ["self_check.py"],
-    srcs_version = "PY3",
     deps = if_oss([
         ":build_info",
         ":_pywrap_cpu_feature_guard",
@@ -47,13 +46,12 @@ py_strict_library(
 py_strict_library(
     name = "benchmark",
     srcs = ["benchmark.py"],
-    srcs_version = "PY3",
     visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":gfile",
         ":tf_logging",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:timeline",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
@@ -64,13 +62,11 @@ py_strict_library(
 py_strict_library(
     name = "analytics",
     srcs = ["analytics.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "device_context",
     srcs = ["device_context.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:control_flow_ops",
@@ -80,7 +76,6 @@ py_strict_library(
 py_strict_library(
     name = "test",
     srcs = ["googletest.py"],
-    srcs_version = "PY3",
     visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":benchmark",
@@ -91,8 +86,6 @@ py_strict_library(
         "@absl_py//absl:app",
         "@absl_py//absl/testing:absltest",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/lib/io:lib",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_inspect",
     ]),
 )
@@ -104,7 +97,6 @@ tf_py_strict_test(
     data = [
         "resource_loader.py",
     ],
-    python_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",
@@ -122,7 +114,6 @@ tf_py_strict_test(
     data = [
         "sysconfig.py",
     ],
-    python_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
         "no_oss",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
@@ -141,7 +132,6 @@ tf_py_strict_test(
     name = "flags_test",
     size = "small",
     srcs = ["flags_test.py"],
-    python_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
         "no_oss",  # TODO(b/263966250) re-enable after fixing sysconfig.get_path breakage
@@ -157,7 +147,6 @@ tf_py_strict_test(
     name = "stacktrace_handler_test",
     size = "small",
     srcs = ["stacktrace_handler_test.py"],
-    python_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/263966250) re-enable after fixing sysconfig.get_path breakage
         "no_windows",
@@ -174,7 +163,6 @@ tf_py_strict_test(
     name = "app_test",
     size = "small",
     srcs = ["app_test.py"],
-    python_version = "PY3",
     tags = [
         "manual",
         "notap",
@@ -220,14 +208,19 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "client_testlib",
     srcs = ["test.py"],
-    srcs_version = "PY3",
-    visibility = visibility + [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/mlperf:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/mlperf:__subpackages__",
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:internal",
+    # "//tensorflow_models:__subpackages__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":test",
         "//tensorflow/python/framework:test_lib",
@@ -246,20 +239,6 @@ py_strict_library(
         "@absl_py//absl:app",
     ],
 )
-
-# copybara:uncomment_begin(google-only)
-# py_strict_library(
-#     name = "cpp_memory_checker",
-#     srcs = ["cpp_memory_checker.py"],
-#     deps = [
-#         ":tf_logging",
-#         "//perftools/profiles/collector/heap:pywrap_alloc_recorder",
-#         "//perftools/profiles/proto:profile_py_pb2",
-#         "//pyglib:resources",
-#         "//tensorflow/python/profiler:trace",
-#     ],
-# )
-# copybara:uncomment_end
 
 py_strict_library(
     name = "sysconfig",
@@ -301,9 +280,15 @@ py_strict_library(
 py_strict_library(
     name = "gfile",
     srcs = ["gfile.py"],
-    visibility = visibility + ["//third_party/py/tf_slim/training:__pkg__"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -312,7 +297,11 @@ py_strict_library(
 py_strict_library(
     name = "tf_logging",
     srcs = ["tf_logging.py"],
-    visibility = visibility + ["//third_party/py/tf_slim/training:__pkg__"],
+    visibility = visibility + [
+        "//learning/brain/contrib/learn:__pkg__",
+        "//learning/brain/mobile/lite/lstm:__pkg__",
+        "//third_party/py/tf_slim/training:__pkg__",
+    ],
     deps = [
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
@@ -322,8 +311,9 @@ py_strict_library(
 py_strict_library(
     name = "flags",
     srcs = ["flags.py"],
+    visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "@absl_py//absl/flags",
     ],
 )
@@ -331,6 +321,7 @@ py_strict_library(
 py_strict_library(
     name = "resource_loader",
     srcs = ["resource_loader.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":tf_logging",
         "//tensorflow/python/util:tf_export",
@@ -343,12 +334,8 @@ py_strict_library(
 tf_py_strict_test(
     name = "build_info_test",
     size = "small",
-    srcs = [
-        "build_info.py",
-        "build_info_test.py",
-    ],
+    srcs = ["build_info_test.py"],
     main = "build_info_test.py",
-    python_version = "PY3",
     tags = [
         "no_pip",
         "notap",
@@ -363,25 +350,15 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "benchmark_test",
     size = "small",
-    srcs = [
-        "benchmark.py",
-        "benchmark_test.py",
-    ],
+    srcs = ["benchmark_test.py"],
     main = "benchmark_test.py",
-    python_version = "PY3",
     tags = [
         "no_pip",
     ],
     deps = [
+        ":benchmark",
         ":client_testlib",
-        ":gfile",
-        ":tf_logging",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:tf_inspect",
-        "@absl_py//absl:app",
     ],
 )
 

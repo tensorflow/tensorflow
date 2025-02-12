@@ -16,15 +16,22 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 
 #include <memory>
+#include <unordered_map>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -116,7 +123,7 @@ TEST_F(VirtualClusterTest, OutOfMemory) {
   item.fetch.push_back("i2");
 
   TF_CHECK_OK(cluster_->Initialize(item));
-  Status s = cluster_->Run(item.graph, item.feed, item.fetch, nullptr);
+  absl::Status s = cluster_->Run(item.graph, item.feed, item.fetch, nullptr);
   EXPECT_EQ(error::RESOURCE_EXHAUSTED, s.code());
 }
 

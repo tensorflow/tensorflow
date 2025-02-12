@@ -100,6 +100,7 @@ py_library(
         "//tensorflow/python/training:training_lib",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -354,7 +355,7 @@ py_library(
         "//tensorflow/python/keras/engine:base_layer_utils",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/optimizer_v2",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//third_party/py/numpy",
     ],
 )

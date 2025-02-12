@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_REWRITE_UTILS_H_
 #define TENSORFLOW_CORE_DATA_REWRITE_UTILS_H_
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/platform/platform.h"
 
 // On mobile we do not provide this functionality because not all of its
@@ -47,27 +49,30 @@ RewriterConfig CreateRewriterConfig(
 
 // Rewrites the input dataset using the given config. The rewritten_input
 // stored in the core::RefCountPtr<DatasetBase>* output parameter is owned.
-Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
-                      std::function<RewriterConfig(void)> config_factory,
-                      bool record_fingerprint,
-                      core::RefCountPtr<DatasetBase>* rewritten_input);
+absl::Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
+                            std::function<RewriterConfig(void)> config_factory,
+                            bool record_fingerprint,
+                            core::RefCountPtr<DatasetBase>* rewritten_input);
 
 // Creates a grappler item for `graph_def`, which is required for graph
 // optimization.
 // `dataset_node` is the name of the node corresponding to the dataset.
 // If `add_fake_sinks` is true, it adds fake sink node to graph and functions to
 // allow rewriting the actual sink nodes.
+// If `apply_optimizations` is true, general grappler optimizations at level
+// `tensorflow::OptimizerOptions::L1` are applied to the graph.
 // TODO(b/118820916): When MetaOptimizer adds provisions for function retvals to
 // be optimizable, we will no longer need to add fake nodes.
 std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
-    GraphDef* graph_def, std::string* dataset_node, bool add_fake_sinks);
+    GraphDef* graph_def, std::string* dataset_node, bool add_fake_sinks,
+    bool apply_optimizations = true);
 
 // Returns the name of the node corresponding to the dataset. It is indicated by
 // the symbolic `_Retval` node.
-StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def);
+absl::StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def);
 
 // Like `GetDatasetNode` above, but returns the entire node object.
-StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def);
+absl::StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def);
 
 // Determines which optimizations should be applied.
 //

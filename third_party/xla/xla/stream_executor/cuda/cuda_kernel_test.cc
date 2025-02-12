@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,58 +13,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
-#include <vector>
-
 #include <gtest/gtest.h>
-#include "xla/stream_executor/cuda/cuda_test_kernels.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
-namespace stream_executor::cuda {
+namespace stream_executor::gpu {
+namespace {
+using testing::Ge;
+using tsl::testing::IsOkAndHolds;
 
-TEST(CudaKernelTest, Add) {
-  using AddI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                                   DeviceMemory<int32_t>>;
+TEST(CudaKernelTest, GetMaxOccupiedBlocksPerCore) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
 
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
-  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+  TF_ASSERT_OK_AND_ASSIGN(auto cuda_kernel,
+                          executor->LoadKernel(GetAddI32KernelSpec()));
 
-  Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
-
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
-
-  AddI32Kernel add(executor);
-  ASSERT_TRUE(executor->GetKernel(spec, &add).ok());
-
-  int64_t length = 4;
-  int64_t byte_length = sizeof(int32_t) * length;
-
-  // Prepare arguments: a=1, b=2, c=0
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
-
-  stream.ThenMemset32(&a, 1, byte_length);
-  stream.ThenMemset32(&b, 2, byte_length);
-  stream.ThenMemZero(&c, byte_length);
-
-  // Launch kernel.
-  ASSERT_TRUE(stream.ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c).ok());
-
-  // Copy data back to host.
-  std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), c, byte_length);
-
-  std::vector<int32_t> expected = {3, 3, 3, 3};
-  ASSERT_EQ(dst, expected);
+  EXPECT_EQ(cuda_kernel->Arity(), 3);
+  EXPECT_THAT(cuda_kernel->GetMaxOccupiedBlocksPerCore(
+                  ThreadDim(1, 1, 1), /*dynamic_shared_memory_bytes=*/0),
+              IsOkAndHolds(Ge(1)));
 }
 
-}  // namespace stream_executor::cuda
+}  // namespace
+}  // namespace stream_executor::gpu

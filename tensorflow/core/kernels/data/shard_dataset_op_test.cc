@@ -41,21 +41,21 @@ class ShardDatasetParams : public DatasetParams {
     return CreateTensors<int64_t>(TensorShape({}), {{num_shards_}, {index_}});
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(ShardDatasetOp::kInputDataset);
     input_names->emplace_back(ShardDatasetOp::kNumShards);
     input_names->emplace_back(ShardDatasetOp::kIndex);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
     attr_vector->emplace_back("require_non_empty", require_non_empty_);
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("metadata", "");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return ShardDatasetOp::kDatasetType; }

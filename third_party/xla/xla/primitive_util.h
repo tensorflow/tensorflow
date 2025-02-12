@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,19 +18,27 @@ limitations under the License.
 #ifndef XLA_PRIMITIVE_UTIL_H_
 #define XLA_PRIMITIVE_UTIL_H_
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 #include "absl/base/attributes.h"
+#include "absl/base/optimization.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/statusor.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/float8.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 namespace primitive_util {
@@ -63,10 +71,16 @@ int ExponentBias(PrimitiveType type);
 // Returns whether the type has a value for infinity.
 bool HasInfinity(PrimitiveType type);
 
+// Returns whether the type has a value for NaN.
+bool HasNaN(PrimitiveType type);
+
+// Returns whether the type has a value for negative zero.
+bool HasNegativeZero(PrimitiveType type);
+
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float).
 template <typename NativeT>
-PrimitiveType NativeToPrimitiveType() {
+constexpr PrimitiveType NativeToPrimitiveType() {
   // Make the expression depend on the template parameter NativeT so
   // that this compile-time error only appears if this function is
   // instantiated with some concrete type that is not specialized
@@ -77,130 +91,354 @@ PrimitiveType NativeToPrimitiveType() {
 }
 
 // Declarations of specializations for each native type which correspond to a
-// XLA primitive type.  As an optimization, these are declared inline in the
-// header.
+// XLA primitive type.
 template <>
-inline PrimitiveType NativeToPrimitiveType<bool>() {
+constexpr PrimitiveType NativeToPrimitiveType<bool>() {
   return PRED;
 }
 
 // Unsigned integer
 template <>
-inline PrimitiveType NativeToPrimitiveType<u4>() {
+constexpr PrimitiveType NativeToPrimitiveType<u1>() {
+  return U1;
+}
+
+template <>
+constexpr PrimitiveType NativeToPrimitiveType<u2>() {
+  return U2;
+}
+
+template <>
+constexpr PrimitiveType NativeToPrimitiveType<u4>() {
   return U4;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint8_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<uint8_t>() {
   return U8;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint16_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<uint16_t>() {
   return U16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint32_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<uint32_t>() {
   return U32;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint64_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<uint64_t>() {
   return U64;
 }
 
 // Signed integer
 template <>
-inline PrimitiveType NativeToPrimitiveType<s4>() {
+constexpr PrimitiveType NativeToPrimitiveType<s1>() {
+  return S1;
+}
+
+template <>
+constexpr PrimitiveType NativeToPrimitiveType<s2>() {
+  return S2;
+}
+
+template <>
+constexpr PrimitiveType NativeToPrimitiveType<s4>() {
   return S4;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int8_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<int8_t>() {
   return S8;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int16_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<int16_t>() {
   return S16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int32_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<int32_t>() {
   return S32;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int64_t>() {
+constexpr PrimitiveType NativeToPrimitiveType<int64_t>() {
   return S64;
 }
 
 // Floating point
 template <>
-inline PrimitiveType NativeToPrimitiveType<float>() {
+constexpr PrimitiveType NativeToPrimitiveType<float>() {
   return F32;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<double>() {
+constexpr PrimitiveType NativeToPrimitiveType<double>() {
   return F64;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<half>() {
+constexpr PrimitiveType NativeToPrimitiveType<half>() {
   return F16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<bfloat16>() {
+constexpr PrimitiveType NativeToPrimitiveType<bfloat16>() {
   return BF16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2>() {
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float4_e2m1fn>() {
+  return F4E2M1FN;
+}
+
+template <>
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2>() {
   return F8E5M2;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fn>() {
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3>() {
+  return F8E4M3;
+}
+
+template <>
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fn>() {
   return F8E4M3FN;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3b11>() {
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3b11fnuz>() {
   return F8E4M3B11FNUZ;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2fnuz>() {
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2fnuz>() {
   return F8E5M2FNUZ;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fnuz>() {
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fnuz>() {
   return F8E4M3FNUZ;
+}
+
+template <>
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e3m4>() {
+  return F8E3M4;
+}
+
+template <>
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e8m0fnu>() {
+  return F8E8M0FNU;
 }
 
 // Complex
 template <>
-inline PrimitiveType NativeToPrimitiveType<complex64>() {
+constexpr PrimitiveType NativeToPrimitiveType<complex64>() {
   return C64;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<complex128>() {
+constexpr PrimitiveType NativeToPrimitiveType<complex128>() {
   return C128;
 }
 
+// Returns the native type (eg, float) corresponding to the given template
+// parameter XLA primitive type (eg, F32).
+template <PrimitiveType>
+struct PrimitiveTypeToNative;
+
+// Declarations of specializations for each native type which correspond to a
+// XLA primitive type.
+template <>
+struct PrimitiveTypeToNative<PRED> {
+  using type = bool;
+};
+
+// Unsigned integer
+template <>
+struct PrimitiveTypeToNative<U1> {
+  using type = u1;
+};
+
+template <>
+struct PrimitiveTypeToNative<U2> {
+  using type = u2;
+};
+
+template <>
+struct PrimitiveTypeToNative<U4> {
+  using type = u4;
+};
+
+template <>
+struct PrimitiveTypeToNative<U8> {
+  using type = uint8_t;
+};
+
+template <>
+struct PrimitiveTypeToNative<U16> {
+  using type = uint16_t;
+};
+
+template <>
+struct PrimitiveTypeToNative<U32> {
+  using type = uint32_t;
+};
+
+template <>
+struct PrimitiveTypeToNative<U64> {
+  using type = uint64_t;
+};
+
+// Signed integer
+template <>
+struct PrimitiveTypeToNative<S1> {
+  using type = s1;
+};
+
+template <>
+struct PrimitiveTypeToNative<S2> {
+  using type = s2;
+};
+
+template <>
+struct PrimitiveTypeToNative<S4> {
+  using type = s4;
+};
+
+template <>
+struct PrimitiveTypeToNative<S8> {
+  using type = int8_t;
+};
+
+template <>
+struct PrimitiveTypeToNative<S16> {
+  using type = int16_t;
+};
+
+template <>
+struct PrimitiveTypeToNative<S32> {
+  using type = int32_t;
+};
+
+template <>
+struct PrimitiveTypeToNative<S64> {
+  using type = int64_t;
+};
+
+// Floating point
+template <>
+struct PrimitiveTypeToNative<F32> {
+  using type = float;
+};
+template <>
+struct PrimitiveTypeToNative<F64> {
+  using type = double;
+};
+template <>
+struct PrimitiveTypeToNative<F16> {
+  using type = half;
+};
+
+template <>
+struct PrimitiveTypeToNative<BF16> {
+  using type = bfloat16;
+};
+
+template <>
+struct PrimitiveTypeToNative<F4E2M1FN> {
+  using type = tsl::float4_e2m1fn;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E5M2> {
+  using type = tsl::float8_e5m2;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E4M3> {
+  using type = tsl::float8_e4m3;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E4M3FN> {
+  using type = tsl::float8_e4m3fn;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E4M3B11FNUZ> {
+  using type = tsl::float8_e4m3b11fnuz;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E5M2FNUZ> {
+  using type = tsl::float8_e5m2fnuz;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E4M3FNUZ> {
+  using type = tsl::float8_e4m3fnuz;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E3M4> {
+  using type = tsl::float8_e3m4;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E8M0FNU> {
+  using type = tsl::float8_e8m0fnu;
+};
+
+// Complex
+template <>
+struct PrimitiveTypeToNative<C64> {
+  using type = complex64;
+};
+
+template <>
+struct PrimitiveTypeToNative<C128> {
+  using type = complex128;
+};
+
+// Token
+template <>
+struct PrimitiveTypeToNative<TOKEN> {
+  using type = void;
+};
+
+template <PrimitiveType kType>
+using NativeTypeOf =
+    typename primitive_util::PrimitiveTypeToNative<kType>::type;
+
+template <PrimitiveType kPrimitiveType>
+using PrimitiveTypeConstant =
+    std::integral_constant<PrimitiveType, kPrimitiveType>;
+
+// Returns true if values of the given primitive type are held in array shapes.
+inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
+  return primitive_type != TUPLE && primitive_type != OPAQUE_TYPE &&
+         primitive_type != TOKEN && primitive_type > PRIMITIVE_TYPE_INVALID &&
+         primitive_type < PrimitiveType_ARRAYSIZE;
+}
+
+constexpr bool IsMXType(PrimitiveType type) {
+  return type == F4E2M1FN || type == F8E8M0FNU;
+}
+
 constexpr bool IsF8Type(PrimitiveType type) {
-  return type == F8E5M2 || type == F8E4M3FN || type == F8E4M3B11FNUZ ||
-         type == F8E5M2FNUZ || type == F8E4M3FNUZ;
+  return type == F8E5M2 || type == F8E4M3 || type == F8E4M3FN ||
+         type == F8E4M3B11FNUZ || type == F8E5M2FNUZ || type == F8E4M3FNUZ ||
+         type == F8E3M4;
 }
 
 constexpr bool IsFloatingPointType(PrimitiveType type) {
   return type == F16 || type == F32 || type == F64 || type == BF16 ||
-         IsF8Type(type);
+         IsF8Type(type) || IsMXType(type);
 }
 
 constexpr bool IsComplexType(PrimitiveType type) {
@@ -208,129 +446,232 @@ constexpr bool IsComplexType(PrimitiveType type) {
 }
 
 constexpr bool IsSignedIntegralType(PrimitiveType type) {
-  return type == S4 || type == S8 || type == S16 || type == S32 || type == S64;
+  return type == S1 || type == S2 || type == S4 || type == S8 || type == S16 ||
+         type == S32 || type == S64;
 }
 
 constexpr bool IsUnsignedIntegralType(PrimitiveType type) {
-  return type == U4 || type == U8 || type == U16 || type == U32 || type == U64;
+  return type == U1 || type == U2 || type == U4 || type == U8 || type == U16 ||
+         type == U32 || type == U64;
 }
 
 constexpr bool IsIntegralType(PrimitiveType type) {
   return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
 }
 
-// Returns true if values of the given primitive type are held in array shapes.
-inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
-  return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
-         primitive_type != OPAQUE_TYPE && primitive_type != TOKEN;
+constexpr bool Is8BitIntegralType(PrimitiveType type) {
+  return type == S8 || type == U8;
 }
 
-// Returns the number of bits in the representation for a given type.
-constexpr ABSL_ATTRIBUTE_ALWAYS_INLINE inline int BitWidth(PrimitiveType type) {
-  switch (type) {
-    case PRED:
-      return 1;
-
-    case S4:
-    case U4:
-      return 4;
-
-    case S8:
-    case U8:
-    case F8E5M2:
-    case F8E4M3FN:
-    case F8E4M3B11FNUZ:
-    case F8E5M2FNUZ:
-    case F8E4M3FNUZ:
-      return 8;
-
-    case S16:
-    case U16:
-    case F16:
-    case BF16:
-      return 16;
-
-    case U32:
-    case S32:
-    case F32:
-      return 32;
-
-    case U64:
-    case S64:
-    case F64:
-    case C64:
-      return 64;
-
-    case C128:
-      return 128;
-
-    case TUPLE:
-      LOG(FATAL) << "TUPLE is an invalid type for BitWidth";
-
-    case OPAQUE_TYPE:
-      LOG(FATAL) << "OPAQUE_TYPE is an invalid type for BitWidth";
-
-    default:
-      LOG(FATAL) << "Unhandled primitive type " << type;
+template <typename R, typename F>
+constexpr R IntegralTypeSwitch(F&& f, PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsIntegralType(type))) {
+    switch (type) {
+      case S1:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S1>());
+      case S2:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S2>());
+      case S4:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S4>());
+      case S8:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S8>());
+      case S16:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S16>());
+      case S32:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S32>());
+      case S64:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S64>());
+      case U1:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U1>());
+      case U2:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U2>());
+      case U4:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U4>());
+      case U8:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U8>());
+      case U16:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U16>());
+      case U32:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U32>());
+      case U64:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U64>());
+      default:
+        ABSL_UNREACHABLE();
+    }
   }
+  LOG(FATAL) << "Not an integral data type " << type;
+}
+
+template <typename R, typename F>
+constexpr R FloatingPointTypeSwitch(F&& f, PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
+    switch (type) {
+      case F4E2M1FN:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F4E2M1FN>());
+      case F8E3M4:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F8E3M4>());
+      case F8E4M3:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F8E4M3>());
+      case F8E4M3FN:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F8E4M3FN>());
+      case F8E4M3B11FNUZ:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F8E4M3B11FNUZ>());
+      case F8E4M3FNUZ:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F8E4M3FNUZ>());
+      case F8E5M2:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F8E5M2>());
+      case F8E5M2FNUZ:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F8E5M2FNUZ>());
+      case F8E8M0FNU:
+        return std::forward<F>(f)(
+            PrimitiveTypeConstant<PrimitiveType::F8E8M0FNU>());
+      case F16:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F16>());
+      case BF16:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::BF16>());
+      case F32:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F32>());
+      case F64:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::F64>());
+      default:
+        ABSL_UNREACHABLE();
+    }
+  }
+  LOG(FATAL) << "Not a floating point data type " << type;
+}
+
+template <typename R, typename F>
+constexpr R ComplexTypeSwitch(F&& f, PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsComplexType(type))) {
+    switch (type) {
+      case C64:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::C64>());
+      case C128:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::C128>());
+      default:
+        ABSL_UNREACHABLE();
+    }
+  }
+  LOG(FATAL) << "Not a complex data type " << type;
+}
+
+template <typename R, typename F>
+constexpr R ArrayTypeSwitch(F&& f, PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsArrayType(type))) {
+    if (IsFloatingPointType(type)) {
+      return FloatingPointTypeSwitch<R>(std::forward<F>(f), type);
+    }
+    if (IsIntegralType(type)) {
+      return IntegralTypeSwitch<R>(std::forward<F>(f), type);
+    }
+    if (IsComplexType(type)) {
+      return ComplexTypeSwitch<R>(std::forward<F>(f), type);
+    }
+    if (type == PRED) {
+      return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::PRED>());
+    }
+  }
+  LOG(FATAL) << "Not an array data type " << type;
+}
+
+template <typename R, typename F>
+constexpr R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsArrayType(type))) {
+    return ArrayTypeSwitch<R>(std::forward<F>(f), type);
+  }
+  if (type == TUPLE) {
+    return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::TUPLE>());
+  }
+  if (type == TOKEN) {
+    return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::TOKEN>());
+  }
+  if (type == OPAQUE_TYPE) {
+    return std::forward<F>(f)(
+        PrimitiveTypeConstant<PrimitiveType::OPAQUE_TYPE>());
+  }
+  LOG(FATAL) << "unhandled type " << type;
+}
+
+namespace internal {
+template <PrimitiveType primitive_type>
+inline constexpr int PrimitiveTypeBitWidth() {
+  if constexpr (IsArrayType(primitive_type)) {
+    using NativeT = primitive_util::NativeTypeOf<primitive_type>;
+    if constexpr (IsIntegralType(primitive_type)) {
+      static_assert(is_specialized_integral_v<NativeT>);
+      static_assert(std::numeric_limits<NativeT>::is_signed ==
+                    IsSignedIntegralType(primitive_type));
+      static_assert(std::numeric_limits<NativeT>::radix == 2);
+      return std::numeric_limits<NativeT>::digits +
+             (IsSignedIntegralType(primitive_type) ? 1 : 0);
+    }
+    if constexpr (primitive_type == PRED) {
+      return std::numeric_limits<NativeT>::digits;
+    }
+    if constexpr (IsMXType(primitive_type)) {
+      return NativeT::kBits;
+    }
+    if constexpr (IsFloatingPointType(primitive_type)) {
+      return sizeof(NativeT) * std::numeric_limits<uint8_t>::digits;
+    }
+    if constexpr (IsComplexType(primitive_type)) {
+      static_assert(is_complex_v<NativeT>);
+      return sizeof(NativeT) * std::numeric_limits<uint8_t>::digits;
+    }
+  }
+  return 0;
+}
+template <int... Types>
+inline constexpr auto BitWidthArrayHelper(
+    std::integer_sequence<int, Types...>) {
+  return std::array{PrimitiveTypeBitWidth<PrimitiveType{Types}>()...};
+}
+
+inline constexpr auto kBitWidths = BitWidthArrayHelper(
+    std::make_integer_sequence<int, PrimitiveType_ARRAYSIZE>{});
+
+template <int... Types>
+inline constexpr auto ByteWidthArrayHelper(
+    std::integer_sequence<int, Types...>) {
+  return std::array{
+      CeilOfRatio(PrimitiveTypeBitWidth<PrimitiveType{Types}>(), 8)...};
+}
+inline constexpr auto kByteWidths = ByteWidthArrayHelper(
+    std::make_integer_sequence<int, PrimitiveType_ARRAYSIZE>{});
+
+template <const std::array<int, PrimitiveType_ARRAYSIZE>& kWidths>
+inline constexpr int WidthForType(PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsArrayType(type))) {
+    return kWidths[type];
+  }
+  LOG(FATAL) << "Unhandled primitive type " << type;
+}
+}  // namespace internal
+
+// Returns the number of bits in the representation for a given type.
+inline constexpr int BitWidth(PrimitiveType type) {
+  return internal::WidthForType<internal::kBitWidths>(type);
 }
 
 // Returns the number of bytes in the representation for a given type.
-ABSL_ATTRIBUTE_ALWAYS_INLINE inline int ByteWidth(PrimitiveType type) {
-  switch (type) {
-    case PRED:
-      return 1;
-
-    case S4:
-    case U4:
-      return 1;
-
-    case S8:
-    case U8:
-    case F8E5M2:
-    case F8E4M3FN:
-    case F8E4M3B11FNUZ:
-    case F8E5M2FNUZ:
-    case F8E4M3FNUZ:
-      return 1;
-
-    case S16:
-    case U16:
-    case F16:
-    case BF16:
-      return 2;
-
-    case U32:
-    case S32:
-    case F32:
-      return 4;
-
-    case U64:
-    case S64:
-    case F64:
-    case C64:
-      return 8;
-
-    case C128:
-      return 16;
-
-    case TOKEN:
-      // Tokens require no space.
-      return 0;
-
-    case TUPLE:
-      LOG(FATAL) << "TUPLE is an invalid type for ByteWidth";
-
-    case OPAQUE_TYPE:
-      LOG(FATAL) << "OPAQUE_TYPE is an invalid type for ByteWidth";
-
-    default:
-      LOG(FATAL) << "Unhandled primitive type " << type;
-  }
+inline constexpr int ByteWidth(PrimitiveType type) {
+  return internal::WidthForType<internal::kByteWidths>(type);
 }
 
 constexpr PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
+    case 1:
+      return xla::U1;
+    case 2:
+      return xla::U2;
     case 4:
       return xla::U4;
     case 8:
@@ -416,6 +757,10 @@ inline bool CastPreservesValues(PrimitiveType from_type,
   if (from_type == to_type) {
     return true;
   }
+  // * -> F8E8M0FNU is not possible because zero cannot be represented.
+  if (to_type == F8E8M0FNU) {
+    return false;
+  }
   // PRED -> *
   if (from_type == PRED) {
     return true;
@@ -438,21 +783,33 @@ inline bool CastPreservesValues(PrimitiveType from_type,
     return false;
   }
   // F -> F is safe if the exponent/significand are preserved and `to_type`
-  // preserves infinities in `from_type.
+  // preserves infinities/nans/unsigned zero in `from_type`.
   if (primitive_util::IsFloatingPointType(from_type) &&
       primitive_util::IsFloatingPointType(to_type)) {
-    return (!primitive_util::HasInfinity(from_type) ||
-            primitive_util::HasInfinity(to_type)) &&
-           primitive_util::SignificandWidth(from_type) <=
-               primitive_util::SignificandWidth(to_type) &&
-           primitive_util::ExponentWidth(from_type) <=
-               primitive_util::ExponentWidth(to_type) &&
-           (primitive_util::UnderflowExponent(from_type) -
-            primitive_util::SignificandWidth(from_type)) >=
-               (primitive_util::UnderflowExponent(to_type) -
-                primitive_util::SignificandWidth(to_type)) &&
-           primitive_util::OverflowExponent(from_type) <=
-               primitive_util::OverflowExponent(to_type);
+    return
+        // Target mantissa should be large enough.
+        primitive_util::SignificandWidth(from_type) <=
+            primitive_util::SignificandWidth(to_type) &&
+        // Target exponent should be large enough.
+        primitive_util::ExponentWidth(from_type) <=
+            primitive_util::ExponentWidth(to_type) &&
+        // HasInfinity check.
+        (!primitive_util::HasInfinity(from_type) ||
+         primitive_util::HasInfinity(to_type)) &&
+        // HasNaN check.
+        (!primitive_util::HasNaN(from_type) ||
+         primitive_util::HasNaN(to_type)) &&
+        // HasNegativeZero check.
+        (!primitive_util::HasNegativeZero(from_type) ||
+         primitive_util::HasNegativeZero(to_type)) &&
+        // Minimum denormal should be representable by target type.
+        (primitive_util::UnderflowExponent(from_type) -
+         primitive_util::SignificandWidth(from_type)) >=
+            (primitive_util::UnderflowExponent(to_type) -
+             primitive_util::SignificandWidth(to_type)) &&
+        // Maximum exponent may be larger with custom bias (e.g. F8E4M3B11FNUZ).
+        primitive_util::OverflowExponent(from_type) <=
+            primitive_util::OverflowExponent(to_type);
   }
   // F -> I is not safe because it drops fractional numbers.
   if (!primitive_util::IsIntegralType(from_type)) {
@@ -488,131 +845,12 @@ inline bool CastPreservesValues(PrimitiveType from_type,
   return from_bits <= to_bits;
 }
 
-// Returns the native type (eg, float) corresponding to the given template
-// parameter XLA primitive type (eg, F32).
-template <PrimitiveType>
-struct PrimitiveTypeToNative;
-
-// Declarations of specializations for each native type which correspond to a
-// XLA primitive type.
-template <>
-struct PrimitiveTypeToNative<PRED> {
-  using type = bool;
-};
-
-// Unsigned integer
-template <>
-struct PrimitiveTypeToNative<U4> {
-  using type = u4;
-};
-
-template <>
-struct PrimitiveTypeToNative<U8> {
-  using type = uint8_t;
-};
-
-template <>
-struct PrimitiveTypeToNative<U16> {
-  using type = uint16_t;
-};
-
-template <>
-struct PrimitiveTypeToNative<U32> {
-  using type = uint32_t;
-};
-
-template <>
-struct PrimitiveTypeToNative<U64> {
-  using type = uint64_t;
-};
-
-// Signed integer
-template <>
-struct PrimitiveTypeToNative<S4> {
-  using type = s4;
-};
-
-template <>
-struct PrimitiveTypeToNative<S8> {
-  using type = int8_t;
-};
-
-template <>
-struct PrimitiveTypeToNative<S16> {
-  using type = int16_t;
-};
-
-template <>
-struct PrimitiveTypeToNative<S32> {
-  using type = int32_t;
-};
-
-template <>
-struct PrimitiveTypeToNative<S64> {
-  using type = int64_t;
-};
-
-// Floating point
-template <>
-struct PrimitiveTypeToNative<F32> {
-  using type = float;
-};
-template <>
-struct PrimitiveTypeToNative<F64> {
-  using type = double;
-};
-template <>
-struct PrimitiveTypeToNative<F16> {
-  using type = half;
-};
-
-template <>
-struct PrimitiveTypeToNative<BF16> {
-  using type = bfloat16;
-};
-
-template <>
-struct PrimitiveTypeToNative<F8E5M2> {
-  using type = tsl::float8_e5m2;
-};
-
-template <>
-struct PrimitiveTypeToNative<F8E4M3FN> {
-  using type = tsl::float8_e4m3fn;
-};
-
-template <>
-struct PrimitiveTypeToNative<F8E4M3B11FNUZ> {
-  using type = tsl::float8_e4m3b11;
-};
-
-template <>
-struct PrimitiveTypeToNative<F8E5M2FNUZ> {
-  using type = tsl::float8_e5m2fnuz;
-};
-
-template <>
-struct PrimitiveTypeToNative<F8E4M3FNUZ> {
-  using type = tsl::float8_e4m3fnuz;
-};
-
-// Complex
-template <>
-struct PrimitiveTypeToNative<C64> {
-  using type = complex64;
-};
-
-template <>
-struct PrimitiveTypeToNative<C128> {
-  using type = complex128;
-};
-
 // Returns the lower-case name of the given primitive type.
 const std::string& LowercasePrimitiveTypeName(PrimitiveType s);
 
 // Returns the PrimitiveType matching the given name. The given name is expected
 // to be lower-case.
-StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name);
+absl::StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name);
 
 // Returns true if the given name is a primitive type string (lower-case).
 bool IsPrimitiveTypeName(absl::string_view name);
@@ -625,133 +863,52 @@ bool IsPrimitiveTypeName(absl::string_view name);
 //  IsCanonicalRepresentation<uint16_t>(S16)       // false, unsigned.
 template <typename T>
 bool IsCanonicalRepresentation(PrimitiveType type) {
-  switch (type) {
-    case F16:
-    case F32:
-    case BF16:
-    case F64:
-    case F8E5M2:
-    case F8E4M3FN:
-    case F8E4M3B11FNUZ:
-    case F8E5M2FNUZ:
-    case F8E4M3FNUZ:
-    case C64:
-    case C128:
-      return NativeToPrimitiveType<T>() == type;
-    case S4:
-    case S8:
-    case S16:
-    case S32:
-    case S64:
-      return std::numeric_limits<T>::is_integer &&
-             std::numeric_limits<T>::is_signed &&
-             BitWidth(type) <= (std::numeric_limits<T>::digits + 1);
-    case PRED:
-    case U4:
-    case U8:
-    case U16:
-    case U32:
-    case U64:
-      return std::numeric_limits<T>::is_integer &&
-             !std::numeric_limits<T>::is_signed &&
-             BitWidth(type) <= std::numeric_limits<T>::digits;
-    case TUPLE:
-    case OPAQUE_TYPE:
-    case TOKEN:
-    case PRIMITIVE_TYPE_INVALID:
-    case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
-    case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
-      return false;
-  }
+  return PrimitiveTypeSwitch<bool>(
+      [](auto primitive_type) -> bool {
+        if constexpr (primitive_util::IsFloatingPointType(primitive_type) ||
+                      primitive_util::IsComplexType(primitive_type)) {
+          return NativeToPrimitiveType<T>() == primitive_type;
+        }
+        if constexpr (primitive_util::IsSignedIntegralType(primitive_type)) {
+          return std::numeric_limits<T>::is_integer &&
+                 std::numeric_limits<T>::is_signed &&
+                 BitWidth(primitive_type) <=
+                     (std::numeric_limits<T>::digits + 1);
+        }
+        if constexpr (primitive_util::IsUnsignedIntegralType(primitive_type) ||
+                      primitive_type == PRED) {
+          return std::numeric_limits<T>::is_integer &&
+                 !std::numeric_limits<T>::is_signed &&
+                 BitWidth(primitive_type) <= std::numeric_limits<T>::digits;
+        }
+        return false;
+      },
+      type);
 }
-
-template <PrimitiveType kPrimitiveType>
-struct PrimitiveTypeConstantImpl {
-  static constexpr PrimitiveType kValue = kPrimitiveType;
-  // NOLINTNEXTLINE(google-explicit-constructor)
-  constexpr operator PrimitiveType() const { return kValue; }
-  constexpr PrimitiveType operator()() const { return kValue; }
-};
-
-template <PrimitiveType kPrimitiveType>
-using PrimitiveTypeConstant =
-    std::integral_constant<PrimitiveType, kPrimitiveType>;
-
-template <typename R, typename F>
-R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
-  switch (type) {
-    case PRED:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::PRED>());
-    case S4:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::S4>());
-    case S8:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::S8>());
-    case S16:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::S16>());
-    case S32:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::S32>());
-    case S64:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::S64>());
-    case U4:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::U4>());
-    case U8:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::U8>());
-    case U16:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::U16>());
-    case U32:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::U32>());
-    case U64:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::U64>());
-    case F8E4M3FN:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F8E4M3FN>());
-    case F8E4M3B11FNUZ:
-      return std::invoke(f,
-                         PrimitiveTypeConstant<PrimitiveType::F8E4M3B11FNUZ>());
-    case F8E4M3FNUZ:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F8E4M3FNUZ>());
-    case F8E5M2:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F8E5M2>());
-    case F8E5M2FNUZ:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F8E5M2FNUZ>());
-    case F16:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F16>());
-    case BF16:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::BF16>());
-    case F32:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F32>());
-    case F64:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F64>());
-    case C64:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::C64>());
-    case C128:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::C128>());
-    case TUPLE:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::TUPLE>());
-    case OPAQUE_TYPE:
-      return std::invoke(f,
-                         PrimitiveTypeConstant<PrimitiveType::OPAQUE_TYPE>());
-    case TOKEN:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::TOKEN>());
-    default:
-      LOG(FATAL) << "unhandled type " << type;
-  }
-}
-
-template <PrimitiveType kType>
-using NativeTypeOf =
-    typename primitive_util::PrimitiveTypeToNative<kType>::type;
 
 inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::IntegralTypeSwitch<bool>(
       [&](auto primitive_type) -> bool {
-        if constexpr (primitive_util::IsIntegralType(primitive_type)) {
-          using NativeT = primitive_util::NativeTypeOf<primitive_type>;
-          return std::numeric_limits<NativeT>::min() <= x &&
-                 std::numeric_limits<NativeT>::max() >= x;
-        }
-        LOG(FATAL) << "Invalid primitive type " << PrimitiveType_Name(ty);
+        using NativeT = primitive_util::NativeTypeOf<primitive_type>;
+        return std::numeric_limits<NativeT>::min() <= x &&
+               std::numeric_limits<NativeT>::max() >= x;
       },
       ty);
+}
+
+constexpr bool IsSubByteNonPredType(PrimitiveType type) {
+  return IsArrayType(type) && type != PRED &&
+         primitive_util::BitWidth(type) < 8;
+}
+
+inline void PackIntN(PrimitiveType input_type, absl::Span<const char> input,
+                     absl::Span<char> output) {
+  xla::PackIntN(primitive_util::BitWidth(input_type), input, output);
+}
+
+inline void UnpackIntN(PrimitiveType input_type, absl::Span<const char> input,
+                       absl::Span<char> output) {
+  xla::UnpackIntN(primitive_util::BitWidth(input_type), input, output);
 }
 
 }  // namespace primitive_util

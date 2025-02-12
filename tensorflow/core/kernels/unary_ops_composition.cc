@@ -56,8 +56,8 @@ struct UnaryOpsCompositionBase {
  private:
   friend class UnaryOpsComposition<T>;
 
-  Status ExportComputeFns(const std::vector<string>& op_names,
-                          std::vector<ComputeFn>* fns, int* cost) {
+  absl::Status ExportComputeFns(const std::vector<string>& op_names,
+                                std::vector<ComputeFn>* fns, int* cost) {
     for (const string& op_name : op_names) {
       auto it = compute_fns.find(op_name);
       if (it == compute_fns.end())
@@ -69,7 +69,7 @@ struct UnaryOpsCompositionBase {
       *cost += reg.cost;
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::unordered_map<string, ComputeFnRegistration> compute_fns;

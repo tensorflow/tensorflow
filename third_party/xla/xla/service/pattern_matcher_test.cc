@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,14 +15,25 @@ limitations under the License.
 
 #include "xla/service/pattern_matcher.h"
 
+#include <memory>
+#include <sstream>
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -1451,6 +1462,36 @@ TEST_F(PatternMatcherTest, TestWithSharding) {
       "{devices=[2,2,1,1]0,1,2,3}\n"
       "in p0 = f32[5,7,11,13]{3,2,1,0} parameter(0), "
       "sharding={devices=[1,2,2,1]0,1,2,3}");
+}
+
+TEST_F(PatternMatcherTest, TestWithControlDeps) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      add = f32[4] add(p0, p1)
+      mul = f32[4] multiply(p0, p1), control-predecessors={add}
+      div = f32[4] divide(p0, p1), control-predecessors={mul}
+      ROOT t = (f32[4], f32[4], f32[4]) tuple(add, mul, div)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* add = FindInstruction(hlo_module.get(), "add");
+  auto* mul = FindInstruction(hlo_module.get(), "mul");
+  auto* div = FindInstruction(hlo_module.get(), "div");
+
+  EXPECT_TRUE(Match(add, m::Op().WithControlDeps({}, {mul})));
+  EXPECT_TRUE(Match(mul, m::Op().WithControlDeps({add}, {div})));
+  EXPECT_TRUE(Match(div, m::Op().WithControlDeps({mul}, {})));
+  EXPECT_FALSE(Match(div, m::Op().WithControlDeps({mul}, {div})));
+  EXPECT_DESC_AND_EXPLANATION(
+      div, m::Op().WithControlDeps({mul}, {div}),
+      "an HloInstruction with control predecessors {mul} and control "
+      "successors {div}",
+      "HloInstruction expected to have control successors {div} but has {}\n"
+      "in div = f32[4]{0} divide(f32[4]{0} p0, f32[4]{0} p1), "
+      "control-predecessors={mul}");
 }
 
 }  // namespace

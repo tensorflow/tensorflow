@@ -65,7 +65,7 @@ class ConditionalAccumulator
 
   functor::SetZeroFunctor<Device, T> set_zero_functor_;
 
-  Status ValidateShape(const Tensor* tensor)
+  absl::Status ValidateShape(const Tensor* tensor)
       TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     // Must be compatible with accumulated gradient if available
     if (counter_ > 0) {
@@ -81,7 +81,7 @@ class ConditionalAccumulator
                                      shape_.DebugString(), ", got ",
                                      tensor->shape().DebugString());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void AllocateAndAssignToAccumGradFunction(OpKernelContext* ctx,
@@ -127,7 +127,8 @@ class ConditionalAccumulator
     // do nothing
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ConditionalAccumulator);
+  ConditionalAccumulator(const ConditionalAccumulator&) = delete;
+  void operator=(const ConditionalAccumulator&) = delete;
 };
 
 }  // namespace tensorflow

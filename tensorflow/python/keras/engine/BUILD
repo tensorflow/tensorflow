@@ -92,7 +92,8 @@ py_library(
         "//tensorflow/python/training:py_checkpoint_reader",
         "//tensorflow/python/types:data",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:numpy_compat",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
         "@pypi_h5py//:pkg",
@@ -201,6 +202,7 @@ py_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types:data",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -214,7 +216,6 @@ py_library(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
@@ -229,7 +230,6 @@ py_library(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/keras/utils:object_identity",
-        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/util:nest",
     ],
 )

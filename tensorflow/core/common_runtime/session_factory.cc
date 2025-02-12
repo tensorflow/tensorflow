@@ -65,8 +65,8 @@ string SessionOptionsToString(const SessionOptions& options) {
 }
 }  // namespace
 
-Status SessionFactory::GetFactory(const SessionOptions& options,
-                                  SessionFactory** out_factory) {
+absl::Status SessionFactory::GetFactory(const SessionOptions& options,
+                                        SessionFactory** out_factory) {
   mutex_lock l(*get_session_factory_lock());  // could use reader lock
 
   std::vector<std::pair<string, SessionFactory*>> candidate_factories;
@@ -83,7 +83,7 @@ Status SessionFactory::GetFactory(const SessionOptions& options,
 
   if (candidate_factories.size() == 1) {
     *out_factory = candidate_factories[0].second;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (candidate_factories.size() > 1) {
     // NOTE(mrry): This implementation assumes that the domains (in
     // terms of acceptable SessionOptions) of the registered

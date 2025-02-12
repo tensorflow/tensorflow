@@ -53,6 +53,7 @@ cc_library_with_tflite(
 cc_test(
     name = "sample_stable_delegate_test",
     srcs = ["sample_stable_delegate_test.cc"],
+    copts = tflite_copts(),
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/sub.bin",

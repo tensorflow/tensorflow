@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteNode Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteNode</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p>A structure representing an instance of a node. </p>
+  <h2>Summary</h2>
+  <p>This structure only exhibits the inputs, outputs, user defined data and some node properties (like statefulness), not other features like the type. </p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_node_1aff1f8ea7dab2340d3fa9ec1a7b529918">builtin_data</a></code>
+      </td>
+      <td>
+        <div>
+          <code>void *</code>
+        </div>
+        <div>Opaque data provided to the node if the node is a builtin. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_node_1aa1d200ff3b21ec2c855e9471e639e5a2">custom_initial_data</a></code>
+      </td>
+      <td>
+        <div>
+          <code>const void *</code>
+        </div>
+        <div>Custom initial data. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_node_1a81687d360956a3388e0c8d446495f3a4">custom_initial_data_size</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_node_1a4a1e6b47396e69375b1d4da5db85cbd5">delegate</a></code>
+      </td>
+      <td>
+        <div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a> *</code>
+        </div>
+        <div>The pointer to the delegate. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_node_1a6478a2fde56a7df96d7a68c140e4e4b7">inputs</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+        <div>Inputs to this node expressed as indices into the simulator's tensors. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_node_1a0a5ac4c977729c1fca4412f30698c5e5">intermediates</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+        <div>intermediate tensors to this node expressed as indices into the simulator's tensors. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_node_1a74c8653d6b0287c2591ba0d4e45bbee2">might_have_side_effect</a></code>
+      </td>
+      <td>
+        <div>
+          <code>bool</code>
+        </div>
+        <div>Whether this op might have side effect (e.g. stateful op). </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_node_1af4834a2c09a90b144859dd637105018e">outputs</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+        <div>Outputs to this node expressed as indices into the simulator's tensors. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_node_1aea5a5ff7466b35f8e31c269b844702eb">temporaries</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+        <div>Temporary tensors uses during the computations. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_node_1aef728ff402f774f7a3418f343ec5bcdb">user_data</a></code>
+      </td>
+      <td>
+        <div>
+          <code>void *</code>
+        </div>
+        <div>Opaque data provided by the node implementer through <code>Registration.init</code>. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_node_1aff1f8ea7dab2340d3fa9ec1a7b529918">
+    <h3>builtin_data</h3>
+    <pre class="prettyprint">void * TfLiteNode::builtin_data</pre>
+    <div>
+      <p>Opaque data provided to the node if the node is a builtin. </p>
+      <p>This is usually a structure defined in builtin_op_data.h </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_node_1aa1d200ff3b21ec2c855e9471e639e5a2">
+    <h3>custom_initial_data</h3>
+    <pre class="prettyprint">const void * TfLiteNode::custom_initial_data</pre>
+    <div>
+      <p>Custom initial data. </p>
+      <p>This is the opaque data provided in the flatbuffer.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_node_1a81687d360956a3388e0c8d446495f3a4">
+    <h3>custom_initial_data_size</h3>
+    <pre class="prettyprint">int TfLiteNode::custom_initial_data_size</pre>
+    <div />
+  </div>
+  <div id="struct_tf_lite_node_1a4a1e6b47396e69375b1d4da5db85cbd5">
+    <h3>delegate</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a> * TfLiteNode::delegate</pre>
+    <div>
+      <p>The pointer to the delegate. </p>
+      <p>This is non-null only when the node is created by calling <code>interpreter.ModifyGraphWithDelegate</code>.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_node_1a6478a2fde56a7df96d7a68c140e4e4b7">
+    <h3>inputs</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteNode::inputs</pre>
+    <div>
+      <p>Inputs to this node expressed as indices into the simulator's tensors. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_node_1a0a5ac4c977729c1fca4412f30698c5e5">
+    <h3>intermediates</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteNode::intermediates</pre>
+    <div>
+      <p>intermediate tensors to this node expressed as indices into the simulator's tensors. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_node_1a74c8653d6b0287c2591ba0d4e45bbee2">
+    <h3>might_have_side_effect</h3>
+    <pre class="prettyprint">bool TfLiteNode::might_have_side_effect</pre>
+    <div>
+      <p>Whether this op might have side effect (e.g. stateful op). </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_node_1af4834a2c09a90b144859dd637105018e">
+    <h3>outputs</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteNode::outputs</pre>
+    <div>
+      <p>Outputs to this node expressed as indices into the simulator's tensors. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_node_1aea5a5ff7466b35f8e31c269b844702eb">
+    <h3>temporaries</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteNode::temporaries</pre>
+    <div>
+      <p>Temporary tensors uses during the computations. </p>
+      <p>This usually contains no tensors, but ops are allowed to change that if they need scratch space of any sort. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_node_1aef728ff402f774f7a3418f343ec5bcdb">
+    <h3>user_data</h3>
+    <pre class="prettyprint">void * TfLiteNode::user_data</pre>
+    <div>
+      <p>Opaque data provided by the node implementer through <code>Registration.init</code>. </p>
+    </div>
+  </div>
+</body>
+</html>

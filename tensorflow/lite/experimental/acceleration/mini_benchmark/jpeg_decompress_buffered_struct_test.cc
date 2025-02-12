@@ -14,9 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/jpeg_decompress_buffered_struct.h"
 
-#include <cstddef>
-
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 namespace tflite {

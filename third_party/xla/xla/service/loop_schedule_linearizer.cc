@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,29 @@ limitations under the License.
 
 #include "xla/service/loop_schedule_linearizer.h"
 
+#include <cstdint>
 #include <memory>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/graphcycles/graphcycles.h"
+#include "xla/service/hlo_value.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -65,12 +84,12 @@ class ComputationInstructionOrdering {
 
  private:
   absl::flat_hash_map<int32_t, int32_t> node_id_to_graph_id_;
-  tensorflow::GraphCycles graph_cycles_;
+  GraphCycles graph_cycles_;
 };
 
 }  // namespace
 
-static StatusOr<bool> AddControlEdgesForLoopWrites(
+static absl::StatusOr<bool> AddControlEdgesForLoopWrites(
     HloInstruction* xla_while, HloAliasAnalysis& alias_analysis) {
   HloDataflowAnalysis& dataflow = alias_analysis.dataflow_analysis();
   HloComputation* body = xla_while->while_body();
@@ -145,7 +164,7 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
   return changed;
 }
 
-StatusOr<bool> LoopScheduleLinearizer::Run(
+absl::StatusOr<bool> LoopScheduleLinearizer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Constructing HloAliasAnalysis is expensive, so don't do it until we find at
@@ -166,11 +185,10 @@ StatusOr<bool> LoopScheduleLinearizer::Run(
       const HloComputation* body = instruction->while_body();
       bool has_async_collectives =
           absl::c_any_of(body->instructions(), [](const HloInstruction* instr) {
-            HloOpcode op = instr->opcode();
             return hlo_query::IsAsyncCollectiveStartOp(
-                       op, /*include_send_recv=*/true) ||
+                       instr, /*include_send_recv=*/true) ||
                    hlo_query::IsAsyncCollectiveDoneOp(
-                       op, /*include_send_recv=*/true);
+                       instr, /*include_send_recv=*/true);
           });
 
       if (has_async_collectives) {

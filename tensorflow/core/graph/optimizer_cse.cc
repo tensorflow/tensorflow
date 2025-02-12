@@ -68,9 +68,9 @@ class OptimizerCSE {
   Graph* g_;
 };
 
-static void FillInputs(const Node* n,
-                       gtl::InlinedVector<const Node*, 4>* control_edges,
-                       gtl::InlinedVector<std::pair<const Node*, int>, 4>* in) {
+static void FillInputs(
+    const Node* n, absl::InlinedVector<const Node*, 4UL>* control_edges,
+    absl::InlinedVector<std::pair<const Node*, int>, 4UL>* in) {
   DCHECK_EQ(in->size(), n->num_inputs());
   control_edges->clear();
   for (const Edge* e : n->in_edges()) {
@@ -205,8 +205,8 @@ size_t OptimizerCSE::NodeHash(const Node* n) {
   }
 
   hasher.MixInteger(n->num_inputs());
-  gtl::InlinedVector<const Node*, 4> control_edges;
-  gtl::InlinedVector<std::pair<const Node*, int>, 4> in(n->num_inputs());
+  absl::InlinedVector<const Node*, 4UL> control_edges;
+  absl::InlinedVector<std::pair<const Node*, int>, 4UL> in(n->num_inputs());
   FillInputs(n, &control_edges, &in);
   for (const auto& edge : in) {
     hasher.MixInteger(edge.first->id());
@@ -255,10 +255,10 @@ bool OptimizerCSE::Equivalent(const Node* a, const Node* b,
   // Compare input sources
   if (a->num_inputs() != b->num_inputs()) return false;
   const int N_in = a->num_inputs();
-  gtl::InlinedVector<const Node*, 4> a_control_edges;
-  gtl::InlinedVector<const Node*, 4> b_control_edges;
-  gtl::InlinedVector<std::pair<const Node*, int>, 4> a_in(N_in);
-  gtl::InlinedVector<std::pair<const Node*, int>, 4> b_in(N_in);
+  absl::InlinedVector<const Node*, 4UL> a_control_edges;
+  absl::InlinedVector<const Node*, 4UL> b_control_edges;
+  absl::InlinedVector<std::pair<const Node*, int>, 4UL> a_in(N_in);
+  absl::InlinedVector<std::pair<const Node*, int>, 4UL> b_in(N_in);
   FillInputs(a, &a_control_edges, &a_in);
   FillInputs(b, &b_control_edges, &b_in);
   if (a_in != b_in) return false;

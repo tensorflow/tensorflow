@@ -16,10 +16,10 @@
 """GradientDescent for TensorFlow."""
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import optimizer
-from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -50,14 +50,14 @@ class GradientDescentOptimizer(optimizer.Optimizer):
     self._learning_rate_tensor = None
 
   def _apply_dense(self, grad, var):
-    return training_ops.apply_gradient_descent(
+    return gen_training_ops.apply_gradient_descent(
         var,
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
         grad,
         use_locking=self._use_locking).op
 
   def _resource_apply_dense(self, grad, handle):
-    return training_ops.resource_apply_gradient_descent(
+    return gen_training_ops.resource_apply_gradient_descent(
         handle.handle, math_ops.cast(self._learning_rate_tensor,
                                      grad.dtype.base_dtype),
         grad, use_locking=self._use_locking)

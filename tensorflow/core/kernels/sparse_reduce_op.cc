@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -47,14 +48,15 @@ struct ReduceDetails {
 
 // Compute common reduce parameters that'll be used for SparseTensor
 // reductions. Usage:
-// ReduceDetails reduction = SparseTensorReduceHelper(sp, axes, keep_dims);
-// sp.Reorder(reduction.reorder_dims);
-// for (const auto& g : sp.group(reduction.group_by_dims)) {
+// StatusOr<ReduceDetails> reduction =
+//     SparseTensorReduceHelper(sp, axes, keep_dims);
+// sp.Reorder(reduction->reorder_dims);
+// for (const auto& g : sp.group(reduction->group_by_dims)) {
 //   ...
 // }
-// // Set output shape to reduction.reduced_shape.
-ReduceDetails SparseTensorReduceHelper(const SparseTensor &sp,
-                                       gtl::ArraySlice<int32> axes_slice,
+// // Set output shape to reduction->reduced_shape.
+absl::StatusOr<ReduceDetails> SparseTensorReduceHelper(const SparseTensor &sp,
+                                       absl::Span<const int32> axes_slice,
                                        bool keep_dims) {
   ReduceDetails reduction;
 
@@ -101,11 +103,15 @@ ReduceDetails SparseTensorReduceHelper(const SparseTensor &sp,
     out_dim_sizes = sp.PickDims(reduction.group_by_dims);
   }
 
-  reduction.reduced_shape = TensorShape(out_dim_sizes);
+  absl::Status success =
+      TensorShape::BuildTensorShape(out_dim_sizes, &reduction.reduced_shape);
+  if (!success.ok()) {
+    return success;
+  }
   return reduction;
 }
 
-Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
+absl::Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
   // indices and values are validated in SparseTensor ctor.
   if (!TensorShapeUtils::IsVector(shape_t->shape())) {
     return errors::InvalidArgument(
@@ -129,7 +135,7 @@ Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct SumOp {
@@ -137,7 +143,7 @@ struct SumOp {
   static void Run(OpKernelContext *ctx, typename TTypes<T>::Scalar &s, const typename TTypes<T>::UnalignedVec &v) {
       s.device(ctx->eigen_cpu_device()) = v.sum();
   }
-  static StringPiece Name() {
+  static absl::string_view Name() {
       return "sum";
   }
 };
@@ -147,7 +153,7 @@ struct MaxOp {
   static void Run(OpKernelContext *ctx, typename TTypes<T>::Scalar &s, const typename TTypes<T>::UnalignedVec &v) {
       s.device(ctx->eigen_cpu_device()) = v.maximum();
   }
-  static StringPiece Name() {
+  static absl::string_view Name() {
       return "max";
   }
 };
@@ -181,8 +187,10 @@ class SparseReduceOp : public OpKernel {
     OP_REQUIRES_OK(ctx, SparseTensor::Create(
         tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
                     shape, &sp));
-    ReduceDetails reduction = SparseTensorReduceHelper(
+    absl::StatusOr<ReduceDetails> reduction_or = SparseTensorReduceHelper(
         sp, reduction_axes_t->flat<int32>(), keep_dims_);
+    OP_REQUIRES_OK(ctx, reduction_or.status());
+    ReduceDetails reduction = *reduction_or;
 
     Tensor *out_values;
     OP_REQUIRES_OK(
@@ -197,7 +205,7 @@ class SparseReduceOp : public OpKernel {
 
     // Compute strides, and use it to convert coords to flat index.  The
     // coordinates returned by .group() have the same ndims as group_by_dims.
-    gtl::InlinedVector<int64_t, 8> output_strides(reduction.group_by_dims.size());
+    absl::InlinedVector<int64_t, 8UL> output_strides(reduction.group_by_dims.size());
     if (!output_strides.empty()) {  // Do this iff we don't reduce all.
       output_strides.back() = 1;
       for (int d = output_strides.size() - 2; d >= 0; --d) {
@@ -206,8 +214,8 @@ class SparseReduceOp : public OpKernel {
       }
     }
 
-    auto CoordinatesToFlatIndex = [](ArraySlice<int64_t> coords,
-                                     ArraySlice<int64_t> strides) -> int64 {
+    auto CoordinatesToFlatIndex = [](absl::Span<const int64_t> coords,
+                                     absl::Span<const int64_t> strides) -> int64 {
       if (strides.empty()) {  // Reduce all.
         return 0;
       }
@@ -287,8 +295,10 @@ class SparseReduceSparseOp : public OpKernel {
     OP_REQUIRES_OK(ctx, SparseTensor::Create(tensor::DeepCopy(*indices_t),
                                          tensor::DeepCopy(*values_t),
                     shape, &sp));
-    ReduceDetails reduction = SparseTensorReduceHelper(
+    absl::StatusOr<ReduceDetails> reduction_or = SparseTensorReduceHelper(
         sp, reduction_axes_t->flat<int32>(), keep_dims_);
+    OP_REQUIRES_OK(ctx, reduction_or.status());
+    ReduceDetails reduction = *reduction_or;
 
     sp.Reorder<T>(reduction.reorder_dims);
     // Count nnzs in the output SparseTensor.

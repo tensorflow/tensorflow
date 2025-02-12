@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,24 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_OPTIMIZATION_BARRIER_EXPANDER_H_
 #define XLA_SERVICE_OPTIMIZATION_BARRIER_EXPANDER_H_
 
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-// This pass removes the opt-barrier operation which is functionally a no-op.
-class OptimizationBarrierExpander : public HloModulePass {
- public:
-  OptimizationBarrierExpander() = default;
-
-  absl::string_view name() const override { return "cse_barrier_expander"; }
-
- protected:
-  using HloPassInterface::Run;
-  StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
 
 #endif  // XLA_SERVICE_OPTIMIZATION_BARRIER_EXPANDER_H_

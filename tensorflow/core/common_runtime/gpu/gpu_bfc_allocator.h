@@ -20,9 +20,9 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "tsl/framework/allocator.h"
-#include "tsl/framework/bfc_allocator.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/bfc_allocator.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace tensorflow {
 
@@ -54,7 +54,8 @@ class GPUBFCAllocator : public tsl::BFCAllocator {
 
   ~GPUBFCAllocator() override {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
+  GPUBFCAllocator(const GPUBFCAllocator&) = delete;
+  void operator=(const GPUBFCAllocator&) = delete;
 };
 
 }  // namespace tensorflow

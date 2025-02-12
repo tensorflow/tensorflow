@@ -40,7 +40,8 @@ class CopyTensor {
   // the type of devices and memory in use, the copy may be performed
   // synchronously or asynchronously.  'done' will be invoked only
   // after the copy is actually complete.
-  static void ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
+  static void ViaDMA(absl::string_view edge_name,
+                     DeviceContext* send_dev_context,
                      DeviceContext* recv_dev_context, Device* src, Device* dst,
                      const AllocatorAttributes src_alloc_attr,
                      const AllocatorAttributes dst_alloc_attr,
@@ -63,13 +64,14 @@ class CopyTensor {
   // Register a function for copying between two specific DeviceTypes.
   // Note: This should only be called via the constructor of
   // CopyTensor::Registration or from PluggableDevice implementation.
-  static Status Register(DeviceType sender_device_type,
-                         DeviceType receiver_device_type,
-                         CopyFunction copy_function, bool is_pluggable_device);
+  static absl::Status Register(DeviceType sender_device_type,
+                               DeviceType receiver_device_type,
+                               CopyFunction copy_function,
+                               bool is_pluggable_device);
 };
 
 void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
-                      Allocator* out_allocator, StringPiece edge_name,
+                      Allocator* out_allocator, absl::string_view edge_name,
                       Device* src, Tensor* output,
                       DeviceContext* send_dev_context, StatusCallback done);
 

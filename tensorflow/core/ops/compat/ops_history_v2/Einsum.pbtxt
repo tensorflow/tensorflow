@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Einsum"
   input_arg {
     name: "inputs"

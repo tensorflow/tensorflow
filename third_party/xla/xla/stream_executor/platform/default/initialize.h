@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,50 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// IWYU pragma: private, include "xla/stream_executor/platform/initialize.h"
+
 #ifndef XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_INITIALIZE_H_
 #define XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_INITIALIZE_H_
-
-#undef REGISTER_MODULE_INITIALIZER
-#undef DECLARE_MODULE_INITIALIZER
-#undef REGISTER_MODULE_INITIALIZER_SEQUENCE
 
 namespace stream_executor {
 namespace port {
 
 class Initializer {
  public:
-  typedef void (*InitializerFunc)();
-  explicit Initializer(InitializerFunc func) { func(); }
-
-  struct Dependency {
-    Dependency(const char *n, Initializer *i) : name(n), initializer(i) {}
-    const char *const name;
-    Initializer *const initializer;
-  };
-
-  struct DependencyRegisterer {
-    DependencyRegisterer(const char *type, const char *name,
-                         Initializer *initializer,
-                         const Dependency &dependency);
-  };
+  explicit Initializer(void (*func)()) { func(); }
 };
 
 }  // namespace port
 }  // namespace stream_executor
 
-#define REGISTER_INITIALIZER(type, name, body)                             \
-  static void google_init_##type##_##name() { body; }                      \
-  ::stream_executor::port::Initializer google_initializer_##type##_##name( \
-      google_init_##type##_##name)
-
-#define REGISTER_MODULE_INITIALIZER(name, body) \
-  REGISTER_INITIALIZER(module, name, body)
-
-#define DECLARE_INITIALIZER(type, name) \
-  extern ::stream_executor::port::Initializer google_initializer_##type##_##name
-
-#define DECLARE_MODULE_INITIALIZER(name) DECLARE_INITIALIZER(module, name)
-
-#define REGISTER_MODULE_INITIALIZER_SEQUENCE(name1, name2)
+#define STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(name, body)            \
+  ::stream_executor::port::Initializer google_initializer_module##_##name( \
+      []() { body; })
 
 #endif  // XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_INITIALIZE_H_

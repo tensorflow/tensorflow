@@ -23,7 +23,7 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 // --------------------------------------------------------------------------
-static Status ApplySdcaOptimizerShapeFn(InferenceContext* c) {
+static absl::Status ApplySdcaOptimizerShapeFn(InferenceContext* c) {
   std::vector<ShapeHandle> sparse_handles;
   if (c->input("sparse_weights", &sparse_handles).ok()) {
     TF_RETURN_IF_ERROR(
@@ -109,7 +109,7 @@ REGISTER_OP("SdcaFprint")
       ShapeHandle output_shape;
       TF_RETURN_IF_ERROR(c->Concatenate(handle, c->Vector(2), &output_shape));
       c->set_output(0, output_shape);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

@@ -15,22 +15,22 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status_helper.h"
 
-#include "tsl/platform/errors.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace {
 
 TEST(StatusHelper, TestStatusHelper) {
   TSL_Status* s = TSL_NewStatus();
-  Status cc_status(absl::InvalidArgumentError("some error"));
+  absl::Status cc_status(absl::InvalidArgumentError("some error"));
   cc_status.SetPayload("key1", absl::Cord("value1"));
   cc_status.SetPayload("key2", absl::Cord("value2"));
   Set_TF_Status_from_Status(s, cc_status);
   ASSERT_EQ(TSL_INVALID_ARGUMENT, TSL_GetCode(s));
   ASSERT_EQ(std::string("some error"), TSL_Message(s));
 
-  Status another_cc_status(StatusFromTF_Status(s));
+  absl::Status another_cc_status(StatusFromTF_Status(s));
   ASSERT_FALSE(another_cc_status.ok());
   ASSERT_EQ(std::string("some error"), another_cc_status.message());
   ASSERT_EQ(error::INVALID_ARGUMENT, another_cc_status.code());

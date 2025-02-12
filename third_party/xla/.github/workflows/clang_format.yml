@@ -1,0 +1,41 @@
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+
+name: Clang Format
+permissions:
+  contents: read
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 6
+    if: |
+      github.event.sender.type == 'User' ||
+      contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
+    steps:
+      - name: "Checking out repository"
+        uses: actions/checkout@e2f20e631ae6d7dd3b768f56a5d2af784dd54791 # v2.5.0
+      - name: "Fetch HEAD of main branch"
+        run: git fetch origin main --depth=1
+      - name: "Run clang-format" # Use pipx to get version that apt doesn't have by default
+        run: pipx run clang-format==17.0.6 --dry-run --Werror --verbose $(git diff --name-only origin/main HEAD -- '*.cc' '*.h')

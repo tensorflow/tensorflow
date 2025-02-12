@@ -17,11 +17,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/slicing.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/slicing.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -79,7 +83,8 @@ class DataFormatDimMapOp : public XlaOpKernel {
  private:
   std::vector<int32> dst_idx_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DataFormatDimMapOp);
+  DataFormatDimMapOp(const DataFormatDimMapOp&) = delete;
+  void operator=(const DataFormatDimMapOp&) = delete;
 };
 
 REGISTER_XLA_OP(
@@ -178,7 +183,8 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
   string src_format_;
   string dst_format_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DataFormatVecPermuteOp);
+  DataFormatVecPermuteOp(const DataFormatVecPermuteOp&) = delete;
+  void operator=(const DataFormatVecPermuteOp&) = delete;
 };
 
 REGISTER_XLA_OP(

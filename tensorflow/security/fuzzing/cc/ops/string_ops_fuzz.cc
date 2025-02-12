@@ -13,9 +13,11 @@
 // limitations under the License.
 #include <string>
 
-#include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/security/fuzzing/cc/fuzz_session.h"
 
 namespace tensorflow {
@@ -42,7 +44,7 @@ class FuzzStringOpsStringSplit : public FuzzSession<std::string, std::string> {
     Tensor separator_tensor(tensorflow::DT_STRING, TensorShape({}));
     separator_tensor.scalar<tensorflow::tstring>()() = separator_string;
 
-    Status s = RunInputsWithStatus(
+    absl::Status s = RunInputsWithStatus(
         {{"input", input_tensor}, {"delimiter", separator_tensor}});
     if (!s.ok()) {
       LOG(ERROR) << "Execution failed: " << s.message();
@@ -78,7 +80,7 @@ class FuzzStringOpsStringSplitV2
     Tensor separator_tensor(tensorflow::DT_STRING, TensorShape({}));
     separator_tensor.scalar<tensorflow::tstring>()() = separator_string;
 
-    Status s = RunInputsWithStatus(
+    absl::Status s = RunInputsWithStatus(
         {{"input", input_tensor}, {"separator", separator_tensor}});
     if (!s.ok()) {
       LOG(ERROR) << "Execution failed: " << s.message();
@@ -103,7 +105,7 @@ class FuzzStringOpsStringUpper : public FuzzSession<std::string> {
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
     input_tensor.scalar<tensorflow::tstring>()() = input_string;
 
-    Status s = RunInputsWithStatus({{"input", input_tensor}});
+    absl::Status s = RunInputsWithStatus({{"input", input_tensor}});
     if (!s.ok()) {
       LOG(ERROR) << "Execution failed: " << s.message();
     }

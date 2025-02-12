@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,12 +17,14 @@ limitations under the License.
 #define XLA_SERVICE_LLVM_IR_FUSED_IR_EMITTER_H_
 
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/elemental_ir_emitter.h"
-#include "xla/statusor.h"
+#include "xla/service/llvm_ir/loop_emitter.h"
 
 namespace xla {
 
@@ -56,13 +58,16 @@ class FusedIrEmitter {
   }
 
   // Returns the generator function for the given instruction.
-  StatusOr<IndexedGenerator> GetGenerator(const HloInstruction& instruction);
+  absl::StatusOr<IndexedGenerator> GetGenerator(
+      const HloInstruction& instruction);
 
  private:
-  StatusOr<IndexedGenerator> CreateGenerator(const HloInstruction& instruction);
-  StatusOr<IndexedGenerator> DefaultAction(const HloInstruction& instruction);
+  absl::StatusOr<IndexedGenerator> CreateGenerator(
+      const HloInstruction& instruction);
+  absl::StatusOr<IndexedGenerator> DefaultAction(
+      const HloInstruction& instruction);
   IndexedGenerator HandleConstant(const HloInstruction& constant);
-  StatusOr<IndexedGenerator> HandleTuple(const HloInstruction& tuple);
+  absl::StatusOr<IndexedGenerator> HandleTuple(const HloInstruction& tuple);
 
   ElementalIrEmitter& elemental_emitter_;
 

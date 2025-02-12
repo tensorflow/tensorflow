@@ -167,7 +167,7 @@ class PermuterTest : public ::testing::Test {
     Tensor output_tensor_;
     Device* device_;
     core::RefCountPtr<CollectiveParams> col_params_;
-    Status status_;
+    absl::Status status_;
   };  // class DeviceInstance
 
   std::unique_ptr<CollectiveTestEnv> test_env_;

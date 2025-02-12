@@ -51,7 +51,8 @@ class RpcRendezvousMgr : public BaseRendezvousMgr {
       int64_t step_id, const WorkerEnv* worker_env) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RpcRendezvousMgr);
+  RpcRendezvousMgr(const RpcRendezvousMgr&) = delete;
+  void operator=(const RpcRendezvousMgr&) = delete;
 };
 
 }  // end namespace tensorflow

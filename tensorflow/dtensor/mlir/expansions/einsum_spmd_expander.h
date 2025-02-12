@@ -17,9 +17,17 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_EINSUM_SPMD_EXPANDER_H_
 
 #include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 
 namespace tensorflow {
@@ -46,11 +54,11 @@ class EinsumSPMDExpander : public SPMDExpanderBase {
   // * The resulting output layout of the einsum operation, so we can insert an
   //   AllConcat/split to make the output have the desired layout.
   // * The new inputs to fed into the einsum.
-  Status MaybeRelayoutInputs(const std::vector<Layout>& input_layouts,
-                             mlir::Operation* op, const Layout& output_layout,
-                             absl::flat_hash_set<std::string>& reduce_dims,
-                             Layout& einsum_layout,
-                             std::vector<mlir::Value>& new_inputs);
+  absl::Status MaybeRelayoutInputs(
+      const std::vector<Layout>& input_layouts, mlir::Operation* op,
+      const Layout& output_layout,
+      absl::flat_hash_set<std::string>& reduce_dims, Layout& einsum_layout,
+      std::vector<mlir::Value>& new_inputs);
 };
 
 }  // namespace dtensor

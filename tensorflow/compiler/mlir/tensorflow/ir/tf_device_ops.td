@@ -19,8 +19,10 @@ limitations under the License.
 #define TF_DEVICE_DIALECT
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TensorFlow Device Dialect definitions
@@ -39,7 +41,6 @@ def TfDevice_Dialect : Dialect {
 }];
 
   let cppNamespace = "::mlir::tf_device";
-  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -263,7 +264,6 @@ For example:
     Variadic<AnyType>:$replicated_inputs,
     Variadic<AnyType>:$packed_inputs,
 
-    DenseI32ArrayAttr:$operandSegmentSizes,
     ConfinedAttr<I32Attr, [IntMinValue<2>]>:$n,
     OptionalAttr<DictionaryAttr>:$devices
   );
@@ -337,7 +337,8 @@ used to form the cluster.
   let hasCanonicalizer = 1;
 }
 
-def TfDevice_ClusterFuncOp : TfDevice_Op<"cluster_func", []> {
+def TfDevice_ClusterFuncOp : TfDevice_Op<"cluster_func",
+    [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = [{
 The `tf_device.cluster_func` launches a function containing the body of a
 cluster.
@@ -349,7 +350,7 @@ This op is used for outlining a cluster.
 
   let arguments = (ins
     FlatSymbolRefAttr:$func,
-    Variadic<AnyType>
+    Variadic<AnyType>:$args
   );
 
   let results = (outs
@@ -357,10 +358,25 @@ This op is used for outlining a cluster.
   );
 
   let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
     // returns the function that this operation will launch.
     func::FuncOp getFuncOp() {
       return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getFuncAttr());
     }
+    CallInterfaceCallable getCallableForCallee() {
+      return getFuncAttr();
+    }
+    void setCalleeFromCallable(::mlir::CallInterfaceCallable callee);
+    Attribute removeArgAttrsAttr() { return nullptr; }
+    Attribute removeResAttrsAttr() { return nullptr; }
+    ArrayAttr getArgAttrsAttr() { return nullptr; }
+    ArrayAttr getResAttrsAttr() { return nullptr; }
+    void setArgAttrsAttr(ArrayAttr) { return; }
+    void setResAttrsAttr(ArrayAttr) { return; }
   }];
 }
 

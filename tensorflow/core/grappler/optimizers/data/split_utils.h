@@ -64,7 +64,7 @@ struct SplitResults {
 // Splitting functions in certain cases is unimplemented, in which case an
 // Unimplemented status will be returned. Grappler passes must gracefully handle
 // Unimplemented statuses without returning the error to its caller.
-StatusOr<SplitResults> SplitFunction(
+absl::StatusOr<SplitResults> SplitFunction(
     const FunctionDef& function,
     const absl::flat_hash_set<absl::string_view>& nodes_in_first_function,
     int64_t num_captured_inputs, const FunctionLibraryDefinition& library);

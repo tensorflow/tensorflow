@@ -38,8 +38,9 @@ constexpr char kTensor2FileName[] = "memmapped_package://t2";
 constexpr char kProtoFileName[] = "memmapped_package://b";
 constexpr int kTestGraphDefVersion = 666;
 
-Status CreateMemmappedFileSystemFile(const string& filename, bool corrupted,
-                                     Tensor* test_tensor) {
+absl::Status CreateMemmappedFileSystemFile(const string& filename,
+                                           bool corrupted,
+                                           Tensor* test_tensor) {
   Env* env = Env::Default();
   MemmappedFileSystemWriter writer;
   TF_RETURN_IF_ERROR(writer.InitializeToFile(env, filename));
@@ -65,7 +66,7 @@ Status CreateMemmappedFileSystemFile(const string& filename, bool corrupted,
     // Flush and close the file.
     TF_RETURN_IF_ERROR(writer.FlushAndClose());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TEST(MemmappedFileSystemTest, SimpleTest) {
@@ -92,8 +93,8 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
   // The memory region can be bigger but not less than Tensor size.
   ASSERT_GE(memory_region->length(), test_tensor.TotalBytes());
   EXPECT_EQ(test_tensor.tensor_data(),
-            StringPiece(static_cast<const char*>(memory_region->data()),
-                        test_tensor.TotalBytes()));
+            absl::string_view(static_cast<const char*>(memory_region->data()),
+                              test_tensor.TotalBytes()));
   // Check that GetFileSize works.
   uint64 file_size = 0;
   TF_ASSERT_OK(memmapped_env.GetFileSize(kTensor2FileName, &file_size));
@@ -138,7 +139,7 @@ TEST(MemmappedFileSystemTest, Corrupted) {
   TF_ASSERT_OK(CreateMemmappedFileSystemFile(filename, true, &test_tensor));
   MemmappedFileSystem memmapped_env;
   ASSERT_NE(memmapped_env.InitializeFromFile(Env::Default(), filename),
-            OkStatus());
+            absl::OkStatus());
 }
 
 TEST(MemmappedFileSystemTest, ProxyToDefault) {

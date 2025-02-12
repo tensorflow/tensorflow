@@ -36,7 +36,8 @@ class MfccDct {
   int coefficient_count_;
   int input_length_;
   std::vector<std::vector<double> > cosines_;
-  TF_DISALLOW_COPY_AND_ASSIGN(MfccDct);
+  MfccDct(const MfccDct&) = delete;
+  void operator=(const MfccDct&) = delete;
 };
 
 }  // namespace tensorflow

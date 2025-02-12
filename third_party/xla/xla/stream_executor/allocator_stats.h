@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ALLOCATOR_STATS_H_
 #define XLA_STREAM_EXECUTOR_ALLOCATOR_STATS_H_
 
+#include <cstdint>
+#include <optional>
 #include <string>
 
-#include "absl/types/optional.h"
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 

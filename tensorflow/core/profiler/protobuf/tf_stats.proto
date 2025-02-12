@@ -76,4 +76,46 @@ message TfStatsRecord {
   // Fraction of kernel time that utilizes GPU TensorCore.
   // It is 0.0 if this op does not run on a GPU device.
   double gpu_tensorcore_utilization = 19;
+
+  // Total Floating-point operations for the op per second.
+  double model_flop_rate = 20;
+  // Number of bytes accessed from HBM (including both read and write) per
+  // second.
+  double hbm_bw = 21;
+
+  // Number of bytes read from CMEM per second.
+  double cmem_read_bw = 22;
+
+  // Number of bytes written to CMEM per second.
+  double cmem_write_bw = 23;
+
+  // Number of bytes read from VMEM per second.
+  double vmem_read_bw = 24;
+
+  // Number of bytes written to VMEM per second.
+  double vmem_write_bw = 25;
+
+  // Operational intensity based on HBM in FLOP/Byte.
+  double hbm_operational_intensity = 26;
+
+  // Operational intensity based on CMEM read in FLOP/Byte.
+  double cmem_read_operational_intensity = 27;
+
+  // Operational intensity based on CMEM write in FLOP/Byte.
+  double cmem_write_operational_intensity = 28;
+
+  // Operational intensity based on VMEM read in FLOP/Byte.
+  double vmem_read_operational_intensity = 29;
+
+  // Operational intensity based on VMEM write in FLOP/Byte.
+  double vmem_write_operational_intensity = 30;
+
+  // Operational intensity based on the bottleneck resource in FLOP/Byte.
+  double bottleneck_operational_intensity = 31;
+
+  // Flops for the record
+  uint64 flops = 32;
+
+  // Bytes accessed for the record
+  uint64 bytes_accessed = 33;
 }

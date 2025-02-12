@@ -1,0 +1,16 @@
+// RUN: fusion_to_mlir %s |\
+// RUN:   emitters_opt --xla-gpu-test-optimize | FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  p0 = s8[1000] parameter(0)
+  p1 = s8[1000] parameter(1)
+  cvt0 = pred[1000] convert(p0)
+  cvt1 = pred[1000] convert(p1)
+  ROOT mul = pred[1000] multiply(cvt0, cvt1)
+}
+
+// CHECK: %[[A:.*]] = arith.cmpi ne,
+// CHECK: %[[B:.*]] = arith.cmpi ne,
+// CHECK: %[[R:.*]] = arith.andi %[[A]], %[[B]]
+// CHECK: arith.extui %[[R]] : i1 to i8

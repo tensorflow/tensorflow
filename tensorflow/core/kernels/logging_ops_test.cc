@@ -16,6 +16,7 @@ limitations under the License.
 #include <chrono>
 #include <thread>
 
+#include "xla/tsl/util/determinism_test_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -27,14 +28,13 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/status_matchers.h"
-#include "tsl/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace {
 
 class PrintingV2GraphTest : public OpsTestBase {
  protected:
-  Status Init(const string& output_stream = "log(warning)") {
+  absl::Status Init(const string& output_stream = "log(warning)") {
     TF_CHECK_OK(NodeDefBuilder("op", "PrintV2")
                     .Input(FakeInput(DT_STRING))
                     .Attr("output_stream", output_stream)
@@ -50,19 +50,19 @@ TEST_F(PrintingV2GraphTest, StringSuccess) {
 }
 
 TEST_F(PrintingV2GraphTest, InvalidOutputStream) {
-  ASSERT_NE(OkStatus(), (Init("invalid_output_stream")));
+  ASSERT_NE(absl::OkStatus(), (Init("invalid_output_stream")));
 }
 
 TEST_F(PrintingV2GraphTest, InvalidInputRank) {
   TF_ASSERT_OK(Init());
   AddInputFromArray<tstring>(TensorShape({2}), {"bar", "foo"});
-  ASSERT_NE(OkStatus(), RunOpKernel());
+  ASSERT_NE(absl::OkStatus(), RunOpKernel());
 }
 
 class PrintingGraphTest : public OpsTestBase {
  protected:
-  Status Init(DataType input_type1, DataType input_type2, string msg = "",
-              int first_n = -1, int summarize = 3) {
+  absl::Status Init(DataType input_type1, DataType input_type2, string msg = "",
+                    int first_n = -1, int summarize = 3) {
     TF_CHECK_OK(NodeDefBuilder("op", "Print")
                     .Input(FakeInput(input_type1))
                     .Input(FakeInput(2, input_type2))
@@ -132,7 +132,7 @@ TEST_F(PrintingGraphTest, FirstNSuccess) {
 
 class TimestampTest : public OpsTestBase {
  protected:
-  Status Init() {
+  absl::Status Init() {
     TF_CHECK_OK(NodeDefBuilder("op", "Timestamp").Finalize(node_def()));
     return InitOp();
   }

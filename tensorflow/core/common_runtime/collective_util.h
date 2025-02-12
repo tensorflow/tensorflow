@@ -27,9 +27,10 @@ limitations under the License.
 namespace tensorflow {
 namespace collective_util {
 
-Status InitializeDeviceAndLocality(const DeviceMgr* dev_mgr,
-                                   const string& device_name, Device** device,
-                                   DeviceLocality* device_locality);
+absl::Status InitializeDeviceAndLocality(const DeviceMgr* dev_mgr,
+                                         const string& device_name,
+                                         Device** device,
+                                         DeviceLocality* device_locality);
 string SubdivPermDebugString(const CollectiveParams& col_params);
 
 // Used for executing a sub-operation, e.g. a merge_op instance, with
@@ -37,9 +38,9 @@ string SubdivPermDebugString(const CollectiveParams& col_params);
 class SubContext {
  public:
   OpKernelContext::Params sub_params_;
-  gtl::InlinedVector<TensorValue, 4> sub_inputs_;
-  gtl::InlinedVector<AllocatorAttributes, 4> sub_input_attr_;
-  gtl::InlinedVector<DeviceContext*, 4> sub_input_dc_;
+  absl::InlinedVector<TensorValue, 4UL> sub_inputs_;
+  absl::InlinedVector<AllocatorAttributes, 4UL> sub_input_attr_;
+  absl::InlinedVector<DeviceContext*, 4UL> sub_input_dc_;
   // Used only for Binary and Unary Ops for which we require
   // the calculation to be in-place on the first input.
   int forward_from_ = 0;
@@ -49,9 +50,9 @@ class SubContext {
   ~SubContext() = default;
 };
 
-Status ComputeBinOp(OpKernelContext* op_ctx, OpKernelContext::Params* params,
-                    Device* device, OpKernel* op, Tensor* output,
-                    Tensor* input);
+absl::Status ComputeBinOp(OpKernelContext* op_ctx,
+                          OpKernelContext::Params* params, Device* device,
+                          OpKernel* op, Tensor* output, Tensor* input);
 
 }  // namespace collective_util
 }  // namespace tensorflow

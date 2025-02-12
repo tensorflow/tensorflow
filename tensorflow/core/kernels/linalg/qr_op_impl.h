@@ -122,7 +122,8 @@ class QrOp : public LinearAlgebraOp<Scalar> {
  private:
   bool full_matrices_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(QrOp);
+  QrOp(const QrOp&) = delete;
+  void operator=(const QrOp&) = delete;
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -306,7 +307,8 @@ class QrOpGpu : public AsyncOpKernel {
  private:
   bool full_matrices_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(QrOpGpu);
+  QrOpGpu(const QrOpGpu&) = delete;
+  void operator=(const QrOpGpu&) = delete;
 };
 
 #endif  // GOOGLE_CUDA

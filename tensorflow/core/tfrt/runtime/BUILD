@@ -15,11 +15,13 @@ package_group(
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/...",
         # copybara:uncomment "//tensorflow_serving/...",
+        # copybara:uncomment "//cloud/ai/platform/prediction/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/infra/mira/...",
         # copybara:uncomment "//learning/pathways/serving/...",
         # copybara:uncomment "//learning/serving/...",
+        # copybara:uncomment "//smartass/brain/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",
     ],
 )
@@ -37,6 +39,11 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
@@ -68,6 +75,10 @@ cc_library(
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],
@@ -99,6 +110,8 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/tfrt/utils:thread_pool",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -110,7 +123,6 @@ cc_library(
     srcs = ["stream.cc"],
     hdrs = ["stream.h"],
     deps = [
-        ":channel",
         ":step_id",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core/framework:tensor",
@@ -129,17 +141,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:random",
+        "@local_tsl//tsl/platform:threadpool_interface",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ],
-)
-
-cc_library(
-    name = "channel",
-    hdrs = ["channel.h"],
-    deps = [
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -158,14 +161,18 @@ tf_cc_shared_test(
     srcs = ["stream_test.cc"],
     tags = ["no_oss"],
     deps = [
+        ":step_id",
         ":stream",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "//tensorflow/core/tfrt/utils:thread_pool",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
@@ -190,17 +197,5 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
-    ],
-)
-
-tf_cc_test(
-    name = "channel_test",
-    srcs = ["channel_test.cc"],
-    deps = [
-        ":channel",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:status_matchers",
     ],
 )

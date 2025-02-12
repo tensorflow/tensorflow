@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,8 +20,6 @@ limitations under the License.
 namespace xla {
 
 static bool InitModule() {
-  *DisabledManifestPath() = XLA_DISABLED_MANIFEST;
-  VLOG(1) << "DisabledManifestPath: " << *DisabledManifestPath();
   *TestPlatform() = XLA_PLATFORM;
   VLOG(1) << "TestPlatform: " << *TestPlatform();
   return true;

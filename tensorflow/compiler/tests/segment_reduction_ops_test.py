@@ -113,7 +113,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       maxval = dtypes.as_dtype(dtype).max
       if dtype == np.float64 and self._findDevice("TPU"):
-        maxval = np.Inf
+        maxval = np.inf
       self.assertAllClose(
           np.array([0, maxval, 2, 3], dtype=dtype),
           self._segmentMinV2(
@@ -124,7 +124,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       maxval = dtypes.as_dtype(dtype).max
       if dtype == np.float64 and self._findDevice("TPU"):
-        maxval = np.Inf
+        maxval = np.inf
       self.assertAllClose(
           np.array([0, maxval, 2], dtype=dtype),
           self._segmentMinV2(
@@ -135,7 +135,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       maxval = dtypes.as_dtype(dtype).max
       if dtype == np.float64 and self._findDevice("TPU"):
-        maxval = np.Inf
+        maxval = np.inf
       self.assertAllClose(
           np.array([0, maxval, 2, 3, maxval], dtype=dtype),
           self._segmentMinV2(
@@ -146,7 +146,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       minval = dtypes.as_dtype(dtype).min
       if dtype == np.float64 and self._findDevice("TPU"):
-        minval = -np.Inf
+        minval = -np.inf
       self.assertAllClose(
           np.array([1, minval, 2, 5], dtype=dtype),
           self._segmentMaxV2(
@@ -157,7 +157,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       minval = dtypes.as_dtype(dtype).min
       if dtype == np.float64 and self._findDevice("TPU"):
-        minval = -np.Inf
+        minval = -np.inf
       self.assertAllClose(
           np.array([1, minval, 2], dtype=dtype),
           self._segmentMaxV2(
@@ -168,7 +168,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       minval = dtypes.as_dtype(dtype).min
       if dtype == np.float64 and self._findDevice("TPU"):
-        minval = -np.Inf
+        minval = -np.inf
       self.assertAllClose(
           np.array([1, minval, 2, 5, minval], dtype=dtype),
           self._segmentMaxV2(
@@ -236,25 +236,25 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.numeric_types:
       data = np.array(
           [[[0, 1, 2], [10, 11, 12]], [[100, 101, 102], [110, 111, 112]], [[
-              200, 201, 202
-          ], [210, 211, 212]], [[300, 301, 302], [310, 311, 312]]],
+              80, 81, 82
+          ], [123, 124, 125]], [[103, 104, 105], [106, 107, 108]]],
           dtype=dtype)
       indices = np.array([[3, 5], [3, 1], [5, 0], [6, 2]], dtype=np.int32)
       num_segments = 8
       y = self._unsortedSegmentSum(data, indices, num_segments)
       self.assertAllClose(
           np.array(
-              [[210, 211, 212], [110, 111, 112], [310, 311, 312], [
+              [[123, 124, 125], [110, 111, 112], [106, 107, 108], [
                   100, 102, 104
-              ], [0, 0, 0.], [210, 212, 214], [300, 301, 302], [0, 0, 0]],
+              ], [0, 0, 0.], [90, 92, 94], [103, 104, 105], [0, 0, 0]],
               dtype=dtype), y)
 
   def testUnsortedSegmentSum1DIndices3DData(self):
     for dtype in self.numeric_types:
       data = np.array(
           [[[0, 1, 2], [10, 11, 12]], [[100, 101, 102], [110, 111, 112]], [[
-              200, 201, 202
-          ], [210, 211, 212]], [[300, 301, 302], [310, 311, 312]]],
+              120, 121, 122
+          ], [123, 124, 125]], [[103, 104, 105], [106, 107, 108]]],
           dtype=dtype)
       indices = np.array([3, 0, 2, 5], dtype=np.int32)
       num_segments = 6
@@ -262,8 +262,8 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
       self.assertAllClose(
           np.array(
               [[[100, 101, 102.], [110, 111, 112]], [[0, 0, 0], [0, 0, 0]],
-               [[200, 201, 202], [210, 211, 212]], [[0, 1, 2.], [10, 11, 12]],
-               [[0, 0, 0], [0, 0, 0]], [[300, 301, 302], [310, 311, 312]]],
+               [[120, 121, 122], [123, 124, 125]], [[0, 1, 2.], [10, 11, 12]],
+               [[0, 0, 0], [0, 0, 0]], [[103, 104, 105], [106, 107, 108]]],
               dtype=dtype), y)
 
   def testUnsortedSegmentSumShapeError(self):

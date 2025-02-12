@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "xla/service/maybe_owning_device_memory.h"
 
+#include <optional>
+#include <utility>
+
 #include "absl/types/variant.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 

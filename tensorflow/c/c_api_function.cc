@@ -39,19 +39,19 @@ using tensorflow::errors::InvalidArgument;
 namespace tensorflow {
 namespace {
 
-Status ValidateNonRefOutput(const Node* node, int idx) {
+absl::Status ValidateNonRefOutput(const Node* node, int idx) {
   const DataType& dt = node->output_type(idx);
   return IsRefType(dt)
              ? InvalidArgument("Output ", idx, " of node '", node->name(),
                                "' has a reference type ", DataTypeString(dt))
-             : OkStatus();
+             : absl::OkStatus();
 }
 
 // Converts `ninputs` and `inputs` into `inputs_tensors` and `input_nodes` and
 // does various checks while doing so. `input_nodes` will contain the same
 // information as input_tensors just in a different structure to make
 // following processing easier. TODO(iga): Simplify this nested structure.
-Status ProcessInputs(
+absl::Status ProcessInputs(
     const TF_Graph* fn_body, const char* fn_name, int ninputs,
     const TF_Output* inputs, std::vector<OutputTensor>* input_tensors,
     std::unordered_map<const Node*, std::vector<int>>* input_nodes)
@@ -83,14 +83,14 @@ Status ProcessInputs(
       indices.push_back(idx);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts `noutputs` and `outputs` into `outputs_tensors` and does various
 // checks while doing so.
-Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
-                      int noutputs, const TF_Output* outputs,
-                      std::vector<OutputTensor>* output_tensors)
+absl::Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
+                            int noutputs, const TF_Output* outputs,
+                            std::vector<OutputTensor>* output_tensors)
     TF_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   output_tensors->reserve(noutputs);
   for (int i = 0; i < noutputs; ++i) {
@@ -105,12 +105,12 @@ Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
                                     fn_name, "'");
     output_tensors->emplace_back(node, idx);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Populates `body_nodes` with the nodes that will become function's body.
 // Performs various checks.
-Status ComputeBodyNodes(
+absl::Status ComputeBodyNodes(
     const TF_Graph* fn_body, const char* fn_name, int num_opers,
     const TF_Operation* const* opers,
     const std::unordered_map<const Node*, std::vector<int>>& input_nodes,
@@ -142,7 +142,7 @@ Status ComputeBodyNodes(
       body_nodes->push_back(node);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -294,7 +294,7 @@ int TF_GraphGetFunctions(TF_Graph* g, TF_Function** funcs, int max_func,
     func->record = new tensorflow::FunctionRecord(lib.function(i), {}, false);
     funcs[i] = func;
   }
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
   return len;
 }
 
@@ -315,7 +315,7 @@ TF_Function* TF_FunctionImportFunctionDef(const void* proto, size_t proto_len,
 
   TF_Function* func = new TF_Function();
   func->record = new tensorflow::FunctionRecord(std::move(fdef), {}, false);
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
   return func;
 }
 
@@ -338,7 +338,7 @@ void TF_FunctionSetAttrValueProto(TF_Function* func, const char* attr_name,
 
   (*(fdef_or.value()->mutable_attr()))[string(attr_name)] = attr_value;
 
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 void TF_FunctionGetAttrValueProto(TF_Function* func, const char* attr_name,

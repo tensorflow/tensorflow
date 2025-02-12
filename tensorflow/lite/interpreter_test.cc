@@ -34,8 +34,10 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/interpreter_test_util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
@@ -1829,7 +1831,7 @@ class TestCustomAllocation : public InterpreterTest {
   }
 
   // Actual initialized allocation is more than num_bytes, to account for
-  // required_allocation.
+  // required_alignment.
   TfLiteCustomAllocation NewCustomAlloc(size_t num_bytes,
                                         int required_alignment) {
     // Extra memory to ensure alignment.

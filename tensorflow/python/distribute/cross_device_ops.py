@@ -566,7 +566,7 @@ class CrossDeviceOps(object):
         be combined.
       value: Value to be reduced. A tensor or a nested structure of tensors or
         `IndexedSlices`.
-      replica_id: An interger indicating the id of the replica where this
+      replica_id: An integer indicating the id of the replica where this
         all_reduce is called under. This is the local replica id that ranges
         from 0 to len(local_devices) - 1.
       options: A `tf.distribute.experimental.CommunicationOptions`.

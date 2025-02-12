@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,16 +17,20 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/service/backend.h"
+#include "xla/service/stream_pool.h"
 #include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
 namespace tpu {
 
-using tsl::StatusOr;
-
 /*static*/
-StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Create(
+absl::StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Create(
     int device_ordinal) {
   StatusHelper status;
   XLA_TpuNodeContext* node_context =
@@ -46,7 +50,7 @@ TpuNodeContext::~TpuNodeContext() {
 }
 
 /* static */
-tsl::Status TpuNodeContext::CloseTpuHost() {
+absl::Status TpuNodeContext::CloseTpuHost() {
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()->TpuNodeContext_CloseTpuHostFn(
       status.c_status);
@@ -54,7 +58,7 @@ tsl::Status TpuNodeContext::CloseTpuHost() {
 }
 
 /* static */
-tsl::Status TpuNodeContext::Initialize(int device_ordinal) {
+absl::Status TpuNodeContext::Initialize(int device_ordinal) {
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()->TpuNodeContext_InitializeFn(
       device_ordinal, status.c_status);

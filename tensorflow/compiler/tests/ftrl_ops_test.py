@@ -19,9 +19,9 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import googletest
-from tensorflow.python.training import training_ops
 
 
 class ResourceApplyFtrlTest(xla_test.XLATestCase):
@@ -55,12 +55,12 @@ class ResourceApplyFtrlTest(xla_test.XLATestCase):
         session.run(v_linear.create)
         assert not (use_v2 and multiply_linear_by_lr)
         if use_v2:
-          session.run(training_ops.resource_apply_ftrl_v2(
+          session.run(gen_training_ops.resource_apply_ftrl_v2(
               v_var.handle, v_accum.handle, v_linear.handle,
               grad, lr, l1, l2, l2_shrinkage, lr_power,
               multiply_linear_by_lr=multiply_linear_by_lr))
         else:
-          session.run(training_ops.resource_apply_ftrl(
+          session.run(gen_training_ops.resource_apply_ftrl(
               v_var.handle, v_accum.handle, v_linear.handle,
               grad, lr, l1, l2, lr_power,
               multiply_linear_by_lr=multiply_linear_by_lr))

@@ -84,22 +84,22 @@ string StripQuote(const string& s) {
   return s.substr(start, end - start + 1);
 }
 
-tensorflow::Status ReturnError(const std::vector<string>& pieces, int idx) {
+absl::Status ReturnError(const std::vector<string>& pieces, int idx) {
   string val;
   if (pieces.size() > idx + 1) {
     val = pieces[idx + 1];
   }
-  return tensorflow::Status(
+  return absl::Status(
       absl::StatusCode::kInvalidArgument,
       absl::StrCat("Invalid option '", pieces[idx], "' value: '", val, "'"));
 }
 
-bool CaseEqual(StringPiece s1, StringPiece s2) {
+bool CaseEqual(absl::string_view s1, absl::string_view s2) {
   if (s1.size() != s2.size()) return false;
   return absl::AsciiStrToLower(s1) == absl::AsciiStrToLower(s2);
 }
 
-bool StringToBool(StringPiece str, bool* value) {
+bool StringToBool(absl::string_view str, bool* value) {
   CHECK(value != nullptr) << "NULL output boolean given.";
   if (CaseEqual(str, "true") || CaseEqual(str, "t") || CaseEqual(str, "yes") ||
       CaseEqual(str, "y") || CaseEqual(str, "1")) {
@@ -115,15 +115,15 @@ bool StringToBool(StringPiece str, bool* value) {
 }
 }  // namespace
 
-tensorflow::Status ParseCmdLine(const string& line, string* cmd,
-                                tensorflow::tfprof::Options* opts) {
+absl::Status ParseCmdLine(const string& line, string* cmd,
+                          tensorflow::tfprof::Options* opts) {
   std::vector<string> pieces = absl::StrSplit(line, ' ', absl::SkipEmpty());
 
   std::vector<string> cmds_str(kCmds, kCmds + sizeof(kCmds) / sizeof(*kCmds));
   if (std::find(cmds_str.begin(), cmds_str.end(), pieces[0]) ==
       cmds_str.end()) {
-    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                              "First string must be a valid command.");
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "First string must be a valid command.");
   }
   *cmd = pieces[0];
 
@@ -279,7 +279,7 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
         return ReturnError(pieces, i);
       }
 
-      tensorflow::Status s =
+      absl::Status s =
           ParseOutput(pieces[i + 1], &opts->output_type, &opts->output_options);
       if (!s.ok()) return s;
       ++i;
@@ -287,7 +287,7 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       return ReturnError(pieces, i);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void PrintHelp() {

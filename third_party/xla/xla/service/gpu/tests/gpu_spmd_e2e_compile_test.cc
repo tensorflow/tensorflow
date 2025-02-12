@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,16 +15,31 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class GpuSpmdE2ECompileTest : public GpuCodegenTest {};
+class GpuSpmdE2ECompileTest : public GpuCodegenTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(0);
+    return debug_options;
+  }
+};
 
 TEST_F(GpuSpmdE2ECompileTest, SinglePartition) {
   // Module with "Sharding" custom call and use_spmd_partitioning enabled.
@@ -43,7 +58,7 @@ ENTRY entry {
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   // Verify that compilation succeeded.
-  StatusOr<std::unique_ptr<Executable>> executable =
+  absl::StatusOr<std::unique_ptr<Executable>> executable =
       CompileToExecutable(std::move(hlo_module));
   TF_EXPECT_OK(executable.status());
 }
@@ -65,7 +80,7 @@ ENTRY main {
   HloModuleConfig config;
   config.set_use_spmd_partitioning(true);
   config.set_num_partitions(2);
-  config.set_debug_options(GetDebugOptionsFromFlags());
+  config.set_debug_options(GetDebugOptionsForTest());
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
@@ -98,7 +113,7 @@ ENTRY main {
   HloModuleConfig config;
   config.set_use_spmd_partitioning(true);
   config.set_num_partitions(4);
-  config.set_debug_options(GetDebugOptionsFromFlags());
+  config.set_debug_options(GetDebugOptionsForTest());
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,

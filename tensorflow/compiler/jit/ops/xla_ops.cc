@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/common_shape_fns.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -55,7 +55,7 @@ REGISTER_OP("XlaClusterOutput")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->input(0));
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(
         "Operator that connects the output of an XLA computation to other "
@@ -112,7 +112,7 @@ REGISTER_OP("_XlaMerge")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"(XLA Merge Op. For use by the XLA JIT only.
 

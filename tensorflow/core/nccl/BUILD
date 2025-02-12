@@ -2,20 +2,19 @@
 #   Wrap NVIDIA (https://github.com/NVIDIA/nccl) NCCL with tensorflow ops.
 #   APIs are meant to change over time.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm", "if_nccl", "tf_copts")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm", "if_nccl", "tf_copts")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -31,6 +30,9 @@ cc_library(
     copts = tf_copts(),
     deps = if_cuda([
         "@local_config_nccl//:nccl",
+        "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:unbounded_work_queue",
+        "//tensorflow/core/framework:tensor_proto_cc",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rccl",
         "//tensorflow/core:gpu_runtime",
@@ -90,10 +92,13 @@ cc_library(
         [
             ":loose_headers",
             "//tensorflow/core:framework",
+            "//tensorflow/core/protobuf:for_core_protos_cc",
         ] + if_nccl([
             ":nccl_lib",
             "@com_google_absl//absl/memory",
             "//tensorflow/core/profiler/lib:traceme",
+        ]) + if_cuda([
+            "//tensorflow/core/platform:tracing",
         ]),
 )
 
@@ -109,7 +114,7 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["nccl_manager.h"],
-    visibility = [":__pkg__"],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(

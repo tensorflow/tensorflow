@@ -2,7 +2,7 @@
 """
 
 load(
-    "//third_party/remote_config:common.bzl",
+    "@local_tsl//third_party/remote_config:common.bzl",
     "err_out",
     "get_host_environ",
     "raw_exec",
@@ -12,7 +12,6 @@ load(
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
 _GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 _TF_SYSROOT = "TF_SYSROOT"
-_PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 
 def to_list_of_strings(elements):
     """Convert the list of ["a", "b", "c"] into '"a", "b", "c"'.
@@ -171,7 +170,7 @@ def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
 def _tpl_path(repository_ctx, filename):
-    return repository_ctx.path(Label("//tensorflow/tools/toolchains/cpus/aarch64/%s.tpl" % filename))
+    return repository_ctx.path(Label("//tools/toolchains/cpus/aarch64/%s.tpl" % filename))
 
 def _create_local_aarch64_repository(repository_ctx):
     """Creates the repository containing files set up to build with gcc."""
@@ -304,7 +303,6 @@ _ENVIRONS = [
     "CLANG_COMPILER_PATH",
     _GCC_HOST_COMPILER_PATH,
     _GCC_HOST_COMPILER_PREFIX,
-    _PYTHON_BIN_PATH,
     "TMP",
     "TMPDIR",
 ]

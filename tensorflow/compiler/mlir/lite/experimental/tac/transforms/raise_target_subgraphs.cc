@@ -113,18 +113,11 @@ void AddAttrs(OpsAdded& ops_added, OpBuilder& builder, int func_count) {
   added_func_op->setAttr(kInterfaceNameAttr, interface_name);
   added_call_op->setAttr(kInterfaceNameAttr, interface_name);
 
-  StringAttr device = added_func_op->getRegion(0)
-                          .getBlocks()
-                          .front()
-                          .front()
-                          .getAttr(kDevice)
-                          .cast<StringAttr>();
-  StringAttr inference_type = added_func_op->getRegion(0)
-                                  .getBlocks()
-                                  .front()
-                                  .front()
-                                  .getAttr(kInferenceType)
-                                  .cast<StringAttr>();
+  StringAttr device = mlir::cast<StringAttr>(
+      added_func_op->getRegion(0).getBlocks().front().front().getAttr(kDevice));
+  StringAttr inference_type = mlir::cast<StringAttr>(
+      added_func_op->getRegion(0).getBlocks().front().front().getAttr(
+          kInferenceType));
   added_call_op->setAttr(kDevice, device);
   added_call_op->setAttr(kInferenceType, inference_type);
   added_func_op->setAttr(kDevice, device);

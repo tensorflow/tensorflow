@@ -14,18 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
+#include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
@@ -47,6 +53,7 @@ bool SupportsQuantization(Model* model, const Operator& op) {
   static const std::set<OperatorType> supported_ops{
       OperatorType::kAdd,
       OperatorType::kArgMax,
+      OperatorType::kArgMin,
       OperatorType::kAveragePool,
       OperatorType::kBatchToSpaceND,
       OperatorType::kConcatenation,
@@ -495,8 +502,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
 
 }  // namespace
 
-::tensorflow::Status Quantize::Run(Model* model, std::size_t op_index,
-                                   bool* modified) {
+absl::Status Quantize::Run(Model* model, std::size_t op_index, bool* modified) {
   *modified = false;
   // Our general "quantization" graph transformation consists in replacing
   //   QuantizedInputArrays[] ->
@@ -518,7 +524,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
   auto& op = *model->operators[op_index];
   if (op.type == OperatorType::kDequantize ||
       op.type == OperatorType::kFakeQuant) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Our assumption here is that the input arrays are already quantized -
@@ -555,7 +561,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
       if (!array.minmax && !array.buffer) {
         LOG(WARNING) << "Can't quantize input array " << input
                      << " because it lacks min/max info";
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       }
       const auto* other_op = GetOpWithOutput(*model, input);
       if (other_op && other_op->type != OperatorType::kDequantize) {
@@ -565,7 +571,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
             "which means that we should yield and let other ops "
             "get quantized first",
             LogName(op), input);
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       }
     }
   }
@@ -727,7 +733,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
   }
 
   *modified = changed;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

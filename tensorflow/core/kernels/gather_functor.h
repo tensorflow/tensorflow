@@ -16,14 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_H_
 #define TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_H_
 
+#include "absl/base/prefetch.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -75,13 +74,12 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
       }
       if ((batch_idx == batch_idx_end && i_next < indices_idx_end) ||
           (i_next < indices_size)) {
-        port::prefetch<port::PREFETCH_HINT_T0>(
-            &params(batch_idx, indices(i_next), 0));
-        port::prefetch<port::PREFETCH_HINT_T0>(&out(batch_idx, i_next, 0));
+        absl::PrefetchToLocalCache(&params(batch_idx, indices(i_next), 0));
+        absl::PrefetchToLocalCache(&out(batch_idx, i_next, 0));
         b_next = batch_idx;
       } else if (b_next <= batch_idx_end) {
-        port::prefetch<port::PREFETCH_HINT_T0>(&params(b_next, indices(0), 0));
-        port::prefetch<port::PREFETCH_HINT_T0>(&out(b_next, 0, 0));
+        absl::PrefetchToLocalCache(&params(b_next, indices(0), 0));
+        absl::PrefetchToLocalCache(&out(b_next, 0, 0));
         i_next = 0;
       }
       // Copy using memcpy if possible, otherwise an Eigen loop

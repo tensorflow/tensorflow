@@ -15,24 +15,15 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/where_spmd_expander.h"
 
-#include <cstddef>
 #include <string>
 #include <vector>
 
-#include "absl/status/status.h"
 #include "llvm/ADT/DenseMap.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
-#include "tensorflow/dtensor/mlir/device_utils.h"
-#include "tensorflow/dtensor/mlir/layout_parsing.h"
-#include "tensorflow/dtensor/mlir/shape_utils.h"
-#include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {

@@ -153,7 +153,8 @@ TEST(IsolatePlacerInspectionRequiredOpsPassTest, FunctionDefinitionNotInGraph) {
       NDef("y", "_Retval", {"f_y:0"}, {{"T", DT_RESOURCE}}),
   });
 
-  FunctionLibraryDefinition flib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(),
+                                     FunctionDefLibrary());
   TF_ASSERT_OK(flib_def.AddFunctionDef(func));
   GraphDef rewritten;
   RunPass(original, &rewritten, &flib_def);

@@ -18,7 +18,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "tensorflow/core/common_runtime/device/device_host_allocator.h"
+#include "xla/stream_executor/integrations/stream_executor_allocator.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
 namespace tensorflow {
@@ -26,14 +27,14 @@ namespace {
 
 TEST(PoolAllocatorTest, ZeroSizeBuffers) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
-  PoolAllocator pool(
-      2 /*pool_size_limit*/, false /*auto_resize*/,
-      new DeviceHostAllocator(
-          platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
-              .value(),
-          0 /*numa_node*/, {}, {}),
-      new NoopRounder, "pool");
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+  se::StreamExecutor* se = platform->ExecutorForDevice(/*ordinal=*/0).value();
+  auto host_memory_allocator =
+      se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+  SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
+      std::move(host_memory_allocator), stream_executor::MemoryType::kHost, 0);
+  PoolAllocator pool(2 /*pool_size_limit*/, false /*auto_resize*/,
+                     sub_allocator, new NoopRounder, "pool");
 
   EXPECT_EQ(nullptr, pool.AllocateRaw(4 /*alignment*/, 0 /*num_bytes*/));
   pool.DeallocateRaw(nullptr);  // Should not crash.
@@ -45,14 +46,14 @@ TEST(PoolAllocatorTest, ZeroSizeBuffers) {
 
 TEST(PoolAllocatorTest, ZeroSizePool) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
-  PoolAllocator pool(
-      0 /*pool_size_limit*/, false /*auto_resize*/,
-      new DeviceHostAllocator(
-          platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
-              .value(),
-          0 /*numa_node*/, {}, {}),
-      new NoopRounder, "pool");
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+  se::StreamExecutor* se = platform->ExecutorForDevice(/*ordinal=*/0).value();
+  auto host_memory_allocator =
+      se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+  SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
+      std::move(host_memory_allocator), stream_executor::MemoryType::kHost, 0);
+  PoolAllocator pool(0 /*pool_size_limit*/, false /*auto_resize*/,
+                     sub_allocator, new NoopRounder, "pool");
 
   EXPECT_EQ(0, pool.get_from_pool_count());
   EXPECT_EQ(0, pool.put_count());
@@ -79,14 +80,14 @@ TEST(PoolAllocatorTest, ZeroSizePool) {
 
 TEST(PoolAllocatorTest, Alignment) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
-  PoolAllocator pool(
-      0 /*pool_size_limit*/, false /*auto_resize*/,
-      new DeviceHostAllocator(
-          platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
-              .value(),
-          0 /*numa_node*/, {}, {}),
-      new NoopRounder, "pool");
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+  se::StreamExecutor* se = platform->ExecutorForDevice(/*ordinal=*/0).value();
+  auto host_memory_allocator =
+      se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+  SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
+      std::move(host_memory_allocator), stream_executor::MemoryType::kHost, 0);
+  PoolAllocator pool(0 /*pool_size_limit*/, false /*auto_resize*/,
+                     sub_allocator, new NoopRounder, "pool");
   for (int i = 0; i < 16; ++i) {
     size_t alignment = 1 << i;
     void* p = pool.AllocateRaw(alignment, 111);
@@ -141,10 +142,13 @@ TEST(PoolAllocatorTest, CudaHostAllocator) {
         free_size += size;
       };
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
-  DeviceHostAllocator* sub_allocator = new DeviceHostAllocator(
-      platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0)).value(),
-      0 /*numa_node*/, {alloc_visitor}, {free_visitor});
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+  se::StreamExecutor* se = platform->ExecutorForDevice(/*ordinal=*/0).value();
+  auto host_memory_allocator =
+      se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+  SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
+      std::move(host_memory_allocator), stream_executor::MemoryType::kHost, 0,
+      {alloc_visitor}, {free_visitor});
   PoolAllocator pool(2 /*pool_size_limit*/, false /*auto_resize*/,
                      sub_allocator, new NoopRounder, "pool");
   EXPECT_EQ(0, alloc_count);
@@ -243,14 +247,14 @@ TEST(PoolAllocatorTest, Pow2Rounder) {
 
 TEST(PoolAllocatorTest, Name) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
-  PoolAllocator pool(
-      2 /*pool_size_limit*/, false /*auto_resize*/,
-      new DeviceHostAllocator(
-          platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
-              .value(),
-          0 /*numa_node*/, {}, {}),
-      new NoopRounder, "pool");
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+  se::StreamExecutor* se = platform->ExecutorForDevice(/*ordinal=*/0).value();
+  auto host_memory_allocator =
+      se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+  SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
+      std::move(host_memory_allocator), stream_executor::MemoryType::kHost, 0);
+  PoolAllocator pool(2 /*pool_size_limit*/, false /*auto_resize*/,
+                     sub_allocator, new NoopRounder, "pool");
   EXPECT_EQ("pool", pool.Name());
 }
 

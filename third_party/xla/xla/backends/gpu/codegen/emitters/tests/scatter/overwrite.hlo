@@ -1,0 +1,39 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+overwrite {
+  %p0 = f32[] parameter(0)
+  ROOT %p1 = f32[] parameter(1)
+}
+scatter {
+  %operand = f32[10,5]  parameter(0)
+  %indices = s32[3,1] parameter(1)
+  %update = f32[3,2,3] parameter(2)
+
+  ROOT %scatter = f32[10,5] scatter(
+      f32[10,5] %operand,
+      s32[3,1] %indices,
+      f32[3,2,3] %update
+    ),
+    update_window_dims={1,2},
+    inserted_window_dims={},
+    scatter_dims_to_operand_dims={0},
+    index_vector_dim=1,
+    unique_indices=false,
+    to_apply=overwrite
+}
+// CHECK-LABEL: func.func @main(
+// CHECK-SAME:    %[[OPERAND:[a-zA-Z0-9]*]]: tensor<10x5xf32>
+// CHECK-SAME:    %[[INDICES:[a-zA-Z0-9]*]]: tensor<3x1xi32>
+// CHECK-SAME:    %[[UPDATES:[a-zA-Z0-9]*]]: tensor<3x2x3xf32>
+// CHECK-SAME:    %[[OUT:[a-zA-Z0-9]*]]: tensor<10x5xf32>
+
+// CHECK: %[[IN_BOUNDS:.*]] = arith.cmpi ule
+// CHECK: scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
+// CHECK:   %[[UPD_ELEM:.*]] = xla.pure_call @scatter_update
+// CHECK:   %[[RMW:.*]] = xla.atomic_rmw %{{[a-z0-9]+}}
+// CHECK:   ^bb0(%[[CUR_VALUE:.*]]: f32):
+// CHECK:     xla.yield %[[UPD_ELEM]] : f32
+// CHECK:   }
+// CHECK:   xla.yield %[[RMW]] : tensor<10x5xf32>

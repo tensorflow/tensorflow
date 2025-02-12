@@ -1,5 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -34,8 +34,9 @@ py_strict_test(
     tags = ["no_pip"],
     deps = [
         ":generator",
-        "//tensorflow/python/tools/api/generator2/shared:exported_api",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
+        "//tensorflow/python/tools/api/generator2/shared:exported_api",
     ],
 )

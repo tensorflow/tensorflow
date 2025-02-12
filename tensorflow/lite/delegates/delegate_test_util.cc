@@ -29,11 +29,11 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Relayout"
   input_arg {
     name: "input"

@@ -1,0 +1,25 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce:0,1 \
+// RUN:   --bijection_outputs=reduce
+
+add {
+  scalar_lhs.0 = f32[] parameter(0)
+  scalar_rhs.0 = f32[] parameter(1)
+  scalar_lhs.1 = f32[] parameter(2)
+  scalar_rhs.1 = f32[] parameter(3)
+  add.0 = f32[] add(scalar_lhs.0, scalar_lhs.1)
+  add.1 = f32[] add(scalar_rhs.0, scalar_rhs.1)
+  ROOT t = (f32[], f32[]) tuple(add.0, add.1)
+}
+
+fusion {
+  param_0 = f32[2, 3, 2048] parameter(0)
+  param_1 = f32[2, 3, 2048] parameter(1)
+  c0 = f32[] constant(0)
+  ROOT reduce = (f32[2, 3], f32[2, 3])
+    reduce(param_0, param_1, c0, c0), dimensions={2}, to_apply=add
+}
+
+// CHECK: allocate_shared
+// CHECK: allocate_shared

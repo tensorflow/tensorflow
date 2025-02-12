@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/nms_utils.h"
 
+#include <cstddef>
 #include <string>
 
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -74,7 +81,7 @@ LogicalResult ConvertNMSPaddedFunc::VerifySignature() {
   // The TFLite fused op does not support batching yet.
   // TODO(b/158709815): Add support for batches with padded NMS.
   auto boxes_type =
-      func_.getFunctionType().getInput(0).dyn_cast<RankedTensorType>();
+      mlir::dyn_cast<RankedTensorType>(func_.getFunctionType().getInput(0));
   if (boxes_type == nullptr || !boxes_type.hasRank() ||
       boxes_type.getRank() != 2) {
     return func_.emitWarning() << "TFLite does not support batched input for "
@@ -121,7 +128,7 @@ LogicalResult ConvertSSDPostProcessFunc::CreateNMSCustomOptions(
       failed(AddFloatAttr(func, attrs, "w_scale", &fbb)))
     return failure();
   auto use_regular_nms =
-      attrs.get("use_regular_nms").dyn_cast_or_null<BoolAttr>();
+      mlir::dyn_cast_or_null<BoolAttr>(attrs.get("use_regular_nms"));
   if (!use_regular_nms) {
     return func.emitError()
            << "use_regular_nms attribute is not set or not a bool";
@@ -137,7 +144,7 @@ LogicalResult ConvertSSDPostProcessFunc::CreateNMSCustomOptions(
 LogicalResult ConvertSSDPostProcessFunc::AddIntAttr(
     func::FuncOp func, DictionaryAttr attrs, const std::string& attribute,
     flexbuffers::Builder* builder) {
-  auto int_attr = attrs.get(attribute).dyn_cast_or_null<IntegerAttr>();
+  auto int_attr = mlir::dyn_cast_or_null<IntegerAttr>(attrs.get(attribute));
   if (!int_attr) {
     return func.emitError()
            << attribute.c_str() << " attribute is not set or not an integer";
@@ -149,7 +156,7 @@ LogicalResult ConvertSSDPostProcessFunc::AddIntAttr(
 LogicalResult ConvertSSDPostProcessFunc::AddFloatAttr(
     func::FuncOp func, DictionaryAttr attrs, const std::string& attribute,
     flexbuffers::Builder* builder) {
-  auto float_attr = attrs.get(attribute).dyn_cast_or_null<FloatAttr>();
+  auto float_attr = mlir::dyn_cast_or_null<FloatAttr>(attrs.get(attribute));
   if (!float_attr) {
     return func.emitError()
            << attribute.c_str() << " attribute is not set or not a float";
@@ -160,7 +167,7 @@ LogicalResult ConvertSSDPostProcessFunc::AddFloatAttr(
 
 LogicalResult ConvertSSDPostProcessFunc::HasIntAttr(
     func::FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
-  auto int_attr = attrs.get(attribute).dyn_cast_or_null<IntegerAttr>();
+  auto int_attr = mlir::dyn_cast_or_null<IntegerAttr>(attrs.get(attribute));
   if (!int_attr) {
     return func.emitWarning()
            << attribute.c_str() << " attribute is not set or not an integer";
@@ -170,7 +177,7 @@ LogicalResult ConvertSSDPostProcessFunc::HasIntAttr(
 
 LogicalResult ConvertSSDPostProcessFunc::HasFloatAttr(
     func::FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
-  auto float_attr = attrs.get(attribute).dyn_cast_or_null<FloatAttr>();
+  auto float_attr = mlir::dyn_cast_or_null<FloatAttr>(attrs.get(attribute));
   if (!float_attr) {
     return func.emitWarning()
            << attribute.c_str() << " attribute is not set or not a float";

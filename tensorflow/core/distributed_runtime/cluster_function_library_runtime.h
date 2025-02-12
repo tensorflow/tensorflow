@@ -49,12 +49,12 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
-           gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+           absl::Span<const Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
-           gtl::ArraySlice<FunctionArg> args, std::vector<FunctionRet>* rets,
+           absl::Span<const FunctionArg> args, std::vector<FunctionRet>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
   void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
@@ -63,7 +63,7 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
   DeviceMgr* remote_device_mgr() const override { return remote_device_mgr_; }
 
  private:
-  static Status ConstructFunctionGraph(
+  static absl::Status ConstructFunctionGraph(
       const OpDef& sig, AttrSlice attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const FunctionLibraryDefinition& flib_def, GraphDef* g,

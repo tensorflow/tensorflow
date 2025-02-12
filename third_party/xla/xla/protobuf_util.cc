@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/protobuf_util.h"
 
+#include <cstddef>
 #include <string>
 
 #include "absl/hash/hash.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 
@@ -47,21 +47,6 @@ size_t ProtobufHash(const tsl::protobuf::Message& m) {
   std::string serialized;
   m.AppendToString(&serialized);
   return absl::HashOf(serialized);
-}
-
-Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
-                            const std::string& directory,
-                            const std::string& file_name,
-                            std::string* full_path) {
-  tsl::Env* env = tsl::Env::Default();
-  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
-  std::string safe_file_name = SanitizeFileName(file_name) + ".pb";
-  std::string full_path_impl;
-  if (!full_path) {
-    full_path = &full_path_impl;
-  }
-  *full_path = tsl::io::JoinPath(directory, safe_file_name);
-  return tsl::WriteBinaryProto(env, *full_path, message);
 }
 
 }  // namespace protobuf_util

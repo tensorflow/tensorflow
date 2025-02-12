@@ -64,7 +64,7 @@ void DeviceTransformGPUPass::runOnOperation() {
   auto func = getOperation();
   auto* ctx = &getContext();
   RewritePatternSet patterns = GetHardwareRewritePatternsGPU(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace

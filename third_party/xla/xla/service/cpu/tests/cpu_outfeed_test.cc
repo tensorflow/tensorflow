@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
+#include <utility>
 
+#include <gtest/gtest.h>
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {

@@ -18,7 +18,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/external/external_delegate_interface.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/shared_library.h"
 

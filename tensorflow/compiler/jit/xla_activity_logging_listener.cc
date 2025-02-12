@@ -16,7 +16,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
-#include "tensorflow/core/platform/logger.h"
 
 namespace tensorflow {
 namespace {
@@ -24,57 +23,34 @@ namespace {
 // Listens to XLA activity and logs them using tensorflow::Logger.
 class XlaActivityLoggingListener final : public XlaActivityListener {
  public:
-  Status Listen(
+  absl::Status Listen(
       const XlaAutoClusteringActivity& auto_clustering_activity) override {
     if (!IsEnabled()) {
       VLOG(3) << "Logging XlaAutoClusteringActivity disabled";
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    if (Logger* logger = Logger::GetSingletonAsync()) {
-      VLOG(2) << "Logging XlaAutoClusteringActivity";
-      VLOG(3) << auto_clustering_activity.DebugString();
-      logger->LogProto(auto_clustering_activity);
-    } else {
-      VLOG(2) << "Not logging: logger not ready yet.";
-    }
-
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Listen(
+  absl::Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) override {
     if (!IsEnabled()) {
       VLOG(3) << "Logging XlaJitCompilationActivity disabled";
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    if (Logger* logger = Logger::GetSingletonAsync()) {
-      VLOG(2) << "Logging XlaJitCompilationActivity";
-      VLOG(3) << jit_compilation_activity.DebugString();
-      logger->LogProto(jit_compilation_activity);
-    } else {
-      VLOG(2) << "Not logging: logger not ready yet.";
-    }
-
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Listen(const XlaOptimizationRemark& optimization_remark) override {
+  absl::Status Listen(
+      const XlaOptimizationRemark& optimization_remark) override {
     if (!IsEnabled()) {
       VLOG(3) << "Logging XlaJitCompilationActivity disabled";
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    if (Logger* logger = Logger::GetSingletonAsync()) {
-      VLOG(2) << "Logging XlaJitCompilationActivity";
-      VLOG(3) << optimization_remark.DebugString();
-      logger->LogProto(optimization_remark);
-    } else {
-      VLOG(2) << "Not logging: logger not ready yet.";
-    }
-
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

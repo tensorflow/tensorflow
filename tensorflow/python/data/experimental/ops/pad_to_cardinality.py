@@ -34,9 +34,9 @@ def pad_to_cardinality(cardinality, mask_key="valid"):
 
   Example usage:
 
-  >>> ds = tf.data.Dataset.from_tensor_slices({'a': [1, 2]})
-  >>> ds = ds.apply(tf.data.experimental.pad_to_cardinality(3))
-  >>> list(ds.as_numpy_iterator())
+  ds = tf.data.Dataset.from_tensor_slices({'a': [1, 2]})
+  ds = ds.apply(tf.data.experimental.pad_to_cardinality(3))
+  list(ds.as_numpy_iterator())
   [{'a': 1, 'valid': True}, {'a': 2, 'valid': True}, {'a': 0, 'valid': False}]
 
   This can be useful, e.g. during eval, when partial batches are undesirable but

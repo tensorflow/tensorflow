@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_GL_TEXTURE_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_GL_TEXTURE_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"

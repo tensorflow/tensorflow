@@ -33,7 +33,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_plugin.h"
 #include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
@@ -50,8 +54,6 @@ limitations under the License.
 #endif
 
 #include "fp16.h"  // from @FP16
-#include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -68,7 +70,6 @@ limitations under the License.
 #ifdef NNAPI_VERBOSE_VALIDATION
 #include "tensorflow/lite/schema/schema_generated.h"
 #endif
-#include <farmhash.h>
 
 namespace tflite {
 namespace {
@@ -1459,15 +1460,48 @@ class NNAPIOpBuilder {
   TfLiteStatus TransformCosIntoSupportedOps(int lite_node_index,
                                             TfLiteNode* node,
                                             TfLiteRegistration* reg) {
-    const TfLiteTensor& theta = context_->tensors[node->inputs->data[0]];
-
-    // NNAPI only supports float sin
-    auto tensor_size = theta.bytes / sizeof(float);
+    const TfLiteTensor& input = context_->tensors[node->inputs->data[0]];
+    const TfLiteTensor& output = context_->tensors[node->outputs->data[0]];
 
     // Convert cos to sin: $cos(x) = sin(\frac{\pi}{2} - x)$
-    auto data = theta.data.f;
-    for (int i = 0; i < tensor_size; i++) {
-      data[i] = M_PI_2 - data[i];
+
+    int diff_out_ann_index;
+    // stage 1: $frac{\pi}{2} - x)$
+    {
+      // NNAPI only supports float sin
+      auto tensor_size = input.bytes / sizeof(float);
+
+      int tensor_index;
+      TF_LITE_ENSURE_OK(context_,
+                        AddNewInputConstantTensor(
+                            ANEURALNETWORKS_TENSOR_FLOAT32, kTfLiteFloat32,
+                            input.dims, std::vector<float>(tensor_size, M_PI_2),
+                            input.params, &tensor_index));
+
+      TF_LITE_ENSURE_OK(
+          context_, AddTensorInput(node->inputs->data[0], /*hybrid_op=*/false));
+
+      TF_LITE_ENSURE_OK(context_,
+                        AddScalarInt32Operand(ANEURALNETWORKS_FUSED_NONE));
+
+      TF_LITE_ENSURE_OK(
+          context_,
+          AddAdditionalOutputTensor(
+              output.dims->size, reinterpret_cast<uint32_t*>(output.dims->data),
+              ANEURALNETWORKS_TENSOR_FLOAT32, 0, 0, &diff_out_ann_index));
+
+      TF_LITE_ENSURE_OK(
+          context_, FinalizeAddOperation(ANEURALNETWORKS_SUB, lite_node_index));
+    }
+
+    // stage 2: $sin(\frac{\pi}{2} - x)$
+    {
+      augmented_inputs_.push_back(diff_out_ann_index);
+
+      TF_LITE_ENSURE_OK(context_, AddTensorOutput(node->outputs->data[0]));
+
+      TF_LITE_ENSURE_OK(
+          context_, FinalizeAddOperation(ANEURALNETWORKS_SIN, lite_node_index));
     }
 
     return kTfLiteOk;

@@ -17,24 +17,26 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
-#include "tsl/platform/statusor.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -43,7 +45,7 @@ namespace tensorflow {
 // file; otherwise, load from a GraphDef.
 // Setting prune_unused_nodes to true, would prune unreachable nodes if
 // output_arrays is specified.
-tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromGraphdefOrMlirSource(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromGraphdefOrMlirSource(
     const std::string& input_filename, bool input_mlir,
     bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
     const GraphImportConfig& specs, absl::string_view debug_info_file,
@@ -54,19 +56,13 @@ tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromGraphdefOrMlirSource(
 
 // Load Saved model (either v1 or v2) into MLIR.
 // 'saved_model_bundle' will be initialized if V1 model was loaded.
-tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     const std::string& input_filename, int saved_model_version,
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,
     absl::Span<std::string> exported_names, const GraphImportConfig& specs,
     bool enable_variable_lifting, mlir::MLIRContext* context,
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle);
-
-Status ConvertTFExecutorToStablehloFlatbuffer(
-    mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
-    mlir::StatusScopedDiagnosticHandler& statusHandler,
-    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
-    std::optional<tensorflow::Session*> session, std::string* result);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes (configured accordingly to the provided
@@ -80,13 +76,16 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
 // * `session` pointer may provided, it will be used to freeze resource
 // variables. If the `saved_model_dir` directory path is provided, then the
 // `tf_saved_model.asset` ops will be freezed.
-Status ConvertTFExecutorToTFLOrFlatbuffer(
-    mlir::ModuleOp module, bool export_to_mlir,
-    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
+absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
+    std::unique_ptr<mlir::MLIRContext>&& context,
+    mlir::OwningOpRef<mlir::ModuleOp> module,
+    tflite::ConverterFlags& converter_flags,
+    const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    llvm::StringRef saved_model_dir,
-    std::optional<tensorflow::Session*> session, std::string* result,
-    bool serialize_stablehlo_ops = false);
+    llvm::StringRef saved_model_dir, std::string* result,
+    bool serialize_stablehlo_ops, bool export_to_mlir,
+    const quantization::PyFunctionLibrary* quantization_py_function_lib =
+        nullptr);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_

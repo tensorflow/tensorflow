@@ -15,9 +15,9 @@
 
 """Momentum for TensorFlow."""
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
-from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -164,7 +164,7 @@ class MomentumOptimizer(optimizer.Optimizer):
 
   def _apply_dense(self, grad, var):
     mom = self.get_slot(var, "momentum")
-    return training_ops.apply_momentum(
+    return gen_training_ops.apply_momentum(
         var, mom,
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
         grad,
@@ -174,7 +174,7 @@ class MomentumOptimizer(optimizer.Optimizer):
 
   def _resource_apply_dense(self, grad, var):
     mom = self.get_slot(var, "momentum")
-    return training_ops.resource_apply_momentum(
+    return gen_training_ops.resource_apply_momentum(
         var.handle, mom.handle,
         math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
         grad,
@@ -184,7 +184,7 @@ class MomentumOptimizer(optimizer.Optimizer):
 
   def _apply_sparse(self, grad, var):
     mom = self.get_slot(var, "momentum")
-    return training_ops.sparse_apply_momentum(
+    return gen_training_ops.sparse_apply_momentum(
         var, mom,
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
         grad.values, grad.indices,
@@ -194,7 +194,7 @@ class MomentumOptimizer(optimizer.Optimizer):
 
   def _resource_apply_sparse(self, grad, var, indices):
     mom = self.get_slot(var, "momentum")
-    return training_ops.resource_sparse_apply_momentum(
+    return gen_training_ops.resource_sparse_apply_momentum(
         var.handle, mom.handle,
         math_ops.cast(self._learning_rate_tensor, grad.dtype),
         grad, indices,

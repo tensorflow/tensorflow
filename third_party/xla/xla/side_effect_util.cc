@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,5 +58,21 @@ const char kXlaTableId[] = "_xla_table_id";
 const char kXlaBufferPlacementAttr[] = "_xla_buffer_placement";
 
 const char kXlaBufferPlacementParam[] = "arg";
+
+const char kXlaStreamAnnotationAttr[] = "_xla_stream_annotation";
+
+const char kXlaCollectiveMatmulAttr[] = "_xla_collective_matmul";
+
+const char kXlaCollectiveMatmulLhsAg[] = "lhs_ag";
+
+const char kXlaCollectiveMatmulRhsAg[] = "rhs_ag";
+
+const char kXlaCollectiveMatmulRs[] = "rs";
+
+const char kXlaCollectiveMatmulNone[] = "none";
+
+const char kXlaMultiRecvCountAttr[] = "_xla_multi_recv_count";
+
+const char kXlaSchedulingGroupIdAttr[] = "_scheduling_group_id";
 
 }  // namespace xla

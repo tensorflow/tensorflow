@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace gpu {
@@ -83,11 +84,16 @@ void* AndroidDlopenSphalLibrary(const char* filename, int dlopen_flags) {
 #define LoadFunction(function) \
   function =                   \
       reinterpret_cast<PFN_##function>(GetProcAddress(libopencl, #function));
-
+#elif defined(__LINUX_GOOGLE__) && !defined(__aarch64__)
+#define LoadFunction(function) function = ::function;
 #else
 #define LoadFunction(function) \
   function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));
 #endif
+
+#define LoadFunctionExtension(plat_id, function) \
+  function = reinterpret_cast<PFN_##function>(   \
+      clGetExtensionFunctionAddressForPlatform(plat_id, #function));
 
 #ifdef __WINDOWS__
 void LoadOpenCLFunctions(HMODULE libopencl);
@@ -95,7 +101,7 @@ void LoadOpenCLFunctions(HMODULE libopencl);
 void LoadOpenCLFunctions(void* libopencl, bool use_wrapper);
 #endif
 
-absl::Status LoadOpenCL() {
+absl::Status LoadOpenCLOnce() {
 #ifdef __WINDOWS__
   HMODULE libopencl = LoadLibraryA("OpenCL.dll");
   if (libopencl) {
@@ -109,23 +115,6 @@ absl::Status LoadOpenCL() {
   }
 #else
   void* libopencl = nullptr;
-#ifdef __ANDROID__
-  // Pixel phone or auto?
-  libopencl =
-      AndroidDlopenSphalLibrary("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
-  if (!libopencl) {
-    libopencl =
-        AndroidDlopenSphalLibrary("libOpenCL-car.so", RTLD_NOW | RTLD_LOCAL);
-  }
-  if (libopencl) {
-    typedef void (*enableOpenCL_t)();
-    enableOpenCL_t enableOpenCL =
-        reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
-    enableOpenCL();
-    LoadOpenCLFunctions(libopencl, true);
-    return absl::OkStatus();
-  }
-#endif
 #ifdef __APPLE__
   static const char* kClLibName =
       "/System/Library/Frameworks/OpenCL.framework/OpenCL";
@@ -134,19 +123,40 @@ absl::Status LoadOpenCL() {
 #endif
 #ifdef __ANDROID__
   libopencl = AndroidDlopenSphalLibrary(kClLibName, RTLD_NOW | RTLD_LOCAL);
+  if (!libopencl) {
+    // Legacy Pixel phone or auto path?
+    libopencl =
+        AndroidDlopenSphalLibrary("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
+    if (!libopencl) {
+      libopencl =
+          AndroidDlopenSphalLibrary("libOpenCL-car.so", RTLD_NOW | RTLD_LOCAL);
+    }
+    if (libopencl) {
+      typedef void (*enableOpenCL_t)();
+      enableOpenCL_t enableOpenCL =
+          reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
+      enableOpenCL();
+      LoadOpenCLFunctions(libopencl, true);
+      return absl::OkStatus();
+    }
+  }
 #else
   libopencl = dlopen(kClLibName, RTLD_NOW | RTLD_LOCAL);
 #endif
   if (libopencl) {
+    TFLITE_LOG(INFO) << "Loaded OpenCL library with dlopen.";
     LoadOpenCLFunctions(libopencl, false);
     return absl::OkStatus();
   }
+  TFLITE_LOG(INFO) << "Failed to load OpenCL library with dlopen: " << dlerror()
+                   << ". Trying ICD loader.";
   // Check if OpenCL functions are found via OpenCL ICD Loader.
   LoadOpenCLFunctions(libopencl, false);
   if (clGetPlatformIDs != nullptr) {
     cl_uint num_platforms;
     cl_int status = clGetPlatformIDs(0, nullptr, &num_platforms);
     if (status == CL_SUCCESS && num_platforms != 0) {
+      TFLITE_LOG(INFO) << "Loaded OpenCL library with ICD loader.";
       return absl::OkStatus();
     }
     return absl::UnknownError("OpenCL is not supported.");
@@ -156,6 +166,22 @@ absl::Status LoadOpenCL() {
   return absl::UnknownError(
       absl::StrCat("Can not open OpenCL library on this device - ", error));
 #endif
+}
+
+absl::Status LoadOpenCL() {
+  static auto* status = new absl::Status(LoadOpenCLOnce());
+  return *status;
+}
+
+void LoadOpenCLFunctionExtensions(cl_platform_id platform_id) {
+  // cl_khr_command_buffer extension
+  LoadFunctionExtension(platform_id, clCreateCommandBufferKHR);
+  LoadFunctionExtension(platform_id, clRetainCommandBufferKHR);
+  LoadFunctionExtension(platform_id, clReleaseCommandBufferKHR);
+  LoadFunctionExtension(platform_id, clFinalizeCommandBufferKHR);
+  LoadFunctionExtension(platform_id, clEnqueueCommandBufferKHR);
+  LoadFunctionExtension(platform_id, clCommandNDRangeKernelKHR);
+  LoadFunctionExtension(platform_id, clGetCommandBufferInfoKHR);
 }
 
 #ifdef __WINDOWS__
@@ -287,15 +313,6 @@ void LoadOpenCLFunctions(void* libopencl, bool use_wrapper) {
   LoadFunction(clCreateFromEGLImageKHR);
   LoadFunction(clEnqueueAcquireEGLObjectsKHR);
   LoadFunction(clEnqueueReleaseEGLObjectsKHR);
-
-  // cl_khr_command_buffer extension
-  LoadFunction(clCreateCommandBufferKHR);
-  LoadFunction(clRetainCommandBufferKHR);
-  LoadFunction(clReleaseCommandBufferKHR);
-  LoadFunction(clFinalizeCommandBufferKHR);
-  LoadFunction(clEnqueueCommandBufferKHR);
-  LoadFunction(clCommandNDRangeKernelKHR);
-  LoadFunction(clGetCommandBufferInfoKHR);
 
   LoadQcomExtensionFunctions();
 }

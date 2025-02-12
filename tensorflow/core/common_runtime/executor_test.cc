@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -97,7 +96,7 @@ class ExecutorTest : public ::testing::Test {
     runner_ = [this](std::function<void()> fn) { thread_pool_->Schedule(fn); };
   }
 
-  Status Run(Rendezvous* rendez) {
+  absl::Status Run(Rendezvous* rendez) {
     Executor::Args args;
     args.rendezvous = rendez;
     args.stats_collector = &step_stats_collector_;
@@ -357,22 +356,22 @@ TEST_F(ExecutorTest, Abort) {
   rendez_->Ref();
   SchedClosure([this]() {
     Env::Default()->SleepForMicroseconds(100 * 1000);
-    Status s = rendez_->Send(Key(ALICE, kIncarnation, BOB, "a"),
-                             Rendezvous::Args(), V(1.0), false);
+    absl::Status s = rendez_->Send(Key(ALICE, kIncarnation, BOB, "a"),
+                                   Rendezvous::Args(), V(1.0), false);
     rendez_->Unref();
   });
   rendez_->Ref();
   SchedClosure([this]() {
     Env::Default()->SleepForMicroseconds(100 * 1000);
-    Status s = rendez_->Send(Key(ALICE, kIncarnation, BOB, "b"),
-                             Rendezvous::Args(), V(1.0), false);
+    absl::Status s = rendez_->Send(Key(ALICE, kIncarnation, BOB, "b"),
+                                   Rendezvous::Args(), V(1.0), false);
     rendez_->Unref();
   });
   rendez_->Ref();
   SchedClosure([this]() {
     Env::Default()->SleepForMicroseconds(100 * 1000);
-    Status s = rendez_->Send(Key(ALICE, kIncarnation, BOB, "c"),
-                             Rendezvous::Args(), V(1.0), false);
+    absl::Status s = rendez_->Send(Key(ALICE, kIncarnation, BOB, "c"),
+                                   Rendezvous::Args(), V(1.0), false);
     rendez_->Unref();
   });
   rendez_->Ref();
@@ -544,10 +543,10 @@ static void BM_FeedInputFetchOutput(::testing::benchmark::State& state) {
 }
 BENCHMARK(BM_FeedInputFetchOutput);
 
-Status ReplaceEdgeWithSendRecv(Graph* g, const Edge* edge, const string& tensor,
-                               const string& sender,
-                               const uint64 sender_incarnation,
-                               const string& receiver) {
+absl::Status ReplaceEdgeWithSendRecv(Graph* g, const Edge* edge,
+                                     const string& tensor, const string& sender,
+                                     const uint64 sender_incarnation,
+                                     const string& receiver) {
   Node* send;
   NodeDef send_def;
   TF_CHECK_OK(NodeDefBuilder(g->NewName("n"), "_Send")
@@ -584,7 +583,7 @@ Status ReplaceEdgeWithSendRecv(Graph* g, const Edge* edge, const string& tensor,
   g->AddControlEdge(edge->src(), recv);
 
   g->RemoveEdge(edge);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Defines a graph to perform the following computation:

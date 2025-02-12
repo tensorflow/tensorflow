@@ -13,19 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <vector>
 
-#include "absl/strings/match.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_builder.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
@@ -38,14 +43,17 @@ class TpuCustomResizeOp : public XlaOpKernel {
                    ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
   }
 
-  xla::Shape GetOutputShape(XlaOpKernelContext* ctx) const {
+  absl::StatusOr<xla::Shape> GetOutputShape(XlaOpKernelContext* ctx) const {
     std::vector<int64_t> out_size;
     auto status = ctx->ConstantInputAsIntVector(1, &out_size);
     CHECK_EQ(out_size.size(), 2) << status;
+    TF_ASSIGN_OR_RETURN(xla::Shape input_shape, ctx->InputXlaShape(0));
     xla::Shape output_shape =
         TensorShapeToXLAShape(ctx->output_xla_type(0), ctx->InputShape(0));
     output_shape.mutable_dimensions()[1] = out_size[0];
     output_shape.mutable_dimensions()[2] = out_size[1];
+    output_shape.set_dynamic_dimension(0, input_shape.is_dynamic_dimension(0));
+    output_shape.set_dynamic_dimension(3, input_shape.is_dynamic_dimension(3));
     return output_shape;
   }
 
@@ -76,7 +84,7 @@ class TpuCustomResizeOp : public XlaOpKernel {
   }
 
   void CompileForward(XlaOpKernelContext* ctx, const char* target) {
-    auto output_shape = GetOutputShape(ctx);
+    OP_REQUIRES_VALUE(auto output_shape, ctx, GetOutputShape(ctx));
     if (ctx->InputShape(0).dim_size(1) == output_shape.dimensions(1) &&
         ctx->InputShape(0).dim_size(2) == output_shape.dimensions(2)) {
       ctx->SetOutput(
@@ -85,8 +93,10 @@ class TpuCustomResizeOp : public XlaOpKernel {
     }
     if (ctx->InputShape(0).dim_size(1) == 1 &&
         ctx->InputShape(0).dim_size(2) == 1) {
-      ctx->SetOutput(0,
-                     ctx->Input(0) + xla::Zeros(ctx->builder(), output_shape));
+      ctx->SetOutput(
+          0, ctx->Input(0) +
+                 xla::Zeros(ctx->builder(),
+                            xla::ShapeUtil::MakeStaticShape(output_shape)));
       return;
     }
     ctx->SetOutput(0, xla::CustomCall(ctx->builder(), target, {ctx->Input(0)},
@@ -121,7 +131,8 @@ class TpuResizeNearestNeighborGradOp : public TpuCustomResizeOp {
   explicit TpuResizeNearestNeighborGradOp(OpKernelConstruction* ctx)
       : TpuCustomResizeOp(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
-    CompileGrad(ctx, "ResizeNearestGrad", GetOutputShape(ctx));
+    OP_REQUIRES_VALUE(xla::Shape output_shape, ctx, GetOutputShape(ctx));
+    CompileGrad(ctx, "ResizeNearestGrad", output_shape);
   }
 };
 
@@ -130,8 +141,11 @@ class TpuResizeBilinearGradOp : public TpuCustomResizeOp {
   explicit TpuResizeBilinearGradOp(OpKernelConstruction* ctx)
       : TpuCustomResizeOp(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
-    auto output_shape =
+    OP_REQUIRES_VALUE(xla::Shape input_shape, ctx, ctx->InputXlaShape(1));
+    xla::Shape output_shape =
         TensorShapeToXLAShape(ctx->output_xla_type(0), ctx->InputShape(1));
+    output_shape.set_dynamic_dimension(0, input_shape.is_dynamic_dimension(0));
+    output_shape.set_dynamic_dimension(3, input_shape.is_dynamic_dimension(3));
     CompileGrad(ctx, "ResizeBilinearGrad", output_shape);
   }
 };

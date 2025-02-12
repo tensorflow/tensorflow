@@ -73,7 +73,8 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/ops:array_ops",

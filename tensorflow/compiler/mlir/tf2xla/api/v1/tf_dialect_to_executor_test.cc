@@ -15,9 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
 
+#include <cstdint>
+#include <string>
+
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tsl/lib/core/status_test_util.h"
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/register_common_dialects.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/core/platform/resource_loader.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -26,9 +39,63 @@ namespace {
 
 using mlir::ModuleOp;
 
-TEST(TensorflowDialectToExecutor, ConvertsToExecutor) {
-  ModuleOp module;
-  TF_ASSERT_OK(ExportFromTensorflowDialectToExecutor(module));
+using mlir::DialectRegistry;
+using mlir::MLIRContext;
+using mlir::ModuleOp;
+using mlir::OwningOpRef;
+using tensorflow::monitoring::testing::CellReader;
+
+static constexpr char kCompilationStreamz[] =
+    "/tensorflow/core/tf2xla/api/v1/tf_dialect_to_executor_dialect_status";
+
+std::string TestDataPath() {
+  return tensorflow::GetDataDependencyFilepath(
+      "tensorflow/compiler/mlir/tf2xla/api/v1/testdata/");
+}
+
+class TensorflowDialectToExecutorTest : public ::testing::Test {
+ public:
+  TensorflowDialectToExecutorTest() {
+    mlir::RegisterCommonToolingDialects(registry_);
+    context_.appendDialectRegistry(registry_);
+    context_.loadAllAvailableDialects();
+  }
+
+  absl::Status CreateMlirModule(std::string mlir_module_filename) {
+    std::string mlir_module_path = TestDataPath() + mlir_module_filename;
+    mlir_module_ =
+        mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
+    if (!mlir_module_) {
+      return absl::Status(
+          absl::StatusCode::kNotFound,
+          absl::StrCat("Could not find MLIR module at ", mlir_module_path));
+    }
+    return absl::OkStatus();
+  }
+
+  DialectRegistry registry_;
+  MLIRContext context_;
+  OwningOpRef<mlir::ModuleOp> mlir_module_;
+};
+
+TEST_F(TensorflowDialectToExecutorTest, ConvertsToExecutor) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
+  TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
+
+  TF_EXPECT_OK(ExportFromTensorflowDialectToExecutor(*mlir_module_));
+
+  EXPECT_EQ(compilation_status.Delta("success"), 1);
+}
+
+TEST_F(TensorflowDialectToExecutorTest, ErrorsWhenCannotConvert) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
+  TF_ASSERT_OK(CreateMlirModule("invalid_executor.mlir"));
+
+  EXPECT_FALSE(ExportFromTensorflowDialectToExecutor(*mlir_module_).ok());
+
+  EXPECT_EQ(compilation_status.Delta("failed"), 1);
 }
 
 }  // namespace

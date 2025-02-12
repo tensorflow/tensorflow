@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "LMDBReader"
   output_arg {
     name: "reader_handle"

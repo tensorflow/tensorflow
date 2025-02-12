@@ -61,9 +61,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
             // CHECK: %[[ID:.*]] = "tf.Identity"(%[[R0]])
             %id = "tf.Identity"(%arg30) : (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<*x!tf_type.resource<tensor<f32>>>
             // CHECK: "tf_device.launch"
+            // CHECK-SAME: device = "TPU_REPLICATED_CORE_0"
             // CHECK-NEXT: "tf.TPUReshardVariables"(%[[ID]], %[[R1]], %[[COMPILE]]#1, %[[R_STATE]])
             // CHECK-NEXT: tf_device.return
-            // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
             // CHECK: "tf.TPUExecuteAndUpdateVariables"(%[[ID]], %[[R1]], %[[COMPILE]]#1)
             "tf_device.launch"() ({
               "tf.TPUExecuteAndUpdateVariables"(%id, %arg31, %compile#1)
@@ -84,9 +84,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: [%[[STATE0]], %[[STATE1]]] as %[[STATE:.*]]: tensor<!tf_type.resource<tensor<2x!tf_type.string>>>
     // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]
     // CHECK: "tf_device.launch"
+    // CHECK-SAME: device = "TPU_REPLICATED_CORE_0"
     // CHECK-NEXT: "tf.TPUReshardVariables"(%[[V0]], %[[V1]], %[[DEFAULT]], %[[STATE]])
     // CHECK-NEXT: tf_device.return
-    // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
     func.return
   }
 }
@@ -296,9 +296,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
             %id = "tf.Identity"(%arg30) : (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<*x!tf_type.resource<tensor<f32>>>
             // CHECK: "tf_device.parallel_execute"
             // CHECK: "tf_device.launch"
+            // CHECK-SAME: device = "TPU_REPLICATED_CORE_0"
             // CHECK-NEXT: "tf.TPUReshardVariables"(%[[ID]], %[[R1]], %[[COMPILE]]#1, %[[R_STATE]])
             // CHECK-NEXT: tf_device.return
-            // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
             // CHECK: "tf.TPUExecuteAndUpdateVariables"(%[[ID]], %[[R1]], %[[COMPILE]]#1)
 	    "tf_device.parallel_execute"() ({
               "tf_device.launch"() ({
@@ -324,9 +324,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: [%[[STATE0]], %[[STATE1]]] as %[[STATE:.*]]: tensor<!tf_type.resource<tensor<2x!tf_type.string>>>
     // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]
     // CHECK: "tf_device.launch"
+    // CHECK-SAME: device = "TPU_REPLICATED_CORE_0"
     // CHECK-NEXT: "tf.TPUReshardVariables"(%[[V0]], %[[V1]], %[[DEFAULT]], %[[STATE]])
     // CHECK-NEXT: tf_device.return
-    // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
     func.return
   }
 }
@@ -391,9 +391,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
             // CHECK: %[[ID:.*]] = "tf.Identity"(%[[R0]])
             %id = "tf.Identity"(%arg30) : (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<*x!tf_type.resource<tensor<f32>>>
             // CHECK: "tf_device.launch"
+            // CHECK-SAME: device = "TPU_REPLICATED_CORE_0"
             // CHECK-NEXT: "tf.TPUReshardVariables"(%[[ID]], %[[R1]], %[[COMPILE]]#1, %[[R_STATE]])
             // CHECK-NEXT: tf_device.return
-            // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
             // CHECK: "tf.TPUExecuteAndUpdateVariables"(%[[ID]], %[[R1]], %[[COMPILE]]#1)
             "tf_device.launch"() ({
               "tf.TPUExecuteAndUpdateVariables"(%id, %arg31, %compile#1)
@@ -414,9 +414,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: %[[ARG2]] as %[[V1:.*]]: tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>>
     // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]
     // CHECK: "tf_device.launch"
+    // CHECK-SAME: device = "TPU_REPLICATED_CORE_0"
     // CHECK-NEXT: "tf.TPUReshardVariables"(%[[V0]], %[[V1]], %[[DEFAULT]], %[[STATE]])
     // CHECK-NEXT: tf_device.return
-    // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
     func.return
   }
 }

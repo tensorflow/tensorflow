@@ -203,6 +203,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // tensorflow/core/kernels/ctc_decoder_ops.cc
   std::vector<optimized_ops::TTypes<float>::UnalignedConstMatrix> input_list_t;
 
+  input_list_t.reserve(max_time);
   for (std::size_t t = 0; t < max_time; ++t) {
     input_list_t.emplace_back(
         GetTensorData<float>(inputs) + t * batch_size * num_classes, batch_size,

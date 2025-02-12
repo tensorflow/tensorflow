@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,14 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -110,7 +114,7 @@ class IndexUtil {
   // Converts a linear index into multidimensional index (eg {x, y, z}) based on
   // the shape and its layout. The first index in the returned multidimensional
   // index is dimension 0.
-  static std::vector<int64_t> LinearIndexToMultidimensionalIndex(
+  static DimensionVector LinearIndexToMultidimensionalIndex(
       const Shape& shape, int64_t linear_index);
 
   // Bumps a sequence of indices; e.g. {0,0,0,0} up by one index value; e.g. to

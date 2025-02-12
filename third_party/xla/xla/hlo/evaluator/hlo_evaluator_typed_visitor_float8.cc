@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 template class HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>;
+template class HloEvaluatorTypedVisitor<tsl::float8_e4m3, float>;
 template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>;
-template class HloEvaluatorTypedVisitor<tsl::float8_e4m3b11, float>;
+template class HloEvaluatorTypedVisitor<tsl::float8_e4m3b11fnuz, float>;
 template class HloEvaluatorTypedVisitor<tsl::float8_e5m2fnuz, float>;
 template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fnuz, float>;
+template class HloEvaluatorTypedVisitor<tsl::float8_e3m4, float>;
 }  // namespace xla

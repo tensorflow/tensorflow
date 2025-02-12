@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/frontend_attributes.h"
 
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/xla_data.pb.h"
+
 namespace xla {
 
 void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
-  FrontendAttributes attrs;
-  (*attrs.mutable_map())[xla::kXlaDisjointReadWriteRegions] = "true";
-  instruction->add_frontend_attributes(attrs);
+  instruction->set_frontend_attribute(xla::kXlaDisjointReadWriteRegions,
+                                      "true");
 }
 
 bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction) {

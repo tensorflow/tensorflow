@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,45 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_
 #define XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_
 
-#include <functional>
-#include <utility>
-#include <vector>
-
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// Transforms each all-reduce instruction to a pair of all-reduce-start and
-// all-reduce-done.
-class AsyncCollectiveCreator : public HloModulePass {
- public:
-  // Function to query the shape of the "context" for collectives that use
-  // HLO async-start/async-done.
-  using ContextShapeQuery =
-      std::function<std::vector<Shape>(const HloInstruction*)>;
-  struct CollectiveCreatorConfig {
-    HloPredicate convert_all_reduce = HloPredicateFalse;
-    HloPredicate convert_all_gather = HloPredicateFalse;
-    HloPredicate convert_collective_permute = HloPredicateFalse;
-    HloPredicate convert_all_to_all = HloPredicateFalse;
-    HloPredicate convert_reduce_scatter = HloPredicateFalse;
-    ContextShapeQuery get_context_shapes = [](const HloInstruction*) {
-      return std::vector<Shape>{};
-    };
-  };
-  explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
-      : config_(std::move(creator_config)) {}
-  absl::string_view name() const override { return "async-collective-creator"; }
-
-  using HloPassInterface::Run;
-  StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  CollectiveCreatorConfig config_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/collectives/async_collective_creator.h"
 
 #endif  // XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_

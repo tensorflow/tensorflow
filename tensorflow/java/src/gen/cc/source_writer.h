@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_JAVA_SRC_GEN_CC_SOURCE_WRITER_H_
 #define TENSORFLOW_JAVA_SRC_GEN_CC_SOURCE_WRITER_H_
 
-#include <string>
-#include <stack>
 #include <list>
 #include <set>
+#include <stack>
+#include <string>
 
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/java/src/gen/cc/java_defs.h"
 
 namespace tensorflow {

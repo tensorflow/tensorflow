@@ -1,0 +1,60 @@
+path: "tensorflow.tpu.experimental.embedding.TPUEmbeddingV2"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v3.TPUEmbeddingV2\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_base.TPUEmbeddingBase\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "DEFAULT_MAX_IDS_PER_TABLE"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "DEFAULT_MAX_UNIQUE_IDS_PER_TABLE"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "embedding_layouts"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "embedding_table_shards"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "embedding_tables"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "variables"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'feature_config\', \'optimizer\', \'pipeline_execution_with_tensor_core\', \'sparse_core_embedding_config\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "apply_gradients"
+    argspec: "args=[\'self\', \'gradients\', \'preserved_outputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "build"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute_sparse_core_stats"
+    argspec: "args=[\'cls\', \'features\', \'feature_config\', \'num_tpu_chips\', \'num_sc_per_chip\', \'optimizer\', \'sparse_core_embedding_config\'], varargs=None, keywords=None, defaults=[\'4\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "dequeue"
+    argspec: "args=[\'self\', \'partitioned_tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "embedding_lookup"
+    argspec: "args=[\'self\', \'features\', \'weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "enqueue"
+    argspec: "args=[\'self\', \'features\', \'weights\', \'device\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

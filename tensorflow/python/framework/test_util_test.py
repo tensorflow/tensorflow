@@ -1196,11 +1196,11 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
         self.accumulation = []
 
       @unittest.expectedFailure
-      @test_util.assert_no_new_pyobjects_executing_eagerly
+      @test_util.assert_no_new_pyobjects_executing_eagerly()
       def test_has_leak(self):
         self.accumulation.append([1.])
 
-      @test_util.assert_no_new_pyobjects_executing_eagerly
+      @test_util.assert_no_new_pyobjects_executing_eagerly()
       def test_has_no_leak(self):
         self.not_accumulating = [1.]
 

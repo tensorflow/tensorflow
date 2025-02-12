@@ -17,12 +17,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -44,16 +44,16 @@ class TestState {
 class TestEagerNode : public EagerNode {
  public:
   explicit TestEagerNode(TestState* state,
-                         Status prepare_return_status = OkStatus(),
-                         Status run_return_status = OkStatus())
+                         absl::Status prepare_return_status = absl::OkStatus(),
+                         absl::Status run_return_status = absl::OkStatus())
       : state_(state),
         prepare_return_status_(prepare_return_status),
         run_return_status_(run_return_status) {}
   TestEagerNode(const TestEagerNode&) = delete;
   TestEagerNode& operator=(const TestEagerNode&) = delete;
-  Status Prepare() override { return prepare_return_status_; }
+  absl::Status Prepare() override { return prepare_return_status_; }
 
-  Status Run() override {
+  absl::Status Run() override {
     if (run_return_status_.ok()) {
       state_->update_success_state();
     } else {
@@ -62,27 +62,27 @@ class TestEagerNode : public EagerNode {
     return run_return_status_;
   };
 
-  void Abort(Status status) override {}
+  void Abort(absl::Status status) override {}
   string DebugString() const override { return "testEagerNode"; }
 
  private:
   TestState* state_;
-  Status prepare_return_status_;
-  Status run_return_status_;
+  absl::Status prepare_return_status_;
+  absl::Status run_return_status_;
 };
 
 class TestAsyncEagerNode : public AsyncEagerNode {
  public:
-  explicit TestAsyncEagerNode(TestState* state,
-                              Status prepare_return_status = OkStatus(),
-                              Status run_return_status = OkStatus())
+  explicit TestAsyncEagerNode(
+      TestState* state, absl::Status prepare_return_status = absl::OkStatus(),
+      absl::Status run_return_status = absl::OkStatus())
       : state_(state),
         prepare_return_status_(prepare_return_status),
         run_return_status_(run_return_status) {}
   TestAsyncEagerNode(const TestAsyncEagerNode&) = delete;
   TestAsyncEagerNode& operator=(const TestAsyncEagerNode&) = delete;
 
-  Status Prepare() override { return prepare_return_status_; }
+  absl::Status Prepare() override { return prepare_return_status_; }
 
   void RunAsync(StatusCallback done) override {
     if (run_return_status_.ok()) {
@@ -93,13 +93,13 @@ class TestAsyncEagerNode : public AsyncEagerNode {
     done(run_return_status_);
   };
 
-  void Abort(Status status) override {}
+  void Abort(absl::Status status) override {}
   string DebugString() const override { return "testAsyncEagerNode"; }
 
  private:
   TestState* state_;
-  Status prepare_return_status_;
-  Status run_return_status_;
+  absl::Status prepare_return_status_;
+  absl::Status run_return_status_;
 };
 
 TEST(EagerExecutorTest, TestSyncExecutorWithEagerNode) {
@@ -165,7 +165,7 @@ TEST(EagerExecutorTest, TestSyncExecutorFailRun) {
       /*async=*/false, /*enable_streaming_enqueue=*/true);
 
   auto state = std::make_unique<TestState>();
-  auto node = std::make_unique<TestEagerNode>(state.get(), OkStatus(),
+  auto node = std::make_unique<TestEagerNode>(state.get(), absl::OkStatus(),
                                               errors::Internal("test"));
 
   auto status = sync_executor->AddOrExecute(std::move(node));
@@ -232,7 +232,7 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailRun) {
       /*async=*/true, /*enable_streaming_enqueue=*/true);
 
   auto state = std::make_unique<TestState>();
-  auto node = std::make_unique<TestEagerNode>(state.get(), OkStatus(),
+  auto node = std::make_unique<TestEagerNode>(state.get(), absl::OkStatus(),
                                               errors::Internal("test"));
 
   TF_ASSERT_OK(async_executor->AddOrExecute(std::move(node)));
@@ -259,8 +259,8 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailRunWithAsyncNode) {
       /*async=*/true, /*enable_streaming_enqueue=*/true);
 
   auto state = std::make_unique<TestState>();
-  auto node = std::make_unique<TestAsyncEagerNode>(state.get(), OkStatus(),
-                                                   errors::Internal("test"));
+  auto node = std::make_unique<TestAsyncEagerNode>(
+      state.get(), absl::OkStatus(), errors::Internal("test"));
 
   TF_ASSERT_OK(async_executor->AddOrExecute(std::move(node)));
 

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,14 +25,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -518,6 +518,50 @@ ENTRY cluster {
   run_topk_pass();
 }
 
+// Equivalent to RoundTripNoIota, but the comparator requires indices.
+TEST_F(TopkRewriterTest, RoundTripValueOnly) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %iota.4 = s32[8,1234567] iota(), iota_dimension=1
+  %sort.27 = (f32[8,1234567], s32[8,1234567]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[8,1234567] get-tuple-element(%sort.27), index=0
+  ROOT %slice.29 = f32[8,5] slice(%get-tuple-element.28), slice={[0:8], [0:5]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto run_topk_pass = [&] {
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_TRUE(changed);
+    ASSERT_THAT(
+        module->entry_computation()->root_instruction(),
+        GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
+    const HloInstruction* cc =
+        module->entry_computation()->root_instruction()->operand(0);
+    ASSERT_THAT(cc->custom_call_target(), "TopK");
+  };
+  // Start by producing a TopK...
+  run_topk_pass();
+  // ... ensuring it decomposes into sort+slice...
+  TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                          TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  auto sort_matcher =
+      m::Sort(m::Parameter(0), m::Iota()).WithPredicate(IsStableSort);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Slice(m::GetTupleElement(sort_matcher, 0))));
+  // ... and that it can become a topk again.
+  run_topk_pass();
+}
+
 TEST_F(TopkRewriterTest, SanityCheckOutput) {
   const std::string hlo_string = R"(
 HloModule module
@@ -618,15 +662,9 @@ TEST_F(TopkRewriterTest, TopKDecomposition) {
   const std::string hlo_string = R"(
 HloModule topk
 
-compare {
-  p.0.lhs = bf16[] parameter(0)
-  p.0.rhs = bf16[] parameter(1)
-  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=GT
-}
-
 ENTRY TopK {
   x = bf16[10,10]{0,1} parameter(0)
-  ROOT topk = (bf16[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+  ROOT topk = (bf16[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true
 }
 
 )";

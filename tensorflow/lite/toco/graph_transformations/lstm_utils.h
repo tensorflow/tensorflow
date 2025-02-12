@@ -54,7 +54,6 @@ enum ExtendedLstmCellInputs {
 };
 
 enum ExtendedLstmCellOutputs {
-  // TODO(ycling): Make the 2 output state tensors optional.
   kOutputStateTensor = 0,
   kCellStateTensor = 1,
   kOutputTensor = 2,

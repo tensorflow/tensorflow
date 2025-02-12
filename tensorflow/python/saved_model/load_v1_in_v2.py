@@ -154,6 +154,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       else:
         original_input_names = []
         input_specs = []
+
       # TODO(b/205015292): Support optional arguments
       feeds = [
           wrap_function._get_element_from_tensor_info(input_spec, wrapped.graph)  # pylint: disable=protected-access
@@ -181,8 +182,19 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
           input_names.append(original_input_name)
           input_tensors.append(feed)
       fetches = {name: out for name, out in signature_def.outputs.items()}
+      input_signature = (
+          (),
+          func_graph.convert_structure_to_signature(
+              dict(zip(input_names, input_tensors))
+          ),
+      )
       try:
-        signature_fn = wrapped.prune(feeds=feeds, fetches=fetches)
+        signature_fn = wrapped.prune(
+            feeds=feeds,
+            fetches=fetches,
+            input_signature=input_signature,
+            are_keyword_args_also_positional=True,
+        )
       except lift_to_graph.UnliftableError as ex:
         # Mutate the exception to add a bit more detail.
         args = ex.args
@@ -198,14 +210,9 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         ).format(signature_key) + message
         ex.args = (message,) + args[1:]
         raise
+
       # pylint: disable=protected-access
       signature_fn._arg_keywords = input_names
-      signature_fn._func_graph.structured_input_signature = (
-          (),
-          func_graph.convert_structure_to_signature(
-              dict(zip(input_names, input_tensors))
-          ),
-      )
 
       if len(input_names) == 1:
         # Allowing positional arguments does not create any ambiguity if there's

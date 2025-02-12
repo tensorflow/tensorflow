@@ -13,11 +13,27 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "MaxShardSizePolicy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "MixedPrecisionLossScaleOptimizer"
     mtype: "<type \'type\'>"
   }
   member {
     name: "PythonState"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ShardByTaskPolicy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ShardableTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ShardingCallback"
     mtype: "<type \'type\'>"
   }
   member_method {

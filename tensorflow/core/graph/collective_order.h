@@ -29,7 +29,7 @@ enum class GraphCollectiveOrder { kNone, kEdges, kAttrs };
 // control edges between collective graph nodes.  If `order_type` is `kAttrs`,
 // add an attribute to the node which may be used by collective executor to
 // ensure the required ordering.
-Status OrderCollectives(Graph* graph, GraphCollectiveOrder order_type);
+absl::Status OrderCollectives(Graph* graph, GraphCollectiveOrder order_type);
 
 }  // namespace tensorflow
 

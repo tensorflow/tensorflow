@@ -1,0 +1,35 @@
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+# IMPORTANT: trailing slash is required on GCS URIs, as it tells gcloud to
+# pretend the path is a directory.
+# 1. Upload nightlies
+TFCI_ARTIFACT_FINAL_GCS_ENABLE=1
+TFCI_ARTIFACT_FINAL_GCS_SA_PATH="${KOKORO_KEYSTORE_DIR}/73361_tensorflow_release_binary_uploader_service_account"
+TFCI_ARTIFACT_FINAL_GCS_URI="gs://tensorflow/nightly/"
+TFCI_ARTIFACT_FINAL_PYPI_ARGS="--config-file=$KOKORO_KEYSTORE_DIR/73361_tensorflow_pypirc_using_global_api_token --repository pypi-warehouse"
+TFCI_ARTIFACT_FINAL_PYPI_ENABLE=1
+TFCI_ARTIFACT_LATEST_GCS_URI="gs://tensorflow/nightly/latest/"
+TFCI_ARTIFACT_STAGING_GCS_ENABLE=1
+TFCI_ARTIFACT_STAGING_GCS_URI="gs://tensorflow-ci-staging/staging/nightly/$(git rev-parse HEAD)/"
+
+# 2. The internal version numbers get changed
+TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=1
+
+# 3. Push results to public build cache (unique cache for MacOS)
+if [[ $(uname -s) == "Darwin" ]]; then
+  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_macos_cache_push"
+else
+  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_cache_push"
+fi

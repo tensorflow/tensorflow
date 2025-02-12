@@ -17,12 +17,12 @@ cc_library(
         ".",
         "ml_dtypes",
     ],
-    deps = ["@org_tensorflow//third_party/eigen3"],
+    deps = ["@eigen_archive//:eigen3"],
 )
 
 cc_library(
-    name = "int4",
-    hdrs = ["include/int4.h"],
+    name = "intn",
+    hdrs = ["include/intn.h"],
     include_prefix = "ml_dtypes",
     # Internal headers are all relative to . but other packages
     # include these headers with the  prefix.
@@ -47,9 +47,9 @@ pybind_extension(
     visibility = [":__subpackages__"],
     deps = [
         ":float8",
-        ":int4",
-        "@org_tensorflow//third_party/eigen3",
-        "@org_tensorflow//third_party/py/numpy:headers",
+        ":intn",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//third_party/py/numpy:headers",
     ],
 )
 

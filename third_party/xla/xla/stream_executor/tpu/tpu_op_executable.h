@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_executable_interface.h"
@@ -49,7 +50,7 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
   absl::string_view fingerprint() const override;
 
  private:
-  xla::Status LoadProgramAndEnqueueToStream(
+  absl::Status LoadProgramAndEnqueueToStream(
       const xla::ServiceExecutableRunOptions& run_options,
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,
@@ -61,7 +62,8 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
 
   SE_OutsideCompilationParams* outside_compilation_params_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuOpExecutable);
+  TpuOpExecutable(const TpuOpExecutable&) = delete;
+  void operator=(const TpuOpExecutable&) = delete;
 };
 
 }  // namespace tensorflow

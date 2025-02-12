@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "xla/tsl/platform/subprocess.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/subprocess.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -40,8 +40,13 @@ class HloExpandTest : public ::testing::Test {
 
     stdout_output_ = stderr_output_ = "";
     int status = proc.Communicate(nullptr, &stdout_output_, &stderr_output_);
+#if defined(_WIN32) || defined(_WIN64)
+    exited_normally_ = (status == 0);
+    exit_status_ = status;
+#else
     exited_normally_ = WIFEXITED(status);
     exit_status_ = exited_normally_ ? WEXITSTATUS(status) : -1;
+#endif  // defined(_WIN32) || defined(_WIN64)
   }
 
   std::string stdout_output_;
@@ -62,6 +67,34 @@ TEST_F(HloExpandTest, CholeskyHlo) {
 ENTRY %main.3 () -> f64[3,3] {
   %constant.1 = f64[3,3]{1,0} constant({ { 1, 2, 3 }, { 2, 20, 26 }, { 3, 26, 70 } })
   ROOT %cholesky.2 = f64[3,3]{1,0} cholesky(f64[3,3]{1,0} %constant.1), lower=true
+})";
+
+  EXPECT_TRUE(exited_normally_);
+  EXPECT_EQ(exit_status_, 0);
+  EXPECT_THAT(stdout_output_, testing::HasSubstr(expected_hlo_string));
+}
+
+TEST_F(HloExpandTest, SpmdHlo) {
+  std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
+                                           "tests", "spmd.hlo");
+  std::vector<std::string> additional_flags = {"--spmd_expander", hlo_path};
+  HloOpt(additional_flags);
+
+  const std::string& expected_hlo_string =
+      R"(HloModule module, entry_computation_layout={(f32[24,64]{1,0}, f32[39296,64]{1,0})->f32[24,19648]{1,0}}, num_partitions=2
+
+ENTRY %entry_spmd (param: f32[24,64], param.1: f32[39296,64]) -> f32[24,19648] {
+  %param = f32[24,64]{1,0} parameter(0), sharding={replicated}
+  %lhs.copy.1 = f32[24,64]{1,0} copy(f32[24,64]{1,0} %param)
+  %param.1 = f32[39296,64]{1,0} parameter(1), sharding={replicated}
+  %constant = s32[2]{0} constant({0, 19648})
+  %partition-id = u32[] partition-id()
+  %dynamic-slice = s32[1]{0} dynamic-slice(s32[2]{0} %constant, u32[] %partition-id), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(s32[1]{0} %dynamic-slice)
+  %constant.1 = s32[] constant(0)
+  %dynamic-slice.1 = f32[19648,64]{1,0} dynamic-slice(f32[39296,64]{1,0} %param.1, s32[] %reshape, s32[] %constant.1), dynamic_slice_sizes={19648,64}
+  %rhs.copy.1 = f32[19648,64]{1,0} copy(f32[19648,64]{1,0} %dynamic-slice.1)
+  ROOT %dot.1 = f32[24,19648]{1,0} dot(f32[24,64]{1,0} %lhs.copy.1, f32[19648,64]{1,0} %rhs.copy.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })";
 
   EXPECT_TRUE(exited_normally_);
@@ -103,7 +136,7 @@ TEST_F(HloExpandTest, InvalidInputFileExtension) {
   HloOpt(additional_flags);
 
   const std::string& expected_string =
-      "input_format must be specified as [hlo|pb|pbtxt].";
+      "input_format must be specified as [hlo|pb|pbtxt|txt].";
 
   EXPECT_TRUE(exited_normally_);
   EXPECT_EQ(exit_status_, 1);
@@ -115,7 +148,7 @@ TEST_F(HloExpandTest, InvalidInputFormat) {
   HloOpt(additional_flags);
 
   const std::string& expected_string =
-      "input_format must be specified as [hlo|pb|pbtxt].";
+      "input_format must be specified as [hlo|pb|pbtxt|txt].";
 
   EXPECT_TRUE(exited_normally_);
   EXPECT_EQ(exit_status_, 1);
@@ -175,7 +208,22 @@ TEST_F(HloExpandTest, UnsupportedOutputFormat) {
   HloOpt(additional_flags);
 
   const std::string& expected_string =
-      "Printing to stdout must specify supported output_format=[hlo|pbtxt].";
+      "Printing to stdout must specify supported "
+      "output_format=[hlo|pbtxt|txt].";
+
+  EXPECT_TRUE(exited_normally_);
+  EXPECT_EQ(exit_status_, 1);
+  EXPECT_THAT(stderr_output_, testing::HasSubstr(expected_string));
+}
+
+TEST_F(HloExpandTest, VerificationFailure) {
+  std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
+                                           "tests", "invalid_concat.hlo");
+  std::vector<std::string> additional_flags = {"--verify_hlo", hlo_path};
+  HloOpt(additional_flags);
+
+  const std::string& expected_string =
+      "Cannot concatenate arrays that differ in dimensions";
 
   EXPECT_TRUE(exited_normally_);
   EXPECT_EQ(exit_status_, 1);

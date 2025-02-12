@@ -27,7 +27,7 @@ namespace tensorflow {
 //  - Reducing the number of XLA recompilations.
 class PartiallyDeclusterPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 }  // namespace tensorflow

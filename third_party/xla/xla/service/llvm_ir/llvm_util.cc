@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,18 +17,25 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <map>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -43,36 +50,35 @@ limitations under the License.
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/tsl/platform/byte_order.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/byte_order.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
-#include "tsl/platform/logging.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -93,7 +99,7 @@ std::string DumpToStringTempl(T* entity) {
 
 // Note, this function is only useful in an insertion context; in a global
 // (e.g. constants) context it will CHECK fail.
-llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
+llvm::Module* ModuleFromIRBuilder(llvm::IRBuilderBase* b) {
   auto block = CHECK_NOTNULL(b->GetInsertBlock());
   auto fn = CHECK_NOTNULL(block->getParent());
   auto module = CHECK_NOTNULL(fn->getParent());
@@ -126,49 +132,42 @@ std::string DumpToString(mlir::Value value) {
 
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilderBase* b,
     absl::string_view name) {
   llvm::Module* module = ModuleFromIRBuilder(b);
-  llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
+  llvm::Function* intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
   return b->CreateCall(intrinsic, AsArrayRef(operands), name.data());
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          llvm::IRBuilderBase* b, bool enable_fast_min_max,
                           absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
-  } else {
-    auto cmp_ge = b->CreateFCmpOGE(lhs_value, rhs_value);
-    auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto sel_lhs = b->CreateOr(cmp_ge, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
   }
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maximum,
+                                      {lhs_value, rhs_value},
+                                      {lhs_value->getType()}, b);
 }
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          llvm::IRBuilderBase* b, bool enable_fast_min_max,
                           absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
-  } else {
-    auto cmp_le = b->CreateFCmpOLE(lhs_value, rhs_value);
-    auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto sel_lhs = b->CreateOr(cmp_le, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
   }
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minimum,
+                                      {lhs_value, rhs_value},
+                                      {lhs_value->getType()}, b);
 }
 
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   llvm::Value* index, llvm::IRBuilder<>* b) {
+                                   llvm::Value* index, llvm::IRBuilderBase* b) {
   llvm::Type* array_type = array->getType();
   CHECK(array_type->isPointerTy());
-  llvm::PointerType* array_type_as_pointer =
-      llvm::cast<llvm::PointerType>(array_type);
-  CHECK(array_type_as_pointer->isOpaqueOrPointeeTypeMatches(element_type));
   VLOG(2) << "EmitBufferIndexingGEP with type="
           << llvm_ir::DumpToString(array_type)
           << " array=" << llvm_ir::DumpToString(array)
@@ -182,53 +181,54 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 }
 
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   int64_t index, llvm::IRBuilder<>* b) {
+                                   int64_t index, llvm::IRBuilderBase* b) {
   return EmitBufferIndexingGEP(array, element_type, b->getInt64(index), b);
 }
 
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
-                                  llvm::Module* module) {
+                                  llvm::LLVMContext& context) {
   switch (element_type) {
-    case PRED:
-    // Int8 is used as there is no LLVM S4/U4 dtype
+    case S2:
+    case U2:
+      return llvm::Type::getIntNTy(context, 2);
     case S4:
     case U4:
+      return llvm::Type::getIntNTy(context, 4);
+    case PRED:
     case S8:
     case U8:
-      return llvm::Type::getInt8Ty(module->getContext());
+      return llvm::Type::getInt8Ty(context);
     case S16:
     case U16:
-    case BF16:
-      // For BF16 we just need some type that is 16 bits wide so that it will
-      // take up the right amount of space in memory. LLVM does not have a BF16
-      // type (the LLVM half type is IEEE 16 bit floating point, not bfloat), so
-      // we can't map it directly to an LLVM type. We will not map a BF16
-      // addition to an addition on this type (int16_t) - this is just the type
-      // used for storage.
-      return llvm::Type::getInt16Ty(module->getContext());
+      return llvm::Type::getInt16Ty(context);
+    case F4E2M1FN:
+      return llvm::Type::getIntNTy(context, 4);
     case F8E5M2:
     case F8E5M2FNUZ:
+    case F8E4M3:
     case F8E4M3FN:
     case F8E4M3B11FNUZ:
     case F8E4M3FNUZ:
-      // Similarly as with BF16, we represent F8 as an int since there is no
-      // LLVM F8 dtype.
-      return llvm::Type::getInt8Ty(module->getContext());
+    case F8E3M4:
+    case F8E8M0FNU:
+      // We represent F8 as an int since there is no LLVM F8 dtype.
+      return llvm::Type::getInt8Ty(context);
+    case BF16:
+      return llvm::Type::getBFloatTy(context);
     case F16:
-      return llvm::Type::getHalfTy(module->getContext());
+      return llvm::Type::getHalfTy(context);
     case S32:
     case U32:
-      return llvm::Type::getInt32Ty(module->getContext());
+      return llvm::Type::getInt32Ty(context);
     case S64:
     case U64:
-      return llvm::Type::getInt64Ty(module->getContext());
+      return llvm::Type::getInt64Ty(context);
     case F32:
-      return llvm::Type::getFloatTy(module->getContext());
+      return llvm::Type::getFloatTy(context);
     case F64:
-      return llvm::Type::getDoubleTy(module->getContext());
+      return llvm::Type::getDoubleTy(context);
     case C64: {
-      auto cplx_t =
-          llvm::StructType::getTypeByName(module->getContext(), "complex64");
+      auto cplx_t = llvm::StructType::getTypeByName(context, "complex64");
       if (cplx_t == nullptr) {
         // C++ standard dictates the memory layout of std::complex is contiguous
         // real followed by imaginary. C++11 section 26.4 [complex.numbers]:
@@ -238,31 +238,28 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
         // z, and reinterpret_cast<cv T(&)[2]>(z)[1] shall designate the
         // imaginary part of z.
         return llvm::StructType::create(
-            {llvm::Type::getFloatTy(module->getContext()),
-             llvm::Type::getFloatTy(module->getContext())},
+            {llvm::Type::getFloatTy(context), llvm::Type::getFloatTy(context)},
             "complex64", /*isPacked=*/true);
       }
       return cplx_t;
     }
     case C128: {
-      auto cplx_t =
-          llvm::StructType::getTypeByName(module->getContext(), "complex128");
+      auto cplx_t = llvm::StructType::getTypeByName(context, "complex128");
       if (cplx_t == nullptr) {
-        return llvm::StructType::create(
-            {llvm::Type::getDoubleTy(module->getContext()),
-             llvm::Type::getDoubleTy(module->getContext())},
-            "complex128", /*isPacked=*/true);
+        return llvm::StructType::create({llvm::Type::getDoubleTy(context),
+                                         llvm::Type::getDoubleTy(context)},
+                                        "complex128", /*isPacked=*/true);
       }
       return cplx_t;
     }  // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
     case OPAQUE_TYPE:
-      return llvm::Type::getInt8PtrTy(module->getContext());
+      return llvm::PointerType::getUnqual(context);
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
       // some placeholder type, so use int8_t*.
-      return llvm::Type::getInt8PtrTy(module->getContext());
+      return llvm::PointerType::getUnqual(context);
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
@@ -283,8 +280,9 @@ int GetSizeInBits(llvm::Type* type) {
   return bits;
 }
 
-llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
-  llvm::Type* result_type = PrimitiveTypeToIrType(shape.element_type(), module);
+llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
+  llvm::Type* result_type =
+      PrimitiveTypeToIrType(shape.element_type(), context);
   if (shape.IsTuple()) {
     // A tuple buffer is an array of pointers.
     result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
@@ -297,12 +295,11 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
   return result_type;
 }
 
-StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
-                                                         int32_t* shape_size,
-                                                         llvm::IRBuilder<>* b) {
+absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
+    const Shape& shape, int32_t* shape_size, llvm::IRBuilderBase* b) {
   std::string encoded_shape = shape.SerializeAsString();
   if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
-    return InternalError("Encoded shape size exceeded int32_t size limit.");
+    return Internal("Encoded shape size exceeded int32_t size limit.");
   }
   *shape_size = static_cast<int32_t>(encoded_shape.size());
   return b->CreateGlobalStringPtr(encoded_shape);
@@ -311,10 +308,21 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
   const char* data = static_cast<const char*>(literal.untyped_data());
+  int64_t size_bytes = literal.size_bytes();
   CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
-  return llvm::ConstantDataArray::getString(
-      module->getContext(), llvm::StringRef(data, literal.size_bytes()),
-      /*AddNull=*/false);
+  std::vector<char> packed_data;
+  if (primitive_util::IsSubByteNonPredType(literal.shape().element_type())) {
+    auto bit_width = primitive_util::BitWidth(literal.shape().element_type());
+    int elements_per_byte = 8 / bit_width;
+    packed_data.resize(CeilOfRatio<int64_t>(size_bytes, elements_per_byte));
+    PackIntN(bit_width, absl::MakeSpan(data, size_bytes),
+             absl::MakeSpan(packed_data));
+    data = packed_data.data();
+    size_bytes = packed_data.size();
+  }
+  return llvm::ConstantDataArray::getString(module->getContext(),
+                                            llvm::StringRef(data, size_bytes),
+                                            /*AddNull=*/false);
 }
 
 llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
@@ -329,9 +337,52 @@ llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
       llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
 }
 
+SharedMemoryTile AllocateSharedMemoryTile(
+    llvm::Module* module, llvm::Type* element_type,
+    absl::Span<int64_t const> dimensions_major_to_minor,
+    absl::string_view buffer_name) {
+  llvm::Type* ty = element_type;
+  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
+    ty = llvm::ArrayType::get(ty, dim);
+  }
+  return SharedMemoryTile{
+      llvm_ir::AllocateSharedMemoryTile(module, ty, buffer_name), element_type};
+}
+
+static std::vector<llvm::Value*> IndexWith0(
+    absl::Span<llvm::Value* const> index, llvm::IRBuilderBase* b) {
+  std::vector<llvm::Value*> index_with_0{
+      llvm::ConstantInt::get(index.front()->getType(), 0)};
+  absl::c_copy(index, std::back_inserter(index_with_0));
+  return index_with_0;
+}
+
+llvm::Value* SharedMemoryTile::Address(absl::Span<llvm::Value* const> index,
+                                       llvm::IRBuilderBase* b) const {
+  llvm::Value* gep = b->CreateInBoundsGEP(base_ptr_->getValueType(), base_ptr_,
+                                          IndexWith0(index, b));
+  // __shared__ memory uses a different address space, so we cast it
+  // to global address space before writing or reading.
+  return b->CreateAddrSpaceCast(gep,
+                                llvm::PointerType::get(b->getContext(), 0));
+};
+
+llvm::Value* SharedMemoryTile::Load(absl::Span<llvm::Value* const> index,
+                                    llvm::IRBuilderBase* b) const {
+  auto* load_type = llvm::GetElementPtrInst::getIndexedType(
+      base_ptr_->getValueType(), IndexWith0(index, b));
+  return b->CreateLoad(load_type, Address(index, b));
+}
+
+llvm::StoreInst* SharedMemoryTile::Store(llvm::Value* value,
+                                         absl::Span<llvm::Value* const> index,
+                                         llvm::IRBuilderBase* b) const {
+  return b->CreateStore(value, Address(index, b));
+}
+
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             absl::string_view name,
-                                            llvm::IRBuilder<>* b,
+                                            llvm::IRBuilderBase* b,
                                             int alignment) {
   return EmitAllocaAtFunctionEntryWithCount(type, nullptr, name, b, alignment);
 }
@@ -339,14 +390,18 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
 llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
                                                      llvm::Value* element_count,
                                                      absl::string_view name,
-                                                     llvm::IRBuilder<>* b,
+                                                     llvm::IRBuilderBase* b,
                                                      int alignment) {
-  llvm::IRBuilder<>::InsertPointGuard guard(*b);
+  llvm::IRBuilderBase::InsertPointGuard guard(*b);
   llvm::Function* function = b->GetInsertBlock()->getParent();
   b->SetInsertPoint(&function->getEntryBlock(),
                     function->getEntryBlock().getFirstInsertionPt());
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  // Explicitly set local addrspace for SPIR backend.
+  llvm::Triple target(module->getTargetTriple());
+  int addrspace = target.isSPIR() || target.isAMDGPU() ? 5 : 0;
   llvm::AllocaInst* alloca =
-      b->CreateAlloca(type, element_count, AsStringRef(name));
+      b->CreateAlloca(type, addrspace, element_count, AsStringRef(name));
   if (alignment != 0) {
     alloca->setAlignment(llvm::Align(alignment));
   }
@@ -355,7 +410,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
 
 llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
                                    absl::string_view name,
-                                   llvm::IRBuilder<>* b) {
+                                   llvm::IRBuilderBase* b) {
   return llvm::BasicBlock::Create(
       /*Context=*/b->getContext(),
       /*Name=*/AsStringRef(name),
@@ -364,7 +419,7 @@ llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
 }
 
 LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
-                          llvm::IRBuilder<>* b, bool emit_else) {
+                          llvm::IRBuilderBase* b, bool emit_else) {
   llvm_ir::LlvmIfData if_data;
   if_data.if_block = b->GetInsertBlock();
   if_data.true_block =
@@ -408,7 +463,7 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
 
 llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                             llvm::Value* lhs_value, llvm::Value* rhs_value,
-                            llvm::IRBuilder<>* b, absl::string_view name) {
+                            llvm::IRBuilderBase* b, absl::string_view name) {
   llvm::Value* comparison_result;
   if (lhs_value->getType()->isIntegerTy()) {
     comparison_result =
@@ -419,8 +474,8 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
   }
   // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
   // arrays. So we extend it to i8 so that it's addressable.
-  return b->CreateZExt(comparison_result, llvm_ir::PrimitiveTypeToIrType(
-                                              PRED, ModuleFromIRBuilder(b)));
+  return b->CreateZExt(comparison_result,
+                       llvm_ir::PrimitiveTypeToIrType(PRED, b->getContext()));
 }
 
 // Internal helper that is called from emitted code to log an int64_t value with
@@ -429,12 +484,12 @@ static void LogS64(const char* tag, int64_t value) {
   LOG(INFO) << tag << " (int64_t): " << value;
 }
 
-void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
+void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilderBase* b) {
   llvm::FunctionType* log_function_type = llvm::FunctionType::get(
       b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
   b->CreateCall(log_function_type,
                 b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64_t>(&LogS64)),
-                                  log_function_type->getPointerTo()),
+                                  b->getPtrTy()),
                 {b->getInt64(absl::bit_cast<int64_t>(tag)), value});
 }
 
@@ -464,7 +519,11 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
 }
 
 llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
-                                    llvm::Instruction* inst) {
+                                    llvm::Instruction* inst,
+                                    llvm::Module* module) {
+  if (llvm::Triple(module->getTargetTriple()).isSPIR()) {
+    return inst;
+  }
   llvm::LLVMContext& context = inst->getParent()->getContext();
   llvm::IntegerType* i32 = llvm::Type::getInt32Ty(context);
   inst->setMetadata(
@@ -537,26 +596,17 @@ std::string SanitizeFunctionName(std::string function_name) {
   return function_name;
 }
 
-void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder) {
+void SetToFirstInsertPoint(llvm::BasicBlock* blk,
+                           llvm::IRBuilderBase* builder) {
   builder->SetInsertPoint(blk, blk->getFirstInsertionPt());
 }
 
-void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder) {
+void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder) {
   if (llvm::Instruction* terminator = blk->getTerminator()) {
     builder->SetInsertPoint(terminator);
   } else {
     builder->SetInsertPoint(blk);
   }
-}
-
-llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
-                       llvm::IRBuilder<>* builder) {
-  auto size = rotand->getType()->getPrimitiveSizeInBits();
-  auto size_value = builder->getIntN(size, size);
-  auto mod = [=](llvm::Value* x) { return builder->CreateURem(x, size_value); };
-  return builder->CreateOr(
-      builder->CreateShl(rotand, mod(builder->CreateSub(size_value, rotor))),
-      builder->CreateLShr(rotand, mod(rotor)));
 }
 
 int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
@@ -628,29 +678,22 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static Status CreateAndWriteStringToFile(const std::string& directory_name,
-                                         const std::string& file_name,
-                                         const std::string& text) {
-  std::unique_ptr<tsl::WritableFile> f;
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(directory_name));
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->NewWritableFile(file_name, &f));
-  TF_RETURN_IF_ERROR(f->Append(text));
-  TF_RETURN_IF_ERROR(f->Close());
-  return OkStatus();
-}
-
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix) {
   if (!DumpingEnabledForHloModule(hlo_module)) {
     return;
   }
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaDumpLlvmIr:#module=%s,program_id=%d#",
+                           hlo_module.name(), hlo_module.unique_id());
+  });
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
   std::string suffix =
-      absl::StrCat("ir-", optimized ? "with" : "no", "-opt",
-                   filename_suffix.empty() ? "" : ".", filename_suffix);
+      absl::StrCat(filename_suffix, filename_suffix.empty() ? "" : ".", "ir-",
+                   optimized ? "with" : "no", "-opt");
   DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
                           DumpToString(&llvm_module));
 }
@@ -684,31 +727,10 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   return function;
 }
 
-std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
-                                                    llvm::Value* src0,
-                                                    llvm::Value* src1) {
-  CHECK_EQ(src0->getType()->getPrimitiveSizeInBits(), 32);
-  CHECK_EQ(src1->getType()->getPrimitiveSizeInBits(), 32);
-  llvm::Type* int64_ty = b->getInt64Ty();
-  src0 = b->CreateZExt(src0, int64_ty);
-  src1 = b->CreateZExt(src1, int64_ty);
-  return SplitInt64ToInt32s(b, b->CreateMul(src0, src1));
-}
-
-std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
-    llvm::IRBuilder<>* b, llvm::Value* value_64bits) {
-  CHECK_EQ(value_64bits->getType()->getPrimitiveSizeInBits(), 64);
-  llvm::Type* int32_ty = b->getInt32Ty();
-  llvm::Value* low_32bits = b->CreateTrunc(value_64bits, int32_ty);
-  llvm::Value* high_32bits =
-      b->CreateTrunc(b->CreateLShr(value_64bits, 32), int32_ty);
-  return std::make_pair(low_32bits, high_32bits);
-}
-
 unsigned GetGlobalMemoryAddressSpace() { return 1; }
 
 llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
-                                                     llvm::IRBuilder<>* b) {
+                                                     llvm::IRBuilderBase* b) {
   static const char* kRngStateVariableName = "rng_state";
   llvm::GlobalVariable* state_ptr =
       module->getNamedGlobal(kRngStateVariableName);
@@ -734,7 +756,7 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
 }
 
 llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
-                                  llvm::IRBuilder<>* builder) {
+                                  llvm::IRBuilderBase* builder) {
   llvm::GlobalVariable* state_ptr =
       GetOrCreateVariableForRngState(module, builder);
   llvm::LoadInst* state_value_old =
@@ -746,10 +768,10 @@ llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
   return state_value_old;
 }
 
-llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilder<>* b) {
+llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilderBase* b) {
   llvm::Function* function = b->GetInsertBlock()->getParent();
   llvm::Module* module = b->GetInsertBlock()->getModule();
-  llvm::IRBuilder<>::InsertPointGuard guard(*b);
+  llvm::IRBuilderBase::InsertPointGuard guard(*b);
   llvm::BasicBlock* early_return =
       llvm::BasicBlock::Create(/*Context=*/module->getContext(),
                                /*Name=*/"early_return",
@@ -759,7 +781,7 @@ llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilder<>* b) {
   return early_return;
 }
 
-void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilder<>* b,
+void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
                      llvm::BasicBlock* return_block) {
   if (!return_block) {
     return_block = EmitReturnBlock(b);

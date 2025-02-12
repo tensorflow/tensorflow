@@ -26,8 +26,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status CreatePoolFromSet(const protobuf::FileDescriptorSet& set,
-                         std::unique_ptr<protobuf::DescriptorPool>* out_pool) {
+absl::Status CreatePoolFromSet(
+    const protobuf::FileDescriptorSet& set,
+    std::unique_ptr<protobuf::DescriptorPool>* out_pool) {
   *out_pool = absl::make_unique<protobuf::DescriptorPool>();
   for (const auto& file : set.file()) {
     if ((*out_pool)->BuildFile(file) == nullptr) {
@@ -35,7 +36,7 @@ Status CreatePoolFromSet(const protobuf::FileDescriptorSet& set,
                                      file.DebugString());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Build a `DescriptorPool` from the named file or URI. The file or URI
@@ -43,10 +44,10 @@ Status CreatePoolFromSet(const protobuf::FileDescriptorSet& set,
 //
 // The file must contain a serialized `FileDescriptorSet`. See
 // `GetDescriptorPool()` for more information.
-Status GetDescriptorPoolFromFile(
+absl::Status GetDescriptorPoolFromFile(
     tensorflow::Env* env, const string& filename,
     std::unique_ptr<protobuf::DescriptorPool>* owned_desc_pool) {
-  Status st = env->FileExists(filename);
+  absl::Status st = env->FileExists(filename);
   if (!st.ok()) {
     return st;
   }
@@ -64,7 +65,7 @@ Status GetDescriptorPoolFromFile(
   return CreatePoolFromSet(descs, owned_desc_pool);
 }
 
-Status GetDescriptorPoolFromBinary(
+absl::Status GetDescriptorPoolFromBinary(
     const string& source,
     std::unique_ptr<protobuf::DescriptorPool>* owned_desc_pool) {
   if (!absl::StartsWith(source, "bytes://")) {
@@ -86,7 +87,7 @@ Status GetDescriptorPoolFromBinary(
 
 }  // namespace
 
-Status GetDescriptorPool(
+absl::Status GetDescriptorPool(
     Env* env, string const& descriptor_source,
     protobuf::DescriptorPool const** desc_pool,
     std::unique_ptr<protobuf::DescriptorPool>* owned_desc_pool) {
@@ -98,11 +99,11 @@ Status GetDescriptorPool(
 
   // If there is no pool function registered for the given source, let the
   // runtime find the file or URL.
-  Status status =
+  absl::Status status =
       GetDescriptorPoolFromFile(env, descriptor_source, owned_desc_pool);
   if (status.ok()) {
     *desc_pool = owned_desc_pool->get();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   status = GetDescriptorPoolFromBinary(descriptor_source, owned_desc_pool);

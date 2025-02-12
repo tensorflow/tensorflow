@@ -17,21 +17,25 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_OP_METRICS_DB_UTILS_H_
 
 #include <algorithm>
+#include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 // The name of OpMetrics to represent the idle time.
 TF_CONST_INIT extern const absl::string_view kIdle;
+// The core index to add to sparse core index in op metrics.
+TF_CONST_INIT extern const uint32_t kSparseCoreIndexStart;
 
 // Helps build an op metrics database (borrowed).
 // Enables fast lookup of existing ops and prevents the creation of duplicate
@@ -48,7 +52,8 @@ class OpMetricsDbBuilder {
   // Looks up the given OP name. If it is already in the database,
   // return its OpMetrics; otherwise, insert a new one.
   OpMetrics* LookupOrInsertNewOpMetrics(uint64 hlo_module_id,
-                                        absl::string_view name);
+                                        absl::string_view name,
+                                        uint64_t fingerprint);
 
   OpMetricsDb* db() { return db_; }
 
@@ -121,7 +126,7 @@ inline uint64_t ChildrenTimePs(const OpMetrics& metrics) {
 
 // Returns the ratio of time spent sending data from the host to the device
 // relative to the total time the host was active.
-absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db);
+std::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db);
 
 // Converts from the device op metrics to Tf-op metrics.
 OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(

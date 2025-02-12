@@ -154,12 +154,11 @@ The following are common conversion errors and their solutions:
     Solution: The error occurs as your model has TF ops that don't have a
     corresponding TFLite implementation. You can resolve this by
     [using the TF op in the TFLite model](../../guide/ops_select.md)
-    (recommended).
-    If you want to generate a model with TFLite ops only, you can either add a
-    request for the missing TFLite op in
+    (recommended). If you want to generate a model with TFLite ops only, you can
+    either add a request for the missing TFLite op in
     [Github issue #21526](https://github.com/tensorflow/tensorflow/issues/21526)
     (leave a comment if your request hasn’t already been mentioned) or
-    [create the TFLite op](../../guide/ops_custom#create_and_register_the_operator)
+    [create the TFLite op](../../guide/ops_custom.md#create_and_register_the_operator)
     yourself.
 
 *   Error: `.. is neither a custom op nor a flex op`
@@ -204,7 +203,7 @@ You are required to provide the `--output_file` flag and either the `--saved_mod
 
 If you have the
 [TensorFlow 2.x source](https://www.tensorflow.org/install/source)
-donwloaded and want to run the converter from that source without building and
+downloaded and want to run the converter from that source without building and
 installing the package,
 you can replace '`tflite_convert`' with
 '`bazel run tensorflow/lite/python:tflite_convert --`' in the command.

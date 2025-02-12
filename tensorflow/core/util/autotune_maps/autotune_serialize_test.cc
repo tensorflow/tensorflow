@@ -14,15 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 // For Google-internal use only.
+#include "xla/stream_executor/platform_manager.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
-
-#include "absl/types/variant.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
@@ -32,21 +30,19 @@ namespace tensorflow {
 namespace {
 using stream_executor::dnn::AlgorithmConfig;
 using stream_executor::dnn::AlgorithmDesc;
-using stream_executor::gpu::GpuDriver;
 using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 
 // Gets a GPU StreamExecutor instance.  Any one will do.
 se::StreamExecutor* GetStreamExec() {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   CHECK_GT(platform->VisibleDeviceCount(), 0);
   return platform->ExecutorForDevice(0).value();
 }
 
 // Tests when there is no entry in the autotune maps.
 TEST(AutotuneSerializeTest, Empty) {
-  TF_CHECK_OK(GpuDriver::Init());
   ResetAutotuneMaps();
   std::string output;
   TF_CHECK_OK(SerializeAutotuneMaps(&output));
@@ -62,7 +58,6 @@ TEST(AutotuneSerializeTest, Empty) {
 // 4. Use MergeFromstring to load the entries from string to autotune maps.
 // 5. Check if entries in autotune maps are equal to the predefined ones.
 TEST(AutotuneSerializeTest, Consistency) {
-  TF_CHECK_OK(GpuDriver::Init());
   ResetAutotuneMaps();
   ConvParameters conv_params_example_a = {
       GetStreamExec(),
@@ -141,7 +136,6 @@ TEST(AutotuneSerializeTest, Consistency) {
 // Test that LoadSerializedAutotuneMaps will reject entries with incompatible
 // version.
 TEST(AutotuneSerializeTest, VersionControl) {
-  TF_CHECK_OK(GpuDriver::Init());
   ResetAutotuneMaps();
 
   ConvParameters fused_params_example_a = {

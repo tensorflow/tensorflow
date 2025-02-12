@@ -24,6 +24,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char kFunctionalizeControlFlowFailureMessage[] =
+    "Failed to functionalize Control Flow V1 ops. Consider using Control "
+    "Flow V2 ops instead. See "
+    "https://www.tensorflow.org/api_docs/python/tf/"
+    "compat/v1/enable_control_flow_v2.";
+
 // Transformation that converts tf.while_loop() loops into functional While
 // operators and tf.cond() conditionals into function If operators, suitable for
 // XLA compilation.
@@ -48,22 +54,21 @@ namespace tensorflow {
 //
 // The user of this function is responsible for using a node filter that
 // satisfies the above conditions.
-Status FunctionalizeControlFlow(Graph* graph,
-                                FunctionLibraryDefinition* library,
-                                const NodeFilter& node_filter = {},
-                                bool include_functions = false);
+absl::Status FunctionalizeControlFlow(Graph* graph,
+                                      FunctionLibraryDefinition* library,
+                                      const NodeFilter& node_filter = {},
+                                      bool include_functions = false);
 
-Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
-                                           FunctionLibraryDefinition* library,
-                                           const NodeFilter& node_filter = {},
-                                           bool include_functions = false);
+absl::Status FunctionalizeControlFlowForGraphDef(
+    GraphDef* graph_def, FunctionLibraryDefinition* library,
+    const NodeFilter& node_filter = {}, bool include_functions = false);
 
 // Rewrites the graph by turning V1 control flow structure
 // (Switch/Merge/etc.) into V2 control flow structure (If/While), only modifies
 // functions that will be executed by XLA.
 class FunctionalizeControlFlowForXlaPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 }  // namespace tensorflow

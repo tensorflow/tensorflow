@@ -48,12 +48,12 @@ class OpRegistryInterface {
   // Returns an error status and sets *op_reg_data to nullptr if no OpDef is
   // registered under that name, otherwise returns the registered OpDef.
   // Caller must not delete the returned pointer.
-  virtual Status LookUp(const std::string& op_type_name,
-                        const OpRegistrationData** op_reg_data) const = 0;
+  virtual absl::Status LookUp(const std::string& op_type_name,
+                              const OpRegistrationData** op_reg_data) const = 0;
 
   // Shorthand for calling LookUp to get the OpDef.
-  Status LookUpOpDef(const std::string& op_type_name,
-                     const OpDef** op_def) const;
+  absl::Status LookUpOpDef(const std::string& op_type_name,
+                           const OpDef** op_def) const;
 };
 
 // The standard implementation of OpRegistryInterface, along with a
@@ -68,14 +68,15 @@ class OpRegistryInterface {
 //   });
 class OpRegistry : public OpRegistryInterface {
  public:
-  typedef std::function<Status(OpRegistrationData*)> OpRegistrationDataFactory;
+  typedef std::function<absl::Status(OpRegistrationData*)>
+      OpRegistrationDataFactory;
 
   OpRegistry();
 
   void Register(const OpRegistrationDataFactory& op_data_factory);
 
-  Status LookUp(const std::string& op_type_name,
-                const OpRegistrationData** op_reg_data) const override;
+  absl::Status LookUp(const std::string& op_type_name,
+                      const OpRegistrationData** op_reg_data) const override;
 
   // Returns OpRegistrationData* of registered op type, else returns nullptr.
   const OpRegistrationData* LookUp(const std::string& op_type_name) const;
@@ -100,7 +101,7 @@ class OpRegistry : public OpRegistryInterface {
 
   // Registers a function that validates op registry.
   void RegisterValidator(
-      std::function<Status(const OpRegistryInterface&)> validator) {
+      std::function<absl::Status(const OpRegistryInterface&)> validator) {
     op_registry_validator_ = std::move(validator);
   }
 
@@ -110,7 +111,8 @@ class OpRegistry : public OpRegistryInterface {
   // obtained from building and adding the OpDef to the registry, and the OpDef
   // itself if it was successfully built. A watcher returns a Status which is in
   // turn returned as the final registration status.
-  typedef std::function<Status(const Status&, const OpDef&)> Watcher;
+  typedef std::function<absl::Status(const absl::Status&, const OpDef&)>
+      Watcher;
 
   // An OpRegistry object has only one watcher. This interface is not thread
   // safe, as different clients are free to set the watcher any time.
@@ -122,13 +124,13 @@ class OpRegistry : public OpRegistryInterface {
   // SetWatcher(nullptr);
   // Returns a non-OK status if a non-null watcher is over-written by another
   // non-null watcher.
-  Status SetWatcher(const Watcher& watcher);
+  absl::Status SetWatcher(const Watcher& watcher);
 
   // Process the current list of deferred registrations. Note that calls to
   // Export, LookUp and DebugString would also implicitly process the deferred
   // registrations. Returns the status of the first failed op registration or
   // OkStatus() otherwise.
-  Status ProcessRegistrations() const;
+  absl::Status ProcessRegistrations() const;
 
   // Defer the registrations until a later call to a function that processes
   // deferred registrations are made. Normally, registrations that happen after
@@ -148,13 +150,14 @@ class OpRegistry : public OpRegistryInterface {
   // Calls the functions in deferred_ and registers their OpDef's
   // It returns the Status of the first failed op registration or OkStatus()
   // otherwise.
-  Status CallDeferred() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status CallDeferred() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Add 'def' to the registry with additional data 'data'. On failure, or if
   // there is already an OpDef with that name registered, returns a non-okay
   // status.
-  Status RegisterAlreadyLocked(const OpRegistrationDataFactory& op_data_factory)
-      const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status RegisterAlreadyLocked(
+      const OpRegistrationDataFactory& op_data_factory) const
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const OpRegistrationData* LookUpSlow(const std::string& op_type_name) const;
 
@@ -169,7 +172,8 @@ class OpRegistry : public OpRegistryInterface {
   // Registry watcher.
   mutable Watcher watcher_ TF_GUARDED_BY(mu_);
 
-  std::function<Status(const OpRegistryInterface&)> op_registry_validator_;
+  std::function<absl::Status(const OpRegistryInterface&)>
+      op_registry_validator_;
 };
 
 // An adapter to allow an OpList to be used as an OpRegistryInterface.
@@ -181,8 +185,8 @@ class OpListOpRegistry : public OpRegistryInterface {
  public:
   // Does not take ownership of op_list, *op_list must outlive *this.
   explicit OpListOpRegistry(const OpList* op_list);
-  Status LookUp(const std::string& op_type_name,
-                const OpRegistrationData** op_reg_data) const override;
+  absl::Status LookUp(const std::string& op_type_name,
+                      const OpRegistrationData** op_reg_data) const override;
 
   // Returns OpRegistrationData* of op type in list, else returns nullptr.
   const OpRegistrationData* LookUp(const std::string& op_type_name) const;

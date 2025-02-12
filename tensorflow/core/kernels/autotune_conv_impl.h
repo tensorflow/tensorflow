@@ -19,12 +19,11 @@ limitations under the License.
 #if GOOGLE_CUDA
 #define EIGEN_USE_THREADS
 
+#include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-
-#include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
 
 namespace tensorflow::internal {
 
@@ -45,7 +44,7 @@ StatusOr<std::vector<xla::AutotuneResult>> AutotuneConvImpl(
     // TODO(zhengxq): profile each algorithm multiple times to better
     // accuracy.
     se::RedzoneAllocator rz_scratch_allocator(
-        stream, &tf_allocator_adapter, se::GpuAsmOpts(),
+        stream, &tf_allocator_adapter,
         /*memory_limit=*/scratch_size_limit);
     DnnScratchAllocator scratch_allocator(scratch_size_limit, ctx);
     se::ScratchAllocator* allocator_used =

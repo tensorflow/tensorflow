@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/platform/mutex.h"
 
 namespace tensorflow {
 namespace data {
@@ -76,6 +78,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         legacy_autotune_(legacy_autotune),
         buffer_size_min_(buffer_size_min) {
     input_->Ref();
+    random_indexing_compatible_ = absl::OkStatus();
+    if (input_ != nullptr) {
+      random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -102,24 +108,29 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     return input_->Cardinality(options);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     return input_->Get(ctx, index, out_tensors);
   }
 
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
+  }
+
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* buffer_size = nullptr;
@@ -137,7 +148,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                        std::make_pair(kLegacyAutotune, legacy_autotune_attr),
                        std::make_pair(kBufferSizeMin, buffer_size_min_attr)},
                       output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -165,7 +176,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       auto_tuner_ = std::make_unique<PrefetchAutotuner>(
           dataset()->buffer_size_, dataset()->buffer_size_min_,
@@ -188,12 +199,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(EnsureThreadsStarted(ctx));
       }
       ctx->MergeCheckpoint(iter_ctx.checkpoint());
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       const auto& stats_aggregator = ctx->stats_aggregator();
       {
         mutex_lock l(*mu_);
@@ -217,7 +228,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
         if (prefetch_thread_finished_) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         DCHECK_EQ(buffer_limit(), 0);
@@ -256,10 +267,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           /*is_legacy_prefetch_autotuned=*/legacy_autotune_);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       if (ctx->symbolic_checkpoint()) {
-        return OkStatus();
+        return absl::OkStatus();
       }
       // Acquire both locks to ensure that the prefetch thread and
       // all GetNext threads are blocked.
@@ -282,11 +293,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           }
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock input_l(input_mu_);
       mutex_lock l(*mu_);
       DCHECK(!prefetch_thread_);
@@ -301,7 +312,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(EnsureThreadsStarted(ctx));
       }
       cond_var_->notify_all();
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     data::TraceMeMetadata GetTraceMeMetadata() const override {
@@ -352,7 +363,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             checkpoint(MemoryCheckpoint{ctx->id_registry()}) {}
 
       // The producer sets `status` if getting the input element fails.
-      Status status;
+      absl::Status status;
       // The buffered data element.
       std::vector<Tensor> value;
       int64_t created_us;
@@ -360,8 +371,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       MemoryCheckpoint checkpoint;
     };
 
-    Status RestoreBuffer(IteratorContext* const ctx,
-                         IteratorStateReader* const reader)
+    absl::Status RestoreBuffer(IteratorContext* const ctx,
+                               IteratorStateReader* const reader)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       size_t buffer_size;
       {
@@ -393,7 +404,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
         RecordBufferEnqueue(ctx, buffer_element.value);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     int64_t buffer_limit() const TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
@@ -410,8 +421,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       cond_var_->notify_all();
     }
 
-    Status Consume(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                   bool* end_of_sequence) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    absl::Status Consume(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                         bool* end_of_sequence)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       const auto& stats_aggregator = ctx->stats_aggregator();
       if (stats_aggregator) {
         double buffer_limit_ = buffer_limit();
@@ -429,12 +441,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       }
       // A new element is available. Forward the status from computing it, and
       // (if we successfully got an element) the output values.
-      Status s = buffer_.front().status;
+      absl::Status s = buffer_.front().status;
       if (s.ok()) {
         int64_t buffer_element_id = buffer_.front().uid;
-        profiler::TraceMe traceme(
+        tsl::profiler::TraceMe traceme(
             [&] {
-              return profiler::TraceMeEncode(
+              return tsl::profiler::TraceMeEncode(
                   "PrefetchConsume", {{"element_id", buffer_element_id}});
             },
             profiler::kInfo);
@@ -484,7 +496,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return s;
     }
 
-    Status EnsureThreadsStarted(IteratorContext* ctx)
+    absl::Status EnsureThreadsStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx =
@@ -492,7 +504,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         prefetch_thread_ = ctx->StartThread(
             "tf_data_prefetch", [this, new_ctx]() { PrefetchThread(new_ctx); });
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Prefetches elements of the input, storing results in an internal buffer.
@@ -537,9 +549,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         bool end_of_sequence = false;
         BufferElement buffer_element(ctx.get());
         {
-          profiler::TraceMe traceme(
+          tsl::profiler::TraceMe traceme(
               [&] {
-                return profiler::TraceMeEncode(
+                return tsl::profiler::TraceMeEncode(
                     "PrefetchProduce", {{"element_id", buffer_element.uid}});
               },
               profiler::kInfo);
@@ -566,8 +578,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status WriteStatus(IteratorStateWriter* writer, size_t index,
-                       const Status& status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    absl::Status WriteStatus(IteratorStateWriter* writer, size_t index,
+                             const absl::Status& status)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(absl::StrCat(prefix(), "::", index), CodeKey(),
                               static_cast<int64_t>(status.code())));
@@ -576,10 +589,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             absl::StrCat(prefix(), "::", index), ErrorMessageKey(),
             std::string(status.message())));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status ReadStatus(IteratorStateReader* reader, size_t index, Status* status)
+    absl::Status ReadStatus(IteratorStateReader* reader, size_t index,
+                            absl::Status* status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(absl::StrCat(prefix(), "::", index),
@@ -591,11 +605,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(absl::StrCat(prefix(), "::", index),
                                ErrorMessageKey(), &error_message));
-        *status = Status(code, error_message);
+        *status = absl::Status(code, error_message);
       } else {
-        *status = OkStatus();
+        *status = absl::OkStatus();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     string CodeKey() { return absl::StrCat(kStatus, kCodeSuffix); }
@@ -655,6 +669,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
   // parameter.
   const int64_t buffer_size_min_ = 0;
 
+  absl::Status random_indexing_compatible_;
   TraceMeMetadata traceme_metadata_;
 };
 

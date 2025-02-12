@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/converters/phwc4_to_bhwc.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"

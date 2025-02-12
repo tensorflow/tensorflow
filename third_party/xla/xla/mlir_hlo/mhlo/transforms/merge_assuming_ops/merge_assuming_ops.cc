@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -434,8 +434,8 @@ struct MergeAssumingOpsPass
     mhlo::populateMergeAssumingOpsPatterns(ctx, &patterns);
     GreedyRewriteConfig config;
     config.maxIterations = GreedyRewriteConfig::kNoLimit;
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
-                                            config))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
+                                     config))) {
       return signalPassFailure();
     }
   }

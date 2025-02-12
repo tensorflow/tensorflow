@@ -1,8 +1,8 @@
 # python/lib/io package
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "if_oss")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 
 # copybara:uncomment_begin(google-only)
 # load("//third_party/zlib:BUILD_defs.bzl", "brittle_test_relying_on_stable_zlib_output")
@@ -34,31 +34,6 @@ tf_python_pybind_extension(
     ],
 )
 
-py_strict_library(
-    name = "lib",
-    srcs = [
-        "file_io.py",
-        "python_io.py",
-        "tf_record.py",
-    ],
-    srcs_version = "PY3",
-    visibility = visibility + [
-        "//tensorflow:internal",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
-    ],
-    deps = [
-        ":_pywrap_file_io",
-        ":_pywrap_record_io",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
-    ],
-)
-
 tf_python_pybind_extension(
     name = "_pywrap_record_io",
     srcs = ["record_io_wrapper.cc"],
@@ -80,17 +55,67 @@ tf_python_pybind_extension(
     ],
 )
 
+py_strict_library(
+    name = "file_io",
+    srcs = ["file_io.py"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
+    deps = [
+        ":_pywrap_file_io",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+        "@six_archive//:six",
+    ],
+)
+
+py_strict_library(
+    name = "tf_record",
+    srcs = ["tf_record.py"],
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow:internal",
+        "//third_party/py/tf_agents:__subpackages__",
+    ],
+    deps = [
+        ":_pywrap_record_io",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "python_io",
+    srcs = ["python_io.py"],
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow:internal",
+    ],
+    deps = [":tf_record"],
+)
+
 tf_py_strict_test(
     name = "file_io_test",
     size = "small",
     srcs = ["file_io_test.py"],
-    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",
     ],
     deps = [
-        ":lib",
+        ":file_io",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
@@ -103,7 +128,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["tf_record_test.py"],
     main = "tf_record_test.py",
-    python_version = "PY3",
     tags = [
         # copybara:uncomment_begin(google-only)
         # "manual",
@@ -111,7 +135,7 @@ tf_py_strict_test(
         # copybara:uncomment_end
     ],
     deps = [
-        ":lib",
+        ":tf_record",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:compat",

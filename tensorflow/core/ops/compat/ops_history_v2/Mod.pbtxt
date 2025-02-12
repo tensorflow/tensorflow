@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Mod"
   input_arg {
     name: "x"

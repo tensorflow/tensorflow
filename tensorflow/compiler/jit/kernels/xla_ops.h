@@ -17,13 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_KERNELS_XLA_OPS_H_
 
 #include <atomic>
+#include <vector>
 
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -83,7 +85,8 @@ class XlaLocalLaunchOp : public XlaLocalLaunchBase {
   ~XlaLocalLaunchOp() override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaLocalLaunchOp);
+  XlaLocalLaunchOp(const XlaLocalLaunchOp&) = delete;
+  void operator=(const XlaLocalLaunchOp&) = delete;
 };
 
 class XlaCompileOp : public OpKernel {

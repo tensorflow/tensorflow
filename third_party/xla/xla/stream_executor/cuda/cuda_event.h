@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,14 +16,48 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_EVENT_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_EVENT_H_
 
-#include "xla/stream_executor/gpu/gpu_event.h"
+#include <cstdint>
 
-namespace stream_executor {
-namespace cuda {
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream_executor.h"
 
-using CUDAEvent = gpu::GpuEvent;
+namespace stream_executor::gpu {
 
-}  // namespace cuda
-}  // namespace stream_executor
+class GpuContext;
+
+// This class implements Event for CUDA devices.
+class CudaEvent : public Event {
+ public:
+  Event::Status PollForStatus() override;
+  absl::Status WaitForEventOnExternalStream(std::intptr_t stream) override;
+
+  // Creates a new CudaEvent. If allow_timing is false, the event will not
+  // support timing, which is cheaper to create.
+  static absl::StatusOr<CudaEvent> Create(StreamExecutor* executor,
+                                          bool allow_timing);
+
+  CUevent GetHandle() const { return handle_; }
+
+  ~CudaEvent() override;
+  CudaEvent(const CudaEvent&) = delete;
+  CudaEvent& operator=(const CudaEvent&) = delete;
+  CudaEvent(CudaEvent&& other);
+  CudaEvent& operator=(CudaEvent&& other);
+
+ private:
+  explicit CudaEvent(StreamExecutor* executor, CUevent handle)
+      : executor_(executor), handle_(handle) {}
+
+  // The StreamExecutor to which this object and CUevent are bound.
+  StreamExecutor* executor_;
+
+  // The underlying CUDA event handle.
+  CUevent handle_;
+};
+
+}  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_EVENT_H_

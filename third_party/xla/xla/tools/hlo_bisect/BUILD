@@ -1,3 +1,6 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+
 # Description:
 #   A tool for reducing a HLO module that produces incorrect results.
 load(
@@ -5,11 +8,10 @@ load(
     "xla_cc_binary",
     "xla_cc_test",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
 )
 
 build_test(
@@ -30,8 +32,8 @@ xla_cc_binary(
         "//xla/service:cpu_plugin",
         "//xla/service:gpu_plugin",
         "//xla/service:interpreter_plugin",
+        "//xla/tsl/util:command_line_flags",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/util:command_line_flags",
     ] + if_cuda(["//xla/stream_executor/cuda:cublas_plugin"]),
 )
 
@@ -39,18 +41,17 @@ cc_library(
     name = "hlo_bisect_state",
     srcs = ["hlo_bisect_state.cc"],
     hdrs = ["hlo_bisect_state.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
-        "//xla:status",
-        "//xla:statusor",
+        "//xla:literal_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_dce",
-        "//xla/tests:test_utils",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -61,13 +62,13 @@ xla_cc_test(
     deps = [
         ":hlo_bisect_state",
         "//xla:literal",
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -76,7 +77,6 @@ cc_library(
     testonly = True,
     srcs = ["hlo_bisect_utils.cc"],
     hdrs = ["hlo_bisect_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_bisect_state",
         "//xla:error_spec",
@@ -84,7 +84,8 @@ cc_library(
         "//xla:protobuf_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_parser",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:dump",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
         "//xla/service:hlo_runner",
@@ -94,9 +95,9 @@ cc_library(
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
         "//xla/tools:prepare_reference_module",
+        "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:subprocess",
     ],
 )

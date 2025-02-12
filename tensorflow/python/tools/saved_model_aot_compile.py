@@ -228,9 +228,6 @@ def freeze_model(checkpoint_path: str,
     ValueError: If `meta_graph_def.signature_def[signature_def_key]` is
       missing or has empty outputs.
   """
-  if _pywrap_tfcompile_import_error:
-    raise _pywrap_tfcompile_import_error  # pylint: disable=raising-bad-type
-
   signature_def_map = meta_graph_def.signature_def
   if signature_def_key not in signature_def_map:
     raise ValueError(
@@ -348,7 +345,7 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       an empty tuple: all variables must be frozen.
     multithreading: Whether to enable multithreading in the compiled
       computation.  Note that if using this option, the resulting object files
-      may have external dependencies on multithreading libraries like nsync.
+      may have external dependencies on multithreading libraries like Abseil.
 
   Raises:
     RuntimeError: If tensorflow was not built with XLA.

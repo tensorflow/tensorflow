@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 
+#include <cassert>
+
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 
 namespace mlir {

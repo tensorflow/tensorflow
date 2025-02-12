@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {

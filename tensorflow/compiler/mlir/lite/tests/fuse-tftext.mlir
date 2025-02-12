@@ -1027,7 +1027,7 @@ func.func @WhitespaceTokenize_RaggedGather_1_Assert_3_AssertGuard_true_23810(%ar
 }
 
 // CHECK:  func private @whitespace_tokenizer_rank1(%arg0: tensor<1x!tf_type.string> {tf._user_specified_name = "input"}) -> (tensor<?x!tf_type.string>, tensor<?xi64>) attributes {tf._implements = #tf_type.func<@"tftext:WhitespaceTokenizer", {}>, tf._input_shapes = [#tf_type.shape<1>], tf.signature.is_stateful} {
-// CHECK:  %0:2 = "tfl.custom"(%arg0) {custom_code = "tftext:WhitespaceTokenizer", custom_option = #tfl<const_bytes : "0x">} : (tensor<1x!tf_type.string>) -> (tensor<?x!tf_type.string>, tensor<?xi64>)
+// CHECK:  %0:2 = "tfl.custom"(%arg0) <{custom_code = "tftext:WhitespaceTokenizer", custom_option = #tfl<const_bytes : "0x">}> : (tensor<1x!tf_type.string>) -> (tensor<?x!tf_type.string>, tensor<?xi64>)
 // CHECK:  return %0#0, %0#1 : tensor<?x!tf_type.string>, tensor<?xi64>
 
 func.func private @whitespace_tokenizer_rank2(%arg0: tensor<?x1x!tf_type.string> {tf._user_specified_name = "input"}) -> (tensor<?x!tf_type.string>, tensor<?xi64>, tensor<?xi64>) attributes {tf._input_shapes = [#tf_type.shape<?x1>], tf._implements = #tf_type.func<@"tftext:WhitespaceTokenizer", {}>, tf.signature.is_stateful} {
@@ -2161,7 +2161,7 @@ func.func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather
 
 
 // CHECK:  func private @whitespace_tokenizer_rank2(%arg0: tensor<?x1x!tf_type.string> {tf._user_specified_name = "input"}) -> (tensor<?x!tf_type.string>, tensor<?xi64>, tensor<?xi64>) attributes {tf._implements = #tf_type.func<@"tftext:WhitespaceTokenizer", {}>, tf._input_shapes = [#tf_type.shape<?x1>], tf.signature.is_stateful} {
-// CHECK:  %0:3 = "tfl.custom"(%arg0) {custom_code = "tftext:WhitespaceTokenizer", custom_option = #tfl<const_bytes : "0x">} : (tensor<?x1x!tf_type.string>) -> (tensor<?x!tf_type.string>, tensor<?xi64>, tensor<?xi64>)
+// CHECK:  %0:3 = "tfl.custom"(%arg0) <{custom_code = "tftext:WhitespaceTokenizer", custom_option = #tfl<const_bytes : "0x">}> : (tensor<?x1x!tf_type.string>) -> (tensor<?x!tf_type.string>, tensor<?xi64>, tensor<?xi64>)
 // CHECK:  return %0#0, %0#1, %0#2 : tensor<?x!tf_type.string>, tensor<?xi64>, tensor<?xi64>
 
 func.func private @whitespace_tokenizer_rank0(%arg0: tensor<!tf_type.string> {tf._user_specified_name = "input"}) -> tensor<?x!tf_type.string> attributes {tf._input_shapes = [#tf_type.shape<>], tf._implements = #tf_type.func<@"tftext:WhitespaceTokenizer", {}>, tf.signature.is_stateful} {
@@ -3191,7 +3191,7 @@ func.func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_3_AssertG
 }
 
 // CHECK: func private @whitespace_tokenizer_rank0(%arg0: tensor<!tf_type.string> {tf._user_specified_name = "input"}) -> tensor<?x!tf_type.string> attributes {tf._implements = #tf_type.func<@"tftext:WhitespaceTokenizer", {}>, tf._input_shapes = [#tf_type.shape<>], tf.signature.is_stateful} {
-// CHECK: %0 = "tfl.custom"(%arg0) {custom_code = "tftext:WhitespaceTokenizer", custom_option = #tfl<const_bytes : "0x">} : (tensor<!tf_type.string>) -> tensor<?x!tf_type.string>
+// CHECK: %0 = "tfl.custom"(%arg0) <{custom_code = "tftext:WhitespaceTokenizer", custom_option = #tfl<const_bytes : "0x">}> : (tensor<!tf_type.string>) -> tensor<?x!tf_type.string>
 // CHECK: return %0 : tensor<?x!tf_type.string>
 
 func.func @ngrams(%arg0: tensor<?x!tf_type.string> {tf._user_specified_name = "input"}) -> tensor<?x!tf_type.string> attributes {tf._input_shapes = [#tf_type.shape<?>], tf._implements = #tf_type.func<@"tftext:Ngrams", {axis = -1 : i64, reduction_type = "STRING_JOIN", string_separator = " ", width = 2 : i64}>} {
@@ -3209,7 +3209,7 @@ func.func @ngrams(%arg0: tensor<?x!tf_type.string> {tf._user_specified_name = "i
 }
 
 // CHECK: func @ngrams(%arg0: tensor<?x!tf_type.string> {tf._user_specified_name = "input"}) -> tensor<?x!tf_type.string> attributes {tf._implements = #tf_type.func<@"tftext:Ngrams", {axis = -1 : i64, reduction_type = "STRING_JOIN", string_separator = " ", width = 2 : i64}>, tf._input_shapes = [#tf_type.shape<?>]} {
-// CHECK:   %0 = "tfl.custom"(%arg0) {custom_code = "tftext:Ngrams", custom_option = #tfl<const_bytes : "0x776964746800737472696E675F736570617261746F72000120006178697300726564756374696F6E5F74797065000B535452494E475F4A4F494E0004221E383F040104FF152D0204141404082401">} : (tensor<?x!tf_type.string>) -> tensor<?x!tf_type.string>
+// CHECK:   %0 = "tfl.custom"(%arg0) <{custom_code = "tftext:Ngrams", custom_option = #tfl<const_bytes : "0x776964746800737472696E675F736570617261746F72000120006178697300726564756374696F6E5F74797065000B535452494E475F4A4F494E0004221E383F040104FF152D0204141404082401">}> : (tensor<?x!tf_type.string>) -> tensor<?x!tf_type.string>
 // CHECK:   return %0 : tensor<?x!tf_type.string>
 // CHECK: }
 
@@ -3434,7 +3434,7 @@ func.func private @NGrams_SlidingWindow_RaggedConcat_assert_equal_2_Assert_Asser
   func.return %5 : tensor<i1>
 }
 // CHECK:  func private @ngrams_ragged_rank_2(%arg0: tensor<?x!tf_type.string> {tf._user_specified_name = "values"}, %arg1: tensor<3xi64> {tf._user_specified_name = "args_0"}, %arg2: tensor<?xi64> {tf._user_specified_name = "args_1"}) -> (tensor<?x!tf_type.string>, tensor<3xi64>, tensor<?xi64>) attributes {tf._implements = #tf_type.func<@"tftext:Ngrams", {axis = -1 : i64, reduction_type = "STRING_JOIN", string_separator = "", width = 2 : i64}>, tf._input_shapes = [#tf_type.shape<?>, #tf_type.shape<3>, #tf_type.shape<?>], tf.signature.is_stateful} {
-// CHECK:    %0:3 = "tfl.custom"(%arg0, %arg1, %arg2) {custom_code = "tftext:Ngrams", custom_option = #tfl<const_bytes : "0x776964746800737472696E675F736570617261746F720000006178697300726564756374696F6E5F74797065000B535452494E475F4A4F494E0004221E373E040104FF152C0204141404082401">} : (tensor<?x!tf_type.string>, tensor<3xi64>, tensor<?xi64>) -> (tensor<?x!tf_type.string>, tensor<3xi64>, tensor<?xi64>)
+// CHECK:    %0:3 = "tfl.custom"(%arg0, %arg1, %arg2) <{custom_code = "tftext:Ngrams", custom_option = #tfl<const_bytes : "0x776964746800737472696E675F736570617261746F720000006178697300726564756374696F6E5F74797065000B535452494E475F4A4F494E0004221E373E040104FF152C0204141404082401">}> : (tensor<?x!tf_type.string>, tensor<3xi64>, tensor<?xi64>) -> (tensor<?x!tf_type.string>, tensor<3xi64>, tensor<?xi64>)
 // CHECK:    return %0#0, %0#1, %0#2 : tensor<?x!tf_type.string>, tensor<3xi64>, tensor<?xi64>
 
 
@@ -3449,5 +3449,5 @@ func.func private @sgnn_projection(%arg0: tensor<?x!tf_type.string> {tf._user_sp
 
 
 // CHECK: func private @sgnn_projection(%arg0: tensor<?x!tf_type.string> {tf._user_specified_name = "values"}, %arg1: tensor<?xi64> {tf._user_specified_name = "row_splits"}) -> tensor<?x10xf64> attributes {tf._implements = #tf_type.func<@"tftext:custom:SgnnProjection", {buckets = 2147483647 : i64, hash_seed = [1902835825, -1475704015, 473120514, 1254202069, 1558833093, 1756181982, 1906603252, -1034142694, 542842690, 535515822]}>, tf._input_shapes = [#tf_type.shape<?>, #tf_type.shape<?>], tf.signature.is_stateful} {
-// CHECK:   %0 = "tfl.custom"(%arg0, %arg1) {custom_code = "tftext:custom:SgnnProjection", custom_option = #tfl<const_bytes : "0x686173685F736565640000000A00000071F86A71318B0AA8023F331CD59AC14AC5E7E95CDE35AD68F474A4711A3C5CC2421F5B20AE52EB1F6275636B6574730002094200030000000100000002000000FFFFFF7F44000000062E0A2601">} : (tensor<?x!tf_type.string>, tensor<?xi64>) -> tensor<?x10xf64>
+// CHECK:   %0 = "tfl.custom"(%arg0, %arg1) <{custom_code = "tftext:custom:SgnnProjection", custom_option = #tfl<const_bytes : "0x686173685F736565640000000A00000071F86A71318B0AA8023F331CD59AC14AC5E7E95CDE35AD68F474A4711A3C5CC2421F5B20AE52EB1F6275636B6574730002094200030000000100000002000000FFFFFF7F44000000062E0A2601">}> : (tensor<?x!tf_type.string>, tensor<?xi64>) -> tensor<?x10xf64>
 // CHECK:   return %0 : tensor<?x10xf64>

@@ -2,6 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,9 +18,7 @@ cc_library(
     hdrs = [
         "cluster_utils.h",
     ],
-    deps = [
-        "//tensorflow/lite/toco:toco_port",
-    ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -30,6 +29,7 @@ cc_library(
     hdrs = [
         "cluster.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":cluster_utils",
         "//tensorflow/core:protos_all_cc",
@@ -46,6 +46,7 @@ cc_library(
     hdrs = [
         "resolve_svdf.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",
@@ -55,7 +56,8 @@ cc_library(
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:tooling_util",
-        "@com_google_protobuf//:protobuf_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -69,6 +71,7 @@ tf_cc_test(
         ":resolve_svdf",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite/toco:toco_port",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -81,12 +84,12 @@ cc_library(
     hdrs = [
         "resolve_cluster.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",
         ":cluster_utils",
         ":resolve_svdf",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/toco:tooling_util",
     ],
 )

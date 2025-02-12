@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <cmath>
 
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 // LLVM does not support <cfenv>. Disable these tests when building with it.
 // See b/35384639 for more information.

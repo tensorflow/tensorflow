@@ -1,5 +1,6 @@
 """Rules to generate the TensorFlow public API from annotated files."""
 
+# Placeholder: load PyInfo
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 load(":apis.bzl", _APIS = "APIS")
@@ -175,7 +176,7 @@ def _generate_api_impl(ctx):
     args.use_param_file("--flagfile=%s")
 
     args.add_joined("--output_files", ctx.outputs.output_files, join_with = ",")
-    args.add("--output_dir", paths.join(ctx.bin_dir.path, ctx.label.package, ctx.attr.output_dir))
+    args.add("--output_dir", paths.join(ctx.bin_dir.path, ctx.label.workspace_root, ctx.label.package, ctx.attr.output_dir))
     if ctx.file.root_init_template:
         args.add("--root_init_template", ctx.file.root_init_template)
     args.add("--apiversion", ctx.attr.api_version)
@@ -191,7 +192,7 @@ def _generate_api_impl(ctx):
         args.add("--nouse_lazy_loading")
     if ctx.attr.proxy_module_root:
         args.add("--proxy_module_root", ctx.attr.proxy_module_root)
-    args.add_joined("--file_prefixes_to_strip", [ctx.bin_dir.path, ctx.genfiles_dir.path], join_with = ",")
+    args.add_joined("--file_prefixes_to_strip", [ctx.bin_dir.path, ctx.genfiles_dir.path] + ctx.attr.file_prefixes_to_strip, join_with = ",")
     if ctx.attr.root_file_name:
         args.add("--root_file_name", ctx.attr.root_file_name)
 
@@ -284,6 +285,9 @@ generate_api = rule(
         "root_file_name": attr.string(
             doc = "The file name that should be generated for the top level API.",
         ),
+        "file_prefixes_to_strip": attr.string_list(
+            doc = "The file prefixes to strip from the import paths. Ex: bazel's bin and genfile",
+        ),
         "_generator_bin": attr.label(
             default = Label("//tensorflow/python/tools/api/generator2/generator:main"),
             executable = True,
@@ -313,7 +317,8 @@ def generate_apis(
         proxy_module_root = None,
         packages_to_ignore = [],
         root_file_name = None,
-        visibility = ["//visibility:private"]):
+        visibility = ["//visibility:private"],
+        file_prefixes_to_strip = []):
     """Generate TensorFlow APIs for a set of libraries.
 
     Args:
@@ -387,4 +392,5 @@ def generate_apis(
         output_package = output_package,
         root_file_name = root_file_name,
         api_packages_path = api_packages_path,
+        file_prefixes_to_strip = file_prefixes_to_strip,
     )

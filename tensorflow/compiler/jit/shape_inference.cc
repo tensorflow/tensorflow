@@ -15,25 +15,38 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/shape_inference.h"
 
+#include <cstdint>
+#include <map>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/util/dump_graph.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
 namespace {
 
 // Converts a shape inference handle to a PartialTensorShape.
-Status ShapeHandleToTensorShape(shape_inference::InferenceContext* context,
-                                const shape_inference::ShapeHandle& handle,
-                                PartialTensorShape* shape) {
+absl::Status ShapeHandleToTensorShape(
+    shape_inference::InferenceContext* context,
+    const shape_inference::ShapeHandle& handle, PartialTensorShape* shape) {
   // The default is already unknown
-  if (!context->RankKnown(handle)) return OkStatus();
+  if (!context->RankKnown(handle)) return absl::OkStatus();
 
   std::vector<int64_t> dims(context->Rank(handle));
   for (int32_t i = 0, end = dims.size(); i < end; ++i) {
@@ -42,10 +55,10 @@ Status ShapeHandleToTensorShape(shape_inference::InferenceContext* context,
   return PartialTensorShape::MakePartialShape(dims.data(), dims.size(), shape);
 }
 
-Status PropagateShapes(Graph* graph,
-                       const std::map<int, InferredShape>& arg_shapes,
-                       const std::vector<BackEdgeHelper::BackEdge>& back_edges,
-                       ShapeRefiner* shape_refiner) {
+absl::Status PropagateShapes(
+    Graph* graph, const std::map<int, InferredShape>& arg_shapes,
+    const std::vector<BackEdgeHelper::BackEdge>& back_edges,
+    ShapeRefiner* shape_refiner) {
   std::map<const Node*, const Node*> merge_to_next_iteration;
   for (const auto& e : back_edges) {
     if (e.src->IsNextIteration() && e.dst->IsMerge()) {
@@ -60,9 +73,11 @@ Status PropagateShapes(Graph* graph,
   GetReversePostOrder(*graph, &order);
 
   for (Node* n : order) {
+    VLOG(4) << "Propagating shape for node " << n->name()
+            << ", type: " << n->type_string();
     // Ignore the status returned by the shape_refiner. We want the best effort
     // shapes, even if no shape function is registered for a node.
-    Status status = shape_refiner->AddNode(n);
+    absl::Status status = shape_refiner->AddNode(n);
     if (!status.ok()) {
       VLOG(1) << "Shape inference failed for node " << n->name() << ": "
               << status;
@@ -75,11 +90,20 @@ Status PropagateShapes(Graph* graph,
       }
     }
 
+    int index = -1;
     if (n->type_string() == "_Arg") {
-      int index;
+      // NOTE: during runtime, Placeholder ops will be replaced as `_Arg` ops.
+      // And Args must have `index` attribute.
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
-      auto it = arg_shapes.find(index);
-      if (it != arg_shapes.end()) {
+    } else if (n->type_string() == "Placeholder") {
+      // Use custom attribute (prefixed with `_`) `_index` for placeholders as
+      // they come from user specifications.
+      if (const auto s = GetNodeAttr(n->attrs(), "_index", &index); !s.ok()) {
+        VLOG(1) << "Failed to get node index for node " << n->name();
+      }
+    }
+    if (index >= 0) {
+      if (auto it = arg_shapes.find(index); it != arg_shapes.end()) {
         const InferredShape& arg_shape = it->second;
         shape_inference::InferenceContext* context =
             shape_refiner->GetContext(n);
@@ -199,12 +223,13 @@ Status PropagateShapes(Graph* graph,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Store the shapes of the output tensors in a map
-Status StoreOutputShapes(const Graph& graph, const ShapeRefiner& shape_refiner,
-                         GraphShapeInfo* shape_info) {
+absl::Status StoreOutputShapes(const Graph& graph,
+                               const ShapeRefiner& shape_refiner,
+                               GraphShapeInfo* shape_info) {
   for (const Node* node : graph.nodes()) {
     shape_inference::InferenceContext* context = shape_refiner.GetContext(node);
     if (!context) continue;
@@ -235,14 +260,15 @@ Status StoreOutputShapes(const Graph& graph, const ShapeRefiner& shape_refiner,
               << output.handle_shape.DebugString();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status InferShapes(Graph* graph, const std::map<int, InferredShape>& arg_shapes,
-                   const tensorflow::FunctionLibraryDefinition* fnlib_def,
-                   GraphShapeInfo* shape_info) {
+absl::Status InferShapes(Graph* graph,
+                         const std::map<int, InferredShape>& arg_shapes,
+                         const tensorflow::FunctionLibraryDefinition* fnlib_def,
+                         GraphShapeInfo* shape_info) {
   ShapeRefiner shape_refiner(graph->versions(), graph->op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
   // TODO(dlibenzi): Verify if it is worth trying to infer shaped within
@@ -267,8 +293,8 @@ Status InferShapes(Graph* graph, const std::map<int, InferredShape>& arg_shapes,
   return StoreOutputShapes(*graph, shape_refiner, shape_info);
 }
 
-StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
-                                            const InferredShape& b) {
+absl::StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
+                                                  const InferredShape& b) {
   InferredShape result;
   TF_RETURN_IF_ERROR(a.shape.MergeWith(b.shape, &result.shape));
 

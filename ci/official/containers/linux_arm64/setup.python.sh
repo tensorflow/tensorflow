@@ -25,12 +25,17 @@ REQUIREMENTS=$2
 
 add-apt-repository ppa:deadsnakes/ppa
 # Install Python packages for this container's version
-cat >pythons.txt <<EOF
+if [[ ${VERSION} == "python3.13-nogil" ]]; then
+  cat >pythons.txt <<EOF
+$VERSION
+EOF
+else
+  cat >pythons.txt <<EOF
 $VERSION
 $VERSION-dev
 $VERSION-venv
-$VERSION-distutils
 EOF
+fi
 /setup.packages.sh pythons.txt
 
 # Re-link pyconfig.h from aarch64-linux-gnu into the devtoolset directory
@@ -51,7 +56,8 @@ if [[ ! -f "/usr/local/include/$VERSION" ]]; then
 fi
 
 # Install pip
-curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+
+wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 https://bootstrap.pypa.io/get-pip.py
 /usr/bin/$VERSION get-pip.py
 /usr/bin/$VERSION -m pip install --no-cache-dir --upgrade pip
 

@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 
 // static
-Status NodeProperties::CreateFromNodeDef(
+absl::Status NodeProperties::CreateFromNodeDef(
     NodeDef node_def, const OpRegistryInterface* op_registry,
     std::shared_ptr<const NodeProperties>* props) {
   const OpDef* op_def;
@@ -33,7 +33,7 @@ Status NodeProperties::CreateFromNodeDef(
   props->reset(new NodeProperties(op_def, std::move(node_def),
                                   std::move(input_types),
                                   std::move(output_types)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

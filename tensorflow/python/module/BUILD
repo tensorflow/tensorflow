@@ -10,7 +10,6 @@ package(
 py_strict_library(
     name = "module",
     srcs = ["module.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/framework:composite_tensor",
@@ -18,7 +17,7 @@ py_strict_library(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
     ],
 )

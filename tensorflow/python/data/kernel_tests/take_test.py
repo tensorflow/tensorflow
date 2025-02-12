@@ -13,9 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.take()`."""
+
+from typing import Callable, Optional
+
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -100,6 +104,81 @@ class TakeRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
           self.evaluate(random_access.at(dataset, index=i)), i)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(random_access.at(dataset, index=num_output))
+
+
+class TakeGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[100],
+              count=[20, 200],
+              repetitions=[1, 2],
+              seed=[None, 42],
+              reshuffle_each_iteration=[True, False])))
+  def test(
+      self,
+      dataset_range: int,
+      count: int,
+      repetitions: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    dataset = dataset.take(count)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    if repetitions > 1:
+      dataset = dataset.repeat(repetitions)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    expected = list(range(0, min(count, dataset_range))) * repetitions
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+    self.assertLen(dataset_output, self.evaluate(dataset.cardinality()))
+
+
+class TakeGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[10],
+              count=[2, 20],
+              repetitions=[1, 2],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def test(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_range: int,
+      count: int,
+      repetitions: int,
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.range(dataset_range)
+      dataset = dataset.take(count)
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      if repetitions > 1:
+        dataset = dataset.repeat(repetitions)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=min(count, dataset_range) * repetitions,
+        assert_items_equal=reshuffle_each_iteration,
+    )
 
 
 if __name__ == "__main__":

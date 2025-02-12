@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_VARIABLE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_VARIABLE_H_
 
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -36,9 +36,9 @@ class PluginVariable {
 
   // `result_tensor` will point to the tensor possessed by the variable if
   // status is ok.
-  virtual tsl::Status GetTensor(const Tensor** result_tensor) = 0;
+  virtual absl::Status GetTensor(const Tensor** result_tensor) = 0;
 
-  virtual tsl::Status GetMutableTensor(Tensor** result_tensor) = 0;
+  virtual absl::Status GetMutableTensor(Tensor** result_tensor) = 0;
 };
 
 }  // namespace tensorflow

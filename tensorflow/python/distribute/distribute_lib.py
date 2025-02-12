@@ -36,9 +36,8 @@ v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute
 Tutorials](https://www.tensorflow.org/tutorials/distribute/)
 
   The tutorials cover how to use `tf.distribute.Strategy` to do distributed
-  training with native Keras APIs, custom training loops,
-  and Estimator APIs. They also cover how to save/load model when using
-  `tf.distribute.Strategy`.
+  training with native Keras APIs, and custom training loops.
+  They also cover how to save/load model when using `tf.distribute.Strategy`.
 
 *Glossary*
 
@@ -1100,10 +1099,6 @@ class StrategyBase(object):
   * To use it with Keras `compile`/`fit`,
     [please
     read](https://www.tensorflow.org/guide/distributed_training#using_tfdistributestrategy_with_keras).
-  * You may pass descendant of `tf.distribute.Strategy` to
-    `tf.estimator.RunConfig` to specify how a `tf.estimator.Estimator`
-    should distribute its computation. See
-    [guide](https://www.tensorflow.org/guide/distributed_training#using_tfdistributestrategy_with_estimator_limited_support).
   * Otherwise, use `tf.distribute.Strategy.scope` to specify that a
     strategy should be used when building an executing your model.
     (This puts you in the "cross-replica context" for this strategy, which
@@ -1181,9 +1176,6 @@ class StrategyBase(object):
   def __init__(self, extended):
     self._extended = extended
 
-    # Flag that is used to indicate whether distribution strategy is used with
-    # Estimator. This is required for backward compatibility of loss scaling
-    # when using v1 optimizer with estimator.
     self._scale_loss_for_estimator = False
 
     if not hasattr(extended, "_retrace_functions_for_each_device"):

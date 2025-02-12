@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,11 @@ limitations under the License.
 // Generated visualization is opened in a new default browser window using
 // /usr/bin/sensible-browser.
 
-#include <stdio.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
+
+#include <stdio.h>
 
 #include <functional>
 #include <string>
@@ -43,12 +46,12 @@ limitations under the License.
 #include "xla/service/local_service.h"
 #include "xla/service/platform_util.h"
 #include "xla/tools/hlo_extractor.h"
+#include "xla/tsl/platform/subprocess.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/subprocess.h"
-#include "tsl/protobuf/error_codes.pb.h"
-#include "tsl/util/command_line_flags.h"
 #if defined(PLATFORM_GOOGLE)
 #include "util/readline/readline.h"
 #endif
@@ -456,8 +459,9 @@ void OpenUrl(const Options& opts, absl::string_view url) {
 // URL format doesn't work out of the box; it requires you to register a plugin.
 void RenderAndDisplayGraph(
     const Options& opts,
-    const std::function<StatusOr<std::string>(RenderedGraphFormat)>& renderer) {
-  StatusOr<std::string> url_result = renderer(RenderedGraphFormat::kUrl);
+    const std::function<absl::StatusOr<std::string>(RenderedGraphFormat)>&
+        renderer) {
+  absl::StatusOr<std::string> url_result = renderer(RenderedGraphFormat::kUrl);
   if (url_result.ok()) {
     std::string url = url_result.value();
     OpenUrl(opts, url);
@@ -473,7 +477,8 @@ void RenderAndDisplayGraph(
   }
 
   auto* env = tsl::Env::Default();
-  StatusOr<std::string> html_result = renderer(RenderedGraphFormat::kHtml);
+  absl::StatusOr<std::string> html_result =
+      renderer(RenderedGraphFormat::kHtml);
   if (!html_result.ok()) {
     std::cerr << "Failed to render graph as HTML: " << html_result.status()
               << std::endl;

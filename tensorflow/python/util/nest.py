@@ -90,12 +90,9 @@ should be recursive. The behavior is undefined if there is a cycle.
 API docstring: tensorflow.nest
 """
 
-import wrapt as _wrapt
-
 from tensorflow.python.util import _pywrap_nest
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest_util
-from tensorflow.python.util.compat import collections_abc as _collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -1315,10 +1312,3 @@ def list_to_tuple(structure):
       False,
       sequence_fn=sequence_fn,
   )
-
-
-_pywrap_utils.RegisterType("Mapping", _collections_abc.Mapping)
-_pywrap_utils.RegisterType("MutableMapping", _collections_abc.MutableMapping)
-_pywrap_utils.RegisterType("Sequence", _collections_abc.Sequence)
-_pywrap_utils.RegisterType("MappingView", _collections_abc.MappingView)
-_pywrap_utils.RegisterType("ObjectProxy", _wrapt.ObjectProxy)

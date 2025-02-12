@@ -78,8 +78,9 @@ TEST(L2NormOpTest, SimpleFloatTest) {
                   ActivationFunctionType_NONE);
   m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput<float>(),
-              ElementsAreArray({-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}));
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      Pointwise(FloatingPointEq(), {-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}));
 }
 
 TEST(L2NormOpTest, ZerosVectorFloatTest) {
@@ -95,8 +96,9 @@ TEST(L2NormOpTest, SimpleFloatWithRankLessThanFourTest) {
   L2NormOpModel m({1, 6}, TensorType_FLOAT32, ActivationFunctionType_NONE);
   m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput<float>(),
-              ElementsAreArray({-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}));
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      Pointwise(FloatingPointEq(), {-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}));
 }
 
 TEST(L2NormOpTest, MultipleBatchFloatTest) {
@@ -109,11 +111,12 @@ TEST(L2NormOpTest, MultipleBatchFloatTest) {
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<float>(),
-              ElementsAreArray({
-                  -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 1
-                  -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 2
-                  -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 3
-              }));
+              Pointwise(FloatingPointEq(),
+                        {
+                            -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 1
+                            -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 2
+                            -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 3
+                        }));
 }
 
 TEST(L2NormOpTest, ZerosVectorUint8Test) {

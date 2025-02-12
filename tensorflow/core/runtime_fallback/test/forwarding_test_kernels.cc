@@ -89,7 +89,7 @@ class KernelWithBoolAttr : public OpKernelT {
  public:
   explicit KernelWithBoolAttr(OpKernelConstructionT* construction)
       : OpKernelT(construction) {
-    Status s = construction->GetAttr("testattr", &attr_);
+    absl::Status s = construction->GetAttr("testattr", &attr_);
     if (!s.ok()) {
       construction->CtxFailure(s);
     }

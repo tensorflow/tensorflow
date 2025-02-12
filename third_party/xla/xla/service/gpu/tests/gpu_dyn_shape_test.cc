@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,10 @@ limitations under the License.
 #include <utility>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
@@ -37,9 +39,9 @@ TEST_F(GpuDynamicShapeTest, DynamicShapeR2) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: is_thread_0-true
-; CHECK-LABEL: custom_call.in_dyn_bounds-true
-; CHECK-LABEL: custom_call.in_bounds-true
+; CHECK-DAG: is_thread_0-true
+; CHECK-DAG: x.padded{{.*}}.in_dyn_bounds-true
+; CHECK-DAG: x.padded{{.*}}.in_bounds-true
 ; CHECK: %[[dyn_dim_size:.*]] = load i32, ptr
 ; CHECK: %[[dyn_element_total:.*]] = mul i32 1, %[[dyn_dim_size:.*]]
 ; CHECK: %[[linear_index:.*]] = add nuw nsw i32

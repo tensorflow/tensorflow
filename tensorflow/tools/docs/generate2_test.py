@@ -22,7 +22,6 @@ from unittest import mock
 
 from packaging import version
 import tensorflow as tf
-from tensorflow import estimator as tf_estimator
 import yaml
 
 from tensorflow.python.platform import googletest
@@ -42,7 +41,6 @@ class AutoModule(types.ModuleType):
 # Make a mock tensorflow package that won't take too long to test.
 fake_tf = AutoModule('FakeTensorFlow')
 fake_tf.Module = tf.Module  # pylint: disable=invalid-name
-fake_tf.estimator.DNNClassifier = tf_estimator.DNNClassifier
 fake_tf.feature_column.nummeric_column = tf.feature_column.numeric_column
 fake_tf.keras.Model = tf.keras.Model
 fake_tf.keras.preprocessing = tf.keras.preprocessing

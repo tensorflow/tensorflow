@@ -32,7 +32,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
@@ -42,11 +45,16 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -60,19 +68,13 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/tpu/tpu_compile_interface.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -85,7 +87,7 @@ const char* const kTPUPartitionedInput = "TPUPartitionedInput";
 const char* const kTPUPartitionedInputV2 = "TPUPartitionedInputV2";
 
 // Finds the `index` of an _Arg or _Retval node.
-Status GetIndexAttr(const Node& n, int num_args, int* index) {
+absl::Status GetIndexAttr(const Node& n, int num_args, int* index) {
   TF_RETURN_IF_ERROR(GetNodeAttr(n.attrs(), "index", index));
   if (*index < 0 || *index >= num_args) {
     return absl::InvalidArgumentError(
@@ -101,11 +103,10 @@ Status GetIndexAttr(const Node& n, int num_args, int* index) {
 // 3) resource variable arguments
 // See the documentation of EncapsulateSubgraphsInFunctions for the meaning
 // of the arguments.
-Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
-                       std::unique_ptr<Graph>* graph_ptr,
-                       std::vector<int>* input_permutation,
-                       std::vector<int>* output_permutation,
-                       NodeDef* call_def) {
+absl::Status RewriteSubgraph(
+    const std::vector<OutputTensor>& arg_source_tensors,
+    std::unique_ptr<Graph>* graph_ptr, std::vector<int>* input_permutation,
+    std::vector<int>* output_permutation, NodeDef* call_def) {
   // Replicated inputs have TPUReplicatedInput nodes as predecessors in the
   // input graph.
   auto is_replicated_input = [&](const Node& n, bool* is_packed = nullptr) {
@@ -151,8 +152,8 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       retvals.push_back(n);
     } else if (n->type_string() == "TPUReplicateMetadata") {
       metadata_node = n;
-    } else if (!str_util::StrContains(n->requested_device(),
-                                      DEVICE_TPU_REPLICATED_CORE)) {
+    } else if (!absl::StrContains(n->requested_device(),
+                                  DEVICE_TPU_REPLICATED_CORE)) {
       // If an operator isn't assigned to a TPU core device, assign it to
       // TPU_REPLICATED_CORE without a specific core ID. For some operators,
       // such as variable reads/writes, the operator may be assigned to non-TPU
@@ -291,7 +292,7 @@ void AddControlOutputs(const Node& node, gtl::FlatSet<Node*>* deps) {
 
 // We add Identity nodes for _Arg/_Retval in XLA computation. Remove those
 // Identity nodes to simplify furthur processing.
-Status RemoveIdentityNodesForArgRetval(Graph* g) {
+absl::Status RemoveIdentityNodesForArgRetval(Graph* g) {
   // Collect Identity nodes for _Arg/_Retval.
   std::vector<Node*> identity_nodes;
   for (Node* n : g->nodes()) {
@@ -331,8 +332,8 @@ Status RemoveIdentityNodesForArgRetval(Graph* g) {
 
 // Updates the TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR when
 // 'additional_per_replicate_inputs' are added to the inputs of `xla_node`.
-Status UpdateMirroredVariableIndices(int additional_per_replica_inputs,
-                                     Node* xla_node) {
+absl::Status UpdateMirroredVariableIndices(int additional_per_replica_inputs,
+                                           Node* xla_node) {
   std::vector<int> mirrored_variable_indices;
   if (xla_node->attrs().Find(TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR) !=
       nullptr) {
@@ -356,7 +357,7 @@ Status UpdateMirroredVariableIndices(int additional_per_replica_inputs,
 // outside compilation nodes.
 // For host graph, we will move those outside compilation nodes to host,
 // replicate them, and use them as XLA node's input.
-Status MoveHeadOutsideCompilationToHost(
+absl::Status MoveHeadOutsideCompilationToHost(
     const std::string& outside_compilation_attr_name,
     const std::string& xla_func_name, const std::string& cluster_name, Graph* g,
     Graph* xla_graph, Node* xla_node, Node* pivot_node) {
@@ -701,7 +702,7 @@ Status MoveHeadOutsideCompilationToHost(
     ph_builder.Attr(kOutsideCompilationAttr, outside_compilation_attr);
     NodeDef ph_def;
     TF_RETURN_IF_ERROR(ph_builder.Finalize(&ph_def));
-    Status s;
+    absl::Status s;
     xla_graph->AddNode(ph_def, &s);
     TF_RETURN_IF_ERROR(s);
 
@@ -754,8 +755,8 @@ Status MoveHeadOutsideCompilationToHost(
 
 // If there are any unused _Arg nodes in `xla_graph`, remove them from
 // `xla_graph` and remove corresponding input edge in host graph `g`.
-Status RemoveUnusedXlaInput(const std::string& xla_func_name, Graph* g,
-                            Graph* xla_graph, Node* xla_node) {
+absl::Status RemoveUnusedXlaInput(const std::string& xla_func_name, Graph* g,
+                                  Graph* xla_graph, Node* xla_node) {
   // Find unused _Arg nodes, and remove them.
   std::vector<DataType> input_types;
   TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->def(), "Tinputs", &input_types));
@@ -992,7 +993,7 @@ Status RemoveUnusedXlaInput(const std::string& xla_func_name, Graph* g,
 // outside compilation nodes.
 // For host graph, we will move those outside compilation nodes to host,
 // replicate them, and use them as XLA node's output.
-Status MoveTailOutsideCompilationToHost(
+absl::Status MoveTailOutsideCompilationToHost(
     const std::string& outside_compilation_attr_name,
     const std::string& xla_func_name, const std::string& cluster_name, Graph* g,
     Graph* xla_graph, Node* xla_node, Node* pivot_node) {
@@ -1133,7 +1134,8 @@ Status MoveTailOutsideCompilationToHost(
                                   index]) {
             // Remove original input edge, if existent.
             const Edge* original_edge;
-            Status s = output.first->input_edge(output.second, &original_edge);
+            absl::Status s =
+                output.first->input_edge(output.second, &original_edge);
             if (s.ok()) {
               g->RemoveEdge(original_edge);
             }
@@ -1228,7 +1230,7 @@ Status MoveTailOutsideCompilationToHost(
   return absl::OkStatus();
 }
 
-Status ReplaceArgUsedByOutsideCompilationWithPlaceholder(
+absl::Status ReplaceArgUsedByOutsideCompilationWithPlaceholder(
     const std::string& outside_compilation_attr_name,
     const std::string& xla_func_name, Graph* g, Graph* xla_graph,
     Node* xla_node) {
@@ -1353,8 +1355,8 @@ Status ReplaceArgUsedByOutsideCompilationWithPlaceholder(
 // If there are any unused _Retval nodes in `xla_graph` (whose input is a
 // Placeholder node), remove them from `xla_graph` and remove corresponding
 // output edge in host graph `g`.
-Status RemoveUnusedXlaOutput(const std::string& xla_func_name, Graph* g,
-                             Graph* xla_graph, Node* xla_node) {
+absl::Status RemoveUnusedXlaOutput(const std::string& xla_func_name, Graph* g,
+                                   Graph* xla_graph, Node* xla_node) {
   // Find unused _Retval nodes, and remove them.
   std::vector<DataType> output_types;
   TF_RETURN_IF_ERROR(
@@ -1464,9 +1466,9 @@ Status RemoveUnusedXlaOutput(const std::string& xla_func_name, Graph* g,
 // For data edges between _Arg and _Retval in `xla_graph`, remove them and
 // change input/output edges in `g` (host graph). For now, we only consider
 // replicated inputs.
-Status RemoveEdgesBetweenArgAndRetval(const std::string& xla_func_name,
-                                      Graph* g, Graph* xla_graph,
-                                      Node* xla_node) {
+absl::Status RemoveEdgesBetweenArgAndRetval(const std::string& xla_func_name,
+                                            Graph* g, Graph* xla_graph,
+                                            Node* xla_node) {
   // Collect data edges between _Arg and _Retval.
   int num_replicas;
   TF_RETURN_IF_ERROR(
@@ -1596,7 +1598,7 @@ void RemoveUnusedTPUReplicatedInputs(Graph* graph) {
 // We might have duplicated cluster names in the graph, e.g. when a tf.function
 // containing tpu_strategy.run() is called multiple times with
 // the same inputs. Find clusters with duplicated names and rename them.
-Status RenameClustersWithDuplicatedNames(Graph* g) {
+absl::Status RenameClustersWithDuplicatedNames(Graph* g) {
   // Find all TPU clusters by finding all TPUReplicateMetadata nodes.
   std::unordered_map<std::string, std::vector<Node*>>
       cluster_name_to_metadata_nodes;
@@ -1669,7 +1671,7 @@ Status RenameClustersWithDuplicatedNames(Graph* g) {
 // Instantiate a function that is associated with a functional control flow
 // node. The function name is found by looking up `function_name_attr` of given
 // node.
-StatusOr<std::unique_ptr<FunctionBody>> InstantiateAssociatedFunction(
+absl::StatusOr<std::unique_ptr<FunctionBody>> InstantiateAssociatedFunction(
     const Node& n, absl::string_view function_name_attr,
     FunctionLibraryDefinition* fld) {
   std::unique_ptr<FunctionBody> fbody;
@@ -1688,7 +1690,7 @@ StatusOr<std::unique_ptr<FunctionBody>> InstantiateAssociatedFunction(
 
 // Find inputs of If node that are only used for outside compilation if used at
 // all in both if/else branches
-StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForIfNode(
+absl::StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForIfNode(
     const Node& if_node, FunctionLibraryDefinition* fld) {
   absl::flat_hash_set<int> args_to_lift_indices;
   std::vector<DataType> dtypes;
@@ -1750,7 +1752,7 @@ StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForIfNode(
 // 2. only used for outside compilation in body func,
 // 3. loop invariant.
 // These inputs can be lifted out of the while loop.
-StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForWhileNode(
+absl::StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForWhileNode(
     Node* while_node, FunctionLibraryDefinition* fld) {
   // DT_RESOURCE inputs are candidates.
   absl::flat_hash_set<int> result;
@@ -1835,7 +1837,7 @@ StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForWhileNode(
 
 // Find inputs of function call node that are only used for outside compilation.
 // These inputs can be lifted out of the function call node.
-StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForCallNode(
+absl::StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForCallNode(
     Node* call_node, const FunctionBody& fbody) {
   // DT_RESOURCE inputs are candidates.
   absl::flat_hash_set<int> result;
@@ -1866,11 +1868,13 @@ StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForCallNode(
   return result;
 }
 
-Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
-                                      FunctionLibraryDefinition* fld,
-                                      int* lifted_arg_count, bool* rewritten);
+absl::Status LiftOutsideCompilationOnlyArgs(Graph* g,
+                                            FunctionLibraryRuntime* flr,
+                                            FunctionLibraryDefinition* fld,
+                                            int* lifted_arg_count,
+                                            bool* rewritten);
 
-Status LiftOutsideCompilationOnlyArgsAndReplaceFunctionDef(
+absl::Status LiftOutsideCompilationOnlyArgsAndReplaceFunctionDef(
     const FunctionBody& fbody, FunctionLibraryRuntime* flr,
     FunctionLibraryDefinition* fld, int* lifted_arg_count,
     std::optional<std::string> new_func_name, bool* rewritten) {
@@ -1881,20 +1885,21 @@ Status LiftOutsideCompilationOnlyArgsAndReplaceFunctionDef(
   if (*rewritten) {
     FunctionDef rewritten_fdef;
     TF_RETURN_IF_ERROR(GraphToFunctionDef(
-        *(fbody.graph), fbody.fdef.signature().name(), &rewritten_fdef));
+        *(fbody.graph), fbody.record->fdef().signature().name(),
+        &rewritten_fdef));
     if (new_func_name) {
       rewritten_fdef.mutable_signature()->set_name(*new_func_name);
       TF_RETURN_IF_ERROR(fld->AddFunctionDef(rewritten_fdef));
     } else {
-      TF_RETURN_IF_ERROR(
-          fld->ReplaceFunction(fbody.fdef.signature().name(), rewritten_fdef));
+      TF_RETURN_IF_ERROR(fld->ReplaceFunction(
+          fbody.record->fdef().signature().name(), rewritten_fdef));
     }
   }
 
   return absl::OkStatus();
 }
 
-Status MakeIdentityNodesForArgsToLift(
+absl::Status MakeIdentityNodesForArgsToLift(
     const absl::flat_hash_set<int>& args_to_lift,
     const int arg_to_input_edge_offset, Graph* g, Node* n,
     absl::flat_hash_map<int, std::string>* lifted_arg_index_to_oc_cluster_name,
@@ -1929,7 +1934,7 @@ Status MakeIdentityNodesForArgsToLift(
 
 // Replaces all usages of lifted args with placeholder nodes. Afterwards,
 // removing these args should be safe since they no longer have users.
-Status RemoveArgsToLiftFromFunctionBody(
+absl::Status RemoveArgsToLiftFromFunctionBody(
     const absl::flat_hash_set<int>& args_to_lift,
     const std::vector<DataType>& arg_dtypes,
     const absl::flat_hash_map<int, std::string>&
@@ -1984,8 +1989,9 @@ Status RemoveArgsToLiftFromFunctionBody(
   return absl::OkStatus();
 }
 
-Status CleanUpInEdges(const absl::flat_hash_map<int, int>& index_mapping,
-                      const int arg_to_input_edge_offset, Graph* g, Node* n) {
+absl::Status CleanUpInEdges(const absl::flat_hash_map<int, int>& index_mapping,
+                            const int arg_to_input_edge_offset, Graph* g,
+                            Node* n) {
   int num_inputs = n->num_inputs();
   for (int i = 0; i < num_inputs; ++i) {
     if (i < arg_to_input_edge_offset) continue;
@@ -2040,7 +2046,7 @@ void RemoveOutputIdentityNodesForWhileV2(Graph* g, Node* while_node) {
 
 // If corresponding While node output is used, change it to use While node input
 // instead.
-Status ReplaceOutputEdgesWithInputEdgeSourceForWhile(
+absl::Status ReplaceOutputEdgesWithInputEdgeSourceForWhile(
     const absl::flat_hash_set<int>& args_to_lift, Graph* g, Node* while_node) {
   std::vector<const Edge*> edges_to_replace;
   for (const Edge* e : while_node->out_edges()) {
@@ -2093,7 +2099,7 @@ void CleanUpRetvalsForWhileBody(
   }
 }
 
-Status LiftOutsideCompilationOnlyArgsFromWhileNode(
+absl::Status LiftOutsideCompilationOnlyArgsFromWhileNode(
     Graph* g, Node* while_node, FunctionLibraryDefinition* fld,
     int* lifted_arg_count, bool* rewritten) {
   *rewritten = false;
@@ -2128,11 +2134,11 @@ Status LiftOutsideCompilationOnlyArgsFromWhileNode(
       cond_fbody.get()));
 
   FunctionDef rewritten_cond_fdef;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*(cond_fbody->graph),
-                                        cond_fbody->fdef.signature().name(),
-                                        &rewritten_cond_fdef));
-  TF_RETURN_IF_ERROR(fld->ReplaceFunction(cond_fbody->fdef.signature().name(),
-                                          rewritten_cond_fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *(cond_fbody->graph), cond_fbody->record->fdef().signature().name(),
+      &rewritten_cond_fdef));
+  TF_RETURN_IF_ERROR(fld->ReplaceFunction(
+      cond_fbody->record->fdef().signature().name(), rewritten_cond_fdef));
 
   // For body func, remove _Retval nodes, and replace _Arg nodes with
   // Placeholder nodes.
@@ -2146,11 +2152,11 @@ Status LiftOutsideCompilationOnlyArgsFromWhileNode(
   CleanUpRetvalsForWhileBody(index_mapping, dtypes, body_fbody.get());
 
   FunctionDef rewritten_body_fdef;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*(body_fbody->graph),
-                                        body_fbody->fdef.signature().name(),
-                                        &rewritten_body_fdef));
-  TF_RETURN_IF_ERROR(fld->ReplaceFunction(body_fbody->fdef.signature().name(),
-                                          rewritten_body_fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *(body_fbody->graph), body_fbody->record->fdef().signature().name(),
+      &rewritten_body_fdef));
+  TF_RETURN_IF_ERROR(fld->ReplaceFunction(
+      body_fbody->record->fdef().signature().name(), rewritten_body_fdef));
 
   // Remove edges from lifted args to While node, and change "T" attr of the
   // While node.
@@ -2167,10 +2173,9 @@ Status LiftOutsideCompilationOnlyArgsFromWhileNode(
   return absl::OkStatus();
 }
 
-Status LiftOutsideCompilationOnlyArgsFromIfNode(Graph* g, Node* if_node,
-                                                FunctionLibraryDefinition* fld,
-                                                int* lifted_arg_count,
-                                                bool* rewritten) {
+absl::Status LiftOutsideCompilationOnlyArgsFromIfNode(
+    Graph* g, Node* if_node, FunctionLibraryDefinition* fld,
+    int* lifted_arg_count, bool* rewritten) {
   *rewritten = false;
   TF_ASSIGN_OR_RETURN(absl::flat_hash_set<int> args_to_lift,
                       FindArgsToLiftForIfNode(*if_node, fld));
@@ -2204,11 +2209,13 @@ Status LiftOutsideCompilationOnlyArgsFromIfNode(Graph* g, Node* if_node,
       then_branch_fbody.get()));
 
   FunctionDef rewritten_then_branch_fdef;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(
-      *(then_branch_fbody->graph), then_branch_fbody->fdef.signature().name(),
-      &rewritten_then_branch_fdef));
-  TF_RETURN_IF_ERROR(fld->ReplaceFunction(
-      then_branch_fbody->fdef.signature().name(), rewritten_then_branch_fdef));
+  TF_RETURN_IF_ERROR(
+      GraphToFunctionDef(*(then_branch_fbody->graph),
+                         then_branch_fbody->record->fdef().signature().name(),
+                         &rewritten_then_branch_fdef));
+  TF_RETURN_IF_ERROR(
+      fld->ReplaceFunction(then_branch_fbody->record->fdef().signature().name(),
+                           rewritten_then_branch_fdef));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<FunctionBody> else_branch_fbody,
@@ -2219,11 +2226,13 @@ Status LiftOutsideCompilationOnlyArgsFromIfNode(Graph* g, Node* if_node,
       else_branch_fbody.get()));
 
   FunctionDef rewritten_else_branch_fdef;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(
-      *(else_branch_fbody->graph), else_branch_fbody->fdef.signature().name(),
-      &rewritten_else_branch_fdef));
-  TF_RETURN_IF_ERROR(fld->ReplaceFunction(
-      else_branch_fbody->fdef.signature().name(), rewritten_else_branch_fdef));
+  TF_RETURN_IF_ERROR(
+      GraphToFunctionDef(*(else_branch_fbody->graph),
+                         else_branch_fbody->record->fdef().signature().name(),
+                         &rewritten_else_branch_fdef));
+  TF_RETURN_IF_ERROR(
+      fld->ReplaceFunction(else_branch_fbody->record->fdef().signature().name(),
+                           rewritten_else_branch_fdef));
 
   // Remove edges from lifted args to If node, and change "Tin" attr of the
   // If node.
@@ -2239,7 +2248,7 @@ Status LiftOutsideCompilationOnlyArgsFromIfNode(Graph* g, Node* if_node,
   return absl::OkStatus();
 }
 
-Status LiftOutsideCompilationOnlyArgsFromCallNode(
+absl::Status LiftOutsideCompilationOnlyArgsFromCallNode(
     Graph* g, Node* call_node, FunctionLibraryRuntime* flr,
     FunctionLibraryDefinition* fld, int* lifted_arg_count, bool* rewritten) {
   *rewritten = false;
@@ -2292,9 +2301,10 @@ Status LiftOutsideCompilationOnlyArgsFromCallNode(
   // might be defined by user and we should not modify it.
   FunctionDef rewritten_fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
-      *(fbody->graph), fbody->fdef.signature().name(), &rewritten_fdef));
+      *(fbody->graph), fbody->record->fdef().signature().name(),
+      &rewritten_fdef));
   std::string new_func_name =
-      fld->UniqueFunctionName(fbody->fdef.signature().name());
+      fld->UniqueFunctionName(fbody->record->fdef().signature().name());
   rewritten_fdef.mutable_signature()->set_name(new_func_name);
   TF_RETURN_IF_ERROR(fld->AddFunctionDef(rewritten_fdef));
 
@@ -2326,9 +2336,11 @@ Status LiftOutsideCompilationOnlyArgsFromCallNode(
 }
 
 // Lifts outside compilation only _Arg nodes out of If/While/function nodes.
-Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
-                                      FunctionLibraryDefinition* fld,
-                                      int* lifted_arg_count, bool* rewritten) {
+absl::Status LiftOutsideCompilationOnlyArgs(Graph* g,
+                                            FunctionLibraryRuntime* flr,
+                                            FunctionLibraryDefinition* fld,
+                                            int* lifted_arg_count,
+                                            bool* rewritten) {
   *rewritten = false;
 
   // Handle deeper functional nodes first.
@@ -2381,8 +2393,8 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
       TF_ASSIGN_OR_RETURN(function_fbody,
                           InstantiateAssociatedFunction(*call_node, "f", fld));
       bool func_rewritten = false;
-      std::string new_func_name =
-          fld->UniqueFunctionName(function_fbody->fdef.signature().name());
+      std::string new_func_name = fld->UniqueFunctionName(
+          function_fbody->record->fdef().signature().name());
       TF_RETURN_IF_ERROR(LiftOutsideCompilationOnlyArgsAndReplaceFunctionDef(
           *function_fbody, flr, fld, lifted_arg_count, new_func_name,
           &func_rewritten));
@@ -2403,8 +2415,8 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
       TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, call_node->attrs(), fld,
                                                  &function_fbody));
       bool func_rewritten = false;
-      std::string new_func_name =
-          fld->UniqueFunctionName(function_fbody->fdef.signature().name());
+      std::string new_func_name = fld->UniqueFunctionName(
+          function_fbody->record->fdef().signature().name());
       TF_RETURN_IF_ERROR(LiftOutsideCompilationOnlyArgsAndReplaceFunctionDef(
           *function_fbody, flr, fld, lifted_arg_count, new_func_name,
           &func_rewritten));
@@ -2475,10 +2487,32 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
   return absl::OkStatus();
 }
 
+// TODO(b/355263902): Encapsulation fails for some non-TPU graphs that are
+// missing full variable shape information. Remove this path once the
+// underlying issue is fixed.
+bool ShouldSkipEncapsulationForNonTPUGraph() {
+  return flags::Global().enable_skip_encapsulation_for_non_tpu_graphs.value();
+}
+
 }  // namespace
 
-/*static*/ Status EncapsulateTPUComputationsPass::Encapsulate(
+/*static*/ absl::Status EncapsulateTPUComputationsPass::Encapsulate(
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def) {
+  // If the graph does not contain any TPU computations, there is nothing to do.
+  if (ShouldSkipEncapsulationForNonTPUGraph()) {
+    bool found_tpu_replicate = false;
+    for (const Node* n : (*graph)->nodes()) {
+      if (n->attrs().Find(kTPUReplicateAttr) != nullptr) {
+        found_tpu_replicate = true;
+        break;
+      }
+    }
+    if (!found_tpu_replicate) {
+      VLOG(1) << "No TPU replicate found, skipping encapsulation";
+      return absl::OkStatus();
+    }
+  }
+
   // Check for undeclared outputs before Encapsulation, so we can give a better
   // error message.
   // TODO(phawkins): merge this with the encapsulation code to avoid the extra
@@ -2515,7 +2549,7 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
   return absl::OkStatus();
 }
 
-/*static*/ Status EncapsulateTPUComputationsPass::BuildTPUReplicateOps(
+/*static*/ absl::Status EncapsulateTPUComputationsPass::BuildTPUReplicateOps(
     Graph* graph) {
   // Finds all of the replicate function calls, to avoid mutating the graph
   // while iterating.
@@ -2831,7 +2865,7 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
   return absl::OkStatus();
 }
 
-Status EncapsulateTPUComputationsPass::Run(
+absl::Status EncapsulateTPUComputationsPass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "EncapsulateTPUComputations(): "
           << DumpGraphToFile("encapsulate_tpu_computations_before",
@@ -2849,7 +2883,7 @@ Status EncapsulateTPUComputationsPass::Run(
   return absl::OkStatus();
 }
 
-Status ExtractOutsideCompilationPass::ProcessHeadTailOutsideCompilation(
+absl::Status ExtractOutsideCompilationPass::ProcessHeadTailOutsideCompilation(
     const std::string& outside_compilation_attr_name, int* lifted_arg_count,
     std::unordered_map<std::string, XlaClusterInfo>* clusters, Graph* g,
     FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld) {
@@ -2927,7 +2961,7 @@ Status ExtractOutsideCompilationPass::ProcessHeadTailOutsideCompilation(
   return absl::OkStatus();
 }
 
-Status ExtractOutsideCompilationPass::Run(
+absl::Status ExtractOutsideCompilationPass::Run(
     const GraphOptimizationPassOptions& options) {
   const auto* config =
       (options.session_options ? &options.session_options->config : nullptr);

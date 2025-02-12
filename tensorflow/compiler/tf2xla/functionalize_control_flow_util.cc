@@ -30,7 +30,7 @@ bool NodeCmpByNameResourcesLast::operator()(const Node* lhs,
          std::tie(rhs_is_resource, rhs->name());
 }
 
-StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
+absl::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
   const char* const kRetValOp = "_Retval";
   NodeDef ret_def;
   ret_def.set_op(kRetValOp);
@@ -40,7 +40,7 @@ StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
   return graph->AddNode(ret_def);
 }
 
-Status ExtractWhileLoopFrames(
+absl::Status ExtractWhileLoopFrames(
     const std::vector<ControlFlowInfo>& cf_info, const Graph* graph,
     std::unordered_map<string, WhileLoopFrame>* frames,
     const NodeFilter& node_filter) {
@@ -78,11 +78,11 @@ Status ExtractWhileLoopFrames(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Check that the graph has no cycle containing the given node.
-Status CheckNodeNotInCycle(const Node* node, const int num_nodes) {
+absl::Status CheckNodeNotInCycle(const Node* node, const int num_nodes) {
   std::vector<const Node*> ready;
   ready.push_back(node);
   std::vector<bool> visited(num_nodes);
@@ -99,7 +99,7 @@ Status CheckNodeNotInCycle(const Node* node, const int num_nodes) {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -38,8 +38,9 @@ using BatchedMap = std::vector<absl::flat_hash_map<int64_t, T>>;
 namespace {
 // TODO(momernick): Extend this function to work with outputs of rank > 2.
 template <class T>
-Status OutputSparse(const BatchedMap<T>& per_batch_counts, int64_t num_values,
-                    bool is_1d, OpKernelContext* context) {
+absl::Status OutputSparse(const BatchedMap<T>& per_batch_counts,
+                          int64_t num_values, bool is_1d,
+                          OpKernelContext* context) {
   int total_values = 0;
   int num_batches = per_batch_counts.size();
   for (const auto& per_batch_count : per_batch_counts) {
@@ -86,7 +87,7 @@ Status OutputSparse(const BatchedMap<T>& per_batch_counts, int64_t num_values,
     dense_shape->flat<int64_t>().data()[1] = num_values;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t GetOutputSize(int64_t max_seen, int64_t max_length,

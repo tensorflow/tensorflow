@@ -1,14 +1,14 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_kernel_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,7 +16,6 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -127,6 +126,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cholesky_op",
+    gpu_deps = ["//tensorflow/core/platform:stream_executor"],
     prefix = "cholesky_op",
     deps = if_cuda_or_rocm([
         ":matrix_band_part_op",
@@ -247,7 +247,7 @@ tf_kernel_library(
     gpu_srcs = ["tridiagonal_solve_op_gpu.cu.cc"],
     deps = LINALG_DEPS + if_cuda([
         "//tensorflow/core/util:cuda_sparse",
-    ]),
+    ]) + ["@com_google_absl//absl/log"],
 )
 
 tf_kernel_library(
@@ -261,6 +261,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "svd_op",
+    gpu_deps = ["//tensorflow/core/platform:stream_executor"],
     prefix = "svd_op",
     deps = LINALG_DEPS,
 )
@@ -277,6 +278,7 @@ tf_kernel_library(
     ]) + [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -289,6 +291,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:batch_matmul_op",
         "//tensorflow/core/kernels:fill_functor",
+        "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/profiler/lib:traceme",
@@ -322,7 +325,7 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["eye_functor.h"],
-    visibility = [":__pkg__"],
+    visibility = ["//visibility:private"],
 )
 
 tf_cuda_cc_test(

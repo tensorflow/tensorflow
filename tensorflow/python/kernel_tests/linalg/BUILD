@@ -213,7 +213,10 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["linear_operator_block_lower_triangular_test.py"],
     shard_count = 8,
-    tags = ["optonly"],
+    tags = [
+        "no_gpu",  # Seg fault. http://b/365525243
+        "optonly",
+    ],
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -256,7 +259,7 @@ cuda_py_strict_test(
     name = "linear_operator_circulant_test",
     size = "medium",
     srcs = ["linear_operator_circulant_test.py"],
-    shard_count = 32,
+    shard_count = 50,
     tags = [
         "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
         "optonly",  # times out, b/79171797
@@ -412,7 +415,7 @@ cuda_py_strict_test(
     name = "linear_operator_low_rank_update_test",
     size = "medium",
     srcs = ["linear_operator_low_rank_update_test.py"],
-    shard_count = 10,
+    shard_count = 15,
     tags = ["optonly"],
     deps = [
         "//tensorflow/python/framework:config",
@@ -516,12 +519,14 @@ cuda_py_strict_test(
     name = "linear_operator_tridiag_test",
     size = "medium",
     srcs = ["linear_operator_tridiag_test.py"],
-    shard_count = 5,
+    shard_count = 10,
     tags = [
         "no_windows_gpu",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
+    # TODO(b/313470344): XLA temporarily disabled due to empty shards on 3.12.
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = False,
     deps = [
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:test_lib",
@@ -625,6 +630,7 @@ tf_py_strict_test(
 cuda_py_strict_test(
     name = "matrix_inverse_op_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["matrix_inverse_op_test.py"],
     tags = ["optonly"],
     deps = [
@@ -744,7 +750,6 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["normalize_op_test.py"],
     shard_count = 20,
-    # TODO(b/117236102): Re-enable in msan build.
     tags = ["no_windows_gpu"],
     # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
     xla_enable_strict_auto_jit = False,
@@ -761,7 +766,6 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["norm_op_test.py"],
     shard_count = 20,
-    # TODO(b/117236102): Re-enable in msan build.
     tags = ["no_windows_gpu"],
     # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
     xla_enable_strict_auto_jit = False,
@@ -881,7 +885,7 @@ cuda_py_strict_test(
     name = "tridiagonal_matmul_op_test",
     size = "medium",
     srcs = ["tridiagonal_matmul_op_test.py"],
-    shard_count = 10,
+    shard_count = 5,
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",

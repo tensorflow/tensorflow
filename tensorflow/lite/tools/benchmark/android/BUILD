@@ -1,9 +1,9 @@
 # Description:
 #   BenchmarkModel Android harness for TensorFlow Lite benchmarks.
 
+load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
 load("//tensorflow/lite:special_rules.bzl", "tflite_hexagon_nn_skel_libraries")
-load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

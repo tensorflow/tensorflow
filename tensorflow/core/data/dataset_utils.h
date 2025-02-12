@@ -16,16 +16,23 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -37,14 +44,12 @@ namespace data {
 // should be supplied by the auto-sharding rewrite.
 constexpr int kShardHint = -1;
 
-// The initial parallelism value before Autotune has a chance to optimize.
-constexpr int kAutotuneDefaultParallelism = 16;
-
 // Creates a resource handle with a unique name for the given resource where
 // the resource is managed by the Resource Manager.
 template <typename T>
-Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
-                        const string& container_name, ResourceHandle* handle) {
+absl::Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
+                              const string& container_name,
+                              ResourceHandle* handle) {
   static std::atomic<int64_t> resource_id_counter(0);
   string unique_name =
       strings::StrCat(container_name, resource_id_counter.fetch_add(1));
@@ -53,19 +58,20 @@ Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
 
   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
                                TypeIndex::Make<T>());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates a ref-counting resource handle for the given resource, where the
 // resource is owned by the handle.
 template <typename T>
-Status CreateHandle(OpKernelContext* ctx, T* resource, ResourceHandle* handle) {
+absl::Status CreateHandle(OpKernelContext* ctx, T* resource,
+                          ResourceHandle* handle) {
   ResourceMgr* mgr = ctx->resource_manager();
   *handle =
       ResourceHandle::MakeRefCountingHandle(resource, ctx->device()->name());
   TF_RETURN_IF_ERROR(
       mgr->CreateUnowned<T>(handle->container(), handle->name(), resource));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(b/198162355): Merge this class with ResourceOpKernel.
@@ -122,7 +128,7 @@ class AnonymousResourceOp : public OpKernel {
  protected:
   virtual string name() = 0;
 
-  virtual Status CreateResource(
+  virtual absl::Status CreateResource(
       OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
       std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
       FunctionLibraryRuntime* lib, T** resource) = 0;
@@ -134,19 +140,21 @@ class AnonymousResourceOp : public OpKernel {
 
 // Returns OkStatus() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
-Status VerifyTypesMatch(const DataTypeVector& expected,
-                        const DataTypeVector& received);
+absl::Status VerifyTypesMatch(const DataTypeVector& expected,
+                              const DataTypeVector& received);
 
-Status VerifyTypesMatch(const DataTypeVector& expected,
-                        const std::vector<Tensor>& received);
+absl::Status VerifyTypesMatch(const DataTypeVector& expected,
+                              const std::vector<Tensor>& received);
 
 // Returns OkStatus() if `expected` and `received` shapes are compatible,
 // errors::InvalidArgument otherwise.
-Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
-                              const std::vector<PartialTensorShape>& received);
+absl::Status VerifyShapesCompatible(
+    const std::vector<PartialTensorShape>& expected,
+    const std::vector<PartialTensorShape>& received);
 
-Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
-                              const std::vector<Tensor>& received);
+absl::Status VerifyShapesCompatible(
+    const std::vector<PartialTensorShape>& expected,
+    const std::vector<Tensor>& received);
 
 // Dataset op level determinism policy.
 class DeterminismPolicy {
@@ -171,7 +179,7 @@ class DeterminismPolicy {
   // kNondeterministic, depending on the values of `is_deterministic`.
   explicit DeterminismPolicy(bool is_deterministic);
 
-  static Status FromString(const std::string& s, DeterminismPolicy* out);
+  static absl::Status FromString(const std::string& s, DeterminismPolicy* out);
 
   // Returns the string representing the determinism policy. This will be one of
   // the string constants defined above.
@@ -199,18 +207,18 @@ std::pair<int64_t, int64_t> MaybeOverrideSeeds(
 // Adds the functions in `to_add` to `base`. If a function with a matching
 // signature already exists in `base`, replaces it with the function from
 // `to_add`.
-Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
-                            const FunctionLibraryDefinition& to_add);
-Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
-                            const FunctionDefLibrary& to_add);
+absl::Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                                  const FunctionLibraryDefinition& to_add);
+absl::Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                                  const FunctionDefLibrary& to_add);
 
 // Determines whether the given function is stateful.
-Status IsFunctionStateful(const FunctionLibraryDefinition& library,
-                          const FunctionDef& function_def);
+absl::Status IsFunctionStateful(const FunctionLibraryDefinition& library,
+                                const FunctionDef& function_def);
 
 // Determines whether the given node is stateful.
-Status IsNodeStateful(const FunctionLibraryDefinition& library,
-                      const NodeDef& node);
+absl::Status IsNodeStateful(const FunctionLibraryDefinition& library,
+                            const NodeDef& node);
 
 // Creates a runner that runs functions with limited parallelism.
 std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
@@ -244,7 +252,8 @@ class DummyResourceOp : public OpKernel {
 // MatchesAnyVersion("BatchDataset", "BatchDatasetV2") == true
 // MatchesAnyVersion("BatchDataset", "BatchDatasetV3") == true
 // MatchesAnyVersion("PaddedBatchDataset", "BatchDataset") == false
-bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match);
+bool MatchesAnyVersion(absl::string_view op_prefix,
+                       absl::string_view op_to_match);
 
 // Returns the index-th slice of a given tensor. If the index-th slice of
 // the tensor is not aligned, returns a deep copy of the tensor.
@@ -254,66 +263,46 @@ Tensor MaybeCopySubSlice(const Tensor& tensor, int64 index);
 void StripDevicePlacement(FunctionDefLibrary* library);
 
 // Copies partial of the batch output.
-Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
-                        Tensor* output);
+absl::Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
+                              Tensor* output);
 
 // Reads a batch when restoring the iterator.
-Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
-                 int64_t batch_size, const string& iterator_prefix,
-                 const string& batch_prefix, std::vector<Tensor>* batch);
+absl::Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
+                       int64_t batch_size, const string& iterator_prefix,
+                       const string& batch_prefix, std::vector<Tensor>* batch);
 
 // Writes a batch when saving the iterator.
-Status WriteBatch(int64_t batch_size, int64_t num_elements,
-                  const string& iterator_prefix, const string& batch_prefix,
-                  IteratorStateWriter* writer, std::vector<Tensor>* batch);
+absl::Status WriteBatch(int64_t batch_size, int64_t num_elements,
+                        const string& iterator_prefix,
+                        const string& batch_prefix, IteratorStateWriter* writer,
+                        std::vector<Tensor>* batch);
 
 // Reads a status when restoring the iterator.
-Status ReadStatus(const string& iterator_prefix, const string& prefix,
-                  IteratorStateReader* reader, Status* status);
+absl::Status ReadStatus(const string& iterator_prefix, const string& prefix,
+                        IteratorStateReader* reader, absl::Status* status);
 
 // Writes a status when saving the iterator.
-Status WriteStatus(const string& iterator_prefix, const string& prefix,
-                   const Status& status, IteratorStateWriter* writer);
+absl::Status WriteStatus(const string& iterator_prefix, const string& prefix,
+                         const absl::Status& status,
+                         IteratorStateWriter* writer);
 
 // Processes a batch to output. In the case a partial batch is encountered, copy
 // only partial of the batch.
-Status ProcessBatch(int64_t batch_size, int64_t num_elements,
-                    bool drop_remainder, const Status& status,
-                    IteratorContext* ctx, std::vector<Tensor>* output,
-                    bool* end_of_sequence, std::vector<Tensor>* batch);
-
-// Constructs and stores the parameters for the CopyBatch function.
-struct CopyBatchParams {
-  Allocator* allocator;
-  std::function<void(std::function<void()>)>* runner;
-  int64 runner_threadpool_size;
-
-  explicit CopyBatchParams(IteratorContext* ctx) {
-    allocator = ctx->allocator({});
-    runner = ctx->runner();
-    runner_threadpool_size = ctx->runner_threadpool_size();
-  }
-
-  explicit CopyBatchParams(OpKernelContext* ctx) {
-    allocator = ctx->get_allocator({});
-    runner = ctx->runner();
-    runner_threadpool_size = GetRunnerThreadpoolSizeFromOpKernelContext(ctx);
-  }
-};
+absl::Status ProcessBatch(int64_t batch_size, int64_t num_elements,
+                          bool drop_remainder, const absl::Status& status,
+                          IteratorContext* ctx, std::vector<Tensor>* output,
+                          bool* end_of_sequence, std::vector<Tensor>* batch);
 
 // Copies the input elements to a batch.
 //
 // The `batch_elements` argument contains the individual elements to copy into a
 // batch. The `parallel_copy` argument indicates whether to parallelize the
-// copy. The `allocation_callback` argument can be used to pass a callback to
-// invoke upon successful allocation of the memory for the batch. The
-// `out_tensors` argument will be used to store the resulting batch (one for
+// copy.
+// The `out_tensors` argument will be used to store the resulting batch (one for
 // each component of the input).
-Status CopyBatch(CopyBatchParams params,
-                 const std::vector<std::vector<Tensor>>& batch_elements,
-                 bool parallel_copy,
-                 std::function<Status()> allocation_callback,
-                 std::vector<Tensor>* out_tensors);
+absl::Status CopyBatch(AnyContext ctx,
+                       std::vector<std::vector<Tensor>>&& batch_elements,
+                       bool parallel_copy, std::vector<Tensor>* out_tensors);
 
 // Computes the set of experiments to apply based on the job name, task id,
 // rollout percentage of registered experiments, and the

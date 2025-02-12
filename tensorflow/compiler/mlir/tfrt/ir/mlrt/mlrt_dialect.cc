@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_ops.h"
 
@@ -73,17 +74,17 @@ mlir::Type MlrtDialect::parseType(mlir::DialectAsmParser &parser) const {
 // Print a type registered to this dialect.
 void MlrtDialect::printType(mlir::Type type,
                             mlir::DialectAsmPrinter &os) const {
-  if (type.isa<FutureType>()) {
+  if (mlir::isa<FutureType>(type)) {
     os << "future";
     return;
   }
 
-  if (type.isa<PromiseType>()) {
+  if (mlir::isa<PromiseType>(type)) {
     os << "promise";
     return;
   }
 
-  if (type.isa<AsyncHandleType>()) {
+  if (mlir::isa<AsyncHandleType>(type)) {
     os << "async_handle";
     return;
   }

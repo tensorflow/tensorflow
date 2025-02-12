@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_FLAGS_H_
 #define TENSORFLOW_COMPILER_JIT_FLAGS_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -110,6 +111,24 @@ struct MarkForCompilationPassFlags {
 
   // Specifies the persistance cache prefix. Default is "xla_compile_cache"
   string tf_xla_persistent_cache_prefix;
+};
+
+// Flags associated with XLA Sparse Core.
+struct XlaSparseCoreFlags {
+  // Max level of division to split input data into minibatches.
+  int tf_xla_sparse_core_minibatch_max_division_level;
+
+  // Disable table stacking for all the tables passed to the SparseCore
+  // mid level API.
+  bool tf_xla_sparse_core_disable_table_stacking;
+
+  // If non-zero, limits the size of the activations for a given table to
+  // be below these many bytes.
+  int64_t tf_xla_sparse_core_stacking_mem_limit_bytes;
+
+  // If non-zero, limits the size of any table shard to be below these
+  // many bytes.
+  int64_t tf_xla_sparse_core_stacking_table_shard_limit_bytes;
 };
 
 // Flags associated with the XLA bridge's xla_device module.
@@ -269,9 +288,12 @@ struct MlirCommonFlags {
 
   bool tf_mlir_enable_merge_control_flow_pass;
   bool tf_mlir_enable_convert_control_to_data_outputs_pass;
+  bool tf_mlir_enable_composite_tpuexecute_side_effects;
   bool tf_mlir_enable_strict_clusters;
-  bool tf_mlir_enable_generic_outside_compilation;
   bool tf_mlir_enable_tpu_variable_runtime_reformatting_pass;
+  // TODO(pineapplejuice233): Revisit this flag once the performance impact is verified
+  // with different local CPU devices settings.
+  bool tf_mlir_enable_multiple_local_cpu_devices;
 };
 
 // Flags for the JitRt pipeline -- see tf_jitrt_pipeline.h for details.
@@ -299,6 +321,7 @@ struct JitRtFlags {
 // always return the same pointer.
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
 BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags();
+XlaSparseCoreFlags* GetXlaSparseCoreFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
 XlaOpsCommonFlags* GetXlaOpsCommonFlags();
 XlaCallModuleFlags* GetXlaCallModuleFlags();

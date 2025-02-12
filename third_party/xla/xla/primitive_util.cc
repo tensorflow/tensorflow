@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,26 +15,29 @@ limitations under the License.
 
 #include "xla/primitive_util.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <string>
 
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace primitive_util {
 
 int SignificandWidth(PrimitiveType type) {
-  return PrimitiveTypeSwitch<int>(
+  return FloatingPointTypeSwitch<int>(
       [&](auto constant_type) -> int {
-        if constexpr (IsFloatingPointType(constant_type)) {
-          return std::numeric_limits<NativeTypeOf<constant_type>>::digits;
-        }
-        LOG(FATAL) << "Not a floating data type " << type;
+        return std::numeric_limits<NativeTypeOf<constant_type>>::digits;
       },
       type);
 }
@@ -58,12 +61,9 @@ int UnderflowExponent(PrimitiveType type) {
   // normalized floating-point number." as such it does not actually yield the
   // minimum exponent but one above the minimum exponent that a normalized
   // number can have.
-  return PrimitiveTypeSwitch<int>(
+  return FloatingPointTypeSwitch<int>(
       [&](auto constant_type) -> int {
-        if constexpr (IsFloatingPointType(constant_type)) {
-          return std::numeric_limits<NativeTypeOf<constant_type>>::min_exponent;
-        }
-        LOG(FATAL) << "Not a floating data type " << type;
+        return std::numeric_limits<NativeTypeOf<constant_type>>::min_exponent;
       },
       type);
 }
@@ -74,12 +74,9 @@ int OverflowExponent(PrimitiveType type) {
   // representable finite floating-point number." as such it does not actually
   // yield the maximum exponent but the exponent of the first integer which
   // overflows.
-  return PrimitiveTypeSwitch<int>(
+  return FloatingPointTypeSwitch<int>(
       [&](auto constant_type) -> int {
-        if constexpr (IsFloatingPointType(constant_type)) {
-          return std::numeric_limits<NativeTypeOf<constant_type>>::max_exponent;
-        }
-        LOG(FATAL) << "Not a floating data type " << type;
+        return std::numeric_limits<NativeTypeOf<constant_type>>::max_exponent;
       },
       type);
 }
@@ -89,18 +86,43 @@ int ExponentBias(PrimitiveType type) {
 }
 
 bool HasInfinity(PrimitiveType type) {
-  return PrimitiveTypeSwitch<bool>(
-      [&](auto constant_type) -> bool {
-        if constexpr (IsFloatingPointType(constant_type)) {
+  if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
+    return FloatingPointTypeSwitch<bool>(
+        [&](auto constant_type) -> bool {
           return std::numeric_limits<NativeTypeOf<constant_type>>::has_infinity;
-        }
-        return false;
-      },
-      type);
+        },
+        type);
+  }
+  return false;
+}
+
+bool HasNaN(PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
+    return FloatingPointTypeSwitch<bool>(
+        [&](auto constant_type) -> bool {
+          return std::numeric_limits<
+              NativeTypeOf<constant_type>>::has_quiet_NaN;
+        },
+        type);
+  }
+  return false;
+}
+
+bool HasNegativeZero(PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
+    return FloatingPointTypeSwitch<bool>(
+        [&](auto constant_type) -> bool {
+          return has_negative_zero_v<NativeTypeOf<constant_type>>;
+        },
+        type);
+  }
+  return false;
 }
 
 xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
+    case 2:
+      return xla::S2;
     case 4:
       return xla::S4;
     case 8:
@@ -125,22 +147,25 @@ xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
 class PrimitiveTypeNameGenerator {
  public:
   PrimitiveTypeNameGenerator() {
-    for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
-      if (i == static_cast<int>(OPAQUE_TYPE)) {
-        lowercase_name_[i] = "opaque";
-      } else if (PrimitiveType_IsValid(i)) {
-        lowercase_name_[i] = absl::AsciiStrToLower(
-            PrimitiveType_Name(static_cast<PrimitiveType>(i)));
+    for (size_t idx = 0; idx < std::size(lowercase_name_); ++idx) {
+      PrimitiveType t = static_cast<PrimitiveType>(idx + PrimitiveType_MIN);
+      if (t == OPAQUE_TYPE) {
+        lowercase_name_[idx] = "opaque";
+      } else if (PrimitiveType_IsValid(t)) {
+        lowercase_name_[idx] = absl::AsciiStrToLower(PrimitiveType_Name(t));
       }
     }
   }
   const std::string& LowercaseName(PrimitiveType t) {
-    CHECK_LT(t, PrimitiveType_ARRAYSIZE);
-    return lowercase_name_[static_cast<int>(t)];
+    CHECK_GE(t, PrimitiveType_MIN);
+    CHECK_LE(t, PrimitiveType_MAX);
+    CHECK(PrimitiveType_IsValid(t))
+        << "Invalid PrimitiveType: " << static_cast<int>(t);
+    return lowercase_name_[t - PrimitiveType_MIN];
   }
 
  private:
-  std::string lowercase_name_[PrimitiveType_ARRAYSIZE];
+  std::string lowercase_name_[PrimitiveType_MAX - PrimitiveType_MIN + 1];
 };
 
 const std::string& LowercasePrimitiveTypeName(PrimitiveType s) {
@@ -172,7 +197,7 @@ GetPrimitiveTypeStringMap() {
 
 }  // namespace
 
-StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
+absl::StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
   const auto& map = GetPrimitiveTypeStringMap();
   auto found = map.find(name);
   if (found == map.end()) {

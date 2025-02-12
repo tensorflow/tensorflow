@@ -17,7 +17,6 @@ limitations under the License.
 #include <stdint.h>
 
 #include <string>
-#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"

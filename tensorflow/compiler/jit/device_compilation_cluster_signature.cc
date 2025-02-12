@@ -110,7 +110,7 @@ uint64 Signature::Hash::operator()(const Signature& signature) const {
   return h;
 }
 
-StatusOr<Signature> Signature::Build(
+absl::StatusOr<Signature> Signature::Build(
     const NameAttrList& function,
     absl::Span<const XlaCompiler::Argument> args) {
   Signature signature;

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/tests/device_compiler_test_helper.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
 #include "xla/client/client_library.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -58,7 +59,7 @@ using Signature = DeviceCompilationClusterSignature;
 xla::LocalClient* GetLocalClient() {
   // TODO(b/255826209): Figure out how to run this test with the CPU client as
   // well.
-  auto platform = se::MultiPlatformManager::PlatformWithName("cuda").value();
+  auto platform = se::PlatformManager::PlatformWithName("cuda").value();
   return xla::ClientLibrary::GetOrCreateLocalClient(platform).value();
 }
 
@@ -73,7 +74,7 @@ XlaDeviceCompiler* CreateXlaDeviceCompiler(bool enable_persistence = false) {
                                std::move(xla_compiler_client));
 }
 
-StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
+absl::StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
@@ -84,7 +85,7 @@ StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   return graph;
 }
 
-StatusOr<FunctionDef> SampleFuntionAddXY(const std::string& name) {
+absl::StatusOr<FunctionDef> SampleFuntionAddXY(const std::string& name) {
   TF_ASSIGN_OR_RETURN(auto graph, SampleGraphAddXY());
   FunctionDef fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph, name, &fdef));
@@ -109,7 +110,7 @@ class MockXlaDeviceExecutablePersistor
       : DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>(
             Config{testing::TmpDir(), false, "xla"},
             DeviceType(DEVICE_CPU_XLA_JIT)) {}
-  MOCK_METHOD(Status, TryToPersistExecutable,
+  MOCK_METHOD(absl::Status, TryToPersistExecutable,
               (uint64, const std::string&, const XlaCompiler::Options&,
                const XlaCompiler::CompilationResult&,
                const xla::LocalExecutable&,
@@ -123,7 +124,7 @@ class MockDeviceCompilationProfiler : public DeviceCompilationProfiler {
               (const NameAttrList& function, DeviceCompileMode compile_mode,
                int64_t current_request_count),
               (override));
-  MOCK_METHOD(Status, RegisterCompilation,
+  MOCK_METHOD(absl::Status, RegisterCompilation,
               (const NameAttrList& function, int64_t compile_time_us,
                bool used_persistent_cache),
               (override));
@@ -160,7 +161,8 @@ class DeviceCompilerTest : public ::testing::Test {
     return options;
   }
 
-  StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildSampleXlaExecutable() {
+  absl::StatusOr<std::unique_ptr<xla::LocalExecutable>>
+  BuildSampleXlaExecutable() {
     TF_ASSIGN_OR_RETURN(auto graph, SampleGraphAddXY());
     auto args = SampleArgsForAddXY();
 
@@ -284,7 +286,7 @@ TEST_F(DeviceCompilerTest, CompileAsyncSuccess) {
   EXPECT_CALL(*mock_profiler_, RegisterCompilation(_, _, false))
       .WillOnce([&done] {
         done.Notify();
-        return OkStatus();
+        return absl::OkStatus();
       });
 
   auto args = SampleArgsForAddXY();

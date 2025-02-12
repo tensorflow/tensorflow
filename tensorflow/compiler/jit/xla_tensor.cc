@@ -41,10 +41,10 @@ namespace tensorflow {
   }
 }
 
-Status XlaTensor::AllocateShapedBuffer(DataType dtype,
-                                       const xla::Shape& on_device_shape,
-                                       xla::LocalClient* client,
-                                       int device_ordinal) {
+absl::Status XlaTensor::AllocateShapedBuffer(DataType dtype,
+                                             const xla::Shape& on_device_shape,
+                                             xla::LocalClient* client,
+                                             int device_ordinal) {
   xla::Shape on_host_shape =
       xla::ShapeUtil::DeviceShapeToHostShape(on_device_shape);
   xla::ScopedShapedBuffer shaped_buffer(on_host_shape, on_device_shape,
@@ -66,7 +66,7 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype,
   VLOG(4) << shaped_buffer.ToString();
 
   set_shaped_buffer(std::move(shaped_buffer));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void XlaTensor::WaitForDefinitionEventOnStream(se::Stream* stream) {
@@ -83,7 +83,7 @@ void XlaTensor::WaitForDefinitionEventOnStream(se::Stream* stream) {
     return;
   }
 
-  stream->ThenWaitFor(definition_event_.get());
+  stream->WaitFor(definition_event_.get()).IgnoreError();
   streams_defined_on_.push_back(stream);
 }
 
@@ -94,9 +94,9 @@ void XlaTensor::ResetDefinitionEvent(std::shared_ptr<se::Event> event,
   streams_defined_on_ = {stream};
 }
 
-Status XlaTensor::RefreshStatusOfStreams() {
+absl::Status XlaTensor::RefreshStatusOfStreams() {
   mutex_lock lock(mu_);
-  Status status;
+  absl::Status status;
   for (se::Stream* stream : streams_defined_on_) {
     status.Update(stream->RefreshStatus());
   }

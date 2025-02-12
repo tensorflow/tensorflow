@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tsl/platform/thread_annotations.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/rng_alg.h"
@@ -34,7 +35,8 @@ struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const CPUDevice& device,
                   Distribution dist, UpdateVariableAndFill_Philox_Arg* arg,
                   typename Distribution::ResultElementType* output_data)
-      TF_UNLOCK_FUNCTION() {
+      TF_NO_THREAD_SAFETY_ANALYSIS {  // arg->state_var_guard acquired using
+                                      // RAII and released via pointer aliasing.
     int64_t output_size = arg->output_size;
     int64_t alg_tag_skip = arg->alg_tag_skip;
     ScopedUnlockUnrefVar* state_var_guard = arg->state_var_guard;
@@ -55,7 +57,7 @@ struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
 
 }  // end namespace functor
 
-Status CheckState(const Tensor& state) {
+absl::Status CheckState(const Tensor& state) {
   if (state.dtype() != STATE_ELEMENT_DTYPE) {
     return errors::InvalidArgument("dtype of RNG state variable must be ",
                                    DataTypeString(STATE_ELEMENT_DTYPE),
@@ -65,10 +67,10 @@ Status CheckState(const Tensor& state) {
     return errors::InvalidArgument(
         "RNG state must have one and only one dimension, not ", state.dims());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
+absl::Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
   static_assert(std::is_same<StateElementType, int64_t>::value,
                 "StateElementType must be int64");
   static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32>::value,
@@ -80,7 +82,7 @@ Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
         " must be at least ",
         min_size, "; got ", state.NumElements());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename AlgEnumType>
@@ -91,7 +93,7 @@ StatusOr<AlgEnumType> GetAlgId(OpKernelContext* ctx, int input_idx) {
 }
 
 template <typename AlgEnumType>
-StatusOr<ConcreteRngAlgorithm> ResolveAlg(AlgEnumType alg_id) {
+absl::StatusOr<ConcreteRngAlgorithm> ResolveAlg(AlgEnumType alg_id) {
   switch (alg_id) {
     case RNG_ALG_PHILOX:
       return ConcreteRngAlgorithm::RNG_ALG_PHILOX;
@@ -106,13 +108,14 @@ StatusOr<ConcreteRngAlgorithm> ResolveAlg(AlgEnumType alg_id) {
 }
 
 template <typename AlgEnumType>
-StatusOr<ConcreteRngAlgorithm> GetAlg(OpKernelContext* ctx, int input_idx) {
+absl::StatusOr<ConcreteRngAlgorithm> GetAlg(OpKernelContext* ctx,
+                                            int input_idx) {
   TF_ASSIGN_OR_RETURN(auto alg_id, GetAlgId<AlgEnumType>(ctx, input_idx));
   return ResolveAlg(alg_id);
 }
 
 template <typename Device, typename Distribution>
-Status UpdateVariableAndFill(
+absl::Status UpdateVariableAndFill(
     OpKernelContext* ctx, Distribution dist, int state_input_idx,
     bool read_alg_from_state, ConcreteRngAlgorithm alg, int64_t output_size,
     typename Distribution::ResultElementType* output_data) {
@@ -149,7 +152,7 @@ Status UpdateVariableAndFill(
       arg.state_tensor = var_tensor;
       functor::UpdateVariableAndFill_Philox<Device, Distribution>()(
           ctx, ctx->eigen_device<Device>(), dist, &arg, output_data);
-      return OkStatus();
+      return absl::OkStatus();
     case ConcreteRngAlgorithm::RNG_ALG_THREEFRY:
       return errors::Unimplemented(
           "Non-XLA devices don't support the ThreeFry algorithm.");
@@ -189,7 +192,7 @@ class StatefulRandomOp : public OpKernel {
 };
 
 template <typename T>
-Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
+absl::Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
   auto dtype = DataTypeToEnum<T>::v();
   if (tensor.dims() != 0) {
     return errors::InvalidArgument("input ", std::to_string(input_idx),
@@ -202,7 +205,7 @@ Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
                                    ", not ", DataTypeString(tensor.dtype()));
   }
   *result = tensor.flat<T>()(0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Device, class Distribution>

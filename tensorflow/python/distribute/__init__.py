@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -35,9 +35,8 @@ v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute
 Tutorials](https://www.tensorflow.org/tutorials/distribute/)
 
   The tutorials cover how to use `tf.distribute.Strategy` to do distributed
-  training with native Keras APIs, custom training loops,
-  and Estimator APIs. They also cover how to save/load model when using
-  `tf.distribute.Strategy`.
+  training with native Keras APIs, and custom training loops.
+  They also cover how to save/load model when using `tf.distribute.Strategy`.
 
 *Glossary*
 

@@ -17,9 +17,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
 

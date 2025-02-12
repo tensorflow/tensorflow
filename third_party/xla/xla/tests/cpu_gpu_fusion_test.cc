@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,10 +24,10 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/array2d.h"
 #include "xla/client/client_library.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
@@ -137,7 +138,7 @@ class CpuGpuFusionTest : public HloTestBase {
                                       absl::Span<const float> xs);
   bool ComputeElementwiseAnswerCompare(ComparisonDirection direction,
                                        absl::Span<const float> xs);
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_disable_hlo_passes("layout-assignment");
     return debug_options;
@@ -872,6 +873,21 @@ XLA_TEST_F(FusionClientLibraryTest, ManyLayoutTransformations) {
   ComputeAndCompare(&b, {});
 }
 
+XLA_TEST_F(CpuGpuFusionTest, TransposeDiamondWithNonTrivialBranch) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f64[16,16]{1,0} parameter(0)
+  trans = f64[16,16]{1,0} transpose(p), dimensions={1,0}
+  rev = f64[16,16]{1,0} reverse(trans), dimensions={0,1}
+  sub = f64[16,16]{1,0} subtract(trans, trans)
+  ROOT add = f64[16,16]{1,0} add(rev, sub)
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
+}
+
 void BM_ParallelFusion(::testing::benchmark::State& state) {
   // Simple element-wise computation to benchmark parallel task partitioning.
 
@@ -934,9 +950,7 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
           .value();
   auto executable = std::move(executables[0]);
 
-  se::Stream stream(executors[device_ordinal]);
-  stream.Init();
-
+  auto stream = executors[device_ordinal]->CreateStream().value();
   // Initialize thread pool.
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "XLAEigen",
                                intra_op_parallelism_threads);
@@ -944,7 +958,7 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
 
   // Initialize ExecutableRunOptions.
   ExecutableRunOptions options;
-  options.set_allocator(&allocator).set_stream(&stream);
+  options.set_allocator(&allocator).set_stream(stream.get());
   options.set_intra_op_thread_pool(&device);
 
   // Run some warm-up executions.

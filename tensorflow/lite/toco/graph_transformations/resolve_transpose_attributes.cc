@@ -12,15 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -29,19 +31,17 @@ namespace toco {
                                                      bool* modified) {
   *modified = false;
   const auto op_it = model->operators.begin() + op_index;
-  if (op_it->get()->type != OperatorType::kTranspose)
-    return ::tensorflow::OkStatus();
+  if (op_it->get()->type != OperatorType::kTranspose) return absl::OkStatus();
 
   auto* op = static_cast<TransposeOperator*>(op_it->get());
-  if (!op->perm.empty()) return ::tensorflow::OkStatus();
+  if (!op->perm.empty()) return absl::OkStatus();
 
   CHECK_EQ(op->inputs.size(), 2);
-  if (!IsConstantParameterArray(*model, op->inputs[1]))
-    return ::tensorflow::OkStatus();
+  if (!IsConstantParameterArray(*model, op->inputs[1])) return absl::OkStatus();
 
   // Handling perm.
   const auto& perm_array = model->GetArray(op->inputs[1]);
-  if (!perm_array.has_shape()) return ::tensorflow::OkStatus();
+  if (!perm_array.has_shape()) return absl::OkStatus();
 
   const std::vector<int>& perm_dims = perm_array.shape().dims();
   CHECK_EQ(perm_dims.size(), 1);
@@ -53,7 +53,7 @@ namespace toco {
   }
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

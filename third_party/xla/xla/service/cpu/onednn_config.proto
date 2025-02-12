@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package xla.cpu;
+
+message OneDnnDataLayoutProto {
+  // The batch dimension of the tensor
+  uint64 batch_dim = 1;
+  // The feature dimension of the tensor
+  uint64 feature_dim = 2;
+  // The spatial dimensions of the tensor
+  repeated uint64 spatial_dims = 3;
+}
+
+message OneDnnFilterLayoutProto {
+  // The input feature dimension of the tensor
+  uint64 input_feature_dim = 1;
+  // The output feature dimension of the tensor
+  uint64 output_feature_dim = 2;
+  // The spatial dimensions of the tensor
+  repeated uint64 spatial_dims = 3;
+  // Shape of the tensor
+  repeated uint64 shape = 4;
+}
+
+message OneDnnFactorLayoutProto {
+  // The dimensions of the tensor
+  repeated uint64 dimensions = 1;
+  // Shape of the tensor
+  repeated uint64 shape = 2;
+}
+
+message OneDnnOptimizationConfig {
+  bool weights_prepacked = 1;
+  bool user_scratchpad = 2;
+  bool bias_broadcast = 3;
+}
+
+message OneDnnFusionConfig {
+  // These enum needs to be mapped to oneDNN enum for post_op algorithm.
+  // TODO(intel-tf): Add kinds supported by oneDNN.
+  enum FusionKind {
+    UNDEFINED = 0;
+    BIAS = 1;
+    RELU = 2;
+    TANH = 3;
+    GELU_ERF = 4;
+    GELU_TANH = 5;
+    BINARY_ADD = 6;
+    LINEAR = 7;
+    ELU = 8;
+    RELU6 = 9;
+    SIGMOID = 10;
+  }
+  repeated FusionKind ops = 1;
+  // To avoid protobuf failures for specific decimal values,
+  // the original float value alpha is type-casted to int32.
+  int32 alpha_typecast = 2;
+}
+
+message OneDnnTensorLayoutProto {
+  uint64 dims = 1;
+  oneof layout {
+    OneDnnDataLayoutProto data = 2;
+    OneDnnFilterLayoutProto filter = 3;
+    OneDnnFactorLayoutProto tensor = 4;
+  }
+}
+
+message OneDnnSoftmaxConfig {
+  int32 softmax_axis = 1;
+}
+
+message OneDnnMatMulConfig {
+  bool transpose_a = 1;
+  bool transpose_b = 2;
+
+  OneDnnFusionConfig fusions = 3;
+
+  reserved 4;  // was bias_broadcast
+  reserved 5;  // was alpha_typecast
+  reserved 6;  // was weights_prepacked
+  reserved 7;  // was user_scratchpad
+
+  OneDnnOptimizationConfig optimization_config = 8;
+}
+
+message OneDnnWindowProto {
+  repeated uint64 size = 1;
+  repeated uint64 pad_left = 2;
+  repeated uint64 pad_right = 3;
+  repeated uint64 strides = 4;
+  repeated uint64 window_dilations = 5;
+}
+
+message OneDnnNormConfig {
+  enum ScaleAndShift {
+    UNDEFINED = 0;
+    SCALE = 1;
+    SHIFT = 2;
+    SCALE_AND_SHIFT = 3;
+  }
+  ScaleAndShift rescale = 1;
+  int32 epsilon_typecast = 2;
+  OneDnnFusionConfig fusions = 3;
+}
+
+message OneDnnConvolutionConfig {
+  uint64 dims = 1;
+  OneDnnTensorLayoutProto input = 2;
+  OneDnnTensorLayoutProto kernel = 3;
+  OneDnnTensorLayoutProto output = 4;
+  OneDnnWindowProto window = 5;
+
+  OneDnnFusionConfig fusions = 6;
+  uint64 feature_groups = 7;
+
+  OneDnnOptimizationConfig optimization_config = 8;
+}

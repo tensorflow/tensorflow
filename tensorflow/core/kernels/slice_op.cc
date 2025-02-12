@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/slice_op.h"
 
+#include "absl/base/prefetch.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -30,14 +31,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/prefetch.h"
 
 namespace tensorflow {
 
 namespace {
 
 void IntTensorToInt64Vec(const Tensor& tensor,
-                         gtl::InlinedVector<int64_t, 4>* out) {
+                         absl::InlinedVector<int64_t, 4>* out) {
   out->resize(tensor.NumElements());
   int64_t* out_ptr = out->data();
   if (tensor.dtype() == DT_INT32) {
@@ -63,8 +63,8 @@ typedef Eigen::GpuDevice GPUDevice;
 void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
                            TensorShape* output_shape, bool* is_identity,
                            bool* slice_dim0,
-                           gtl::InlinedVector<int64_t, 4>* begin,
-                           gtl::InlinedVector<int64_t, 4>* size) {
+                           absl::InlinedVector<int64_t, 4>* begin,
+                           absl::InlinedVector<int64_t, 4>* size) {
   const Tensor& begin_tensor = context->input(1);
   const Tensor& size_tensor = context->input(2);
 
@@ -121,8 +121,8 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
 template <typename T>
 static void SharedSliceCommonCases(OpKernelContext* context,
                                    const Tensor& input,
-                                   gtl::InlinedVector<int64, 4>* begin,
-                                   gtl::InlinedVector<int64, 4>* size,
+                                   absl::InlinedVector<int64, 4>* begin,
+                                   absl::InlinedVector<int64, 4>* size,
                                    Tensor** result, bool* done) {
   bool is_identity = true;
   bool slice_dim0 = true;
@@ -157,8 +157,8 @@ class SliceOp : public OpKernel {
   explicit SliceOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    gtl::InlinedVector<int64_t, 4> begin;
-    gtl::InlinedVector<int64_t, 4> size;
+    absl::InlinedVector<int64_t, 4> begin;
+    absl::InlinedVector<int64_t, 4> size;
     const Tensor& input = context->input(0);
     Tensor* result = nullptr;
     bool done = false;
@@ -183,9 +183,8 @@ class SliceOp : public OpKernel {
         for (int i = 0; i < row_size; ++i) {
           const int64_t row = row_begin + i;
           if (i + 1 < size[0]) {
-            port::prefetch<port::PREFETCH_HINT_T0>(&output_t(i + 1, 0));
-            port::prefetch<port::PREFETCH_HINT_T0>(
-                &input_t(row + 1, col_begin));
+            absl::PrefetchToLocalCache(&output_t(i + 1, 0));
+            absl::PrefetchToLocalCache(&input_t(row + 1, col_begin));
           }
           memcpy(&output_t(i, 0), &input_t(row, col_begin),
                  col_size * sizeof(T));
@@ -217,8 +216,8 @@ class SliceOp : public OpKernel {
 
  private:
   template <int NDIM>
-  void HandleCase(OpKernelContext* context, gtl::ArraySlice<int64_t> begin,
-                  gtl::ArraySlice<int64_t> size, const Tensor& input,
+  void HandleCase(OpKernelContext* context, absl::Span<const int64_t> begin,
+                  absl::Span<const int64_t> size, const Tensor& input,
                   Tensor* result) {
     Eigen::DSizes<Eigen::DenseIndex, NDIM> indices;
     Eigen::DSizes<Eigen::DenseIndex, NDIM> sizes;

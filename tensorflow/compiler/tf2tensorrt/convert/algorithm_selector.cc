@@ -43,8 +43,7 @@ std::ostream& operator<<(std::ostream& os,
 
 std::ostream& operator<<(std::ostream& os, const nvinfer1::IAlgorithm& alg) {
   const nvinfer1::IAlgorithmVariant& variant = alg.getAlgorithmVariant();
-  os << "Algorithm("
-     << "variant.implementation=" << variant.getImplementation()
+  os << "Algorithm(" << "variant.implementation=" << variant.getImplementation()
      << ",variant.tactic=" << variant.getTactic()
      << ",timingMSec=" << alg.getTimingMSec()
      << ",workspaceSize=" << alg.getWorkspaceSize() << ")";
@@ -135,7 +134,7 @@ bool AlgorithmSelectorImpl::AllowShuffleAlgorithm(
 
 bool AlgorithmSelectorImpl::IsAlgorithmSelectorRequired() const {
   // If we are in turing for TensorRT 7.2, we need the  selector for shuffle and
-  // avoiding specfic Turing tactics.
+  // avoiding specific Turing tactics.
   if (IsTrtVersionGE({7, 2, 0, 0}) && !IsTrtVersionGE({8, 0, 0, 0})) {
     return true;
   }

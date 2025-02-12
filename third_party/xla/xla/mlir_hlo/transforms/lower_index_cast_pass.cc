@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "transforms/passes.h"
 
@@ -40,7 +41,7 @@ struct IndexCastConverter : public OpRewritePattern<T> {
  public:
   using OpRewritePattern<T>::OpRewritePattern;
   LogicalResult matchAndRewrite(T op, PatternRewriter &rewriter) const final {
-    auto resultTy = op.getType().template dyn_cast<RankedTensorType>();
+    auto resultTy = mlir::dyn_cast<RankedTensorType>(op.getType());
     if (!resultTy) return failure();
 
     SmallVector<Value> dynamicExtents =
@@ -63,8 +64,7 @@ struct LowerIndexCastPass
     patterns.add<IndexCastConverter<arith::IndexCastOp>,
                  IndexCastConverter<arith::IndexCastUIOp>>(
         patterns.getContext());
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
 };

@@ -7,8 +7,8 @@ def repo():
 
     # Attention: tools parse and update these lines.
     # LINT.IfChange
-    ABSL_COMMIT = "b971ac5250ea8de900eae9f95e06548d14cd95fe"
-    ABSL_SHA256 = "8eeec9382fc0338ef5c60053f3a4b0e0708361375fe51c9e65d0ce46ccfe55a7"
+    ABSL_COMMIT = "fb3621f4f897824c0dbe0615fa94543df6192f30"
+    ABSL_SHA256 = "0320586856674d16b0b7a4d4afb22151bdc798490bb7f295eddd8f6a62b46fea"
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/abseil-cpp.cmake)
 
     SYS_DIRS = [
@@ -42,9 +42,9 @@ def repo():
         build_file = "//third_party/absl:com_google_absl.BUILD",
         system_build_file = "//third_party/absl:system.BUILD",
         system_link_files = SYS_LINKS,
-        # This patch pulls in a fix for designated initializers that MSVC
-        # complains about. It shouldn't be necessary at the next LTS release.
-        patch_file = ["//third_party/absl:absl_designated_initializers.patch", "//third_party/absl:invert_the_is_inline_bin.patch"],
         strip_prefix = "abseil-cpp-{commit}".format(commit = ABSL_COMMIT),
         urls = tf_mirror_urls("https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT)),
+        patch_file = [
+            "//third_party/absl:nvidia_jetson.patch",
+        ],
     )

@@ -12,8 +12,7 @@ package(
     # By default, these targets should only be used within the quantization library.
     default_visibility = [
         "//learning/brain/mlir/quantization:__subpackages__",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
+        "//tensorflow/compiler/mlir/quantization:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -33,9 +32,9 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -60,8 +59,8 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )
 
@@ -100,10 +99,13 @@ cc_library(
     hdrs = ["convert_asset_args.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/mlir/quantization/common:func",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -119,31 +121,12 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
-    name = "status_macro",
-    hdrs = ["status_macro.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:macros",
-    ],
-)
-
-tf_cc_test(
-    name = "status_macro_test",
-    srcs = ["status_macro_test.cc"],
-    deps = [
-        ":status_macro",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/status",
     ],
 )
 
@@ -159,7 +142,8 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -173,7 +157,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
+        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:constant_fold_utils",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -189,13 +173,32 @@ tf_cc_test(
     srcs = ["constant_fold_test.cc"],
     deps = [
         ":constant_fold",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
+        "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "quantization_unit_loc",
+    srcs = ["quantization_unit_loc.cc"],
+    hdrs = ["quantization_unit_loc.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )

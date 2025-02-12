@@ -12,19 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/lite/toco/graph_transformations/remove_trivial_passthrough.h"
 #include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/runtime/types.h"
-#include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -78,7 +80,7 @@ bool IsTrivialMinMax(GraphTransformation* transformation, const Model& model,
   if ((op->type != OperatorType::kMinimum &&
        op->type != OperatorType::kMaximum) ||
       op->inputs.size() != 2) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (IsTrivialMinMax(this, *model, op->type, op->inputs[0], op->inputs[1])) {
     AddMessageF(
@@ -86,9 +88,9 @@ bool IsTrivialMinMax(GraphTransformation* transformation, const Model& model,
         "at least as tight a clamp anyway.",
         LogName(*op));
     *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

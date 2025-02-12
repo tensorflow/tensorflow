@@ -18,8 +18,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status MemmappedFileSystemWriter::InitializeToFile(Env* env,
-                                                   const string& filename) {
+absl::Status MemmappedFileSystemWriter::InitializeToFile(
+    Env* env, const string& filename) {
   auto status = env->NewWritableFile(filename, &output_file_);
   if (status.ok()) {
     output_file_offset_ = 0;
@@ -27,8 +27,8 @@ Status MemmappedFileSystemWriter::InitializeToFile(Env* env,
   return status;
 }
 
-Status MemmappedFileSystemWriter::SaveTensor(const Tensor& tensor,
-                                             const string& element_name) {
+absl::Status MemmappedFileSystemWriter::SaveTensor(const Tensor& tensor,
+                                                   const string& element_name) {
   if (!output_file_) {
     return errors::FailedPrecondition(
         "MemmappedEnvWritter: saving tensor into not opened file");
@@ -55,7 +55,7 @@ Status MemmappedFileSystemWriter::SaveTensor(const Tensor& tensor,
   return result;
 }
 
-Status MemmappedFileSystemWriter::SaveProtobuf(
+absl::Status MemmappedFileSystemWriter::SaveProtobuf(
     const protobuf::MessageLite& message, const string& element_name) {
   if (!output_file_) {
     return errors::FailedPrecondition(
@@ -80,7 +80,7 @@ Status MemmappedFileSystemWriter::SaveProtobuf(
 
 namespace {
 
-StringPiece EncodeUint64LittleEndian(uint64 val, char* output_buffer) {
+absl::string_view EncodeUint64LittleEndian(uint64 val, char* output_buffer) {
   for (unsigned int i = 0; i < sizeof(uint64); ++i) {
     output_buffer[i] = (val >> i * 8);
   }
@@ -89,7 +89,7 @@ StringPiece EncodeUint64LittleEndian(uint64 val, char* output_buffer) {
 
 }  // namespace
 
-Status MemmappedFileSystemWriter::FlushAndClose() {
+absl::Status MemmappedFileSystemWriter::FlushAndClose() {
   if (!output_file_) {
     return errors::FailedPrecondition(
         "MemmappedEnvWritter: flushing into not opened file");
@@ -106,22 +106,22 @@ Status MemmappedFileSystemWriter::FlushAndClose() {
   TF_RETURN_IF_ERROR(output_file_->Flush());
   TF_RETURN_IF_ERROR(output_file_->Close());
   output_file_.reset();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MemmappedFileSystemWriter::AdjustAlignment(uint64 alignment) {
+absl::Status MemmappedFileSystemWriter::AdjustAlignment(uint64 alignment) {
   const uint64 alignment_rest = output_file_offset_ % alignment;
   const uint64 to_write_for_alignment =
       (alignment_rest == 0) ? 0 : alignment - (output_file_offset_ % alignment);
   static constexpr uint64 kFillerBufferSize = 16;
   const char kFillerBuffer[kFillerBufferSize] = {};
   for (uint64 rest = to_write_for_alignment; rest > 0;) {
-    StringPiece sp(kFillerBuffer, std::min(rest, kFillerBufferSize));
+    absl::string_view sp(kFillerBuffer, std::min(rest, kFillerBufferSize));
     TF_RETURN_IF_ERROR(output_file_->Append(sp));
     rest -= sp.size();
     output_file_offset_ += sp.size();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MemmappedFileSystemWriter::AddToDirectoryElement(const string& name,

@@ -10,11 +10,10 @@ package(
 py_strict_library(
     name = "common",
     srcs = ["common.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:pywrap_mlir",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",
@@ -24,7 +23,6 @@ py_strict_library(
 py_strict_library(
     name = "common_v1",
     srcs = ["common_v1.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:pywrap_mlir",
@@ -308,4 +306,5 @@ glob_lit_tests(
         for file in test_files
     },
     test_file_exts = ["py"],
+    use_lit_test_suite = False,  # Each test gets a large binary, and is too big when consolidated.
 )

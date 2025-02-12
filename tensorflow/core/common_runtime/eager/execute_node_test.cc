@@ -45,6 +45,7 @@ class TestKernelAndDeviceFunc final : public KernelAndDeviceFunc {
             /*allow_control_flow_sync_execution=*/false,
             /*shape_inference_on_tfe_dialect_import=*/true,
             /*int_args_and_retvals_on_device=*/false,
+            /*function_runs_at_most_once=*/false,
             /*xla_compile_device_type=*/std::nullopt,
             /*allow_soft_placement=*/false,
             /*rendezvous_factory=*/Rendezvous::Factory(),
@@ -68,7 +69,7 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
   TF_ASSERT_OK(remote_device_mgr->AddDevices(std::move(remote_devices)));
   Device* device1 = remote_device_mgr->ListDevices().at(0);
 
-  Status s;
+  absl::Status s;
   std::unique_ptr<CompositeDevice> composite_device =
       CompositeDevice::MakeDevice({device0->name(), device1->name()},
                                   /*unique_device_id=*/0,

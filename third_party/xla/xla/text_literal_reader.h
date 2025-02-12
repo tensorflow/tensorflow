@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,12 +18,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/literal.h"
-#include "xla/statusor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
 
 namespace xla {
 
@@ -40,7 +41,7 @@ class TextLiteralReader {
  public:
   // See class comment -- reads a file in its entirety (there must be only one
   // literal in the text file path provided).
-  static StatusOr<Literal> ReadPath(absl::string_view path);
+  static absl::StatusOr<Literal> ReadPath(absl::string_view path);
 
  private:
   // Ownership of file is transferred.
@@ -48,7 +49,7 @@ class TextLiteralReader {
 
   // Parses a shape string on the first line, followed by lines of values to the
   // end of the file.
-  StatusOr<Literal> ReadAllLines();
+  absl::StatusOr<Literal> ReadAllLines();
 
   // Owns the file being read
   std::unique_ptr<tsl::RandomAccessFile> file_;

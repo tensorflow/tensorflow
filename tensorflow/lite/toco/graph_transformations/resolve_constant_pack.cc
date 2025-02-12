@@ -12,12 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -56,7 +61,7 @@ void Pack(Model* model, PackOperator const& op) {
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
   if (base_op->type != OperatorType::kPack) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto* op = static_cast<const PackOperator*>(base_op);
 
@@ -65,18 +70,18 @@ void Pack(Model* model, PackOperator const& op) {
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!output_array.has_shape()) {
     // Yield until the output shape has been set by PropagateFixedShapes
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   for (const auto& input : op->inputs) {
     if (!IsConstantParameterArray(*model, input)) {
       // Yield if any input is mutable
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -112,7 +117,7 @@ void Pack(Model* model, PackOperator const& op) {
 
   DeleteOpAndArrays(model, op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

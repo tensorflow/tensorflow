@@ -21,9 +21,9 @@ limitations under the License.
 namespace tensorflow {
 namespace lookup {
 
-Status InitializableLookupTable::Find(OpKernelContext* ctx, const Tensor& keys,
-                                      Tensor* values,
-                                      const Tensor& default_value) {
+absl::Status InitializableLookupTable::Find(OpKernelContext* ctx,
+                                            const Tensor& keys, Tensor* values,
+                                            const Tensor& default_value) {
   if (!is_initialized()) {
     return errors::FailedPrecondition("Table not initialized.");
   }
@@ -33,9 +33,9 @@ Status InitializableLookupTable::Find(OpKernelContext* ctx, const Tensor& keys,
   return DoFind(keys, values, default_value);
 }
 
-Status InitializableLookupTable::ImportValues(OpKernelContext* ctx,
-                                              const Tensor& keys,
-                                              const Tensor& values) {
+absl::Status InitializableLookupTable::ImportValues(OpKernelContext* ctx,
+                                                    const Tensor& keys,
+                                                    const Tensor& values) {
   lookup::KeyValueTensorIterator iter(&keys, &values);
   auto serializer = std::make_unique<InitializerSerializer>(
       [keys, values](GraphDefBuilder* builder, Node* table, Node** out) {
@@ -54,17 +54,17 @@ Status InitializableLookupTable::ImportValues(OpKernelContext* ctx,
                                .WithAttr("Tout", values.dtype()));
         *out = ops::UnaryOp("Identity", table,
                             builder->opts().WithControlInput(import_table));
-        return OkStatus();
+        return absl::OkStatus();
       });
 
   return Initialize(iter, std::move(serializer));
 }
 
-Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
+absl::Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
   return Initialize(iter, /*serializer=*/nullptr);
 }
 
-Status InitializableLookupTable::Initialize(
+absl::Status InitializableLookupTable::Initialize(
     InitTableIterator& iter,
     std::unique_ptr<InitializerSerializer> serializer) {
   if (!iter.Valid()) {
@@ -84,7 +84,7 @@ Status InitializableLookupTable::Initialize(
           "Table was already initialized with "
           "different data.");
     } else {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   TF_RETURN_IF_ERROR(DoLazyPrepare([&iter]() { return iter.total_size(); }));
@@ -98,13 +98,13 @@ Status InitializableLookupTable::Initialize(
 
   initializer_serializer_ = std::move(serializer);
   is_initialized_.store(true, std::memory_order_release);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status InitializableLookupTable::AreEntriesSame(const InitTableIterator& iter,
-                                                bool* result) {
+absl::Status InitializableLookupTable::AreEntriesSame(
+    const InitTableIterator& iter, bool* result) {
   *result = static_cast<size_t>(iter.total_size()) == size();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace lookup

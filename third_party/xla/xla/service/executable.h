@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,14 +18,19 @@ limitations under the License.
 
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_execution_profile.h"
@@ -36,7 +41,6 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -85,7 +89,7 @@ class ExecutionInput {
 
   ~ExecutionInput();
 
-  ExecutionInput& operator=(ExecutionInput&&) = default;
+  ExecutionInput& operator=(ExecutionInput&&) noexcept = default;
 
   const Shape& shape() const {
     return dynamic_shape_ != nullptr ? *dynamic_shape_ : buffers_.shape();
@@ -95,10 +99,7 @@ class ExecutionInput {
     return host_shape_ != nullptr ? *host_shape_ : shape();
   }
 
-  Status SetDynamicShape(Shape dynamic_shape);
-
-  xla::StatusOr<xla::ShapedBuffer> ToShapedBuffer(
-      se::DeviceMemoryAllocator* allocator, int device_ordinal) const;
+  absl::Status SetDynamicShape(Shape dynamic_shape);
 
   void SetBuffer(const ShapeIndex& index, MaybeOwningDeviceMemory buffer) {
     *buffers_.mutable_element(index) = std::move(buffer);
@@ -156,13 +157,16 @@ class ExecutionOutput {
         to_be_released_(std::move(to_be_released)) {}
   // TODO(b/170310047): remove this overload.
   ExecutionOutput(Shape on_host_shape, Shape on_device_shape,
-                  se::DeviceMemoryAllocator* allocator, int device_ordinal)
-      : result_(std::move(on_device_shape), allocator, device_ordinal) {}
+                  se::DeviceMemoryAllocator* allocator, int device_ordinal,
+                  int physical_device_ordinal = -1)
+      : result_(std::move(on_device_shape), allocator, device_ordinal,
+                physical_device_ordinal) {}
   ExecutionOutput(Shape on_device_shape, se::DeviceMemoryAllocator* allocator,
-                  int device_ordinal)
-      : result_(std::move(on_device_shape), allocator, device_ordinal) {}
-  ExecutionOutput(ExecutionOutput&&) = default;
-  ExecutionOutput& operator=(ExecutionOutput&&) = default;
+                  int device_ordinal, int physical_device_ordinal = -1)
+      : result_(std::move(on_device_shape), allocator, device_ordinal,
+                physical_device_ordinal) {}
+  ExecutionOutput(ExecutionOutput&&) noexcept = default;
+  ExecutionOutput& operator=(ExecutionOutput&&) noexcept = default;
 
   ~ExecutionOutput() {
     // If the ExecutionOutput has not been committed, and if there are aliased
@@ -256,14 +260,10 @@ class Executable {
   // Enqueues the compilation result on the provided stream, passing the given
   // arguments. This call is blocking and returns after the execution is done.
   //
-  // If the hlo_execution_profile is provided as non-nullptr, profiling will be
-  // enabled.
-  //
   // Returns a shaped buffer containing the result of the computation.
-  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile);
+      absl::Span<const ShapedBuffer* const> arguments);
 
   // Starts the given program executing on the given stream/executor.
   //
@@ -279,51 +279,44 @@ class Executable {
   // operations are enqueued for launch on the stream. Note that some
   // implementations may in fact block or may block in some circumstances (e.g.,
   // when profiling); i.e., asynchronous is a "may" not a "must".
-  //
-  // If the hlo_execution_profile is provided as non-nullptr, profiling will be
-  // enabled. Note that profiling is tricky to use correctly, as the profiling
-  // objects (when they exist) must out-live the task.
-  virtual StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+  virtual absl::StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile);
+      absl::Span<const ShapedBuffer* const> arguments);
 
   // Same as ExecuteAsyncOnStream(), but blocks waiting for the computation to
   // complete.
-  StatusOr<ExecutionOutput> ExecuteOnStream(
+  absl::StatusOr<ExecutionOutput> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile);
+      std::vector<ExecutionInput> arguments);
 
-  virtual StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+  virtual absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile) = 0;
+      std::vector<ExecutionInput> arguments) = 0;
 
   // Same as ExecuteOnStream(), but runs this executable on multiple
   // streams. arguments[i] contains the arguments to the execution on
   // run_options[i]->stream() and the returned value is at index i of the
   // returned vector.
-  virtual StatusOr<std::vector<ScopedShapedBuffer>> ExecuteOnStreams(
+  virtual absl::StatusOr<std::vector<ScopedShapedBuffer>> ExecuteOnStreams(
       absl::Span<const ServiceExecutableRunOptions> run_options,
       absl::Span<const absl::Span<const ShapedBuffer* const>> arguments);
 
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
   // given ExecutionProfile if non-null.
-  StatusOr<ScopedShapedBuffer> ExecuteOnStreamWrapper(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
 
-  StatusOr<ExecutionOutput> ExecuteOnStreamWrapper(
+  absl::StatusOr<ExecutionOutput> ExecuteOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments);
 
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamWrapper(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
 
-  StatusOr<ExecutionOutput> ExecuteAsyncOnStreamWrapper(
+  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments);
 
@@ -372,6 +365,12 @@ class Executable {
 
   // Dumping helpers.
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
+    // Despite the mutex lock, this function is NOT thread-safe.
+    // The mutex is needed for the lazy HLO module loading in `hlo_proto()`.
+    // Since both `hlo_proto()` and `buffer_assignment_proto()` return a
+    // pointer to hlo_proto_, having the mutex is not enough to make this
+    // function thread-safe.
+    absl::MutexLock lock(&hlo_proto_mutex_);
     hlo_proto_ = std::move(hlo_proto);
   }
   bool dumping_snapshot() const {
@@ -379,7 +378,21 @@ class Executable {
                ? module_config().debug_options().xla_dump_hlo_snapshots()
                : false;
   }
-  HloProto const* hlo_proto() const { return hlo_proto_.get(); }
+
+  HloProto const* hlo_proto() const {
+    absl::MutexLock lock(&hlo_proto_mutex_);
+    if (hlo_proto_ != nullptr && !hlo_proto_->has_hlo_module()) {
+      *hlo_proto_->mutable_hlo_module() = module().ToProto();
+    }
+    return hlo_proto_.get();
+  }
+
+  const BufferAssignmentProto* buffer_assignment_proto() const {
+    absl::MutexLock lock(&hlo_proto_mutex_);
+    return hlo_proto_ != nullptr && hlo_proto_->has_buffer_assignment()
+               ? &hlo_proto_->buffer_assignment()
+               : nullptr;
+  }
 
   std::string& debug_info() { return debug_info_; }
   void set_debug_info(const std::string& debug_info) {
@@ -394,6 +407,12 @@ class Executable {
   void MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
                                  ExecutionOutput& result);
 
+  // Returns the allocations resulting from buffer assignment, or an empty span
+  // if unimplemented.
+  virtual absl::Span<const BufferAllocation> GetAllocations() const {
+    return {};
+  }
+
  protected:
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
@@ -402,9 +421,6 @@ class Executable {
   // This member may be nullptr, if the given executable type doesn't need it
   // for execution.
   const std::shared_ptr<HloModule> hlo_module_;
-
-  // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
-  std::unique_ptr<HloProto const> hlo_proto_;
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.
@@ -415,6 +431,15 @@ class Executable {
 
   // Generic debug information as a string.
   std::string debug_info_;
+
+ private:
+  // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
+  // This field may also be only partially set: if only
+  // hlo_proto_->buffer_assignment is set and hlo_proto_->hlo_module isn't, the
+  // hlo_module proto will be computed on the fly when requested with
+  // hlo_proto(). This avoids wasting CPU and memory if the proto isn't needed.
+  std::unique_ptr<HloProto> hlo_proto_ ABSL_GUARDED_BY(hlo_proto_mutex_);
+  mutable absl::Mutex hlo_proto_mutex_;
 };
 
 }  // namespace xla

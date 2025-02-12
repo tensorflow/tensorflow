@@ -127,7 +127,8 @@ class CudaSparseHandles {
   cudaStream_t stream_;
   cusparseHandle_t cusparse_handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CudaSparseHandles);
+  CudaSparseHandles(const CudaSparseHandles&) = delete;
+  void operator=(const CudaSparseHandles&) = delete;
 };
 
 // TODO(ebrevdo): Replace global mutex guarding CudaSparseHandles
@@ -152,13 +153,11 @@ HandleMap* GetHandleMapSingleton() {
 
 GpuSparse::GpuSparse(OpKernelContext* context)
     : initialized_(false), context_(context) {
-  auto cuda_stream_ptr =
-      reinterpret_cast<const cudaStream_t*>(context->op_device_context()
-                                                ->stream()
-                                                ->implementation()
-                                                ->GpuStreamMemberHack());
-  DCHECK(cuda_stream_ptr);
-  gpu_stream_ = *cuda_stream_ptr;
+  gpu_stream_ = reinterpret_cast<cudaStream_t>(
+      CHECK_NOTNULL(context->op_device_context()
+                        ->stream()
+                        ->platform_specific_handle()
+                        .stream));
 }
 
 Status GpuSparse::Initialize() {

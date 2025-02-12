@@ -295,11 +295,9 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   tflite::PauseHeapMonitoring(/*pause=*/true);
 #endif
-  size_t alloc_bytes = num_bytes;
+  // This buffer may be consumed by XNNPack.
+  size_t alloc_bytes = num_bytes + /*XNN_EXTRA_BYTES=*/16;
   // TODO(b/145340303): Tensor data should be aligned.
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  alloc_bytes += 16;  // XNNPACK_EXTRA_BYTES = 16
-#endif
   if (!tensor->data.data) {
     tensor->data.data = (char*)malloc(alloc_bytes);
 #ifdef TF_LITE_TENSORFLOW_PROFILER
@@ -370,6 +368,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "STRING";
     case kTfLiteFloat16:
       return "FLOAT16";
+    case kTfLiteBFloat16:
+      return "BFLOAT16";
     case kTfLiteFloat64:
       return "FLOAT64";
     case kTfLiteResource:
@@ -384,40 +384,138 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
 
-#ifndef TF_LITE_STATIC_MEMORY
-TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
-    const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
-  if (!opaque_delegate_builder) return nullptr;
-
-  TfLiteDelegate* result = new TfLiteDelegate{};
-  result->opaque_delegate_builder = new TfLiteOpaqueDelegateBuilder{};
-  *(result->opaque_delegate_builder) = *opaque_delegate_builder;
-
-  return reinterpret_cast<TfLiteOpaqueDelegate*>(result);
+// Returns a tensor data allocation strategy.
+TfLiteAllocationStrategy TfLiteTensorGetAllocationStrategy(
+    const TfLiteTensor* const t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteAllocationStrategyNone;
+    case kTfLiteMmapRo:
+      return kTfLiteAllocationStrategyMMap;
+    case kTfLiteArenaRw:
+      return kTfLiteAllocationStrategyArena;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteAllocationStrategyArena;
+    case kTfLiteDynamic:
+      return kTfLiteAllocationStrategyMalloc;
+    case kTfLitePersistentRo:
+      return kTfLiteAllocationStrategyUnknown;
+    case kTfLiteCustom:
+      return kTfLiteAllocationStrategyUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteAllocationStrategyNew;
+    case kTfLiteNonCpu:
+      return kTfLiteAllocationStrategyUnknown;
+  }
+  return kTfLiteAllocationStrategyUnknown;
 }
 
-void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
-  if (!opaque_delegate) return;
-
-  const TfLiteDelegate* tflite_delegate =
-      reinterpret_cast<const TfLiteDelegate*>(opaque_delegate);
-  delete tflite_delegate->opaque_delegate_builder;
-  delete tflite_delegate;
+// Returns how stable a tensor data buffer address is across runs.
+TfLiteRunStability TfLiteTensorGetBufferAddressStability(
+    const TfLiteTensor* const t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStabilityUnstable;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStabilityUnstable;
+    case kTfLiteDynamic:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLiteCustom:
+      return kTfLiteRunStabilityUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStabilityUnknown;
+  }
+  return kTfLiteRunStabilityUnknown;
 }
-#endif  // TF_LITE_STATIC_MEMORY
 
-void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
-  if (!delegate) return nullptr;
+// Returns how stable a tensor data values are across runs.
+TfLiteRunStability TfLiteTensorGetDataStability(const TfLiteTensor* const t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteDynamic:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLiteCustom:
+      return kTfLiteRunStabilityUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStabilityUnknown;
+  }
+  return kTfLiteRunStabilityUnknown;
+}
 
-  // The following cast is safe only because this code is part of the
-  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
-  // 'TfLiteOpaqueDelegate' and 'TfLiteDelegate' being equivalent.
-  const auto* tflite_delegate =
-      reinterpret_cast<const TfLiteDelegate*>(delegate);
+// Returns the operation step when the data of a tensor is populated.
+//
+// Some operations can precompute their results before the evaluation step. This
+// makes the data available earlier for subsequent operations.
+TfLiteRunStep TfLiteTensorGetDataKnownStep(const TfLiteTensor* t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStepInit;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStepInit;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStepEval;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStepEval;
+    case kTfLiteDynamic:
+      return kTfLiteRunStepEval;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteCustom:
+      return kTfLiteRunStepUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStepEval;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStepUnknown;
+  }
+  return kTfLiteRunStepUnknown;
+}
 
-  if (!tflite_delegate->opaque_delegate_builder) return tflite_delegate->data_;
-
-  return tflite_delegate->opaque_delegate_builder->data;
+// Returns the operation step when the shape of a tensor is computed.
+//
+// Some operations can precompute the shape of their results before the
+// evaluation step. This makes the shape available earlier for subsequent
+// operations.
+TfLiteRunStep TfLiteTensorGetShapeKnownStep(const TfLiteTensor* t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStepInit;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStepInit;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteDynamic:
+      return kTfLiteRunStepEval;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteCustom:
+      return kTfLiteRunStepUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStepEval;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStepUnknown;
+  }
+  return kTfLiteRunStepUnknown;
 }
 
 }  // extern "C"

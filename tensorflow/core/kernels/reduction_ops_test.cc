@@ -248,4 +248,12 @@ static void BM_Bool2DToScalarGPU(::testing::benchmark::State& state) {
 }
 BENCHMARK(BM_Bool2DToScalarGPU)->RangePair(2048, 8192, 2048, 8192);
 
+static void BM_Mean2DToScalarCPUBF16(::testing::benchmark::State& state) {
+  const int num_x = state.range(0);
+  const int num_y = state.range(1);
+
+  ReduceToScalar<bfloat16>(state, "cpu", "Mean", num_x, num_y);
+}
+BENCHMARK(BM_Mean2DToScalarCPUBF16)->RangePair(2048, 8192, 2048, 8192);
+
 }  // end namespace tensorflow

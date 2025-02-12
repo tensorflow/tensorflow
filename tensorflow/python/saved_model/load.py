@@ -602,6 +602,7 @@ class Loader(object):
     """Rewrite func names in the debug info by using the concrete func names."""
     output_debug_info = graph_debug_info_pb2.GraphDebugInfo()
     output_debug_info.files[:] = debug_info.files
+    # TODO: b/292007261 - Read name_to_trace_id as well as traces
     for key in debug_info.traces:
       node, func = key.split("@")
       new_func = ""
@@ -860,9 +861,8 @@ def load(export_dir, tags=None, options=None):
 
   _Importing SavedModels from TensorFlow 1.x_
 
-  SavedModels from `tf.estimator.Estimator` or 1.x SavedModel APIs have a flat
-  graph instead of `tf.function` objects. These SavedModels will be loaded with
-  the following attributes:
+  1.x SavedModels APIs have a flat graph instead of `tf.function` objects.
+  These SavedModels will be loaded with the following attributes:
 
   * `.signatures`: A dictionary mapping signature names to functions.
   * `.prune(feeds, fetches) `: A method which allows you to extract
@@ -923,8 +923,7 @@ def load_partial(export_dir, filters, tags=None, options=None):
   `tf.saved_model.load(export_dir)` are equivalent.
 
   Note: This only works for SavedModels saved with TensorFlow V2 from
-  `tf.saved_model.save` or Keras. This will not load SavedModels save from
-  the Estimator API.
+  `tf.saved_model.save` or Keras.
 
   In Tensorflow V2, SavedModel stores the **object graph** of the saved object.
   The graph contains nodes (`tf.Module`, `tf.Variable`, `tf.function`, Keras
@@ -1065,8 +1064,8 @@ def load_partial(export_dir, filters, tags=None, options=None):
       root.function_aliases = loader.function_aliases
   else:
     if filters:
-      raise ValueError("SavedModels saved from Tensorflow 1.x or Estimator (any"
-                       " version) cannot be loaded with node filters.")
+      raise ValueError("SavedModels saved from Tensorflow 1.x) cannot be "
+                       "loaded with node filters.")
     with ops.init_scope():
       root = load_v1_in_v2.load(
           export_dir, tags, options.experimental_skip_checkpoint

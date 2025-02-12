@@ -27,16 +27,16 @@ namespace {
 // implementations, and to avoid the duplicate-send or duplicate-recv
 // errors that would arise from running either benchmark in a loop.
 class DummyRendezvous : public Rendezvous {
-  Status Send(const ParsedKey& key, const Args& args, const Tensor& val,
-              const bool is_dead) override {
-    return OkStatus();
+  absl::Status Send(const ParsedKey& key, const Args& args, const Tensor& val,
+                    const bool is_dead) override {
+    return absl::OkStatus();
   }
   void RecvAsync(const ParsedKey& key, const Args& args,
                  DoneCallback done) override {
     static Tensor* t = new Tensor(DT_FLOAT, TensorShape({0}));
-    done(OkStatus(), args, args, *t, false);
+    done(absl::OkStatus(), args, args, *t, false);
   }
-  void StartAbort(const Status& status) override {}
+  void StartAbort(const absl::Status& status) override {}
 };
 
 static Graph* Send() {

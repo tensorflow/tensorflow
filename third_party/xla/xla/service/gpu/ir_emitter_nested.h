@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 #define XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/hlo_module_config.h"
 
 namespace xla {
 namespace gpu {
@@ -40,37 +43,23 @@ namespace gpu {
 //   - N pointers to the buffers of each of the N parameters to the computation,
 //   - a pointer to the output buffer of the computation, and
 //   - a pointer to the top-level temp buffer.
-Status CallNestedComputation(llvm::IRBuilder<>* builder,
-                             IrEmitterContext& ir_emitter_context,
-                             const HloComputation& computation,
-                             absl::Span<llvm::Value* const> operands,
-                             llvm::Value* output);
+absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
+                                   IrEmitterContext& ir_emitter_context,
+                                   const HloComputation& computation,
+                                   absl::Span<llvm::Value* const> operands,
+                                   llvm::Value* output);
 
 // Like CallNestedComputation, but parameters and results are scalars.
-StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
-    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
+    llvm::IRBuilderBase* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation,
-    absl::Span<llvm::Value* const> parameter_scalars);
+    absl::Span<llvm::Value* const> parameter_elements);
 
 // Like CallNestedComputationWithScalars, but parameters are scalar addresses.
-StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
-    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
+    llvm::IRBuilderBase* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs);
-
-// Emits an atomic operation that implements `nested_computation` in the
-// sequentially consistent memory model. `output_address` and `source_address`
-// are the arguments of the nested computation. For example,
-// atomicAdd(output_address, *source_address).
-//
-// If the computation can be implemented using a single atomic operation, it
-// will, otherwise it will be emitted as a compare-and-swap and a loop.
-//
-// The computation must have exactly two parameters.
-Status EmitAtomicOperationForNestedComputation(
-    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
-    const HloComputation& computation, llvm::Value* output_address,
-    llvm::Value* source_address, llvm::Type* element_type);
 
 }  // namespace gpu
 }  // namespace xla

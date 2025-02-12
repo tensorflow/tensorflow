@@ -11,10 +11,10 @@ package(
 cuda_py_strict_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
-    python_version = "PY3",
     tags = [
         # "multi_and_single_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
         "no_windows_gpu",  # b/216367668
+        "no_windows",  # b/326464742
     ],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -51,7 +51,6 @@ py_strict_library(
     srcs = [
         "all_reduce.py",
     ],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:ops",
@@ -83,7 +82,6 @@ tf_py_strict_test(
 pytype_strict_library(
     name = "input_lib",
     srcs = ["input_lib.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/ops:dataset_ops",

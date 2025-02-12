@@ -21,14 +21,14 @@ namespace tensorflow {
 namespace {
 
 struct LocalDescriptorPool {
-  static Status Function(
+  static absl::Status Function(
       tensorflow::protobuf::DescriptorPool const** desc_pool,
       std::unique_ptr<tensorflow::protobuf::DescriptorPool>* owned_desc_pool) {
     *desc_pool = ::tensorflow::protobuf::DescriptorPool::generated_pool();
     if (*desc_pool == nullptr) {
       return errors::InvalidArgument("Problem loading protobuf generated_pool");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

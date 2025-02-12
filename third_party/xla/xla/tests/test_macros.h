@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,10 +31,17 @@ limitations under the License.
 #define DISABLED_ON_CPU(X) X
 #define DISABLED_ON_GPU(X) X
 #define DISABLED_ON_GPU_A100(X) X
+#define DISABLED_ON_GPU_H100(X) X
 #define DISABLED_ON_GPU_ROCM(X) X
 #define DISABLED_ON_INTERPRETER(X) X
 #define DISABLED_ON_INTERPRETER_TSAN(X) X
 #define DISABLED_ON_DEBUG(X) X
+#define DISABLED_ON_TPU(X) X
+#define DISABLED_ON_GRM(X) X
+#define DISABLED_ON_ISS(X) X
+
+#define OVERSIZE_ON_GRM(X) X
+#define OVERSIZE_ON_ISS(X) X
 
 // We need this macro instead of pasting directly to support nesting
 // the DISABLED_ON_FOO macros, as in the definition of DISABLED_ON_CPU.
@@ -65,6 +72,11 @@ limitations under the License.
 # define DISABLED_ON_GPU_A100(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_GPU_A100
 
+#ifdef XLA_TEST_BACKEND_GPU_H100
+# undef DISABLED_ON_GPU_H100
+# define DISABLED_ON_GPU_H100(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // XLA_TEST_BACKEND_GPU_H100
+
 #ifdef XLA_TEST_BACKEND_INTERPRETER
 # undef DISABLED_ON_INTERPRETER
 # define DISABLED_ON_INTERPRETER(X) XLA_TEST_PASTE(DISABLED_, X)
@@ -81,14 +93,30 @@ limitations under the License.
 # define DISABLED_ON_DEBUG(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // !NDEBUG
 
+#ifdef XLA_TEST_BACKEND_TPU
+# undef DISABLED_ON_TPU
+# define DISABLED_ON_TPU(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // XLA_TEST_BACKEND_TPU
+
+#ifdef XLA_TEST_BACKEND_GRM
+# undef DISABLED_ON_GRM
+# define DISABLED_ON_GRM(X) XLA_TEST_PASTE(DISABLED_, X)
+
+# undef OVERSIZE_ON_GRM
+# define OVERSIZE_ON_GRM(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // XLA_TEST_BACKEND_GRM
+
+#ifdef XLA_TEST_BACKEND_ISS
+# undef DISABLED_ON_ISS
+# define DISABLED_ON_ISS(X) XLA_TEST_PASTE(DISABLED_, X)
+
+#undef OVERSIZE_ON_ISS
+# define OVERSIZE_ON_ISS(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // XLA_TEST_BACKEND_ISS
+
 // clang-format on
 
 namespace xla {
-
-inline const char** DisabledManifestPath() {
-  static const char* disabled_manifest_path = nullptr;
-  return &disabled_manifest_path;
-}
 
 inline const char** TestPlatform() {
   static const char* test_platform = nullptr;

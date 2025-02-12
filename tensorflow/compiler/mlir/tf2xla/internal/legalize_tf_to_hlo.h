@@ -20,8 +20,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -29,7 +29,7 @@ namespace internal {
 
 // Legalize the given MLIR module to XLA HLO using a combination of the MLIR
 // Bridge and XlaBuilder
-tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
+absl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
     const tpu::MlirToHloArgs& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     llvm::StringRef device_type,

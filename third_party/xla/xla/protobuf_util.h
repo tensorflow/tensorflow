@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef XLA_PROTOBUF_UTIL_H_
 #define XLA_PROTOBUF_UTIL_H_
 
+#include <cstddef>
 #include <functional>
 #include <string>
 
-#include "xla/status.h"
+#include "absl/status/status.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -55,22 +56,6 @@ class ProtobufHashWrapper {
     return ProtobufHash(m);
   }
 };
-// Writes the given message in binary proto to the path formed by joining
-// 'directory/file_name.pb'. The 'directory' is recursively created if it
-// doesn't already exist, and the 'file_name' is sanitized by replacing
-// illegal characters with underscore '_'.
-//
-// If 'full_name' is not null then it is set to the name of the file the
-// protobuf was written to.
-Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
-                            const std::string& directory,
-                            const std::string& file_name,
-                            std::string* full_path = nullptr);
-
-// Registers a function that may either expand a dirpath or forward the original
-// dirpath along as-is.
-void RegisterDirectoryExpander(
-    const std::function<std::string(std::string)>& expander);
 
 }  // namespace protobuf_util
 }  // namespace xla

@@ -20,7 +20,6 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -103,6 +102,7 @@ QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
   return ChooseQuantizationParams<T>(rmin, rmax, false);
 }
 
+// LINT.IfChange
 // Converts a floating-point number to an integer. For all inputs x where
 // static_cast<IntOut>(x) is legal according to the C++ standard, the result
 // is identical to that cast (i.e. the result is x with its fractional part
@@ -167,6 +167,7 @@ IntOut SafeCast(FloatIn x) {
   return x < 0 ? std::numeric_limits<IntOut>::min()
                : std::numeric_limits<IntOut>::max();
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/kernels/internal/quantization_util.h)
 
 // Decompose a double multiplier into a Q0.31 int32 representation of its
 // significand, and shift representation of NEGATIVE its exponent ---

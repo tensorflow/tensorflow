@@ -33,9 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
 namespace tensorflow {
@@ -226,8 +224,10 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     se::DeviceMemoryBase abnormal_detected_ptr(
         abnormal_detected.flat<int>().data(),
         abnormal_detected.flat<int>().size());
-    stream->ThenMemset32(&abnormal_detected_ptr, 0,
-                         abnormal_detected.flat<int>().size() * sizeof(int));
+    OP_REQUIRES_OK(
+        context,
+        stream->Memset32(&abnormal_detected_ptr, 0,
+                         abnormal_detected.flat<int>().size() * sizeof(int)));
 
     // Call the GPU kernels for the numerical checks
     const Device& d = context->eigen_device<Device>();
@@ -244,31 +244,30 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
         context->allocate_temp(DT_INT32, TensorShape({abnormal_detected_size}),
                                &abnormal_detected_host, attr),
         done);
-    OP_REQUIRES_ASYNC(
-        context,
-        stream
-            ->ThenMemcpy(abnormal_detected_host.flat<int>().data(),
-                         abnormal_detected_ptr,
-                         abnormal_detected_size * sizeof(int))
-            .ok(),
-        errors::Internal("GPU memcpy from device to host failed"), done);
+    OP_REQUIRES_ASYNC(context,
+                      stream
+                          ->Memcpy(abnormal_detected_host.flat<int>().data(),
+                                   abnormal_detected_ptr,
+                                   abnormal_detected_size * sizeof(int))
+                          .ok(),
+                      errors::Internal("GPU memcpy from device to host failed"),
+                      done);
 
     // We have observed crashes on some network stacks when not holding
     // this tensor reference.
     TensorReference abnormal_detected_ref(abnormal_detected);
     auto check_cb = [this, stream, abnormal_detected_ref,
                      abnormal_detected_host, context, done]() {
-#if GOOGLE_CUDA
-      se::cuda::ScopedActivateExecutorContext scoped_activation{
-          stream->parent()};
-#elif TENSORFLOW_USE_ROCM
-      se::rocm::ScopedActivateExecutorContext scoped_activation{
-          stream->parent()};
-#endif
-      TTypes<const int>::Vec abnormal_detected_host_flat =
-          abnormal_detected_host.flat<int>();
-      abnormal_detected_ref.Unref();
-      checkForAnomalies(context, abnormal_detected_host_flat);
+      {
+        std::unique_ptr<se::ActivateContext> scoped_activation =
+            stream->parent()->Activate();
+        TTypes<const int>::Vec abnormal_detected_host_flat =
+            abnormal_detected_host.flat<int>();
+        abnormal_detected_ref.Unref();
+        checkForAnomalies(context, abnormal_detected_host_flat);
+      }  // Release ActivateContext to prevent deadlock when done
+         // inlines another Op kernel, which may assume the original cuda
+         // Context.
       done();
     };
     context->device()

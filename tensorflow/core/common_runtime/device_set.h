@@ -130,7 +130,8 @@ class DeviceSet {
   // to be the client device (in this local process).
   Device* client_device_ = nullptr;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceSet);
+  DeviceSet(const DeviceSet&) = delete;
+  void operator=(const DeviceSet&) = delete;
 };
 
 }  // namespace tensorflow

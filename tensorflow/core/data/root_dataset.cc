@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/data/rewrite_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tsl/platform/host_info.h"
 
 namespace tensorflow {
 namespace data {
@@ -46,6 +48,8 @@ constexpr char kDatasetType[] = "Root";
 constexpr char kAlgorithm[] = "algorithm";
 constexpr char kCpuBudget[] = "cpu_budget";
 constexpr char kExperiments[] = "experiments";
+constexpr char kReadRoundtripLatency[] = "read_latency_usec";
+constexpr char kReadResponseBytes[] = "read_bytes";
 constexpr char kIntraOpParallelism[] = "intra_op_parallelism";
 constexpr char kMemBandwidth[] = "mem_bw_used_megabytes_per_sec";
 constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
@@ -100,9 +104,7 @@ void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
   } else {
     ram_budget_share = model::kRamBudgetShare;
   }
-  params->autotune_free_memory_func = [ram_budget_share]() {
-    return ram_budget_share * port::AvailableRam();
-  };
+  params->ram_budget_share = ram_budget_share;
 }
 
 void AddTraceMetadata(const RootDataset::Params& params, const Options& options,
@@ -144,22 +146,28 @@ void AddTraceMetadata(const RootDataset::Params& params, const Options& options,
 }  // namespace
 
 // static
-Status RootDataset::FromOptions(const DatasetBase* input,
-                                DatasetBase** output) {
+absl::Status RootDataset::FromOptions(const DatasetBase* input,
+                                      DatasetBase** output) {
   Params params;
   SetRootDatasetParams(input->options(), &params);
   *output = new RootDataset(input, params);
   (*output)->Initialize(/*metadata=*/{});
-  return OkStatus();
+  for (const auto& framework : input->options().framework_type()) {
+    metrics::RecordTFDataFrameworkType(framework);
+  }
+  return absl::OkStatus();
 }
 
-Status RootDataset::FromOptions(core::RefCountPtr<DatasetBase> input,
-                                DatasetBase** output) {
+absl::Status RootDataset::FromOptions(core::RefCountPtr<DatasetBase> input,
+                                      DatasetBase** output) {
   Params params;
+  for (const auto& framework : input->options().framework_type()) {
+    metrics::RecordTFDataFrameworkType(framework);
+  }
   SetRootDatasetParams(input->options(), &params);
   *output = new RootDataset(std::move(input), params);
   (*output)->Initialize(/*metadata=*/{});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class RootDataset::Iterator : public DatasetIterator<RootDataset> {
@@ -186,7 +194,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
 
   bool SymbolicCheckpointCompatible() const override { return true; }
 
-  Status Initialize(IteratorContext* ctx) override {
+  absl::Status Initialize(IteratorContext* ctx) override {
     // prefetch_autotuner.h currently disregards `autotune` parameter
     // so no matter whether dataset()->params_.autotune is on or not
     // we need to pass ram_budget_manager_ to the downstream dataset operations
@@ -194,8 +202,12 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
         dataset()->params_.ComputeInitialAutotuneRamBudget());
 
     if (dataset()->params_.autotune) {
-      model_ = ctx->model() != nullptr ? ctx->model()
-                                       : std::make_shared<model::Model>();
+      if (ctx->model() != nullptr) {
+        model_ = ctx->model();
+      } else {
+        model_ = std::make_shared<model::Model>();
+        ctx->SetModel(model_);
+      }
 
       absl::flat_hash_set<string> experiments = GetExperiments();
       if (experiments.contains("stage_based_autotune_v2")) {
@@ -206,14 +218,21 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       }
     }
     IteratorContext iter_ctx(CreateParams(ctx));
+    if (model_) {
+      auto factory = [&iter_ctx, this](model::Node::Args args) {
+        return CreateNode(&iter_ctx, std::move(args));
+      };
+      model_->AddNode(std::move(factory), prefix(), nullptr, &node_);
+    }
     TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(&iter_ctx, this,
                                                        prefix(), &input_impl_));
     ctx->MergeCheckpoint(iter_ctx.checkpoint());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) override {
+  absl::Status GetNextInternal(IteratorContext* ctx,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) override {
     {
       tf_shared_lock l(mu_);
       if (model_ != nullptr && end_time_usec_ > 0) {
@@ -231,7 +250,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       mutex_lock l(mu_);
       end_time_usec_ = std::max(ctx->env()->NowMicros(), end_time_usec_);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:
@@ -240,18 +259,18 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
   }
 
-  Status SaveInternal(SerializationContext* ctx,
-                      IteratorStateWriter* writer) override {
+  absl::Status SaveInternal(SerializationContext* ctx,
+                            IteratorStateWriter* writer) override {
     TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status RestoreInternal(IteratorContext* ctx,
-                         IteratorStateReader* reader) override {
+  absl::Status RestoreInternal(IteratorContext* ctx,
+                               IteratorStateReader* reader) override {
     IteratorContext iter_ctx(CreateParams(ctx));
     TF_RETURN_IF_ERROR(RestoreInput(&iter_ctx, reader, input_impl_));
     ctx->MergeCheckpoint(iter_ctx.checkpoint());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TraceMeMetadata GetTraceMeMetadata() const override {
@@ -272,12 +291,26 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
                         static_cast<long long>(memory_info.total / 1.0e6),
                         static_cast<double>(100 * memory_usage) /
                             static_cast<double>(memory_info.total))));
-    if (model_node() != nullptr) {
+    const auto io_statistics = tsl::port::GetIOStatistics();
+    if (io_statistics.roundtrip_latency_usec.count > 0) {
       traceme_metadata.push_back(std::make_pair(
-          kMaxBufferBytes,
+          kReadRoundtripLatency,
           strings::Printf(
-              "%lld", static_cast<long long>(
-                          model_node()->TotalMaximumBufferedBytes() / 1.0e6))));
+              "(count: %lld, mean: %lld, std dev: %lld)",
+              static_cast<long long>(
+                  io_statistics.roundtrip_latency_usec.count),
+              static_cast<long long>(io_statistics.roundtrip_latency_usec.mean),
+              static_cast<long long>(
+                  io_statistics.roundtrip_latency_usec.std_dev))));
+    }
+    if (io_statistics.response_bytes.count > 0) {
+      traceme_metadata.push_back(std::make_pair(
+          kReadResponseBytes,
+          strings::Printf(
+              "(count: %lld, mean: %lld, std dev: %lld)",
+              static_cast<long long>(io_statistics.response_bytes.count),
+              static_cast<long long>(io_statistics.response_bytes.mean),
+              static_cast<long long>(io_statistics.response_bytes.std_dev))));
     }
     return traceme_metadata;
   }
@@ -304,46 +337,34 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       params.runner =
           RunnerWithMaxParallelism(params.runner, max_intra_op_parallelism_);
     }
+    params.options = &dataset()->options();
     return params;
   }
 
-  Status EnsureModelThreadStarted(IteratorContext* ctx) {
+  absl::Status EnsureModelThreadStarted(IteratorContext* ctx) {
     mutex_lock l(mu_);
     if (!model_thread_) {
       RunMode run_mode = ctx->run_mode();
       model_thread_ = ctx->StartThread("tf_data_model", [this, run_mode]() {
         RootDataset::Params params = dataset()->params_;
         std::function<int64_t(int64_t)> ram_budget_func;
-        int64_t ram_budget_from_options =
-            params.autotune_ram_budget_from_options;
-        if (ram_budget_from_options > 0) {
-          ram_budget_func = [ram_budget_from_options](int64_t) {
-            return ram_budget_from_options;
-          };
-        } else {
-          if (run_mode == RunMode::STANDALONE) {
-            // Dynamic RAM budget should only apply to tf.data service.
-            auto free_memory_func = params.autotune_free_memory_func;
-            ram_budget_func = [free_memory_func](int64_t total_buffered_bytes) {
-              return free_memory_func() + total_buffered_bytes;
-            };
-          } else {
-            int64_t constant_ram_budget =
-                params.ComputeInitialAutotuneRamBudget();
-            ram_budget_func = [constant_ram_budget](int64_t) {
-              return constant_ram_budget;
-            };
-          }
+        std::optional<int64_t> raw_ram_budget;
+        if (params.autotune_ram_budget_from_options > 0) {
+          raw_ram_budget = params.autotune_ram_budget_from_options;
+        } else if (run_mode != RunMode::STANDALONE) {
+          // Dynamic RAM budget should only apply to tf.data service.
+          raw_ram_budget = params.ComputeInitialAutotuneRamBudget();
         }
-        Status status = model_->OptimizeLoop(
+        absl::Status status = model_->OptimizeLoop(
             params.autotune_algorithm, params.autotune_cpu_budget_func,
-            ram_budget_func, *ram_budget_manager_, cancellation_manager_.get());
+            params.ram_budget_share, raw_ram_budget, *ram_budget_manager_,
+            cancellation_manager_.get());
         if (!status.ok()) {
           LOG(WARNING) << "Optimization loop failed: " << status;
         }
       });
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::shared_ptr<model::Model> model_ = nullptr;
@@ -381,6 +402,10 @@ RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
       params_(std::move(params)) {
   owned_input_ = std::move(input);
   input_ = owned_input_.get();
+  random_indexing_compatible_ = absl::OkStatus();
+  if (input_ != nullptr) {
+    random_indexing_compatible_ = input_->RandomIndexingCompatible();
+  }
   AddTraceMetadata(params_, input_->options(), &traceme_metadata_);
 }
 
@@ -408,32 +433,32 @@ int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {
   return input_->Cardinality(options);
 }
 
-Status RootDataset::Get(OpKernelContext* ctx, int64 index,
-                        std::vector<Tensor>* out_tensors) const {
+absl::Status RootDataset::Get(OpKernelContext* ctx, int64 index,
+                              std::vector<Tensor>* out_tensors) const {
   std::vector<const DatasetBase*> inputs;
   TF_RETURN_IF_ERROR(this->InputDatasets(&inputs));
   return inputs[0]->Get(ctx, index, out_tensors);
 }
 
-Status RootDataset::InputDatasets(
+absl::Status RootDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
   inputs->push_back(input_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RootDataset::CheckExternalState() const {
+absl::Status RootDataset::CheckExternalState() const {
   return input_->CheckExternalState();
 }
 
-Status RootDataset::AsGraphDefInternal(SerializationContext* ctx,
-                                       DatasetGraphDefBuilder* b,
-                                       Node** output) const {
+absl::Status RootDataset::AsGraphDefInternal(SerializationContext* ctx,
+                                             DatasetGraphDefBuilder* b,
+                                             Node** output) const {
   return errors::Unimplemented("RootDataset does not support serialization.");
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
-                       DatasetBase** output) {
+absl::Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
+                             DatasetBase** output) {
   const Options& options = input->options();
   absl::flat_hash_set<tstring> optimizations_enabled;
   absl::flat_hash_set<tstring> optimizations_disabled;
@@ -457,8 +482,9 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
     return CreateRewriterConfig(optimizations, optimization_configs);
   };
   core::RefCountPtr<DatasetBase> rewritten_output;
-  Status s = RewriteDataset(ctx, input, std::move(config_factory),
-                            /*record_fingerprint=*/false, &rewritten_output);
+  absl::Status s =
+      RewriteDataset(ctx, input, std::move(config_factory),
+                     /*record_fingerprint=*/false, &rewritten_output);
 
   *output = rewritten_output.get();
   bool rewritten = (*output != input);
@@ -474,7 +500,7 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
   } else {
     return RootDataset::FromOptions(std::move(rewritten_output), output);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #else   // !IS_MOBILE_PLATFORM

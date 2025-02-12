@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/elementwise.h"
 
+#include <cmath>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/test_util.h"
 
 using ::testing::FloatEq;
@@ -650,6 +654,21 @@ TEST(ElementwiseTwoArgumentsTest, SubScalar) {
   ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {-0.5, 0.5, 1.5, 2.5}));
+}
+
+TEST(ElementwiseTwoArgumentsTest, SubScalarRuntimeTensorSecond) {
+  OperationType op_type = OperationType::SUB;
+  const BHWC shape0(1, 2, 1, 2);
+  ElementwiseAttributes attr;
+  attr.param = static_cast<float>(0.5);
+  attr.runtime_tensor_is_second = true;
+  SingleOpModel model({/*type=*/ToString(op_type), attr},
+                      /*inputs=*/{GetTensorRef(0, shape0)},
+                      /*outputs=*/{GetTensorRef(2, shape0)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, 1.0, 2.0, 3.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {0.5, -0.5, -1.5, -2.5}));
 }
 
 TEST(ElementwiseTwoArgumentsTest, SubConstVector) {

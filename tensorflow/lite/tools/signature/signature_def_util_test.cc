@@ -17,14 +17,15 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/core/c/c_api.h"
-#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/string_type.h"
+#include "tsl/platform/status.h"
 
 namespace tflite {
 namespace {
@@ -69,12 +70,12 @@ TEST_F(SimpleSignatureDefUtilTest, SetSignatureDefTest) {
   const std::map<string, SignatureDef> expected_signature_def_map = {
       {kDefaultServingSignatureDefKey, expected_signature_def}};
   EXPECT_EQ(
-      ::tensorflow::OkStatus(),
+      absl::OkStatus(),
       SetSignatureDefMap(model_, expected_signature_def_map, &model_output));
   const Model* add_model = flatbuffers::GetRoot<Model>(model_output.data());
   EXPECT_TRUE(HasSignatureDef(add_model, kDefaultServingSignatureDefKey));
   std::map<string, SignatureDef> test_signature_def_map;
-  EXPECT_EQ(::tensorflow::OkStatus(),
+  EXPECT_EQ(absl::OkStatus(),
             GetSignatureDefMap(add_model, &test_signature_def_map));
   SignatureDef test_signature_def =
       test_signature_def_map[kDefaultServingSignatureDefKey];
@@ -88,12 +89,12 @@ TEST_F(SimpleSignatureDefUtilTest, OverwriteSignatureDefTest) {
   std::map<string, SignatureDef> expected_signature_def_map = {
       {kDefaultServingSignatureDefKey, expected_signature_def}};
   EXPECT_EQ(
-      ::tensorflow::OkStatus(),
+      absl::OkStatus(),
       SetSignatureDefMap(model_, expected_signature_def_map, &model_output));
   const Model* add_model = flatbuffers::GetRoot<Model>(model_output.data());
   EXPECT_TRUE(HasSignatureDef(add_model, kDefaultServingSignatureDefKey));
   std::map<string, SignatureDef> test_signature_def_map;
-  EXPECT_EQ(::tensorflow::OkStatus(),
+  EXPECT_EQ(absl::OkStatus(),
             GetSignatureDefMap(add_model, &test_signature_def_map));
   SignatureDef test_signature_def =
       test_signature_def_map[kDefaultServingSignatureDefKey];
@@ -105,16 +106,16 @@ TEST_F(SimpleSignatureDefUtilTest, OverwriteSignatureDefTest) {
   constexpr char kTestSignatureDefKey[] = "ServingTest";
   expected_signature_def_map[kTestSignatureDefKey] = expected_signature_def;
   EXPECT_EQ(
-      ::tensorflow::OkStatus(),
+      absl::OkStatus(),
       SetSignatureDefMap(add_model, expected_signature_def_map, &model_output));
   const Model* final_model = flatbuffers::GetRoot<Model>(model_output.data());
   EXPECT_FALSE(HasSignatureDef(final_model, kDefaultServingSignatureDefKey));
-  EXPECT_EQ(::tensorflow::OkStatus(),
+  EXPECT_EQ(absl::OkStatus(),
             GetSignatureDefMap(final_model, &test_signature_def_map));
   EXPECT_NE(expected_signature_def.SerializeAsString(),
             test_signature_def.SerializeAsString());
   EXPECT_TRUE(HasSignatureDef(final_model, kTestSignatureDefKey));
-  EXPECT_EQ(::tensorflow::OkStatus(),
+  EXPECT_EQ(absl::OkStatus(),
             GetSignatureDefMap(final_model, &test_signature_def_map));
   test_signature_def = test_signature_def_map[kTestSignatureDefKey];
   EXPECT_EQ(expected_signature_def.SerializeAsString(),
@@ -123,7 +124,7 @@ TEST_F(SimpleSignatureDefUtilTest, OverwriteSignatureDefTest) {
 
 TEST_F(SimpleSignatureDefUtilTest, GetSignatureDefTest) {
   std::map<string, SignatureDef> test_signature_def_map;
-  EXPECT_EQ(::tensorflow::OkStatus(),
+  EXPECT_EQ(absl::OkStatus(),
             GetSignatureDefMap(model_, &test_signature_def_map));
   EXPECT_FALSE(HasSignatureDef(model_, kDefaultServingSignatureDefKey));
 }
@@ -135,19 +136,18 @@ TEST_F(SimpleSignatureDefUtilTest, ClearSignatureDefTest) {
   std::map<string, SignatureDef> expected_signature_def_map = {
       {kDefaultServingSignatureDefKey, expected_signature_def}};
   EXPECT_EQ(
-      ::tensorflow::OkStatus(),
+      absl::OkStatus(),
       SetSignatureDefMap(model_, expected_signature_def_map, &model_output));
   const Model* add_model = flatbuffers::GetRoot<Model>(model_output.data());
   EXPECT_TRUE(HasSignatureDef(add_model, kDefaultServingSignatureDefKey));
   SignatureDef test_signature_def;
   std::map<string, SignatureDef> test_signature_def_map;
-  EXPECT_EQ(::tensorflow::OkStatus(),
+  EXPECT_EQ(absl::OkStatus(),
             GetSignatureDefMap(add_model, &test_signature_def_map));
   test_signature_def = test_signature_def_map[kDefaultServingSignatureDefKey];
   EXPECT_EQ(expected_signature_def.SerializeAsString(),
             test_signature_def.SerializeAsString());
-  EXPECT_EQ(::tensorflow::OkStatus(),
-            ClearSignatureDefMap(add_model, &model_output));
+  EXPECT_EQ(absl::OkStatus(), ClearSignatureDefMap(add_model, &model_output));
   const Model* clear_model = flatbuffers::GetRoot<Model>(model_output.data());
   EXPECT_FALSE(HasSignatureDef(clear_model, kDefaultServingSignatureDefKey));
   EXPECT_EQ(expected_num_buffers, clear_model->buffers()->size());

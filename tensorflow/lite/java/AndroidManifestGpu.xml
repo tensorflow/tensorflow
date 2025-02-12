@@ -1,22 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="org.tensorflow.lite">
+    package="org.tensorflow.lite.gpu">
 
-    <application>
-        <!-- Applications that target Android S+ require explicit declaration of
-             any referenced vendor-provided libraries. -->
-        <uses-native-library
-            android:name="libOpenCL.so"
-            android:required="false" />
+    <!-- TFLite Java Library is built against NDK API 21. -->
+    <uses-sdk
+        android:minSdkVersion="21" />
 
-        <uses-native-library
-            android:name="libOpenCL-car.so"
-            android:required="false" />
-
-        <uses-native-library
-            android:name="libOpenCL-pixel.so"
-            android:required="false" />
-    </application>
+    <application />
 
 </manifest>
-

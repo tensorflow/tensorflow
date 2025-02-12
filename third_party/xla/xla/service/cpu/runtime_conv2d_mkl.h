@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_CONV2D_MKL_H_
 #define XLA_SERVICE_CPU_RUNTIME_CONV2D_MKL_H_
 
+#include <cstdint>
 #include <iostream>
 
 extern "C" {

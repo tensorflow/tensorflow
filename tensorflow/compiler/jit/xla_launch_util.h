@@ -38,7 +38,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Creates a list of updated resource variables.
-StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
+absl::StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult& compilation_result,
     int missing_ctx_input_prefix);
@@ -46,10 +46,10 @@ StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
 // Returns pointers to inputs stored in `ctx`.
 std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx);
 
-StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
+absl::StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
     OpKernelContext* ctx);
 
-Status SetOutputForConstant(
+absl::Status SetOutputForConstant(
     OpKernelContext* ctx, bool requires_copy_to_device,
     const XlaCompiler::CompilationResult* compilation_result, int output_num);
 
@@ -78,7 +78,7 @@ Status SetOutputForConstant(
 // complete. Therefore we put the newly created PjRtBuffer into `owned_args`.
 // Caller is responsible to ensure `owned_args` lives till the end of XLA
 // computation.
-Status PreparePjRtExecutableArguments(
+absl::Status PreparePjRtExecutableArguments(
     int num_missing_prefix_ctx_inputs, const std::vector<int>& input_mapping,
     const std::vector<const Tensor*>& inputs,
     const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
@@ -95,7 +95,7 @@ Status PreparePjRtExecutableArguments(
 // Assumes that the first `num_missing_prefix_ctx_inputs` inputs to the
 // compilation_result are missing in `inputs` and adjusts indexing into `inputs`
 // accordingly.
-Status PopulateCtxOutputsFromPjRtExecutableOutputs(
+absl::Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
     const std::vector<VariableInfo>& variables,
     const XlaCompiler::CompilationResult& compilation_result,
@@ -118,7 +118,7 @@ DeviceType GetDeviceType(OpKernelContext* ctx);
 // `variables` are the input arguments to the computation, usually read from the
 // OpKernelContext, `ctx`. Requires the device-appropriate `pjrt_client` and the
 // `compilation_result` used to build the `executable`.
-Status RunPjRtExecutable(
+absl::Status RunPjRtExecutable(
     const std::vector<const Tensor*>& inputs,
     const std::vector<VariableInfo>& variables,
     const XlaCompiler::CompilationResult& compilation_result,
@@ -132,7 +132,7 @@ Status RunPjRtExecutable(
 // Assumes that the first `num_missing_prefix_ctx_inputs` inputs to the
 // compilation_result are missing in `inputs` and adjusts indexing into `inputs`
 // accordingly.
-Status RunPjRtExecutable(
+absl::Status RunPjRtExecutable(
     int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
     const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
     const std::vector<VariableInfo>& updated_variables,
@@ -143,7 +143,7 @@ Status RunPjRtExecutable(
 // Similar to the above function but it does not take an OpKernelContext, and
 // it returns the output in PjRtBuffers, instead of populating results into
 // OpKernelContext.
-StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
+absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
     int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
     const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
     const std::vector<VariableInfo>& updated_variables,
@@ -172,10 +172,11 @@ class XlaComputationLaunchContext {
   // Builds a XlaCompiler::Argument vector from the arguments to an XlaLaunch
   // op.
   // Precondition: variables in `variable_args` are locked.
-  static StatusOr<std::vector<XlaCompiler::Argument>> BuildXlaCompilerArguments(
-      absl::Span<int const> must_be_constant_idxs,
-      absl::Span<const Tensor* const> inputs,
-      absl::Span<VariableInfo const> variable_args, Device* device);
+  static absl::StatusOr<std::vector<XlaCompiler::Argument>>
+  BuildXlaCompilerArguments(absl::Span<int const> must_be_constant_idxs,
+                            absl::Span<const Tensor* const> inputs,
+                            absl::Span<VariableInfo const> variable_args,
+                            Device* device);
 
   // Add all inputs within `ctx` as XLA arguments (returned by arguments()).
   // `variables` is a map from TensorFlow argument number to resource variable.
@@ -184,7 +185,7 @@ class XlaComputationLaunchContext {
   // missing and adjusts input indices accordingly.  All elements in kernel's
   // input_mapping must be greater than or equal to `missing_ctx_input_prefix`
   // (in other words, no inputs actually required by the kernel can be missing).
-  StatusOr<std::vector<xla::ExecutionInput>> PopulateInputs(
+  absl::StatusOr<std::vector<xla::ExecutionInput>> PopulateInputs(
       OpKernelContext* ctx,
       const XlaCompiler::CompilationResult* compilation_result,
       const std::map<int, const Tensor*>& resource_vars,
@@ -201,7 +202,7 @@ class XlaComputationLaunchContext {
   //
   // Assumes that the first `missing_ctx_input_prefix` inputs to the
   // compilation_result are missing and adjusts input indices accordingly.
-  Status PopulateOutputs(
+  absl::Status PopulateOutputs(
       OpKernelContext* ctx,
       const XlaCompiler::CompilationResult* compilation_result,
       xla::ScopedShapedBuffer output, int missing_ctx_input_prefix,

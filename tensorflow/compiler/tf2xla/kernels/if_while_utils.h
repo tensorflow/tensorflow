@@ -19,7 +19,12 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -39,10 +44,10 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
 
 // Find and populate `must_be_const_nodes` and `body` of the function
 // corresponding to the kernel with context `ctx` with name `func_name`.
-Status FindMustBeConstNodes(XlaOpKernelContext* ctx,
-                            const NameAttrList& func_name,
-                            std::vector<bool>* must_be_const_nodes,
-                            const FunctionBody** body);
+absl::Status FindMustBeConstNodes(XlaOpKernelContext* ctx,
+                                  const NameAttrList& func_name,
+                                  std::vector<bool>* must_be_const_nodes,
+                                  const FunctionBody** body);
 
 }  // namespace tensorflow
 

@@ -75,7 +75,10 @@ cc_library_with_stable_tflite_abi(
             "//tensorflow/lite/acceleration/configuration/c:xnnpack_plugin",
         ],
     }],
-    deps = select({
+    deps = [
+        "//tensorflow/lite/tools:logging",
+        "@flatbuffers",
+    ] + select({
         "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
             "//tensorflow/lite/acceleration/configuration:configuration_fbs",
@@ -91,6 +94,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":utils",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",

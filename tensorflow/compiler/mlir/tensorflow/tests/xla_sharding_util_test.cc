@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/xla_data.pb.h"
 

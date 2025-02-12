@@ -29,8 +29,8 @@ struct MinMaxRecord {
 
 // Try to parse a log file containing loosely-structured lines, some of which
 // are the min/max logs we want.
-Status ExtractMinMaxRecords(const string& log_file_name,
-                            std::vector<MinMaxRecord>* records) {
+absl::Status ExtractMinMaxRecords(const string& log_file_name,
+                                  std::vector<MinMaxRecord>* records) {
   string file_data;
   TF_RETURN_IF_ERROR(
       ReadFileToString(Env::Default(), log_file_name, &file_data));
@@ -74,7 +74,7 @@ Status ExtractMinMaxRecords(const string& log_file_name,
     }
     string min_number_string = min_string_parts[0];
     float min;
-    if (!strings::safe_strtof(min_number_string.c_str(), &min)) {
+    if (!absl::SimpleAtof(min_number_string.c_str(), &min)) {
       continue;
     }
     string max_string = min_max_parts[2];
@@ -84,25 +84,25 @@ Status ExtractMinMaxRecords(const string& log_file_name,
     }
     string max_number_string = max_string_parts[0];
     float max;
-    if (!strings::safe_strtof(max_number_string.c_str(), &max)) {
+    if (!absl::SimpleAtof(max_number_string.c_str(), &max)) {
       continue;
     }
-    StringPiece name_string = line_parts[min_max_index - 1];
-    if (!str_util::EndsWith(name_string, print_suffix)) {
+    absl::string_view name_string = line_parts[min_max_index - 1];
+    if (!absl::EndsWith(name_string, print_suffix)) {
       continue;
     }
     string name(
         name_string.substr(0, name_string.size() - print_suffix.size()));
     records->push_back({name, min, max});
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Uses the observed min/max values for requantization captured in a log file to
 // replace costly RequantizationRange ops with simple Consts.
-Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
-                                  const TransformFuncContext& context,
-                                  GraphDef* output_graph_def) {
+absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
+                                        const TransformFuncContext& context,
+                                        GraphDef* output_graph_def) {
   string min_max_log_file;
   TF_RETURN_IF_ERROR(
       context.GetOneStringParameter("min_max_log_file", "", &min_max_log_file));
