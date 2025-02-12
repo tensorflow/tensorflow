@@ -312,24 +312,14 @@ static absl::Status PostProcessPeeledSendRecvOps(
     HloInstruction* while_op = tuple_op->users().front();
     CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
 
-    // We separated unpeeled conflicting collectives into two categories:
-    // 1. Those that may dominate the while loop (the while loop may have a data
-    //    dependency on them, `may_dominate_while_loop`).
-    // 2. Those that are known to not dominate the while loop (remaining
-    //    instructions in `unpeeled_conflicting_collectives`).
-    std::vector<HloInstruction*> may_dominate_while_loop;
+    // We separate unpeeled conflicting collectives into two categories: those
+    // dominating the while loop (while loop has a data dependency on them), and
+    // those that don't.
+    std::vector<HloInstruction*> dominating_unpeeled_conflicting_collectives;
     for (HloInstruction* instr :
-         while_op->parent()->MakeInstructionPostOrder()) {
-      // All instructions in post order that come after the while loop are known
-      // to not dominate it.
-      if (instr == while_op) {
-        break;
-      }
-      // If we're looking at an instruction that is an unpeeled conflicting
-      // collective, it is possible that it dominates the while loop. Move it
-      // into the first category set.
+         while_op->parent()->MakeInstructionPostOrderFrom(*while_op)) {
       if (unpeeled_conflicting_collectives.contains(instr)) {
-        may_dominate_while_loop.push_back(instr);
+        dominating_unpeeled_conflicting_collectives.push_back(instr);
         unpeeled_conflicting_collectives.erase(instr);
       }
     }
@@ -338,8 +328,8 @@ static absl::Status PostProcessPeeledSendRecvOps(
     // peeled send/recv instruction. This guarantees that the conflicting
     // collectives cannot slip in between the peeled send/recv instructions
     // where it could cause a deadlock.
-    TF_RETURN_IF_ERROR(
-        AddControlDependencies(may_dominate_while_loop, peeled_instr));
+    TF_RETURN_IF_ERROR(AddControlDependencies(
+        dominating_unpeeled_conflicting_collectives, peeled_instr));
 
     // Add control dependencies from the final peeleled send/recv-done
     // instruction to the conflicting collectives that are dominated by the
