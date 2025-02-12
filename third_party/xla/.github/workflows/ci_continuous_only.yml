@@ -33,22 +33,7 @@ jobs:
       # Don't fail fast - want to see results for all builds even if one fails.
       fail-fast: false
       matrix:
-        job_info: [
-          {
-            pool: "linux-x86-n2-16",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            kokoro_job_name: "tensorflow-linux-x86-cpu",
-            pretty_name: "TensorFlow Linux x86 CPU",
-            repo: "tensorflow/tensorflow",
-          },
-          {
-            pool: "linux-x86-g2-16-l4-1gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            kokoro_job_name: "tensorflow-linux-x86-gpu-t4",
-            pretty_name: "TensorFlow Linux x86 GPU T4",
-            repo: "tensorflow/tensorflow",
-          },
-        ]
+        job_info: []
     name: ${{ matrix.job_info.pretty_name }}
     runs-on: ${{ matrix.job_info.pool }}
     container: ${{ matrix.job_info.container }}

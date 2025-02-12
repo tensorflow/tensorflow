@@ -67,6 +67,20 @@ jobs:
             pretty_name: "JAX Linux x86 GPU T4",
             repo: "jax-ml/jax",
           },
+          {
+            pool: "linux-x86-n2-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            kokoro_job_name: "tensorflow-linux-x86-cpu",
+            pretty_name: "TensorFlow Linux x86 CPU",
+            repo: "tensorflow/tensorflow",
+          },
+          {
+            pool: "linux-x86-g2-16-l4-1gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            kokoro_job_name: "tensorflow-linux-x86-gpu-t4",
+            pretty_name: "TensorFlow Linux x86 GPU T4",
+            repo: "tensorflow/tensorflow",
+          },
         ]
     name: ${{ matrix.job_info.pretty_name }}
     runs-on: ${{ matrix.job_info.pool }}
