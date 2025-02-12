@@ -16,19 +16,21 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/bias_add_spmd_expander.h"
 
 #include <algorithm>
-#include <array>
 #include <cassert>
+#include <cstdint>
 #include <string>
+#include <vector>
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
-#include "tensorflow/dtensor/mlir/expansions/elementwise_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
 
@@ -40,7 +42,7 @@ namespace {
 int get_c_dimension_idx(const Layout& layout, llvm::StringRef data_format) {
   // If format is "N...C", the bias is added to the last dimension.
   int c_dim_idx = layout.sharding_spec_strs().size() - 1;
-  if (data_format.startswith("NC")) {
+  if (data_format.starts_with("NC")) {
     // If format is "NC...", the bias is added to the 'C' dimension.
     c_dim_idx = layout.sharding_spec_strs().size() - 3;
   }

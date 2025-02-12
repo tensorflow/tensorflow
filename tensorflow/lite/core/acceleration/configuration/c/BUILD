@@ -39,6 +39,16 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        "stable_delegate.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
+
 # LINT.IfChange(tflite_acceleration_exported_headers)
 exports_files([
     "delegate_plugin.h",
@@ -143,6 +153,7 @@ cc_test(
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -150,6 +161,7 @@ tflite_cc_library_with_c_headers_test(
     name = "xnnpack_plugin",
     srcs = ["xnnpack_plugin.cc"],
     hdrs = ["xnnpack_plugin.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ] + xnnpack_plugin_visibility_allowlist(),
@@ -170,36 +182,7 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "@com_google_googletest//:gtest_main",
-        "@pthreadpool",
-    ],
-)
-
-tflite_cc_library_with_c_headers_test(
-    name = "xnnpack_plugin_c_test_lib",
-    testonly = True,
-    srcs = ["xnnpack_plugin_c_test_lib.c"],
-    hdrs = ["xnnpack_plugin_c_test_lib.h"],
-    deps = [
-        ":configuration_c_fbs",
-        ":xnnpack_plugin",
-        "//tensorflow/lite/core/c:common",
-        "//third_party/flatcc:runtime",
-        "@pthreadpool",
-    ],
-)
-
-cc_test(
-    name = "xnnpack_plugin_c_test",
-    srcs = ["xnnpack_plugin_c_test.cc"],
-    deps = [
-        ":configuration_c_fbs",
-        ":xnnpack_plugin",
-        ":xnnpack_plugin_c_test_lib",
-        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "//third_party/flatcc:runtime",
-        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
         "@pthreadpool",
     ],
 )
@@ -213,43 +196,48 @@ tflite_cc_library_with_c_headers_test(
     ],
 )
 
-# This rule invokes the "flatcc" FlatBuffer C API compiler to generate the sources
-# use by the ":configuration_c_fbs" C library rule below.
-genrule(
-    name = "configuration_c_fbs_gen",
-    srcs = ["//tensorflow/lite/acceleration/configuration:configuration.fbs"],
-    outs = [
-        "configuration_builder.h",
-        "configuration_reader.h",
-    ],
-    cmd = "$(location //third_party/flatcc:flatcc) -o$(RULEDIR) --builder --reader $(SRCS)",
-    tools = ["//third_party/flatcc"],
-    # Currently this only enables the API for _building_ configuration flatbuffer objects,
-    # not the APIs for reading them, verifying them, or converting them to/from JSON.
-    # [If you need to enable those, replace the two lines above with the following
-    #   outs = ["configuration_builder.h", "configuration_reader.h", "configuration_verifier.h",
-    #           "configuration_json_parser.h", "configuration_json_printer.h"],
-    #   cmd = "$(location //third_party/flatcc:flatcc) -o$(RULEDIR) " +
-    #         "--builder --reader --verifier --json $(SRCS)",
-    # and then in the rule below -- or preferably in a separate target --
-    # add the additional header files in "hdrs" and fix the dependencies.]
-)
-
-# This rule defines a C library containing the Flatbuffer-generated C API for constructing objects
-# using the FlatBuffer schema generated from tensorflow/lite/acceleration/configuration/configuration.proto,
-# which defines the 'TFLiteSettings' FlatBuffer table and related types.
-tflite_cc_library_with_c_headers_test(
-    name = "configuration_c_fbs",
-    hdrs = [
-        "configuration_builder.h",
-        "configuration_reader.h",
-    ],
-    deps = ["//third_party/flatcc:runtime"],
-)
-
-build_test(
-    name = "configuration_c_fbs_build_test",
-    targets = [
-        ":configuration_c_fbs",
-    ],
-)
+# Commented out under the (b/279852433) because caused an error in the OSS
+# TODO(zhurakovskyi): Uncomment when fixed.
+#
+# copybara:uncomment_begin
+# # This rule invokes the "flatcc" FlatBuffer C API compiler to generate the sources
+# # use by the ":configuration_c_fbs" C library rule below.
+# genrule(
+#     name = "configuration_c_fbs_gen",
+#     srcs = ["//tensorflow/lite/acceleration/configuration:configuration.fbs"],
+#     outs = [
+#         "configuration_builder.h",
+#         "configuration_reader.h",
+#     ],
+#     cmd = "$(location //third_party/flatcc:flatcc) -o$(RULEDIR) --builder --reader $(SRCS)",
+#     tools = ["//third_party/flatcc"],
+#     # Currently this only enables the API for _building_ configuration flatbuffer objects,
+#     # not the APIs for reading them, verifying them, or converting them to/from JSON.
+#     # [If you need to enable those, replace the two lines above with the following
+#     #   outs = ["configuration_builder.h", "configuration_reader.h", "configuration_verifier.h",
+#     #           "configuration_json_parser.h", "configuration_json_printer.h"],
+#     #   cmd = "$(location //third_party/flatcc:flatcc) -o$(RULEDIR) " +
+#     #         "--builder --reader --verifier --json $(SRCS)",
+#     # and then in the rule below -- or preferably in a separate target --
+#     # add the additional header files in "hdrs" and fix the dependencies.]
+# )
+#
+# # This rule defines a C library containing the Flatbuffer-generated C API for constructing objects
+# # using the FlatBuffer schema generated from tensorflow/lite/acceleration/configuration/configuration.proto,
+# # which defines the 'TFLiteSettings' FlatBuffer table and related types.
+# tflite_cc_library_with_c_headers_test(
+#     name = "configuration_c_fbs",
+#     hdrs = [
+#         "configuration_builder.h",
+#         "configuration_reader.h",
+#     ],
+#     deps = ["//third_party/flatcc:runtime"],
+# )
+#
+# build_test(
+#     name = "configuration_c_fbs_build_test",
+#     targets = [
+#         ":configuration_c_fbs",
+#     ],
+# )
+# copybara:uncomment_end

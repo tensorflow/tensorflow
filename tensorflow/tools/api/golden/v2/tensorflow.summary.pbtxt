@@ -62,7 +62,7 @@ tf_module {
   }
   member_method {
     name: "trace_on"
-    argspec: "args=[\'graph\', \'profiler\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
+    argspec: "args=[\'graph\', \'profiler\', \'profiler_outdir\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
   }
   member_method {
     name: "write"

@@ -26,7 +26,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -36,15 +39,14 @@ limitations under the License.
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/internal/signature_def.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/profiling/platform_profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting.h"
 #include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
 #include "tensorflow/lite/schema/conversion_metadata_generated.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/shared_library.h"
 #include "tensorflow/lite/stderr_reporter.h"
-#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
@@ -144,6 +146,21 @@ std::map<std::string, uint32_t> GetMapFromTensorMap(
   for (const auto tensor : *tensor_map) {
     if (tensor != nullptr && tensor->name() != nullptr) {
       result[tensor->name()->c_str()] = tensor->tensor_index();
+    }
+  }
+  return result;
+}
+
+// Helper that returns std::vector that corresponds to vector of TensorMap.
+std::vector<std::string> GetVectorFromTensorMap(
+    const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>*
+        tensor_map) {
+  if (!tensor_map) return {};
+  std::vector<std::string> result;
+  result.reserve(tensor_map->size());
+  for (const auto tensor : *tensor_map) {
+    if (tensor != nullptr && tensor->name() != nullptr) {
+      result.push_back(tensor->name()->c_str());
     }
   }
   return result;
@@ -365,14 +382,13 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
                            EnumNameBuiltinOperator(op_type));
     }
 
+    void* builtin_data = nullptr;
+    const char* init_data = nullptr;
+    size_t init_data_size = 0;
     if (op_type == BuiltinOperator_CUSTOM) {
       if (op->custom_options()) {
-        subgraph->AddNodeWithParameters(
-            FlatBufferIntArrayToVector(op->inputs()),
-            FlatBufferIntArrayToVector(op->outputs()),
-            FlatBufferIntArrayToVector(op->intermediates()),
-            reinterpret_cast<const char*>(op->custom_options()->data()),
-            op->custom_options()->size(), nullptr, registration);
+        init_data = reinterpret_cast<const char*>(op->custom_options()->data());
+        init_data_size = op->custom_options()->size();
       } else if (op->large_custom_options_offset() > 1 && allocation_) {
         if (op->large_custom_options_offset() +
                 op->large_custom_options_size() >
@@ -384,31 +400,20 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
           return kTfLiteError;
         }
         // If the custom op is storing payloads outside of flatbuffers
-        subgraph->AddNodeWithParameters(
-            FlatBufferIntArrayToVector(op->inputs()),
-            FlatBufferIntArrayToVector(op->outputs()),
-            FlatBufferIntArrayToVector(op->intermediates()),
-            reinterpret_cast<const char*>(allocation_->base()) +
-                op->large_custom_options_offset(),
-            op->large_custom_options_size(), nullptr, registration);
-      } else {
-        subgraph->AddNodeWithParameters(
-            FlatBufferIntArrayToVector(op->inputs()),
-            FlatBufferIntArrayToVector(op->outputs()),
-            FlatBufferIntArrayToVector(op->intermediates()), nullptr, 0,
-            nullptr, registration);
+        init_data = reinterpret_cast<const char*>(allocation_->base()) +
+                    op->large_custom_options_offset();
+        init_data_size = op->large_custom_options_size();
       }
     } else {
-      void* builtin_data = nullptr;
       MallocDataAllocator malloc_allocator;
       TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
                                         &malloc_allocator, &builtin_data));
-      subgraph->AddNodeWithParameters(
-          FlatBufferIntArrayToVector(op->inputs()),
-          FlatBufferIntArrayToVector(op->outputs()),
-          FlatBufferIntArrayToVector(op->intermediates()), nullptr, 0,
-          builtin_data, registration);
     }
+    subgraph->AddNodeWithParameters(
+        FlatBufferIntArrayToVector(op->inputs()),
+        FlatBufferIntArrayToVector(op->outputs()),
+        FlatBufferIntArrayToVector(op->intermediates()), init_data,
+        init_data_size, builtin_data, registration);
   }
 
   return status;
@@ -588,6 +593,10 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
     auto& signature_def = signature_defs.back();
     signature_def.inputs = GetMapFromTensorMap(fb_signature_def->inputs());
     signature_def.outputs = GetMapFromTensorMap(fb_signature_def->outputs());
+    signature_def.input_names =
+        GetVectorFromTensorMap(fb_signature_def->inputs());
+    signature_def.output_names =
+        GetVectorFromTensorMap(fb_signature_def->outputs());
     signature_def.signature_key = fb_signature_def->signature_key()->c_str();
     signature_def.subgraph_index = fb_signature_def->subgraph_index();
   }
@@ -701,7 +710,8 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 
       if (subgraph->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
-              buffer_size, allocation_, sparsity) != kTfLiteOk) {
+              buffer_size, allocation_, sparsity,
+              /*buffer_identifier=*/tensor->buffer()) != kTfLiteOk) {
         TF_LITE_REPORT_ERROR(error_reporter_,
                              "Tensor %d is invalidly specified in schema.\n",
                              i);

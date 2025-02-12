@@ -31,9 +31,9 @@ namespace {
 
 using tensorflow::TF_StatusPtr;
 
-Status IdentityNModel(AbstractContext* ctx,
-                      absl::Span<AbstractTensorHandle* const> inputs,
-                      absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status IdentityNModel(AbstractContext* ctx,
+                            absl::Span<AbstractTensorHandle* const> inputs,
+                            absl::Span<AbstractTensorHandle*> outputs) {
   std::vector<AbstractTensorHandle*> temp_outputs(2);
   TF_RETURN_IF_ERROR(
       ops::IdentityN(ctx, inputs, absl::MakeSpan(temp_outputs), "IdentityN"));
@@ -41,7 +41,7 @@ Status IdentityNModel(AbstractContext* ctx,
   // for computing gradient so we could safely drop it.
   outputs[0] = temp_outputs[1];
   temp_outputs[0]->Unref();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class CppGradients
@@ -69,7 +69,7 @@ class CppGradients
 
   AbstractContextPtr immediate_execution_ctx_;
   GradientRegistry registry_;
-  Status status_;
+  absl::Status status_;
 
  public:
   bool UseMlir() const { return strcmp(std::get<0>(GetParam()), "mlir") == 0; }

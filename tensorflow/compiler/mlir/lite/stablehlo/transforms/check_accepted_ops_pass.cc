@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/check_accepted_ops_pass.h"
 
-#include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
 

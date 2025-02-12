@@ -18,13 +18,13 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {

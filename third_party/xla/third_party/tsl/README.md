@@ -10,16 +10,6 @@ This repo contains base utilities and cross-platform support for projects like
 > [upstream location](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tsl)
 > to make any contributions or report any issues.
 
-## Contacts
-
-Discord TBA
-
-Community proposals TBA
-
-Community meetings TBA
-
-Additional contacts TBA
-
 ## Code of Conduct
 
 While under TensorFlow governance, all community spaces are subject to the

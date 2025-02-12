@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,17 +19,21 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/map_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/service/stream_pool.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
-#include "xla/test_helpers.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -39,10 +43,9 @@ namespace xla {
 
 /* static */ TestAllocator* LocalClientTestBase::allocator_;
 
-StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
-                                                         uint64_t size,
-                                                         bool retry_on_failure,
-                                                         int64_t memory_space) {
+absl::StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(
+    int device_ordinal, uint64_t size, bool retry_on_failure,
+    int64_t memory_space) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
   {
     absl::MutexLock lock(&count_mutex_);
@@ -53,7 +56,8 @@ StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
       device_ordinal, size, retry_on_failure, memory_space);
 }
 
-Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
+absl::Status TestAllocator::Deallocate(int device_ordinal,
+                                       se::DeviceMemoryBase mem) {
   VLOG(2) << "Deallocate(" << device_ordinal << ")";
   {
     absl::MutexLock lock(&count_mutex_);
@@ -173,14 +177,14 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
       .value();
 }
 
-StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
+absl::StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const XlaComputation& computation,
     absl::Span<const ShapedBuffer* const> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
                         DefaultExecutableRunOptions());
 }
 
-StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
+absl::StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const XlaComputation& computation,
     absl::Span<const ShapedBuffer* const> arguments,
     const ExecutableBuildOptions& build_options,
@@ -199,21 +203,24 @@ StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
       build_options.device_ordinal() == -1 ? 0 : build_options.device_ordinal();
   auto* stream = run_options.stream();
   if (!stream) {
-    stream = local_client_->mutable_backend()
-                 ->BorrowStream(device_ordinal)
-                 .value()
-                 .get();
+    std::unique_ptr<stream_executor::Stream, xla::StreamPool::PtrDeleter>
+        stream_borrowed = local_client_->mutable_backend()
+                              ->BorrowStream(device_ordinal)
+                              .value();
+    TF_RETURN_IF_ERROR(stream_borrowed->BlockHostUntilDone());
+  } else {
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
   return std::move(ret);
 }
 
-StatusOr<std::unique_ptr<VerifiedHloModule>>
+absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 LocalClientTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text) {
   return ParseAndReturnVerifiedModule(hlo_text, HloModuleConfig());
 }
 
-StatusOr<std::unique_ptr<VerifiedHloModule>>
+absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 LocalClientTestBase::ParseAndReturnVerifiedModule(
     absl::string_view hlo_text, const HloModuleConfig& config) {
   auto module = std::make_unique<VerifiedHloModule>(

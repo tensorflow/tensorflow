@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_TSL_PLATFORM_RETRYING_UTILS_H_
 #define TENSORFLOW_TSL_PLATFORM_RETRYING_UTILS_H_
 
 #include <functional>
 
-#include "tsl/platform/status.h"
+#include "absl/time/time.h"
+#include "xla/tsl/platform/status.h"
 
 namespace tsl {
 
@@ -51,21 +51,32 @@ class RetryingUtils {
   /// If initial_delay_microseconds is zero, no delays will be made between
   /// retries.
   /// If all retries failed, returns the last error status.
-  static Status CallWithRetries(const std::function<Status()>& f,
-                                const RetryConfig& config);
+  static absl::Status CallWithRetries(const std::function<absl::Status()>& f,
+                                      const RetryConfig& config);
 
   /// sleep_usec is a function that sleeps for the given number of microseconds.
-  static Status CallWithRetries(const std::function<Status()>& f,
-                                const std::function<void(int64_t)>& sleep_usec,
-                                const RetryConfig& config);
+  static absl::Status CallWithRetries(
+      const std::function<absl::Status()>& f,
+      const std::function<void(int64_t)>& sleep_usec,
+      const RetryConfig& config);
   /// \brief A retrying wrapper for a function that deletes a resource.
   ///
   /// The function takes care of the scenario when a delete operation
   /// returns a failure but succeeds under the hood: if a retry returns
   /// NOT_FOUND, the whole operation is considered a success.
-  static Status DeleteWithRetries(const std::function<Status()>& delete_func,
-                                  const RetryConfig& config);
+  static absl::Status DeleteWithRetries(
+      const std::function<absl::Status()>& delete_func,
+      const RetryConfig& config);
 };
+
+// Given the total number of retries attempted, returns a randomized duration of
+// time to delay before the next retry.
+//
+// The average computed backoff increases with the number of retries attempted.
+// See implementation for details on the calculations.
+absl::Duration ComputeRetryBackoff(
+    int current_retry_attempt, absl::Duration min_delay = absl::Milliseconds(1),
+    absl::Duration max_delay = absl::Seconds(10));
 
 }  // namespace tsl
 

@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/cf_sink/pass.h"
 
-#include <functional>
 #include <memory>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Dominance.h"  // from @llvm-project

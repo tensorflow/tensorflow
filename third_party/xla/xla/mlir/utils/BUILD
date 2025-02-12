@@ -1,8 +1,16 @@
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//third_party/golang/github_com/gomlx/gomlx:__subpackages__",
+        "//xla:internal",
+        "//third_party/py/jax/_src/pallas/google/xla_export:__subpackages__",
+        "//learning/infra/mira/experimental/orbax_model:__subpackages__",  # For ConvertPrimitiveTypeToMlirType
+    ]),
     licenses = ["notice"],
 )
 
@@ -11,12 +19,15 @@ cc_library(
     srcs = ["error_util.cc"],
     hdrs = ["error_util.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:errors",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -25,12 +36,46 @@ cc_test(
     srcs = ["error_util_test.cc"],
     deps = [
         ":error_util",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "type_util",
+    srcs = ["type_util.cc"],
+    hdrs = ["type_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "type_util_test",
+    srcs = ["type_util_test.cc"],
+    deps = [
+        ":type_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )

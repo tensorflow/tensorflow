@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,41 +15,132 @@ limitations under the License.
 
 #include "xla/service/gpu/hlo_algorithm_denylist.h"
 
+#include <optional>
 #include <string>
+#include <tuple>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "xla/debug_options_flags.h"
-#include "xla/service/gpu/gpu_autotuning.pb.h"
+#include "xla/hlo/ir/backend_config.h"
+#include "xla/service/gpu/autotuning/gpu_autotuning.pb.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/stream_executor/dnn.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/protobuf.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
 
 constexpr char kDefaultDenylist[] = R"pb(
   entries {
-    hlo: "(f32[4,32,32,32]{2,1,3,0}, u8[0]{0}) custom-call(f32[4,32,32,32]{2,1,3,0}, f32[5,5,32,32]{1,0,2,3}), window={size=5x5 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convForward\", backend_config=\"{conv_result_scale:1}\""
+    hlo: "(f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(f32[512,512,7,7]{3,2,1,0}, f32[512,512,3,3]{3,2,1,0}, f32[512]{0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
+    backend_config {
+      operation_queue_id: 0
+      wait_on_operation_queues: []
+      cudnn_conv_backend_config: {
+        activation_mode: kNone
+        conv_result_scale: 1
+        side_input_scale: 0
+        leakyrelu_alpha: 0
+      },
+      force_earliest_schedule: false
+    }
     cc { major: 7 }
-    cudnn_version { major: 7 minor: 6 patch: 4 }
-    algos { id: 7 }
-    blas_version: "10201"
+    cudnn_version { major: 9 }
+    algos { id: 14 }
   }
   entries {
-    hlo: "(f32[4,32,32,32]{2,1,3,0}, u8[0]{0}) custom-call(f32[4,32,32,32]{2,1,3,0}, f32[5,5,32,32]{1,0,2,3}), window={size=5x5 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convForward\", backend_config=\"{conv_result_scale:1}\""
+    hlo: "(f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(f32[512,512,7,7]{3,2,1,0}, f32[512,512,3,3]{3,2,1,0}, f32[512]{0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
+    backend_config {
+      operation_queue_id: 0
+      wait_on_operation_queues: []
+      cudnn_conv_backend_config: {
+        activation_mode: kNone
+        conv_result_scale: 1
+        side_input_scale: 0
+        leakyrelu_alpha: 0
+      },
+      force_earliest_schedule: false
+    }
     cc { major: 7 }
-    cudnn_version { major: 7 minor: 6 patch: 4 }
-    algos { id: 7 tensor_ops: true }
-    blas_version: "10201"
+    cudnn_version { major: 9 minor: 1 patch: 1 }
+    algos { id: 14 }
   }
   entries {
-    hlo: "(f16[3,3,256,256]{2,1,0,3}, u8[0]{0}) custom-call(f16[2048,7,7,256]{3,2,1,0}, f16[2048,7,7,256]{3,2,1,0}), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convBackwardFilter\", backend_config=\"{\\\"algorithm\\\":\\\"0\\\",\\\"tensor_ops_enabled\\\":false,\\\"conv_result_scale\\\":1,\\\"activation_mode\\\":\\\"0\\\",\\\"side_input_scale\\\":0}\""
+    hlo: "(f32[27,256,32,32]{3,2,1,0}, u8[0]{0}) custom-call(f32[27,256,32,32]{3,2,1,0}, f32[256,256,3,3]{3,2,1,0}, f32[256]{0}, f32[27,256,32,32]{3,2,1,0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
+    backend_config {
+      operation_queue_id: 0
+      wait_on_operation_queues: []
+      cudnn_conv_backend_config: {
+        activation_mode: kNone
+        conv_result_scale: 1
+        side_input_scale: 1,
+        leakyrelu_alpha: 0
+      },
+      force_earliest_schedule: false
+    }
     cc { major: 7 }
-    cudnn_version { major: 8 minor: 2 patch: 1 } algos
-    [ { id: 0 tensor_ops: true }
-      , { id: 0 }]
-    blas_version: "11402"
+    cudnn_version { major: 9 }
+    algos { id: 14 }
+  }
+  entries {
+    hlo: "(f32[27,256,32,32]{3,2,1,0}, u8[0]{0}) custom-call(f32[27,256,32,32]{3,2,1,0}, f32[256,256,3,3]{3,2,1,0}, f32[256]{0}, f32[27,256,32,32]{3,2,1,0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
+    backend_config {
+      operation_queue_id: 0
+      wait_on_operation_queues: []
+      cudnn_conv_backend_config: {
+        activation_mode: kNone
+        conv_result_scale: 1
+        side_input_scale: 1
+        leakyrelu_alpha: 0
+      },
+      force_earliest_schedule: false
+    }
+    cc { major: 7 minor: 5 }
+    cudnn_version { major: 9 }
+    algos { id: 14 }
+  }
+  entries {
+    hlo: "(f32[27,256,32,32]{3,2,1,0}, u8[0]{0}) custom-call(f32[27,256,32,32]{3,2,1,0}, f32[256,256,3,3]{3,2,1,0}, f32[256]{0}, f32[27,256,32,32]{3,2,1,0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
+    backend_config {
+      operation_queue_id: 0
+      wait_on_operation_queues: []
+      cudnn_conv_backend_config: {
+        activation_mode: kNone
+        conv_result_scale: 1
+        side_input_scale: 1
+        leakyrelu_alpha: 0
+      },
+      force_earliest_schedule: false
+    }
+    cc { major: 7 }
+    cudnn_version { major: 9 minor: 1 patch: 1 }
+    algos { id: 14 }
+  }
+  entries {
+    hlo: "(f32[27,256,32,32]{3,2,1,0}, u8[0]{0}) custom-call(f32[27,256,32,32]{3,2,1,0}, f32[256,256,3,3]{3,2,1,0}, f32[256]{0}, f32[27,256,32,32]{3,2,1,0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\""
+    backend_config {
+      operation_queue_id: 0
+      wait_on_operation_queues: []
+      cudnn_conv_backend_config: {
+        activation_mode: kNone
+        conv_result_scale: 1
+        side_input_scale: 1
+        leakyrelu_alpha: 0
+      },
+      force_earliest_schedule: false
+    }
+    cc { major: 7 minor: 5 }
+    cudnn_version { major: 9 minor: 1 patch: 1 }
+    algos { id: 14 }
   }
 )pb";
 
-absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
+std::vector<stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
     ComputeCapability cc, CudnnVersion cudnn_version,
     const std::string& blas_version, const std::string& hlo) {
   // Key is the tuple of canonicalized hlo, compute capability major/minor,
@@ -59,36 +150,61 @@ absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
       std::vector<stream_executor::dnn::AlgorithmDesc>>;
 
   static MapType* denylist = [] {
-    MapType* list = new MapType();
+    auto* list = new MapType();
     AlgorithmDenylist proto;
+    auto process_denylist = [list](const AlgorithmDenylist& proto) {
+      for (const auto& entry : proto.entries()) {
+        for (const auto& algo : entry.algos()) {
+          (*list)[std::make_tuple(HloStringWithGpuBackendConfig(
+                                      entry.hlo(), entry.backend_config()),
+                                  entry.cc().major(), entry.cc().minor(),
+                                  entry.cudnn_version().major(),
+                                  entry.cudnn_version().minor(),
+                                  entry.cudnn_version().patch(),
+                                  entry.blas_version())]
+              .emplace_back(algo.id(), algo.tensor_ops(), std::nullopt);
+        }
+      }
+    };
+
     std::string file_path =
         GetDebugOptionsFromFlags().xla_gpu_algorithm_denylist_path();
     if (!file_path.empty()) {
       TF_CHECK_OK(tsl::ReadTextProto(tsl::Env::Default(), file_path, &proto));
-    } else {
-      CHECK(tsl::protobuf::TextFormat::ParseFromString(
-          std::string(kDefaultDenylist), &proto));
+      process_denylist(proto);
     }
-    for (const auto& entry : proto.entries()) {
-      for (const auto& algo : entry.algos()) {
-        (*list)[std::make_tuple(
-                    std::string(entry.hlo()), entry.cc().major(),
-                    entry.cc().minor(), entry.cudnn_version().major(),
-                    entry.cudnn_version().minor(),
-                    entry.cudnn_version().patch(), entry.blas_version())]
-            .push_back({algo.id(), algo.tensor_ops(), std::nullopt});
-      }
-    }
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(
+        std::string(kDefaultDenylist), &proto));
+    process_denylist(proto);
     return list;
   }();
 
-  auto iter = denylist->find(std::make_tuple(
-      hlo, cc.major(), cc.minor(), cudnn_version.major(), cudnn_version.minor(),
-      cudnn_version.patch(), std::string(blas_version)));
-  if (iter != denylist->end()) {
-    return iter->second;
-  }
-  return {};
+  std::vector<stream_executor::dnn::AlgorithmDesc> algorithms;
+  auto add_matching_disabled_algorithms_to_result = [&](const auto& key) {
+    auto iter = denylist->find(key);
+    if (iter != denylist->end()) {
+      algorithms.insert(algorithms.end(), iter->second.begin(),
+                        iter->second.end());
+    }
+  };
+
+  // Exclude algorithms with explicit BLAS version set
+  auto key = std::make_tuple(hlo, cc.major(), cc.minor(), cudnn_version.major(),
+                             cudnn_version.minor(), cudnn_version.patch(),
+                             blas_version);
+  add_matching_disabled_algorithms_to_result(key);
+
+  // Exclude algorithms with no BLAS version set
+  std::get<6>(key) = std::string{};
+  add_matching_disabled_algorithms_to_result(key);
+
+  return algorithms;
+}
+
+std::string HloStringWithGpuBackendConfig(const std::string& hlo,
+                                          GpuBackendConfig config) {
+  BackendConfigWrapper backend_config(config);
+  return absl::StrCat(hlo, ", backend_config=", backend_config.GetRawString());
 }
 
 }  // namespace gpu

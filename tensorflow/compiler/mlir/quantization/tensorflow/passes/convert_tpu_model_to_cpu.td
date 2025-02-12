@@ -15,20 +15,24 @@ limitations under the License.
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
 
 // Combines the two variadic arguments ($in_tensors and $captured_tensors).
 def GetBatchFunctionOpArgOperands:
     NativeCodeCall<"cast<TF::BatchFunctionOp>($0[0].getDefiningOp()).getArgOperands()">;
+
+def CreateEmptyDictAttr : NativeCodeCall<"$_builder.getArrayAttr({})">;
 
 // Replaces `TF_BatchFunctionOp` into `TF_PartitionedCallOp` that calls the
 // same $f. This may be required, for example, when inlining is desired,
 // because `TF_BatchFunctionOp` doesn't have the `CallOpInterface` trait.
 def ReplaceBatchFunctionOpToPartitionedCallOp : Pat<
   (TF_BatchFunctionOp:$src_op_res
-      $_, $_, $f, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_),
+      $_, $_, $f, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_),
   (TF_PartitionedCallOp
       (GetBatchFunctionOpArgOperands $src_op_res),
+      /*arg_attrs=*/(CreateEmptyDictAttr),
+      /*res_attrs=*/(CreateEmptyDictAttr),
       $f,
       /*config=*/(CreateStringAttr<"">),
       /*config_proto=*/(CreateStringAttr<"">),

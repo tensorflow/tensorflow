@@ -15,12 +15,14 @@
 """Tests for `tf.data.Dataset.from_tensors()."""
 import collections
 import dataclasses
+from typing import Callable, Optional
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -401,6 +403,71 @@ class FromTensorsRandomAccessTest(test_base.DatasetTestBase,
     result = random_access.at(dataset, 0)
     for i in range(10):
       self.assertEqual(self.evaluate(random_access.at(result, i)), i)
+
+
+class FromTensorsGlobalShuffleTest(
+    test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              repetitions=[1, 3],
+              seed=[None, 19],
+              reshuffle_each_iteration=[True, False])))
+  def testTensorsDataset(
+      self,
+      repetitions: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
+    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
+    dataset = dataset_ops.Dataset.from_tensors(components)
+    if repetitions > 1:
+      dataset = dataset.repeat(repetitions)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    expected = [components] * repetitions
+    self.assertDatasetProduces(
+        dataset, expected_output=expected, requires_initialization=True)
+    self.assertLen(expected, self.evaluate(dataset.cardinality()))
+
+
+class FromTensorsGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              repetitions=[1, 3],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def testGlobalShuffleTensorsDataset(
+      self,
+      verify_fn: Callable[..., None],
+      repetitions: int,
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.from_tensors(dataset_ops.Dataset.range(10))
+      if repetitions > 1:
+        dataset = dataset.repeat(repetitions)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      dataset = dataset.flat_map(lambda x: x)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=10 * repetitions,
+        assert_items_equal=reshuffle_each_iteration)
+
 
 if __name__ == "__main__":
   test.main()

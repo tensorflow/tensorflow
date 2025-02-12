@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tsl/platform/net.h"
 
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace internal {

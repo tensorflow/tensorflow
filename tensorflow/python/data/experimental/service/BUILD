@@ -29,13 +29,12 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "server_lib",
     srcs = ["server_lib.py"],
-    srcs_version = "PY3",
     visibility = [
         "//visibility:public",
     ],
     deps = [
         ":_pywrap_server_lib",
-        ":_pywrap_utils",
+        ":_pywrap_utils_exp",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/util:tf_export",
@@ -54,11 +53,11 @@ tf_py_strict_test(
 )
 
 tf_python_pybind_extension(
-    name = "_pywrap_utils",
+    name = "_pywrap_utils_exp",
     srcs = ["utils_wrapper.cc"],
     enable_stub_generation = True,
     pytype_srcs = [
-        "_pywrap_utils.pyi",
+        "_pywrap_utils_exp.pyi",
     ],
     deps = [
         "//tensorflow/core/data/service:py_utils",
@@ -86,7 +85,6 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "service",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     deps = [
         ":server_lib",
         "//tensorflow/python/data/experimental/ops:data_service_ops",

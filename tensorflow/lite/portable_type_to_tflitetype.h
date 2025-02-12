@@ -52,6 +52,10 @@ struct TfLiteTypeToType {};  // Specializations below
     return TFLITE_TYPE_ENUM;                                   \
   }                                                            \
   template <>                                                  \
+  constexpr TfLiteType typeToTfLiteType<const CPP_TYPE>() {    \
+    return TFLITE_TYPE_ENUM;                                   \
+  }                                                            \
+  template <>                                                  \
   struct TfLiteTypeToType<TFLITE_TYPE_ENUM> {                  \
     using Type = CPP_TYPE;                                     \
   }
@@ -68,6 +72,7 @@ MATCH_TYPE_AND_TFLITE_TYPE(unsigned char, kTfLiteUInt8);
 MATCH_TYPE_AND_TFLITE_TYPE(int8_t, kTfLiteInt8);
 MATCH_TYPE_AND_TFLITE_TYPE(bool, kTfLiteBool);
 MATCH_TYPE_AND_TFLITE_TYPE(TfLiteFloat16, kTfLiteFloat16);
+MATCH_TYPE_AND_TFLITE_TYPE(TfLiteBFloat16, kTfLiteBFloat16);
 MATCH_TYPE_AND_TFLITE_TYPE(double, kTfLiteFloat64);
 MATCH_TYPE_AND_TFLITE_TYPE(uint64_t, kTfLiteUInt64);
 

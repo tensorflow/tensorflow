@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -52,29 +52,29 @@ bool ResolveAttributes(Model* model, T* op) {
   switch (op->type) {
     case OperatorType::kMean:
       *modified = ResolveAttributes(model, static_cast<MeanOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kSum:
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowSumOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kReduceProd:
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowProdOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kReduceMin:
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowMinOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kReduceMax:
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kAny:
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     default:
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   }
 }
 

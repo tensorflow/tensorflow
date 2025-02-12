@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,18 +16,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_COLLECTIVE_COMBINER_UTILS_H_
 #define XLA_SERVICE_COLLECTIVE_COMBINER_UTILS_H_
 
-#include <functional>
-#include <utility>
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_reachability.h"
-#include "xla/service/hlo_domain_map.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
@@ -43,10 +45,11 @@ namespace xla {
 // together. Instructions will be combined until the threshold for output byte
 // size or instruction count is reached.
 template <typename K>
-StatusOr<bool> CombineInstructionsByKey(
+absl::StatusOr<bool> CombineInstructionsByKey(
     HloComputation* computation,
     absl::FunctionRef<std::optional<K>(const HloInstruction*)> key_fn,
-    absl::FunctionRef<Status(absl::Span<HloInstruction* const>)> combine_fn,
+    absl::FunctionRef<absl::Status(absl::Span<HloInstruction* const>)>
+        combine_fn,
     int64_t combine_threshold_bytes, int64_t combine_threshold_count) {
   // Cache keys for each instruction and build sets of instructions with the
   // same key that might be combined together.
@@ -122,7 +125,14 @@ StatusOr<bool> CombineInstructionsByKey(
       // We can't combine dependent instructions.
       bool is_reachable =
           absl::c_any_of(to_combine, [&](HloInstruction* to_combine_inst) {
-            return reachability->IsReachable(to_combine_inst, instruction);
+            bool reachable =
+                reachability->IsReachable(to_combine_inst, instruction);
+            if (reachable) {
+              VLOG(2) << "<< Instruction {" << instruction->ToShortString()
+                      << "} is reachable from {"
+                      << to_combine_inst->ToShortString() << "}";
+            }
+            return reachable;
           });
       if (is_reachable) {
         VLOG(1) << "Instruction is reachable.";

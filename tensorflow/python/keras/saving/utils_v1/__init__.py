@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # LINT.IfChange
-"""Utils for saving a Keras Model or Estimator to the SavedModel format."""
+"""Utils for saving a Keras Model to the SavedModel format."""
 # pylint: disable=wildcard-import
 from tensorflow.python.keras.saving.utils_v1.export_output import *
 from tensorflow.python.keras.saving.utils_v1.export_utils import build_all_signature_defs

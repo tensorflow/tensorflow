@@ -1066,7 +1066,7 @@ func.func private @testIfElse(f32) -> f32
 // Test invalid tf.If operation
 func.func @testInvalidIfOp(tensor<i1>, f32) -> f32 {
 ^bb0(%arg0: tensor<i1>, %arg1: f32):
-  // expected-error @+1 {{operand #1 must be tensor of tf.dtype values}}
+  // expected-error @+1 {{operand #1 must be variadic of tensor of tf.dtype values}}
   %1 = "tf.If"(%arg0, %arg1) {
     then_branch = @testIfThen,
     else_branch = @testIfElse,
@@ -1185,7 +1185,7 @@ func.func @testInvalidIfOp(tensor<i1>, tensor<*xf32>) -> tensor<2xf32> {
 
 // Test invalid tf.Yield operation (parent should be IfRegion)
 func.func @testInvalidYieldOp(%arg0: f32) -> () {
-  // expected-error @+1 {{'tf.Yield' op expects parent op to be one of 'tf.CaseRegion, tf.IfRegion, tf.WhileRegion'}}
+  // expected-error @+1 {{'tf.Yield' op expects parent op to be one of 'tf.CaseRegion, tf.IfRegion, tf.WhileRegion, tf.GeneratorDatasetRegion'}}
   "tf.Yield"(%arg0) : (f32) -> ()
 }
 
@@ -2486,7 +2486,7 @@ func.func @testValidShapeN(%arg0 : tensor<1x32x32x16xf32>, %arg1 : tensor<*xf32>
 // -----
 
 func.func @testShapeNWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf32> {
-  // expected-error @+1 {{result #1 must be tensor of 32/64-bit signed integer values}}
+  // expected-error @+1 {{result #1 must be variadic of tensor of 32/64-bit signed integer values}}
   %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<4xf32>)
   func.return %0#1 : tensor<4xf32>
 }
@@ -3168,8 +3168,16 @@ func.func @testSqueezeOutOfBounds(%arg0: tensor<?x?x10xf32>) -> tensor<?x10xf32>
 
 // -----
 
+func.func @testNullaryEinsum(%arg0: tensor<2x3xf32>){
+  // expected-error @+1 {{op must have 1 or 2 operands}}
+  "tf.Einsum"() {equation = "->"} : () -> (tensor<f32>)
+  func.return
+}
+
+// -----
+
 func.func @testTernaryEinsum(%arg0: tensor<2x3xf32>){
-  // expected-error @+1 {{supports at most two operands}}
+  // expected-error @+1 {{op must have 1 or 2 operands}}
   %0 = "tf.Einsum"(%arg0, %arg0, %arg0) {equation = "ab,cd,ef->"} : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) -> (tensor<*xf32>)
   func.return
 }
@@ -4246,6 +4254,15 @@ func.func @testTile(%arg0: tensor<2x3x?xf32>) {
 
 // -----
 
+func.func @testTileFold(%arg0: tensor<2x3x1xf32>, %arg1: tensor<2x3x20xf32>) -> tensor<2x3x20xf32> {
+  %cst = arith.constant dense <[1, 1, 20]> : tensor<3xi32>
+  %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3x1xf32>, tensor<3xi32>) -> tensor<2x3x20xf32>
+  %1 = "tf.AddV2"(%0, %arg1) {device = ""} : (tensor<2x3x20xf32>, tensor<2x3x20xf32>) -> tensor<2x3x20xf32>
+  func.return %1 : tensor<2x3x20xf32>
+}
+
+// -----
+
 func.func @testTileMultipleNotRank1(%arg0: tensor<2x3xf32>, %arg1: tensor<1x1xi32>) {
   // expected-error @+1 {{expected multiples to be rank 1, got rank = 2}}
   %0 = "tf.Tile"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<1x1xi32>) -> tensor<2x3xf32>
@@ -5179,4 +5196,42 @@ func.func @test_xla_call_module_with_invalid_symbol() {
   // expected-error @below {{refers to an undefined function: @undefined_function}}
   "tf.XlaCallModule"() {Sout = [], device = "", dim_args_spec = [], function_list = [@undefined_function], module = "", platforms = [], version = 4 : i64} : () -> ()
   func.return
+}
+
+// -----
+
+func.func @init(%arg0: tensor<4xf32>) -> tensor<7xf32> {
+    %0 = builtin.unrealized_conversion_cast to tensor<7xf32>
+    return %0 : tensor<7xf32>
+}
+
+func.func @next(%arg0: tensor<7xf32>, %arg1: tensor<3xf32>) -> tensor<6xf32> {
+    %0 = builtin.unrealized_conversion_cast to tensor<6xf32>
+    return %0 : tensor<6xf32>
+}
+
+func.func @finalize(%arg0: tensor<6xf32>, %arg1: tensor<2xf32>) -> tensor<5xf32> {
+    %0 = builtin.unrealized_conversion_cast to tensor<5xf32>
+    return %0 : tensor<5xf32>
+}
+
+// CHECK-LABEL: func @testGeneratorDataset
+func.func @testGeneratorDataset(%arg0: tensor<4xf32>,
+                                %arg1: tensor<3xf32>,
+                                %arg2: tensor<!tf_type.resource>,
+                                %arg3: tensor<2xf32>) -> tensor<!tf_type.variant> {
+  %0 = "tf.GeneratorDataset"(%arg0, %arg1, %arg2, %arg3) {
+      device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0",
+      finalize_func = @finalize,
+      init_func = @init,
+      next_func = @next,
+      operandSegmentSizes = array<i32: 1, 2, 1>,
+      output_shapes = [#tf_type.shape<>],
+      output_types = [!tf_type.string],
+      metadata = ""} : (
+              tensor<4xf32>,
+              tensor<3xf32>,
+              tensor<!tf_type.resource>,
+              tensor<2xf32>) -> tensor<!tf_type.variant>
+  return %0 : tensor<!tf_type.variant>
 }

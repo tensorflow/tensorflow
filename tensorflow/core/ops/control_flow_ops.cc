@@ -27,7 +27,7 @@ using shape_inference::ShapeHandle;
 // --------------------------------------------------------------------------
 namespace {
 
-Status SwitchShape(InferenceContext* c) {
+absl::Status SwitchShape(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
   ShapeHandle out = c->input(0);
@@ -40,10 +40,10 @@ Status SwitchShape(InferenceContext* c) {
     c->set_output_handle_shapes_and_types(0, *handle_data);
     c->set_output_handle_shapes_and_types(1, *handle_data);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SwitchNShape(InferenceContext* c) {
+absl::Status SwitchNShape(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
   ShapeHandle out = c->input(0);
@@ -60,7 +60,7 @@ Status SwitchNShape(InferenceContext* c) {
       c->set_output_handle_shapes_and_types(i, *handle_data);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -104,7 +104,7 @@ REGISTER_OP("RefSelect")
       ShapeHandle first_input = c->input(1);
       if (!c->FullyDefined(first_input)) {
         c->set_output(0, c->UnknownShape());
-        return OkStatus();
+        return absl::OkStatus();
       }
       // If any inputs aren't fully defined or don't match, we return unknown.
       for (int i = 2; i < c->num_inputs(); ++i) {
@@ -112,16 +112,16 @@ REGISTER_OP("RefSelect")
         if (!c->FullyDefined(input) ||
             !c->Merge(first_input, input, &unused).ok()) {
           c->set_output(0, c->UnknownShape());
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
       c->set_output(0, first_input);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 // --------------------------------------------------------------------------
 namespace {
-Status MergeShape(InferenceContext* c) {
+absl::Status MergeShape(InferenceContext* c) {
   ShapeHandle out = c->input(0);
   if (!c->RankKnown(out)) {
     out = c->UnknownShape();
@@ -143,7 +143,7 @@ Status MergeShape(InferenceContext* c) {
   }
   c->set_output(0, out);
   c->set_output(1, c->Scalar());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TypeInferenceFn MergeTypeFn() {
@@ -195,7 +195,7 @@ REGISTER_OP("Enter")
         c->set_output(0, c->input(0));
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 // --------------------------------------------------------------------------

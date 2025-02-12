@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_SERVICE_GPU_METRICS_H_
 
 #include <cstdint>
+
+#include "absl/strings/string_view.h"
 
 namespace xla {
 
@@ -39,11 +41,25 @@ void RecordLlvmToPtxDuration(uint64_t time_usecs);
 // Compiling PTX to cubin.
 void RecordPtxToCubinDuration(uint64_t time_usecs);
 
-// Counts compiled programs numbers.
+// Counts compiled programs count.
 void IncrementCompiledProgramsCount();
 
-// Gets compiled programs numbers.
+// DO NOT USE---this is exposed only for testing.
+// Resets compiled programs count.
+void ResetCompiledProgramsCountForTesting();
+
+// Gets compiled programs count.
 int64_t GetCompiledProgramsCount();
+
+// Records the size of the XLA device binary in bytes.
+void RecordXlaDeviceBinarySize(int64_t size);
+
+// Records the stacktrace of the GPU compiler.
+void RecordGpuCompilerStacktrace();
+
+// Returns the number of times the GPU compiler was called with the given
+// stacktrace.
+int GetGpuCompilerStacktraceCount(absl::string_view stacktrace);
 
 }  // namespace xla
 

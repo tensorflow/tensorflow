@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "PlaceholderV2"
   output_arg {
     name: "output"

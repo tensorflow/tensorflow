@@ -13,18 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -69,7 +72,8 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
   string manual_sharding_str_;
   int32 single_dim_;
   std::vector<int64_t> unspecified_dims_;
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSpmdFullToShardShapeOp);
+  XlaSpmdFullToShardShapeOp(const XlaSpmdFullToShardShapeOp&) = delete;
+  void operator=(const XlaSpmdFullToShardShapeOp&) = delete;
 };
 
 class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
@@ -119,7 +123,8 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
   string manual_sharding_str_;
   int32 single_dim_;
   std::vector<int64_t> unspecified_dims_;
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSpmdShardToFullShapeOp);
+  XlaSpmdShardToFullShapeOp(const XlaSpmdShardToFullShapeOp&) = delete;
+  void operator=(const XlaSpmdShardToFullShapeOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSpmdFullToShardShape"), XlaSpmdFullToShardShapeOp);

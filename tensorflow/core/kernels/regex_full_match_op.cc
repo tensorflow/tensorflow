@@ -78,7 +78,8 @@ class RegexFullMatchOp : public OpKernel {
   mutex mu_;
   std::shared_ptr<RE2> regex_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RegexFullMatchOp);
+  RegexFullMatchOp(const RegexFullMatchOp&) = delete;
+  void operator=(const RegexFullMatchOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("RegexFullMatch").Device(DEVICE_CPU),

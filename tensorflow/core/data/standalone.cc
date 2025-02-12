@@ -25,6 +25,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -34,12 +38,15 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/tf_data_memory_logger.h"
+#include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -49,11 +56,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -75,13 +78,28 @@ OpKernelContext::Params CreateParams(
 
 Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx,
                    SerializationContext* serialization_ctx)
-    : iterator_(iterator), ctx_(ctx), serialization_ctx_(serialization_ctx) {}
+    : iterator_(iterator), ctx_(ctx), serialization_ctx_(serialization_ctx) {
+  if (DatasetBaseIterator* dataset_iterator =
+          dynamic_cast<DatasetBaseIterator*>(iterator_.get())) {
+    tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(
+        *Env::Default(), dataset_iterator, ctx_->model());
+    TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
+    EnsureIteratorMemoryLoggerStarted();
+  }
+}
 
-Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
+Iterator::~Iterator() {
+  if (tf_dataz_metrics_collector_) {
+    TfDatazMetricsRegistry::Deregister(tf_dataz_metrics_collector_);
+  }
+}
+
+absl::Status Iterator::GetNext(std::vector<Tensor>* outputs,
+                               bool* end_of_input) {
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
-StatusOr<std::vector<Tensor>> Iterator::Save() {
+absl::StatusOr<std::vector<Tensor>> Iterator::Save() {
   VariantTensorDataWriter writer;
   TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx_.get(), &writer));
   std::vector<std::unique_ptr<VariantTensorData>> data;
@@ -98,7 +116,7 @@ StatusOr<std::vector<Tensor>> Iterator::Save() {
   return serialized;
 }
 
-Status Iterator::Restore(const std::vector<Tensor>& saved_iterator) {
+absl::Status Iterator::Restore(const std::vector<Tensor>& saved_iterator) {
   std::vector<const VariantTensorData*> data;
   data.reserve(saved_iterator.size());
   for (int i = 0; i < saved_iterator.size(); ++i) {
@@ -116,19 +134,10 @@ Status Iterator::Restore(const std::vector<Tensor>& saved_iterator) {
   return iterator_->Restore(ctx_.get(), &reader);
 }
 
-std::optional<double> Iterator::GetProcessingTimeNsec() const {
-  if (ctx_->model() == nullptr) return std::nullopt;
+std::shared_ptr<model::Model> Iterator::model() const { return ctx_->model(); }
 
-  double processing_time_nsec =
-      ctx_->model()->ComputeSnapshotProcessingTimeNsec();
-  if (processing_time_nsec > 0)
-    return processing_time_nsec;
-  else
-    return std::nullopt;
-}
-
-Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
-                          std::unique_ptr<Dataset>* result) {
+absl::Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
+                                std::unique_ptr<Dataset>* result) {
   Graph graph(OpRegistry::Global());
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
 
@@ -149,7 +158,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
                              tsl::core::RefCountPtr<Rendezvous>* r) {
         *r = tsl::core::RefCountPtr<Rendezvous>(
             new IntraProcessRendezvous(device_mgr));
-        return OkStatus();
+        return absl::OkStatus();
       }});
 
   string fetch_node = "";
@@ -184,10 +193,10 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   *result = absl::WrapUnique(new Dataset(
       finalized_dataset, dataset, device_mgr.release(), pflr.release(),
       flib_def.release(), pool.release(), std::move(runner)));
-  return OkStatus();
+  return absl::OkStatus();
 }  // static
 
-Status Dataset::MakeIterator(
+absl::Status Dataset::MakeIterator(
     std::vector<std::unique_ptr<SplitProvider>> split_providers,
     std::unique_ptr<Iterator>* result) {
   // Create an `IteratorContext`, which bundles together the necessary runtime
@@ -223,14 +232,14 @@ Status Dataset::MakeIterator(
       ctx.get(), /*parent=*/nullptr, "Iterator", &iterator));
   *result = absl::WrapUnique(new Iterator(iterator.release(), ctx.release(),
                                           serialization_ctx.release()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
+absl::Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
   return MakeIterator(/*split_providers=*/{}, result);
 }
 
-Status Dataset::MakeSplitProviders(
+absl::Status Dataset::MakeSplitProviders(
     std::vector<std::unique_ptr<SplitProvider>>* result) {
   return finalized_dataset_->MakeSplitProviders(result);
 }

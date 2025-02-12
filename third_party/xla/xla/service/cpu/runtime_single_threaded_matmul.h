@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,8 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
+#include "tsl/platform/ml_dtypes.h"
 
 extern "C" {
 
@@ -59,6 +60,23 @@ extern void __xla_cpu_runtime_EigenSingleThreadedMatMulS32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, int32_t* out,
     int32_t* lhs, int32_t* rhs, int64_t m, int64_t n, int64_t k,
     int32_t transpose_lhs, int32_t transpose_rhs);
+
+extern void __xla_cpu_runtime_EigenSingleThreadedMatMulU8(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr, uint8_t* out,
+    uint8_t* lhs, uint8_t* rhs, int64_t m, int64_t n, int64_t k,
+    int32_t transpose_lhs, int32_t transpose_rhs);
+
+extern void __xla_cpu_runtime_EigenSingleThreadedMatMulF8E5M2(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
+    tsl::float8_e5m2* out, tsl::float8_e5m2* lhs, tsl::float8_e5m2* rhs,
+    int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
+    int32_t transpose_rhs);
+
+extern void __xla_cpu_runtime_EigenSingleThreadedMatMulF8E4M3FN(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
+    tsl::float8_e4m3fn* out, tsl::float8_e4m3fn* lhs, tsl::float8_e4m3fn* rhs,
+    int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
+    int32_t transpose_rhs);
 
 }  // extern "C"
 

@@ -1208,7 +1208,12 @@ def linspace(  # pylint: disable=missing-docstring
     start, stop, num=50, endpoint=True, retstep=False, dtype=float, axis=0
 ):
   if dtype:
-    dtype = np_utils.result_type(dtype)
+    # In numpy 2.x, the result type of np.linspace is based off of `start` and
+    # `end`. We mimic the behavior.
+    if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
+      dtype = np_utils.result_type([start * 1.0, stop * 1.0])
+    else:
+      dtype = np_utils.result_type(dtype)
   start = np_array_ops.array(start, dtype=dtype)
   stop = np_array_ops.array(stop, dtype=dtype)
   if num < 0:
@@ -1246,7 +1251,12 @@ def linspace(  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.logspace', v1=[])
 @np_utils.np_doc('logspace')
 def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None, axis=0):
-  dtype = np_utils.result_type(start, stop, dtype)
+  # In numpy 2.x, the result type of np.logspace is based off of `start` and
+  # `end`. We mimic the behavior.
+  if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
+    dtype = np_utils.result_type([start * 1.0, stop * 1.0])
+  else:
+    dtype = np_utils.result_type(start, stop, dtype)
   result = linspace(
       start, stop, num=num, endpoint=endpoint, dtype=dtype, axis=axis
   )

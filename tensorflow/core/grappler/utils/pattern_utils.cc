@@ -58,9 +58,15 @@ template <>
 bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
     const OpTypePattern& pattern, MutableNodeView* node_view,
     NodeViewMatch* match) {
-  // Currently no control inputs and outputs are allowed.
-  if (node_view->NumControllingFanins() > 0 ||
-      node_view->NumControlledFanouts() > 0)
+  // Currently the following cases are NOT allowed:
+  //  - If the node has control inputs and the node will NOT remain after the
+  //  fusion.
+  //  - If the node has control outputs and the node will be removed after the
+  //  fusion.
+  if ((node_view->NumControllingFanins() > 0 &&
+       pattern.node_status != NodeStatus::kRemain) ||
+      (node_view->NumControlledFanouts() > 0 &&
+       pattern.node_status == NodeStatus::kRemove))
     return false;
 
   bool op_type_matched = false;

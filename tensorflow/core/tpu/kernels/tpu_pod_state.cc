@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 #if defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
@@ -41,27 +41,27 @@ namespace {
 // Returns OK if the deletion succeeded, or if the resource was not found. Else
 // return the deletion error.
 template <class ResourceT>
-Status DeleteIfExists(ResourceMgr* resource_manager,
-                      const char* resource_name) {
+absl::Status DeleteIfExists(ResourceMgr* resource_manager,
+                            const char* resource_name) {
   VLOG(1) << "Removing resource " << resource_name << " if it exists";
-  Status status = resource_manager->Delete<ResourceT>(
+  absl::Status status = resource_manager->Delete<ResourceT>(
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (status.code() == error::NOT_FOUND) {
     VLOG(1) << "No resource " << resource_name << " to remove";
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Error removing resource " << resource_name << " : " << status;
   return status;
 }
 
-xla::StatusOr<std::unique_ptr<TpuCompilationCacheService>>
+absl::StatusOr<std::unique_ptr<TpuCompilationCacheService>>
 ConstructCacheService(ResourceMgr* rmgr, int serving_port,
                       tpu::TpuCompilationCacheInterface* compilation_cache) {
-  xla::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> server_builder;
+  absl::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> server_builder;
 #if defined(LIBTPU_ON_GCE)
   server_builder = tpu::CreateServerBuilder(serving_port);
 #else
@@ -77,7 +77,8 @@ ConstructCacheService(ResourceMgr* rmgr, int serving_port,
 }
 }  // namespace
 
-Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
+absl::Status GetServerAddressAndPort(std::string* server_address,
+                                     int* serving_port) {
   char* server_address_output = nullptr;
   auto cleanup = absl::MakeCleanup([&server_address_output]() {
     stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
@@ -101,7 +102,7 @@ Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
   *server_address =
       std::string(server_address_output, server_address_output_size);
   CHECK_NE(*serving_port, -1);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TpuPodState::TpuPodState(
@@ -126,7 +127,7 @@ string TpuPodState::DebugString() const {
   return "Wrapper for distributed TPU state";
 }
 
-Status GetTPUPodState(const ResourceMgr* rmgr, TpuPodState** pod_state) {
+absl::Status GetTPUPodState(const ResourceMgr* rmgr, TpuPodState** pod_state) {
   if (!rmgr) {
     return errors::Internal("No resource manager.");
   }
@@ -136,7 +137,7 @@ Status GetTPUPodState(const ResourceMgr* rmgr, TpuPodState** pod_state) {
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HasTPUPodState(const ResourceMgr* rmgr) {
@@ -150,7 +151,7 @@ bool HasTPUPodState(const ResourceMgr* rmgr) {
   return true;
 }
 
-Status ConstructTpuPodState(
+absl::Status ConstructTpuPodState(
     ResourceMgr* rmgr, const std::vector<int32_t>& num_devices_per_host,
     tpu::TpuCompilationCacheInterface* compilation_cache,
     std::string* host_config_proto) {

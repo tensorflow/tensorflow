@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StringToHashBucketStrong"
   input_arg {
     name: "input"

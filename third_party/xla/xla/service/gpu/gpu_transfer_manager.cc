@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,30 +15,45 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_transfer_manager.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/IR/DataLayout.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/service/compiler.h"
+#include "xla/service/generic_transfer_manager.h"
+#include "xla/service/gpu/infeed_manager.h"
 #include "xla/service/gpu/outfeed_manager.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/host/host_platform_id.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/numbers.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -50,49 +65,73 @@ GpuTransferManager::GpuTransferManager(se::Platform::Id id,
                                        unsigned pointer_size)
     : GenericTransferManager(id, pointer_size) {}
 
-GpuTransferManager::~GpuTransferManager() {
-  if (pinned_chunk_se_) {
-    pinned_chunk_se_->HostMemoryDeallocate(pinned_chunk_);
+InfeedManager* GpuTransferManager::GetOrCreateInfeedManager(
+    se::StreamExecutor* executor) {
+  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* infeed_managers =
+      new absl::flat_hash_map<se::StreamExecutor*,
+                              std::unique_ptr<InfeedManager>>();
+  absl::MutexLock lock(mutex);
+  if (!infeed_managers->contains(executor)) {
+    infeed_managers->emplace(executor,
+                             std::make_unique<InfeedManager>(executor));
   }
+  return infeed_managers->at(executor).get();
 }
 
-Status GpuTransferManager::TransferLiteralToInfeed(
+OutfeedManager* GpuTransferManager::GetOrCreateOutfeedManager(
+    se::StreamExecutor* executor) {
+  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* outfeed_managers =
+      new absl::flat_hash_map<se::StreamExecutor*,
+                              std::unique_ptr<OutfeedManager>>();
+  absl::MutexLock lock(mutex);
+  if (!outfeed_managers->contains(executor)) {
+    outfeed_managers->emplace(executor, std::make_unique<OutfeedManager>());
+  }
+  return outfeed_managers->at(executor).get();
+}
+
+absl::Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
-  return gpu::GetOrCreateInfeedManager(executor)->TransferLiteralToInfeed(
-      executor, literal);
+  InfeedManager* infeed_manager = GetOrCreateInfeedManager(executor);
+  return infeed_manager->TransferLiteralToInfeed(executor, literal);
 }
 
-Status GpuTransferManager::TransferLiteralFromOutfeed(
+absl::Status GpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
-  return gpu::GetOrCreateOutfeedManager(executor)->TransferLiteralFromOutfeed(
-      executor, literal);
+  OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager(executor);
+  return outfeed_manager->TransferLiteralFromOutfeed(executor, literal);
 }
 
-void GpuTransferManager::EnsurePinnedBuffersAllocated(
+absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
     se::StreamExecutor* executor) {
   if (pinned_chunk_ != nullptr) {
-    return;
+    return absl::OkStatus();
   }
 
-  pinned_chunk_se_ = executor;
-  pinned_chunk_ =
-      reinterpret_cast<char*>(executor->HostMemoryAllocate(kPinnedChunkBytes));
+  TF_ASSIGN_OR_RETURN(pinned_chunk_,
+                      executor->HostMemoryAllocate(kPinnedChunkBytes));
+
   static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
                 "assumption of loop below");
-  for (char* buf = pinned_chunk_; buf < pinned_chunk_ + kPinnedChunkBytes;
+  char* base = reinterpret_cast<char*>(pinned_chunk_->opaque());
+  for (char* buf = base; buf < base + kPinnedChunkBytes;
        buf += kPinnedBufferBytes) {
     pinned_buffers_.push_back(buf);
   }
+
+  return absl::OkStatus();
 }
 
-Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
-                                             const ShapedBuffer* device_buffer,
-                                             Shape* device_shape) {
+absl::Status GpuTransferManager::ReadDynamicShapes(
+    se::Stream* stream, const ShapedBuffer* device_buffer,
+    Shape* device_shape) {
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
 
-  TF_ASSIGN_OR_RETURN(auto compiler,
-                      Compiler::GetForPlatform(stream->parent()->platform()));
+  TF_ASSIGN_OR_RETURN(
+      auto compiler, Compiler::GetForPlatform(stream->parent()->GetPlatform()));
   auto shape_size_fn = compiler->ShapeSizeBytesFunction();
 
   // First, figure out which parts of `device_shape` are dynamic and where the
@@ -101,16 +140,17 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   std::vector<std::pair<se::DeviceMemoryBase, Shape*>> copies;
 
   TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
-      [&](const ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
+      [&](const ShapeIndex& index,
+          const se::DeviceMemoryBase& buffer) -> absl::Status {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         Shape& device_sub_shape =
             *ShapeUtil::GetMutableSubshape(device_shape, index);
         if (device_sub_shape.is_static()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         // Read the dynamic shape metadata from the device stream.  The dynamic
@@ -123,11 +163,10 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
         }
 
         auto buffer_8 = se::DeviceMemory<uint8_t>(buffer);
-        auto metadata_buffer =
-            stream->parent()->GetSubBuffer(&buffer_8, offset, metadata_size);
+        auto metadata_buffer = buffer_8.GetSlice(offset, metadata_size);
         copies.push_back(std::make_pair(metadata_buffer, &device_sub_shape));
 
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   // Check out pinned memory for each buffer we want to copy.  If there aren't
@@ -146,7 +185,7 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
 
   {
     absl::MutexLock lock(&mu_);
-    EnsurePinnedBuffersAllocated(stream->parent());
+    TF_RETURN_IF_ERROR(EnsurePinnedBuffersAllocated(stream->parent()));
 
     for (const auto& src_dst : copies) {
       se::DeviceMemoryBase src = src_dst.first;
@@ -171,7 +210,7 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   for (int i = 0; i < copies.size(); i++) {
     se::DeviceMemoryBase src = copies[i].first;
     void* dst = h2d_memcpy_dsts[i];
-    stream->ThenMemcpy(dst, src, src.size());
+    TF_RETURN_IF_ERROR(stream->Memcpy(dst, src, src.size()));
   }
 
   // Wait for all the async copies to complete, then write into device_shape.
@@ -187,7 +226,132 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   device_shape->clear_dynamic_dimensions();
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+// Chunks `size` into chunks of `chunk_size` and calls `callback` for each.
+static absl::Status ForEachChunk(
+    size_t size, size_t chunk_size,
+    absl::FunctionRef<absl::Status(size_t chunk_offset, size_t chunk_size)>
+        callback) {
+  int64_t num_chunks = CeilOfRatio(size, chunk_size);
+
+  for (int64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
+    TF_RETURN_IF_ERROR(callback(
+        /*chunk_offset=*/chunk_index * chunk_size,
+        /*chunk_size=*/std::min(
+            chunk_size, static_cast<size_t>(size - chunk_index * chunk_size))));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status GpuTransferManager::TransferBufferFromDevice(
+    se::Stream* stream, const se::DeviceMemoryBase& source, int64_t size,
+    void* destination) {
+  if (source.size() < size) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Source allocation on device not large enough for data transfer: "
+        "%d < %d",
+        source.size(), size));
+  }
+
+  VLOG(5) << "Transfer buffer from device: size="
+          << tsl::strings::HumanReadableNumBytes(size);
+
+  TF_ASSIGN_OR_RETURN(auto staging_buffer,
+                      GetOrCreateStagingBuffer(stream->parent()));
+
+  absl::MutexLock lock(&staging_buffer->mutex);
+  void* staging = staging_buffer->allocation->opaque();
+
+  // Transfer chunk of data from device to destination via staging buffer.
+  auto transfer_chunk = [&](size_t chunk_offset,
+                            size_t chunk_size) -> absl::Status {
+    VLOG(5) << "Transfer buffer chunk from device: offset=" << chunk_offset
+            << " size=" << tsl::strings::HumanReadableNumBytes(chunk_size);
+
+    se::DeviceMemoryBase chunk = source.GetByteSlice(chunk_offset, chunk_size);
+    TF_RETURN_IF_ERROR(stream->Memcpy(staging, chunk, chunk_size));
+
+    void* dst = reinterpret_cast<char*>(destination) + chunk_offset;
+    return stream->DoHostCallback(
+        [=] { std::memcpy(dst, staging, chunk_size); });
+  };
+
+  TF_RETURN_IF_ERROR(stream->WaitFor(staging_buffer->transfer_completed.get()));
+  TF_RETURN_IF_ERROR(ForEachChunk(size, kStagingBufferSize, transfer_chunk));
+  TF_RETURN_IF_ERROR(
+      stream->RecordEvent(staging_buffer->transfer_completed.get()));
+
+  return absl::OkStatus();
+}
+
+absl::Status GpuTransferManager::TransferBufferToDevice(
+    se::Stream* stream, int64_t size, const void* source,
+    se::DeviceMemoryBase* destination) {
+  if (destination->size() < size) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Destination allocation on device not large enough for data transfer: "
+        "%d < %d",
+        destination->size(), size));
+  }
+
+  VLOG(5) << "Transfer buffer to device: size="
+          << tsl::strings::HumanReadableNumBytes(size);
+
+  TF_ASSIGN_OR_RETURN(auto staging_buffer,
+                      GetOrCreateStagingBuffer(stream->parent()));
+
+  absl::MutexLock lock(&staging_buffer->mutex);
+  void* staging = staging_buffer->allocation->opaque();
+
+  // Transfer chunk of data from device to destination.
+  auto transfer_chunk = [&](size_t chunk_offset, size_t chunk_size) {
+    VLOG(5) << "Transfer buffer chunk to device: offset=" << chunk_offset
+            << " size=" << tsl::strings::HumanReadableNumBytes(chunk_size);
+
+    const void* src = reinterpret_cast<const char*>(source) + chunk_offset;
+    TF_RETURN_IF_ERROR(
+        stream->DoHostCallback([=] { std::memcpy(staging, src, chunk_size); }));
+
+    auto chunk = destination->GetByteSlice(chunk_offset, chunk_size);
+    return stream->Memcpy(&chunk, staging, chunk_size);
+  };
+
+  TF_RETURN_IF_ERROR(stream->WaitFor(staging_buffer->transfer_completed.get()));
+  TF_RETURN_IF_ERROR(ForEachChunk(size, kStagingBufferSize, transfer_chunk));
+  TF_RETURN_IF_ERROR(
+      stream->RecordEvent(staging_buffer->transfer_completed.get()));
+
+  return absl::OkStatus();
+}
+
+GpuTransferManager::StagingBuffer::StagingBuffer(
+    std::unique_ptr<se::MemoryAllocation> allocation,
+    std::unique_ptr<se::Event> transfer_completed)
+    : allocation(std::move(allocation)),
+      transfer_completed(std::move(transfer_completed)) {}
+
+absl::StatusOr<GpuTransferManager::StagingBuffer*>
+GpuTransferManager::GetOrCreateStagingBuffer(se::StreamExecutor* executor) {
+  absl::MutexLock lock(&mutex_);
+  if (auto it = staging_buffers_.find(executor); it != staging_buffers_.end()) {
+    return &it->second;
+  }
+
+  VLOG(3) << absl::StreamFormat(
+      "Allocate staging buffer of %s for executor %p (device_ordinal=%d)",
+      tsl::strings::HumanReadableNumBytes(kStagingBufferSize), executor,
+      executor->device_ordinal());
+
+  TF_ASSIGN_OR_RETURN(auto staging_buffer,
+                      executor->HostMemoryAllocate(kStagingBufferSize));
+
+  TF_ASSIGN_OR_RETURN(auto transfer_completed, executor->CreateEvent());
+
+  auto emplaced = staging_buffers_.try_emplace(
+      executor, std::move(staging_buffer), std::move(transfer_completed));
+  return &emplaced.first->second;
 }
 
 }  // namespace gpu
@@ -207,11 +371,21 @@ static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
           .getPointerSize(0 /* default address space */));
 }
 
+static std::unique_ptr<xla::TransferManager> CreateSYCLTransferManager() {
+  return std::make_unique<xla::gpu::GpuTransferManager>(
+      /*id=*/stream_executor::sycl::kSyclPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::spir::DataLayout())
+          .getPointerSize(0 /* default address space */));
+}
+
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
       stream_executor::cuda::kCudaPlatformId, &CreateNVPTXTransferManager);
   xla::TransferManager::RegisterTransferManager(
       stream_executor::rocm::kROCmPlatformId, &CreateAMDGPUTransferManager);
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::sycl::kSyclPlatformId, &CreateSYCLTransferManager);
   return true;
 }
+
 static bool module_initialized = InitModule();

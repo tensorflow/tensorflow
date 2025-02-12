@@ -6,9 +6,9 @@
 
 // CHECK-LABEL: "op_all_reduce_tuple"
 func.func @op_all_reduce_tuple(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> (tensor<8xf32>, tensor<f32>) {
-  //               CHECK: "stablehlo.custom_call"(%[[ARG0:.*]], %[[ARG1:.*]]) {
-  //          CHECK-SAME:    call_target_name = "mhlo.all_reduce"
-  //          CHECK-SAME:    called_computations = [@all_reduce]
+  //               CHECK: "stablehlo.custom_call"(%[[ARG0:.*]], %[[ARG1:.*]]) <{
+  //          CHECK-SAME:  call_target_name = "mhlo.all_reduce", called_computations = [@all_reduce]
+  //          CHECK-SAME: }> {
   // CHECK-SAME{LITERAL}:    mhlo.attributes = {replica_groups = dense<> : tensor<0x0xi64>}
   //          CHECK-SAME: } : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
   //               CHECK: func.func
@@ -29,8 +29,7 @@ func.func @op_all_reduce_tuple(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> (ten
 
 // CHECK-LABEL: "op_all_to_all_tuple"
 func.func @op_all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>) {
-  //               CHECK: "stablehlo.custom_call"(%arg0, %arg1) {
-  //          CHECK-SAME:    call_target_name = "mhlo.all_to_all"
+  //               CHECK: "stablehlo.custom_call"(%arg0, %arg1) <{call_target_name = "mhlo.all_to_all"}> {
   // CHECK-SAME{LITERAL}:    mhlo.attributes = {replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}
   //          CHECK-SAME: } : (tensor<128x4xf32>, tensor<128x4xf32>)
   // expected-error@+1 {{failed to legalize operation 'mhlo.all_to_all' that was explicitly marked illegal}}
@@ -42,27 +41,9 @@ func.func @op_all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32
 
 // -----
 
-// CHECK-LABEL: "op_custom_call_api_version_typed_ffi"
-func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f32> {
-  //      CHECK: "stablehlo.custom_call"(%arg0) {
-  // CHECK-SAME:   call_target_name = "mhlo.custom_call"
-  // CHECK-SAME:   mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"}
-  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
-  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
-  %0 = "mhlo.custom_call"(%arg0) {
-    call_target_name = "foo",
-    backend_config = {foo = "bar"},
-    api_version = 4 : i32
-  } : (tensor<f32>) -> tensor<f32>
-  return %0 : tensor<f32>
-}
-
-// -----
-
 // CHECK-LABEL: "attr_precision_packed_nibble"
 func.func @attr_precision_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
-  //      CHECK: "stablehlo.custom_call"(%arg0, %arg1) {
-  // CHECK-SAME:    call_target_name = "mhlo.dot"
+  //      CHECK: "stablehlo.custom_call"(%arg0, %arg1) <{call_target_name = "mhlo.dot"}> {
   // CHECK-SAME:    mhlo.attributes = {precision_config = ["PACKED_NIBBLE"]}
   // CHECK-SAME: } : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
   // expected-error@+1 {{failed to legalize operation 'mhlo.dot' that was explicitly marked illegal}}

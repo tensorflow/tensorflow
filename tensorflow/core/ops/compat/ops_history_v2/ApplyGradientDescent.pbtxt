@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ApplyGradientDescent"
   input_arg {
     name: "var"

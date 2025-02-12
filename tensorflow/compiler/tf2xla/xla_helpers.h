@@ -18,20 +18,31 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 
+#include <string>
+
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
-#include "xla/client/xla_builder.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
 #include "xla/service/computation_placer.h"
-#include "xla/translate/mhlo_to_hlo/layout_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 
 using XlaLayoutPreference = mlir::XlaLayoutPreference;
+
+inline std::string GetDeviceToHostChannelName(absl::string_view channel_key,
+                                              int index) {
+  return absl::StrCat(channel_key, "_dtoh_", index);
+}
+inline std::string GetHostToDeviceChannelName(absl::string_view channel_key,
+                                              int index) {
+  return absl::StrCat(channel_key, "_htod_", index);
+}
 
 // Helper methods for building XLA computations.
 class XlaHelpers {
@@ -57,19 +68,20 @@ class XlaHelpers {
 
   // Reshapes literal 'input' to have 'shape'. Both the original shape and
   // 'shape' must contain the same number of elements.
-  static Status ReshapeLiteral(const xla::Literal& input,
-                               absl::Span<const int64_t> shape,
-                               xla::Literal* output);
+  static absl::Status ReshapeLiteral(const xla::Literal& input,
+                                     absl::Span<const int64_t> shape,
+                                     xla::Literal* output);
 
   // Converts `indices` into a one-hot representation. `depth` is the size
   // of the new axis to add. `axis` is the position at which to add the new
   // axis. `indices_shape` is the shape of `indices`. `on_value` and
   // `off_value` represent the values to use for the on and off positions,
   // respectively.
-  static Status OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
-                       DataType index_type, const TensorShape& indices_shape,
-                       xla::XlaOp indices, xla::XlaOp on_value,
-                       xla::XlaOp off_value, xla::XlaOp* one_hot);
+  static absl::Status OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
+                             DataType index_type,
+                             const TensorShape& indices_shape,
+                             xla::XlaOp indices, xla::XlaOp on_value,
+                             xla::XlaOp off_value, xla::XlaOp* one_hot);
 
   // Certain DataTypes should use increased precision DataTypes when performing
   // reductions.  This function remaps a given DataType to a higher precision
@@ -81,8 +93,8 @@ class XlaHelpers {
   static xla::XlaOp ConvertElementType(xla::XlaOp operand,
                                        const DataType new_element_type);
 
-  typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType, bool,
-                                             XlaLayoutPreference)>
+  typedef std::function<absl::StatusOr<xla::Shape>(const TensorShape&, DataType,
+                                                   bool, XlaLayoutPreference)>
       ShapeRepresentationFn;
 };
 
@@ -190,7 +202,7 @@ struct XlaCompilationResult {
 // Takes several extra configuration objects by reference since
 // xla::ExecutableRunOptions does not take ownership; these are configured and
 // bundled into `run_options` if applicable.
-Status ResolveDeviceAssignment(
+absl::Status ResolveDeviceAssignment(
     OpKernelContext* ctx,
     const XlaCompilationResult::CollectiveInfo& collective_info,
     xla::ExecutableRunOptions& run_options,

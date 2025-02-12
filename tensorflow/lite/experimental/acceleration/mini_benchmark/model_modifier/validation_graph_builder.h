@@ -24,8 +24,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/grafter.h"
 #include "tensorflow/lite/schema/schema_generated.h"

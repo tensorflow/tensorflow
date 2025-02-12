@@ -20,9 +20,8 @@ package_group(
 # tf_py_strict_test(
 #     name = "saved_model_load_and_run_test_py",
 #     srcs = ["saved_model_load_and_run_test.py"],
+#     exec_properties = {"cpp_link.mem": "16g"},
 #     main = "saved_model_load_and_run_test.py",
-#     python_version = "PY3",
-#     srcs_version = "PY3",
 #     tags = ["requires-gpu-nvidia"],
 #     deps = [
 #         ":_pywrap_saved_model",
@@ -33,25 +32,6 @@ package_group(
 #     ],
 # )
 # copybara:uncomment_end
-
-tf_python_pybind_extension(
-    name = "_pywrap_saved_model_aot_compile",
-    srcs = ["saved_model_aot_compile_wrapper.cc"],
-    enable_stub_generation = True,
-    module_name = "_pywrap_saved_model_aot_compile",
-    pytype_srcs = [
-        "_pywrap_saved_model_aot_compile.pyi",
-    ],
-    deps = [
-        "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
-        "//tensorflow/core/tfrt/runtime",
-        "//tensorflow/core/tfrt/saved_model:saved_model_aot_compile",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
-        "@pybind11_abseil//pybind11_abseil:status_casters",
-    ],
-)
 
 cc_library(
     name = "saved_model_load_and_run",
@@ -65,6 +45,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
@@ -74,6 +55,8 @@ cc_library(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:refcount",
@@ -91,8 +74,11 @@ tf_python_pybind_extension(
     ],
     deps = [
         ":saved_model_load_and_run",
+        "//tensorflow/core/framework:tensor",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "//tensorflow/core/tfrt/saved_model:saved_model_cpu",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/strings:string_view",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:status_casters",
     ],

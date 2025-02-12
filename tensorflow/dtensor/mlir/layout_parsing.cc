@@ -20,19 +20,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
@@ -105,7 +111,7 @@ StatusOr<std::vector<std::optional<Layout>>> ExtractLayoutFromOp(
     if (!serialized_layouts) return outs;
 
     for (auto const& attr : serialized_layouts) {
-      auto attr_str = attr.cast<mlir::StringAttr>().getValue().str();
+      auto attr_str = mlir::cast<mlir::StringAttr>(attr).getValue().str();
       if (!attr_str.empty()) {
         TF_ASSIGN_OR_RETURN(auto layout, Layout::FromString(attr_str));
         outs.emplace_back(std::move(layout));
@@ -162,7 +168,7 @@ StatusOr<std::optional<Mesh>> ExtractDeviceMeshFromOp(mlir::Operation* op) {
 }
 
 StatusOr<std::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
-  if (auto op_result = operand.dyn_cast<mlir::OpResult>()) {
+  if (auto op_result = mlir::dyn_cast<mlir::OpResult>(operand)) {
     mlir::Operation* op = op_result.getDefiningOp();
     std::optional<Layout> out;
     if (auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(op)) {
@@ -185,7 +191,7 @@ StatusOr<std::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
     return out;
   }
 
-  auto block_arg = operand.dyn_cast<mlir::BlockArgument>();
+  auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(operand);
   if (!block_arg)
     return errors::Internal(
         "Operand is not either a OpResult or a BlockArgument. This should not "
@@ -293,7 +299,7 @@ StatusOr<llvm::SmallVector<Layout, 4>> ExtractElementLayoutsFromOperand(
                       operand_index, op->getName())
             .str());
 
-  auto block_arg = input_value.get().dyn_cast<mlir::BlockArgument>();
+  auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(input_value.get());
   auto array_attr = enclosing_function.getArgAttrOfType<mlir::ArrayAttr>(
       block_arg.getArgNumber(), kIteratorElementLayouts);
   if (!array_attr)
@@ -305,9 +311,10 @@ StatusOr<llvm::SmallVector<Layout, 4>> ExtractElementLayoutsFromOperand(
 
   llvm::SmallVector<Layout, 4> layouts(array_attr.size());
   for (int i = 0; i < array_attr.size(); ++i) {
-    layouts[i] = Layout::FromString(
-                     array_attr[i].cast<mlir::StringAttr>().getValue().str())
-                     .value();
+    layouts[i] =
+        Layout::FromString(
+            mlir::cast<mlir::StringAttr>(array_attr[i]).getValue().str())
+            .value();
   }
 
   return layouts;

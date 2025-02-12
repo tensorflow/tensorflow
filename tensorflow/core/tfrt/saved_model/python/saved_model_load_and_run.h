@@ -22,21 +22,24 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 
 namespace tensorflow::tfrt_stub {
 
-tensorflow::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
+absl::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags);
 
 std::vector<tensorflow::Tensor> RunConvertor(PyObject* args);
 
-tensorflow::Status Run(
+absl::Status Run(
     SavedModel* saved_model,
     const tensorflow::tfrt_stub::GraphExecutionRunOptions& run_options,
     absl::string_view name, const std::vector<tensorflow::Tensor>& inputs,

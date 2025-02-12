@@ -54,7 +54,8 @@ class LegacyStringToHashBucketOp : public OpKernel {
  private:
   int64_t num_buckets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(LegacyStringToHashBucketOp);
+  LegacyStringToHashBucketOp(const LegacyStringToHashBucketOp&) = delete;
+  void operator=(const LegacyStringToHashBucketOp&) = delete;
 };
 
 // StringToHashBucket is deprecated in favor of StringToHashBucketFast/Strong.

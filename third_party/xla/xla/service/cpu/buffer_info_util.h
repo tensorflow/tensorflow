@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,9 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_BUFFER_INFO_UTIL_H_
 #define XLA_SERVICE_CPU_BUFFER_INFO_UTIL_H_
+
+#include <cstdint>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"

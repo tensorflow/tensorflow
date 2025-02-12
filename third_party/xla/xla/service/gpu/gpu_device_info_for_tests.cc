@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,52 +15,68 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace xla {
 namespace gpu {
 
-GpuDeviceInfo TestGpuDeviceInfo::RTXA6000DeviceInfo() {
-  GpuDeviceInfo info;
-  info.compute_capability = stream_executor::CudaComputeCapability(8, 9);
-  info.threads_per_block_limit = 1024;
-  info.threads_per_warp = 32;
-  info.shared_memory_per_block = 48 * 1024;
-  info.shared_memory_per_block_optin = 99 * 1024;
-  info.shared_memory_per_core = 100 * 1024;
-  info.threads_per_core_limit = 1536;
-  info.core_count = 84;
-  info.fpus_per_core = 128;
-  info.block_dim_limit_x = 2'147'483'647;
-  info.block_dim_limit_y = 65535;
-  info.block_dim_limit_z = 65535;
-  info.memory_bandwidth = 768'096'000'000;
-  info.l2_cache_size = 6 * 1024 * 1024;
-  info.clock_rate_ghz = 1.410;
-  info.device_memory_size = 51'050'250'240;
-  return info;
+stream_executor::DeviceDescription TestGpuDeviceInfo::RTXA6000DeviceInfo(
+    stream_executor::GpuComputeCapability cc) {
+  stream_executor::DeviceDescription b;
+  b.set_gpu_compute_capability(cc);
+  b.set_threads_per_block_limit(1024);
+  b.set_threads_per_warp(32);
+  b.set_shared_memory_per_block(48 * 1024);
+  b.set_shared_memory_per_block_optin(99 * 1024);
+  b.set_shared_memory_per_core(100 * 1024);
+  b.set_threads_per_core_limit(1536);
+  b.set_core_count(84);
+  b.set_fpus_per_core(128);
+  b.set_block_dim_limit_x(2'147'483'647);
+  b.set_block_dim_limit_y(65535);
+  b.set_block_dim_limit_z(65535);
+  b.set_memory_bandwidth(768'096'000'000);
+  b.set_l2_cache_size(6 * 1024 * 1024);
+  b.set_clock_rate_ghz(1.410);
+  b.set_device_memory_size(51'050'250'240);
+  b.set_registers_per_core_limit(65536);
+  b.set_registers_per_block_limit(65536);
+  b.set_runtime_version(stream_executor::SemanticVersion{12, 4, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{12, 4, 0});
+  return b;
 }
 
-GpuDeviceInfo TestGpuDeviceInfo::AMDMI210DeviceInfo() {
-  GpuDeviceInfo info;
-  info.compute_capability = stream_executor::RocmComputeCapability("gfx90a");
-  info.threads_per_block_limit = 1024;
-  info.threads_per_warp = 64;
-  info.shared_memory_per_block = 64 * 1024;
-  info.shared_memory_per_block_optin = 0;
-  info.shared_memory_per_core = 64 * 1024;
-  info.threads_per_core_limit = 2048;
-  info.core_count = 104;
-  info.fpus_per_core = 0;
-  info.block_dim_limit_x = 2'147'483'647;
-  info.block_dim_limit_y = 2'147'483'647;
-  info.block_dim_limit_z = 2'147'483'647;
-  info.memory_bandwidth = 1'638'400'000'000;
-  info.l2_cache_size = 8 * 1024 * 1024;
-  info.clock_rate_ghz = 1.7;
-  info.device_memory_size = 67'628'957'696;
-  return info;
+stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
+  stream_executor::DeviceDescription b;
+  b.set_gpu_compute_capability(
+      stream_executor::RocmComputeCapability("gfx90a"));
+  b.set_threads_per_block_limit(1024);
+  b.set_threads_per_warp(64);
+  b.set_shared_memory_per_block(64 * 1024);
+  b.set_shared_memory_per_block_optin(0);
+  b.set_shared_memory_per_core(64 * 1024);
+  b.set_threads_per_core_limit(2048);
+  b.set_core_count(104);
+  b.set_fpus_per_core(128);
+  b.set_block_dim_limit_x(2'147'483'647);
+  b.set_block_dim_limit_y(2'147'483'647);
+  b.set_block_dim_limit_z(2'147'483'647);
+  b.set_memory_bandwidth(1'638'400'000'000);
+  b.set_l2_cache_size(8 * 1024 * 1024);
+  b.set_clock_rate_ghz(1.7);
+  b.set_device_memory_size(67'628'957'696);
+  b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+  return b;
+}
+
+stream_executor::DeviceDescription TestGpuDeviceInfo::CudaOrRocmDeviceInfo() {
+#if defined(TENSORFLOW_USE_ROCM)
+  return AMDMI210DeviceInfo();
+#else
+  return RTXA6000DeviceInfo();
+#endif  // GOOGLE_CUDA
 }
 
 }  // namespace gpu

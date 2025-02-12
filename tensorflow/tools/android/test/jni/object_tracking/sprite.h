@@ -192,7 +192,8 @@ class Sprite {
   int texture_width_;
   int texture_height_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Sprite);
+  Sprite(const Sprite&) = delete;
+  void operator=(const Sprite&) = delete;
 };
 
 }  // namespace tf_tracking

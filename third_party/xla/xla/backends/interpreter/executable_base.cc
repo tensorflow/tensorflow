@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,19 +15,39 @@ limitations under the License.
 
 #include "xla/backends/interpreter/executable_base.h"
 
-#include <type_traits>
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -38,13 +58,12 @@ InterpreterExecutableBase::InterpreterExecutableBase(
     : Executable(std::move(hlo_module), /*hlo_profile_printer_data=*/nullptr,
                  /*hlo_profile_index_map=*/nullptr) {}
 
-StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
+absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    std::vector<ExecutionInput> arguments) {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
-  const se::Platform* platform = executor->platform();
+  const se::Platform* platform = executor->GetPlatform();
 
   // Convert the ShapeTree to a ShapedBuffer. We do this so we can call
   // TransferManager methods below.
@@ -150,14 +169,15 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   return std::move(result);
 }
 
-StatusOr<ExecutionOutput>
+absl::StatusOr<ExecutionOutput>
 InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
     const Shape& shape, const HloInputOutputAliasConfig& alias_config,
     se::DeviceMemoryAllocator* allocator,
     std::vector<ExecutionInput>* arguments, se::Stream* stream) {
   TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
-          std::optional<HloInputOutputAliasConfig::Alias> alias) {
+          std::optional<HloInputOutputAliasConfig::Alias> alias)
+          -> absl::Status {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
           const MaybeOwningDeviceMemory& original_input =
@@ -170,11 +190,11 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
                 alias->ToString());
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   se::StreamExecutor* executor = stream->parent();
-  const se::Platform* platform = executor->platform();
+  const se::Platform* platform = executor->GetPlatform();
   TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager,
                       TransferManager::GetForPlatform(platform));
 
@@ -187,8 +207,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
             result.Result().on_device_shape(), result_index));
 
     if (!ShapeUtil::IndexIsValid(alias_config.shape(), result_index)) {
-      return InternalError("result_index is invalid: %s",
-                           result_index.ToString());
+      return Internal("result_index is invalid: %s", result_index.ToString());
     }
 
     std::optional<HloInputOutputAliasConfig::Alias> alias =

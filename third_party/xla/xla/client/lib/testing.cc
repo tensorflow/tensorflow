@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,19 +15,25 @@ limitations under the License.
 
 #include "xla/client/lib/testing.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/client/xla_builder.h"
+#include "xla/client/client.h"
 #include "xla/execution_options_util.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
-#include "xla/tests/test_utils.h"
-#include "xla/types.h"
-#include "xla/util.h"
-#include "tsl/platform/protobuf.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -83,7 +89,7 @@ std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(
 std::unique_ptr<GlobalData> MakeFakeDataOrDie(
     const Shape& shape, Client* client, DebugOptions* debug_opts /*=nullptr*/) {
   if (DataSizeOfShape(shape) < (1LL << 20)) {
-    StatusOr<Literal> literal_status = MakeFakeLiteral(shape);
+    absl::StatusOr<Literal> literal_status = MakeFakeLiteral(shape);
     if (!literal_status.ok()) {
       // If we got an Unimplemented error, fall back to making the fake data via
       // an on-device computation.

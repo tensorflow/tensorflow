@@ -1,0 +1,39 @@
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+TFCI_DOCKER_ENABLE=1
+TFCI_DOCKER_PULL_ENABLE=1
+TFCI_DOCKER_IMAGE="gcr.io/tensorflow-testing/tf-win2019-rbe@sha256:d3577d20dea75966faf7fd03479c71462441937df5694259109c2ee1d002a3dd"
+TFCI_BAZEL_BAZELRC_ARGS="--output_user_root=C:/t"
+TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION"
+TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=windows_x86_cpu
+TFCI_OUTPUT_DIR=build_output
+TFCI_FIND_BIN=C:/tools/msys64/usr/bin/find.exe
+
+# TODO(belitskiy): Add a link to the Dockerfile comment that explains this more.
+# Used to simulate a T:\ drive within the container, to a limited extent,
+# via a symlink.
+# Helpful since the internal CI utilizes a T:\ drive, part of which is mounted
+# to the container, and would result in C:\<path> != T:\<path> mismatches,
+# when using variables like `TFCI_OUTPUT_DIR` in `docker exec commands,
+# requiring conditional path adjustments throughout the CI scripts.
+# Note: This does not work for `docker cp` commands.
+TFCI_OUTPUT_WIN_DOCKER_DIR='C:/drive_t'
+
+# Docker on Windows doesn't support the `host` networking mode, and so
+# port-forwarding is required for the container to detect it's running on GCE.
+export IP_ADDR=$(powershell -command "(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'vEthernet (nat)').IPAddress")
+netsh interface portproxy add v4tov4 listenaddress=$IP_ADDR listenport=80 connectaddress=169.254.169.254 connectport=80
+# A local firewall rule for the container is added in
+# ci/official/utilities/setup_docker.sh.

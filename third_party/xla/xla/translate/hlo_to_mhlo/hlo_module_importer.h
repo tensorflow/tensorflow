@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,49 +16,7 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_HLO_TO_MHLO_HLO_MODULE_IMPORTER_H_
 #define XLA_TRANSLATE_HLO_TO_MHLO_HLO_MODULE_IMPORTER_H_
 
-#include <unordered_map>
-
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/status.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla {
-class HloModule;
-class HloModuleProto;
-class HloComputation;
-class HloInstruction;
-class Shape;
-
-// Importer that takes an HloModule and imports it as an MLIR module in the XLA
-// dialect. HloModuleImporter does not take ownership.
-class HloModuleImporter {
- public:
-  explicit HloModuleImporter(mlir::ModuleOp module,
-                             bool import_all_computation = false);
-
-  // Import the HloModule into the MLIR Module.
-  Status Import(const xla::HloModule& module);
-
-  // Import the HloModuleProto into the MLIR Module.
-  Status Import(const xla::HloModuleProto& module);
-
- private:
-  bool import_all_computation_;
-  mlir::SymbolTable symbol_table_;
-  mlir::Builder builder_;
-
-  // Map for tracking which MLIR function map to which HLO Computation. This
-  // tracks functions as they are imported and provides a quick lookup for
-  // functions invoked by control flow related operations (e.g. while, call).
-  std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>
-      function_map_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 
 #endif  // XLA_TRANSLATE_HLO_TO_MHLO_HLO_MODULE_IMPORTER_H_

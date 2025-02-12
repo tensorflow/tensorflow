@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_COMMON_H_
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_COMMON_H_
 
+#include <cstdint>
 #include <optional>
 
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -187,14 +188,16 @@ std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems);
+                                        ElementsAttr axes_elems,
+                                        StringRef nan_mode = "PROPAGATE");
 
 // Lowers ReduceMax to a sequence of TOSA ops.
 std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems);
+                                        ElementsAttr axes_elems,
+                                        StringRef nan_mode = "PROPAGATE");
 
 // Lowers ReduceProd to a sequence of TOSA ops.
 std::optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
@@ -266,13 +269,11 @@ std::optional<Value> convertTFConv2DCommon(
 
 // Lowers TensorFlow and TensorFlow Lite Conv3D to a sequence of TOSA
 // quantization ops.
-std::optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
-                                         Operation* op, ShapedType output_type,
-                                         Value input, Value filter, Value bias,
-                                         ArrayRef<int64_t> strides,
-                                         ArrayRef<int64_t> dilations,
-                                         StringRef padding_ref,
-                                         StringRef data_format_ref);
+std::optional<Value> convertConv3DCommon(
+    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
+    Value input, Value filter, Value bias, DenseI64ArrayAttr pads,
+    DenseI64ArrayAttr strides, DenseI64ArrayAttr dilations, TypeAttr acc_type,
+    StringRef data_format_ref);
 
 // Preprocess TensorFlow Conv3D attributes prior to calling
 // `convertConv3DCommon`
@@ -297,10 +298,6 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
                                      Value result_value, Value indices_value,
                                      Value on_value, Value off_value,
                                      int32_t depth, int32_t axis);
-
-// Lowers 32-bit floating sin operator to a sequence of TOSA ops.
-std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
-                                  Value input, ShapedType output_type);
 
 // Lowers Sign operator to a sequence of TOSA ops.
 std::optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,

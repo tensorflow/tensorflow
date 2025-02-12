@@ -13,7 +13,6 @@ py_strict_library(
         "__init__.py",
         "jit.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":xla",
         "//tensorflow/core:protos_all_py",
@@ -53,7 +52,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "xla",
     srcs = ["xla.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/compiler/jit:xla_ops_py",
         "//tensorflow/compiler/jit/ops:xla_ops_grad",
@@ -71,8 +69,8 @@ py_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -87,7 +85,6 @@ cuda_py_strict_test(
     deps = [
         ":xla",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
@@ -99,7 +96,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/summary:__init__",
+        "//tensorflow/python/summary:summary_py",
         "//tensorflow/python/tpu:tpu_feed",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -108,7 +105,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "jit_compile_test",
     srcs = ["tests/jit_compile_test.py"],
-    python_version = "PY3",
     tags = [
         "no_mac",
         "no_windows",
@@ -133,7 +129,6 @@ tf_py_strict_test(
     env = {
         "TF_XLA_FLAGS": "--tf_xla_use_device_api --tf_xla_enable_xla_devices --tf_xla_enable_device_api_for_gpu",
     },
-    python_version = "PY3",
     tags = [
         "config-cuda-only",
         "gpu",
@@ -154,12 +149,37 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "pjrt_autoclustering_test",
+    srcs = ["tests/pjrt_autoclustering_test.py"],
+    env = {
+        "TF_XLA_FLAGS": "--tf_xla_use_device_api --tf_xla_enable_xla_devices --tf_xla_enable_device_api_for_gpu --tf_xla_auto_jit=2 --tf_xla_enable_lazy_compilation=false --tf_xla_min_cluster_size=0",
+    },
+    tags = [
+        "config-cuda-only",
+        "gpu",
+        "no_oss",
+        "requires-gpu-nvidia",
+        "xla",
+    ],
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:math_ops",
+    ],
+)
+
+tf_py_strict_test(
     name = "pjrt_compile_virtual_device_test",
     srcs = ["pjrt_compile_virtual_device_test.py"],
     env = {
         "TF_XLA_FLAGS": "--tf_xla_use_device_api --tf_xla_enable_xla_devices --tf_xla_enable_device_api_for_gpu",
     },
-    python_version = "PY3",
     tags = [
         "config-cuda-only",
         "gpu",

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RiscScatter"
   input_arg {
     name: "indices"

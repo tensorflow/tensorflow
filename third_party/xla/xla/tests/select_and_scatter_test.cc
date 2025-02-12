@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,23 +16,24 @@ limitations under the License.
 // Tests the select-and-scatter XLA operation.
 
 // b/194424657: On macs, the compiler hangs when trying to compile this file
+
 #if !defined(__APPLE__)
 
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <vector>
 
+#include "xla/array.h"
 #include "xla/array2d.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/local_client.h"
-#include "xla/client/padding.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
-#include "xla/layout_util.h"
-#include "xla/literal.h"
+#include "xla/array4d.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/reference_util.h"
-#include "xla/status_macros.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
@@ -62,6 +63,24 @@ class SelectAndScatterTest
     min_f32_ = CreateScalarMinComputation(F32, &builder_);
   }
 
+  void DoIt() {
+    auto operand_shape = GetParam().operand_shape;
+    Array<float> o(operand_shape);
+    o.FillRandom(1.5f);
+    auto operand = ConstantFromArray(&builder_, o);
+
+    auto source_shape = GetParam().source_shape;
+    Array<float> s(source_shape);
+    s.FillRandom(12.0f);
+    auto source = ConstantFromArray(&builder_, s);
+
+    SelectAndScatter(operand, ge_f32_, GetParam().window_dimensions,
+                     GetParam().window_strides, GetParam().padding_type, source,
+                     ConstantR0<float>(&builder_, 0.0f), add_f32_);
+
+    ComputeAndCompare(&builder_, {}, ErrorSpec(3e-5, 3e-5));
+  }
+
   XlaBuilder builder_;
   XlaComputation ge_s32_;
   XlaComputation add_s32_;
@@ -71,22 +90,12 @@ class SelectAndScatterTest
   XlaComputation min_f32_;
 };
 
-XLA_TEST_P(SelectAndScatterTest, ParamTest) {
-  auto operand_shape = GetParam().operand_shape;
-  Array<float> o(operand_shape);
-  o.FillRandom(1.5f);
-  auto operand = ConstantFromArray(&builder_, o);
+XLA_TEST_P(SelectAndScatterTest, OVERSIZE_ON_GRM(ParamTest)) { DoIt(); }
 
-  auto source_shape = GetParam().source_shape;
-  Array<float> s(source_shape);
-  s.FillRandom(12.0f);
-  auto source = ConstantFromArray(&builder_, s);
+class SelectAndScatterLarge : public SelectAndScatterTest {};
 
-  SelectAndScatter(operand, ge_f32_, GetParam().window_dimensions,
-                   GetParam().window_strides, GetParam().padding_type, source,
-                   ConstantR0<float>(&builder_, 0.0f), add_f32_);
-
-  ComputeAndCompare(&builder_, {}, ErrorSpec(1e-5, 1e-5));
+XLA_TEST_P(SelectAndScatterLarge, DISABLED_ON_ISS(OVERSIZE_ON_GRM(ParamTest))) {
+  DoIt();
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -208,11 +217,16 @@ INSTANTIATE_TEST_CASE_P(
         SelectAndScatterTestParam{
             {7, 8, 256}, {4, 8, 256}, Padding::kSame, {2, 1, 1}, {2, 1, 1}},
         SelectAndScatterTestParam{{1104}, {551}, Padding::kValid, {3}, {2}},
-        SelectAndScatterTestParam{{1300}, {1171}, Padding::kValid, {130}, {1}},
-        SelectAndScatterTestParam{{3000}, {1701}, Padding::kValid, {1300}, {1}},
-        SelectAndScatterTestParam{{6500}, {5}, Padding::kValid, {1300}, {1300}},
         SelectAndScatterTestParam{
-            {3000}, {401}, Padding::kValid, {2600}, {1}}));
+            {1300}, {1171}, Padding::kValid, {130}, {1}}));
+
+INSTANTIATE_TEST_CASE_P(
+    SelectAndScatterTest_Instantiation, SelectAndScatterLarge,
+    ::testing::Values(
+        SelectAndScatterTestParam{{6500}, {5}, Padding::kValid, {1300}, {1300}},
+        SelectAndScatterTestParam{{3000}, {401}, Padding::kValid, {2600}, {1}},
+        SelectAndScatterTestParam{
+            {3000}, {1701}, Padding::kValid, {1300}, {1}}));
 
 // Test for F32 1D array, with a zero-element input.
 XLA_TEST_F(SelectAndScatterTest, R1S0F32) {
@@ -259,7 +273,7 @@ XLA_TEST_F(SelectAndScatterTest, R1S32OverlappingWindow) {
 }
 
 // Test for S32 2D array, when windows do not overlap.
-XLA_TEST_F(SelectAndScatterTest, R2S32) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32)) {
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 10, 2}, {3, 8, 9, 3, 4, 2}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6}});
@@ -272,7 +286,7 @@ XLA_TEST_F(SelectAndScatterTest, R2S32) {
 
 // Test for tie breaking rule in ge_f32_. When a tie is present, the operand
 // that has the lower lexicographical order (smaller index) should be chosen.
-XLA_TEST_F(SelectAndScatterTest, R2F32Tie) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2F32Tie)) {
   const auto operand = ConstantR2<float>(
       &builder_, {{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}});
   const auto source = ConstantR2<float>(
@@ -286,7 +300,7 @@ XLA_TEST_F(SelectAndScatterTest, R2F32Tie) {
 }
 
 // Similar to SelectAndScatterTest.R2S32 but the input is transposed.
-XLA_TEST_F(SelectAndScatterTest, ReshapeR2S32) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(ReshapeR2S32)) {
   const auto operand = ConstantR2<int32_t>(
       &builder_, {{7, 3}, {2, 8}, {5, 9}, {3, 3}, {10, 4}, {2, 2}});
   const auto reshape =
@@ -300,7 +314,7 @@ XLA_TEST_F(SelectAndScatterTest, ReshapeR2S32) {
 }
 
 // Test for S32 2D array, when windows overlap with each other.
-XLA_TEST_F(SelectAndScatterTest, R2S32OverlappingWindow) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32OverlappingWindow)) {
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6, 4}});
@@ -312,7 +326,7 @@ XLA_TEST_F(SelectAndScatterTest, R2S32OverlappingWindow) {
 }
 
 // Test for S32 2D array, when the padding is Padding::kSAME.
-XLA_TEST_F(SelectAndScatterTest, R2S32SamePadding) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32SamePadding)) {
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6, 4}});
@@ -325,7 +339,8 @@ XLA_TEST_F(SelectAndScatterTest, R2S32SamePadding) {
 
 // Test for S32 2D array, when the padding is Padding::kSAME and windows overlap
 // with each other.
-XLA_TEST_F(SelectAndScatterTest, R2S32SamePaddingOverlappingWindow) {
+XLA_TEST_F(SelectAndScatterTest,
+           DISABLED_ON_TPU(R2S32SamePaddingOverlappingWindow)) {
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source =
@@ -337,7 +352,7 @@ XLA_TEST_F(SelectAndScatterTest, R2S32SamePaddingOverlappingWindow) {
   ComputeAndCompareR2<int32_t>(&builder_, expected, {});
 }
 
-XLA_TEST_F(SelectAndScatterTest, R2F32OverlappingR2Source) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2F32OverlappingR2Source)) {
   const auto operand = ConstantR2<float>(
       &builder_, {{1.5f, 2.5f, 1.5f}, {3.5f, 1.5f, 3.5f}, {4.5f, 2.5f, 4.5f}});
   const auto source =

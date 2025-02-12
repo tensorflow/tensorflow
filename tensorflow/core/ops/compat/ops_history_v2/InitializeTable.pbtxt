@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "InitializeTable"
   input_arg {
     name: "table_handle"

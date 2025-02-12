@@ -5,7 +5,6 @@ licenses(["notice"])  # MIT
 py_binary(
     name = "get_symbols",
     srcs = ["get_symbols.py"],
-    visibility = ["//visibility:public"],
     deps = [
         "@bazel_tools//tools/python/runfiles",
         "@implib_so//:implib_gen_lib",
@@ -15,7 +14,6 @@ py_binary(
 py_binary(
     name = "make_stub",
     srcs = ["make_stub.py"],
-    visibility = ["//visibility:public"],
     deps = [
         "@bazel_tools//tools/python/runfiles",
         "@implib_so//:implib_gen_lib",

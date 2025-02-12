@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/profiling/telemetry/telemetry.h"
 
+#include <cstdint>
 #include <string>
 
 #include <gmock/gmock.h>

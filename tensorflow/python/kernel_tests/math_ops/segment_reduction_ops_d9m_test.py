@@ -89,9 +89,6 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
             result = op(data, segment_ids, num_segments)
             self.evaluate(result)
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm,
-      skip_message="No ROCm support for complex types in segment reduction ops")
   @test_util.run_cuda_only
   def testUnsortedOpsComplex(self):
     for op in [

@@ -85,9 +85,9 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
-    gtl::InlinedVector<TensorValue, 4> inputs;
+    absl::InlinedVector<TensorValue, 4> inputs;
 
-    Status status;
+    absl::Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                                 cpu_allocator(), save,
                                                 TF_GRAPH_DEF_VERSION, &status));
@@ -389,9 +389,9 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
-    gtl::InlinedVector<TensorValue, 4> inputs;
+    absl::InlinedVector<TensorValue, 4> inputs;
 
-    Status status;
+    absl::Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                                 cpu_allocator(), save,
                                                 TF_GRAPH_DEF_VERSION, &status));

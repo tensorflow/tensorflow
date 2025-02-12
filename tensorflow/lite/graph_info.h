@@ -92,9 +92,11 @@ struct NodeSubset {
   std::vector<int> output_tensors;
 };
 
+// LINT.IfChange
 // Node edge.second depends on node edge.first.
 using ControlEdge = std::pair<int32_t, int32_t>;
 using ControlEdges = std::vector<ControlEdge>;
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/utils/control_edges.h)
 
 // Partitions a list of node indices `nodes_to_partition` into node subsets.
 // Each node subset is in dependency order internally (i.e. all members of the
@@ -122,11 +124,11 @@ using ControlEdges = std::vector<ControlEdge>;
 // (Example: with `greedily`, `control_edges.empty()`, and `nodes_to_partition
 // == {2, 3}`, the graph
 //
-//                    /------------\
+//                    ▼------------▼
 //                    |            v
 // 0 --> 1 --> 2* --> 3*     4 --> 5
 //       |                   ^
-//       \-------------------/
+//       ▲-------------------▲
 //
 // will be partitioned as {{0, 1, 4}, {2, 3}, {5}}, since data dependencies
 // (notated '-->') allow for execution of 4 immediately after 1.
@@ -134,11 +136,11 @@ using ControlEdges = std::vector<ControlEdge>;
 // With an additional control dependency `control_edges == {{3, 4}}` (notated
 // '==>'), execution of node 4 requires prior execution of node 3:
 //
-//                    /------------\
+//                    ▼------------▼
 //                    |            v
 // 0 --> 1 --> 2* --> 3* ==> 4 --> 5
 //       |                   ^
-//       \-------------------/
+//       ▲-------------------▲
 //
 // and the partitioning will be {{0, 1}, {2, 3}, {4, 5}}.)
 //
@@ -152,7 +154,8 @@ using ControlEdges = std::vector<ControlEdge>;
 TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
     const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
     std::vector<NodeSubset>* node_subsets, bool greedily,
-    const ControlEdges* control_edges = nullptr);
+    const ControlEdges* control_edges = nullptr,
+    bool disable_node_fusion = false);
 
 }  // namespace tflite
 

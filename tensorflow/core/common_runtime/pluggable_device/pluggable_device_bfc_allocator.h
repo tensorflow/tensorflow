@@ -16,14 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_BFC_ALLOCATOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_BFC_ALLOCATOR_H_
 
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <vector>
+#include <cstddef>
 
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
-#include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -33,16 +29,17 @@ namespace tensorflow {
 // coalescing' algorithm
 class PluggableDeviceBFCAllocator : public BFCAllocator {
  public:
-  PluggableDeviceBFCAllocator(DeviceMemAllocator* sub_allocator,
+  PluggableDeviceBFCAllocator(tsl::SubAllocator* sub_allocator,
                               size_t total_memory, const string& name,
                               bool force_memory_growth_requested);
-  PluggableDeviceBFCAllocator(DeviceMemAllocator* sub_allocator,
+  PluggableDeviceBFCAllocator(tsl::SubAllocator* sub_allocator,
                               size_t total_memory,
                               const GPUOptions& gpu_options, const string& name,
                               bool force_memory_growth_requested);
   ~PluggableDeviceBFCAllocator() override = default;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PluggableDeviceBFCAllocator);
+  PluggableDeviceBFCAllocator(const PluggableDeviceBFCAllocator&) = delete;
+  void operator=(const PluggableDeviceBFCAllocator&) = delete;
 
  private:
   static bool GetAllowGrowthValue(const GPUOptions& gpu_options,

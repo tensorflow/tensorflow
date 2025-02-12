@@ -26,47 +26,50 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 // Include the relevant TensorFlow attrs/types directly in the TFG namespace.
-using mlir::tf_type::Bfloat16RefType;      // NOLINT
-using mlir::tf_type::BoolRefType;          // NOLINT
-using mlir::tf_type::Complex128RefType;    // NOLINT
-using mlir::tf_type::Complex64RefType;     // NOLINT
-using mlir::tf_type::ControlType;          // NOLINT
-using mlir::tf_type::DoubleRefType;        // NOLINT
-using mlir::tf_type::Float8E4M3FNRefType;  // NOLINT
-using mlir::tf_type::Float8E5M2RefType;    // NOLINT
-using mlir::tf_type::FloatRefType;         // NOLINT
-using mlir::tf_type::FuncAttr;             // NOLINT
-using mlir::tf_type::HalfRefType;          // NOLINT
-using mlir::tf_type::Int16RefType;         // NOLINT
-using mlir::tf_type::Int32RefType;         // NOLINT
-using mlir::tf_type::Int4RefType;          // NOLINT
-using mlir::tf_type::Int64RefType;         // NOLINT
-using mlir::tf_type::Int8RefType;          // NOLINT
-using mlir::tf_type::OpaqueTensorType;     // NOLINT
-using mlir::tf_type::PlaceholderAttr;      // NOLINT
-using mlir::tf_type::Qint16RefType;        // NOLINT
-using mlir::tf_type::Qint16Type;           // NOLINT
-using mlir::tf_type::Qint32RefType;        // NOLINT
-using mlir::tf_type::Qint32Type;           // NOLINT
-using mlir::tf_type::Qint8RefType;         // NOLINT
-using mlir::tf_type::Qint8Type;            // NOLINT
-using mlir::tf_type::Quint16RefType;       // NOLINT
-using mlir::tf_type::Quint16Type;          // NOLINT
-using mlir::tf_type::Quint8RefType;        // NOLINT
-using mlir::tf_type::Quint8Type;           // NOLINT
-using mlir::tf_type::ResourceRefType;      // NOLINT
-using mlir::tf_type::ResourceType;         // NOLINT
-using mlir::tf_type::ShapeAttr;            // NOLINT
-using mlir::tf_type::StringRefType;        // NOLINT
-using mlir::tf_type::StringType;           // NOLINT
-using mlir::tf_type::Uint16RefType;        // NOLINT
-using mlir::tf_type::Uint32RefType;        // NOLINT
-using mlir::tf_type::Uint4RefType;         // NOLINT
-using mlir::tf_type::Uint64RefType;        // NOLINT
-using mlir::tf_type::Uint8RefType;         // NOLINT
-using mlir::tf_type::VariantRefType;       // NOLINT
-using mlir::tf_type::VariantType;          // NOLINT
-using mlir::tf_type::VersionAttr;          // NOLINT
+using mlir::tf_type::Bfloat16RefType;           // NOLINT
+using mlir::tf_type::BoolRefType;               // NOLINT
+using mlir::tf_type::Complex128RefType;         // NOLINT
+using mlir::tf_type::Complex64RefType;          // NOLINT
+using mlir::tf_type::ControlType;               // NOLINT
+using mlir::tf_type::DoubleRefType;             // NOLINT
+using mlir::tf_type::Float8E4M3B11FNUZRefType;  // NOLINT
+using mlir::tf_type::Float8E4M3FNRefType;       // NOLINT
+using mlir::tf_type::Float8E4M3FNUZRefType;     // NOLINT
+using mlir::tf_type::Float8E5M2FNUZRefType;     // NOLINT
+using mlir::tf_type::Float8E5M2RefType;         // NOLINT
+using mlir::tf_type::FloatRefType;              // NOLINT
+using mlir::tf_type::FuncAttr;                  // NOLINT
+using mlir::tf_type::HalfRefType;               // NOLINT
+using mlir::tf_type::Int16RefType;              // NOLINT
+using mlir::tf_type::Int32RefType;              // NOLINT
+using mlir::tf_type::Int4RefType;               // NOLINT
+using mlir::tf_type::Int64RefType;              // NOLINT
+using mlir::tf_type::Int8RefType;               // NOLINT
+using mlir::tf_type::OpaqueTensorType;          // NOLINT
+using mlir::tf_type::PlaceholderAttr;           // NOLINT
+using mlir::tf_type::Qint16RefType;             // NOLINT
+using mlir::tf_type::Qint16Type;                // NOLINT
+using mlir::tf_type::Qint32RefType;             // NOLINT
+using mlir::tf_type::Qint32Type;                // NOLINT
+using mlir::tf_type::Qint8RefType;              // NOLINT
+using mlir::tf_type::Qint8Type;                 // NOLINT
+using mlir::tf_type::Quint16RefType;            // NOLINT
+using mlir::tf_type::Quint16Type;               // NOLINT
+using mlir::tf_type::Quint8RefType;             // NOLINT
+using mlir::tf_type::Quint8Type;                // NOLINT
+using mlir::tf_type::ResourceRefType;           // NOLINT
+using mlir::tf_type::ResourceType;              // NOLINT
+using mlir::tf_type::ShapeAttr;                 // NOLINT
+using mlir::tf_type::StringRefType;             // NOLINT
+using mlir::tf_type::StringType;                // NOLINT
+using mlir::tf_type::Uint16RefType;             // NOLINT
+using mlir::tf_type::Uint32RefType;             // NOLINT
+using mlir::tf_type::Uint4RefType;              // NOLINT
+using mlir::tf_type::Uint64RefType;             // NOLINT
+using mlir::tf_type::Uint8RefType;              // NOLINT
+using mlir::tf_type::VariantRefType;            // NOLINT
+using mlir::tf_type::VariantType;               // NOLINT
+using mlir::tf_type::VersionAttr;               // NOLINT
 
 class TFGraphOpAsmInterface;
 class TFOp;
@@ -74,7 +77,7 @@ class TFOp;
 }  // namespace mlir
 
 // Dialect main class is defined in ODS, we include it here.
-#include "tensorflow/core/ir/dialect.h.inc"
+#include "tensorflow/core/ir/dialect.h.inc"  // IWYU pragma: export
 // ODS-generated attribute classes.
 #define GET_ATTRDEF_CLASSES
 #include "tensorflow/core/ir/attributes.h.inc"

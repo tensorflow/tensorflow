@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -29,14 +31,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_pass_pipeline.h"
-#include "xla/service/tuple_simplifier.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -652,9 +652,9 @@ std::vector<bool> TupleElementsUsedInCond(HloInstruction* loop) {
 
 // Adds copies to returned values to keep RewriteLoopWithConcatGroups simple:
 // the copies do not have other users and only appear once in the root tuple.
-Status AddCopiesToRoot(HloComputation* body,
-                       absl::Span<HloInstruction* const> param_gtes,
-                       ConcatGroups* groups) {
+absl::Status AddCopiesToRoot(HloComputation* body,
+                             absl::Span<HloInstruction* const> param_gtes,
+                             ConcatGroups* groups) {
   auto root = body->root_instruction();
   CHECK_EQ(root->opcode(), HloOpcode::kTuple);
   std::vector<HloInstruction*> copies(root->operand_count(), nullptr);
@@ -688,10 +688,10 @@ Status AddCopiesToRoot(HloComputation* body,
                               param_group.inserted_concat_dim))
               .first);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RemoveCopiesFromRoot(HloComputation* body) {
+absl::Status RemoveCopiesFromRoot(HloComputation* body) {
   auto root = body->root_instruction();
   CHECK_EQ(root->opcode(), HloOpcode::kTuple);
   for (int64_t i = 0; i < root->operand_count(); ++i) {
@@ -700,12 +700,12 @@ Status RemoveCopiesFromRoot(HloComputation* body) {
       TF_RETURN_IF_ERROR(root->ReplaceOperandWith(i, copy->mutable_operand(0)));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RewriteLoopWithConcatGroups(HloInstruction* loop,
-                                   absl::Span<HloInstruction* const> param_gtes,
-                                   ConcatGroups& groups) {
+absl::Status RewriteLoopWithConcatGroups(
+    HloInstruction* loop, absl::Span<HloInstruction* const> param_gtes,
+    ConcatGroups& groups) {
   VLOG(1) << "RewriteLoopWithConcatGroups with " << groups.Groups().size()
           << " groups.";
   // For simplicity, for each group, we rewrite the first element into full
@@ -941,11 +941,11 @@ Status RewriteLoopWithConcatGroups(HloInstruction* loop,
     TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(slice->mutable_operand(0)));
     TF_RETURN_IF_ERROR(body->RemoveInstruction(slice));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<bool> RunOnLoop(HloInstruction* loop,
-                         int64_t min_operand_count_to_optimize) {
+absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
+                               int64_t min_operand_count_to_optimize) {
   auto body = loop->while_body();
   auto param = body->parameter_instruction(0);
   auto root = body->root_instruction();
@@ -1019,7 +1019,7 @@ StatusOr<bool> RunOnLoop(HloInstruction* loop,
 
 }  // namespace
 
-StatusOr<bool> WhileLoopConcatCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopConcatCodeMotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

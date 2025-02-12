@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -61,7 +61,7 @@ bool ComputationIsEmptyWithArrayRoot(const HloComputation* computation) {
   return empty_operations && contains_array;
 }
 
-StatusOr<bool> TryRemoveUnusedConditionalOperands(
+absl::StatusOr<bool> TryRemoveUnusedConditionalOperands(
     HloComputation* computation,
     const absl::flat_hash_set<HloInstruction*>& calling_conditionals) {
   HloInstruction* param = computation->parameter_instruction(0);
@@ -439,7 +439,7 @@ bool MergeDuplicateTupleElements(HloInstruction* conditional) {
 // inline that computation.
 //
 // Returns true if it made a change to the graph.
-StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
+absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
     HloInstruction* conditional) {
   CHECK_EQ(conditional->opcode(), HloOpcode::kConditional);
   // Do not remove conditionals that contain side-effecting instructions or
@@ -601,7 +601,7 @@ static bool InstructionCallsChannelInstructions(
   return false;
 }
 
-StatusOr<bool> ConditionalSimplifier::Run(
+absl::StatusOr<bool> ConditionalSimplifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(

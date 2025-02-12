@@ -107,6 +107,7 @@ TEST(Types, TestTypeNames) {
   EXPECT_EQ(type_name(kTfLiteFloat64), "FLOAT64");
   EXPECT_EQ(type_name(kTfLiteFloat32), "FLOAT32");
   EXPECT_EQ(type_name(kTfLiteFloat16), "FLOAT16");
+  EXPECT_EQ(type_name(kTfLiteBFloat16), "BFLOAT16");
   EXPECT_EQ(type_name(kTfLiteInt16), "INT16");
   EXPECT_EQ(type_name(kTfLiteUInt16), "UINT16");
   EXPECT_EQ(type_name(kTfLiteInt32), "INT32");
@@ -222,24 +223,6 @@ TEST(TensorCopy, TensorCopy_INVALID) {
   src.bytes = 10;
   dst.bytes = 12;
   EXPECT_EQ(kTfLiteError, TfLiteTensorCopy(&src, &dst));
-}
-
-TEST(TestTfLiteOpaqueDelegate, CreateAndDelete) {
-  std::unique_ptr<TfLiteOpaqueDelegateBuilder> opaque_delegate_builder(
-      new TfLiteOpaqueDelegateBuilder{});
-
-  TfLiteOpaqueDelegate* opaque_delegate =
-      TfLiteOpaqueDelegateCreate(opaque_delegate_builder.get());
-
-  TfLiteOpaqueDelegateDelete(opaque_delegate);
-}
-
-TEST(TestTfLiteOpaqueDelegate, CallTfLiteOpaqueDelegateCreateWithNull) {
-  EXPECT_EQ(nullptr, TfLiteOpaqueDelegateCreate(nullptr));
-}
-
-TEST(TestTfLiteOpaqueDelegate, CallTfLiteOpaqueDelegateDeleteWithNull) {
-  TfLiteOpaqueDelegateDelete(nullptr);
 }
 
 TEST(TestTensorRealloc, TensorReallocMoreBytesSucceeds) {
@@ -389,44 +372,270 @@ TEST(TestTensorRealloc, TensorReallocLargeBytesFails) {
   free(tensor);
 }
 
-TEST(TestTfLiteOpaqueDelegate, GetData_WellFormedOpaqueDelegate) {
-  int delegate_data = 42;
-  TfLiteOpaqueDelegateBuilder builder{};
-  builder.data = &delegate_data;
-
-  TfLiteOpaqueDelegate* opaque_delegate = TfLiteOpaqueDelegateCreate(&builder);
-
-  EXPECT_EQ(&delegate_data, TfLiteOpaqueDelegateGetData(opaque_delegate));
-
-  TfLiteOpaqueDelegateDelete(opaque_delegate);
+TEST(TestTfLiteTensorGetAllocationStrategy, MemNoneIsAllocatedWithNone) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteMemNone;
+  EXPECT_EQ(TfLiteTensorGetAllocationStrategy(&t),
+            kTfLiteAllocationStrategyNone);
 }
 
-TEST(TestTfLiteOpaqueDelegate,
-     GetData_NotConstructedWithTfLiteOpaqueDelegateCreate) {
-  // Given a non-opaque delegate, that was created with 'TfLiteDelegateCreate'
-  // and has its 'data_' field set manually.
-  int delegate_data = 42;
-  TfLiteDelegate non_opaque_delegate = TfLiteDelegateCreate();
-  non_opaque_delegate.data_ = &delegate_data;
-  // The following cast is safe only because this code is part of the
-  // TF Lite test suite.  Apps using TF Lite should not rely on
-  // 'TfLiteOpaqueDelegate' and 'TfLiteDelegate' being equivalent.
-  auto* opaque_delegate =
-      reinterpret_cast<TfLiteOpaqueDelegate*>(&non_opaque_delegate);
-
-  // The accessor returns '&delegate_data', because the
-  // 'opaque_delegate_builder' field inside the delegate was not set so it falls
-  // back to returning the data_ field of TfLiteDelegate.
-  EXPECT_EQ(&delegate_data, TfLiteOpaqueDelegateGetData(opaque_delegate));
+TEST(TestTfLiteTensorGetAllocationStrategy, MmapRoIsAllocatedWithMMap) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteMmapRo;
+  EXPECT_EQ(TfLiteTensorGetAllocationStrategy(&t),
+            kTfLiteAllocationStrategyMMap);
 }
 
-TEST(TestTfLiteOpaqueDelegate, GetData_NoDataSetViaOpaqueDelegateBuilder) {
-  TfLiteOpaqueDelegateBuilder builder{};
-  TfLiteOpaqueDelegate* opaque_delegate = TfLiteOpaqueDelegateCreate(&builder);
-  // The accessor returns 'nullptr', because the 'data' field inside the opaque
-  // delegate builder was not set.
-  EXPECT_EQ(nullptr, TfLiteOpaqueDelegateGetData(opaque_delegate));
-  TfLiteOpaqueDelegateDelete(opaque_delegate);
+TEST(TestTfLiteTensorGetAllocationStrategy, ArenaRwIsAllocatedWithArena) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteArenaRw;
+  EXPECT_EQ(TfLiteTensorGetAllocationStrategy(&t),
+            kTfLiteAllocationStrategyArena);
+}
+
+TEST(TestTfLiteTensorGetAllocationStrategy,
+     ArenaRwPersistentIsAllocatedWithArena) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteArenaRwPersistent;
+  EXPECT_EQ(TfLiteTensorGetAllocationStrategy(&t),
+            kTfLiteAllocationStrategyArena);
+}
+
+TEST(TestTfLiteTensorGetAllocationStrategy, DynamicIsAllocatedWithMalloc) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteDynamic;
+  EXPECT_EQ(TfLiteTensorGetAllocationStrategy(&t),
+            kTfLiteAllocationStrategyMalloc);
+}
+
+TEST(TestTfLiteTensorGetAllocationStrategy,
+     PersistentRoIsAllocatedWithUnknown) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLitePersistentRo;
+  EXPECT_EQ(TfLiteTensorGetAllocationStrategy(&t),
+            kTfLiteAllocationStrategyUnknown);
+}
+
+TEST(TestTfLiteTensorGetAllocationStrategy, CustomIsAllocatedWithUnknown) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteCustom;
+  EXPECT_EQ(TfLiteTensorGetAllocationStrategy(&t),
+            kTfLiteAllocationStrategyUnknown);
+}
+
+TEST(TestTfLiteTensorGetAllocationStrategy, VariantObjectIsAllocatedWithNew) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteVariantObject;
+  EXPECT_EQ(TfLiteTensorGetAllocationStrategy(&t),
+            kTfLiteAllocationStrategyNew);
+}
+
+TEST(TestTfLiteTensorGetBufferAddressStability,
+     MemNoneBufferIsStableAcrossRuns) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteMemNone;
+  EXPECT_EQ(TfLiteTensorGetBufferAddressStability(&t),
+            kTfLiteRunStabilityAcrossRuns);
+}
+
+TEST(TestTfLiteTensorGetBufferAddressStability,
+     MmapRoBufferIsStableAcrossRuns) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteMmapRo;
+  EXPECT_EQ(TfLiteTensorGetBufferAddressStability(&t),
+            kTfLiteRunStabilityAcrossRuns);
+}
+
+TEST(TestTfLiteTensorGetBufferAddressStability, ArenaRwBufferIsStableUnstable) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteArenaRw;
+  EXPECT_EQ(TfLiteTensorGetBufferAddressStability(&t),
+            kTfLiteRunStabilityUnstable);
+}
+
+TEST(TestTfLiteTensorGetBufferAddressStability,
+     ArenaRwPersistentBufferIsStableUnstable) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteArenaRwPersistent;
+  EXPECT_EQ(TfLiteTensorGetBufferAddressStability(&t),
+            kTfLiteRunStabilityUnstable);
+}
+
+TEST(TestTfLiteTensorGetBufferAddressStability,
+     DynamicBufferIsStableSingleRun) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteDynamic;
+  EXPECT_EQ(TfLiteTensorGetBufferAddressStability(&t),
+            kTfLiteRunStabilitySingleRun);
+}
+
+TEST(TestTfLiteTensorGetBufferAddressStability,
+     PersistentRoBufferIsStableSingleRun) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLitePersistentRo;
+  EXPECT_EQ(TfLiteTensorGetBufferAddressStability(&t),
+            kTfLiteRunStabilitySingleRun);
+}
+
+TEST(TestTfLiteTensorGetBufferAddressStability, CustomBufferIsStableUnknown) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteCustom;
+  EXPECT_EQ(TfLiteTensorGetBufferAddressStability(&t),
+            kTfLiteRunStabilityUnknown);
+}
+
+TEST(TestTfLiteTensorGetBufferAddressStability,
+     VariantObjectBufferIsStableAcrossRuns) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteVariantObject;
+  EXPECT_EQ(TfLiteTensorGetBufferAddressStability(&t),
+            kTfLiteRunStabilityAcrossRuns);
+}
+
+TEST(TestTfLiteTensorGetDataStability, MemNoneDataIsStableAcrossRuns) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteMemNone;
+  EXPECT_EQ(TfLiteTensorGetDataStability(&t), kTfLiteRunStabilityAcrossRuns);
+}
+
+TEST(TestTfLiteTensorGetDataStability, MmapRoDataIsStableAcrossRuns) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteMmapRo;
+  EXPECT_EQ(TfLiteTensorGetDataStability(&t), kTfLiteRunStabilityAcrossRuns);
+}
+
+TEST(TestTfLiteTensorGetDataStability, ArenaRwDataIsStableSingleRun) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteArenaRw;
+  EXPECT_EQ(TfLiteTensorGetDataStability(&t), kTfLiteRunStabilitySingleRun);
+}
+
+TEST(TestTfLiteTensorGetDataStability,
+     ArenaRwPersistentDataIsStableAcrossRuns) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteArenaRwPersistent;
+  EXPECT_EQ(TfLiteTensorGetDataStability(&t), kTfLiteRunStabilityAcrossRuns);
+}
+
+TEST(TestTfLiteTensorGetDataStability, DynamicDataIsStableSingleRun) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteDynamic;
+  EXPECT_EQ(TfLiteTensorGetDataStability(&t), kTfLiteRunStabilitySingleRun);
+}
+
+TEST(TestTfLiteTensorGetDataStability, PersistentRoDataIsStableSingleRun) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLitePersistentRo;
+  EXPECT_EQ(TfLiteTensorGetDataStability(&t), kTfLiteRunStabilitySingleRun);
+}
+
+TEST(TestTfLiteTensorGetDataStability, CustomDataIsStableUnknown) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteCustom;
+  EXPECT_EQ(TfLiteTensorGetDataStability(&t), kTfLiteRunStabilityUnknown);
+}
+
+TEST(TestTfLiteTensorGetDataStability, VariantObjectDataIsStableSingleRun) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteVariantObject;
+  EXPECT_EQ(TfLiteTensorGetDataStability(&t), kTfLiteRunStabilitySingleRun);
+}
+
+TEST(TestTfLiteTensorGetDataKnownStep, MemNoneDataIsKnownAtInit) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteMemNone;
+  EXPECT_EQ(TfLiteTensorGetDataKnownStep(&t), kTfLiteRunStepInit);
+}
+
+TEST(TestTfLiteTensorGetDataKnownStep, MmapRoDataIsKnownAtInit) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteMmapRo;
+  EXPECT_EQ(TfLiteTensorGetDataKnownStep(&t), kTfLiteRunStepInit);
+}
+
+TEST(TestTfLiteTensorGetDataKnownStep, ArenaRwDataIsKnownAtEval) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteArenaRw;
+  EXPECT_EQ(TfLiteTensorGetDataKnownStep(&t), kTfLiteRunStepEval);
+}
+
+TEST(TestTfLiteTensorGetDataKnownStep, ArenaRwPersistentDataIsKnownAtEval) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteArenaRwPersistent;
+  EXPECT_EQ(TfLiteTensorGetDataKnownStep(&t), kTfLiteRunStepEval);
+}
+
+TEST(TestTfLiteTensorGetDataKnownStep, DynamicDataIsKnownAtEval) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteDynamic;
+  EXPECT_EQ(TfLiteTensorGetDataKnownStep(&t), kTfLiteRunStepEval);
+}
+
+TEST(TestTfLiteTensorGetDataKnownStep, PersistentRoDataIsKnownAtPrepare) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLitePersistentRo;
+  EXPECT_EQ(TfLiteTensorGetDataKnownStep(&t), kTfLiteRunStepPrepare);
+}
+
+TEST(TestTfLiteTensorGetDataKnownStep, CustomDataIsKnownAtUnknown) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteCustom;
+  EXPECT_EQ(TfLiteTensorGetDataKnownStep(&t), kTfLiteRunStepUnknown);
+}
+
+TEST(TestTfLiteTensorGetDataKnownStep, VariantObjectDataIsKnownAtEval) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteVariantObject;
+  EXPECT_EQ(TfLiteTensorGetDataKnownStep(&t), kTfLiteRunStepEval);
+}
+
+TEST(TestTfLiteTensorGetShapeKnownStep, MemNoneShapeIsKnownAtInit) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteMemNone;
+  EXPECT_EQ(TfLiteTensorGetShapeKnownStep(&t), kTfLiteRunStepInit);
+}
+
+TEST(TestTfLiteTensorGetShapeKnownStep, MmapRoShapeIsKnownAtInit) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteMmapRo;
+  EXPECT_EQ(TfLiteTensorGetShapeKnownStep(&t), kTfLiteRunStepInit);
+}
+
+TEST(TestTfLiteTensorGetShapeKnownStep, ArenaRwShapeIsKnownAtPrepare) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteArenaRw;
+  EXPECT_EQ(TfLiteTensorGetShapeKnownStep(&t), kTfLiteRunStepPrepare);
+}
+
+TEST(TestTfLiteTensorGetShapeKnownStep,
+     ArenaRwPersistentShapeIsKnownAtPrepare) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteArenaRwPersistent;
+  EXPECT_EQ(TfLiteTensorGetShapeKnownStep(&t), kTfLiteRunStepPrepare);
+}
+
+TEST(TestTfLiteTensorGetShapeKnownStep, DynamicShapeIsKnownAtEval) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteDynamic;
+  EXPECT_EQ(TfLiteTensorGetShapeKnownStep(&t), kTfLiteRunStepEval);
+}
+
+TEST(TestTfLiteTensorGetShapeKnownStep, PersistentRoShapeIsKnownAtPrepare) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLitePersistentRo;
+  EXPECT_EQ(TfLiteTensorGetShapeKnownStep(&t), kTfLiteRunStepPrepare);
+}
+
+TEST(TestTfLiteTensorGetShapeKnownStep, CustomShapeIsKnownAtUnknown) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteCustom;
+  EXPECT_EQ(TfLiteTensorGetShapeKnownStep(&t), kTfLiteRunStepUnknown);
+}
+
+TEST(TestTfLiteTensorGetShapeKnownStep, VariantObjectShapeIsKnownAtEval) {
+  TfLiteTensor t;
+  t.allocation_type = kTfLiteVariantObject;
+  EXPECT_EQ(TfLiteTensorGetShapeKnownStep(&t), kTfLiteRunStepEval);
 }
 
 struct Foo {

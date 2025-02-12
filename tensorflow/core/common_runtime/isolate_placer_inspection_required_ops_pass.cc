@@ -23,12 +23,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status IsolatePlacerInspectionRequiredOpsPass::Run(
+absl::Status IsolatePlacerInspectionRequiredOpsPass::Run(
     const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr) {
     VLOG(1) << "Not running IsolatePlacerInspectionRequiredOpsPass because no "
                "graph is provided";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(1) << "IsolatePlacerInspectionRequiredOpsPass::Run";
@@ -38,7 +38,8 @@ Status IsolatePlacerInspectionRequiredOpsPass::Run(
     DumpGraphToFile("isolate_deep_ops_before", *graph, nullptr, "/tmp");
   }
 
-  Status status = IsolatePlacerInspectionRequiredOps(*options.flib_def, graph);
+  absl::Status status =
+      IsolatePlacerInspectionRequiredOps(*options.flib_def, graph);
 
   if (VLOG_IS_ON(3) && status.ok()) {
     DumpGraphToFile("isolate_deep_ops_after", *graph, nullptr, "/tmp");

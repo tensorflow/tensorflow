@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/data/serialization_utils.h"
 
-#include <functional>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -43,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/work_sharder.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -182,7 +184,7 @@ class ParameterizedIteratorStateVariantTest
     return data;
   }
 
-  StatusOr<VariantTensorData> EncodeAndDecode(
+  absl::StatusOr<VariantTensorData> EncodeAndDecode(
       const VariantTensorData& data) const {
     IteratorStateVariant encoder;
     TF_RETURN_IF_ERROR(encoder.InitializeFromVariantData(
@@ -195,11 +197,21 @@ class ParameterizedIteratorStateVariantTest
     return *decoder.GetData();
   }
 
-  StatusOr<VariantTensorData> DecodeUncompressed(
+  absl::StatusOr<VariantTensorData> DecodeUncompressed(
       const VariantTensorData& data) const {
     IteratorStateVariant decoder;
     decoder.Decode(data);
     return *decoder.GetData();
+  }
+};
+
+class ParemeterizedCheckpointIndicesTest
+    : public DatasetOpsTestBase,
+      public ::testing::WithParamInterface<absl::flat_hash_set<int64_t>> {
+ protected:
+  absl::flat_hash_set<int64_t> GetCheckpointIndices() const {
+    absl::flat_hash_set<int64_t> checkpoint_indices = GetParam();
+    return checkpoint_indices;
   }
 };
 
@@ -213,6 +225,18 @@ std::vector<std::vector<Tensor>> TestCases() {
       {},                                            // empty
       {CreateTensor<int64_t>(TensorShape{128, 128}),
        CreateTensor<int64_t>(TensorShape{64, 2})},  // larger components
+  };
+}
+
+std::vector<absl::flat_hash_set<int64_t>> CheckpointIndicesTestCases() {
+  return {
+      {/*checkpoint_indices*/},
+      {/*checkpoint_indices*/ 0},
+      {/*checkpoint_indices*/ 0, 1},
+      {/*checkpoint_indices*/ 0, 1, 2},
+      {/*checkpoint_indices*/ 1, 3, 4},
+      {/*checkpoint_indices*/ 1, 2, 3, 4},
+      {/*checkpoint_indices*/ 0, 1, 2, 3, 4},
   };
 }
 
@@ -236,8 +260,57 @@ TEST_P(ParameterizedIteratorStateVariantTest, DecodeUncompressed) {
   }
 }
 
+TEST_P(ParemeterizedCheckpointIndicesTest,
+       CheckpointElementsRoundTripUsingIndices) {
+  std::vector<std::vector<Tensor>> elements;
+  elements.push_back(CreateTensors<int32>(TensorShape({3}), {{1, 2, 3}}));
+  elements.push_back(CreateTensors<int32>(TensorShape({2}), {{4, 5}}));
+  elements.push_back(
+      CreateTensors<int32>(TensorShape({5}), {{6, 7, 8, 9, 10}}));
+  elements.push_back(
+      CreateTensors<int32>(TensorShape({4}), {{11, 12, 13, 14}}));
+  elements.push_back(CreateTensors<int32>(TensorShape({2}), {{15, 16}}));
+  VariantTensorDataWriter writer;
+  tstring test_prefix = full_name("test_prefix");
+  // Generate checkpoint for entire buffer
+  absl::flat_hash_set<int64_t> checkpoint_indices_write = {0, 1, 2, 3, 4};
+  TF_ASSERT_OK(WriteElementsToCheckpoint(&writer, test_prefix, elements));
+  // Update the elements at checkpoint indices
+  for (auto index : GetCheckpointIndices()) {
+    elements.at(index) = CreateTensors<int32>(TensorShape({1}), {{1}});
+  }
+  TF_ASSERT_OK(UpdateCheckpointElements(&writer, test_prefix, elements,
+                                        GetCheckpointIndices()));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+
+  VariantTensorDataReader reader(data);
+  std::vector<std::vector<Tensor>> read_elements;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<TestContext> ctx,
+                          TestContext::Create());
+  TF_ASSERT_OK(ReadElementsFromCheckpoint(ctx->iter_ctx(), &reader, test_prefix,
+                                          &read_elements));
+
+  ASSERT_EQ(elements.size(), read_elements.size());
+  // Check if checkpoint state of entire buffer is as expected
+  for (int index = 0; index < elements.size(); ++index) {
+    std::vector<Tensor>& original = elements[index];
+    std::vector<Tensor>& read = read_elements[index];
+
+    ASSERT_EQ(original.size(), read.size());
+    for (int j = 0; j < original.size(); ++j) {
+      EXPECT_EQ(original[j].NumElements(), read[j].NumElements());
+      EXPECT_EQ(original[j].flat<int32>()(0), read[j].flat<int32>()(0));
+    }
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(Instantiation, ParameterizedIteratorStateVariantTest,
                          ::testing::ValuesIn(TestCases()));
+
+INSTANTIATE_TEST_SUITE_P(Instantiation, ParemeterizedCheckpointIndicesTest,
+                         ::testing::ValuesIn(CheckpointIndicesTestCases()));
 
 }  // namespace
 }  // namespace data

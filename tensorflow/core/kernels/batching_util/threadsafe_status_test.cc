@@ -35,7 +35,7 @@ TEST(ThreadSafeStatus, Update) {
   status.Update(errors::FailedPrecondition("original error"));
   EXPECT_EQ(status.status().code(), error::FAILED_PRECONDITION);
 
-  status.Update(OkStatus());
+  status.Update(absl::OkStatus());
   EXPECT_EQ(status.status().code(), error::FAILED_PRECONDITION);
 
   status.Update(errors::Internal("new error"));

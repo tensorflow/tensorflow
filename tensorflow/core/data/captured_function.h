@@ -15,11 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_CAPTURED_FUNCTION_H_
 #define TENSORFLOW_CORE_DATA_CAPTURED_FUNCTION_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -44,20 +49,20 @@ class InstantiatedCapturedFunction;
 
 // Creates an iterator for a dataset which is created by applying the given
 // function to the given input element.
-Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const IteratorBase* parent,
+absl::Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
-    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator);
+    const InstantiatedCapturedFunction& inst_captured_func,
+    absl::string_view prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
 // Creates an iterator for a dataset which is created by applying the given
 // function to the given input element. Pass non-null `node` to record
 // processing time for modeling Iterator's GetNext() resource usage.
-Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const IteratorBase* parent,
+absl::Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
-    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator,
+    const InstantiatedCapturedFunction& inst_captured_func,
+    absl::string_view prefix, std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node);
 
 struct ShortCircuitInfo {
@@ -75,15 +80,15 @@ class FunctionMetadata {
 
   // Creates a new instance of the `FunctionMetadata` class, fetching function
   // from a context argument.
-  static Status Create(tensorflow::OpKernelConstruction* ctx,
-                       const string& func_name, Params params,
-                       std::shared_ptr<FunctionMetadata>* out_metadata);
+  static absl::Status Create(tensorflow::OpKernelConstruction* ctx,
+                             const string& func_name, Params params,
+                             std::shared_ptr<FunctionMetadata>* out_metadata);
 
   // Creates a new instance of the `FunctionMetadata` class, using the provided
   // function.
-  static Status Create(tensorflow::OpKernelConstruction* ctx,
-                       NameAttrList&& func, Params params,
-                       std::shared_ptr<FunctionMetadata>* out_metadata);
+  static absl::Status Create(tensorflow::OpKernelConstruction* ctx,
+                             NameAttrList&& func, Params params,
+                             std::shared_ptr<FunctionMetadata>* out_metadata);
 
   // Returns the named list of function arguments.
   const NameAttrList& func() const { return func_; }
@@ -148,38 +153,38 @@ class CapturedFunction {
  public:
   // Creates a new instance using a list of named attributes, fetching captured
   // inputs from a context argument.
-  static Status Create(OpKernelContext* ctx,
-                       std::shared_ptr<const FunctionMetadata> metadata,
-                       const string& argument_name,
-                       std::unique_ptr<CapturedFunction>* out_function);
+  static absl::Status Create(OpKernelContext* ctx,
+                             std::shared_ptr<const FunctionMetadata> metadata,
+                             const string& argument_name,
+                             std::unique_ptr<CapturedFunction>* out_function);
 
   // Creates a new instance using a list of named attributes, using provided
   // captured inputs.
-  static Status Create(OpKernelContext* ctx,
-                       std::shared_ptr<const FunctionMetadata> metadata,
-                       std::vector<Tensor>&& captured_inputs,
-                       std::unique_ptr<CapturedFunction>* out_function);
+  static absl::Status Create(OpKernelContext* ctx,
+                             std::shared_ptr<const FunctionMetadata> metadata,
+                             std::vector<Tensor>&& captured_inputs,
+                             std::unique_ptr<CapturedFunction>* out_function);
 
   // Adds the definition of this captured function into the given graph,
   // returning its captured inputs and types through the respective output
   // arguments.
-  Status AddToGraph(SerializationContext* ctx,
-                    DatasetBase::DatasetGraphDefBuilder* b,
-                    std::vector<Node*>* other_arguments,
-                    DataTypeVector* other_arguments_types) const;
+  absl::Status AddToGraph(SerializationContext* ctx,
+                          DatasetBase::DatasetGraphDefBuilder* b,
+                          std::vector<Node*>* other_arguments,
+                          DataTypeVector* other_arguments_types) const;
 
   // Instantiates this function for use in the given context, providing an
   // InstantiatedCapturedFunction that can be used to execute functions.
-  Status Instantiate(IteratorContext* ctx,
-                     std::unique_ptr<InstantiatedCapturedFunction>*
-                         instantiated_captured_function);
+  absl::Status Instantiate(IteratorContext* ctx,
+                           std::unique_ptr<InstantiatedCapturedFunction>*
+                               instantiated_captured_function);
 
-  Status Instantiate(InstantiateCapturedFunctionParams params,
-                     std::unique_ptr<InstantiatedCapturedFunction>*
-                         instantiated_captured_function);
+  absl::Status Instantiate(InstantiateCapturedFunctionParams params,
+                           std::unique_ptr<InstantiatedCapturedFunction>*
+                               instantiated_captured_function);
 
   // Determines whether the captured function is stateful.
-  Status CheckExternalState() const;
+  absl::Status CheckExternalState() const;
 
   // Returns the additional captured inputs that will be passed to the function.
   const std::vector<Tensor>& captured_inputs() const {
@@ -211,13 +216,14 @@ class CapturedFunction {
   CapturedFunction(std::shared_ptr<const FunctionMetadata> metadata,
                    std::vector<Tensor> captured_inputs);
 
-  Status IsMultiDevice(FunctionLibraryRuntime* flr,
-                       bool* is_multi_device) const;
+  absl::Status IsMultiDevice(FunctionLibraryRuntime* flr,
+                             bool* is_multi_device) const;
 
   const std::shared_ptr<const FunctionMetadata> metadata_;
   const std::vector<Tensor> captured_inputs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
+  CapturedFunction(const CapturedFunction&) = delete;
+  void operator=(const CapturedFunction&) = delete;
 };
 
 // `InstantiatedCapturedFunction` encapsulates all the runtime support needed
@@ -236,8 +242,8 @@ class InstantiatedCapturedFunction {
   // the tensors in `args`, in order to be able to deallocate them as early as
   // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
   // ownership of the `args`.
-  Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
-             std::vector<Tensor>* rets) const;
+  absl::Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
+                   std::vector<Tensor>* rets) const;
 
   // Runs the instantiated captured function. This method takes ownership of
   // the tensors in `args`, in order to be able to deallocate them as early as
@@ -246,16 +252,16 @@ class InstantiatedCapturedFunction {
   // for modeling Iterator's GetNext() resource usage. When non-null node is
   // provided, the pre-requisite is that the calling thread has previously
   // called `DatasetBaseIterator::RecordStart().
-  Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
-             std::vector<Tensor>* rets,
-             const std::shared_ptr<model::Node>& node) const;
+  absl::Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
+                   std::vector<Tensor>* rets,
+                   const std::shared_ptr<model::Node>& node) const;
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
   // possible.
-  Status RunWithBorrowedArgs(IteratorContext* ctx,
-                             const std::vector<Tensor>& args,
-                             std::vector<Tensor>* rets) const;
+  absl::Status RunWithBorrowedArgs(IteratorContext* ctx,
+                                   const std::vector<Tensor>& args,
+                                   std::vector<Tensor>* rets) const;
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
@@ -263,10 +269,10 @@ class InstantiatedCapturedFunction {
   // Iterator's GetNext() resource usage. When non-null node is provided, the
   // pre-requisite is that the calling thread has previously called
   // `DatasetBaseIterator::RecordStart().
-  Status RunWithBorrowedArgs(IteratorContext* ctx,
-                             const std::vector<Tensor>& args,
-                             std::vector<Tensor>* rets,
-                             const std::shared_ptr<model::Node>& node) const;
+  absl::Status RunWithBorrowedArgs(
+      IteratorContext* ctx, const std::vector<Tensor>& args,
+      std::vector<Tensor>* rets,
+      const std::shared_ptr<model::Node>& node) const;
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
@@ -274,8 +280,8 @@ class InstantiatedCapturedFunction {
   // an `IteratorContext*` is not available (such as a destructor).
   //
   // TODO(b/144278100): Avoid running functions without IteratorContext.
-  Status RunInstantiated(const std::vector<Tensor>& args,
-                         std::vector<Tensor>* rets);
+  absl::Status RunInstantiated(const std::vector<Tensor>& args,
+                               std::vector<Tensor>* rets);
 
   // Asynchronously runs the captured function on the given `args`, stores the
   // results in `*rets`, and calls the given `done` callback when the function
@@ -287,7 +293,21 @@ class InstantiatedCapturedFunction {
   void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
                 std::vector<Tensor>* rets,
                 FunctionLibraryRuntime::DoneCallback done,
+                const std::shared_ptr<model::Node>& node) const {
+    RunAsync(*(ctx->runner()), ctx->cancellation_manager(),
+             ctx->collective_executor(), std::move(args), rets, done, node);
+  }
+
+  // A version of `RunAsync` that does not take an `IteratorContext` but a
+  // runner, a cancellation manager, and a collective executor.
+  void RunAsync(std::function<void(std::function<void()>)> runner,
+                CancellationManager* parent_cancellation_manager,
+                CollectiveExecutor* collective_executor,
+                std::vector<Tensor>&& args, std::vector<Tensor>* rets,
+                FunctionLibraryRuntime::DoneCallback done,
                 const std::shared_ptr<model::Node>& node) const;
+
+  std::string func_name() const { return captured_func_->func().name(); }
 
  private:
   friend class CapturedFunction;
@@ -311,7 +331,8 @@ class InstantiatedCapturedFunction {
   CapturedFunction* const captured_func_;  // Not owned.
   const bool is_multi_device_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
+  InstantiatedCapturedFunction(const InstantiatedCapturedFunction&) = delete;
+  void operator=(const InstantiatedCapturedFunction&) = delete;
 };
 
 }  // namespace data

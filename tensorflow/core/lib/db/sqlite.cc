@@ -14,9 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/lib/db/sqlite.h"
 
+#include <cstdlib>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/status.h"
 
 extern "C" int sqlite3_snapfn_init(sqlite3*, const char**, const void*);
 
@@ -70,7 +81,7 @@ absl::StatusCode GetTfErrorCode(int code) {
 }
 
 template <typename... Args>
-Status PrintfStatus(int rc, const char* fmt, Args&&... args) {
+absl::Status PrintfStatus(int rc, const char* fmt, Args&&... args) {
   return {GetTfErrorCode(rc),
           strings::Printf(fmt, std::forward<Args>(args)...)};
 }
@@ -82,8 +93,9 @@ sqlite3_stmt* PrepareRawOrDie(sqlite3* db, const char* sql) {
   return stmt;
 }
 
-Status SetPragma(Sqlite* db, const char* pragma, const StringPiece& value) {
-  if (value.empty()) return OkStatus();
+absl::Status SetPragma(Sqlite* db, const char* pragma,
+                       const absl::string_view& value) {
+  if (value.empty()) return absl::OkStatus();
   for (auto p = value.begin(); p < value.end(); ++p) {
     if (!(('0' <= *p && *p <= '9') || ('A' <= *p && *p <= 'Z') ||
           ('a' <= *p && *p <= 'z') || *p == '-')) {
@@ -97,21 +109,21 @@ Status SetPragma(Sqlite* db, const char* pragma, const StringPiece& value) {
   return stmt.Step(&unused_done);
 }
 
-const StringPiece GetEnv(const char* var) {
+const absl::string_view GetEnv(const char* var) {
   const char* val = std::getenv(var);
-  return (val == nullptr) ? StringPiece() : StringPiece(val);
+  return (val == nullptr) ? absl::string_view() : absl::string_view(val);
 }
 
-Status EnvPragma(Sqlite* db, const char* pragma, const char* var) {
+absl::Status EnvPragma(Sqlite* db, const char* pragma, const char* var) {
   TF_RETURN_WITH_CONTEXT_IF_ERROR(SetPragma(db, pragma, GetEnv(var)), "getenv(",
                                   var, ")");
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
 /* static */
-Status Sqlite::Open(const string& path, int flags, Sqlite** db) {
+absl::Status Sqlite::Open(const string& path, int flags, Sqlite** db) {
   flags |= SQLITE_OPEN_PRIVATECACHE;
   flags |= SQLITE_OPEN_URI;
   sqlite3* sqlite = nullptr;
@@ -130,7 +142,7 @@ Status Sqlite::Open(const string& path, int flags, Sqlite** db) {
   sqlite3_stmt* commit = PrepareRawOrDie(sqlite, "COMMIT");
   sqlite3_stmt* rollback = PrepareRawOrDie(sqlite, "ROLLBACK");
   *db = new Sqlite(sqlite, begin, commit, rollback);
-  Status s = OkStatus();
+  absl::Status s = absl::OkStatus();
   // Up until 2016 the default SQLite page_size was 1024. This ensures
   // the new default regardless of linkage unless configured otherwise.
   s.Update(SetPragma(*db, "page_size", "4096"));
@@ -161,7 +173,8 @@ Sqlite::~Sqlite() {
   CHECK_EQ(SQLITE_OK, sqlite3_close(db_));
 }
 
-Status Sqlite::Prepare(const StringPiece& sql, SqliteStatement* stmt) {
+absl::Status Sqlite::Prepare(const absl::string_view& sql,
+                             SqliteStatement* stmt) {
   SqliteLock lock(*this);
   sqlite3_stmt* ps = nullptr;
   int rc = sqlite3_prepare_v2(db_, sql.data(), static_cast<int>(sql.size()),
@@ -172,10 +185,10 @@ Status Sqlite::Prepare(const StringPiece& sql, SqliteStatement* stmt) {
                         sql.size(), sql.data());
   }
   *stmt = SqliteStatement(this, ps);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SqliteStatement::Step(bool* is_done) {
+absl::Status SqliteStatement::Step(bool* is_done) {
   DCHECK(stmt_ != nullptr);
   if (TF_PREDICT_FALSE(bind_error_ != SQLITE_OK)) {
     *is_done = true;
@@ -188,10 +201,10 @@ Status SqliteStatement::Step(bool* is_done) {
   switch (rc) {
     case SQLITE_ROW:
       *is_done = false;
-      return OkStatus();
+      return absl::OkStatus();
     case SQLITE_DONE:
       *is_done = true;
-      return OkStatus();
+      return absl::OkStatus();
     default:
       *is_done = true;
       return PrintfStatus(rc, "Step() failed: [%d] %s: %s", rc, db_->errmsg(),
@@ -205,13 +218,13 @@ bool SqliteStatement::StepOrDie() {
   return !is_done;
 }
 
-Status SqliteStatement::StepOnce() {
+absl::Status SqliteStatement::StepOnce() {
   bool is_done;
   TF_RETURN_IF_ERROR(Step(&is_done));
   if (TF_PREDICT_FALSE(is_done)) {
     return errors::Internal("No rows returned: ", sql());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const SqliteStatement& SqliteStatement::StepOnceOrDie() {
@@ -219,9 +232,9 @@ const SqliteStatement& SqliteStatement::StepOnceOrDie() {
   return *this;
 }
 
-Status SqliteStatement::StepAndReset() {
+absl::Status SqliteStatement::StepAndReset() {
   bool is_done;
-  Status s = Step(&is_done);
+  absl::Status s = Step(&is_done);
   if (TF_PREDICT_FALSE(s.ok() && !is_done)) {
     s = errors::Internal("Unexpected row: ", sql());
   }
@@ -268,7 +281,7 @@ void SqliteTransaction::Begin() {
   }
 }
 
-Status SqliteTransaction::Commit() {
+absl::Status SqliteTransaction::Commit() {
   int rc = sqlite3_step(db_->commit_);
   if (rc != SQLITE_DONE) {
     return PrintfStatus(rc, "COMMIT failed: [%d] %s", rc,
@@ -277,7 +290,7 @@ Status SqliteTransaction::Commit() {
   sqlite3_reset(db_->commit_);
   sqlite3_reset(db_->begin_);
   Begin();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -1,0 +1,7 @@
+// RUN: test_correctness %s
+
+fusion {
+  param0 = f32[16,16] parameter(0)
+  param1 = f32[16,16] parameter(1)
+  ROOT concat = f32[32,16] concatenate(param0, param1), dimensions={0}
+}

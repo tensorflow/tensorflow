@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,39 +16,36 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/cluster_environment.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <iterator>
-#include <memory>
-#include <numeric>
 #include <optional>
-#include <ostream>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/types/span.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace spmd {
 
 double ClusterEnvironment::AllGatherCost(double num_bytes, int mesh_dim) const {
-  if (solver_option_.override_all_gather_cost) {
-    return solver_option_.all_gather_cost;
+  if (auto_sharding_option_.force_override_all_gather_cost) {
+    return auto_sharding_option_.all_gather_cost;
   }
 
   if (prof_result_.Enabled()) {
     return prof_result_.EstimateAllGatherCost(cached_replica_groups_[mesh_dim],
                                               num_bytes / 4, "float32");
-  }
-
-  if (solver_option_.force_batch_dim_to_mesh_dim == mesh_dim) {
-    // if data-parallel is forced on this dim, we only allow all-reduce
-    // in this dimension.
-    return kInfinityCost;
   }
 
   int64_t num_devices = device_mesh_.dim(mesh_dim);
@@ -61,8 +58,8 @@ double ClusterEnvironment::AllGatherCost(double num_bytes, int mesh_dim) const {
 // TODO(zhuohan): distinguish dtype and reduce_op.
 double ClusterEnvironment::AllReduceCost(double num_bytes, int32_t mesh_dim,
                                          int32_t mesh_dim_another) const {
-  if (solver_option_.override_all_reduce_cost) {
-    return solver_option_.all_reduce_cost;
+  if (auto_sharding_option_.force_override_all_reduce_cost) {
+    return auto_sharding_option_.all_reduce_cost;
   }
 
   if (prof_result_.Enabled()) {
@@ -89,8 +86,8 @@ double ClusterEnvironment::AllReduceCost(double num_bytes, int32_t mesh_dim,
 
 double ClusterEnvironment::ReduceScatterCost(double num_bytes,
                                              int mesh_dim) const {
-  if (solver_option_.override_reduce_scatter_cost) {
-    return solver_option_.reduce_scatter_cost;
+  if (auto_sharding_option_.force_override_reduce_scatter_cost) {
+    return auto_sharding_option_.reduce_scatter_cost;
   }
 
   if (prof_result_.Enabled()) {
@@ -105,9 +102,20 @@ double ClusterEnvironment::ReduceScatterCost(double num_bytes,
           0.001);
 }
 
+double ClusterEnvironment::AllToAllCostUtil(double num_bytes, int mesh_dim,
+                                            int64_t num_devices) const {
+  // A penalty factor to make the theoretical cost match the
+  // empirical cost on v100 + nvlink.
+  double penalty_factor = static_cast<double>(num_devices) / 2.0;
+  return (round(mesh_alpha_[mesh_dim] +
+                mesh_beta_[mesh_dim] * (num_devices - 1) / num_devices /
+                    num_devices * num_bytes * penalty_factor) +
+          0.001);
+}
+
 double ClusterEnvironment::AllToAllCost(double num_bytes, int mesh_dim) const {
-  if (solver_option_.override_all_to_all_cost) {
-    return solver_option_.all_to_all_cost;
+  if (auto_sharding_option_.force_override_all_to_all_cost) {
+    return auto_sharding_option_.all_to_all_cost;
   }
 
   if (prof_result_.Enabled()) {
@@ -115,34 +123,88 @@ double ClusterEnvironment::AllToAllCost(double num_bytes, int mesh_dim) const {
                                              num_bytes / 4, "float32");
   }
 
-  if (solver_option_.force_batch_dim_to_mesh_dim == mesh_dim) {
-    // if data-parallel is forced on this dim, we only allow all-reduce
-    // in this dimension.
-    return kInfinityCost;
-  }
-
   int64_t num_devices = device_mesh_.dim(mesh_dim);
-  return AllToAllCostUtil(num_bytes, mesh_dim, num_devices, mesh_alpha_,
-                          mesh_beta_);
+  return AllToAllCostUtil(num_bytes, mesh_dim, num_devices);
 }
 
-double ClusterEnvironment::DotCost(const Shape& lhs_shape,
-                                   const Shape& rhs_shape,
-                                   const DotDimensionNumbers& dot_dnums) const {
-  if (!solver_option_.allow_recompute_heavy_op) {
-    return kInfinityCost;
+template <typename T>
+bool IsSubset(absl::btree_set<T> superset, absl::btree_set<T> subset) {
+  for (const T& element : subset) {
+    if (!superset.contains(element)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Do not consider device id changes yet.
+double ClusterEnvironment::ReshardingCostMixedMeshShape(
+    const Shape& shape, const HloSharding& src_sharding,
+    const HloSharding& dst_sharding) const {
+  absl::StatusOr<std::vector<absl::btree_set<int64_t>>>
+      src_tensor_dim_to_mesh_axis = GetTensorDimToMeshDimMixedMeshSharding(
+          shape.rank(), src_sharding, device_mesh_,
+          /*consider_reverse_device_meshes=*/true);
+  absl::StatusOr<std::vector<absl::btree_set<int64_t>>>
+      dst_tensor_dim_to_mesh_axis = GetTensorDimToMeshDimMixedMeshSharding(
+          shape.rank(), dst_sharding, device_mesh_,
+          /*consider_reverse_device_meshes=*/true);
+  if (!src_tensor_dim_to_mesh_axis.ok() || !dst_tensor_dim_to_mesh_axis.ok()) {
+    return OverestimateReplicationCost(shape, src_sharding, device_mesh_);
   }
 
-  // TODO(zhuohan): When profiling data is not available, it is not easy to
-  // align the scale of compute cost and communication cost. Here we just use
-  // a simple heuristic to compute the compute cost with communication cost.
-  double num_bytes = GetBytes(lhs_shape) + GetBytes(rhs_shape);
-  return AllReduceCost(num_bytes, 0) + AllReduceCost(num_bytes, 1);
+  int64_t num_devices = device_mesh_.num_elements();
+  std::vector<int64_t> collective_mesh_axes;
+  // Only consider sharded dimensions, do not consider replicate_on_last_dim.
+  for (size_t i = 0; i < shape.rank(); ++i) {
+    if ((*src_tensor_dim_to_mesh_axis)[i] ==
+        (*dst_tensor_dim_to_mesh_axis)[i]) {
+      continue;
+    }
+    if (IsSubset((*dst_tensor_dim_to_mesh_axis)[i],
+                 (*src_tensor_dim_to_mesh_axis)[i])) {
+      // do nothing; the dst is sharded more than the src
+      continue;
+    }
+    if (!IsSubset((*src_tensor_dim_to_mesh_axis)[i],
+                  (*dst_tensor_dim_to_mesh_axis)[i])) {
+      // Do not support this sharding, assuming it is gonna be very expensive.
+      return OverestimateReplicationCost(shape, src_sharding, device_mesh_);
+    }
+    for (int64_t mesh_dim : (*src_tensor_dim_to_mesh_axis)[i]) {
+      if (!(*dst_tensor_dim_to_mesh_axis)[i].contains(mesh_dim)) {
+        collective_mesh_axes.push_back(mesh_dim);
+      }
+    }
+  }
+
+  auto is_mesh_axis_used_for_dst_sharding = [&](int64_t mesh_dim) {
+    int end = dst_sharding.ReplicateOnLastTileDim()
+                  ? dst_tensor_dim_to_mesh_axis->size() - 1
+                  : dst_tensor_dim_to_mesh_axis->size();
+    for (int i = 0; i < end; ++i) {
+      if ((*dst_tensor_dim_to_mesh_axis)[i].contains(mesh_dim)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  double resharding_cost = 0.0;
+  int64_t communication_bytes = ByteSizeOfShape(shape);
+  for (int mesh_dim : collective_mesh_axes) {
+    bool used_for_dst_sharding = is_mesh_axis_used_for_dst_sharding(mesh_dim);
+    resharding_cost +=
+        used_for_dst_sharding
+            ? AllToAllCostUtil(communication_bytes, mesh_dim, num_devices)
+            : AllGatherCost(communication_bytes, mesh_dim);
+  }
+  return resharding_cost;
 }
 
 double ClusterEnvironment::CollectivePermuteCost(
     double num_bytes,
-    const std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs) const {
+    absl::Span<const std::pair<int64_t, int64_t>> src_dst_pairs) const {
   absl::flat_hash_map<int64_t, std::vector<int64_t>> device_to_index_map;
   device_mesh_.Each([&](absl::Span<const int64_t> indices, int64_t device) {
     std::vector<int64_t> indices_vector;
@@ -170,17 +232,17 @@ double ClusterEnvironment::CollectivePermuteCost(
 // Overestimate the cost of replicating a tensor by decomposing the resharding
 // operation as an all-gather on all mesh dimensions.
 double ClusterEnvironment::OverestimateReplicationCost(
-    const Shape& shape, const HloSharding& src_spec) const {
-  if (src_spec.IsTileMaximal() || src_spec.IsManual()) {
-    // TODO(b/238210866) Do not use kInfinityCost.
-    return kInfinityCost;
+    const Shape& shape, const HloSharding& src_sharding,
+    const DeviceMesh& device_mesh) const {
+  if (src_sharding.IsReplicated()) {
+    return 0;
   }
-  int64_t bytes_moved = GetBytes(shape) / src_spec.NumTiles();
+  int64_t bytes_moved = ByteSizeOfShapeWithSharding(shape, src_sharding);
   double cost = 0.0;
-  for (size_t i = 0; i < device_mesh_.num_dimensions(); ++i) {
-    auto this_cost = this->AllGatherCost(bytes_moved, i);
-    cost += this_cost;
-    bytes_moved *= device_mesh_.dimensions()[i];
+  for (size_t i = 0; i < device_mesh.num_dimensions(); ++i) {
+    cost += src_sharding.IsTileMaximal() ? this->AllReduceCost(bytes_moved, i)
+                                         : this->AllGatherCost(bytes_moved, i);
+    bytes_moved *= device_mesh.dimensions()[i];
   }
   return cost;
 }
@@ -195,8 +257,8 @@ double ClusterEnvironment::TryCollectivePermuteForResharding(
           int64_t dst_device = dst_spec.tile_assignment()(indices);
           src_dst_pairs.emplace_back(src_device, dst_device);
         });
-    return this->CollectivePermuteCost(GetBytes(shape) / src_spec.NumTiles(),
-                                       src_dst_pairs);
+    return this->CollectivePermuteCost(
+        ByteSizeOfShapeWithSharding(shape, src_spec), src_dst_pairs);
   };
 
   if (CanReshardWithCollectivePermute(src_spec, dst_spec)) {
@@ -220,10 +282,9 @@ double ClusterEnvironment::TryCollectivePermuteForResharding(
   // Since we only estimate communication costs here, we only need to consider
   // the cost of step 1, ie. replicating the tensor starting from sharding
   // s2. We estimate this cost by invoking OverestimateReplicationCost.
-  return OverestimateReplicationCost(shape, src_spec);
+  return OverestimateReplicationCost(shape, src_spec, device_mesh_);
 }
 
-// The communication cost of resharding a tensor from src to dst
 double ClusterEnvironment::ReshardingCost(const Shape& shape,
                                           const HloSharding& src_spec,
                                           const HloSharding& dst_spec) const {
@@ -231,6 +292,17 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
   if (src_spec == dst_spec || IsUndefined(src_spec) ||
       src_spec.IsReplicated()) {
     return 0.0;
+  }
+
+  if (src_spec.tile_assignment().num_elements() > device_mesh_.num_elements() ||
+      dst_spec.tile_assignment().num_elements() > device_mesh_.num_elements()) {
+    LOG(WARNING)
+        << "Full device sharding found when solving for the partial mesh "
+        << spmd::ToString(device_mesh_.dimensions())
+        << ". Overestimating the resharding cost by assuming full replication "
+           "on the full device mesh "
+        << spmd::ToString(device_mesh_.dimensions()) << ".";
+    return OverestimateReplicationCost(shape, src_spec, original_device_mesh_);
   }
 
   CHECK(!IsUndefined(dst_spec));
@@ -290,9 +362,7 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
       dst_tensor_dim_to_mesh_dim_or.value();
 
   if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
-    return ReshardingCostMixedMeshShape(
-        shape, src_tensor_dim_to_mesh_dim, dst_tensor_dim_to_mesh_dim,
-        device_mesh_.num_elements(), mesh_alpha_, mesh_beta_);
+    return ReshardingCostMixedMeshShape(shape, src_spec, dst_spec);
   }
 
   AdjustTensorMeshDimMapping(src_tensor_dim_to_mesh_dim, src_n_dim);
@@ -334,13 +404,12 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
     if (device_mesh_.dim(0) > 1 && device_mesh_.dim(1) > 1) {
       return TryCollectivePermuteForResharding(shape, src_spec, dst_spec);
     }
-
-    double bytes = GetBytes(shape);
+    double bytes = ByteSizeOfShape(shape);
     return AllToAllCost(bytes, all_gather_dims.front());
   }
 
   // Case 3: all-gather
-  double bytes = GetBytes(shape) / src_spec.NumTiles();
+  double bytes = ByteSizeOfShapeWithSharding(shape, src_spec);
   double cost = 0.0;
   for (int dim : all_gather_dims) {
     if (dim >= device_mesh_.num_dimensions()) {

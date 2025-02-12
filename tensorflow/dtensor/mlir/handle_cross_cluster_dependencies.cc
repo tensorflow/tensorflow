@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
 #include <memory>
 #include <string>
 
@@ -22,16 +23,23 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
+#include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
@@ -109,7 +117,7 @@ mlir::LogicalResult CloneOpToCluster(mlir::Operation* const_op,
 
 mlir::LogicalResult GetInputProducingValue(mlir::OpOperand& operand,
                                            mlir::Value* val_output) {
-  auto input_value = operand.get().dyn_cast<mlir::OpResult>();
+  auto input_value = mlir::dyn_cast<mlir::OpResult>(operand.get());
   if (!input_value) return mlir::success();
 
   auto input_cluster =
@@ -216,7 +224,7 @@ mlir::LogicalResult LowerToSendRecv(mlir::TF::CopyToMeshOp copy_to_mesh,
                                     mlir::MLIRContext* context,
                                     int* send_recv_counter) {
   const mlir::OpResult copied_value =
-      copy_to_mesh.getInput().cast<mlir::OpResult>();
+      mlir::cast<mlir::OpResult>(copy_to_mesh.getInput());
   const int result_index = copied_value.getResultNumber();
   auto src_cluster =
       llvm::cast<mlir::tf_device::ClusterOp>(copied_value.getDefiningOp());
@@ -243,7 +251,7 @@ mlir::LogicalResult LowerToSendRecv(mlir::TF::CopyToMeshOp copy_to_mesh,
       mlir::dtensor::MeshAttr::get(context, target_mesh));
 
   // Create recv op that recvs data from send op.
-  auto tensor_type = value_to_send.getType().dyn_cast<mlir::TensorType>();
+  auto tensor_type = mlir::dyn_cast<mlir::TensorType>(value_to_send.getType());
   if (!tensor_type)
     return copy_to_mesh.emitOpError(
         "found CopyToMesh sending value with unknown shape. Inputs to "

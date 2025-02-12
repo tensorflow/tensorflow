@@ -1,4 +1,5 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,71 +13,129 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/pad.h"
 
 #include <cstdint>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/pad_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
-namespace mlir {
-namespace odml {
+namespace mlir::odml {
+namespace {
 
-ConversionState BuildConversionState(mhlo::PadOp mhlo_pad,
-                                     ConversionPatternRewriter& rewriter) {
-  ConversionState state{
-      /*.shlo_op=*/mhlo_pad.getOperation(),
-      /*.rewriter=*/rewriter,
-      /*.last_tf_op=*/nullptr,
-  };
-  return state;
+bool IsPadLegal(mhlo::PadOp op) {
+  return AnyNegativePads(op) || !TrivialInterior(op);
 }
 
-// Converts the given StableHLO Pad operation to a chain of TFLite operations.
-//
-// StableHLO Pad allows dilating, padding and cropping its input, in that order.
-// This can be implemented in TFLite as a sequence of these operations. Note
-// that all operations do not always need to be called: if there is no dilation
-// (resp. pad, crop) we do not need to add it to the chain.
-//
-// TFLite does not provide a crop operation, the StridedSlice one is used
-// instead.
-LogicalResult ConvertPadOp::matchAndRewrite(
-    mhlo::PadOp mhlo_pad, OpAdaptor adaptor,
-    ConversionPatternRewriter& rewriter) const {
-  // We don't need to match the pad op as we always know how to convert it.
-  ConversionState state = BuildConversionState(mhlo_pad, rewriter);
-
-  // Dilate when interior padding is specified different from 0.
-  AddDilateOpIfRequired(state, mhlo_pad.getInteriorPadding(),
-                        mhlo_pad.getPaddingValue(),
-                        /*is_padding=*/true);
-  // Pad when padding has positive values.
-  AddPadOpIfRequired(state, mhlo_pad.getEdgePaddingLow(),
-                     mhlo_pad.getEdgePaddingHigh(), mhlo_pad.getPaddingValue());
-  // Crop when padding has negative values.
-  //
-  // Note that there is no crop operation in TFLite so we use the StridedSlice
-  // operation instead.
-  const DenseElementsAttr strides_data = CreateDenseElementsAttr(
-      state.rewriter,
-      llvm::SmallVector<int64_t, 6>(state.GetOperandShape().size(), 1));
-  AddStridedSliceOpIfRequired(state, mhlo_pad.getEdgePaddingLow(),
-                              mhlo_pad.getEdgePaddingHigh(), strides_data);
-
-  if (state.last_tf_op) {
-    rewriter.replaceOp(mhlo_pad, state.last_tf_op);
-  } else {
-    rewriter.replaceOp(mhlo_pad, mhlo_pad.getOperand());
+bool IsPadValCstZero(mhlo::PadOp op) {
+  if (matchPattern(op.getPaddingValue(), m_AnyZeroFloat())) {
+    return true;
   }
+  if (matchPattern(op.getPaddingValue(), m_Zero())) {
+    return true;
+  }
+  return false;
+}
+
+DenseIntElementsAttr BuildTFLPaddingAttr(OpBuilder& b, mhlo::PadOp op) {
+  auto lows = UnrollI64Splat(op.getEdgePaddingLow());
+  auto highs = UnrollI64Splat(op.getEdgePaddingHigh());
+
+  llvm::SmallVector<int64_t> res;
+  for (auto [l, h] : llvm::zip(lows, highs)) {
+    res.push_back(l);
+    res.push_back(h);
+  }
+
+  const int64_t n_dims = res.size();
+  auto tfl_padding_type =
+      RankedTensorType::get({n_dims / 2, 2}, b.getI64Type());
+  return DenseIntElementsAttr::get(tfl_padding_type, res);
+}
+
+//===------------------------------------------------------------------------===
+// mhlo.pad -> tfl.pad
+//===------------------------------------------------------------------------===
+
+class LegalizePad : public OpConversionPattern<mhlo::PadOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::PadOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final;
+};
+
+LogicalResult LegalizePad::matchAndRewrite(
+    mhlo::PadOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter& rewriter) const {
+  if (IsPadLegal(op)) {
+    return rewriter.notifyMatchFailure(op, "Matching an already legal pad op.");
+  }
+  if (!IsPadValCstZero(op)) {
+    return rewriter.notifyMatchFailure(
+        op, "Legalizing to padv1 requires zero const padding values.");
+  }
+
+  auto tfl_paddings = BuildTFLPaddingAttr(rewriter, op);
+  auto paddings_op =
+      rewriter.create<arith::ConstantOp>(op->getLoc(), tfl_paddings);
+
+  rewriter.replaceOpWithNewOp<TFL::PadOp>(op, op.getType(), op.getOperand(),
+                                          paddings_op);
   return success();
 }
 
-}  // namespace odml
-}  // namespace mlir
+//===------------------------------------------------------------------------===
+// mhlo.pad -> tfl.padv2
+//===------------------------------------------------------------------------===
+
+class LegalizePadV2 : public OpConversionPattern<mhlo::PadOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::PadOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final;
+};
+
+LogicalResult LegalizePadV2::matchAndRewrite(
+    mhlo::PadOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter& rewriter) const {
+  if (IsPadLegal(op)) {
+    return rewriter.notifyMatchFailure(op, "Matching an already legal pad op.");
+  }
+  if (IsPadValCstZero(op)) {
+    return rewriter.notifyMatchFailure(
+        op, "Legalizing to padv2 requires non zero const padding values.");
+  }
+
+  auto tfl_paddings = BuildTFLPaddingAttr(rewriter, op);
+  auto paddings_op =
+      rewriter.create<arith::ConstantOp>(op->getLoc(), tfl_paddings);
+
+  rewriter.replaceOpWithNewOp<TFL::PadV2Op>(op, op.getType(), op.getOperand(),
+                                            paddings_op, op.getPaddingValue());
+  return success();
+}
+
+}  // namespace
+
+void PopulatePadPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
+                         ConversionTarget& target) {
+  patterns.add<LegalizePad>(ctx);
+  patterns.add<LegalizePadV2>(ctx);
+  target.addDynamicallyLegalOp<mhlo::PadOp>(IsPadLegal);
+}
+
+}  // namespace mlir::odml

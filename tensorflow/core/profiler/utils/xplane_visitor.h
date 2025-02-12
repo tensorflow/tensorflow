@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_VISITOR_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_VISITOR_H_
 
-#include "tsl/profiler/utils/xplane_visitor.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {

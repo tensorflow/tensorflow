@@ -49,9 +49,9 @@ class TFGGrapplerOptimizer : public tensorflow::grappler::GraphOptimizer {
   // Runs the optimizer on the GraphDef. The optimizer converts the GraphDef to
   // TFG using the importer, runs the passes on the MLIR, and exports back to
   // GraphDef. The result is stored in `optimized_graph`.
-  tensorflow::Status Optimize(tensorflow::grappler::Cluster* cluster,
-                              const tensorflow::grappler::GrapplerItem& item,
-                              tensorflow::GraphDef* optimized_graph) override;
+  absl::Status Optimize(tensorflow::grappler::Cluster* cluster,
+                        const tensorflow::grappler::GrapplerItem& item,
+                        tensorflow::GraphDef* optimized_graph) override;
 
  private:
   // Hide the implementation details.

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,24 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_DOT_DIMENSION_MERGER_H_
 #define XLA_SERVICE_DOT_DIMENSION_MERGER_H_
 
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// Merge consecutive batch dimensions of a dot() by inserting reshapes.
-class DotDimensionMerger : public HloModulePass {
- public:
-  absl::string_view name() const override { return "dot_dimension_merger"; }
-
-  // Run the pass on computations in 'module'.
-  // Return whether the 'module' was changed.
-  using HloPassInterface::Run;
-  StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/dot_dimension_merger.h"
 
 #endif  // XLA_SERVICE_DOT_DIMENSION_MERGER_H_

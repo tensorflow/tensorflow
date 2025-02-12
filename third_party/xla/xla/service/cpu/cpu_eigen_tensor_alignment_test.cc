@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <string>
+
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/ir_emission_utils.h"
-#include "xla/service/cpu/target_machine_features_fake.h"
-#include "xla/test.h"
+#include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -43,14 +46,14 @@ ENTRY ConvOperation {
 
   HloInstruction* conv = module->entry_computation()->root_instruction();
 
-  TargetMachineFeaturesWithFakeAlignmentLogic target_machine_with_no_alignment(
+  TargetMachineFeaturesStub target_machine_with_no_alignment(
       [](int64_t size) { return 1; });
 
   EXPECT_FALSE(PotentiallyImplementedAsEigenConvolution(
       *conv, target_machine_with_no_alignment));
 
-  TargetMachineFeaturesWithFakeAlignmentLogic
-      target_machine_with_full_alignment([](int64_t size) {
+  TargetMachineFeaturesStub target_machine_with_full_alignment(
+      [](int64_t size) {
         return TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
 

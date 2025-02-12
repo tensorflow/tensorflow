@@ -25,10 +25,10 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-Status ParallelBatch::OptimizeAndCollectStats(Cluster* cluster,
-                                              const GrapplerItem& item,
-                                              GraphDef* output,
-                                              OptimizationStats* stats) {
+absl::Status ParallelBatch::OptimizeAndCollectStats(Cluster* cluster,
+                                                    const GrapplerItem& item,
+                                                    GraphDef* output,
+                                                    OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
 
@@ -38,7 +38,7 @@ Status ParallelBatch::OptimizeAndCollectStats(Cluster* cluster,
       stats->num_changes++;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(ParallelBatch, "parallel_batch");

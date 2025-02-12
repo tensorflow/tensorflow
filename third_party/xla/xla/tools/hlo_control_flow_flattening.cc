@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,19 +16,36 @@ limitations under the License.
 #include "xla/tools/hlo_control_flow_flattening.h"
 
 #include <algorithm>
-#include <functional>
+#include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/tuple_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -129,7 +146,7 @@ int GetLoopBoundWithOuterLoopMax(const HloInstruction& while_hlo,
   return loop_bound;
 }
 
-Status HloControlFlowFlattening::FlattenWhileLoop(
+absl::Status HloControlFlowFlattening::FlattenWhileLoop(
     HloInstruction* while_hlo, const CallGraph& call_graph) const {
   CHECK_EQ(while_hlo->opcode(), HloOpcode::kWhile);
   HloComputation* computation = while_hlo->parent();
@@ -155,7 +172,7 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
   // non-get-tuple-element users with a new tuple instruction which has the
   // first N - 1 elements.
   auto replace_non_gte_users =
-      [](HloInstruction* new_tuple) -> StatusOr<HloInstruction*> {
+      [](HloInstruction* new_tuple) -> absl::StatusOr<HloInstruction*> {
     CHECK(new_tuple->shape().IsTuple());
     HloInstruction* prefix = nullptr;
     std::vector<HloInstruction*> users(new_tuple->users());
@@ -245,10 +262,10 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
                                               /*accept_different_shape=*/true);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloControlFlowFlattening::RemoveInfeed(
+absl::Status HloControlFlowFlattening::RemoveInfeed(
     HloInstruction* infeed_hlo) const {
   CHECK_EQ(infeed_hlo->opcode(), HloOpcode::kInfeed);
   HloComputation* computation = infeed_hlo->parent();
@@ -266,10 +283,11 @@ Status HloControlFlowFlattening::RemoveInfeed(
       computation->ReplaceWithNewInstruction(infeed_hlo, std::move(new_tuple)));
   custom_call->SetAndSanitizeName(infeed_hlo->name());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloControlFlowFlattening::RemoveRecvDone(
+absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
+HloControlFlowFlattening::RemoveRecvAndRecvDone(
     HloInstruction* recv_done,
     absl::flat_hash_set<HloInstruction*>* additional_removed) const {
   CHECK_EQ(recv_done->opcode(), HloOpcode::kRecvDone);
@@ -306,10 +324,10 @@ Status HloControlFlowFlattening::RemoveRecvDone(
       computation->ReplaceInstruction(recv_done, custom_call_recv_done));
   custom_call_recv_done->SetAndSanitizeName(original_recv_done_name);
 
-  return OkStatus();
+  return std::make_pair(custom_call_recv, custom_call_recv_done);
 }
 
-Status HloControlFlowFlattening::RemoveOutfeed(
+absl::Status HloControlFlowFlattening::RemoveOutfeed(
     HloInstruction* outfeed_hlo) const {
   CHECK_EQ(outfeed_hlo->opcode(), HloOpcode::kOutfeed);
   HloComputation* computation = outfeed_hlo->parent();
@@ -327,10 +345,11 @@ Status HloControlFlowFlattening::RemoveOutfeed(
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
   custom_call->SetAndSanitizeName(outfeed_hlo->name());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloControlFlowFlattening::RemoveSendDone(
+absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
+HloControlFlowFlattening::RemoveSendAndSendDone(
     HloInstruction* send_done,
     absl::flat_hash_set<HloInstruction*>* additional_removed) const {
   CHECK_EQ(send_done->opcode(), HloOpcode::kSendDone);
@@ -368,10 +387,11 @@ Status HloControlFlowFlattening::RemoveSendDone(
       computation->ReplaceInstruction(send_done, custom_call_send_done));
   custom_call_send_done->SetAndSanitizeName(original_send_done_name);
 
-  return OkStatus();
+  return std::make_pair(custom_call_send, custom_call_send_done);
 }
 
-Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
+absl::StatusOr<HloInstruction*> HloControlFlowFlattening::RemoveCollective(
+    HloInstruction* hlo) const {
   HloComputation* computation = hlo->parent();
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
@@ -387,23 +407,68 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
   std::string original_op_name(hlo->name());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
   custom_call->SetAndSanitizeName(original_op_name);
-  return OkStatus();
+  return custom_call;
 }
 
-Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
+absl::Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   HloComputation* computation = hlo->parent();
   HloInstruction* zero = CreateConstant(hlo->shape(), computation);
+  std::string original_op_name(hlo->name());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, zero));
-  return OkStatus();
+  zero->SetAndSanitizeName(original_op_name);
+  return absl::OkStatus();
 }
 
-StatusOr<bool> HloControlFlowFlattening::Run(
+absl::Status HloControlFlowFlattening::SetConditionalValue(
+    HloInstruction* conditional) const {
+  HloComputation* computation = conditional->parent();
+  // This branch op is either a PRED or an index.
+  HloInstruction* original_branch_op = conditional->mutable_operand(0);
+  std::string original_op_name(original_branch_op->name());
+
+  // If the original branch op has no other users, wrap in a custom call with
+  // side effect to ensure the operands aren't DCE'd.
+  if (original_branch_op->user_count() == 1) {
+    HloInstruction* custom_call =
+        computation->AddInstruction(HloInstruction::CreateCustomCall(
+            original_branch_op->shape(), original_branch_op->operands(),
+            kNopCustomCallTarget));
+    Cast<HloCustomCallInstruction>(custom_call)
+        ->set_custom_call_has_side_effect(true);
+    // For SPMD graphs, partitioner requires that side-effecting custom calls
+    // have a sharding that is non-replicated.
+    custom_call->set_sharding(HloSharding::Manual());
+  }
+
+  HloInstruction* new_branch_op;
+  if (original_branch_op->shape().element_type() == PRED) {
+    // Predicated (if/else) conditional.
+    new_branch_op = computation->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR0<bool>(conditional_value_)));
+  } else {
+    // Indexed (switch/case/default) conditional. Uses the N-1'th
+    // branch_computation as default index.
+    new_branch_op = computation->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR0<int32_t>(conditional->branch_count() - 1)));
+  }
+  new_branch_op->SetAndSanitizeName(original_op_name + "_flattened");
+  TF_RETURN_IF_ERROR(conditional->ReplaceOperandWith(0, new_branch_op));
+
+  return absl::OkStatus();
+}
+
+absl::StatusOr<bool> HloControlFlowFlattening::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto call_graph = CallGraph::Build(module);
   bool changed = false;
   absl::flat_hash_set<HloInstruction*> removed;
   for (HloComputation* computation : module->computations(execution_threads)) {
+    // Do not change computations that are wrapped by async calls. Instead we
+    // remove the async callers if needed.
+    if (computation->IsAsyncComputation()) {
+      continue;
+    }
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (removed.contains(instruction)) {
@@ -431,7 +496,8 @@ StatusOr<bool> HloControlFlowFlattening::Run(
         if (remove_comm_ || (remove_host_transfer_ &&
                              send_done_instruction->is_host_transfer())) {
           VLOG(1) << "Remove " << instruction->name();
-          TF_RETURN_IF_ERROR(RemoveSendDone(instruction, &removed));
+          TF_RETURN_IF_ERROR(
+              RemoveSendAndSendDone(instruction, &removed).status());
           changed = true;
         }
       } else if (instruction->opcode() == HloOpcode::kRecvDone) {
@@ -441,21 +507,48 @@ StatusOr<bool> HloControlFlowFlattening::Run(
         if (remove_comm_ || (remove_host_transfer_ &&
                              recv_done_instruction->is_host_transfer())) {
           VLOG(1) << "Remove " << instruction->name();
-          TF_RETURN_IF_ERROR(RemoveRecvDone(instruction, &removed));
+          TF_RETURN_IF_ERROR(
+              RemoveRecvAndRecvDone(instruction, &removed).status());
           changed = true;
         }
       } else if (remove_comm_ && IsCollective(instruction) &&
-                 !instruction->parent()->IsFusionComputation()) {
-        VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(RemoveCollective(instruction));
+                 (instruction->opcode() != HloOpcode::kSend &&
+                  instruction->opcode() != HloOpcode::kRecv) &&
+                 !instruction->parent()->IsFusionComputation() &&
+                 (instruction->opcode() != HloOpcode::kAsyncStart &&
+                  instruction->opcode() != HloOpcode::kAsyncUpdate)) {
+        // We do not remove kAsyncStart or kAsyncUpdate here since we expect
+        // them to be removed as a part of the async chain above.
+        // We should remove the async chain all together because the async
+        // wrapped computation is only associated with the AsyncStart. So we
+        // need to refer to the AsyncStart in order to determine whether
+        // the Done or the Update wraps a collective.
+        if (instruction->opcode() == HloOpcode::kAsyncDone) {
+          while (instruction->opcode() == HloOpcode::kAsyncDone ||
+                 instruction->opcode() == HloOpcode::kAsyncUpdate ||
+                 instruction->opcode() == HloOpcode::kAsyncStart) {
+            HloInstruction* operand = instruction->mutable_operand(0);
+            VLOG(1) << "Remove " << instruction->name();
+            TF_RETURN_IF_ERROR(RemoveCollective(instruction).status());
+            instruction = operand;
+          }
+        } else {
+          VLOG(1) << "Remove " << instruction->name();
+          TF_RETURN_IF_ERROR(RemoveCollective(instruction).status());
+        }
         changed = true;
-      } else if (remove_comm_ &&
+      } else if ((remove_comm_ || remove_id_) &&
                  (instruction->opcode() == HloOpcode::kPartitionId ||
                   instruction->opcode() == HloOpcode::kReplicaId ||
                   (instruction->opcode() == HloOpcode::kCustomCall &&
                    instruction->custom_call_target() == "SliceId"))) {
         VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveId(instruction));
+        changed = true;
+      } else if (flatten_conditional_ &&
+                 instruction->opcode() == HloOpcode::kConditional) {
+        TF_RETURN_IF_ERROR(SetConditionalValue(instruction));
+        changed = true;
       }
     }
   }

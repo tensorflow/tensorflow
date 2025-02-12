@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ShapeAnnotationsMatch(
+absl::Status ShapeAnnotationsMatch(
     const Graph& graph, const GraphShapeInfo& shape_info,
     std::map<string, std::vector<PartialTensorShape>> expected_shapes) {
   for (Node* node : graph.op_nodes()) {
@@ -58,7 +58,7 @@ Status ShapeAnnotationsMatch(
     return errors::InvalidArgument("Missing shapes for nodes: ",
                                    absl::StrJoin(missing, ","));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DeviceSetup::AddDevicesAndSetUp(

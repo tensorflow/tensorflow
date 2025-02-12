@@ -113,13 +113,13 @@ namespace parsed {
 class Feature {
  public:
   Feature() {}
-  explicit Feature(StringPiece serialized) : serialized_(serialized) {}
+  explicit Feature(absl::string_view serialized) : serialized_(serialized) {}
 
-  Status ParseDataType(DataType* dtype) {
+  absl::Status ParseDataType(DataType* dtype) {
     DCHECK(dtype != nullptr);
     if (serialized_.empty()) {
       *dtype = DT_INVALID;
-      return OkStatus();
+      return absl::OkStatus();
     }
     uint8 oneof_tag = static_cast<uint8>(*serialized_.data());
     serialized_.remove_prefix(1);
@@ -138,7 +138,7 @@ class Feature {
         *dtype = DT_INVALID;
         return errors::InvalidArgument("Unsupported datatype.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool GetNumElementsInBytesList(int* num_elements) {
@@ -315,13 +315,13 @@ class Feature {
     return true;
   }
 
-  StringPiece GetSerialized() const { return serialized_; }
+  absl::string_view GetSerialized() const { return serialized_; }
 
  private:
-  StringPiece serialized_;
+  absl::string_view serialized_;
 };
 
-using FeatureMapEntry = std::pair<StringPiece, Feature>;
+using FeatureMapEntry = std::pair<absl::string_view, Feature>;
 using Example = std::vector<FeatureMapEntry>;
 
 }  // namespace parsed
@@ -351,7 +351,8 @@ inline bool SkipExtraneousTag(protobuf::io::CodedInputStream* stream) {
   return false;  // unrecognized tag type
 }
 
-bool ParseString(protobuf::io::CodedInputStream* stream, StringPiece* result);
+bool ParseString(protobuf::io::CodedInputStream* stream,
+                 absl::string_view* result);
 
 bool ParseFeatureMapEntry(protobuf::io::CodedInputStream* stream,
                           parsed::FeatureMapEntry* feature_map_entry);
@@ -362,7 +363,7 @@ bool ParseFeatures(protobuf::io::CodedInputStream* stream,
 bool ParseExample(protobuf::io::CodedInputStream* stream,
                   parsed::Example* example);
 
-bool ParseExample(StringPiece serialized, parsed::Example* example);
+bool ParseExample(absl::string_view serialized, parsed::Example* example);
 
 using Config = FastParseExampleConfig;
 
@@ -386,7 +387,7 @@ struct SparseBuffer {
 };
 
 struct SeededHasher {
-  uint64 operator()(StringPiece s) const {
+  uint64 operator()(absl::string_view s) const {
     return Hash64(s.data(), s.size(), seed);
   }
   uint64 seed{0xDECAFCAFFE};
@@ -435,7 +436,7 @@ struct FeatureProtos {
   // Proto substrings from each serialized SequenceExample that correspond
   // with this feature.  `protos_present` records whether the proto had a
   // value defined (even if that value is empty).
-  std::vector<StringPiece> protos;
+  std::vector<absl::string_view> protos;
   std::vector<bool> protos_present;
 
   // Information derived from protos:
@@ -448,9 +449,9 @@ struct FeatureProtos {
 };
 
 // Map from feature name to FeatureProtos for that feature.
-using FeatureProtosMap = absl::flat_hash_map<StringPiece, FeatureProtos>;
+using FeatureProtosMap = absl::flat_hash_map<absl::string_view, FeatureProtos>;
 
-string ExampleName(const gtl::ArraySlice<tstring> example_names, int n);
+string ExampleName(const absl::Span<const tstring> example_names, int n);
 
 // Return the number of bytes elements parsed, or -1 on error. If out is null,
 // this method simply counts the number of elements without any copying.

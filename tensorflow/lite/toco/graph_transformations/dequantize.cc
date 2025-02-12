@@ -12,16 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdlib>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/remove_trivial_passthrough.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -186,8 +191,8 @@ bool DequantizeArray(const std::string& array_name,
 
 }  // namespace
 
-::tensorflow::Status Dequantize::Run(Model* model, std::size_t op_index,
-                                     bool* modified) {
+absl::Status Dequantize::Run(Model* model, std::size_t op_index,
+                             bool* modified) {
   *modified = false;
   const auto op_it = model->operators.begin() + op_index;
   auto* op = op_it->get();
@@ -195,10 +200,10 @@ bool DequantizeArray(const std::string& array_name,
   if (op->type == OperatorType::kDequantize) {
     auto& input_array = model->GetArray(op->inputs[0]);
     if (input_array.data_type == ArrayDataType::kFloat) {
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
     if (input_array.final_data_type != ArrayDataType::kFloat) {
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
     input_array.data_type = ArrayDataType::kFloat;
     input_array.quantization_params = nullptr;
@@ -206,7 +211,7 @@ bool DequantizeArray(const std::string& array_name,
     output_array.data_type = ArrayDataType::kFloat;
     output_array.quantization_params = nullptr;
     *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<std::string> arrays;
@@ -225,7 +230,7 @@ bool DequantizeArray(const std::string& array_name,
   }
 
   *modified = changed;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

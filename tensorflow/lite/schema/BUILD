@@ -1,7 +1,7 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_schema_utils_friends")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_schema_utils_friends")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -9,6 +9,17 @@ package(
         "//visibility:public",
     ],
     licenses = ["notice"],
+)
+
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        ":schema_fbs_srcs",
+        ":schema_utils.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
 )
 
 # This is the package group declaration to which targets for TensorFlow Lite
@@ -27,7 +38,6 @@ package_group(
 py_strict_binary(
     name = "upgrade_schema",
     srcs = ["upgrade_schema.py"],
-    python_version = "PY3",
     deps = [":upgrade_schema_main_lib"],
 )
 
@@ -37,13 +47,12 @@ py_strict_library(
         "upgrade_schema.py",
     ],
     data = [
-        "schema_v0.fbs",
-        "schema_v1.fbs",
-        "schema_v2.fbs",
-        "schema_v3.fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_v0.fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_v1.fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_v2.fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_v3.fbs",
         "@flatbuffers//:flatc",
     ],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/platform:resource_loader",
@@ -54,8 +63,6 @@ py_strict_test(
     name = "upgrade_schema_test",
     size = "small",
     srcs = ["upgrade_schema_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "manual",
         "no_oss",
@@ -77,7 +84,6 @@ py_strict_test(
 #         ":schema_fbs_srcs",
 #         ":schema_generated.h.oss",
 #     ],
-#     python_version = "PY3",
 #     # TODO(b/235550563): Enable this TAP with FlatBuffer 2.0.6 migration.
 #     tags = [
 #         "manual",
@@ -92,25 +98,32 @@ py_strict_test(
 
 exports_files([
     "conversion_metadata.fbs",
-    "schema.fbs",
-    "schema_v0.fbs",
-    "schema_v1.fbs",
-    "schema_v2.fbs",
-    "schema_v3.fbs",
-    "schema_v3a.fbs",
-    "schema_v3b.fbs",
 ])
 
-flatbuffer_cc_library(
-    name = "schema_fbs",
-    srcs = ["schema.fbs"],
-    compatible_with = get_compatible_with_portable(),
+# copybara:uncomment_begin(google-only)
+# flatbuffer_cc_library(
+#     name = "schema_fbs",
+#     srcs = ["//tensorflow/compiler/mlir/lite/schema:schema.fbs"],
+#     compatible_with = get_compatible_with_portable(),
+# )
+# copybara:uncomment_end(google-only)
+
+cc_library(
+    name = "schema_fbs",  # copybara:comment_replace name = "schema_fbs_for_oss",
+    hdrs = [
+        ":schema_generated.h",
+        "//tensorflow/compiler/mlir/lite/schema:schema_generated.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "@flatbuffers//:runtime_cc",
+    ],
 )
 
 # Generic schema for flatbuffer converter (but with mutable makes bigger).
 flatbuffer_cc_library(
     name = "schema_fbs_with_mutable",
-    srcs = ["schema.fbs"],
+    srcs = ["//tensorflow/compiler/mlir/lite/schema:schema.fbs"],
     compatible_with = get_compatible_with_portable(),
     flatc_args = [
         "--gen-mutable",
@@ -122,7 +135,7 @@ flatbuffer_cc_library(
 # Generic schema for inference on device (but with reflections makes bigger).
 flatbuffer_cc_library(
     name = "schema_fbs_with_reflection",
-    srcs = ["schema.fbs"],
+    srcs = ["//tensorflow/compiler/mlir/lite/schema:schema.fbs"],
     compatible_with = get_compatible_with_portable(),
     flatc_args = [
         "--reflect-types",
@@ -133,57 +146,25 @@ flatbuffer_cc_library(
     out_prefix = "reflection/",
 )
 
-# Schema test to make sure we don't introduce backward incompatible changes
-# to schemas.
-cc_test(
-    name = "flatbuffer_compatibility_test",
-    size = "small",
-    srcs = ["flatbuffer_compatibility_test.cc"],
-    data = [
-        "schema.fbs",
-        "schema_v3b.fbs",
-    ],
-    tags = [
-        "no_oss",
-        "tflite_not_portable_android",
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        "//tensorflow/core/platform",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:flatc_library",
-    ],
-)
-
 cc_library(
     name = "schema_utils",
-    srcs = ["schema_utils.cc"],
     hdrs = ["schema_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [":utils_friends"],
-    deps = [
-        ":schema_fbs",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "@flatbuffers//:runtime_cc",
-    ],
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/compiler/mlir/lite/schema:schema_utils"],
 )
 
 cc_library(
     name = "schema_conversion_utils",
-    srcs = ["schema_conversion_utils.cc"],
     hdrs = ["schema_conversion_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [":utils_friends"],
-    deps = [
-        ":schema_fbs",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "@flatbuffers",
-    ],
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils"],
 )
 
 flatbuffer_cc_library(
     name = "conversion_metadata_fbs",
-    srcs = ["conversion_metadata.fbs"],
+    srcs = ["//tensorflow/compiler/mlir/lite/schema:conversion_metadata.fbs"],
     compatible_with = get_compatible_with_portable(),
 )
 

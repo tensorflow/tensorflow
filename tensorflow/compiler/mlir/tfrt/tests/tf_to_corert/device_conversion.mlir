@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-to-tfrt=func-use-fallback-tensor=true %s | FileCheck %s --dump-input=fail
+// RUN: tf-tfrt-opt -tf-to-tfrt %s | FileCheck %s --dump-input=fail
 
 // CHECK-LABEL: func @device_test
 func.func @device_test(

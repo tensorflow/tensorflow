@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tests for array_ops."""
 import re
-import sys
 import time
 import unittest
 
@@ -47,6 +46,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import tensor_getitem_override
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
@@ -377,7 +377,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
           self.assertAllEqual(x_tf, x_np)
 
   def _reverse1DimAuto(self, np_dtype):
-    x_np = np.array([1, 200, 3, 40, 5], dtype=np_dtype)
+    x_np = np.array([1, 120, 3, 40, 5], dtype=np_dtype)
 
     for use_gpu in [False, True]:
       for axis_dtype in [dtypes.int32, dtypes.int64]:
@@ -388,7 +388,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
           self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
 
   def _reverse2DimAuto(self, np_dtype):
-    x_np = np.array([[1, 200, 3], [4, 5, 60]], dtype=np_dtype)
+    x_np = np.array([[1, 120, 3], [4, 5, 60]], dtype=np_dtype)
 
     for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
       for use_gpu in [False, True]:
@@ -688,7 +688,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       s = array_ops.strided_slice(x, begin, end, strides)
       self.assertAllEqual([3.], self.evaluate(s))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   @test_util.assert_no_garbage_created
   def testTensorSliceEagerMemory(self):
     with context.eager_mode():
@@ -697,12 +697,9 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       # Tests that slicing an EagerTensor doesn't leak memory
       inputs[0]  # pylint: disable=pointless-statement
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   @test_util.assert_no_garbage_created
   def testVariableSliceEagerMemory(self):
-    if sys.version_info.major == 3 and sys.version_info.minor == 11:
-      # TODO(b/265082239)
-      self.skipTest("Not working in Python 3.11")
     with context.eager_mode():
       v = variables.Variable([1., 2.])
       v[0]  # pylint: disable=pointless-statement
@@ -788,7 +785,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   def testTensorIndexingTypeError(self):
     with self.session():
       checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
-      expected = re.escape(array_ops._SLICE_TYPE_ERROR)
+      expected = re.escape(tensor_getitem_override._SLICE_TYPE_ERROR)
       with self.assertRaisesRegex(TypeError, expected):
         _ = checker["foo"]
       with self.assertRaisesRegex(TypeError, expected):

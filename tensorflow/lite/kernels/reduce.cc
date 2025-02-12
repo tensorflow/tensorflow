@@ -429,10 +429,9 @@ void ResolveAxis(const int* axis_data, int axis_count,
   }
 }
 
-template <typename T, typename U>
+template <typename T, typename U, KernelType kernel_type>
 TfLiteStatus Mean(TfLiteContext* context, const OpContext* op_context,
-                  int* temp_index, int* resolved_axis, U* temp_sum,
-                  KernelType kernel_type) {
+                  int* temp_index, int* resolved_axis, U* temp_sum) {
   int num_axis = static_cast<int>(NumElements(op_context->axis));
   auto args = std::tuple(
       GetTensorData<T>(op_context->input), &op_context->input->dims->data[0],
@@ -448,13 +447,12 @@ TfLiteStatus Mean(TfLiteContext* context, const OpContext* op_context,
   return kTfLiteOk;
 }
 
-template <typename T>
+template <typename T, KernelType kernel_type>
 TfLiteStatus QuantizedMeanOrSum(TfLiteContext* context,
                                 const OpContext& op_context,
                                 const OpData* op_data, TfLiteTensor* temp_index,
                                 TfLiteTensor* resolved_axis,
-                                TfLiteTensor* temp_sum, KernelType kernel_type,
-                                bool compute_sum) {
+                                TfLiteTensor* temp_sum, bool compute_sum) {
   int num_axis = static_cast<int>(NumElements(op_context.axis));
   if (kernel_type == kGenericOptimized) {
     TF_LITE_ENSURE(
@@ -635,20 +633,19 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
 
   switch (op_context.input->type) {
     case kTfLiteFloat32:
-      Mean<float, float>(context, &op_context, GetTensorData<int>(temp_index),
-                         GetTensorData<int>(resolved_axis),
-                         GetTensorData<float>(temp_sum), kernel_type);
+      Mean<float, float, kernel_type>(
+          context, &op_context, GetTensorData<int>(temp_index),
+          GetTensorData<int>(resolved_axis), GetTensorData<float>(temp_sum));
       break;
     case kTfLiteInt32:
-      Mean<int, int64_t>(context, &op_context, GetTensorData<int>(temp_index),
-                         GetTensorData<int>(resolved_axis),
-                         GetTensorData<int64_t>(temp_sum), kernel_type);
+      Mean<int, int64_t, kernel_type>(
+          context, &op_context, GetTensorData<int>(temp_index),
+          GetTensorData<int>(resolved_axis), GetTensorData<int64_t>(temp_sum));
       break;
     case kTfLiteInt64:
-      Mean<int64_t, int64_t>(context, &op_context,
-                             GetTensorData<int>(temp_index),
-                             GetTensorData<int>(resolved_axis),
-                             GetTensorData<int64_t>(temp_sum), kernel_type);
+      Mean<int64_t, int64_t, kernel_type>(
+          context, &op_context, GetTensorData<int>(temp_index),
+          GetTensorData<int>(resolved_axis), GetTensorData<int64_t>(temp_sum));
       break;
     case kTfLiteInt8: {
       TF_LITE_ENSURE_OK(context, EvalQuantizedMean<int8_t>(
@@ -758,10 +755,9 @@ void ReduceAllDims(const T* input_data, const int* input_dims,
 }
 
 // The underlying logic for Reduce Sum/Prod/Max/Min/Any
-template <typename T>
+template <typename T, KernelType kernel_type>
 TfLiteStatus EvalType(TfLiteContext* context, TfLiteNode* node,
-                      OpContext* op_context, KernelType kernel_type,
-                      ReduceType reduce_type) {
+                      OpContext* op_context, ReduceType reduce_type) {
   int64_t num_axis = NumElements(op_context->axis);
   TfLiteTensor* temp_index;
   TF_LITE_ENSURE_OK(context,
@@ -877,32 +873,32 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
   switch (op_context.input->type) {
     case kTfLiteFloat32:
-      return EvalType<float>(context, node, &op_context, kernel_type,
-                             reduce_type);
+      return EvalType<float, kernel_type>(context, node, &op_context,
+                                          reduce_type);
       break;
     case kTfLiteInt32:
-      return EvalType<int>(context, node, &op_context, kernel_type,
-                           reduce_type);
+      return EvalType<int, kernel_type>(context, node, &op_context,
+                                        reduce_type);
       break;
     case kTfLiteInt64:
-      return EvalType<int64_t>(context, node, &op_context, kernel_type,
-                               reduce_type);
+      return EvalType<int64_t, kernel_type>(context, node, &op_context,
+                                            reduce_type);
       break;
     case kTfLiteUInt8:
-      return EvalType<uint8_t>(context, node, &op_context, kernel_type,
-                               reduce_type);
+      return EvalType<uint8_t, kernel_type>(context, node, &op_context,
+                                            reduce_type);
       break;
     case kTfLiteInt8:
-      return EvalType<int8_t>(context, node, &op_context, kernel_type,
-                              reduce_type);
+      return EvalType<int8_t, kernel_type>(context, node, &op_context,
+                                           reduce_type);
       break;
     case kTfLiteInt16:
-      return EvalType<int16_t>(context, node, &op_context, kernel_type,
-                               reduce_type);
+      return EvalType<int16_t, kernel_type>(context, node, &op_context,
+                                            reduce_type);
       break;
     case kTfLiteBool:
-      return EvalType<bool>(context, node, &op_context, kernel_type,
-                            reduce_type);
+      return EvalType<bool, kernel_type>(context, node, &op_context,
+                                         reduce_type);
       break;
     default:
       return kTfLiteError;
@@ -937,14 +933,14 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
     }
 
     if (input->type == kTfLiteUInt8) {
-      return QuantizedMeanOrSum<uint8_t>(context, op_context, op_data,
-                                         temp_index, resolved_axis, temp_sum,
-                                         kernel_type, /*compute_sum=*/true);
+      return QuantizedMeanOrSum<uint8_t, kernel_type>(
+          context, op_context, op_data, temp_index, resolved_axis, temp_sum,
+          /*compute_sum=*/true);
     }
     if (input->type == kTfLiteInt8) {
-      return QuantizedMeanOrSum<int8_t>(context, op_context, op_data,
-                                        temp_index, resolved_axis, temp_sum,
-                                        kernel_type, /*compute_sum=*/true);
+      return QuantizedMeanOrSum<int8_t, kernel_type>(
+          context, op_context, op_data, temp_index, resolved_axis, temp_sum,
+          /*compute_sum=*/true);
     }
   } else {
     return EvalGeneric<kernel_type, kSum>(context, node);

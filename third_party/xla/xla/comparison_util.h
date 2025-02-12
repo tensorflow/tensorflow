@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,13 +22,14 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
-#include "xla/statusor.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -60,6 +61,13 @@ class Comparison {
     // https://en.wikipedia.org/wiki/Partially_ordered_set
     kPartial,
   };
+
+  friend absl::string_view ComparisonOrderToString(Comparison::Order order);
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Order& p) {
+    absl::Format(&sink, "%s", ComparisonOrderToString(p));
+  }
 
   // Represents different comparison operations.
   enum class Direction : uint8_t {
@@ -119,17 +127,11 @@ class Comparison {
   inline bool IsF32TotalOrder() const {
     return primitive_type_ == PrimitiveType::F32 && IsTotalOrder();
   }
-  inline bool IsBf16TotalOrder() const {
-    return primitive_type_ == PrimitiveType::BF16 && IsTotalOrder();
-  }
 
   // Returns whether this is a standard comparison, i.e., what you would expect
   // as the industry standard on most architectures.
   inline bool IsStandardF32() const {
     return primitive_type_ == PrimitiveType::F32 && IsPartialOrder();
-  }
-  inline bool IsStandardBf16() const {
-    return primitive_type_ == PrimitiveType::BF16 && IsPartialOrder();
   }
   inline bool IsStandardS32() const {
     return primitive_type_ == PrimitiveType::S32 && IsTotalOrder();
@@ -192,8 +194,13 @@ class Comparison {
         //  -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN
         // Reference:
         // https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations
-        using R = SignedIntegerTypeForSizeType<sizeof(T)>;
-        return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
+        if constexpr (std::numeric_limits<T>::is_signed) {
+          using R = SignedIntegerTypeForSizeType<sizeof(T)>;
+          return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
+        } else {
+          using R = UnsignedIntegerTypeForSizeType<sizeof(T)>;
+          return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
+        }
       }
     }
     // Applies the comparison from this Comparison's direction and ordering.
@@ -228,12 +235,11 @@ inline std::ostream& operator<<(std::ostream& os, const Comparison& cmp) {
 std::string ComparisonDirectionToString(Comparison::Direction direction);
 std::string ComparisonTypeToString(Comparison::Type type);
 absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type);
-absl::string_view ComparisonOrderToString(Comparison::Order order);
 
-StatusOr<Comparison::Direction> StringToComparisonDirection(
+absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction);
-StatusOr<Comparison::Type> StringToComparisonType(absl::string_view comparison);
-StatusOr<Comparison::Order> StringToComparisonOrder(absl::string_view order);
+absl::StatusOr<Comparison::Type> StringToComparisonType(
+    absl::string_view comparison);
 
 // Returns a comparison function using the provided key function on each value,
 // i.e. `key_fn(a) < key_fn(b)`.

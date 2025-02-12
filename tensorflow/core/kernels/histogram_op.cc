@@ -34,15 +34,16 @@ namespace functor {
 
 template <typename T, typename Tout>
 struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<T, 1>::ConstTensor& values,
-                        const typename TTypes<T, 1>::ConstTensor& value_range,
-                        int32_t nbins, typename TTypes<Tout, 1>::Tensor& out) {
+  static absl::Status Compute(
+      OpKernelContext* context,
+      const typename TTypes<T, 1>::ConstTensor& values,
+      const typename TTypes<T, 1>::ConstTensor& value_range, int32_t nbins,
+      typename TTypes<Tout, 1>::Tensor& out) {
     const CPUDevice& d = context->eigen_device<CPUDevice>();
 
     if (nbins == 1) {
       out(0) = static_cast<Tout>(values.size());
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Tensor index_to_bin_tensor;
@@ -87,7 +88,7 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
     for (int32_t i = 0; i < index_to_bin.size(); i++) {
       out(index_to_bin(i)) += Tout(1);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

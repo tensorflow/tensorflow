@@ -42,6 +42,15 @@ TEST(Repository, GetHostName) {
   EXPECT_TRUE(session_snapshot_or.value().HasAccessibleRunDir());
 }
 
+TEST(Repository, GetHostNameWithPeriods) {
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"log/plugins/profile/127.0.0.1_6009.xplane.pb"},
+                              /*xspaces=*/std::nullopt);
+  TF_CHECK_OK(session_snapshot_or.status());
+  EXPECT_THAT(session_snapshot_or.value().GetHostname(0), Eq("127.0.0.1_6009"));
+  EXPECT_TRUE(session_snapshot_or.value().HasAccessibleRunDir());
+}
+
 TEST(Repository, GetSpaceByHostName) {
   std::vector<std::unique_ptr<XSpace>> xspaces;
   // prepare host 1.

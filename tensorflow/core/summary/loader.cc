@@ -13,13 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <iostream>
+#include <memory>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
-#include "tensorflow/core/summary/schema.h"
-#include "tensorflow/core/summary/summary_db_writer.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/summary/schema.h"
+#include "tensorflow/core/summary/summary_db_writer.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/util/event.pb.h"
 
@@ -99,7 +105,7 @@ int main(int argc, char* argv[]) {
   tstring record;
   while (true) {
     std::unique_ptr<Event> event = std::unique_ptr<Event>(new Event);
-    Status s = reader.ReadRecord(&offset, &record);
+    absl::Status s = reader.ReadRecord(&offset, &record);
     if (s.code() == error::OUT_OF_RANGE) break;
     TF_CHECK_OK(s);
     if (!ParseProtoUnlimited(event.get(), record)) {

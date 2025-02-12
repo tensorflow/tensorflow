@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/execution_options_util.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/status_macros.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"

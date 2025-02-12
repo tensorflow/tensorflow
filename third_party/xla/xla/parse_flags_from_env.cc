@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,13 +27,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "tsl/platform/logging.h"
-#include "tsl/util/command_line_flags.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/command_line_flags.h"
 
 namespace xla {
 
@@ -186,9 +190,22 @@ static absl::flat_hash_map<std::string, EnvArgv>& EnvArgvs() {
 // Used to protect accesses to env_argvs.
 static absl::Mutex env_argv_mu(absl::kConstInit);
 
-bool ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
-                                      const std::vector<tsl::Flag>& flag_list) {
+static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar);
+
+void ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
+                                      const std::vector<tsl::Flag>& flag_list,
+                                      const bool reset_envvar) {
+  ParseFlagsFromEnvAndIgnoreUnknown(envvar, flag_list, reset_envvar);
+  DieIfEnvHasUnknownFlagsLeft(envvar);
+}
+
+void ParseFlagsFromEnvAndIgnoreUnknown(absl::string_view envvar,
+                                       const std::vector<tsl::Flag>& flag_list,
+                                       const bool reset_envvar) {
   absl::MutexLock lock(&env_argv_mu);
+  if (reset_envvar) {
+    EnvArgvs().erase(envvar);
+  }
   auto* env_argv = &EnvArgvs()[envvar];
   SetArgvFromEnv(envvar, env_argv);  // a no-op if already initialized
 
@@ -199,20 +216,24 @@ bool ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
     }
   }
 
-  bool result =
-      tsl::Flags::Parse(&env_argv->argc, &env_argv->argv[0], flag_list);
+  QCHECK(tsl::Flags::Parse(&env_argv->argc, env_argv->argv.data(), flag_list))
+      << "Flag parsing failed.\n"
+      << tsl::Flags::Usage(getenv(std::string(envvar).c_str()), flag_list);
+}
 
-  // There's always at least one unparsed argc, namely the fake argv[0].
-  if (result && env_argv->argc != 1) {
+static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {
+  absl::MutexLock lock(&env_argv_mu);
+  auto* env_argv = &EnvArgvs()[envvar];
+  SetArgvFromEnv(envvar, env_argv);
+
+  if (env_argv->argc != 1) {
+    auto unknown_flags = absl::MakeSpan(env_argv->argv).first(env_argv->argc);
     // Skip the first argv, which is the fake argv[0].
-    auto unknown_flags = absl::MakeSpan(env_argv->argv);
     unknown_flags.remove_prefix(1);
     LOG(QFATAL) << "Unknown flag" << (unknown_flags.size() > 1 ? "s" : "")
                 << " in " << envvar << ": "
                 << absl::StrJoin(unknown_flags, " ");
-    return false;
   }
-  return result;
 }
 
 // Testing only.

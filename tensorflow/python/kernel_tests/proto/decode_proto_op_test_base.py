@@ -297,7 +297,7 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
     field_names = ['sizes']
     field_types = [dtypes.int32]
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         errors.DataLossError, 'Unable to parse binary protobuf'
         '|Failed to consume entire buffer'):
       self.evaluate(
@@ -307,6 +307,25 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
               field_names=field_names,
               output_types=field_types,
               sanitize=sanitize))
+
+  def testUnexpectedType(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Unexpected output type.*int64 to DT_STRING'):
+      msg = test_example_pb2.TestValue(
+          int64_value_with_default=3
+      ).SerializeToString()
+      msg_type = 'tensorflow.contrib.proto.TestValue'
+      field_names = ['int64_value_with_default']
+      field_types = [dtypes.string]
+      self.evaluate(
+          self._decode_module.decode_proto(
+              msg,
+              message_type=msg_type,
+              field_names=field_names,
+              output_types=field_types,
+          )
+      )
 
   def testOutOfOrderRepeated(self):
     fragments = [

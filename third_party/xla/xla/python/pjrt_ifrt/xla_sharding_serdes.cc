@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,12 +17,19 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
-#include "xla/python/ifrt/sharding_serdes.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.pb.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -36,10 +43,11 @@ class HloShardingSerDes : public llvm::RTTIExtends<HloSharding, SerDes> {
     return "xla::ifrt::HloSharding";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     const HloSharding& sharding = llvm::cast<HloSharding>(serializable);
     HloShardingProto proto;
-    *proto.mutable_devices() = sharding.devices().ToProto();
+    *proto.mutable_devices() = sharding.devices()->ToProto();
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
@@ -50,8 +58,8 @@ class HloShardingSerDes : public llvm::RTTIExtends<HloSharding, SerDes> {
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
-    TF_ASSIGN_OR_RETURN(auto deserialize_sharding_options,
-                        GetDeserializeShardingOptions(std::move(options)));
+    const auto* deserialize_sharding_options =
+        llvm::cast<DeserializeShardingOptions>(options.get());
 
     HloShardingProto proto;
     if (!proto.ParseFromString(serialized)) {

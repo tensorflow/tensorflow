@@ -48,20 +48,20 @@ void FinishItem(GrapplerItem* item, const string& input_node_name) {
   *item->graph.add_node() =
       NDef("map_before_rebatch", "MapDataset", {input_node_name},
            {{"f", "__inference_Dataset_map_normalize_8232"},
-            {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}});
+            {"output_shapes", absl::Span<const TensorShape>{}},
+            {"output_types", absl::Span<const DataType>{}}});
   *item->graph.add_node() =
       NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}});
   *item->graph.add_node() =
       NDef("rebatch", "RebatchDataset", {"map_before_rebatch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}});
+           {{"output_shapes", absl::Span<const TensorShape>{}},
+            {"output_types", absl::Span<const DataType>{}}});
   *item->graph.add_node() =
       NDef("prefetch_count", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}});
   *item->graph.add_node() =
       NDef("prefetch", "PrefetchDataset", {"rebatch", "prefetch_count"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}});
+           {{"output_shapes", absl::Span<const TensorShape>{}},
+            {"output_types", absl::Span<const DataType>{}}});
   *item->graph.add_node() = NDef("Sink", "Identity", {"prefetch"}, {});
   item->fetch.push_back("Sink");
 }
@@ -80,8 +80,8 @@ TEST(RewriteBatchTest, InfiniteSource) {
       NDef("tf_record", "TFRecordDataset", {"file"}, {}),
       NDef("repeat_count", "Const", {}, {{"value", -1}, {"dtype", DT_INT32}}),
       NDef("repeat", "RepeatDataset", {"tf_record", "repeat_count"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
+           {{"output_shapes", absl::Span<const TensorShape>{}},
+            {"output_types", absl::Span<const DataType>{}}}),
       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       NDef("drop_remainder", "Const", {},
            {{"value", true}, {"dtype", DT_BOOL}}),
@@ -110,8 +110,8 @@ TEST(RewriteBatchTest, InfiniteSourceMapAndBatch) {
       NDef("tf_record", "TFRecordDataset", {"file"}, {}),
       NDef("repeat_count", "Const", {}, {{"value", -1}, {"dtype", DT_INT32}}),
       NDef("repeat", "RepeatDataset", {"tf_record", "repeat_count"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
+           {{"output_shapes", absl::Span<const TensorShape>{}},
+            {"output_types", absl::Span<const DataType>{}}}),
       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       NDef("num_parallel_calls", "Const", {},
            {{"value", 2}, {"dtype", DT_INT64}}),
@@ -142,8 +142,8 @@ TEST(RewriteBatchTest, InfiniteSourceParallelBatch) {
       NDef("tf_record", "TFRecordDataset", {"file"}, {}),
       NDef("repeat_count", "Const", {}, {{"value", -1}, {"dtype", DT_INT32}}),
       NDef("repeat", "RepeatDataset", {"tf_record", "repeat_count"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
+           {{"output_shapes", absl::Span<const TensorShape>{}},
+            {"output_types", absl::Span<const DataType>{}}}),
       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       NDef("num_parallel_calls", "Const", {},
            {{"value", 2}, {"dtype", DT_INT64}}),
@@ -357,8 +357,8 @@ TEST(RewriteBatchTest, InfiniteSourceNoRebatch) {
       NDef("tf_record", "TFRecordDataset", {"file"}, {}),
       NDef("repeat_count", "Const", {}, {{"value", -1}, {"dtype", DT_INT32}}),
       NDef("repeat", "RepeatDataset", {"tf_record", "repeat_count"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
+           {{"output_shapes", absl::Span<const TensorShape>{}},
+            {"output_types", absl::Span<const DataType>{}}}),
       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       NDef("drop_remainder", "Const", {},
            {{"value", true}, {"dtype", DT_BOOL}}),

@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -48,6 +49,11 @@ namespace {
 struct FunctionalControlFlowToRegions
     : public impl::FunctionalControlFlowToRegionsPassBase<
           FunctionalControlFlowToRegions> {
+  FunctionalControlFlowToRegions() = default;
+  explicit FunctionalControlFlowToRegions(bool allow_passthrough_args)
+      : FunctionalControlFlowToRegionsPassBase(
+            FunctionalControlFlowToRegionsPassOptions{allow_passthrough_args}) {
+  }
   void runOnOperation() override;
 };
 
@@ -96,13 +102,15 @@ YieldOp CreateCall(Operation* op, func::FuncOp func, Region& caller_region,
 
 // Converts the condition for an IfOp/WhileOp to a boolean value.
 Value ConvertConditionToBoolean(Operation* op, Value cond) {
-  if (auto ranked_type = cond.getType().dyn_cast<RankedTensorType>())
+  if (auto ranked_type = mlir::dyn_cast<RankedTensorType>(cond.getType()))
     if (ranked_type.getRank() == 0 &&
         ranked_type.getElementType().isSignlessInteger(1))
       return cond;
 
   OpBuilder builder(op);
-  return builder.create<TF::ToBoolOp>(op->getLoc(), cond);
+  Value to_bool = builder.create<TF::ToBoolOp>(op->getLoc(), cond);
+  CopyDeviceAndUnderscoredAttributes(op, to_bool.getDefiningOp());
+  return to_bool;
 }
 
 // Transform a functional IfOp to a region based IfRegionOp.
@@ -171,6 +179,48 @@ LogicalResult ConvertWhileOp(WhileOp while_op, bool allow_passthrough_args) {
   return success();
 }
 
+LogicalResult ConvertGeneratorDatasetOp(GeneratorDatasetOp generator_op) {
+  auto generator_region =
+      OpBuilder(generator_op)
+          .create<TF::GeneratorDatasetRegionOp>(
+              generator_op.getLoc(), generator_op->getResultTypes(),
+              generator_op.getInitFuncOtherArgs(),
+              generator_op.getNextFuncOtherArgs(),
+              generator_op.getFinalizeFuncOtherArgs(),
+              generator_op.getOutputTypes(), generator_op.getOutputShapes(),
+              generator_op.getMetadata());
+  CopyDeviceAndUnderscoredAttributes(generator_op, generator_region);
+
+  func::FuncOp init_function =
+      SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+          generator_op, generator_op.getInitFunc());
+  func::FuncOp next_function =
+      SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+          generator_op, generator_op.getNextFunc());
+  func::FuncOp finalize_function =
+      SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+          generator_op, generator_op.getFinalizeFunc());
+
+  if (!init_function || !next_function || !finalize_function) {
+    return failure();
+  }
+
+  CreateCall(generator_op, init_function, generator_region.getInit(),
+             generator_region.getInitFuncOtherArgs(),
+             /*use_region_args=*/true, /*forward_block_args=*/false);
+  CreateCall(generator_op, next_function, generator_region.getNext(),
+             generator_region.getNextFuncOtherArgs(),
+             /*use_region_args=*/true, /*forward_block_args=*/false);
+  CreateCall(generator_op, finalize_function, generator_region.getFinalize(),
+             generator_region.getFinalizeFuncOtherArgs(),
+             /*use_region_args=*/true, /*forward_block_args=*/false);
+
+  generator_op->replaceAllUsesWith(generator_region->getResults());
+  generator_op->erase();
+
+  return success();
+}
+
 void FunctionalControlFlowToRegions::runOnOperation() {
   ModuleOp module = getOperation();
   auto result = module.walk([&](Operation* op) {
@@ -189,6 +239,13 @@ void FunctionalControlFlowToRegions::runOnOperation() {
         op->emitOpError() << "failed to convert to region form";
         return WalkResult::interrupt();
       }
+    } else if (auto generator_op = llvm::dyn_cast<GeneratorDatasetOp>(op)) {
+      if (allow_passthrough_args_) {
+        if (failed(ConvertGeneratorDatasetOp(generator_op))) {
+          op->emitOpError() << "failed to convert to region form";
+          return WalkResult::interrupt();
+        }
+      }
     }
     return WalkResult::advance();
   });
@@ -199,6 +256,11 @@ void FunctionalControlFlowToRegions::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFFunctionalControlFlowToRegions() {
   return std::make_unique<FunctionalControlFlowToRegions>();
+}
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFFunctionalControlFlowToRegions(
+    bool allow_passthrough_args) {
+  return std::make_unique<FunctionalControlFlowToRegions>(
+      allow_passthrough_args);
 }
 
 }  // namespace TF

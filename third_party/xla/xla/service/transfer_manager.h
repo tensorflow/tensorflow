@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,19 +16,24 @@ limitations under the License.
 #ifndef XLA_SERVICE_TRANSFER_MANAGER_H_
 #define XLA_SERVICE_TRANSFER_MANAGER_H_
 
-#include <map>
-#include <set>
-#include <vector>
+#include <cstdint>
+#include <functional>
+#include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/service/executable.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -72,11 +77,11 @@ class TransferManager {
   //
   // Optionally caller can specify platform-specific transfer metadata that
   // tells the actual implementation to do something special.
-  StatusOr<Literal> TransferLiteralFromDevice(
+  absl::StatusOr<Literal> TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
       const TransferMetadata* transfer_metadata = nullptr);
 
-  Status TransferLiteralFromDevice(
+  absl::Status TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
       const MutableBorrowingLiteral& literal,
       const TransferMetadata* transfer_metadata = nullptr);
@@ -95,13 +100,13 @@ class TransferManager {
   // tells the actual implementation to do something special.
   virtual void TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
-      MutableBorrowingLiteral literal, std::function<void(Status)> done,
+      MutableBorrowingLiteral literal, std::function<void(absl::Status)> done,
       const TransferMetadata* transfer_metadata) = 0;
 
   void TransferLiteralFromDevice(se::Stream* stream,
                                  const ShapedBuffer& device_buffer,
                                  MutableBorrowingLiteral literal,
-                                 std::function<void(Status)> done) {
+                                 std::function<void(absl::Status)> done) {
     return TransferLiteralFromDevice(stream, device_buffer, literal, done,
                                      nullptr);
   }
@@ -117,7 +122,7 @@ class TransferManager {
   //
   // Optionally caller can specify platform-specific transfer metadata that
   // tells the actual implementation to do something special.
-  Status TransferLiteralToDevice(
+  absl::Status TransferLiteralToDevice(
       se::Stream* stream, const LiteralSlice& literal,
       const ShapedBuffer& device_buffer,
       const TransferMetadata* transfer_metadata = nullptr);
@@ -138,14 +143,14 @@ class TransferManager {
   //
   // Optionally caller can specify platform-specific transfer metadata that
   // tells the actual implementation to do something special.
-  virtual Status TransferLiteralToDeviceAsync(
+  virtual absl::Status TransferLiteralToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
       const ShapedBuffer& device_buffer,
       const TransferMetadata* transfer_metadata) = 0;
 
-  Status TransferLiteralToDeviceAsync(se::Stream* stream,
-                                      const LiteralSlice& literal,
-                                      const ShapedBuffer& device_buffer) {
+  absl::Status TransferLiteralToDeviceAsync(se::Stream* stream,
+                                            const LiteralSlice& literal,
+                                            const ShapedBuffer& device_buffer) {
     return TransferLiteralToDeviceAsync(stream, literal, device_buffer,
                                         nullptr);
   }
@@ -156,17 +161,17 @@ class TransferManager {
   //
   // Optionally caller can specify platform-specific transfer metadata that
   // tells the actual implementation to do something special.
-  Status TransferArrayToDevice(
+  absl::Status TransferArrayToDevice(
       se::Stream* stream, const LiteralSlice& literal,
       const se::DeviceMemoryBase& dest,
       const TransferMetadata* transfer_metadata = nullptr);
 
-  Status TransferArrayToDeviceAsync(
+  absl::Status TransferArrayToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
       const se::DeviceMemoryBase& dest,
       const TransferMetadata* transfer_metadata = nullptr);
 
-  StatusOr<Literal> TransferArrayFromDevice(
+  absl::StatusOr<Literal> TransferArrayFromDevice(
       se::Stream* stream, const Shape& shape,
       const se::DeviceMemoryBase& source,
       const TransferMetadata* transfer_metadata = nullptr);
@@ -176,39 +181,39 @@ class TransferManager {
   // shapes, and returns static shapes with dynamic shapes updated.
   // The shape of the buffer also have to be compatible with the host shape and
   // device shape.
-  virtual Status ReadDynamicShapes(se::Stream* stream,
-                                   const ShapedBuffer* device_buffer,
-                                   Shape* device_shape);
+  virtual absl::Status ReadDynamicShapes(se::Stream* stream,
+                                         const ShapedBuffer* device_buffer,
+                                         Shape* device_shape);
 
   // Transfers the given literal into the Infeed interface of the device,
   // using the given executor.
-  virtual Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                         const LiteralSlice& literal) = 0;
+  virtual absl::Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                               const LiteralSlice& literal) = 0;
 
   // Transfers the given literal from the Outfeed interface of the device,
   // using the given executor. The shape and layout are determined by the
   // shape and layout of `literal`.
-  virtual Status TransferLiteralFromOutfeed(
+  virtual absl::Status TransferLiteralFromOutfeed(
       se::StreamExecutor* executor, MutableBorrowingLiteral literal) = 0;
 
   // Resets the devices associated with this transfer manager.
-  virtual Status ResetDevices(
+  virtual absl::Status ResetDevices(
       absl::Span<se::StreamExecutor* const> executor) = 0;
 
   // Given an allocated ShapedBuffer, constructs the tuple index table(s) in
   // each buffer of the given ShapedBuffer corresponding to tuple shapes. If the
   // ShapedBuffer is array-shaped this method does nothing.
-  Status WriteTupleIndexTables(se::Stream* stream,
-                               const ShapedBuffer& device_buffer);
-  Status WriteTupleIndexTablesAsync(se::Stream* stream,
-                                    const ShapedBuffer& device_buffer);
+  absl::Status WriteTupleIndexTables(se::Stream* stream,
+                                     const ShapedBuffer& device_buffer);
+  absl::Status WriteTupleIndexTablesAsync(se::Stream* stream,
+                                          const ShapedBuffer& device_buffer);
 
   // Writes a tuple index buffer for the root of 'device_buffer', which must
   // be a tuple. Unlike WriteTupleIndexTables, only writes the root buffer,
   // rather than writing all subbuffers. This method is always asynchronous.
-  Status WriteRootTupleIndexTable(se::Stream* stream,
-                                  const ShapedBuffer& device_buffer);
-  Status WriteRootTupleIndexTable(
+  absl::Status WriteRootTupleIndexTable(se::Stream* stream,
+                                        const ShapedBuffer& device_buffer);
+  absl::Status WriteRootTupleIndexTable(
       se::Stream* stream,
       const ShapeTree<MaybeOwningDeviceMemory>& buffer_tree);
 
@@ -223,7 +228,7 @@ class TransferManager {
   // devices that have tiled memory architectures.
   // The default implementation always picks a default (major-to-minor) layout.
   // Fails if 'shape' cannot be represented by the device.
-  virtual StatusOr<Shape> ChooseCompactLayoutForShape(
+  virtual absl::StatusOr<Shape> ChooseCompactLayoutForShape(
       const Shape& host_shape) const;
 
   // For the given shape, chooses a layout for infeed. The returned shape
@@ -236,10 +241,18 @@ class TransferManager {
   // Allocates a ScopedShapedBuffer which can hold data with the given on-host
   // shape. The on-device shape may be different as indicated by
   // HostShapeToDeviceShape.
-  StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
+  absl::StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
+      const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
+      int device_ordinal, int physical_device_ordinal,
+      DeviceShapeRepresentationFn shape_representation_fn = nullptr);
+
+  absl::StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
       const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
       int device_ordinal,
-      DeviceShapeRepresentationFn shape_representation_fn = nullptr);
+      DeviceShapeRepresentationFn shape_representation_fn = nullptr) {
+    return AllocateScopedShapedBuffer(on_host_shape, allocator, device_ordinal,
+                                      device_ordinal, shape_representation_fn);
+  }
 
   // The given ShapedBuffer holds a handle to allocated memory, but it is not
   // in the general case legal to immediately copy or access that allocated
@@ -283,32 +296,25 @@ class TransferManager {
 
   // Returns the transfer manager singleton pointer if it is available for the
   // given platform, or an error status if it is not.
-  static StatusOr<TransferManager*> GetForPlatform(
+  static absl::StatusOr<TransferManager*> GetForPlatform(
       const se::Platform* platform);
 
   // Writes the given device-memory pointers in 'elements' to the given region
   // to construct a tuple index table in the platform-specific tuple
   // representation.
-  virtual Status WriteSingleTupleIndexTable(
+  virtual absl::Status WriteSingleTupleIndexTable(
       se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) = 0;
 
- protected:
-  // Transfer a memory block of the given size from the device source into the
-  // 'destination' buffer.
+  // Returns whether subbyte types (types less than 1 byte, e.g. U4) should
+  // have multiple values packed into a single byte on the device. Subbyte
+  // bytes are never packed on the host. By default, returns false, so a byte
+  // can only hold one value, but subclasses can override this.
   //
-  // size is the size to transfer to destination in bytes.
-  virtual Status TransferBufferFromDevice(se::Stream* stream,
-                                          const se::DeviceMemoryBase& source,
-                                          int64_t size, void* destination);
-
-  // Transfer a memory block of the given size from 'source' buffer to the given
-  // destination of the device.
-  //
-  // size is the size to transfer from source in bytes.
-  virtual Status TransferBufferToDevice(se::Stream* stream, int64_t size,
-                                        const void* source,
-                                        se::DeviceMemoryBase* destination);
+  // If overridden to return true, subclasses should pack and unpack in their
+  // overridden implementations of TransferLiteralToDeviceAsync and
+  // TransferLiteralFromDevice respectively.
+  virtual bool PackSubbyteTypes() const { return false; }
 
  private:
   // The mutex that guards the platform-to-transfer manager map.

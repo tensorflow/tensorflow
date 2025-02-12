@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html devsite>
+  <head>
+    <title>TensorFlowLiteSwift Framework Reference</title>
+    <link rel="stylesheet" href="../css/jazzy.css" />
+    <meta charset='utf-8'>
+  </head>
+  <body>
+    <div class="content-wrapper">
+      <article class="main-content">
+        <section>
+          <section class="section">
+            <h1>InterpreterError</h1>
+              <div class="declaration">
+                <div class="language">
+                  <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">enum</span> <span class="kt">InterpreterError</span> <span class="p">:</span> <span class="kt">Error</span><span class="p">,</span> <span class="kt">Equatable</span><span class="p">,</span> <span class="kt">Hashable</span></code></pre>
+<pre class="highlight swift"><code><span class="kd">extension</span> <span class="kt">InterpreterError</span><span class="p">:</span> <span class="kt">LocalizedError</span></code></pre>
+<pre class="highlight swift"><code><span class="kd">extension</span> <span class="kt">InterpreterError</span><span class="p">:</span> <span class="kt">CustomStringConvertible</span></code></pre>
+
+                </div>
+              </div>
+            <p>Errors thrown by the TensorFlow Lite <code><a href="../Classes/Interpreter.html">Interpreter</a></code>.</p>
+
+          </section>
+          <section class="section task-group-section">
+            <div class="task-group">
+              <ul>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO07invalidA5IndexyACSi_SitcACmF"></a>
+                    <a name="//apple_ref/swift/Element/invalidTensorIndex(index:maxIndex:)" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO07invalidA5IndexyACSi_SitcACmF">invalidTensorIndex(index:maxIndex:)</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Undocumented</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="nf">invalidTensorIndex</span><span class="p">(</span><span class="nv">index</span><span class="p">:</span> <span class="kt">Int</span><span class="p">,</span> <span class="nv">maxIndex</span><span class="p">:</span> <span class="kt">Int</span><span class="p">)</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO07invalidA9DataCountyACSi_SitcACmF"></a>
+                    <a name="//apple_ref/swift/Element/invalidTensorDataCount(provided:required:)" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO07invalidA9DataCountyACSi_SitcACmF">invalidTensorDataCount(provided:required:)</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Undocumented</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="nf">invalidTensorDataCount</span><span class="p">(</span><span class="nv">provided</span><span class="p">:</span> <span class="kt">Int</span><span class="p">,</span> <span class="nv">required</span><span class="p">:</span> <span class="kt">Int</span><span class="p">)</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO07invalidA8DataTypeyA2CmF"></a>
+                    <a name="//apple_ref/swift/Element/invalidTensorDataType" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO07invalidA8DataTypeyA2CmF">invalidTensorDataType</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Undocumented</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">invalidTensorDataType</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO17failedToLoadModelyA2CmF"></a>
+                    <a name="//apple_ref/swift/Element/failedToLoadModel" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO17failedToLoadModelyA2CmF">failedToLoadModel</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Undocumented</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">failedToLoadModel</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO014failedToCreateE0yA2CmF"></a>
+                    <a name="//apple_ref/swift/Element/failedToCreateInterpreter" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO014failedToCreateE0yA2CmF">failedToCreateInterpreter</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Undocumented</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">failedToCreateInterpreter</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO019failedToResizeInputA0yACSi_tcACmF"></a>
+                    <a name="//apple_ref/swift/Element/failedToResizeInputTensor(index:)" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO019failedToResizeInputA0yACSi_tcACmF">failedToResizeInputTensor(index:)</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Undocumented</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="nf">failedToResizeInputTensor</span><span class="p">(</span><span class="nv">index</span><span class="p">:</span> <span class="kt">Int</span><span class="p">)</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO016failedToCopyDatah5InputA0yA2CmF"></a>
+                    <a name="//apple_ref/swift/Element/failedToCopyDataToInputTensor" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO016failedToCopyDatah5InputA0yA2CmF">failedToCopyDataToInputTensor</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Undocumented</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">failedToCopyDataToInputTensor</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO23failedToAllocateTensorsyA2CmF"></a>
+                    <a name="//apple_ref/swift/Element/failedToAllocateTensors" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO23failedToAllocateTensorsyA2CmF">failedToAllocateTensors</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Undocumented</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">failedToAllocateTensors</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO23allocateTensorsRequiredyA2CmF"></a>
+                    <a name="//apple_ref/swift/Element/allocateTensorsRequired" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO23allocateTensorsRequiredyA2CmF">allocateTensorsRequired</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Undocumented</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">allocateTensorsRequired</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO06invokeE8RequiredyA2CmF"></a>
+                    <a name="//apple_ref/swift/Element/invokeInterpreterRequired" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO06invokeE8RequiredyA2CmF">invokeInterpreterRequired</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Undocumented</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">invokeInterpreterRequired</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO06tensorbcF0yACSScACmF"></a>
+                    <a name="//apple_ref/swift/Element/tensorFlowLiteError(_:)" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO06tensorbcF0yACSScACmF">tensorFlowLiteError(_:)</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Undocumented</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="k">case</span> <span class="nf">tensorFlowLiteError</span><span class="p">(</span><span class="kt">String</span><span class="p">)</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO16errorDescriptionSSSgvp"></a>
+                    <a name="//apple_ref/swift/Property/errorDescription" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO16errorDescriptionSSSgvp">errorDescription</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>A localized description of the interpreter error.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">var</span> <span class="nv">errorDescription</span><span class="p">:</span> <span class="kt">String</span><span class="p">?</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:19TensorFlowLiteSwift16InterpreterErrorO11descriptionSSvp"></a>
+                    <a name="//apple_ref/swift/Property/description" class="dashAnchor"></a>
+                    <h3><a class="token" href="#/s:19TensorFlowLiteSwift16InterpreterErrorO11descriptionSSvp">description</a></h3>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>A textual representation of the TensorFlow Lite interpreter error.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="objc">
+                          <p class="aside-title-objc">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">var</span> <span class="nv">description</span><span class="p">:</span> <span class="kt">String</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+              </ul>
+            </div>          </section>
+        </section>
+      </article>
+    </div>
+  </body>
+</html>

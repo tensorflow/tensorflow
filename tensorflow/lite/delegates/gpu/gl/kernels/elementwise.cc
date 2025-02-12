@@ -20,11 +20,18 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
+#include "tensorflow/lite/delegates/gpu/gl/object.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -184,6 +191,10 @@ class ElementwiseTwoArguments : public NodeShader {
       } else {
         argument1 = "vec4($const_data$)";
         parameters.push_back({"const_data", *scalar});
+      }
+      if (attr.runtime_tensor_is_second) {
+        argument0 = argument1;
+        argument1 = "value_0";
       }
     }
 

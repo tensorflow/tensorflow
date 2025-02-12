@@ -20,19 +20,21 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -78,23 +80,22 @@ class Dataset;
 // its elements.
 class Iterator {
  public:
+  virtual ~Iterator();
+
   // Returns the next element of the input pipeline (if there is one) and an
   // indication of whether the end of the input pipeline has been reached.
-  Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
+  absl::Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
 
   // Saves a checkpoint of the iterator. Returns Tensors that can be called with
   // `Restore()`.
-  StatusOr<std::vector<Tensor>> Save();
+  absl::StatusOr<std::vector<Tensor>> Save();
 
   // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
   // iterator saved by calling `Save()`.
-  Status Restore(const std::vector<Tensor>& saved_iterator);
-  // Returns the time it takes the pipeline associated with this iterator
-  // to process an element.
-  // Returns std::nullopt if there is not currently enough information to
-  // determine the processing time, e.g. because not enough data has been
-  // produced yet from the iterator.
-  std::optional<double> GetProcessingTimeNsec() const;
+  absl::Status Restore(const std::vector<Tensor>& saved_iterator);
+
+  // Returns the dataset model for performance analysis.
+  std::shared_ptr<model::Model> model() const;
 
  private:
   friend class Dataset;
@@ -105,6 +106,7 @@ class Iterator {
   std::unique_ptr<IteratorBase> iterator_;
   std::unique_ptr<IteratorContext> ctx_;
   std::unique_ptr<SerializationContext> serialization_ctx_;
+  std::shared_ptr<TfDatazMetricsCollector> tf_dataz_metrics_collector_;
 };
 
 // Represents an input pipeline as a collection of data sources and a logical
@@ -117,20 +119,20 @@ class Dataset {
   };
 
   // Creates a new `Dataset` instance by running the given dataset graph.
-  static Status FromGraph(Params params, const GraphDef& graph_def,
-                          std::unique_ptr<Dataset>* result);
+  static absl::Status FromGraph(Params params, const GraphDef& graph_def,
+                                std::unique_ptr<Dataset>* result);
 
   ~Dataset();
 
   // Creates an iterator for this dataset.
-  Status MakeIterator(std::unique_ptr<Iterator>* result);
+  absl::Status MakeIterator(std::unique_ptr<Iterator>* result);
   // Creates an iterator, optionally with a split provider.
-  Status MakeIterator(
+  absl::Status MakeIterator(
       std::vector<std::unique_ptr<SplitProvider>> split_providers,
       std::unique_ptr<Iterator>* result);
 
   // Creates split providers for this dataset.
-  Status MakeSplitProviders(
+  absl::Status MakeSplitProviders(
       std::vector<std::unique_ptr<SplitProvider>>* result);
   // Returns a pointer to the underlying dataset.
   const DatasetBase* Get() const;

@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/quantization/uniform_quant_ops_attr.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 

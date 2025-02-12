@@ -65,7 +65,7 @@ def while_loop_v2(cond,
   ...     result += i * i
   ...     i += 1
   ...   return result
-  >>> sumSquare(10).numpy()
+  >>> print(sumSquare(10).numpy())
   285
 
   >>> @tf.function
@@ -74,7 +74,7 @@ def while_loop_v2(cond,
   ...   c = lambda i, _: tf.less(i, n)
   ...   b = lambda i, result: (i + 1, result + i * i)
   ...   return tf.while_loop(c, b, [i, result])[1]
-  >>> sumSquare2(10).numpy()
+  >>> print(sumSquare2(10).numpy())
   285
 
   For more information, see [tf.function and AutoGraph guide
@@ -169,7 +169,7 @@ def while_loop_v2(cond,
   >>> c = lambda i: tf.less(i, 10)
   >>> b = lambda i: (tf.add(i, 1), )
   >>> r = tf.while_loop(c, b, [i])[0]
-  >>> r.numpy()
+  >>> print(r.numpy())
   10
 
   Example with nesting and a namedtuple:
@@ -180,7 +180,7 @@ def while_loop_v2(cond,
   >>> c = lambda i, p: i < 10
   >>> b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
   >>> ijk_final = tf.while_loop(c, b, ijk_0)[1]
-  >>> ijk_final[0].numpy(), ijk_final[1].numpy()
+  >>> ijk_final[0].numpy().item(), ijk_final[1].numpy().item()
   (32, 64)
 
   Example using shape_invariants:

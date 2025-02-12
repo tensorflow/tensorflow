@@ -35,11 +35,11 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Declaring this here so it doesn't need to be in the public header.
-Status ReplaceSendRecvs(const GraphDef& original_graph_def,
-                        const GraphDef& rewritten_graph_def,
-                        const std::vector<string>& inputs,
-                        const std::vector<string>& outputs,
-                        GraphDef* output_graph_def);
+absl::Status ReplaceSendRecvs(const GraphDef& original_graph_def,
+                              const GraphDef& rewritten_graph_def,
+                              const std::vector<string>& inputs,
+                              const std::vector<string>& outputs,
+                              GraphDef* output_graph_def);
 
 class ConstantFoldingTest : public ::testing::Test {
  protected:
@@ -208,12 +208,12 @@ class ConstantFoldingTest : public ::testing::Test {
     }
 
     for (const NodeDef& node : graph_def.node()) {
-      const StringPiece name(node.name());
+      const absl::string_view name(node.name());
       const int occurrence_count = folded_node_map.count(node.name());
-      if (str_util::EndsWith(name, "expect_removed")) {
+      if (absl::EndsWith(name, "expect_removed")) {
         EXPECT_EQ(0, occurrence_count) << "node.name()=" << node.name();
       }
-      if (str_util::EndsWith(name, "expect_remains")) {
+      if (absl::EndsWith(name, "expect_remains")) {
         EXPECT_EQ(1, occurrence_count) << "node.name()=" << node.name();
       }
     }

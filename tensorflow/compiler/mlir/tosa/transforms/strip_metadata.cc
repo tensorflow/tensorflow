@@ -34,10 +34,10 @@ static bool isTFLAttr(NamedAttribute &namedAttr) {
   // TFLite uses both tf and tfl in attribute annotations.
   auto name = namedAttr.getName().strref();
   // Don't trim attributes from tf_saved_model---they carry ABI information.
-  if (name.startswith("tf_saved_model.")) return false;
+  if (name.starts_with("tf_saved_model.")) return false;
 
-  if (name.startswith("tf.") || name.startswith("tf_") ||
-      name.startswith("tfl.") || name.startswith("tfl_")) {
+  if (name.starts_with("tf.") || name.starts_with("tf_") ||
+      name.starts_with("tfl.") || name.starts_with("tfl_")) {
     return true;
   }
   StringRef attrNamespace = namedAttr.getValue().getDialect().getNamespace();

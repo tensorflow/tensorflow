@@ -46,7 +46,8 @@ class MatrixExponentialOp : public LinearAlgebraOp<Scalar> {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixExponentialOp);
+  MatrixExponentialOp(const MatrixExponentialOp&) = delete;
+  void operator=(const MatrixExponentialOp&) = delete;
 };
 
 // Deprecated kernels (2018/08/21).

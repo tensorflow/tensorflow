@@ -12,7 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <utility>
+
 #include "tensorflow/lite/array.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -24,55 +27,96 @@ namespace variants {
 namespace ops {
 namespace {
 
-constexpr int kListInput = 0;
-constexpr int kIndexInput = 1;
-constexpr int kItemInput = 2;
-constexpr int kOutput = 0;
+constexpr int kListInputIdx = 0;
+constexpr int kIndexInputIdx = 1;
+constexpr int kListOutputIdx = 0;
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+class SetItemSemantic {
+ public:
+  SetItemSemantic(TfLiteContext* ctx, TfLiteNode* node)
+      : ctx_(ctx), node_(node) {}
+
+  static constexpr int kItemInputIdx = 2;
+
+  TfLiteStatus CheckIndexInput() const {
+    const TfLiteTensor* index_input;
+    TF_LITE_ENSURE_OK(ctx_,
+                      GetInputSafe(ctx_, node_, kIndexInputIdx, &index_input));
+    TF_LITE_ENSURE_TYPES_EQ(ctx_, index_input->type, kTfLiteInt32);
+    return kTfLiteOk;
+  }
+
+  TfLiteStatus GetIndexVal(const TensorArray& arr, int& result) const {
+    const TfLiteTensor* index_input;
+    TF_LITE_ENSURE_OK(ctx_,
+                      GetInputSafe(ctx_, node_, kIndexInputIdx, &index_input));
+    TF_LITE_ENSURE_EQ(ctx_, index_input->bytes, sizeof(int));
+    const int* index_data = GetTensorData<int>(index_input);
+    TF_LITE_ENSURE(ctx_, index_data != nullptr);
+    const int index = *index_data;
+    TF_LITE_ENSURE(ctx_, index >= 0);
+    result = index;
+    return kTfLiteOk;
+  }
+
+ private:
+  TfLiteContext* const ctx_;
+  TfLiteNode* const node_;
+};
+
+class PushBackSemantic {
+ public:
+  PushBackSemantic(TfLiteContext* ctx, TfLiteNode* node) {}
+
+  static constexpr int kItemInputIdx = 1;
+
+  TfLiteStatus CheckIndexInput() const { return kTfLiteOk; }
+
+  TfLiteStatus GetIndexVal(const TensorArray& arr, int& result) const {
+    result = arr.NumElements();
+    return kTfLiteOk;
+  }
+};
+
+template <class Semantic>
+TfLiteStatus Prepare(TfLiteContext* ctx, TfLiteNode* node) {
+  const auto semantic = Semantic(ctx, node);
+
   const TfLiteTensor* list_input;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kListInput, &list_input));
-  TF_LITE_ENSURE_TYPES_EQ(context, list_input->type, kTfLiteVariant);
+  TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, kListInputIdx, &list_input));
+  TF_LITE_ENSURE_TYPES_EQ(ctx, list_input->type, kTfLiteVariant);
 
-  const TfLiteTensor* index_input;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kIndexInput, &index_input));
-  TF_LITE_ENSURE_TYPES_EQ(context, index_input->type, kTfLiteInt32);
+  TF_LITE_ENSURE_OK(ctx, semantic.CheckIndexInput());
 
   TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kOutput, &output));
-  TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteVariant);
+  TF_LITE_ENSURE_OK(ctx, GetOutputSafe(ctx, node, kListOutputIdx, &output));
+  TF_LITE_ENSURE_TYPES_EQ(ctx, output->type, kTfLiteVariant);
   output->allocation_type = kTfLiteVariantObject;
 
   return kTfLiteOk;
 }
 
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+template <class Semantic>
+TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
+  const auto semantic = Semantic(ctx, node);
+
   const TfLiteTensor* list_input;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kListInput, &list_input));
-  TF_LITE_ENSURE_EQ(context, list_input->allocation_type, kTfLiteVariantObject);
+  TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, kListInputIdx, &list_input));
+  TF_LITE_ENSURE_EQ(ctx, list_input->allocation_type, kTfLiteVariantObject);
 
   TensorArray* input_arr =
       reinterpret_cast<TensorArray*>(list_input->data.data);
 
-  const TfLiteTensor* index_input;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kIndexInput, &index_input));
-  const int* index_data = GetTensorData<int>(index_input);
-  TF_LITE_ENSURE(context,
-                 index_data != nullptr && index_input->bytes == sizeof(int));
-  const int index = *index_data;
-  TF_LITE_ENSURE(context, index >= 0);
+  int index;
+  TF_LITE_ENSURE_OK(ctx, semantic.GetIndexVal(*input_arr, index));
 
   const TfLiteTensor* item_input;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kItemInput, &item_input));
-  TF_LITE_ENSURE_TYPES_EQ(context, input_arr->ElementType(), item_input->type);
+  TF_LITE_ENSURE_OK(
+      ctx, GetInputSafe(ctx, node, semantic.kItemInputIdx, &item_input));
+  TF_LITE_ENSURE_TYPES_EQ(ctx, input_arr->ElementType(), item_input->type);
 
   TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kOutput, &output));
+  TF_LITE_ENSURE_OK(ctx, GetOutputSafe(ctx, node, kListOutputIdx, &output));
 
   TensorArray* output_arr = static_cast<TensorArray*>(
       input_arr->CloneTo(static_cast<VariantData*>(output->data.data)));
@@ -85,14 +129,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (index >= output_arr->NumElements()) {
     output_arr->Resize(index + 1);
   }
-  TF_LITE_ENSURE(context, output_arr->Set(index, std::move(item_copy)));
+  TF_LITE_ENSURE(ctx, output_arr->Set(index, std::move(item_copy)));
   output->data.data = static_cast<VariantData*>(output_arr);
   return kTfLiteOk;
 }
 
 }  // namespace
 TfLiteRegistration* Register_LIST_SET_ITEM() {
-  static TfLiteRegistration r = {nullptr, nullptr, Prepare, Eval};
+  static TfLiteRegistration r = {nullptr, nullptr, Prepare<SetItemSemantic>,
+                                 Eval<SetItemSemantic>};
+  return &r;
+}
+
+TfLiteRegistration* Register_LIST_PUSH_BACK() {
+  static TfLiteRegistration r = {nullptr, nullptr, Prepare<PushBackSemantic>,
+                                 Eval<PushBackSemantic>};
   return &r;
 }
 }  // namespace ops

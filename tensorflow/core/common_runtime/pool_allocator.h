@@ -173,7 +173,8 @@ class BasicCPUAllocator : public SubAllocator {
  private:
   int numa_node_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BasicCPUAllocator);
+  BasicCPUAllocator(const BasicCPUAllocator&) = delete;
+  void operator=(const BasicCPUAllocator&) = delete;
 };
 
 }  // namespace tensorflow

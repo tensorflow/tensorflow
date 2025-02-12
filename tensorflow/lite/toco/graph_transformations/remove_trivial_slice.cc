@@ -12,17 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iterator>
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/remove_trivial_passthrough.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -55,18 +56,18 @@ bool IsSliceTrivial(const Model& model, const Operator& op,
   const auto reshape_it = model->operators.begin() + op_index;
   auto* slice_op = reshape_it->get();
   if (slice_op->type != OperatorType::kSlice) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!IsSliceTrivial(*model, *slice_op, this)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   AddMessageF("Removing trivial %s", LogName(*slice_op));
 
   CHECK_EQ(slice_op->inputs.size(), 3);
   *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

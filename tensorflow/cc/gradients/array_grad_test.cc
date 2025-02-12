@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <vector>
+
+#include <gtest/gtest.h>
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/testutil.h"
@@ -20,6 +24,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace tensorflow {
@@ -170,6 +175,14 @@ TEST_F(ArrayGradTest, GatherNdGrad_SliceIndexing) {
   TensorShape shape({2, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto indices = Const(scope_, {{1}, {0}});
+  auto y = GatherNd(scope_, x, indices);
+  RunTest(x, shape, y, shape);
+}
+
+TEST_F(ArrayGradTest, GatherNdGrad_SliceIndexing_Int64) {
+  TensorShape shape({2, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto indices = Cast(scope_, Const(scope_, {{1}, {0}}), DT_INT64);
   auto y = GatherNd(scope_, x, indices);
   RunTest(x, shape, y, shape);
 }

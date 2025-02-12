@@ -13,19 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
 #include <memory>
-#include <numeric>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
@@ -138,7 +142,7 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
   *modified = false;
   auto batch_op_it = model->operators.begin() + op_index;
   if (batch_op_it->get()->type != OperatorType::kBatchMatMul) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto* batch_op =
       static_cast<const BatchMatMulOperator*>(batch_op_it->get());
@@ -149,7 +153,7 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
   const auto& input_lhs_array = model->GetArray(input_lhs);
   const auto& input_rhs_array = model->GetArray(input_rhs);
   if (!input_lhs_array.has_shape() || !input_rhs_array.has_shape())
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
 
   // Transpose LHS input if necessary.
   if (batch_op->adj_x) {
@@ -194,7 +198,7 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
     model->operators.emplace(tail_it, matmul_op);
     DeleteOpAndArrays(model, batch_op);
     *modified = true;
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   AddMessageF("Unrolling BatchMatMul %s %d times", LogName(*batch_op),
               bcast.output_batch_size());
@@ -262,7 +266,7 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
 
   DeleteOpAndArrays(model, batch_op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

@@ -29,15 +29,15 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Declare here, so we don't need a public header.
-Status FuseResizePadAndConv(const GraphDef& input_graph_def,
+absl::Status FuseResizePadAndConv(const GraphDef& input_graph_def,
+                                  const TransformFuncContext& context,
+                                  GraphDef* output_graph_def);
+absl::Status FuseResizeAndConv(const GraphDef& input_graph_def,
+                               const TransformFuncContext& context,
+                               GraphDef* output_graph_def);
+absl::Status FusePadAndConv(const GraphDef& input_graph_def,
                             const TransformFuncContext& context,
                             GraphDef* output_graph_def);
-Status FuseResizeAndConv(const GraphDef& input_graph_def,
-                         const TransformFuncContext& context,
-                         GraphDef* output_graph_def);
-Status FusePadAndConv(const GraphDef& input_graph_def,
-                      const TransformFuncContext& context,
-                      GraphDef* output_graph_def);
 
 class FuseConvolutionsTest : public ::testing::Test {
  protected:

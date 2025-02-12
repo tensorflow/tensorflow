@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_UTIL_H_
 
+#include <cstdint>
+
 #include "absl/types/span.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {

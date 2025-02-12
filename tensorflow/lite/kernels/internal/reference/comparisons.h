@@ -15,8 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_COMPARISONS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_COMPARISONS_H_
 
+#include <cstdint>
+
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -257,12 +261,12 @@ inline void BroadcastComparison4DSlowWithScaling(
         op_params, input1_shape, input1_data, input2_shape, input2_data,       \
         output_shape, output_data);                                            \
   }
-TFLITE_COMPARISON_OP(Equal);
-TFLITE_COMPARISON_OP(NotEqual);
-TFLITE_COMPARISON_OP(Greater);
-TFLITE_COMPARISON_OP(GreaterEqual);
-TFLITE_COMPARISON_OP(Less);
-TFLITE_COMPARISON_OP(LessEqual);
+TFLITE_COMPARISON_OP(Equal)
+TFLITE_COMPARISON_OP(NotEqual)
+TFLITE_COMPARISON_OP(Greater)
+TFLITE_COMPARISON_OP(GreaterEqual)
+TFLITE_COMPARISON_OP(Less)
+TFLITE_COMPARISON_OP(LessEqual)
 #undef TFLITE_COMPARISON_OP
 
 }  // namespace reference_ops

@@ -116,7 +116,7 @@ func.func @dangling_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*
 // CHECK:  %[[GRAPH:.*]]:2 = tf_executor.graph {
 // CHECK:    %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
 // CHECK:    %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island wraps "tf.Add"(%[[ADD1]], %arg1)
-// CHECK:    %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD2]]) {message = "add result"}
+// CHECK:    %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD2]]) <{message = "add result"}>
 // CHECK:    tf_executor.fetch %[[ADD1]], %[[ADD2]] :
 // CHECK:  }
 // CHECK:  return %[[GRAPH]]#0, %[[GRAPH]]#1
@@ -186,7 +186,7 @@ func.func @non_aliasing_reads_writes(
 // CHECK:   %[[READ0:.*]], %[[READ0_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%arg0)
 // CHECK:   %[[ASSIGN0_CONTROL:.*]] = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2)
 // CHECK:   %[[READ1:.*]], %[[READ1_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%arg1)
-// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "v0"}
+// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() <{container = "c", shared_name = "v0"}>
 // CHECK:   %[[READ2:.*]], %[[READ2_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%[[VH0]])
 // CHECK:   %[[ASSIGN1_CONTROL:.*]] = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %[[READ0]])
 // CHECK:   %[[ASSIGN2_CONTROL:.*]] = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %[[READ2]])
@@ -214,8 +214,8 @@ func.func @unknown_side_effecting_op(%arg0: tensor<32xf32>) -> () {
 
 // CHECK-LABEL: func @unknown_side_effecting_op
 // CHECK: tf_executor.graph {
-// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "v0"}
-// CHECK:   %[[VH1:.*]], %[[VH1_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "v1"}
+// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() <{container = "c", shared_name = "v0"}>
+// CHECK:   %[[VH1:.*]], %[[VH1_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() <{container = "c", shared_name = "v1"}>
 // CHECK:   %[[READ0:.*]], %[[READ0_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%[[VH0]])
 // CHECK:   %[[ASSIGN0_CONTROL:.*]] = tf_executor.island wraps "tf.AssignVariableOp"(%[[VH1]], %arg0)
 // CHECK:   %[[UNKNOWN_CONTROL:.*]] = tf_executor.island wraps "tf._UnknownSideEffectingOp_"()

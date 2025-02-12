@@ -102,18 +102,21 @@ class TFRTypeImpl : public Type::TypeBase<Derived, TFRType, TFRTypeStorage> {
 class TFRTensorType : public detail::TFRTypeImpl<TFRTensorType> {
  public:
   using TFRBase::TFRBase;
+  static constexpr StringLiteral name = "tfr.tensor";
   static std::string getTypeName() { return "TFRTensorType"; }
 };
 
 class TFRTensorListType : public detail::TFRTypeImpl<TFRTensorListType> {
  public:
   using TFRBase::TFRBase;
+  static constexpr StringLiteral name = "tfr.tensor_list";
   static std::string getTypeName() { return "TFRTensorListType"; }
 };
 
 class TFRAttrType : public Type::TypeBase<TFRAttrType, TFRType, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr StringLiteral name = "tfr.attr";
   static std::string getTypeName() { return "TFRAttrType"; }
 };
 

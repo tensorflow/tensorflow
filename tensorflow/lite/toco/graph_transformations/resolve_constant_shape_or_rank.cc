@@ -12,10 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -26,25 +31,25 @@ namespace toco {
   const auto it = model->operators.begin() + op_index;
   const auto* op = it->get();
   if (!(op->type == OperatorType::kShape || op->type == OperatorType::kRank)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   CHECK_EQ(op->outputs.size(), 1);
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been resolved
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until the input array's shape has been resolved.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!output_array.has_shape()) {
     // Yield until the output shape has been resolved.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Compute the output
@@ -63,7 +68,7 @@ namespace toco {
 
   DeleteOpAndArrays(model, op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

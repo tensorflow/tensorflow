@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -78,7 +78,7 @@ using InstructionOperandsPair =
     std::pair<HloInstruction*, TransposeFolding::OperandIndices>;
 
 // Folds the operands of `dot` that are foldable transposes.
-Status FoldTransposeIntoDot(InstructionOperandsPair& pair) {
+absl::Status FoldTransposeIntoDot(InstructionOperandsPair& pair) {
   HloInstruction* dot = pair.first;
 
   DotDimensionNumbers new_dot_dims = dot->dot_dimension_numbers();
@@ -101,10 +101,11 @@ Status FoldTransposeIntoDot(InstructionOperandsPair& pair) {
       rhs = rhs->mutable_operand(0);
     }
   }
-
-  return dot->parent()->ReplaceWithNewInstruction(
-      dot, HloInstruction::CreateDot(dot->shape(), lhs, rhs, new_dot_dims,
-                                     dot->precision_config()));
+  HloInstruction* new_dot =
+      dot->parent()->AddInstruction(HloInstruction::CreateDot(
+          dot->shape(), lhs, rhs, new_dot_dims, dot->precision_config()));
+  dot->SetupDerivedInstruction(new_dot);
+  return dot->parent()->ReplaceInstruction(dot, new_dot);
 }
 
 // Folds the operands of `convolution` that are foldable transposes.
@@ -188,7 +189,7 @@ TransposeFolding::TransposeFolding(
           std::move(dot_can_fold_transpose_operand)),
       transposable_conv_operands_(std::move(transposable_conv_operands)) {}
 
-StatusOr<bool> TransposeFolding::Run(
+absl::StatusOr<bool> TransposeFolding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Modifying the graph while traversing is dangerous, so we find all folding
@@ -202,7 +203,7 @@ StatusOr<bool> TransposeFolding::Run(
       // Don't fold dots with a 1D operand.
       if ((instruction->operand(0)->shape().rank() < 2) ||
           (instruction->operand(1)->shape().rank() < 2)) {
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       OperandIndices operand_indices;
@@ -231,7 +232,7 @@ StatusOr<bool> TransposeFolding::Run(
         foldable_convolutions.emplace_back(instruction, operand_indices);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   });
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
@@ -249,8 +250,9 @@ StatusOr<bool> TransposeFolding::Run(
   return changed;
 }
 
-/*static*/ StatusOr<bool> TransposeFolding::IsRowColumnTransposeDotOperand(
-    const HloInstruction& dot, int64_t operand_idx) {
+/*static*/ absl::StatusOr<bool>
+TransposeFolding::IsRowColumnTransposeDotOperand(const HloInstruction& dot,
+                                                 int64_t operand_idx) {
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
   TF_RET_CHECK(dot.operand_count() > operand_idx);
 

@@ -1,14 +1,14 @@
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+)
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_tests",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-)
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/prefetch.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -253,7 +253,7 @@ void MemcpyManyAlternative1(::testing::benchmark::State& state) {
       bfloat16* output = &result[j * dim2];
       for (int i = 0; i < kDim1; ++i) {
         if (i + 1 < kDim1) {
-          port::prefetch<port::PREFETCH_HINT_T0>(inputs[j] + dim2);
+          absl::PrefetchToLocalCache(inputs[j] + dim2);
         }
         memcpy(output, inputs[j], dim2 * sizeof(bfloat16));
         inputs[j] += dim2;
@@ -286,7 +286,7 @@ void MemcpyManyAlternative2(::testing::benchmark::State& state) {
     for (int i = 0; i < kDim1; ++i) {
       for (int j = 0; j < kNumCopies; ++j) {
         if (j + 1 < kNumCopies) {
-          port::prefetch<port::PREFETCH_HINT_T0>(inputs[j + 1]);
+          absl::PrefetchToLocalCache(inputs[j + 1]);
         }
         memcpy(output, inputs[j], dim2 * sizeof(bfloat16));
         inputs[j] += dim2;

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,12 +15,19 @@ limitations under the License.
 
 #include "xla/service/cpu/shape_partition.h"
 
-#include <algorithm>
+#include <cstdint>
+#include <map>
 #include <random>
+#include <utility>
+#include <vector>
 
-#include "xla/test_helpers.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {

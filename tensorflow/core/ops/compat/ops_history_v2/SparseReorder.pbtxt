@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseReorder"
   input_arg {
     name: "input_indices"

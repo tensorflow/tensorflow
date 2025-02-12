@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -70,14 +71,14 @@ void AnnotateParameterReplicationPass::runOnOperation() {
     if (mirrored_variable_indices_attr) {
       for (const auto& mirrored_index : mirrored_variable_indices_attr) {
         mirrored_replicate_args.insert(
-            mirrored_index.cast<IntegerAttr>().getInt());
+            mlir::cast<IntegerAttr>(mirrored_index).getInt());
       }
     }
     auto func =
         llvm::cast<func::FuncOp>(m.lookupSymbol(cluster_func.getFunc()));
     for (auto entry : llvm::enumerate(cluster_func.getOperands())) {
       auto operand = SkipIdentityAndReadVariable(entry.value());
-      auto block_arg = operand.dyn_cast<BlockArgument>();
+      auto block_arg = mlir::dyn_cast<BlockArgument>(operand);
       if (block_arg && block_arg.getOwner() == &replicate.GetBody()) {
         // Only mirrored args of ReplicateOp can be annotated.
         if (mirrored_replicate_args.count(block_arg.getArgNumber()) == 0) {

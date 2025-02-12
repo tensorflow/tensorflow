@@ -39,12 +39,12 @@ Tensor DeepCopy(const Tensor& other) {
 void DeepCopy(const Tensor& input, Tensor* output) {
   if (DataTypeCanUseMemcpy(input.dtype())) {
     if (input.NumElements() > 0) {
-      StringPiece input_data = input.tensor_data();
+      absl::string_view input_data = input.tensor_data();
 
       // We use StringPiece as a convenient map over the tensor buffer,
       // but we cast the type to get to the underlying buffer to do the
       // copy.
-      StringPiece output_data = output->tensor_data();
+      absl::string_view output_data = output->tensor_data();
       memcpy(const_cast<char*>(output_data.data()), input_data.data(),
              input_data.size());
     }
@@ -56,7 +56,7 @@ void DeepCopy(const Tensor& input, Tensor* output) {
   }
 }
 
-Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
+absl::Status Concat(const absl::Span<const Tensor> tensors, Tensor* result) {
   if (tensors.empty()) {
     return errors::InvalidArgument("Cannot concatenate zero tensors");
   }
@@ -85,12 +85,12 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
   // We use StringPiece as a convenient map over the tensor buffer,
   // but we cast the type to get to the underlying buffer to do the
   // copy.
-  StringPiece to_data = result->tensor_data();
+  absl::string_view to_data = result->tensor_data();
 
   if (DataTypeCanUseMemcpy(dtype)) {
     int64_t offset = 0;
     for (const Tensor& tensor : tensors) {
-      StringPiece from_data = tensor.tensor_data();
+      absl::string_view from_data = tensor.tensor_data();
       CHECK_LE(offset + from_data.size(), to_data.size());
       memcpy(const_cast<char*>(to_data.data()) + offset, from_data.data(),
              from_data.size());
@@ -116,11 +116,11 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
-             std::vector<Tensor>* result) {
+absl::Status Split(const Tensor& tensor, const absl::Span<const int64_t> sizes,
+                   std::vector<Tensor>* result) {
   if (tensor.dims() == 0) {
     return errors::InvalidArgument("Cannot split a zero-dimensional tensor");
   }
@@ -134,7 +134,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
         "'tensor'");
   }
 
-  StringPiece from_data = tensor.tensor_data();
+  absl::string_view from_data = tensor.tensor_data();
 
   if (DataTypeCanUseMemcpy(tensor.dtype())) {
     int64_t offset = 0;
@@ -147,7 +147,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
       // We use StringPiece as a convenient map over the tensor buffer,
       // but we cast the type to get to the underlying buffer to do the
       // copy.
-      StringPiece to_data = split->tensor_data();
+      absl::string_view to_data = split->tensor_data();
       CHECK_LE(offset + to_data.size(), from_data.size());
       memcpy(const_cast<char*>(to_data.data()), from_data.data() + offset,
              to_data.size());
@@ -178,11 +178,11 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace internal {
-void SetTensorProtoShape(std::vector<size_t> shape,
+void SetTensorProtoShape(const absl::Span<const size_t> shape,
                          TensorShapeProto* shape_proto) {
   for (auto dim : shape) {
     shape_proto->mutable_dim()->Add()->set_size(dim);
@@ -425,7 +425,7 @@ bool CompressTensorProtoInPlace(int64_t min_num_elements,
 
 #undef HANDLE_COMPRESS_CASE
 
-Status MakeShape(const Tensor& shape, TensorShape* out) {
+absl::Status MakeShape(const Tensor& shape, TensorShape* out) {
   if (!TensorShapeUtils::IsVector(shape.shape())) {
     return errors::InvalidArgument(
         "shape must be a vector of {int32,int64}, got shape ",

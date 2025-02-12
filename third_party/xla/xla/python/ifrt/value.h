@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/future.h"
-#include "xla/status.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -44,15 +44,18 @@ class Value : public tsl::ReferenceCounted<Value>,
 
   // Returns a future that becomes ready when the buffer is computed or has an
   // error.
-  virtual Future<Status> GetReadyFuture() const = 0;
+  virtual Future<> GetReadyFuture() const = 0;
 
   // Deletes the value from the devices. The operation may be asynchronous. The
   // returned future will have the result of the deletion on the devices, and
   // will be triggered after all values have been deleted.
   // Implementations that do not track the completion of the deletion operation
   // may make the future immediately ready with an OK status.
-  // TODO(phawkins): decide if we want Delete() to be idempotent.
-  virtual Future<Status> Delete() = 0;
+  //
+  // Deletion is idempotent. Deleting an already deleted value is allowed, and
+  // all the futures returned by different calls to Delete() will become ready
+  // with the same status.
+  virtual Future<> Delete() = 0;
 
   // Returns whether the value has been enqueued for deletion from the devices.
   virtual bool IsDeleted() const = 0;

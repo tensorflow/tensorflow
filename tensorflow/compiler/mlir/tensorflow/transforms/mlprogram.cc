@@ -15,22 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/mlprogram.h"
 
-#include <string>
-#include <utility>
-
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace tensorflow {
 
 void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
-  mlir::TF::CreateTFXLABridgePipeline(pm);
+  tensorflow::tf2xla::internal::AddNonReplicatedBridgeClusteringPipelinePasses(
+      pm);
 
   // Remove unused global tensors, or make then immutable if possible.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());

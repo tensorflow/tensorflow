@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,26 +21,40 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <limits>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/log_severity.h"
+#include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/status.h"
+#include "Eigen/Core"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/math/math_util.h"
+#include "xla/tsl/platform/errors.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/math/math_util.h"
-#include "tsl/platform/errors.h"  // IWYU pragma: keep
+#include "tsl/platform/bfloat16.h"
+#include "tsl/platform/casts.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 
@@ -56,10 +70,10 @@ std::vector<int64_t> ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds);
 
 // Logs the provided status message with a backtrace.
 //
-// For use by Status-factories, logs a backtrace at the point where the status
-// is created, such that we can use --vmodule=util=1 to see all status
+// For use by absl::Status-factories, logs a backtrace at the point where the
+// status is created, such that we can use --vmodule=util=1 to see all status
 // creation backtraces.
-Status WithLogBacktrace(const Status& status);
+absl::Status WithLogBacktrace(const absl::Status& status);
 
 // Ranks greater than 6 are very rare, so use InlinedVector<int64_t, 6> to store
 // the bounds and indices. And for the rare cases of ranks greater than 6,
@@ -192,92 +206,161 @@ void StridedCopy(D* dest, int64_t dest_stride, const S* src, int64_t src_stride,
 }
 
 // Adds some context information to the error message in a
-// Status.  This is useful as Statuses are
+// absl::Status.  This is useful as absl::Statuses are
 // propagated upwards.
-Status AddStatus(Status prior, absl::string_view context);
-Status AppendStatus(Status prior, absl::string_view context);
+absl::Status AddStatus(absl::Status prior, absl::string_view context);
+absl::Status AppendStatus(absl::Status prior, absl::string_view context);
 
-// Status error shorthands -- StrFormat's the arguments to be used as an error
-// message and returns a status in the canonical error space.
-template <typename... Args>
-Status InvalidArgument(const absl::FormatSpec<Args...>& format,
-                       const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::InvalidArgument(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Unimplemented(const absl::FormatSpec<Args...>& format,
-                     const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Unimplemented(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status InternalError(const absl::FormatSpec<Args...>& format,
-                     const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Internal(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status FailedPrecondition(const absl::FormatSpec<Args...>& format,
-                          const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::FailedPrecondition(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Cancelled(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Cancelled(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status ResourceExhausted(const absl::FormatSpec<Args...>& format,
-                         const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::ResourceExhausted(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status NotFound(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::NotFound(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Unavailable(const absl::FormatSpec<Args...>& format,
-                   const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Unavailable(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Unknown(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Unknown(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Internal(absl::StrFormat(format, args...)));
-}
+// The following three macros define a common set of code for creating
+// absl::Status errors with the given error_type, with the addition of adding
+// absl::SourceLocation if it's available (PLATFORM_GOOGLE).  They're a
+// complicated by the need to use #ifdefs within the code.  This would be the
+// equivalent code for ResourceExhausted if a #define macro could have embedded
+// #ifdef directives:
+//
+// template <typename... Args>
+// struct ResourceExhausted {
+//   absl::Status status;
+// #if defined(PLATFORM_GOOGLE)
+//   // NOLINTNEXTLINE(google-explicit-constructor)
+//   ResourceExhausted(const absl::FormatSpec<Args...>& format, Args&&... args,
+//                     absl::SourceLocation loc =
+//                     absl::SourceLocation::current())
+//       : status(WithLogBacktrace(
+//             absl::ResourceExhaustedError(absl::StrFormat(format, args...))
+//                 .WithSourceLocation(loc))) {}
+// #else
+//   ResourceExhaustedStrCat(Args&&... concat)
+//       : status(WithLogBacktrace(
+//             absl::ResourceExhaustedError(absl::StrFormat(format, args...)))
+//             {}
+// #endif
+//
+//   // NOLINTNEXTLINE(google-explicit-constructor)
+//   operator absl::Status() const { return status; }
+// };
+//
+#define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_PREFIX(error_type) \
+  template <typename... Args>                                     \
+  struct error_type {                                             \
+    absl::Status status;
+#define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_SUFFIX(error_type)        \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
+  operator absl::Status() const { return status; }                       \
+  }                                                                      \
+  ;                                                                      \
+  /*Deduction guide to make variadic arguments play nice with default */ \
+  /* absl::SourceLocation argument. */                                   \
+  template <typename... Args>                                            \
+  error_type(const absl::FormatSpec<Args...>& format,                    \
+             Args&&...) -> error_type<Args...>;
 
-template <typename... Args>
-Status InvalidArgumentStrCat(Args&&... concat) {
-  return WithLogBacktrace(
-      tsl::errors::InvalidArgument(std::forward<Args>(concat)...));
-}
+#if defined(PLATFORM_GOOGLE)
+#define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(error_type)               \
+  XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_PREFIX(error_type)              \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
+  error_type(const absl::FormatSpec<Args...>& format, Args&&... args,    \
+             absl::SourceLocation loc = absl::SourceLocation::current()) \
+      : status(WithLogBacktrace(                                         \
+            absl::error_type##Error(absl::StrFormat(format, args...))    \
+                .WithSourceLocation(loc))) {}                            \
+  XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_SUFFIX(error_type)
+#else
+#define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(error_type)          \
+  template <typename... Args>                                       \
+  absl::Status error_type(const absl::FormatSpec<Args...>& format,  \
+                          const Args&... args) {                    \
+    return WithLogBacktrace(                                        \
+        absl::error_type##Error(absl::StrFormat(format, args...))); \
+  }
+#endif
 
-template <typename... Args>
-Status UnimplementedStrCat(Args&&... concat) {
-  return WithLogBacktrace(
-      tsl::errors::Unimplemented(std::forward<Args>(concat)...));
-}
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Cancelled);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(FailedPrecondition);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Internal);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(InvalidArgument);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(NotFound);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(ResourceExhausted);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unavailable);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unimplemented);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unknown);
 
-template <typename... Args>
-Status InternalErrorStrCat(Args&&... concat) {
-  return WithLogBacktrace(tsl::errors::Internal(std::forward<Args>(concat)...));
-}
+#undef XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE
+#undef XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_PREFIX
+#undef XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_SUFFIX
 
-template <typename... Args>
-Status ResourceExhaustedStrCat(Args&&... concat) {
-  return WithLogBacktrace(
-      tsl::errors::ResourceExhausted(std::forward<Args>(concat)...));
-}
+// The following three macros define a common set of code for creating
+// absl::Status errors with the given error_type, with the addition of adding
+// absl::SourceLocation if it's available (PLATFORM_GOOGLE).  They're a
+// complicated by the need to use #ifdefs within the code.  This would be the
+// equivalent code for ResourceExhausted if a #define macro could have embedded
+// #ifdef directives:
+//
+// template <typename... Args>
+// struct ResourceExhaustedStrCat {
+//   absl::Status status;
+// #if defined(PLATFORM_GOOGLE)
+//   // NOLINTNEXTLINE(google-explicit-constructor)
+//   ResourceExhaustedStrCat(Args&&... concat, absl::SourceLocation loc =
+//                                             absl::SourceLocation::current())
+//       : status(WithLogBacktrace(
+//             absl::ResourceExhaustedError(absl::StrCat(
+//                                          std::forward<Args>(concat)...))
+//                 .WithSourceLocation(loc))) {}
+// #else
+//   ResourceExhaustedStrCat(Args&&... concat)
+//       : status(WithLogBacktrace(
+//             absl::ResourceExhaustedError(absl::StrCat(
+//                                          std::forward<Args>(concat)...))))
+//             {}
+// #endif
+//
+//   // NOLINTNEXTLINE(google-explicit-constructor)
+//   operator absl::Status() const { return status; }
+// };
+//
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type) \
+  template <typename... Args>                                  \
+  struct error_type##StrCat {                                  \
+    absl::Status status;                                       \
+    /* NOLINTNEXTLINE(google-explicit-constructor) */
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)           \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
+  operator absl::Status() const { return status; }                       \
+  }                                                                      \
+  ;                                                                      \
+  /*Deduction guide to make variadic arguments play nice with default */ \
+  /* absl::SourceLocation argument. */                                   \
+  template <typename... Args>                                            \
+  error_type##StrCat(Args&&...)->error_type##StrCat<Args...>;
+
+#if defined(PLATFORM_GOOGLE)
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)                       \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)                      \
+  error_type##StrCat(Args&&... concat, absl::SourceLocation loc =             \
+                                           absl::SourceLocation::current())   \
+      : status(                                                               \
+            WithLogBacktrace(absl::error_type##Error(                         \
+                                 absl::StrCat(std::forward<Args>(concat)...)) \
+                                 .WithSourceLocation(loc))) {}                \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)
+#else
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)       \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)      \
+  error_type##StrCat(Args&&... concat)                        \
+      : status(WithLogBacktrace(absl::error_type##Error(      \
+            absl::StrCat(std::forward<Args>(concat)...)))) {} \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)
+#endif
+
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(ResourceExhausted);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(InvalidArgument);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Unimplemented);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Internal);
+
+#undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE
+#undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX
+#undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
 // given by "indentation", and returns the string joined by newlines again. As a
@@ -333,20 +416,32 @@ std::string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
+// Returns a string which can losslessly round trip to a float4 E2M1FN.
+std::string RoundTripFpToString(tsl::float4_e2m1fn value);
+
 // Returns a string which can losslessly round trip to a float8 E5M2.
 std::string RoundTripFpToString(tsl::float8_e5m2 value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3.
+std::string RoundTripFpToString(tsl::float8_e4m3 value);
+
+// Returns a string which can losslessly round trip to a float8 E4M3FN.
 std::string RoundTripFpToString(tsl::float8_e4m3fn value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3B11.
-std::string RoundTripFpToString(tsl::float8_e4m3b11 value);
+std::string RoundTripFpToString(tsl::float8_e4m3b11fnuz value);
 
 // Returns a string which can losslessly round trip to a float8 E5M2FNUZ.
 std::string RoundTripFpToString(tsl::float8_e5m2fnuz value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3FNUZ.
 std::string RoundTripFpToString(tsl::float8_e4m3fnuz value);
+
+// Returns a string which can losslessly round trip to a float8 E3M4.
+std::string RoundTripFpToString(tsl::float8_e3m4 value);
+
+// Returns a string which can losslessly round trip to a float8 E8M0FNU.
+std::string RoundTripFpToString(tsl::float8_e8m0fnu value);
 
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
@@ -375,21 +470,21 @@ bool HasInteriorPadding(const PaddingConfig& config);
 // Imports the templated FloorOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.
 template <typename T>
-T FloorOfRatio(T dividend, T divisor) {
+constexpr T FloorOfRatio(T dividend, T divisor) {
   return tsl::MathUtil::FloorOfRatio<T>(dividend, divisor);
 }
 
 // Imports the templated CeilOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.
 template <typename T>
-T CeilOfRatio(T dividend, T divisor) {
+constexpr T CeilOfRatio(T dividend, T divisor) {
   return tsl::MathUtil::CeilOfRatio<T>(dividend, divisor);
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
 // then multiplying by the divisor. For example: RoundUpTo(13, 8) => 16
 template <typename T>
-T RoundUpTo(T value, T divisor) {
+constexpr T RoundUpTo(T value, T divisor) {
   return CeilOfRatio(value, divisor) * divisor;
 }
 
@@ -397,7 +492,7 @@ T RoundUpTo(T value, T divisor) {
 // FloorOfRatio then multiplying by the divisor. For example:
 // RoundDownTo(13, 8) => 8
 template <typename T>
-T RoundDownTo(T value, T divisor) {
+constexpr T RoundDownTo(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
 }
 
@@ -410,7 +505,7 @@ struct DivMod {
 // Divide `dividend` by `divisor` such that the quotient is rounded towards
 // negative infinity. The remainder will have the same sign as `divisor`.
 template <typename T>
-DivMod<T> FloorDivMod(T dividend, T divisor) {
+constexpr DivMod<T> FloorDivMod(T dividend, T divisor) {
   DivMod<T> div_mod;
   div_mod.quotient = FloorOfRatio(dividend, divisor);
   div_mod.modulo = dividend - div_mod.quotient * divisor;
@@ -429,7 +524,24 @@ std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
-void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
+void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
+              int lineno);
+inline void LogLinesINFO(absl::string_view text, const char* fname,
+                         int lineno) {
+  return LogLines(absl::LogSeverity::kInfo, text, fname, lineno);
+}
+inline void LogLinesWARNING(absl::string_view text, const char* fname,
+                            int lineno) {
+  return LogLines(absl::LogSeverity::kWarning, text, fname, lineno);
+}
+inline void LogLinesERROR(absl::string_view text, const char* fname,
+                          int lineno) {
+  return LogLines(absl::LogSeverity::kError, text, fname, lineno);
+}
+inline void LogLinesFATAL(absl::string_view text, const char* fname,
+                          int lineno) {
+  return LogLines(absl::LogSeverity::kFatal, text, fname, lineno);
+}
 
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
@@ -479,20 +591,32 @@ constexpr inline T KeepLowerBits(T value, int width) {
 // Returns `base` multiplied by itself `exponent` number of times.
 //
 // Note: returns 1 when `exponent` is zero.
-// Precondition: `exponent` is non-negative.
-template <typename T>
-constexpr T IPow(T base, int exponent) {
-  // A negative `exponent` is indicative of a logic bug for integral `base`.
-  // We disallow it for floating-point types for symmetry.
-  ABSL_ASSERT(exponent >= 0);
+// Precondition: `exponent` is non-negative for integral `T`.
+template <typename T, typename ExpType>
+constexpr T IPow(T base, ExpType exponent) {
+  static_assert(std::numeric_limits<ExpType>::is_integer);
+  if constexpr (std::numeric_limits<T>::is_integer) {
+    // A negative `exponent` is indicative of a logic bug for integral `base`.
+    // We disallow it for floating-point types for symmetry.
+    ABSL_ASSERT(exponent >= 0);
+  }
+  const bool take_reciprocal = exponent < 0;
   // We use the right-to-left binary exponentiation algorithm.
-  T result{1};
-  while (exponent > 0) {
+  T result(1);
+  for (;;) {
     if ((exponent & 1) != 0) {
       result *= base;
     }
+    exponent /= 2;
+    if (exponent == 0) {
+      break;
+    }
     base *= base;
-    exponent >>= 1;
+  }
+  if constexpr (std::numeric_limits<ExpType>::is_signed) {
+    if (take_reciprocal) {
+      return T(1) / result;
+    }
   }
   return result;
 }
@@ -534,11 +658,10 @@ template <typename T>
 auto SignAndMagnitude(T x) {
   using BitType = UnsignedIntegerTypeForSizeType<sizeof(T)>;
   BitType x_abs_bits = Eigen::numext::bit_cast<BitType>(Eigen::numext::abs(x));
-  const BitType x_bits = Eigen::numext::bit_cast<BitType>(x);
-  const BitType x_sign = x_bits ^ x_abs_bits;
-  if constexpr (std::is_same_v<T, tsl::float8_e4m3b11> ||
-                std::is_same_v<T, tsl::float8_e4m3fnuz> ||
-                std::is_same_v<T, tsl::float8_e5m2fnuz>) {
+  // Eigen implements the sign value to be either all-zeros (for positive input)
+  // or all-ones (for negative input).
+  BitType x_sign = Eigen::numext::bit_cast<BitType>(Eigen::numext::signbit(x));
+  if constexpr (!has_negative_zero_v<T>) {
     //  f8e4m3b11, f8e4m3fnuz, and f8e5m2fnuz don't support -0, adjust negative
     //  numbers to fill in the gap.
     if (x_sign) {
@@ -548,12 +671,17 @@ auto SignAndMagnitude(T x) {
   return std::make_pair(x_sign, x_abs_bits);
 }
 
+template <>
+inline auto SignAndMagnitude(tsl::float8_e8m0fnu x) {
+  uint8_t x_bits = Eigen::numext::bit_cast<uint8_t>(x);
+  return std::make_pair(static_cast<uint8_t>(0), x_bits);
+}
+
 template <typename T>
 auto SignAndMagnitudeToTwosComplement(T sign, T magnitude) {
   static_assert(!std::numeric_limits<T>::is_signed);
   using SignedType = std::make_signed_t<T>;
-  return static_cast<SignedType>(magnitude) ^
-         (static_cast<SignedType>(sign) < 0 ? SignedType{-1} : SignedType{0});
+  return static_cast<SignedType>(magnitude) ^ static_cast<SignedType>(sign);
 }
 
 // Returns the signed magnitude of T.
@@ -561,6 +689,11 @@ template <typename T>
 auto ToSignMagnitude(T input) {
   auto [sign, magnitude] = SignAndMagnitude(input);
   return SignAndMagnitudeToTwosComplement(sign, magnitude);
+}
+
+template <>
+inline auto ToSignMagnitude(tsl::float8_e8m0fnu input) {
+  return Eigen::numext::bit_cast<uint8_t>(input);
 }
 
 template <typename T>
@@ -612,13 +745,17 @@ T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
   return absl::bit_cast<T>(rep);
 }
 
-// Utility for performing a static_cast<> on a std::unique_ptr<>.
+// Utility for performing a down_cast<> on a std::unique_ptr<>.
 template <typename Derived, typename Base>
-std::unique_ptr<Derived> unique_ptr_static_cast(std::unique_ptr<Base> ptr) {
-  return std::unique_ptr<Derived>(static_cast<Derived*>(ptr.release()));
+std::unique_ptr<Derived> unique_ptr_down_cast(std::unique_ptr<Base> ptr) {
+  return absl::WrapUnique(tensorflow::down_cast<Derived*>(ptr.release()));
 }
 
 int64_t Product(absl::Span<const int64_t> xs);
+
+// Returns an array of results after performing elementwise product of a and b.
+std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
+                                     absl::Span<const int64_t> b);
 
 // Returns the start indices of consecutive non-overlapping subsequences of `a`
 // and `b` with the same product, i.e. `(i, j)` so
@@ -650,6 +787,12 @@ struct ConvertedDimensionNumbers {
 ConvertedDimensionNumbers ConvertDimensionNumbers(
     absl::Span<const int64_t> from_dimensions,
     absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes);
+
+// Returns non contracting dimensions for a dot operand based on rank, batch and
+// contracting dimension numbers.
+DimensionVector GetNonContractingDims(
+    int64_t rank, absl::Span<const int64_t> contracting_dim_numbers,
+    absl::Span<const int64_t> batch_dim_numbers);
 
 // Removes illegal characters from filenames.
 std::string SanitizeFileName(std::string file_name);
@@ -694,24 +837,107 @@ bool IsInt32(T x) {
 }
 
 template <typename T>
-Status EraseElementFromVector(std::vector<T>* container, const T& value) {
+absl::Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   // absl::c_find returns a const_iterator which does not seem to work on
   // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
   auto it = std::find(container->begin(), container->end(), value);
   TF_RET_CHECK(it != container->end());
   container->erase(it);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-// Utility function which splits a double-precision float (F64) into a pair of
-// single-precision floating point numbers. The most significant 49 bits (out of
-// the total 53 available) in the mantissa of the F64 is represented as the
-// unevaluated sum of two non-overlapping single-precision F32s; the 'high' part
-// contains 24 bits in its mantissa, and the 'low' part contains 25 bits in its
-// sign bit and its mantissa.
-// Note: The resulting representation can still only represent 8-bit exponent
-// range that is available in F32s (out of a total of 11 exponent bits in F64s).
-std::pair<float, float> SplitF64ToF32(double x);
+// Takes a sequence of unpacked n-bit values, such that every byte stores one
+// value in the low-order bits, and packs them so every byte stores as many
+// which will fit. `output` should have ceil((input.size()*kBitsPerElement)/8)
+// bytes. The high-order bits of each byte in `input` are ignored.
+template <size_t kBitsPerElement>
+void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  constexpr auto kElementsPerByte = 8 / kBitsPerElement;
+  const size_t aligned_inputs = input.size() / kElementsPerByte;
+  for (size_t i = 0; i < aligned_inputs; ++i) {
+    char byte = 0;
+    for (size_t j = 0; j < kElementsPerByte; ++j) {
+      byte |=
+          (input[i * kElementsPerByte + j] & LsbMask<uint8_t>(kBitsPerElement))
+          << (kBitsPerElement * (kElementsPerByte - j - 1));
+    }
+    output[i] = byte;
+  }
+  if (size_t remainder = input.size() % kElementsPerByte; remainder != 0) {
+    char byte = 0;
+    for (size_t j = 0; j < remainder; ++j) {
+      byte |= (input[aligned_inputs * kElementsPerByte + j] &
+               LsbMask<uint8_t>(kBitsPerElement))
+              << (kBitsPerElement * (kElementsPerByte - j - 1));
+    }
+    output[aligned_inputs] = byte;
+  }
+}
+
+inline void PackIntN(int bits_per_element, absl::Span<const char> input,
+                     absl::Span<char> output) {
+  if (bits_per_element == 2) {
+    PackIntN<2>(input, output);
+  } else if (bits_per_element == 4) {
+    PackIntN<4>(input, output);
+  } else {
+    LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
+  }
+}
+
+// Takes a sequence of packed values, such that every byte stores multiple
+// values, and unpacks them so every byte stores one value in the low-order
+// bits. `input` should have
+// ceil(output.size()*8/kBitsPerElement) bytes. The high-order bits in each
+// output are zero.
+template <size_t kBitsPerElement>
+void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  constexpr auto kElementsPerByte = 8 / kBitsPerElement;
+  const size_t aligned_outputs = output.size() / kElementsPerByte;
+  for (size_t i = 0; i < aligned_outputs; ++i) {
+    const char byte = input[i];
+    for (int j = 0; j < kElementsPerByte; ++j) {
+      output[i * kElementsPerByte + j] =
+          (byte >> (kBitsPerElement * (kElementsPerByte - j - 1))) &
+          LsbMask<uint8_t>(kBitsPerElement);
+    }
+  }
+  if (size_t remainder = output.size() % kElementsPerByte; remainder != 0) {
+    const char byte = input[aligned_outputs];
+    for (size_t j = 0; j < remainder; ++j) {
+      output[aligned_outputs * kElementsPerByte + j] =
+          (byte >> (kBitsPerElement * (kElementsPerByte - j - 1))) &
+          LsbMask<uint8_t>(kBitsPerElement);
+    }
+  }
+}
+
+inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
+                       absl::Span<char> output) {
+  if (bits_per_element == 2) {
+    UnpackIntN<2>(input, output);
+  } else if (bits_per_element == 4) {
+    UnpackIntN<4>(input, output);
+  } else {
+    LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
+  }
+}
+
+// Returns a container with `sorted_ids_to_remove` elements removed.
+template <typename T>
+static T RemoveElements(absl::Span<int64_t const> sorted_ids_to_remove,
+                        const T& container) {
+  T result;
+  auto id_to_remove = sorted_ids_to_remove.begin();
+  for (size_t i = 0; i < container.size(); ++i) {
+    if (id_to_remove != sorted_ids_to_remove.end() && *id_to_remove == i) {
+      ++id_to_remove;
+      continue;
+    }
+    result.push_back(container[i]);
+  }
+  return result;
+}
 
 class HloInstruction;
 class HloModule;
@@ -728,19 +954,15 @@ using Vector3 = std::array<int64_t, 3>;
 
 }  // namespace xla
 
+// Note that STRING is evaluated regardless of whether it will be logged.
 #define XLA_LOG_LINES(SEV, STRING) \
-  ::xla::LogLines(SEV, STRING, __FILE__, __LINE__)
+  ::xla::LogLines##SEV(STRING, __FILE__, __LINE__)
 
-#define XLA_VLOG_LINES(LEVEL, STRING)                          \
-  do {                                                         \
-    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tsl::INFO, STRING); \
-  } while (false);
-
-// Utility macro that performs the equivalent of what one would expect
-// LOG_LINES(FATAL, X) to do but can be used at the end of a function that
-// returns a value without getting a compiler warning that no value is returned.
-#define XLA_FATAL_LOG(X)          \
-  XLA_LOG_LINES(::tsl::ERROR, X); \
-  LOG(FATAL) << "Aborting in " << __FUNCTION__ << " due to previous errors.";
+// Like LOG_LINES, but only logs if VLOG is enabled for the given level.
+// STRING is evaluated only if it will be logged.
+#define XLA_VLOG_LINES(LEVEL, STRING)                   \
+  do {                                                  \
+    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(INFO, STRING); \
+  } while (false)
 
 #endif  // XLA_UTIL_H_

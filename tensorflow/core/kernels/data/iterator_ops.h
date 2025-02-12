@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -52,23 +53,26 @@ class IteratorResource : public ResourceBase {
   //
   // If no more outputs remain, `true` will be stored in `*end_of_sequence`, and
   // the content of `*out_tensors` will be undefined.
-  Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
-                 bool* end_of_sequence);
+  absl::Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
+                       bool* end_of_sequence);
+
+  absl::Status GetModelProto(std::string& model_proto);
 
   // Saves a checkpoint of the state of the iterator through the given `writer`.
-  Status Save(OpKernelContext* ctx, ExternalStatePolicy external_state_policy,
-              IteratorStateWriter* writer);
+  absl::Status Save(OpKernelContext* ctx,
+                    ExternalStatePolicy external_state_policy,
+                    IteratorStateWriter* writer);
 
   // Restores the state of the iterator from a checkpoint created by `Save`.
-  Status Restore(OpKernelContext* ctx, IteratorStateReader* reader);
+  absl::Status Restore(OpKernelContext* ctx, IteratorStateReader* reader);
 
   // Creates an iterator for `dataset`, and associates the iterator with this
   // iterator resource.
   //
   // `SetIteratorFromDataset` should be called before calling `GetNext`, `Save`,
   // or `Restore`.
-  Status SetIteratorFromDataset(OpKernelContext* ctx,
-                                const DatasetBase* dataset);
+  absl::Status SetIteratorFromDataset(OpKernelContext* ctx,
+                                      const DatasetBase* dataset);
 
   string DebugString() const override { return "Iterator resource"; }
 
@@ -114,6 +118,8 @@ class IteratorResource : public ResourceBase {
 
     DatasetBaseIterator* iterator() { return iterator_.get(); }
 
+    std::shared_ptr<model::Model> model() { return model_; }
+
     const MemoryCheckpoint& checkpoint() const { return checkpoint_; }
 
     DatasetBase* dataset() { return dataset_.get(); }
@@ -125,6 +131,8 @@ class IteratorResource : public ResourceBase {
 
     // Merges the given checkpoint with the checkpoint of this state.
     void MergeCheckpoint(MemoryCheckpoint* other);
+
+    void SetModel(std::shared_ptr<model::Model> model);
 
     std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry() {
       return id_registry_;
@@ -141,6 +149,7 @@ class IteratorResource : public ResourceBase {
     core::RefCountPtr<DatasetBase> dataset_;
     std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry_;
     MemoryCheckpoint checkpoint_;
+    std::shared_ptr<model::Model> model_;
   };
 
   IteratorMetricsCollector metrics_collector_;
@@ -172,7 +181,7 @@ class IteratorHandleOp : public OpKernel {
   // it is compatible with this op's configuration. The verification may fail in
   // cases such as two graphs asking queues of the same shared name to have
   // inconsistent capacities.
-  Status VerifyResource(IteratorResource* resource);
+  absl::Status VerifyResource(IteratorResource* resource);
 
   FunctionLibraryRuntime* CreatePrivateFLR(
       OpKernelContext* ctx, std::unique_ptr<DeviceMgr>* device_mgr,
@@ -199,11 +208,10 @@ class AnonymousIteratorHandleOp : public AnonymousResourceOp<IteratorResource> {
  private:
   string name() override;
 
-  Status CreateResource(OpKernelContext* ctx,
-                        std::unique_ptr<FunctionLibraryDefinition> flib_def,
-                        std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
-                        FunctionLibraryRuntime* lib,
-                        IteratorResource** resource) override;
+  absl::Status CreateResource(
+      OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
+      std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+      FunctionLibraryRuntime* lib, IteratorResource** resource) override;
 
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
@@ -234,7 +242,7 @@ class HybridAsyncOpKernel : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) final;
 
  protected:
-  virtual Status DoCompute(OpKernelContext* ctx) = 0;
+  virtual absl::Status DoCompute(OpKernelContext* ctx) = 0;
 
  private:
   BackgroundWorker background_worker_;
@@ -246,7 +254,7 @@ class MakeIteratorOp : public HybridAsyncOpKernel {
       : HybridAsyncOpKernel(ctx, "tf_data_make_iterator") {}
 
  protected:
-  Status DoCompute(OpKernelContext* ctx) override;
+  absl::Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class IteratorGetNextOp : public HybridAsyncOpKernel {
@@ -260,11 +268,22 @@ class IteratorGetNextOp : public HybridAsyncOpKernel {
   AsyncOpKernel* AsAsync() override;
 
  protected:
-  Status DoCompute(OpKernelContext* ctx) override;
+  absl::Status DoCompute(OpKernelContext* ctx) override;
 
  private:
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
+};
+
+class IteratorGetModelProtoOp : public HybridAsyncOpKernel {
+ public:
+  explicit IteratorGetModelProtoOp(OpKernelConstruction* ctx)
+      : HybridAsyncOpKernel(
+            ctx,
+            /*background_worker_name=*/"tf_data_iterator_get_model_proto") {}
+
+ protected:
+  absl::Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class DeleteIteratorOp : public HybridAsyncOpKernel {
@@ -273,7 +292,7 @@ class DeleteIteratorOp : public HybridAsyncOpKernel {
       : HybridAsyncOpKernel(ctx, "tf_data_delete_iterator") {}
 
  protected:
-  Status DoCompute(OpKernelContext* ctx) override;
+  absl::Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class IteratorGetNextAsOptionalOp : public HybridAsyncOpKernel {
@@ -285,7 +304,7 @@ class IteratorGetNextAsOptionalOp : public HybridAsyncOpKernel {
   }
 
  protected:
-  Status DoCompute(OpKernelContext* ctx) override;
+  absl::Status DoCompute(OpKernelContext* ctx) override;
 
  private:
   DataTypeVector output_types_;

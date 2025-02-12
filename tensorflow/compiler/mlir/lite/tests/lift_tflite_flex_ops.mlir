@@ -20,7 +20,7 @@ func.func @TfBatchMatMulV2(%arg0: tensor<4x128x2xf32>, %arg1:  tensor<2x1xf32>) 
     custom_option = #tfl<const_bytes : "0x0D42617463684D61744D756C56320038120D42617463684D61744D756C56321A001A002A070A0154120230012A0B0A0561646A5F78120228002A0B0A0561646A5F791202280032000002493B1414042801">
   } : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
 
-// CHECK: "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false} : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
+// CHECK: "tf.BatchMatMulV2"(%arg0, %arg1) <{adj_x = false, adj_y = false}> {T = f32} : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
   func.return %0 : tensor<4x128x1xf32>
 }
 
@@ -66,7 +66,7 @@ func.func @TfMapDataset(%arg0: tensor<!tf_type.variant>) -> (tensor<!tf_type.var
 
   func.return %0 : tensor<!tf_type.variant>
 // CHECK: "tf.MapDataset"(
-// CHECK-SAME: {Targuments = [], f = @{{.*}}, metadata = "", output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], preserve_cardinality = true, use_inter_op_parallelism = true}
+// CHECK-SAME: <{f = @{{.*}}, metadata = "", output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], preserve_cardinality = true, use_inter_op_parallelism = true}> {Targuments = []}
 }
 
 // CHECK-LABEL: TfTakeWhileDataset
@@ -78,7 +78,7 @@ func.func @TfTakeWhileDataset(%arg0: tensor<!tf_type.variant>, %arg1: tensor<!tf
 
   func.return %0 : tensor<!tf_type.variant>
 // CHECK: "tf.TakeWhileDataset"(
-// CHECK-SAME: {Targuments = [!tf_type.resource, !tf_type.resource, i64, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, i64], metadata = "", output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], predicate = @{{.*}}}
+// CHECK-SAME: <{metadata = "", output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], predicate = @{{.*}}}> {Targuments = [!tf_type.resource, !tf_type.resource, i64, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, i64]}
 }
 
 // CHECK-LABEL: FailureOnInvalidOp

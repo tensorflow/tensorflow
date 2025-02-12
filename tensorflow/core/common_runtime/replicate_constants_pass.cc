@@ -24,6 +24,9 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/config/flags.h"
@@ -36,9 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -67,18 +67,44 @@ bool HasCpuDevice(const Node* node) {
   return device.type == "CPU";
 }
 
+// Convert the CPU device name to the corresponding CPU device name. If
+// multiple local CPU devices are enabled, the CPU device name will also
+// contain the device id.
+absl::Status DeviceNameToCpuDeviceNameWithDeviceId(const string& device_name,
+                                                   string* host_device_name) {
+  DeviceNameUtils::ParsedName device;
+  if (!DeviceNameUtils::ParseFullName(device_name, &device)) {
+    return absl::InternalError(
+        absl::StrCat("Could not parse device name ", device_name));
+  }
+  // If aggressive constant replication is enabled and the dst node is on CPU.
+  // We just use the device name of the dst for the src.
+  if (flags::Global().enable_aggressive_constant_replication.value() &&
+      device.type == "CPU") {
+    *host_device_name = device_name;
+  } else {
+    // If not, assigning the corresponding CPU 0 to it.
+    device.type = "CPU";
+    device.has_type = true;
+    device.id = 0;
+    device.has_id = true;
+    *host_device_name = DeviceNameUtils::ParsedNameToString(device);
+  }
+  return absl::OkStatus();
+}
+
 // Get the CPU device on the same host as dst.
-Status GetDestinationCpuDevice(const Node* dst, std::string* device) {
+absl::Status GetDestinationCpuDevice(const Node* dst, std::string* device) {
   if (!dst->has_assigned_device_name())
     return absl::AbortedError(
         absl::StrCat("Node name: ", dst->name(), " has no assigned device."));
-  return DeviceNameUtils::DeviceNameToCpuDeviceName(dst->assigned_device_name(),
-                                                    device);
+  return DeviceNameToCpuDeviceNameWithDeviceId(dst->assigned_device_name(),
+                                               device);
 }
 
 // Collect the successor edges of the constant. Group them by the device of the
 // successor.
-Status GetSuccessorEdges(
+absl::Status GetSuccessorEdges(
     Node* node,
     absl::btree_map<std::string, std::vector<const Edge*>>& device_to_edges) {
   for (const auto& edge : node->out_edges()) {
@@ -88,7 +114,7 @@ Status GetSuccessorEdges(
     if (!device_to_edges.count(device)) device_to_edges.insert({device, {}});
     device_to_edges[device].push_back(edge);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Replicate the constant to each successor device.
@@ -114,19 +140,15 @@ void ReplicateToEachDevice(
 
 }  // namespace
 
-Status ReplicateConstantsPass::Run(
+absl::Status ReplicateConstantsPass::Run(
     const GraphOptimizationPassOptions& options) {
-  if (!flags::Global().replicate_small_constants.value()) {
-    VLOG(1) << "replicate_constants_pass not enabled";
-    return OkStatus();
-  }
   VLOG(1) << "replicate_constants_pass will replicate constants with "
              "number-of-elements <= "
           << kMaxSize;
 
   if (options.graph == nullptr) {
     VLOG(1) << "No graph in replicate_constants_pass.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   Graph* graph = options.graph->get();
   if (VLOG_IS_ON(1)) {
@@ -184,7 +206,7 @@ Status ReplicateConstantsPass::Run(
     VLOG(1) << DumpGraphToFile("after_replicate_constants_pass", *graph,
                                options.flib_def);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 3,

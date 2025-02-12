@@ -43,8 +43,8 @@ using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
 // Validate that CSR SparseMatrix has the expected dtype and rank 2 or 3.
-Status ValidateCSRSparseMatrix(const CSRSparseMatrix& csr_sparse_matrix,
-                               DataType expected_dtype) {
+absl::Status ValidateCSRSparseMatrix(const CSRSparseMatrix& csr_sparse_matrix,
+                                     DataType expected_dtype) {
   if (csr_sparse_matrix.dtype() != expected_dtype) {
     return errors::InvalidArgument(
         "Expected a CSRSparseMatrix of type ", DataTypeString(expected_dtype),
@@ -55,7 +55,7 @@ Status ValidateCSRSparseMatrix(const CSRSparseMatrix& csr_sparse_matrix,
     return errors::InvalidArgument("CSR SparseMatrix must have rank 2 or 3; ",
                                    "but dense_shape has size ", rank);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

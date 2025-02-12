@@ -16,6 +16,10 @@ pybind_extension(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
+    data = [
+        "format_converter_wrapper_pybind11.pyi",
+    ],
+    enable_stub_generation = True,
     features = ["-use_header_modules"],
     deps = [
         "//tensorflow/lite/core/c:common",
@@ -28,10 +32,10 @@ pybind_extension(
 py_strict_test(
     name = "format_converter_wrapper_pybind11_test",
     srcs = ["format_converter_wrapper_pybind11_test.py"],
-    python_version = "PY3",
     deps = [
         ":format_converter_wrapper_pybind11",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:absltest",
+        #internal proto upb dep
+        "//third_party/py/numpy",
     ],
 )

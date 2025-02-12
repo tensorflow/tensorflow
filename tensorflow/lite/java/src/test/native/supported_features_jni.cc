@@ -46,7 +46,8 @@ Java_org_tensorflow_lite_SupportedFeatures_supportsAllowFp16PrecisionForFp32(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_org_tensorflow_lite_SupportedFeatures_supportsSignatures(JNIEnv*, jclass) {
+Java_org_tensorflow_lite_SupportedFeatures_supportsNonstrictResize(JNIEnv*,
+                                                                   jclass) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   return JNI_FALSE;
 #else

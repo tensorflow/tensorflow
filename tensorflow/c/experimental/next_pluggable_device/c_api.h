@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_buffer.h"
+#include "tensorflow/c/tf_status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 
 // --------------------------------------------------------------------------
@@ -98,11 +98,19 @@ TF_CAPI_EXPORT extern void TF_CoordinationServiceInsertKeyValue(
     const char* key, int64_t key_size, const char* value, int64_t value_size,
     TF_CoordinationServiceAgent* agent, TF_Status* status);
 
-// Obtains key-value from coorination service agent. The returned `TF_Buffer`
+// Obtains key-value from coordination service agent. The returned `TF_Buffer`
 // is a newly allocated buffer to hold the string key-value, and caller is
 // responsible for managing the lifetime. If error, `status` will be set and a
 // nullptr will be returned.
 TF_CAPI_EXPORT extern TF_Buffer* TF_CoordinationServiceGetKeyValue(
+    const char* key, int64_t key_size, TF_CoordinationServiceAgent* agent,
+    TF_Status* status);
+
+TF_CAPI_EXPORT extern TF_Buffer* TF_CoordinationServiceGetKeyValueWithTimeout(
+    const char* key, int64_t key_size, int64_t timeout_seconds,
+    TF_CoordinationServiceAgent* agent, TF_Status* status);
+
+TF_CAPI_EXPORT extern TF_Buffer* TF_CoordinationServiceTryGetKeyValue(
     const char* key, int64_t key_size, TF_CoordinationServiceAgent* agent,
     TF_Status* status);
 
@@ -111,7 +119,7 @@ TF_CAPI_EXPORT extern void TF_CoordinationServiceDeleteKeyValue(
     TF_Status* status);
 
 // ----------------------------  PJRT  -----------------------------------------
-// Passes the pointer to a vector of PJRT_NamedValue and number of optiosn to
+// Passes the pointer to a vector of PJRT_NamedValue and number of options to
 // set options for creating a PJRT client. Passes nullptr for create_options and
 // 0 for num_options if no options need to be set. You can use
 // ConvertToPjRtNamedValueList in
@@ -119,6 +127,11 @@ TF_CAPI_EXPORT extern void TF_CoordinationServiceDeleteKeyValue(
 TF_CAPI_EXPORT extern void TF_CreateAndSetPjRtCApiClient(
     const char* device_type, TF_Status* status, PJRT_NamedValue* create_options,
     int num_options);
+
+// Resets the PjRt client for a device. After this, `TF_GetPjRtCClient` will
+// returns an error for that device.
+TF_CAPI_EXPORT extern void TF_ResetPjRtCClient(const char* device_type,
+                                               TF_Status* status);
 
 // Gets the `PJRT_Client*` stored in TF global ResourceManager.
 TF_CAPI_EXPORT extern PJRT_Client* TF_GetPjRtCClient(const char* device_type,

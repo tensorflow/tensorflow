@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,13 +16,24 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_metadata.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <string>
 
 #include "absl/container/flat_hash_set.h"
-#include "tsl/platform/env.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/metrics.pb.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
-StatusOr<HloPassMetadata*> HloModuleMetadata::GetCurrentHloPassMetadata() {
+absl::StatusOr<HloPassMetadata*>
+HloModuleMetadata::GetCurrentHloPassMetadata() {
   if (running_passes_.empty()) {
     return NotFound(
         "HloPassMetadata for currently running pass not found, either because "
@@ -33,12 +44,12 @@ StatusOr<HloPassMetadata*> HloModuleMetadata::GetCurrentHloPassMetadata() {
   return running_passes_.back();
 }
 
-Status HloModuleMetadata::MutateCurrentHloPassMetadata(
+absl::Status HloModuleMetadata::MutateCurrentHloPassMetadata(
     absl::FunctionRef<void(HloPassMetadata*)> mutator) {
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());
   mutator(pass_metadata);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HloModuleMetadata::RecordPassStart() {
@@ -48,12 +59,12 @@ void HloModuleMetadata::RecordPassStart() {
   running_passes_.push_back(pass_metadata);
 }
 
-Status HloModuleMetadata::RecordPassEnd() {
+absl::Status HloModuleMetadata::RecordPassEnd() {
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());
   pass_metadata->set_end_timestamp_usec(env_->NowMicros());
   running_passes_.pop_back();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HloModuleMetadata::set_prepartitioning_metadata(
@@ -82,6 +93,39 @@ void HloModuleMetadata::set_prepartitioning_metadata(
       *prepartitioning_metadata_->add_pass_metadata() = pass_metadata;
     }
   }
+}
+
+absl::Status HloModuleMetadata::set_custom_metadata(
+    const ::tsl::protobuf::Message& message) {
+  TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                      GetCurrentHloPassMetadata());
+  if (!pass_metadata->mutable_custom_metadata()->PackFrom(message)) {
+    LOG(WARNING) << "failed to pack custom metadata for "
+                 << pass_metadata->pass_id();
+    return Internal("failed to pack custom metadata");
+  };
+  return absl::OkStatus();
+}
+
+absl::Status HloModuleMetadata::set_key_value_metric(const std::string& key,
+                                                     int64_t value) {
+  TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                      GetCurrentHloPassMetadata());
+  auto* kv_metrics = pass_metadata->mutable_kv_metrics();
+  // Iterating here since we expect only a few kv_metrics per pass ..
+  for (auto& kv_metric : *kv_metrics) {
+    if (kv_metric.key() == key) {
+      kv_metric.set_value(value);
+
+      return absl::OkStatus();
+    }
+  }
+
+  // If none exists, add new one.
+  KeyValueMetric* kv_metric = pass_metadata->add_kv_metrics();
+  kv_metric->set_key(key);
+  kv_metric->set_value(value);
+  return absl::OkStatus();
 }
 
 }  // namespace xla

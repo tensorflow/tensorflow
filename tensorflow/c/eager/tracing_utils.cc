@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tracing {
 
-Status MaybeSetOpName(AbstractOperation* op, const char* op_name) {
+absl::Status MaybeSetOpName(AbstractOperation* op, const char* op_name) {
   if (isa<TracingOperation>(op)) {
     TF_RETURN_IF_ERROR(dyn_cast<TracingOperation>(op)->SetOpName(op_name));
   }
@@ -31,7 +31,7 @@ Status MaybeSetOpName(AbstractOperation* op, const char* op_name) {
         dyn_cast<gradients::TapeOperation>(op)->GetBackingOperation(),
         op_name));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace tracing
 }  // namespace tensorflow

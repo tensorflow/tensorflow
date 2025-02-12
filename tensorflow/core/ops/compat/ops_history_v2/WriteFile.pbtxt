@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "WriteFile"
   input_arg {
     name: "filename"

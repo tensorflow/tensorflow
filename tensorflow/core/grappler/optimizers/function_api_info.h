@@ -39,7 +39,7 @@ class FunctionApiInfo {
     BACKWARD,
   };
 
-  Status Init(const FunctionDef& function_def);
+  absl::Status Init(const FunctionDef& function_def);
 
   const string& interface_name() const;
   const string& preferred_device() const;
@@ -60,7 +60,8 @@ class FunctionApiInfo {
   DataTypeVector input_arg_dtypes_;
   DataTypeVector output_arg_dtypes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionApiInfo);
+  FunctionApiInfo(const FunctionApiInfo&) = delete;
+  void operator=(const FunctionApiInfo&) = delete;
 };
 
 // A collection of information for function and the interface it implements.
@@ -74,9 +75,9 @@ class FunctionLibraryApiInfo {
   FunctionLibraryApiInfo();
   virtual ~FunctionLibraryApiInfo();
   // Populate the internal field for the functions within the function_library.
-  Status Init(const FunctionDefLibrary& function_library);
+  absl::Status Init(const FunctionDefLibrary& function_library);
 
-  Status GetEquivalentImplementations(
+  absl::Status GetEquivalentImplementations(
       const string& function_name, std::vector<string>* other_functions) const;
 
   const FunctionApiInfo* GetApiInfo(const string& function_name) const;
@@ -95,7 +96,8 @@ class FunctionLibraryApiInfo {
   absl::flat_hash_map<string, std::vector<string>> intf_to_forward_funcs_;
   absl::flat_hash_map<string, std::vector<string>> intf_to_backward_funcs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryApiInfo);
+  FunctionLibraryApiInfo(const FunctionLibraryApiInfo&) = delete;
+  void operator=(const FunctionLibraryApiInfo&) = delete;
 };
 
 }  // end namespace grappler

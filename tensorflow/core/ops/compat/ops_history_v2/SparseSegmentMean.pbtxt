@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseSegmentMean"
   input_arg {
     name: "data"

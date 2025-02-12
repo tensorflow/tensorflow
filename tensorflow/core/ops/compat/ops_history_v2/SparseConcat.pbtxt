@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseConcat"
   input_arg {
     name: "indices"

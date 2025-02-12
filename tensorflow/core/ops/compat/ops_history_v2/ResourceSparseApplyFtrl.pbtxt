@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResourceSparseApplyFtrl"
   input_arg {
     name: "var"

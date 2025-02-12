@@ -47,7 +47,7 @@ class FIFOQueue : public TypedQueue<std::deque<Tensor> > {
   void TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       bool allow_small_batch,
                       CallbackWithTuple callback) override;
-  Status MatchesNodeDef(const NodeDef& node_def) override;
+  absl::Status MatchesNodeDef(const NodeDef& node_def) override;
 
   int32 size() const override {
     mutex_lock lock(mu_);
@@ -61,13 +61,14 @@ class FIFOQueue : public TypedQueue<std::deque<Tensor> > {
   void DequeueLocked(OpKernelContext* ctx, Tuple* tuple)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  static Status GetElementComponentFromBatch(const Tuple& tuple, int64_t index,
-                                             int component,
-                                             OpKernelContext* ctx,
-                                             Tensor* out_tensor);
+  static absl::Status GetElementComponentFromBatch(const Tuple& tuple,
+                                                   int64_t index, int component,
+                                                   OpKernelContext* ctx,
+                                                   Tensor* out_tensor);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(FIFOQueue);
+  FIFOQueue(const FIFOQueue&) = delete;
+  void operator=(const FIFOQueue&) = delete;
 };
 
 // Defines a FIFOQueueOp, which produces a Queue (specifically, one
@@ -79,11 +80,12 @@ class FIFOQueueOp : public TypedQueueOp {
   explicit FIFOQueueOp(OpKernelConstruction* context);
 
  private:
-  Status CreateResource(QueueInterface** ret) override
+  absl::Status CreateResource(QueueInterface** ret) override
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   std::vector<TensorShape> component_shapes_;
-  TF_DISALLOW_COPY_AND_ASSIGN(FIFOQueueOp);
+  FIFOQueueOp(const FIFOQueueOp&) = delete;
+  void operator=(const FIFOQueueOp&) = delete;
 };
 
 }  // namespace tensorflow

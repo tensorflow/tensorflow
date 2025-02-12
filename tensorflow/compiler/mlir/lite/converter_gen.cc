@@ -15,11 +15,14 @@ limitations under the License.
 
 #include <assert.h>
 
-#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
@@ -60,8 +63,8 @@ llvm::cl::opt<ActionType> action(
 
 // Returns the associated option name for the given op definition.
 static inline std::string GetOperatorOptionName(const Record &def) {
-  assert(def.getName().startswith("TFL_") && "unexpected op prefix");
-  assert(def.getName().endswith("Op") && "unexpected op suffix");
+  assert(def.getName().starts_with("TFL_") && "unexpected op prefix");
+  assert(def.getName().ends_with("Op") && "unexpected op suffix");
 
   auto *custom_option = dyn_cast<StringInit>(def.getValueInit("customOption"));
   std::ostringstream oss;
@@ -74,8 +77,8 @@ static inline std::string GetOperatorOptionName(const Record &def) {
 
 // Returns the builder function name for the given op definition.
 static inline std::string GetOperatorBuilderName(StringRef op_name) {
-  assert(op_name.startswith("TFL_") && "unexpected op prefix");
-  assert(op_name.endswith("Op") && "unexpected op suffix");
+  assert(op_name.starts_with("TFL_") && "unexpected op prefix");
+  assert(op_name.ends_with("Op") && "unexpected op suffix");
 
   // E.g., AddOp -> CreateAddOperator
   std::ostringstream oss;
@@ -87,15 +90,28 @@ static inline bool IsLstmOp(const StringRef op_name) {
   return op_name.take_back(6) == "LSTMOp";
 }
 
+static int HasOptions(const Record &def) {
+  if (def.getValueAsBit("hasOptions")) {
+    return 1;
+  }
+  if (def.getValueAsBit("hasOptions2")) {
+    return 2;
+  }
+  return 0;
+}
+
 static void EmitOptionBuilders(const RecordKeeper &record_keeper,
-                               const std::vector<Record *> &defs,
+                               const std::vector<const Record *> &defs,
                                raw_ostream *ostream) {
   raw_ostream &os = *ostream;
 
   const auto attr_type = record_keeper.getClass("Attr");
   for (const auto *def : defs) {
+    const int has_options = HasOptions(*def);
     // TFLite ops without options are skipped over.
-    if (!def->getValueAsBit("hasOptions")) continue;
+    if (!has_options) {
+      continue;
+    }
 
     StringRef op_name = def->getName().drop_front(4);  // Strip 'TFL_' prefix
     std::string option_name = GetOperatorOptionName(*def);
@@ -113,7 +129,7 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
     mlir::tblgen::Operator op(*def);
     for (unsigned i = 0, e = arg_values->getNumArgs(); i != e; ++i) {
       auto arg = arg_values->getArg(i);
-      DefInit *arg_def = dyn_cast<DefInit>(arg);
+      const auto *arg_def = dyn_cast<DefInit>(arg);
       if (!arg_def) continue;
       if (arg_def->getDef()->isSubClassOf(attr_type)) {
         // This binds the name of the attribute in the TD file with the name
@@ -171,7 +187,7 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
 // arguments that depend on op definitions should be auto-generated and then
 // operator should be built by the caller because it does not require
 // auto-generation.
-static void EmitOperatorBuilders(const std::vector<Record *> &defs,
+static void EmitOperatorBuilders(const std::vector<const Record *> &defs,
                                  raw_ostream *ostream) {
   raw_ostream &os = *ostream;
 
@@ -187,7 +203,8 @@ static void EmitOperatorBuilders(const std::vector<Record *> &defs,
        << "const std::vector<int32_t>& results,"
        << (has_intermediates ? "const std::vector<int32_t>& intermediate_index,"
                              : "")
-       << "flatbuffers::FlatBufferBuilder *fbb) {\n";
+       << "flatbuffers::FlatBufferBuilder *fbb,"
+       << "int debug_metadata_index) {\n";
 
     // Inputs & outputs
     os << "  auto inputs = fbb->CreateVector(operands);\n"
@@ -200,7 +217,8 @@ static void EmitOperatorBuilders(const std::vector<Record *> &defs,
     // Build the FlatBuffer operator
     os << "  return tflite::CreateOperator(\n"
           "      *fbb, opcode_index, inputs, outputs,\n";
-    if (def->getValueAsBit("hasOptions")) {
+    const int has_options = HasOptions(*def);
+    if (has_options == 1) {
       auto option_name = GetOperatorOptionName(*def);
       std::string tflite_option_name =
           option_name == "BasicLSTMOptions" ? "LSTMOptions" : option_name;
@@ -213,8 +231,29 @@ static void EmitOperatorBuilders(const std::vector<Record *> &defs,
     // used by custom or flex ops and those ops are handled manually.
     os << "      /*custom_options=*/0, "
        << "tflite::CustomOptionsFormat_FLEXBUFFERS,\n"
-       << "      /*mutating_variable_inputs=*/0"
-       << (has_intermediates ? ", intermediates" : "") << ");\n}\n\n";
+       << "      /*mutating_variable_inputs=*/0,"
+       << (has_intermediates ? "intermediates" : "/*intermediates=*/0");
+
+    if (has_options == 2) {
+      os << ",\n"
+         << "      /*large_custom_options_offset=*/0,\n"
+         << "      /*large_custom_options_size=*/0";
+      os << ",\n";
+      const std::string option_name = GetOperatorOptionName(*def);
+      os << "      tflite::BuiltinOptions2_" << option_name << ", "
+         << "Create" << option_name << "(tflOp, fbb).Union()";
+    } else {
+      os << ",\n"
+         << "      /*large_custom_options_offset=*/0,\n"
+         << "      /*large_custom_options_size=*/0";
+      os << ",\n";
+      os << "      tflite::BuiltinOptions2_NONE, /*builtin_options2=*/0";
+    }
+
+    os << ",\n"
+       << "      /*debug_metadata_index=*/debug_metadata_index";
+
+    os << ");\n}\n\n";
   }
 }
 
@@ -236,7 +275,7 @@ static inline std::string GetOperatorName(const Record &def) {
 //
 // TODO(hinsu): Consider converting this to a static constant associative
 // container instead of a series of if conditions, if required.
-static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
+static void EmitGetBuiltinOpCode(const std::vector<const Record *> &defs,
                                  raw_ostream *ostream) {
   raw_ostream &os = *ostream;
 
@@ -266,7 +305,7 @@ static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
 //   return {0, 0};
 // }
 static void EmitOperandNumbers(const RecordKeeper &record_keeper,
-                               const std::vector<Record *> &defs,
+                               const std::vector<const Record *> &defs,
                                raw_ostream *ostream) {
   raw_ostream &os = *ostream;
   const auto attr_type = record_keeper.getClass("Attr");
@@ -310,8 +349,9 @@ static void EmitOperandNumbers(const RecordKeeper &record_keeper,
 //       const std::vector<int32_t>& operands,
 //       const std::vector<int32_t>& results,
 //       const std::vector<int32_t>& intermediates,
-//       flatbuffers::FlatBufferBuilder *fbb);
-static void EmitBuildOperator(const std::vector<Record *> &defs,
+//       flatbuffers::FlatBufferBuilder *fbb,
+//       std::optional<int> debug_metadata_index);
+static void EmitBuildOperator(const std::vector<const Record *> &defs,
                               raw_ostream *ostream) {
   raw_ostream &os = *ostream;
 
@@ -322,7 +362,8 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
         "const std::vector<int32_t>& operands,"
         "const std::vector<int32_t>& results,"
         "const std::vector<int32_t>& intermediates,"
-        "flatbuffers::FlatBufferBuilder *fbb) {\n";
+        "flatbuffers::FlatBufferBuilder *fbb,"
+        "std::optional<int> debug_metadata_index) {\n";
 
   for (const auto *def : defs) {
     StringRef op_name = def->getName().drop_front(4);
@@ -333,7 +374,7 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
        << "    return " << GetOperatorBuilderName(def->getName())
        << "(tflOp, opcode_index, operands, results, "
        << (op_name.take_back(6) == "LSTMOp" ? "intermediates, " : "")
-       << "fbb);\n";
+       << "fbb, debug_metadata_index.value_or(-1));\n";
   }
 
   os << "  return std::nullopt;\n"
@@ -342,24 +383,43 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
 
 // Emit a function that converts a BuiltinOptionsUnion to a vector of attributes
 // Signature:
-// void mlir::BuiltinOptionsToAttributes(
-//     tflite::BuiltinOptionsUnion op_union,
+// void mlir::BuiltinOptions{id}ToAttributes(
+//     tflite::BuiltinOptions{id}Union op_union,
 //     mlir::Builder builder,
 //     llvm::SmallVectorImpl<mlir::NamedAttribute> &attributes);
-static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
-                                           const std::vector<Record *> &defs,
-                                           raw_ostream *ostream) {
+//
+// where id is an empty string if builtin_options_id is 1, or builtin_options_id
+// otherwise.
+static void EmitBuiltinOptionsToAttributes(
+    const RecordKeeper &record_keeper, const std::vector<const Record *> &defs,
+    raw_ostream *ostream, const int builtin_options_id) {
   raw_ostream &os = *ostream;
 
+  const std::string builtin_options_suffix = [&] {
+    switch (builtin_options_id) {
+      case 1:
+        return "";
+      case 2:
+        return "2";
+    }
+    return "UnknownId";
+  }();
+
   // Signature
-  os << "void mlir::BuiltinOptionsToAttributes("
-        "tflite::BuiltinOptionsUnion op_union, "
+  os << "void mlir::BuiltinOptions" << builtin_options_suffix
+     << "ToAttributes("
+        "tflite::BuiltinOptions"
+     << builtin_options_suffix
+     << "Union op_union, "
         "mlir::Builder builder, "
         "llvm::SmallVectorImpl<mlir::NamedAttribute> &attributes) {\n";
 
   const auto attr_type = record_keeper.getClass("Attr");
   for (const auto *def : defs) {
-    if (!def->getValueAsBit("hasOptions")) continue;
+    const int has_options = HasOptions(*def);
+    if (has_options != builtin_options_id) {
+      continue;
+    }
     auto option_name = GetOperatorOptionName(*def);
     // Basic LSTM and LSTM ops share the same option to attribute converter.
     if (option_name == "BasicLSTMOptions") {
@@ -372,7 +432,7 @@ static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
     auto *arg_values = def->getValueAsDag("arguments");
     for (unsigned i = 0, e = arg_values->getNumArgs(); i != e; ++i) {
       auto arg = arg_values->getArg(i);
-      DefInit *arg_def = dyn_cast<DefInit>(arg);
+      const auto *arg_def = dyn_cast<DefInit>(arg);
       if (!arg_def) continue;
       if (arg_def->getDef()->isSubClassOf(attr_type)) {
         StringRef arg_name = arg_values->getArgNameStr(i);
@@ -392,17 +452,22 @@ static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
     os << "    return;\n";
     os << "  }\n";
   }
+  if (builtin_options_id == 2) {
+    os << "  BuiltinOptions2ToAttributesManual(op_union, builder, "
+          "attributes);\n";
+  }
   // Fallthrough case is no attributes
   os << "}";
 }
+
 // The function below has a non-constant reference as that is required by LLVM's
 // TableGenMain.
 // NOLINTNEXTLINE
-static bool OperatorWritersMain(raw_ostream &os, RecordKeeper &records) {
+static bool OperatorWritersMain(raw_ostream &os, const RecordKeeper &records) {
   emitSourceFileHeader("MLIR TFLite FlatBuffer Builders", os);
 
   // Retrieve all the definitions derived from TFL_Op and sort by record name.
-  std::vector<Record *> defs = records.getAllDerivedDefinitions("TFL_Op");
+  std::vector<const Record *> defs = records.getAllDerivedDefinitions("TFL_Op");
   llvm::sort(defs, LessRecord());
 
   for (const auto *def : defs) {
@@ -411,10 +476,10 @@ static bool OperatorWritersMain(raw_ostream &os, RecordKeeper &records) {
     // The generated TFLite op C++ class should be TFL::<OpName>Op.
     // The generated operator's options should be tflite::<OpName>Options.
     // The option builder should be Create<OpName>Options.
-    if (!def->getName().startswith("TFL_"))
+    if (!def->getName().starts_with("TFL_"))
       PrintFatalError(def->getLoc(),
                       "unexpected op name format: 'TFL_' prefix missing");
-    if (!def->getName().endswith("Op"))
+    if (!def->getName().ends_with("Op"))
       PrintFatalError(def->getLoc(),
                       "unexpected op name format: 'Op' suffix missing");
   }
@@ -427,7 +492,9 @@ static bool OperatorWritersMain(raw_ostream &os, RecordKeeper &records) {
   os << "\n\n";
   EmitBuildOperator(defs, &os);
   os << "\n\n";
-  EmitBuiltinOptionsToAttributes(records, defs, &os);
+  EmitBuiltinOptionsToAttributes(records, defs, &os, /*builtin_options_id=*/1);
+  os << "\n\n";
+  EmitBuiltinOptionsToAttributes(records, defs, &os, /*builtin_options_id=*/2);
   os << "\n\n";
   EmitOperandNumbers(records, defs, &os);
 
@@ -435,7 +502,7 @@ static bool OperatorWritersMain(raw_ostream &os, RecordKeeper &records) {
 }
 
 static void GenOperandResultVerifier(raw_ostream &os,
-                                     llvm::ArrayRef<llvm::Init *> values,
+                                     llvm::ArrayRef<const llvm::Init *> values,
                                      StringRef valueKind) {
   mlir::tblgen::FmtContext fctx;
 
@@ -483,11 +550,12 @@ static void GenOperandResultVerifier(raw_ostream &os,
 }
 
 // NOLINTNEXTLINE
-static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
+static bool RuntimeVerifierWriterMain(raw_ostream &os,
+                                      const RecordKeeper &records) {
   emitSourceFileHeader("MLIR TFLite Runtime Verifiers", os);
 
   // Retrieve all the definitions derived from TFL_Op and sort by record name.
-  std::vector<Record *> defs = records.getAllDerivedDefinitions("Op");
+  std::vector<const Record *> defs = records.getAllDerivedDefinitions("Op");
   llvm::sort(defs, LessRecord());
 
   // Iterate through all the ops defined.

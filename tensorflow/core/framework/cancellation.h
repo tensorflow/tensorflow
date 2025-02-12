@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_CANCELLATION_H_
 #define TENSORFLOW_CORE_FRAMEWORK_CANCELLATION_H_
 
+#include "xla/tsl/framework/cancellation.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/framework/cancellation.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

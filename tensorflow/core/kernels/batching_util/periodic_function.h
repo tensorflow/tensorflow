@@ -120,7 +120,8 @@ class PeriodicFunction {
   // Thread for running "function_"
   std::unique_ptr<Thread> thread_ = nullptr;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PeriodicFunction);
+  PeriodicFunction(const PeriodicFunction&) = delete;
+  void operator=(const PeriodicFunction&) = delete;
 };
 
 }  // namespace serving

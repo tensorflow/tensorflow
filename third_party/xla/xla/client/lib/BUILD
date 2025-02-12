@@ -1,11 +1,13 @@
 # Common computation builders for XLA.
 
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
+load("//xla/tests:build_defs.bzl", "generate_backend_suites")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "filegroup")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//xla/client:friends"]),
     licenses = ["notice"],
 )
 
@@ -16,7 +18,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
 )
 
 # Generate test_suites for all backends, named "${backend}_tests".
@@ -24,481 +25,165 @@ generate_backend_suites()
 
 cc_library(
     name = "arithmetic",
-    srcs = ["arithmetic.cc"],
     hdrs = ["arithmetic.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:arithmetic instead.",
     deps = [
-        ":constants",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/client:xla_computation",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-xla_test(
-    name = "arithmetic_test",
-    srcs = ["arithmetic_test.cc"],
-    deps = [
-        ":arithmetic",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
+        "//xla/hlo/builder/lib:arithmetic",
     ],
 )
 
 cc_library(
     name = "comparators",
-    srcs = ["comparators.cc"],
     hdrs = [
         "comparators.h",
     ],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:comparators instead.",
     deps = [
-        ":constants",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/client:xla_computation",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_test(
-    name = "comparators_test",
-    srcs = ["comparators_test.cc"],
-    deps = [
-        ":comparators",
-        ":constants",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/container:inlined_vector",
+        "//xla/hlo/builder/lib:comparators",
     ],
 )
 
 cc_library(
     name = "constants",
-    srcs = ["constants.cc"],
     hdrs = ["constants.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:constants instead.",
     deps = [
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "@local_tsl//tsl/platform:float8",
+        "//xla/hlo/builder/lib:constants",
     ],
 )
 
 cc_library(
     name = "broadcast",
-    srcs = ["broadcast.cc"],
     hdrs = ["broadcast.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:broadcast instead.",
     deps = [
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-xla_test(
-    name = "constants_test",
-    srcs = ["constants_test.cc"],
-    deps = [
-        ":constants",
-        "//xla:test",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
+        "//xla/hlo/builder/lib:broadcast",
     ],
 )
 
 cc_library(
     name = "conv_grad_size_util",
-    srcs = ["conv_grad_size_util.cc"],
     hdrs = ["conv_grad_size_util.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:conv_grad_size_util instead.",
     deps = [
-        "//xla:status_macros",
-        "//xla/client:padding",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
+        "//xla/hlo/builder/lib:conv_grad_size_util",
     ],
 )
 
 cc_library(
     name = "dynamic_shaped_ops",
-    srcs = ["dynamic_shaped_ops.cc"],
     hdrs = ["dynamic_shaped_ops.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:dynamic_shaped_ops instead.",
     deps = [
-        ":constants",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:value_inference",
-        "//xla/client:xla_builder",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:span",
+        "//xla/hlo/builder/lib:dynamic_shaped_ops",
     ],
 )
 
 cc_library(
     name = "loops",
-    srcs = ["loops.cc"],
     hdrs = ["loops.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:loops instead.",
     deps = [
-        ":constants",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:statusor",
-        "//xla/client:xla_builder",
-        "//xla/client:xla_computation",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
+        "//xla/hlo/builder/lib:loops",
     ],
 )
 
 cc_library(
     name = "math",
-    srcs = ["math.cc"],
-    hdrs = ["math.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":arithmetic",
-        ":constants",
-        ":loops",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla/client:xla_builder",
+    hdrs = [
+        "math.h",
     ],
-)
-
-xla_test(
-    name = "math_test",
-    srcs = ["math_test.cc"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:math instead.",
     deps = [
-        ":constants",
-        ":math",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "//xla/hlo/builder/lib:math",
     ],
 )
 
 cc_library(
     name = "matrix",
-    srcs = ["matrix.cc"],
     hdrs = ["matrix.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:matrix instead.",
     deps = [
-        ":arithmetic",
-        ":constants",
-        ":slicing",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:status",
-        "//xla:status_macros",
-        "//xla:statusor",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_test(
-    name = "matrix_test",
-    srcs = ["matrix_test.cc"],
-    deps = [
-        ":constants",
-        ":matrix",
-        ":slicing",
-        "//xla:status",
-        "//xla:status_macros",
-        "//xla:statusor",
-        "//xla:test",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings",
+        "//xla/hlo/builder/lib:matrix",
     ],
 )
 
 cc_library(
     name = "pooling",
-    srcs = ["pooling.cc"],
     hdrs = ["pooling.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:pooling instead.",
     deps = [
-        ":arithmetic",
-        ":constants",
-        ":conv_grad_size_util",
-        "//xla/client:xla_builder",
-        "@com_google_absl//absl/container:inlined_vector",
-    ],
-)
-
-xla_test(
-    name = "pooling_test",
-    srcs = ["pooling_test.cc"],
-    deps = [
-        ":pooling",
-        "//xla:test",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/container:inlined_vector",
+        "//xla/hlo/builder/lib:pooling",
     ],
 )
 
 cc_library(
     name = "prng",
-    srcs = ["prng.cc"],
     hdrs = ["prng.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:prng instead.",
     deps = [
-        ":constants",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
+        "//xla/hlo/builder/lib:prng",
     ],
 )
 
 cc_library(
     name = "qr",
-    srcs = ["qr.cc"],
     hdrs = ["qr.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:qr instead.",
     deps = [
-        ":arithmetic",
-        ":constants",
-        ":loops",
-        ":math",
-        ":matrix",
-        ":slicing",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:statusor",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_test(
-    name = "qr_test",
-    srcs = ["qr_test.cc"],
-    tags = ["optonly"],
-    deps = [
-        ":constants",
-        ":matrix",
-        ":qr",
-        "//xla:array2d",
-        "//xla:array3d",
-        "//xla:literal",
-        "//xla:statusor",
-        "//xla:test",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:literal_test_util",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
+        "//xla/hlo/builder/lib:qr",
     ],
 )
 
 cc_library(
     name = "lu_decomposition",
-    srcs = ["lu_decomposition.cc"],
     hdrs = ["lu_decomposition.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:lu_decomposition instead.",
     deps = [
-        "//xla:shape_util",
-        "//xla:statusor",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
+        "//xla/hlo/builder/lib:lu_decomposition",
     ],
 )
 
 cc_library(
     name = "approx_topk",
-    srcs = ["approx_topk.cc"],
     hdrs = ["approx_topk.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:approx_topk instead.",
     deps = [
-        ":approx_topk_shape",
-        "//xla:shape_util",
-        "//xla:statusor",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/client:xla_computation",
-        "@com_google_absl//absl/strings:str_format",
+        "//xla/hlo/builder/lib:approx_topk",
     ],
 )
 
 cc_library(
     name = "approx_topk_shape",
-    srcs = ["approx_topk_shape.cc"],
     hdrs = ["approx_topk_shape.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla:statusor",
-        "//xla:util",
-    ],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:approx_topk_shape instead.",
+    deps = ["//xla/hlo/builder/lib:approx_topk_shape"],
 )
 
 cc_library(
     name = "slicing",
-    srcs = ["slicing.cc"],
     hdrs = ["slicing.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:slicing instead.",
     deps = [
-        ":arithmetic",
-        ":constants",
-        "//xla:types",
-        "//xla:util",
-        "//xla/client:xla_builder",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_test(
-    name = "slicing_test",
-    srcs = ["slicing_test.cc"],
-    deps = [
-        ":slicing",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:types",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
+        "//xla/hlo/builder/lib:slicing",
     ],
 )
 
 cc_library(
     name = "sorting",
-    srcs = ["sorting.cc"],
     hdrs = ["sorting.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:sorting instead.",
     deps = [
-        ":comparators",
-        ":constants",
-        ":loops",
-        ":slicing",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-    ],
-)
-
-xla_test(
-    name = "sorting_test",
-    srcs = ["sorting_test.cc"],
-    deps = [
-        ":sorting",
-        "//xla:test",
-        "//xla:types",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
+        "//xla/hlo/builder/lib:sorting",
     ],
 )
 
 cc_library(
     name = "quantize",
     hdrs = ["quantize.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:quantize instead.",
     deps = [
-        ":constants",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "@local_tsl//tsl/platform:bfloat16",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_test(
-    name = "quantize_test",
-    srcs = ["quantize_test.cc"],
-    # TODO(b/122119490): re-enable TAP after fixing.
-    tags = [
-        "manual",
-        "notap",
-    ],
-    deps = [
-        ":quantize",
-        "//xla:test",
-        "//xla:types",
-        "//xla:util",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
+        "//xla/hlo/builder/lib:quantize",
     ],
 )
 
@@ -506,254 +191,64 @@ cc_library(
     name = "testing",
     srcs = ["testing.cc"],
     hdrs = ["testing.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:execution_options_util",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:statusor",
-        "//xla:types",
-        "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/client",
-        "//xla/client:global_data",
-        "//xla/client:xla_builder",
-        "//xla/client:xla_computation",
-        "//xla/tests:test_utils",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/service",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
 cc_library(
     name = "self_adjoint_eig",
-    srcs = ["self_adjoint_eig.cc"],
     hdrs = ["self_adjoint_eig.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:self_adjoint_eig instead.",
     deps = [
-        ":arithmetic",
-        ":comparators",
-        ":constants",
-        ":loops",
-        ":math",
-        ":matrix",
-        ":slicing",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:statusor",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_test(
-    name = "self_adjoint_eig_test",
-    srcs = ["self_adjoint_eig_test.cc"],
-    real_hardware_only = True,
-    shard_count = 5,
-    tags = ["optonly"],
-    deps = [
-        ":arithmetic",
-        ":constants",
-        ":math",
-        ":matrix",
-        ":self_adjoint_eig",
-        "//xla:array",
-        "//xla:array2d",
-        "//xla:array3d",
-        "//xla:literal",
-        "//xla:statusor",
-        "//xla:test",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:literal_test_util",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
+        "//xla/hlo/builder/lib:self_adjoint_eig",
     ],
 )
 
 cc_library(
     name = "svd",
-    srcs = ["svd.cc"],
     hdrs = ["svd.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:svd instead.",
     deps = [
-        ":arithmetic",
-        ":comparators",
-        ":constants",
-        ":loops",
-        ":math",
-        ":matrix",
-        ":slicing",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:statusor",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_test(
-    name = "svd_test",
-    srcs = ["svd_test.cc"],
-    real_hardware_only = True,
-    shard_count = 10,
-    tags = ["optonly"],
-    deps = [
-        ":arithmetic",
-        ":constants",
-        ":matrix",
-        ":slicing",
-        ":svd",
-        "//xla:array2d",
-        "//xla:array3d",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:statusor",
-        "//xla:test",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:literal_test_util",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
+        "//xla/hlo/builder/lib:svd",
     ],
 )
 
 cc_library(
     name = "tridiagonal",
-    srcs = ["tridiagonal.cc"],
     hdrs = ["tridiagonal.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:tridiagonal instead.",
     deps = [
-        ":constants",
-        ":loops",
-        ":slicing",
-        "//xla:shape_util",
-        "//xla:status",
-        "//xla:status_macros",
-        "//xla:statusor",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_test(
-    name = "tridiagonal_test",
-    srcs = ["tridiagonal_test.cc"],
-    real_hardware_only = True,
-    shard_count = 10,
-    tags = ["optonly"],
-    deps = [
-        ":constants",
-        ":slicing",
-        ":tridiagonal",
-        "//xla:array2d",
-        "//xla:error_spec",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:status",
-        "//xla:test",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:literal_test_util",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
+        "//xla/hlo/builder/lib:tridiagonal",
     ],
 )
 
 cc_library(
     name = "logdet",
-    srcs = ["logdet.cc"],
-    hdrs = ["logdet.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:logdet instead.",
     deps = [
-        ":arithmetic",
-        ":constants",
-        ":loops",
-        ":math",
-        ":matrix",
-        ":qr",
-        ":slicing",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:statusor",
-        "//xla/client:xla_builder",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_test(
-    name = "logdet_test",
-    srcs = ["logdet_test.cc"],
-    tags = [
-        "optonly",
-    ],
-    deps = [
-        ":logdet",
-        ":matrix",
-        "//xla:array2d",
-        "//xla:array3d",
-        "//xla:literal",
-        "//xla:statusor",
-        "//xla:test",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:literal_test_util",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
+        "//xla/hlo/builder/lib:logdet",
     ],
 )
 
 cc_library(
     name = "tuple",
-    srcs = ["tuple.cc"],
     hdrs = ["tuple.h"],
-    visibility = ["//visibility:public"],
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder/lib:tuple instead.",
     deps = [
-        "//xla:shape_tree",
-        "//xla:shape_util",
-        "//xla:statusor",
-        "//xla/client:xla_builder",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_test(
-    name = "tuple_test",
-    srcs = ["tuple_test.cc"],
-    deps = [
-        ":tuple",
-        "//xla:error_spec",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_tree",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:global_data",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
+        "//xla/hlo/builder/lib:tuple",
     ],
 )

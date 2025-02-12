@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,11 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {

@@ -17,11 +17,11 @@ limitations under the License.
 #include <array>
 #include <climits>
 
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -169,7 +169,7 @@ TEST_F(SqliteTest, UnsafeColumn) {
   TF_ASSERT_OK(stmt.StepAndReset());
   stmt = db_->PrepareOrDie("SELECT b FROM T ORDER BY a");
   TF_ASSERT_OK(stmt.Step(&is_done_));
-  StringPiece p = stmt.ColumnStringUnsafe(0);
+  absl::string_view p = stmt.ColumnStringUnsafe(0);
   EXPECT_EQ('h', *p.data());
   TF_ASSERT_OK(stmt.Step(&is_done_));
   // This will actually happen, but it's not safe to test this behavior.
@@ -214,7 +214,7 @@ TEST_F(SqliteTest, Statement_MoveAssignment) {
 TEST_F(SqliteTest, PrepareFailed) {
   SqliteLock lock(*db_);
   SqliteStatement stmt;
-  Status s = db_->Prepare("SELECT", &stmt);
+  absl::Status s = db_->Prepare("SELECT", &stmt);
   ASSERT_FALSE(s.ok());
   EXPECT_NE(string::npos, s.message().find("SELECT"));
   EXPECT_EQ(SQLITE_ERROR, db_->errcode());
@@ -223,7 +223,7 @@ TEST_F(SqliteTest, PrepareFailed) {
 TEST_F(SqliteTest, BindFailed) {
   auto stmt = db_->PrepareOrDie("INSERT INTO T (a) VALUES (123)");
   stmt.BindInt(1, 123);
-  Status s = stmt.StepOnce();
+  absl::Status s = stmt.StepOnce();
   EXPECT_NE(string::npos, s.message().find("INSERT INTO T (a) VALUES (123)"))
       << s.message();
 }

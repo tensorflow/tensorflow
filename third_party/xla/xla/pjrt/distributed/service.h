@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,16 +20,16 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "grpcpp/grpcpp.h"
 #include "grpcpp/security/server_credentials.h"
-#include "xla/pjrt/distributed/key_value_store.h"
-#include "xla/pjrt/distributed/protocol.grpc.pb.h"
-#include "xla/statusor.h"
+#include "grpcpp/server_builder.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "xla/types.h"
-#include "tsl/distributed_runtime/coordination/coordination_service.h"
-#include "tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/threadpool.h"
 
@@ -53,9 +53,9 @@ class CoordinationServiceImpl {
     // coordinator concludes that a client has vanished.
     int max_missing_heartbeats = 10;
 
-    // How long should we wait for all clients to call EnumerateDevices() before
+    // How long should we wait for all clients to call Connect() before
     // giving up?
-    absl::Duration enumerate_devices_timeout = absl::Seconds(60);
+    absl::Duration cluster_register_timeout = absl::Minutes(60);
 
     // How long should we wait for all clients to call Shutdown() before giving
     // up and returning a failure?
@@ -84,7 +84,7 @@ class CoordinationServiceImpl {
 
 class DistributedRuntimeService {
  public:
-  static xla::StatusOr<std::unique_ptr<DistributedRuntimeService>> Get(
+  static absl::StatusOr<std::unique_ptr<DistributedRuntimeService>> Get(
       const std::string& address,
       std::shared_ptr<::grpc::ServerCredentials> credentials,
       const CoordinationServiceImpl::Options& options);

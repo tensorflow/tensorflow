@@ -23,19 +23,27 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives_common.h"
+#include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -79,7 +87,7 @@ StatusOr<mlir::Value> EmitAllGather(
   // For convenience, operate on explicit input shapes. This isn't necessary,
   // as we could instead generate operations on top of the dynamic shape.
   const mlir::TensorType input_type =
-      input.getType().dyn_cast<mlir::TensorType>();
+      mlir::dyn_cast<mlir::TensorType>(input.getType());
   if (!input_type) {
     return errors::Internal(
         llvm::formatv(
@@ -133,7 +141,7 @@ StatusOr<const mlir::Value> EmitAllScatter(
   }
 
   const mlir::TensorType input_type =
-      original_value.getType().dyn_cast<mlir::TensorType>();
+      mlir::dyn_cast<mlir::TensorType>(original_value.getType());
   if (!input_type)
     return errors::InvalidArgument(
         "input to EmitAllScatter does not have a TensorType");
@@ -199,7 +207,7 @@ StatusOr<mlir::Value> EmitAllToAll(
   // For convenience, operate on explicit input shapes. This isn't necessary,
   // as we could instead generate operations on top of the dynamic shape.
   const mlir::TensorType input_type =
-      input.getType().dyn_cast<mlir::TensorType>();
+      mlir::dyn_cast<mlir::TensorType>(input.getType());
   if (!input_type) {
     return errors::Internal(
         llvm::formatv(
@@ -260,7 +268,7 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
       mlir::Value zero_scalar,
       CreateZeroScalarConst(
           builder, input.getLoc(),
-          input.getType().cast<mlir::TensorType>().getElementType()));
+          mlir::cast<mlir::TensorType>(input.getType()).getElementType()));
 
   auto dense = builder.create<mlir::TF::SparseToDenseOp>(
       input.getLoc(), input.getType(),
@@ -311,7 +319,7 @@ StatusOr<mlir::Value> EmitRelayout(
   // Save whether the input is from a SparseToDenseOp. If it is, then we will
   // emit a DenseToSparse and a SparseToDense op.
   bool is_sparse = IsSparseValue(input);
-  if (!input.getType().isa<mlir::RankedTensorType>())
+  if (!mlir::isa<mlir::RankedTensorType>(input.getType()))
     return errors::Internal(
         "attempting to relayout a tensor that does not "
         "have a rank");
@@ -389,7 +397,7 @@ StatusOr<mlir::Value> EmitRelayout(
 mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
                                  const mlir::Location& loc, mlir::Value input,
                                  std::vector<int64_t>& perm_arr) {
-  auto tr_input_type = input.getType().cast<mlir::ShapedType>();
+  auto tr_input_type = mlir::cast<mlir::ShapedType>(input.getType());
   auto shape = tr_input_type.getShape();
 
   auto perm_type = mlir::RankedTensorType::get(
@@ -591,7 +599,8 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
   if (!mesh.is_tpu_mesh())
     return errors::InvalidArgument("Halo exchange is only supported on TPU.");
 
-  auto input_tensor_type = tensor.getType().dyn_cast<mlir::RankedTensorType>();
+  auto input_tensor_type =
+      mlir::dyn_cast<mlir::RankedTensorType>(tensor.getType());
   if (!input_tensor_type || !input_tensor_type.hasStaticShape())
     return errors::InvalidArgument(
         "Static shape of input tensor must be known for halo exchange.");

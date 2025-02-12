@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_BUILT_IN_SPMD_EXPANSIONS_H_
 #define XLA_PYTHON_IFRT_IR_TRANSFORMS_BUILT_IN_SPMD_EXPANSIONS_H_
 
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 
 namespace xla {
 namespace ifrt {

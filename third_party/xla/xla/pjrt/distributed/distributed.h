@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/service.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -33,14 +33,20 @@ namespace xla {
 // Builds a distributed runtime service. `address` is the address on which
 // the service should listen, e.g., [::]:1234 . `num_nodes` is the number
 // of nodes in the cluster.
-StatusOr<std::unique_ptr<DistributedRuntimeService>>
+absl::StatusOr<std::unique_ptr<DistributedRuntimeService>>
 GetDistributedRuntimeService(std::string address,
                              const CoordinationServiceImpl::Options& options);
 
 // Builds a distributed runtime client, connecting to a service at `address`,
 // where address is a gRPC-style address such as `dns:///localhost:1234`.
 std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
-    std::string address, const DistributedRuntimeClient::Options& options);
+    std::string address, const DistributedRuntimeClient::Options& options,
+    bool use_compression = false);
+
+// Builds the gRPC channel used by the runtime client. Exposed for testing.
+std::shared_ptr<::grpc::Channel> GetDistributedRuntimeClientChannel(
+    std::string address, std::shared_ptr<::grpc::ChannelCredentials> creds,
+    bool use_compression = false);
 
 }  // namespace xla
 

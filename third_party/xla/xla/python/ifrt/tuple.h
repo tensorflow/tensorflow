@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,11 +22,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/value.h"
-#include "xla/status.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -53,7 +53,7 @@ class Tuple : public llvm::RTTIExtends<Tuple, Value> {
   virtual int Arity() = 0;
 
   // Unpacks the tuple into its constituent pieces.
-  virtual Status Unpack(absl::Span<tsl::RCReference<Value>> values) = 0;
+  virtual absl::Status Unpack(absl::Span<tsl::RCReference<Value>> values) = 0;
 
   static char ID;  // NOLINT
 };

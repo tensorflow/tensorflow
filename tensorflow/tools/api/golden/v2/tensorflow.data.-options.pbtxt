@@ -8,6 +8,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "dataset_name"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "deterministic"
     mtype: "<type \'property\'>"
   }
@@ -28,6 +32,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "experimental_service"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "experimental_slack"
     mtype: "<type \'property\'>"
   }
@@ -41,6 +49,10 @@ tf_class {
   }
   member {
     name: "experimental_warm_start"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "framework_type"
     mtype: "<type \'property\'>"
   }
   member {

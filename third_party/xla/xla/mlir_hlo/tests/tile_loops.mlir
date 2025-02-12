@@ -16,11 +16,12 @@ func.func @parallel_loop(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
     %2 = memref.load %arg0[%arg2] : memref<16xf32>
     %3 = math.log %2 : f32
     memref.store %3, %0[%arg2] : memref<16xf32>
-    scf.yield
+    scf.reduce
   }
-  %1 = bufferization.to_tensor %0 : memref<16xf32>
-  memref.tensor_store %1, %arg1 : memref<16xf32>
-  "lmhlo.terminator"() : () -> ()
+  %1 = bufferization.to_tensor %0 : memref<16xf32> to tensor<16xf32>
+  bufferization.materialize_in_destination %1 in writable %arg1
+      : (tensor<16xf32>, memref<16xf32>) -> ()
+  return
 }
 
 // CHECK-LABEL: func @statically_unrolled
@@ -37,17 +38,17 @@ func.func @statically_unrolled(%arg0: memref<?xindex>) {
   // CHECK:   scf.parallel
   // CHECK:     scf.parallel {{.*}} to (%[[C4]])
     memref.store %arg1, %arg0[%arg1] : memref<?xindex>
-    scf.yield
+    scf.reduce
   }
   scf.parallel (%arg1) = (%c0) to (%c36) step (%c3) {
   // CHECK: scf.parallel
   // CHECK:   scf.parallel
   // CHECK:     scf.parallel {{.*}} to (%[[C4]])
     memref.store %arg1, %arg0[%arg1] : memref<?xindex>
-    scf.yield
+    scf.reduce
   }
 
-  "lmhlo.terminator"() : () -> ()
+  return
 }
 
 // CHECK-LABEL: func @dynamically_unrolled
@@ -61,25 +62,25 @@ func.func @dynamically_unrolled(%arg0: memref<?xindex>, %arg1 : index) {
   scf.parallel (%arg2) = (%c0) to (%arg1) step (%c1) {
   // CHECK-NOT: scf.parallel {{.*}} to (%[[C4]])
     memref.store %arg2, %arg0[%arg2] : memref<?xindex>
-    scf.yield
+    scf.reduce
   }
   scf.parallel (%arg2) = (%c0) to (%c10) step (%c1) {
   // CHECK-NOT: scf.parallel {{.*}} to (%[[C4]])
     memref.store %arg2, %arg0[%arg2] : memref<?xindex>
-    scf.yield
+    scf.reduce
   }
   scf.parallel (%arg2) = (%c10) to (%c32) step (%c1) {
   // CHECK-NOT: scf.parallel {{.*}} to (%[[C4]])
     memref.store %arg2, %arg0[%arg2] : memref<?xindex>
-    scf.yield
+    scf.reduce
   }
   scf.parallel (%arg2) = (%c0) to (%c32) step (%c10) {
   // CHECK-NOT: scf.parallel {{.*}} to (%[[C4]])
     memref.store %arg2, %arg0[%arg2] : memref<?xindex>
-    scf.yield
+    scf.reduce
   }
 
-  "lmhlo.terminator"() : () -> ()
+  return
 }
 
 // CHECK-LABEL: func @complex_access
@@ -98,9 +99,10 @@ func.func @complex_access(%arg0: memref<16xf32>, %arg1: memref<4xf32>) {
     %2 = memref.load %arg0[%idx] : memref<16xf32>
     %3 = math.log %2 : f32
     memref.store %3, %0[%arg2] : memref<4xf32>
-    scf.yield
+    scf.reduce
   }
-  %1 = bufferization.to_tensor %0 : memref<4xf32>
-  memref.tensor_store %1, %arg1 : memref<4xf32>
-  "lmhlo.terminator"() : () -> ()
+  %1 = bufferization.to_tensor %0 : memref<4xf32> to tensor<4xf32>
+  bufferization.materialize_in_destination %1 in writable %arg1
+      : (tensor<4xf32>, memref<4xf32>) -> ()
+  return
 }

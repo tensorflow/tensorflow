@@ -75,17 +75,18 @@ class GrpcWorkerCache : public WorkerCachePartial {
     }
   }
 
-  Status GetEagerClientCache(
+  absl::Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
     eager_client_cache->reset(eager::NewGrpcEagerClientCache(channel_cache_));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetCoordinationClientCache(std::unique_ptr<CoordinationClientCache>*
-                                        coordination_client_cache) override {
+  absl::Status GetCoordinationClientCache(
+      std::unique_ptr<CoordinationClientCache>* coordination_client_cache)
+      override {
     coordination_client_cache->reset(
         NewGrpcCoordinationClientCache(channel_cache_));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void SetLogging(bool v) override { logger_.SetLogging(v); }
@@ -154,8 +155,8 @@ GrpcWorkerEnv::GrpcWorkerCacheThread::~GrpcWorkerCacheThread() {
 GrpcWorkerEnv* CreateGrpcWorkerEnv() {
   int num_cpus = port::NumSchedulableCPUs();
   int64_t num_completion_queues;
-  Status status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_QUEUES", 64,
-                                      &num_completion_queues);
+  absl::Status status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_QUEUES", 64,
+                                            &num_completion_queues);
   if (!status.ok()) {
     LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_QUEUES: " << status;
   }

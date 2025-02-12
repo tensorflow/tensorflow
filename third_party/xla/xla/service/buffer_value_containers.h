@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/logical_buffer.h"
-#include "tsl/lib/gtl/compactptrset.h"
+#include "xla/tsl/lib/gtl/compactptrset.h"
 
 namespace xla {
 

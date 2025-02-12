@@ -1,15 +1,16 @@
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
-load(
-    "//tensorflow/tools/test:performance.bzl",
-    "tf_py_logged_benchmark",
-)
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_rpc_deps",
+)
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+    "tf_py_logged_benchmark",
 )
 
 package(
@@ -77,9 +78,9 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
     ],
 )
@@ -105,7 +106,6 @@ cuda_py_strict_test(
     name = "pywrap_tensor_test",
     size = "small",
     srcs = ["pywrap_tensor_test.py"],
-    python_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/168051787): Enable.
         "no_pip",  # TODO(b/168051787): Enable.
@@ -113,6 +113,8 @@ cuda_py_strict_test(
     deps = [
         ":pywrap_tensor_test_util",
         ":test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:test_lib",
         "//third_party/py/numpy",
     ],
 )
@@ -130,7 +132,6 @@ filegroup(
 # Transitive dependencies of this target will be included in the pip package.
 py_strict_library(
     name = "eager_pip",
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop",
@@ -159,7 +160,6 @@ py_strict_library(
 py_strict_library(
     name = "core",
     srcs = ["core.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -171,7 +171,6 @@ py_strict_library(
 py_strict_library(
     name = "cancellation",
     srcs = ["cancellation.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -182,7 +181,6 @@ cuda_py_strict_test(
     name = "cancellation_test",
     size = "small",
     srcs = ["cancellation_test.py"],
-    python_version = "PY3",
     deps = [
         ":cancellation",
         "//tensorflow/python/platform:client_testlib",
@@ -192,7 +190,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "executor",
     srcs = ["executor.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -202,8 +199,8 @@ py_strict_library(
 py_strict_library(
     name = "context",
     srcs = ["context.py"],
-    srcs_version = "PY3",
     visibility = [
+        "//smartass/brain/ops:__subpackages__",
         "//tensorflow:internal",
         "//third_party/py/jax_tpu_embedding:__subpackages__",
     ],
@@ -223,7 +220,7 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:is_in_graph_mode",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
@@ -258,7 +255,6 @@ py_strict_test(
     name = "custom_device_test",
     size = "small",
     srcs = ["custom_device_test.py"],
-    python_version = "PY3",
     # Note that this currently only works with --config=monolithic, since it
     # requires the C API which runs static initializers again.
     #
@@ -282,7 +278,6 @@ cuda_py_strict_test(
     name = "context_test",
     size = "small",
     srcs = ["context_test.py"],
-    python_version = "PY3",
     xla_enabled = True,
     deps = [
         ":context",
@@ -298,10 +293,60 @@ cuda_py_strict_test(
     ],
 )
 
+tpu_py_strict_test(
+    name = "context_tpu_platform_test",
+    size = "small",
+    srcs = ["context_tpu_platform_test.py"],
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        ":def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "context_cross_platform_gpu_test",
+    size = "small",
+    srcs = ["context_cross_platform_gpu_test.py"],
+    tags = [
+        "no_oss",
+    ],
+    tpu_ops_enabled = True,
+    xla_enabled = True,
+    deps = [
+        ":def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_strict_test(
+    name = "context_cross_platform_tpu_test",
+    size = "small",
+    srcs = ["context_cross_platform_tpu_test.py"],
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        ":def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_strict_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -316,7 +361,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "monitoring_test",
     srcs = ["monitoring_test.py"],
-    python_version = "PY3",
     deps = [
         ":monitoring",
         ":test",
@@ -328,7 +372,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "profiler",
     srcs = ["profiler.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -345,7 +388,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "profiler_test",
     srcs = ["profiler_test.py"],
-    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",  # TODO(b/184424727): Re-enable this.
@@ -365,13 +407,12 @@ cuda_py_strict_test(
 py_strict_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
-        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
         "//tensorflow/python/util:deprecation",
     ],
 )
@@ -379,8 +420,6 @@ py_strict_library(
 py_strict_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",
@@ -397,7 +436,6 @@ cuda_py_strict_test(
     name = "small_constants_optimizer_test",
     size = "medium",
     srcs = ["small_constants_optimizer_test.py"],
-    python_version = "PY3",
     deps = [
         ":context",
         "//tensorflow/python/eager/polymorphic_function",
@@ -412,8 +450,6 @@ cuda_py_strict_test(
 py_strict_test(
     name = "summary_optimizer_test",
     srcs = ["summary_optimizer_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_oss",
         "no_pip",
@@ -439,7 +475,6 @@ py_strict_test(
 py_strict_library(
     name = "tape",
     srcs = ["tape.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -449,7 +484,6 @@ py_strict_library(
 py_strict_library(
     name = "record",
     srcs = ["record.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = ["//tensorflow/python:pywrap_tfe"],
 )
@@ -457,7 +491,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "tensor_test",
     srcs = ["tensor_test.py"],
-    python_version = "PY3",
     deps = [
         ":context",
         ":core",
@@ -479,7 +512,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "backprop_test",
     srcs = ["backprop_test.py"],
-    python_version = "PY3",
     tags = [
         "no_cuda_asan",  # b/173825938
         "no_windows",  #TODO(b/139745667)
@@ -530,7 +562,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "forwardprop_test",
     srcs = ["forwardprop_test.py"],
-    python_version = "PY3",
     shard_count = 5,
     deps = [
         ":backprop",
@@ -568,7 +599,6 @@ cuda_py_strict_test(
     name = "core_test",
     size = "small",
     srcs = ["core_test.py"],
-    python_version = "PY3",
     deps = [
         ":context",
         ":core",
@@ -600,7 +630,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "test",
     srcs = ["test.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:ops",
@@ -611,7 +640,6 @@ py_strict_library(
 py_strict_library(
     name = "execute",
     srcs = ["execute.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":core",
@@ -628,7 +656,6 @@ py_strict_library(
 py_strict_library(
     name = "graph_only_ops",
     srcs = ["graph_only_ops.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -641,7 +668,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "graph_only_ops_test",
     srcs = ["graph_only_ops_test.py"],
-    python_version = "PY3",
     deps = [
         "graph_only_ops",
         "//tensorflow/python/framework:dtypes",
@@ -656,7 +682,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "framework_for_generated_wrappers",
     deprecation = "Depending on this target can cause build dependency cycles. Depend on the fine-grained sub-targets instead.",
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":execute",
@@ -669,8 +694,7 @@ py_strict_library(
 py_strict_library(
     name = "function",
     srcs = ["function.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
         "//tensorflow/python/eager/polymorphic_function:concrete_function",
@@ -683,7 +707,6 @@ py_strict_library(
 py_strict_library(
     name = "backprop",
     srcs = ["backprop.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop_util",
@@ -715,8 +738,9 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//tensorflow/python/util:variable_utils",
     ],
 )
@@ -724,7 +748,6 @@ py_strict_library(
 py_strict_library(
     name = "backprop_util",
     srcs = ["backprop_util.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -743,7 +766,6 @@ py_strict_library(
 py_strict_library(
     name = "forwardprop",
     srcs = ["forwardprop.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop",
@@ -767,7 +789,6 @@ py_strict_library(
 py_strict_library(
     name = "forwardprop_util",
     srcs = ["forwardprop_util.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -777,7 +798,6 @@ py_strict_library(
 py_strict_library(
     name = "benchmarks_test_base",
     srcs = ["benchmarks_test_base.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":test",
@@ -785,10 +805,9 @@ py_strict_library(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
-    python_version = "PY3",
     deps = [
         ":backprop",
         ":benchmarks_test_base",
@@ -819,7 +838,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )
@@ -827,7 +846,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "run_eager_op_as_function_test",
     srcs = ["run_eager_op_as_function_test.py"],
-    python_version = "PY3",
     tags = [
         "no_windows",  # b/207695287
     ],
@@ -848,7 +866,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_map_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -861,7 +879,6 @@ tf_xla_py_strict_test(
         "cpu",
         "gpu",
     ],
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -876,10 +893,9 @@ tf_xla_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "remote_benchmarks_test",
     srcs = ["remote_benchmarks_test.py"],
-    python_version = "PY3",
     deps = [
         ":context",
         ":def_function",
@@ -895,14 +911,12 @@ cuda_py_strict_test(
 
 tf_py_logged_benchmark(
     name = "benchmarks",
-    python_version = "PY3",
     target = "//tensorflow/python/eager:benchmarks_test",
 )
 
 tf_py_strict_test(
     name = "record_test",
     srcs = ["record_test.py"],
-    python_version = "PY3",
     deps = [
         ":backprop",
         ":context",
@@ -923,7 +937,6 @@ tf_py_strict_test(
 cuda_py_strict_test(
     name = "ops_test",
     srcs = ["ops_test.py"],
-    python_version = "PY3",
     deps = [
         ":context",
         ":execute",
@@ -951,7 +964,6 @@ cuda_py_strict_test(
 tf_py_strict_test(
     name = "pywrap_tfe_test",
     srcs = ["pywrap_tfe_test.py"],
-    python_version = "PY3",
     deps = [
         ":backprop",
         ":context",
@@ -977,7 +989,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "imperative_grad",
     srcs = ["imperative_grad.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/ops:unconnected_gradients",
@@ -997,8 +1008,13 @@ check_deps(
 py_strict_library(
     name = "def_function",
     srcs = ["def_function.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = ["//tensorflow:internal"],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/eager/polymorphic_function:eager_function_run",
@@ -1008,7 +1024,6 @@ py_strict_library(
 py_strict_library(
     name = "lift_to_graph",
     srcs = ["lift_to_graph.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:func_graph",
@@ -1027,7 +1042,6 @@ tf_py_strict_test(
     name = "lift_to_graph_test",
     size = "medium",
     srcs = ["lift_to_graph_test.py"],
-    python_version = "PY3",
     deps = [
         "lift_to_graph",
         ":def_function",
@@ -1044,7 +1058,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "wrap_function",
     srcs = ["wrap_function.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -1053,9 +1066,9 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor",
@@ -1074,16 +1087,15 @@ py_strict_library(
 tf_py_strict_test(
     name = "wrap_function_test",
     srcs = ["wrap_function_test.py"],
-    python_version = "PY3",
     deps = [
         ":backprop",
         ":def_function",
         ":wrap_function",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
@@ -1103,17 +1115,16 @@ tf_py_strict_test(
 cuda_py_strict_test(
     name = "wrap_function_device_test",
     srcs = ["wrap_function_device_test.py"],
-    python_version = "PY3",
     xla_enable_strict_auto_jit = False,
     xla_enabled = False,
     deps = [
         ":def_function",
         ":wrap_function",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
@@ -1123,7 +1134,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "remote",
     srcs = ["remote.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -1145,7 +1155,6 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["remote_test.py"],
     grpc_enabled = True,
-    python_version = "PY3",
     shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
@@ -1188,7 +1197,6 @@ cuda_py_strict_test(
     name = "remote_execution_test",
     srcs = ["remote_execution_test.py"],
     grpc_enabled = True,
-    python_version = "PY3",
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
@@ -1218,7 +1226,6 @@ cuda_py_strict_test(
     name = "remote_cluster_test",
     srcs = ["remote_cluster_test.py"],
     grpc_enabled = True,
-    python_version = "PY3",
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
@@ -1247,7 +1254,6 @@ cuda_py_strict_test(
 tpu_py_strict_test(
     name = "remote_cloud_tpu_test",
     srcs = ["remote_cloud_tpu_test.py"],
-    python_version = "PY3",
     tags = [
         "notap",
     ],
@@ -1265,7 +1271,6 @@ tpu_py_strict_test(
     srcs = ["remote_cloud_tpu_test.py"],
     args = ["--num_tpu_devices=32"],
     main = "remote_cloud_tpu_test.py",
-    python_version = "PY3",
     tags = [
         "notap",
         "tpu_pod",
@@ -1284,7 +1289,6 @@ cuda_py_strict_test(
     name = "device_placement_test",
     size = "small",
     srcs = ["device_placement_test.py"],
-    python_version = "PY3",
     shard_count = 5,
     deps = [
         ":context",
@@ -1307,7 +1311,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "gradient_input_output_exclusions",
     srcs = ["gradient_input_output_exclusions.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/autograph/pyct:anno",
@@ -1341,14 +1344,12 @@ py_strict_test(
     data = [
         ":pywrap_gradient_exclusions.cc",
     ],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_pip",  # No point linking the gen script in the pip package.
     ],
     deps = [
         ":gradient_input_output_exclusions",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
     ],

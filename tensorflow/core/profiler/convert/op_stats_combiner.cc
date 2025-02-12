@@ -104,7 +104,9 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
   dst->mutable_hostnames()->insert(src.hostnames().begin(),
                                    src.hostnames().end());
   dst->set_host_count(dst->hostnames_size());
-  if (src.device_type() != "CPU") {
+  // Ignore CPU and Unknown Device type for device type selection if the
+  // destination does not have a device type already.
+  if (src.device_type() != "CPU" && src.device_type() != "Device") {
     dst->set_device_type(src.device_type());
     dst->set_device_core_count(src.device_core_count() +
                                dst->device_core_count());
@@ -115,6 +117,11 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
     *dst->mutable_system_topology() = src.system_topology();
   } else if (dst->device_type().empty()) {
     dst->set_device_type(src.device_type());
+  }
+  if (src.hardware_type() != dst->hardware_type()) {
+    // Select the highest hardware type as TPU/GPU should override CPU_ONLY
+    // (e.g. coordinator).
+    dst->set_hardware_type(std::max(src.hardware_type(), dst->hardware_type()));
   }
   dst->set_task_count(src.task_count() + dst->task_count());
   // Only overwrite the dst if profile_duration_ms in dst is not defined or
@@ -133,13 +140,18 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
 
 // Combines the src PerfEnv into the dst PerfEnv.
 void CombinePerfEnv(const PerfEnv& src, PerfEnv* dst) {
-  dst->set_peak_tera_flops_per_second(src.peak_tera_flops_per_second());
+  if (src.peak_tera_flops_per_second() > 0) {
+    dst->set_peak_tera_flops_per_second(src.peak_tera_flops_per_second());
+  }
+
   if (src.peak_bws_giga_bytes_per_second_size() > 0 &&
       dst->peak_bws_giga_bytes_per_second_size() == 0) {
     *dst->mutable_peak_bws_giga_bytes_per_second() =
         src.peak_bws_giga_bytes_per_second();
   }
-  dst->set_ridge_point(src.ridge_point());
+  if (src.ridge_point() > 0) {
+    dst->set_ridge_point(src.ridge_point());
+  }
 }
 
 // Combines the src Diagnostics into the dst Diagnostics.

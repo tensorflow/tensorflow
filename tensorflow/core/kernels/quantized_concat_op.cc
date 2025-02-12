@@ -78,7 +78,7 @@ class QuantizedConcatOp : public OpKernel {
 
   explicit QuantizedConcatOp(OpKernelConstruction* c) : OpKernel(c) {}
 
-  Status CalculateInputAndOutputRange(
+  absl::Status CalculateInputAndOutputRange(
       const OpInputList& input_mins, const OpInputList& input_maxes,
       const size_t N,
       std::vector<std::pair<float, float>>* input_mins_and_maxes,
@@ -107,7 +107,7 @@ class QuantizedConcatOp : public OpKernel {
     }
     // Make sure min is no more than zero.
     overall_min = std::min(0.0f, overall_min);
-    if (std::is_signed<T>::value) {
+    if (std::numeric_limits<T>::is_signed) {
       // For signed, we want a symmetrical distribution including zero for the
       // output, so pick a range that meets that need.
       const float largest_value =
@@ -118,7 +118,7 @@ class QuantizedConcatOp : public OpKernel {
       *output_min = overall_min;
       *output_max = overall_max;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t CalculateInputsDim(const TensorShape& input_shape,
@@ -130,12 +130,13 @@ class QuantizedConcatOp : public OpKernel {
     return inputs_flat_dim0;
   }
 
-  Status CalculateConcatDims(const size_t N, const TensorShape& input_shape,
-                             int input_dims, const OpInputList& values,
-                             const int32_t concat_dim,
-                             const int64_t inputs_flat_dim0,
-                             ConstMatrixVector* inputs_flat,
-                             int* output_concat_dim) {
+  absl::Status CalculateConcatDims(const size_t N,
+                                   const TensorShape& input_shape,
+                                   int input_dims, const OpInputList& values,
+                                   const int32_t concat_dim,
+                                   const int64_t inputs_flat_dim0,
+                                   ConstMatrixVector* inputs_flat,
+                                   int* output_concat_dim) {
     // Note that we reduce the concat of n-dimensional tensors into a two
     // dimensional concat. Assuming the dimensions of any input/output
     // tensor are {x0, x1,...,xn-1, y0, y1,...,ym-1}, where the concat is along
@@ -171,7 +172,7 @@ class QuantizedConcatOp : public OpKernel {
       }
       *output_concat_dim += in.dims() > 0 ? in.dim_size(concat_dim) : 1;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void Compute(OpKernelContext* context) override {

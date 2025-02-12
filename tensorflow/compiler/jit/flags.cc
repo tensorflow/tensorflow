@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
 #include "xla/parse_flags_from_env.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/tpu/kernels/sparse_core_xla_flags_defaults.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
@@ -35,6 +36,7 @@ namespace {
 BuildXlaOpsPassFlags* build_ops_flags;
 MarkForCompilationPassFlags* mark_for_compilation_flags;
 XlaDeviceFlags* device_flags;
+XlaSparseCoreFlags* sparse_core_flags;
 XlaOpsCommonFlags* ops_flags;
 XlaCallModuleFlags* call_module_flags;
 MlirCommonFlags* mlir_flags;
@@ -172,7 +174,23 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_persistent_cache_prefix",
            &mark_for_compilation_flags->tf_xla_persistent_cache_prefix,
            "Specifies the persistance cache prefix. Default is "
-           "\"xla_compile_cache\"")};
+           "\"xla_compile_cache\""),
+      Flag("tf_xla_sparse_core_disable_table_stacking",
+           &sparse_core_flags->tf_xla_sparse_core_disable_table_stacking,
+           "Disable table stacking for all the tables passed to the SparseCore"
+           "mid level API."),
+      Flag("tf_xla_sparse_core_minibatch_max_division_level",
+           &sparse_core_flags->tf_xla_sparse_core_minibatch_max_division_level,
+           "Max level of division to split input data into minibatches."),
+      Flag("tf_xla_sparse_core_stacking_mem_limit_bytes",
+           &sparse_core_flags->tf_xla_sparse_core_stacking_mem_limit_bytes,
+           "If non-zero, limits the size of the activations for a given table"
+           "to be below these many bytes."),
+      Flag("tf_xla_sparse_core_stacking_table_shard_limit_bytes",
+           &sparse_core_flags
+                ->tf_xla_sparse_core_stacking_table_shard_limit_bytes,
+           "If non-zero, limits the size of any table shard to be below these"
+           "many bytes.")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
@@ -232,6 +250,16 @@ void AllocateAndParseFlags() {
   device_flags->tf_xla_compile_on_demand = false;
   device_flags->tf_xla_enable_xla_devices = false;
 
+  sparse_core_flags = new XlaSparseCoreFlags;
+  sparse_core_flags->tf_xla_sparse_core_minibatch_max_division_level =
+      kDefaultSparseCoreMinibatchMaxDivisionLevel;
+  sparse_core_flags->tf_xla_sparse_core_disable_table_stacking =
+      kDefaultDisableTableStacking;
+  sparse_core_flags->tf_xla_sparse_core_stacking_mem_limit_bytes =
+      kDefaultXlaSparseCoreStackingMemLimit;
+  sparse_core_flags->tf_xla_sparse_core_stacking_table_shard_limit_bytes =
+      kDefaultXlaSparseCoreStackingTableShardLimit;
+
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
   ops_flags->tf_xla_async_compilation = false;
@@ -254,10 +282,11 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge_is_explicit = false;
   bool enable_mlir_merge_control_flow_pass = true;
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
+  bool enable_mlir_composite_tpuexecute_side_effects = false;
   bool enable_mlir_strict_clusters = false;
+  bool enable_mlir_multiple_local_cpu_devices = false;
   // Dump graphs in TFG dialect.
   bool use_tfg_graph_dumper = false;
-  bool enable_mlir_generic_outside_compilation = false;
   bool enable_tpu_variable_runtime_reformatting_pass = true;
 
   flag_list = new std::vector<Flag>(
@@ -347,15 +376,20 @@ void AllocateAndParseFlags() {
             &enable_mlir_convert_control_to_data_outputs_pass,
             "Enables `tf-executor-convert-control-to-data-outputs` pass for "
             "MLIR-Based TensorFlow Compiler Bridge."),
+       Flag("tf_mlir_composite_tpuexecute_side_effects",
+            &enable_mlir_composite_tpuexecute_side_effects,
+            "Enables certain TPUExecute ops to run in parallel if they only "
+            "operate on resources that live on composite devices."),
        Flag("tf_mlir_enable_strict_clusters", &enable_mlir_strict_clusters,
             "Do not allow clusters that have cyclic control dependencies."),
+       Flag("tf_mlir_enable_multiple_local_cpu_devices",
+            &enable_mlir_multiple_local_cpu_devices,
+            "Enable multiple local CPU devices. CPU ops which are outside "
+            "compiled inside the tpu cluster will also be replicated across "
+            "multiple cpu devices."),
        Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
             "When tf_dump_graphs_in_tfg is true, graphs after transformations "
             "are dumped in MLIR TFG dialect and not in GraphDef"),
-       Flag("tf_mlir_enable_generic_outside_compilation",
-            &enable_mlir_generic_outside_compilation,
-            "Enables OutsideCompilation passes for MLIR-Based TensorFlow "
-            "Generic Compiler Bridge."),
        Flag("tf_mlir_enable_tpu_variable_runtime_reformatting_pass",
             &enable_tpu_variable_runtime_reformatting_pass,
             "Enables TPUVariableRuntimeReformatting pass for MLIR-Based "
@@ -380,11 +414,13 @@ void AllocateAndParseFlags() {
       enable_mlir_merge_control_flow_pass;
   mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
       enable_mlir_convert_control_to_data_outputs_pass;
+  mlir_flags->tf_mlir_enable_composite_tpuexecute_side_effects =
+      enable_mlir_composite_tpuexecute_side_effects;
   mlir_flags->tf_mlir_enable_strict_clusters = enable_mlir_strict_clusters;
-  mlir_flags->tf_mlir_enable_generic_outside_compilation =
-      enable_mlir_generic_outside_compilation;
   mlir_flags->tf_mlir_enable_tpu_variable_runtime_reformatting_pass =
       enable_tpu_variable_runtime_reformatting_pass;
+  mlir_flags->tf_mlir_enable_multiple_local_cpu_devices =
+      enable_mlir_multiple_local_cpu_devices;
 
   if (use_tfg_graph_dumper) {
     UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(
@@ -421,6 +457,11 @@ BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags() {
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   return mark_for_compilation_flags;
+}
+
+XlaSparseCoreFlags* GetXlaSparseCoreFlags() {
+  absl::call_once(flags_init, &AllocateAndParseFlags);
+  return sparse_core_flags;
 }
 
 XlaDeviceFlags* GetXlaDeviceFlags() {

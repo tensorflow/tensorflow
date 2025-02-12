@@ -27,17 +27,18 @@ this file with a file generated from [`api_template.__init__.py`](https://www.gi
 """
 # pylint: disable=g-bad-import-order,protected-access,g-import-not-at-top
 
-import distutils as _distutils
+import sysconfig as _sysconfig
 import importlib
 import inspect as _inspect
-import logging as _logging
 import os as _os
 import site as _site
 import sys as _sys
-import typing as _typing
 
+_os.environ.setdefault("ENABLE_RUNTIME_UPTIME_TELEMETRY", "1")
+
+# Do not remove this line; See https://github.com/tensorflow/tensorflow/issues/42596
+from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.tools import module_util as _module_util
-from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
 from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoader
 
 # Make sure code inside the TensorFlow codebase can use tf2.enabled() at import.
@@ -62,37 +63,23 @@ elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
 # Hook external TensorFlow modules.
-# Import compat before trying to import summary from tensorboard, so that
-# reexport_tf_summary can get compat from sys.modules. Only needed if using
-# lazy loading.
-_current_module.compat.v2  # pylint: disable=pointless-statement
-try:
-  from tensorboard.summary._tf import summary
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(summary)] + _current_module.__path__)
-  setattr(_current_module, "summary", summary)
-except ImportError:
-  _logging.warning(
-      "Limited tf.summary API due to missing TensorBoard installation.")
 
 # Load tensorflow-io-gcs-filesystem if enabled
 if (_os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true" or
     _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "1"):
   import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
 
-# Lazy-load estimator.
-_estimator_module = "tensorflow_estimator.python.estimator.api._v2.estimator"
-estimator = _LazyLoader("estimator", globals(), _estimator_module)
-_module_dir = _module_util.get_parent_dir_for_name(_estimator_module)
-if _module_dir:
-  _current_module.__path__ = [_module_dir] + _current_module.__path__
-setattr(_current_module, "estimator", estimator)
-
 # Lazy-load Keras v2/3.
+_tf_uses_legacy_keras = (
+    _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"))
 setattr(_current_module, "keras", _KerasLazyLoader(globals()))
-for _module_dir in ("keras._tf_keras.keras", "keras.api._v2.keras"):
-  _module_dir = _module_util.get_parent_dir_for_name(_module_dir)
-  _current_module.__path__ = [_module_dir] + _current_module.__path__
+_module_dir = _module_util.get_parent_dir_for_name("keras._tf_keras.keras")
+_current_module.__path__ = [_module_dir] + _current_module.__path__
+if _tf_uses_legacy_keras:
+  _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v2.keras")
+else:
+  _module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
+_current_module.__path__ = [_module_dir] + _current_module.__path__
 
 
 # Enable TF2 behaviors
@@ -115,8 +102,9 @@ _site_packages_dirs += [p for p in _sys.path if "site-packages" in p]
 if "getsitepackages" in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
 
-if "sysconfig" in dir(_distutils):
-  _site_packages_dirs += [_distutils.sysconfig.get_python_lib()]
+for _scheme in _sysconfig.get_scheme_names():
+  for _name in ["purelib", "platlib"]:
+    _site_packages_dirs += [_sysconfig.get_path(_name, _scheme)]
 
 _site_packages_dirs = list(set(_site_packages_dirs))
 
@@ -167,7 +155,7 @@ setattr(_current_module, "initializers", _initializers)
 # SavedModel registry.
 # See b/196254385 for more details.
 try:
-  if _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"):
+  if _tf_uses_legacy_keras:
     importlib.import_module("tf_keras.src.optimizers")
   else:
     importlib.import_module("keras.src.optimizers")
@@ -176,18 +164,11 @@ except (ImportError, AttributeError):
 
 del importlib
 
-# Explicitly import lazy-loaded modules to support autocompletion.
-if _typing.TYPE_CHECKING:
-  from tensorflow_estimator.python.estimator.api._v2 import estimator as estimator
-
-# pylint: enable=undefined-variable
-
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.
 # For e.g. this file will be originally placed under tensorflow/_api/v1 which
 # does not have "python", "core" directories. Then, it will be copied
 # to tensorflow/ which does have these two directories.
-# pylint: disable=undefined-variable
 try:
   del python
 except NameError:

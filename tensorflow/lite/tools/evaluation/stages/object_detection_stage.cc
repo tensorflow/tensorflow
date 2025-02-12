@@ -15,14 +15,21 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/stages/object_detection_stage.h"
 
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
-#include "tensorflow/lite/tools/evaluation/utils.h"
+#include "tensorflow/lite/tools/evaluation/stages/image_preprocessing_stage.h"
+#include "tensorflow/lite/tools/evaluation/stages/object_detection_average_precision_stage.h"
+#include "tensorflow/lite/tools/evaluation/stages/tflite_inference_stage.h"
 
 namespace tflite {
 namespace evaluation {

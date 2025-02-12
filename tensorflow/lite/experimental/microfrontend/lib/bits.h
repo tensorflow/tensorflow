@@ -30,13 +30,13 @@ static inline int CountLeadingZeros32Slow(uint64_t n) {
 }
 
 static inline int CountLeadingZeros32(uint32_t n) {
-#if defined(_MSC_VER)
+#if !defined(__clang__) && defined(_MSC_VER)
   unsigned long result = 0;  // NOLINT(runtime/int)
   if (_BitScanReverse(&result, n)) {
     return 31 - result;
   }
   return 32;
-#elif defined(__GNUC__)
+#elif defined(__clang__) && defined(__GNUC__)
 
   // Handle 0 as a special case because __builtin_clz(0) is undefined.
   if (n == 0) {
@@ -62,14 +62,14 @@ static inline int CountLeadingZeros64Slow(uint64_t n) {
 }
 
 static inline int CountLeadingZeros64(uint64_t n) {
-#if defined(_MSC_VER) && defined(_M_X64)
+#if !defined(__clang__) && defined(_MSC_VER) && defined(_M_X64)
   // MSVC does not have __builtin_clzll. Use _BitScanReverse64.
   unsigned long result = 0;  // NOLINT(runtime/int)
   if (_BitScanReverse64(&result, n)) {
     return 63 - result;
   }
   return 64;
-#elif defined(_MSC_VER)
+#elif !defined(__clang__) && defined(_MSC_VER)
   // MSVC does not have __builtin_clzll. Compose two calls to _BitScanReverse
   unsigned long result = 0;  // NOLINT(runtime/int)
   if ((n >> 32) && _BitScanReverse(&result, n >> 32)) {
@@ -79,7 +79,7 @@ static inline int CountLeadingZeros64(uint64_t n) {
     return 63 - result;
   }
   return 64;
-#elif defined(__GNUC__)
+#elif defined(__clang__) || defined(__GNUC__)
 
   // Handle 0 as a special case because __builtin_clzll(0) is undefined.
   if (n == 0) {

@@ -60,7 +60,7 @@ class RestoreV2OpTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
   }
 
-  void RunTest(StringPiece save_op_to_use) {
+  void RunTest(absl::string_view save_op_to_use) {
     const string filename =
         io::JoinPath(testing::TmpDir(), "tensor_simple-", save_op_to_use);
     const std::vector<string> tensor_names = {
@@ -96,9 +96,9 @@ class RestoreV2OpTest : public OpsTestBase {
       std::unique_ptr<Device> device(
           DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
-      gtl::InlinedVector<TensorValue, 4> inputs;
+      absl::InlinedVector<TensorValue, 4> inputs;
 
-      Status status;
+      absl::Status status;
       std::unique_ptr<OpKernel> op(
           CreateOpKernel(DEVICE_CPU, device.get(), cpu_allocator(), save,
                          TF_GRAPH_DEF_VERSION, &status));

@@ -1,10 +1,10 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
-load("@local_tsl//:workspace1.bzl", "tsl_workspace1")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
+load("//:tsl_workspace1.bzl", "tsl_workspace1")
 
 # buildifier: disable=unnamed-macro
 def workspace():

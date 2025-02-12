@@ -13,9 +13,9 @@ func.func @testReadVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tensor<
     devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]},
     n = 2 : i32} {
      // CHECK:      %[[RESOURCE_OUT:.*]] = "tf_device.launch"()
+     // CHECK-SAME: TPU_REPLICATED_CORE_0
      // CHECK-NEXT:   %[[READ_OUT:.*]] = "tf.ReadVariableOp"(%[[RI_0]])
      // CHECK-NEXT:   tf_device.return %[[READ_OUT]]
-     // CHECK-NEXT: TPU_REPLICATED_CORE_0
      %0 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<4xf32>>>) -> tensor<4xf32>
      %1 = "tf.A"() : () -> (tensor<2x!tf_type.string>)
      "tf_device.launch"() ({
@@ -43,9 +43,9 @@ func.func @testReadVariableOpAfterIdentityColocated(%arg0: tensor<*x!tf_type.res
     n = 2 : i32} {
      // CHECK:      %[[IDENTITY_OUT:.*]] = "tf.Identity"(%[[RI_0]])
      // CHECK:      %[[RESOURCE_OUT:.*]] = "tf_device.launch"()
+     // CHECK-SAME: TPU_REPLICATED_CORE_0
      // CHECK-NEXT:   %[[READ_OUT:.*]] = "tf.ReadVariableOp"(%[[IDENTITY_OUT]])
      // CHECK-NEXT:   tf_device.return %[[READ_OUT]]
-     // CHECK-NEXT: TPU_REPLICATED_CORE_0
      %0 = "tf.Identity"(%arg1) : (tensor<*x!tf_type.resource<tensor<4xf32>>>) -> tensor<*x!tf_type.resource<tensor<4xf32>>>
      %1 = "tf.ReadVariableOp"(%0) : (tensor<*x!tf_type.resource<tensor<4xf32>>>) -> tensor<4xf32>
      %2 = "tf.A"() : () -> (tensor<2x!tf_type.string>)
@@ -77,9 +77,9 @@ func.func @testAssignVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tenso
     n = 2 : i32} {
      // CHECK:      %[[VAL_OUT:.*]] = "tf.A"() : () -> tensor<4xf32>
      // CHECK:      "tf_device.launch"()
+     // CHECK-SAME: TPU_REPLICATED_CORE_0
      // CHECK-NEXT:   "tf.AssignVariableOp"(%[[RI_0]], %[[VAL_OUT]])
-     // CHECK-NEXT:   tf_device.return
-     // CHECK-NEXT: TPU_REPLICATED_CORE_0
+     // CHECK:   tf_device.return
      %1 = "tf.A"() : () -> (tensor<4xf32>)
      "tf.AssignVariableOp"(%arg1, %1) : (tensor<*x!tf_type.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
      %2 = "tf.B"() : () -> (tensor<2x!tf_type.string>)

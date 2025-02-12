@@ -241,6 +241,41 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
     np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
 
   @test_util.run_in_async_and_sync_mode
+  def testFunctionRunsAtMostOnceInvokedOnce(self):
+    """Run a function decorated with `function_runs_at_most_once`."""
+    @def_function.function(
+        experimental_attributes={"function_runs_at_most_once": True}
+    )
+    def worker_fn(i):
+      return math_ops.matmul(i, i)
+
+    x = array_ops.ones([2, 2])
+    y = worker_fn(x)
+    np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
+    # The kernel will be destroyed at this point. The purpose of this test is
+    # to ensure it tears down cleanly because we have already released the
+    # function handle.
+
+  @test_util.run_in_async_and_sync_mode
+  def testFunctionRunsAtMostOnceInvokedTwice(self):
+    """Run a function decorated with `function_runs_at_most_once` twice."""
+    @def_function.function(
+        experimental_attributes={"function_runs_at_most_once": True}
+    )
+    def worker_fn(i):
+      return math_ops.matmul(i, i)
+
+    x = array_ops.ones([2, 2])
+    y = worker_fn(x)
+    np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
+
+    # Since the worker_fn can run at most once a second invocation should fail.
+    with self.assertRaisesRegex(errors.NotFoundError, "Handle.* not found"):
+      worker_fn(x)
+      if context.is_async():
+        context.async_wait()
+
+  @test_util.run_in_async_and_sync_mode
   def testFunctionServerRemoved(self):
     """Remove a server from cluster, and run ops on cluster."""
 

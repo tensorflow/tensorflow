@@ -16,9 +16,7 @@ limitations under the License.
 
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -709,6 +707,16 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
   };
   fully_connected_params.quantized_bias_type = kTfLiteInt32;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 11);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_FULLY_CONNECTED,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteInt8}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+      .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+  };
+  fake_op_sig.ext_options.fully_connected.is_per_channel_quantized = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 12);
 }
 
 TEST(OpVersionTest, VersioningDequantizeTest) {
@@ -1047,6 +1055,13 @@ TEST(OpVersionTest, VersioningGatherNdOperatorTest) {
           std::vector<TfLiteType>{kTfLiteInt32, kTfLiteInt16}),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_GATHER_ND,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteBool, kTfLiteInt16}),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 }
 TEST(OpVersionTest, VersioningDivTest) {
   OpSignature fake_op_sig = {
@@ -1302,21 +1317,16 @@ TEST(OpVersionTest, VersioningSquaredDifferenceTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 TEST(OpVersionTest, VersioningRsqrtTest) {
-  // Default.
-  OpSignature fake_op_sig = {
-      .op = BuiltinOperator_RSQRT,
-      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
-      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
-  };
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_RSQRT;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
-  // int8 input is version 2.
-  fake_op_sig = {
-      .op = BuiltinOperator_RSQRT,
-      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
-      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
-  };
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 TEST(OpVersionTest, VersioningBroadcastToTest) {
   OpSignature fake_op_sig = {
@@ -1395,6 +1405,7 @@ TEST(OpVersionTest, VersioningExpTest) {
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
+
 TEST(OpVersionTest, VersioningLogTest) {
   OpSignature fake_op_sig = {};
   fake_op_sig.op = BuiltinOperator_LOG;
@@ -1406,5 +1417,21 @@ TEST(OpVersionTest, VersioningLogTest) {
 
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
+
+TEST(OpVersionTest, VersioningDynamicUpdateSliceTest) {
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_DYNAMIC_UPDATE_SLICE;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32, kTfLiteInt32});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32, kTfLiteInt64});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteFloat16, kTfLiteFloat16, kTfLiteInt32});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 }  // namespace tflite

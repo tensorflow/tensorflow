@@ -100,7 +100,7 @@ class tstring {
   tstring(const char* str, size_t len);
   tstring(const char* str);  // NOLINT TODO(b/147740521): Make explicit.
   tstring(size_t n, char c);
-  explicit tstring(const StringPiece str);
+  explicit tstring(const absl::string_view str);
 #ifdef PLATFORM_GOOGLE
   explicit tstring(const absl::Cord& cord);
 #endif  // PLATFORM_GOOGLE
@@ -119,7 +119,7 @@ class tstring {
   tstring& operator=(const std::string& str);
   tstring& operator=(const char* str);
   tstring& operator=(char ch);
-  tstring& operator=(const StringPiece str);
+  tstring& operator=(const absl::string_view str);
 #ifdef PLATFORM_GOOGLE
   tstring& operator=(const absl::Cord& cord);
 #endif  // PLATFORM_GOOGLE
@@ -128,7 +128,7 @@ class tstring {
   tstring& operator=(const view& tsv);
 
   // Move Assignment
-  tstring& operator=(tstring&& str);
+  tstring& operator=(tstring&& str) noexcept;
 
   // Comparison
   int compare(const char* str, size_t len) const;
@@ -143,7 +143,7 @@ class tstring {
   // TODO(b/147740521): Make explicit.
   operator std::string() const;  // NOLINT
   // TODO(b/147740521): Make explicit.
-  operator StringPiece() const;  // NOLINT
+  operator absl::string_view() const;  // NOLINT
 #ifdef PLATFORM_GOOGLE
   template <typename T,
             typename std::enable_if<std::is_same<T, absl::AlphaNum>::value,
@@ -191,7 +191,7 @@ class tstring {
   // View Assignment
   tstring& assign_as_view(const tstring& str);
   tstring& assign_as_view(const std::string& str);
-  tstring& assign_as_view(const StringPiece str);
+  tstring& assign_as_view(const absl::string_view str);
   tstring& assign_as_view(const char* str, size_t len);
   tstring& assign_as_view(const char* str);
 
@@ -206,7 +206,7 @@ class tstring {
 
   tstring& insert(size_t pos, const tstring& str, size_t subpos, size_t sublen);
   tstring& insert(size_t pos, size_t n, char c);
-  void swap(tstring& str);
+  void swap(tstring& str) noexcept;
   void push_back(char ch);
 
   // Friends
@@ -245,7 +245,7 @@ inline tstring::tstring(size_t n, char c) {
 inline tstring::tstring(const std::string& str)
     : tstring(str.data(), str.size()) {}
 
-inline tstring::tstring(const StringPiece str)
+inline tstring::tstring(const absl::string_view str)
     : tstring(str.data(), str.size()) {}
 
 #ifdef PLATFORM_GOOGLE
@@ -301,7 +301,7 @@ inline tstring& tstring::operator=(char c) {
   return *this;
 }
 
-inline tstring& tstring::operator=(const StringPiece str) {
+inline tstring& tstring::operator=(const absl::string_view str) {
   TF_TString_Copy(&tstr_, str.data(), str.size());
 
   return *this;
@@ -327,7 +327,7 @@ inline tstring& tstring::operator=(const tstring::view& tsv) {
 
 // Move Assignment
 
-inline tstring& tstring::operator=(tstring&& str) {
+inline tstring& tstring::operator=(tstring&& str) noexcept {
   TF_TString_Move(&tstr_, &str.tstr_);
 
   return *this;
@@ -377,15 +377,15 @@ inline tstring::operator std::string() const {
   return std::string(data(), size());
 }
 
-inline tstring::operator StringPiece() const {
-  return StringPiece(data(), size());
+inline tstring::operator absl::string_view() const {
+  return absl::string_view(data(), size());
 }
 
 #ifdef PLATFORM_GOOGLE
 template <typename T, typename std::enable_if<
                           std::is_same<T, absl::AlphaNum>::value, T>::type*>
 inline tstring::operator T() const {
-  return T(StringPiece(*this));
+  return T(absl::string_view(*this));
 }
 #endif  // PLATFORM_GOOGLE
 
@@ -477,7 +477,7 @@ inline tstring& tstring::assign_as_view(const std::string& str) {
   return *this;
 }
 
-inline tstring& tstring::assign_as_view(const StringPiece str) {
+inline tstring& tstring::assign_as_view(const absl::string_view str) {
   assign_as_view(str.data(), str.size());
 
   return *this;
@@ -553,7 +553,7 @@ inline tstring& tstring::insert(size_t pos, size_t n, char c) {
   return *this;
 }
 
-inline void tstring::swap(tstring& str) {
+inline void tstring::swap(tstring& str) noexcept {
   // TODO(dero): Invalid for OFFSET (unimplemented).
   std::swap(tstr_, str.tstr_);
 }

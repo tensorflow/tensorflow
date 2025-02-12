@@ -18,7 +18,6 @@ py_strict_library(
         "__init__.py",
         "base.py",
     ],
-    srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -34,7 +33,6 @@ py_strict_library(
     srcs = [
         "utils.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:smart_cond",
@@ -52,7 +50,6 @@ py_strict_library(
         "normalization.py",
         "pooling.py",
     ],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",

@@ -182,9 +182,10 @@ TEST_P(AsyncSignatureRunnerTest, InputsTest) {
         "x", TfLiteOpaqueTensorName(
                  TfLiteAsyncSignatureRunnerGetInputTensor(runner_, "input")));
   } else {
-    EXPECT_EQ(nullptr, TfLiteAsyncSignatureRunnerGetInputName(runner_, 0));
-    EXPECT_EQ(nullptr,
-              TfLiteAsyncSignatureRunnerGetInputTensor(runner_, "input"));
+    EXPECT_STREQ("x", TfLiteAsyncSignatureRunnerGetInputName(runner_, 0));
+    EXPECT_STREQ("x",
+                 TfLiteOpaqueTensorName(
+                     TfLiteAsyncSignatureRunnerGetInputTensor(runner_, "x")));
   }
 }
 
@@ -198,9 +199,10 @@ TEST_P(AsyncSignatureRunnerTest, OutputsTest) {
         "a", TfLiteOpaqueTensorName(
                  TfLiteAsyncSignatureRunnerGetOutputTensor(runner_, "output")));
   } else {
-    EXPECT_EQ(nullptr, TfLiteAsyncSignatureRunnerGetOutputName(runner_, 0));
-    EXPECT_EQ(nullptr,
-              TfLiteAsyncSignatureRunnerGetOutputTensor(runner_, "output"));
+    EXPECT_STREQ("a", TfLiteAsyncSignatureRunnerGetOutputName(runner_, 0));
+    EXPECT_STREQ("a",
+                 TfLiteOpaqueTensorName(
+                     TfLiteAsyncSignatureRunnerGetOutputTensor(runner_, "a")));
   }
 }
 
@@ -227,6 +229,94 @@ TEST_P(AsyncSignatureRunnerTest, OutputsByIndexTest) {
 TEST_P(AsyncSignatureRunnerTest, IndexOutOfBound) {
   BuildRunner(GetParam());
   EXPECT_EQ(nullptr, TfLiteAsyncSignatureRunnerGetTensor(runner_, 42));
+}
+
+TEST(AsyncSignatureRunnerTest, TestNoSignatures) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "third_party/tensorflow/lite/testdata/no_signatures.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  ASSERT_NE(options, nullptr);
+  auto kernel =
+      std::make_unique<::testing::StrictMock<testing::MockAsyncKernel>>();
+  auto backend = std::make_unique<testing::TestBackend>(kernel->kernel());
+  TfLiteInterpreterOptionsAddDelegate(options, backend->get_delegate());
+
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  ASSERT_NE(interpreter, nullptr);
+
+  TfLiteInterpreterOptionsDelete(options);
+
+  int nun_signatures = TfLiteInterpreterGetSignatureCount(interpreter);
+  ASSERT_EQ(nun_signatures, 0);
+
+  ASSERT_EQ(TfLiteInterpreterGetAsyncSignatureRunner(interpreter, "foo"),
+            nullptr);
+
+  TfLiteAsyncSignatureRunner* runner =
+      TfLiteInterpreterGetAsyncSignatureRunner(interpreter, nullptr);
+  ASSERT_NE(runner, nullptr);
+
+  int num_interpreter_inputs =
+      TfLiteInterpreterGetInputTensorCount(interpreter);
+  int num_runner_inputs = TfLiteAsyncSignatureRunnerGetInputCount(runner);
+  ASSERT_EQ(num_runner_inputs, num_interpreter_inputs);
+
+  for (int i = 0; i < num_interpreter_inputs; ++i) {
+    auto* interpreter_input_tensor =
+        TfLiteInterpreterGetInputTensor(interpreter, i);
+    ASSERT_NE(interpreter_input_tensor, nullptr);
+    auto* interpreter_input_name = TfLiteTensorName(interpreter_input_tensor);
+    ASSERT_NE(interpreter_input_name, nullptr);
+    auto* runner_input_name = TfLiteAsyncSignatureRunnerGetInputName(runner, i);
+    ASSERT_NE(runner_input_name, nullptr);
+    EXPECT_STREQ(runner_input_name, interpreter_input_name);
+    auto* runner_input_tensor = TfLiteAsyncSignatureRunnerGetInputTensor(
+        runner, interpreter_input_name);
+    ASSERT_NE(runner_input_tensor, nullptr);
+    ASSERT_EQ(runner_input_tensor, reinterpret_cast<const TfLiteOpaqueTensor*>(
+                                       interpreter_input_tensor));
+  }
+
+  int num_interpreter_outputs =
+      TfLiteInterpreterGetOutputTensorCount(interpreter);
+  int num_runner_outputs = TfLiteAsyncSignatureRunnerGetOutputCount(runner);
+  ASSERT_EQ(num_runner_outputs, num_interpreter_outputs);
+
+  for (int i = 0; i < num_interpreter_outputs; ++i) {
+    auto* interpreter_output_tensor =
+        TfLiteInterpreterGetOutputTensor(interpreter, i);
+    ASSERT_NE(interpreter_output_tensor, nullptr);
+    auto* interpreter_output_name = TfLiteTensorName(interpreter_output_tensor);
+    ASSERT_NE(interpreter_output_name, nullptr);
+    auto* runner_output_name =
+        TfLiteAsyncSignatureRunnerGetOutputName(runner, i);
+    ASSERT_NE(runner_output_name, nullptr);
+    EXPECT_STREQ(runner_output_name, interpreter_output_name);
+    auto* runner_output_tensor = TfLiteAsyncSignatureRunnerGetOutputTensor(
+        runner, interpreter_output_name);
+    ASSERT_NE(runner_output_tensor, nullptr);
+    ASSERT_EQ(runner_output_tensor, reinterpret_cast<const TfLiteOpaqueTensor*>(
+                                        interpreter_output_tensor));
+  }
+
+  EXPECT_CALL(*kernel, Prepare(_, _)).WillOnce(Return(kTfLiteOk));
+  EXPECT_CALL(*kernel, Eval(_, _, _)).WillOnce(Return(kTfLiteOk));
+  EXPECT_CALL(*kernel, Wait(_, _)).WillOnce(Return(kTfLiteOk));
+  EXPECT_CALL(*kernel, Finish(_, _)).WillOnce(Return(kTfLiteOk));
+
+  EXPECT_EQ(kTfLiteOk, TfLiteAsyncSignatureRunnerPrepareBackends(runner));
+
+  auto* task = TfLiteAsyncSignatureRunnerCreateTask(runner);
+
+  EXPECT_EQ(kTfLiteOk, TfLiteAsyncSignatureRunnerInvokeAsync(runner, task));
+  EXPECT_EQ(kTfLiteOk, TfLiteAsyncSignatureRunnerWait(runner, task));
+  EXPECT_EQ(kTfLiteOk, TfLiteAsyncSignatureRunnerFinish(runner, task));
+
+  TfLiteAsyncSignatureRunnerDelete(runner);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
 }
 
 }  // namespace async

@@ -44,17 +44,18 @@ using ::tensorflow::protobuf::RepeatedPtrField;
 // subsequence.)
 // Example: `a = {4, 2}`, `b = {4, 2, 1, 3}`, `fieldTagMatches(a, b) == 2`
 absl::StatusOr<int> fieldTagMatches(
-    const RepeatedPtrField<::proto_splitter::FieldIndex>& a,
-    const RepeatedPtrField<::proto_splitter::FieldIndex>& b);
+    const RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>& a,
+    const RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>& b);
 
 // Pull out the relevant data within `chunked_message`. A `chunked_field` is
 // relevant if its `field_tags` are an initial subsequence any of the
 // `target_fields` in the provided `target_fields_list`.
-absl::StatusOr<::proto_splitter::ChunkedMessage> PruneChunkedMessage(
-    const ::proto_splitter::ChunkedMessage& chunked_message,
+absl::StatusOr<::tensorflow::proto_splitter::ChunkedMessage>
+PruneChunkedMessage(
+    const ::tensorflow::proto_splitter::ChunkedMessage& chunked_message,
     riegeli::RecordReader<riegeli::FdReader<>>& reader,
-    std::vector<::proto_splitter::ChunkInfo> chunks_info,
-    std::vector<RepeatedPtrField<::proto_splitter::FieldIndex>>
+    std::vector<::tensorflow::proto_splitter::ChunkInfo> chunks_info,
+    std::vector<RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
         target_fields_list);
 
 // Deterministically serializes the proto `message`.
@@ -63,20 +64,23 @@ std::string SerializeProto(const Message& message);
 // Uses metadata contained in `chunked_message` to hash fields within the
 // data accessed by the `reader` using `chunks_info`.
 absl::StatusOr<uint64_t> HashFields(
-    const ::proto_splitter::ChunkedMessage& chunked_message,
+    const ::tensorflow::proto_splitter::ChunkedMessage& chunked_message,
     riegeli::RecordReader<riegeli::FdReader<>>& reader,
-    const std::vector<::proto_splitter::ChunkInfo>& chunks_info,
-    const RepeatedPtrField<::proto_splitter::FieldIndex>& field_tags,
+    const std::vector<::tensorflow::proto_splitter::ChunkInfo>& chunks_info,
+    const RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>&
+        field_tags,
     Message* merged_message);
 
-// Gets the field tags for `graph_def`.
-inline RepeatedPtrField<::proto_splitter::FieldIndex> GraphDefFieldTags();
+// Gets the field tags for `graph_def`.::tensorflow
+inline RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>
+GraphDefFieldTags();
 
 // Gets the field tags for `signature_def`.
-inline RepeatedPtrField<::proto_splitter::FieldIndex> SignatureDefFieldTags();
+inline RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>
+SignatureDefFieldTags();
 
 // Gets the field tags for `saved_object_graph`.
-inline RepeatedPtrField<::proto_splitter::FieldIndex>
+inline RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>
 SavedObjectGraphFieldTags();
 
 // Returns a `SavedModel` containing only fields (up to those) specified by
@@ -85,36 +89,38 @@ SavedObjectGraphFieldTags();
 absl::StatusOr<tensorflow::SavedModel> PrunedSavedModel(
     absl::string_view export_dir,
     riegeli::RecordReader<riegeli::FdReader<>>& reader,
-    const std::vector<::proto_splitter::ChunkInfo>& chunks_info,
-    ::proto_splitter::ChunkMetadata& chunk_metadata);
+    const std::vector<::tensorflow::proto_splitter::ChunkInfo>& chunks_info,
+    ::tensorflow::proto_splitter::ChunkMetadata& chunk_metadata);
 
 // Hashes the contents of `message` specified by `field_tags`.
 absl::StatusOr<uint64_t> HashMessage(
-    Message* message, const ::proto_splitter::ChunkedMessage& chunked_message,
+    Message* message,
+    const ::tensorflow::proto_splitter::ChunkedMessage& chunked_message,
     riegeli::RecordReader<riegeli::FdReader<>>& reader,
-    const std::vector<::proto_splitter::ChunkInfo>& chunks_info,
-    const RepeatedPtrField<::proto_splitter::FieldIndex>& field_tags);
+    const std::vector<::tensorflow::proto_splitter::ChunkInfo>& chunks_info,
+    const RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>&
+        field_tags);
 
 // Hashes the contents of `graph_def`.
 absl::StatusOr<uint64_t> HashGraphDef(
     tensorflow::GraphDef* graph_def,
-    const ::proto_splitter::ChunkedMessage& chunked_message,
+    const ::tensorflow::proto_splitter::ChunkedMessage& chunked_message,
     riegeli::RecordReader<riegeli::FdReader<>>& reader,
-    const std::vector<::proto_splitter::ChunkInfo>& chunks_info);
+    const std::vector<::tensorflow::proto_splitter::ChunkInfo>& chunks_info);
 
 // Hashes the contents of `signature_def`.
 absl::StatusOr<uint64_t> HashSignatureDef(
     const Map<std::string, ::tensorflow::SignatureDef>& signature_def_map,
-    const ::proto_splitter::ChunkedMessage& chunked_message,
+    const ::tensorflow::proto_splitter::ChunkedMessage& chunked_message,
     riegeli::RecordReader<riegeli::FdReader<>>& reader,
-    const std::vector<::proto_splitter::ChunkInfo>& chunks_info);
+    const std::vector<::tensorflow::proto_splitter::ChunkInfo>& chunks_info);
 
 // Hashes the contents of `saved_object_graph`.
 absl::StatusOr<uint64_t> HashSavedObjectGraph(
     tensorflow::SavedObjectGraph* saved_object_graph,
-    const ::proto_splitter::ChunkedMessage& chunked_message,
+    const ::tensorflow::proto_splitter::ChunkedMessage& chunked_message,
     riegeli::RecordReader<riegeli::FdReader<>>& reader,
-    const std::vector<::proto_splitter::ChunkInfo>& chunks_info);
+    const std::vector<::tensorflow::proto_splitter::ChunkInfo>& chunks_info);
 
 }  // namespace fingerprinting_utils_internal
 

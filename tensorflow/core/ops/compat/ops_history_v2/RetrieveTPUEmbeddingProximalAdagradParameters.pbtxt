@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RetrieveTPUEmbeddingProximalAdagradParameters"
   output_arg {
     name: "parameters"

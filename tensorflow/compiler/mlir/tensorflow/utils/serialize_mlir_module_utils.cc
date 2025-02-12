@@ -36,9 +36,9 @@ std::string SerializeMlirModule(mlir::ModuleOp module_op) {
   return std::move(os.str());
 }
 
-Status DeserializeMlirModule(llvm::StringRef serialized_mlir_module,
-                             mlir::MLIRContext* mlir_context,
-                             mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
+absl::Status DeserializeMlirModule(
+    llvm::StringRef serialized_mlir_module, mlir::MLIRContext* mlir_context,
+    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   TF_RET_CHECK(!serialized_mlir_module.empty())
       << "unexpected empty serialized MLIR module string";
   TF_RET_CHECK(mlir_module) << "unexpected null MLIR module pointer";
@@ -54,7 +54,7 @@ Status DeserializeMlirModule(llvm::StringRef serialized_mlir_module,
     return error_handler.Combine(
         errors::InvalidArgument("could not parse MLIR module"));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

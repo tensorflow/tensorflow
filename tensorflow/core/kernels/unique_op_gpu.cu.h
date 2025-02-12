@@ -31,9 +31,7 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
 
@@ -312,17 +310,15 @@ class UniqueOpGPU : public AsyncOpKernel {
     // Copy the last element of sorted_input_unique_ids back to the host to
     // obtain uniq_size.
     ScratchSpace<TIndex> last_idx_host(context, 1, /*on_host=*/true);
-    OP_REQUIRES_ASYNC(
+    OP_REQUIRES_OK_ASYNC(
         context,
-        stream
-            ->ThenMemcpy(last_idx_host.mutable_data(),
-                         se::DeviceMemoryBase(
-                             const_cast<TIndex*>(sorted_input_unique_ids_ptr) +
-                                 (input_size - 1),
-                             sizeof(*last_idx_host.data())),
-                         sizeof(*last_idx_host.data()))
-            .ok(),
-        errors::Internal("Failed to copy last_idx to host"), done);
+        stream->Memcpy(last_idx_host.mutable_data(),
+                       se::DeviceMemoryBase(
+                           const_cast<TIndex*>(sorted_input_unique_ids_ptr) +
+                               (input_size - 1),
+                           sizeof(*last_idx_host.data())),
+                       sizeof(*last_idx_host.data())),
+        done);
 
     auto async_finish_computation = [this, context, input_size, input_ptr,
                                      sorted_input_inds, sorted_input_inds_ptr,
@@ -332,8 +328,8 @@ class UniqueOpGPU : public AsyncOpKernel {
       const GPUDevice& device = context->eigen_gpu_device();
       int64 uniq_size = (*last_idx_host.data()) + 1;
 
-      se::gpu::ScopedActivateExecutorContext scoped_activation{
-          context->op_device_context()->stream()->parent()};
+      std::unique_ptr<se::ActivateContext> scoped_activation =
+          context->op_device_context()->stream()->parent()->Activate();
 
       Tensor unique_input_inds;
       TIndex* unique_input_inds_ptr = nullptr;

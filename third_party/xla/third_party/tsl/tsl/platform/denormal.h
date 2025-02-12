@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DENORMAL_H_
 #define TENSORFLOW_TSL_PLATFORM_DENORMAL_H_
 
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace tsl {
 namespace port {
@@ -59,7 +59,9 @@ class ScopedRestoreFlushDenormalState {
 
  private:
   DenormalState denormal_state_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedRestoreFlushDenormalState);
+  ScopedRestoreFlushDenormalState(const ScopedRestoreFlushDenormalState&) =
+      delete;
+  void operator=(const ScopedRestoreFlushDenormalState&) = delete;
 };
 
 // While this class is active, denormal floating point numbers are flushed
@@ -70,7 +72,8 @@ class ScopedFlushDenormal {
 
  private:
   ScopedRestoreFlushDenormalState restore_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedFlushDenormal);
+  ScopedFlushDenormal(const ScopedFlushDenormal&) = delete;
+  void operator=(const ScopedFlushDenormal&) = delete;
 };
 
 // While this class is active, denormal floating point numbers are not flushed
@@ -81,7 +84,8 @@ class ScopedDontFlushDenormal {
 
  private:
   ScopedRestoreFlushDenormalState restore_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedDontFlushDenormal);
+  ScopedDontFlushDenormal(const ScopedDontFlushDenormal&) = delete;
+  void operator=(const ScopedDontFlushDenormal&) = delete;
 };
 
 }  // namespace port

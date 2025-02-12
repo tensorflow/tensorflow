@@ -1,11 +1,10 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
 # This package contains written convenience helpers for Eager Operations
 # used by SavedModel. Once we autogenerate C++ Eager Op wrappers, we can remove these.
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,10 +29,11 @@ cc_library(
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -46,7 +46,6 @@ cc_library(
         "variable_ops.h",
     ],
     deps = [
-        "//tensorflow/c/eager:abstract_operation",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_operation",
@@ -55,6 +54,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -70,13 +70,10 @@ tf_cc_test(
     deps = [
         ":restore_ops",
         "//tensorflow/c:tensor_interface",
-        "//tensorflow/c/eager:abstract_tensor_handle",
-        "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/c/experimental/saved_model/core:test_utils",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/core:all_kernels",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -84,6 +81,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -95,12 +93,9 @@ tf_cc_test(
     deps = [
         ":variable_ops",
         "//tensorflow/c:tensor_interface",
-        "//tensorflow/c/eager:abstract_tensor_handle",
-        "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/c/experimental/saved_model/core:test_utils",
         "//tensorflow/core:all_kernels",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -108,5 +103,6 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
+        "@com_google_absl//absl/status",
     ],
 )

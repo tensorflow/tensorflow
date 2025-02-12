@@ -19,7 +19,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/tpu/tpu_node_context.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,9 +31,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_common.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/tstring.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -87,7 +88,7 @@ void TpuCompileSucceededAssertOp::Compute(OpKernelContext* ctx) {
   }
 }
 
-REGISTER_MODULE_INITIALIZER(register_tpu_compile_op_kernel, {
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_tpu_compile_op_kernel, {
   VLOG(1) << "Register TpuCompileOp kernel.";
   REGISTER_KERNEL_BUILDER(Name("TPUCompile").Device(DEVICE_CPU), TpuCompileOp);
   REGISTER_KERNEL_BUILDER(Name("_TPUCompileMlir").Device(DEVICE_CPU),

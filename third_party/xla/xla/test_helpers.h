@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,56 +16,7 @@ limitations under the License.
 #ifndef XLA_TEST_HELPERS_H_
 #define XLA_TEST_HELPERS_H_
 
-#include <list>
-#include <vector>
-
-#include "absl/strings/string_view.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/regexp.h"
-#include "tsl/platform/test.h"
-
-// This module contains a minimal subset of gmock functionality just
-// sufficient to execute the currently existing tests.
-
-namespace xla {
-template <typename T>
-class Array2D;
-class Literal;
-
-namespace testing {
-
-namespace internal_status {
-inline const Status& GetStatus(const Status& status) { return status; }
-
-template <typename T>
-inline const Status& GetStatus(const StatusOr<T>& status) {
-  return status.status();
-}
-}  // namespace internal_status
-
-}  // namespace testing
-}  // namespace xla
-
-// The following macros are similar to macros in gmock, but deliberately named
-// differently in order to avoid conflicts in files which include both.
-
-// Macros for testing the results of functions that return Status or
-// StatusOr<T> (for any type T).
-#define EXPECT_IS_OK(expression) \
-  EXPECT_EQ(::tsl::OkStatus(),   \
-            xla::testing::internal_status::GetStatus(expression))
-#define EXPECT_IS_NOT_OK(expression) \
-  EXPECT_NE(::tsl::OkStatus(),       \
-            xla::testing::internal_status::GetStatus(expression))
-#undef ASSERT_IS_OK
-#define ASSERT_IS_OK(expression) \
-  ASSERT_EQ(::tsl::OkStatus(),   \
-            xla::testing::internal_status::GetStatus(expression))
-#undef ASSERT_IS_NOT_OK
-#define ASSERT_IS_NOT_OK(expression) \
-  ASSERT_NE(::tsl::OkStatus(),       \
-            xla::testing::internal_status::GetStatus(expression))
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/testlib/test_helpers.h"
 
 #endif  // XLA_TEST_HELPERS_H_

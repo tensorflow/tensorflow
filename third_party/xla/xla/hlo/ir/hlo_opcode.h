@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_OPCODE_H_
 #define XLA_HLO_IR_HLO_OPCODE_H_
 
+#include <cstdint>
 #include <iosfwd>
 #include <optional>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/statusor.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -75,6 +75,7 @@ namespace xla {
   V(kCholesky, "cholesky", 1)                                                  \
   V(kClamp, "clamp", 3)                                                        \
   V(kClz, "count-leading-zeros", 1)                                            \
+  V(kCollectiveBroadcast, "collective-broadcast", kHloOpcodeIsVariadic)        \
   V(kCollectivePermute, "collective-permute", kHloOpcodeIsVariadic)            \
   V(kCollectivePermuteDone, "collective-permute-done", 1)                      \
   V(kCollectivePermuteStart, "collective-permute-start", kHloOpcodeIsVariadic) \
@@ -92,10 +93,11 @@ namespace xla {
   V(kCustomCall, "custom-call", kHloOpcodeIsVariadic)                          \
   V(kDivide, "divide", 2)                                                      \
   V(kDomain, "domain", 1)                                                      \
-  V(kDot, "dot", 2)                                                            \
+  V(kDot, "dot", kHloOpcodeIsVariadic)                                         \
   V(kDynamicReshape, "dynamic-reshape", kHloOpcodeIsVariadic)                  \
   V(kDynamicSlice, "dynamic-slice", kHloOpcodeIsVariadic)                      \
   V(kDynamicUpdateSlice, "dynamic-update-slice", kHloOpcodeIsVariadic)         \
+  V(kErf, "erf", 1)                                                            \
   V(kExp, "exponential", 1)                                                    \
   V(kExpm1, "exponential-minus-one", 1)                                        \
   V(kFft, "fft", 1)                                                            \
@@ -125,6 +127,8 @@ namespace xla {
   V(kPartitionId, "partition-id", 0)                                           \
   V(kPopulationCount, "popcnt", 1)                                             \
   V(kPower, "power", 2)                                                        \
+  V(kRaggedAllToAll, "ragged-all-to-all", 6)                                   \
+  V(kRaggedDot, "ragged-dot", 3)                                               \
   V(kReal, "real", 1)                                                          \
   V(kRecv, "recv", 1)                                                          \
   V(kRecvDone, "recv-done", 1)                                                 \
@@ -169,7 +173,8 @@ namespace xla {
   /* go/keep-sorted end */
 // LINT.ThenChange(../../mlir_hlo/mhlo/IR/hlo_ops.td)
 
-enum class HloOpcode {
+// Upto 256 opcodes. Increase the base type if/when needed.
+enum class HloOpcode : uint8_t {
 #define DECLARE_ENUM(enum_name, opcode_name, ...) enum_name,
   HLO_OPCODE_LIST(DECLARE_ENUM)
 #undef DECLARE_ENUM
@@ -184,25 +189,26 @@ enum {
 absl::string_view HloOpcodeString(HloOpcode opcode);
 
 // Retrieves the opcode enum by name if the opcode exists.
-StatusOr<HloOpcode> StringToHloOpcode(absl::string_view opcode_name);
+absl::StatusOr<HloOpcode> StringToHloOpcode(absl::string_view opcode_name);
 
 inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {
   return os << HloOpcodeString(opcode);
 }
 
-// Returns true iff the given opcode is a comparison operation.
-bool HloOpcodeIsComparison(HloOpcode opcode);
+// Returns the arity of opcode or nullopt for variadic opcodes.
+std::optional<int8_t> HloOpcodeArity(HloOpcode opcode);
 
-// Returns true iff the given opcode has variadic operands.
-bool HloOpcodeIsVariadic(HloOpcode opcode);
-
-// Returns the arity of opcode. If the opcode is variadic,
-// returns nullopt.
-std::optional<int> HloOpcodeArity(HloOpcode opcode);
-
-// Returns true if the given opcode is one of kAsyncStart, kAsyncUpdate, or
-// kAsyncDone.
-bool HloOpcodeIsAsync(HloOpcode opcode);
+// Returns true for kAsyncStart, kAsyncUpdate, kAsyncDone.
+inline bool HloOpcodeIsAsync(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+      return true;
+    default:
+      return false;
+  }
+}
 
 // True if the op takes two arguments and order doesn't matter.
 inline bool HloOpcodeIsBinaryCommutative(HloOpcode opcode) {
@@ -226,6 +232,9 @@ inline constexpr uint32_t HloOpcodeCount() {
 #define HLO_XLIST_LENGTH(list) list(HLO_COUNT_ONE)
   return HLO_XLIST_LENGTH(HLO_OPCODE_LIST);
 }
+static_assert(HloOpcodeCount() < 256,
+              "HloOpcode is a uint8_t. You need to increase its size before "
+              "adding new op codes.");
 
 }  // namespace xla
 

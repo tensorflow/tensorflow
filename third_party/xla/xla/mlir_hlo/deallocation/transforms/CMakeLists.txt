@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2023 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,15 +21,7 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_mlir_library(DeallocationPasses
-  analysis.cc
   buffer_reuse.cc
-  convert_deallocation_ops_to_llvm.cc
-  deallocate.cc
-  deallocation_simplification.cc
-  deallocation_to_scf.cc
-  debug_passes.cc
-  split_alloc_tensors.cc
-  xla_buffer_arg_rewrite.cc
 
   DEPENDS
   MLIRDeallocationPassesIncGen

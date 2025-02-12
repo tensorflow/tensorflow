@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TensorArrayGatherV3"
   input_arg {
     name: "handle"

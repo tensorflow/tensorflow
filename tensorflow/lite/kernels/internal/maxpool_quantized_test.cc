@@ -33,11 +33,12 @@ namespace {
 // Runs the reference and optimized MaxPool functions and asserts the values
 // are the same.
 void RunOneMaxPoolTest(const PoolParams& params,
-                       const RuntimeShape& input_shape, const int8* input_data,
+                       const RuntimeShape& input_shape,
+                       const int8_t* input_data,
                        const RuntimeShape& output_shape) {
   const int buffer_size = output_shape.FlatSize();
-  std::vector<int8> optimized_maxpool_output(buffer_size);
-  std::vector<int8> reference_maxpool_output(buffer_size);
+  std::vector<int8_t> optimized_maxpool_output(buffer_size);
+  std::vector<int8_t> reference_maxpool_output(buffer_size);
 
   reference_integer_ops::MaxPool(params, input_shape, input_data, output_shape,
                                  reference_maxpool_output.data());
@@ -80,7 +81,7 @@ void CreateDataAndRunMaxPool(bool padding_same) {
   auto output_shape =
       RuntimeShape({batch, output_height, output_width, output_depth});
   const int buffer_size = input_shape.FlatSize();
-  std::vector<int8> input_data(buffer_size);
+  std::vector<int8_t> input_data(buffer_size);
   FillRandom(&input_data);
 
   PoolParams params;

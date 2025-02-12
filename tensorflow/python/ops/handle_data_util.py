@@ -19,8 +19,10 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.types import core
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("__internal__.ops.get_resource_handle_data", v1=[])
 def get_resource_handle_data(graph_op):
   assert (isinstance(graph_op, core.Symbol)
           and not isinstance(graph_op, core.Value))

@@ -29,8 +29,9 @@ limitations under the License.
 namespace tensorflow {
 namespace test {
 
-Status TestCluster::MakeTestCluster(const TestClusterConfig& config,
-                                    std::unique_ptr<TestCluster>* out_cluster) {
+absl::Status TestCluster::MakeTestCluster(
+    const TestClusterConfig& config,
+    std::unique_ptr<TestCluster>* out_cluster) {
   std::string binary_path =
       !config.binary_path.empty()
           ? config.binary_path
@@ -102,7 +103,7 @@ Status TestCluster::MakeTestCluster(const TestClusterConfig& config,
   TF_RETURN_IF_ERROR(session->ListDevices(&ret->devices_));
 
   *out_cluster = std::move(ret);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TestCluster::~TestCluster() {

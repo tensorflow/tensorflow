@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,9 +23,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-template <typename T>
-using StatusOr = TpuComputationPlacer::StatusOr<T>;
-
 TpuComputationPlacer::TpuComputationPlacer() {
   placer_ = stream_executor::tpu::ExecutorApiFn()->TpuComputationPlacer_NewFn();
 }
@@ -34,37 +31,49 @@ TpuComputationPlacer::~TpuComputationPlacer() {
   stream_executor::tpu::ExecutorApiFn()->TpuComputationPlacer_FreeFn(placer_);
 }
 
-StatusOr<int> TpuComputationPlacer::DeviceId(int replica, int computation,
-                                             int replica_count,
-                                             int computation_count) {
+absl::StatusOr<int> TpuComputationPlacer::DeviceId(int replica, int computation,
+                                                   int replica_count,
+                                                   int computation_count) {
   LOG(FATAL) << "Unimplemented.";
 }
 
-StatusOr<xla::DeviceAssignment> TpuComputationPlacer::AssignDevices(
+absl::StatusOr<xla::DeviceAssignment> TpuComputationPlacer::AssignDevices(
     int replica_count, int computation_count) {
   StatusHelper status;
   xla::DeviceAssignment result(replica_count, computation_count);
+  xla::Array2D<int> result_int32(replica_count, computation_count);
   stream_executor::tpu::ExecutorApiFn()->TpuComputationPlacer_AssignDevicesFn(
-      placer_, replica_count, computation_count, result.data(),
+      placer_, replica_count, computation_count, result_int32.data(),
       status.c_status);
   if (!status.ok()) {
     return status.status();
   }
+  // Upcast to 64-bit.
+  for (int i = 0; i < replica_count; ++i) {
+    for (int j = 0; j < computation_count; ++j)
+      result(i, j) = result_int32(i, j);
+  }
   return result;
 }
 
-/*static*/ StatusOr<xla::DeviceAssignment>
+/*static*/ absl::StatusOr<xla::DeviceAssignment>
 TpuComputationPlacer::AssignLocalDevices(TpuHostLocationExternal host_location,
                                          int replica_count,
                                          int computation_count) {
   StatusHelper status;
   xla::DeviceAssignment result(replica_count, computation_count);
+  xla::Array2D<int> result_int32(replica_count, computation_count);
   stream_executor::tpu::ExecutorApiFn()
       ->TpuComputationPlacer_AssignLocalDevicesFn(
-          host_location.impl(), replica_count, computation_count, result.data(),
-          status.c_status);
+          host_location.impl(), replica_count, computation_count,
+          result_int32.data(), status.c_status);
   if (!status.ok()) {
     return status.status();
+  }
+  // Upcast to 64-bit.
+  for (int i = 0; i < replica_count; ++i) {
+    for (int j = 0; j < computation_count; ++j)
+      result(i, j) = result_int32(i, j);
   }
   return result;
 }

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "EncodeProto"
   input_arg {
     name: "sizes"

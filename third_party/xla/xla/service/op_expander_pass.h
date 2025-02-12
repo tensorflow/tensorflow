@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,40 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_OP_EXPANDER_PASS_H_
 #define XLA_SERVICE_OP_EXPANDER_PASS_H_
 
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// This pass is an abstract superclass for passes that replace operations that
-// match a pattern. It is intended to be subclassed, not used directly.
-//
-// This pass is useful for legalizing HLO instructions that a particular backend
-// does not support into other HLO instructions.
-class OpExpanderPass : public HloModulePass {
- public:
-  using HloPassInterface::Run;
-  StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
-  // extra_filter: Optional extra filtering criteria for matching instructions,
-  // used in conjunction with InstructionMatchesPattern.
-  explicit OpExpanderPass(HloPredicate extra_filter = nullptr)
-      : extra_filter_(std::move(extra_filter)) {}
-
- protected:
-  // Returns `true` if `instruction` should be expanded by this pass.
-  virtual bool InstructionMatchesPattern(HloInstruction* instruction) = 0;
-
-  // Returns a replacement for `instruction`, or nullptr if no replacement is
-  // needed (e.g. only the to_apply subcomputation of the instruction was
-  // modified).
-  virtual StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) = 0;
-
-  HloPredicate extra_filter_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 #endif  // XLA_SERVICE_OP_EXPANDER_PASS_H_

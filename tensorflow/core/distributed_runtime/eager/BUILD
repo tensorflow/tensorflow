@@ -1,9 +1,9 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_grpc_cc_dependencies")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -102,6 +102,7 @@ cc_library(
         ":remote_tensor_handle",
         "//tensorflow/c/eager:immediate_execution_distributed_manager",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -122,7 +123,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/distributed_runtime/preemption:preemption_notifier",
+        "@local_xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -136,6 +137,7 @@ tf_cc_test(
         ":remote_mgr",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -171,6 +173,9 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/platform:error_payloads",
+        "//tensorflow/core/util:env_var",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -201,6 +206,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,13 +16,17 @@ limitations under the License.
 #ifndef XLA_PACKED_LITERAL_READER_H_
 #define XLA_PACKED_LITERAL_READER_H_
 
+#include <cstdint>
 #include <memory>
 
+#include "absl/status/statusor.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
 
 namespace xla {
 
@@ -40,7 +44,8 @@ class PackedLiteralReader {
   //
   // Layout is optional. If it is not provided, no layout is set on the literal
   // that is produced.
-  StatusOr<Literal> Read(const Shape& shape, const Layout* layout = nullptr);
+  absl::StatusOr<Literal> Read(const Shape& shape,
+                               const Layout* layout = nullptr);
 
   // Returns whether the input file has been fully exhausted; i.e. all available
   // packed literals have been read and we're at the end of the file.

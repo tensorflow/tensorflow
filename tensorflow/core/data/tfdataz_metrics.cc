@@ -16,14 +16,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -91,9 +95,10 @@ absl::Duration ApproximateLatencyEstimator::GetAverageLatency(Duration duration)
   return absl::Duration(absl::Microseconds(interval_latency)) / interval_count;
 }
 
-TfDatazMetricsCollector::TfDatazMetricsCollector(const Env& env,
-                                                 IteratorBase* iterator)
-    : iterator_(iterator), latency_estimator_(env) {}
+TfDatazMetricsCollector::TfDatazMetricsCollector(
+    const Env& env, DatasetBaseIterator* iterator,
+    std::shared_ptr<model::Model> model)
+    : iterator_(iterator), model_(std::move(model)), latency_estimator_(env) {}
 
 void TfDatazMetricsCollector::RecordGetNextLatency(
     int64_t get_next_latency_usec) {
@@ -117,8 +122,20 @@ absl::Duration TfDatazMetricsCollector::GetAverageLatencyForLastSixtyMinutes() {
       ApproximateLatencyEstimator::Duration::kSixtyMinutes);
 }
 
+std::optional<std::string> TfDatazMetricsCollector::DatasetName() {
+  auto options = iterator_->dataset()->options();
+  if (options.has_dataset_name()) {
+    return std::make_optional(options.dataset_name());
+  }
+  return std::nullopt;
+}
+
 int64_t TfDatazMetricsCollector::GetIteratorTotalMemoryUsage() {
   return iterator_->TotalBufferedBytes();
+}
+
+std::shared_ptr<model::Model> TfDatazMetricsCollector::GetModel() {
+  return model_;
 }
 
 namespace {

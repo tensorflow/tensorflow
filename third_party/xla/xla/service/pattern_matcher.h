@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,33 +16,43 @@ limitations under the License.
 #ifndef XLA_SERVICE_PATTERN_MATCHER_H_
 #define XLA_SERVICE_PATTERN_MATCHER_H_
 
-#include <functional>
+#include <cstddef>
+#include <cstdint>
 #include <ios>
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "absl/utility/utility.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/ptrvec.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/literal_util.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -96,6 +106,9 @@ namespace xla {
 //       contracting dimensions.
 //     - WithReplicaGroups: Collective instruction's replica groups matches the
 //       given pattern.
+//     - WithSharding: Instruction's sharding is equal to the given sharding.
+//     - WithControlDeps: Instruction's control predecessors/successors match
+//       the given list of instructions.
 //
 //   Shape():
 //     - EqualTo
@@ -1867,6 +1880,53 @@ class HloInstructionPatternOneUserImpl
   }
 };
 
+class HloInstructionPatternNumUserImpl {
+ public:
+  explicit constexpr HloInstructionPatternNumUserImpl(int64_t user_num)
+      : user_num_(user_num) {}
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    if (inst->user_count() != user_num_) {
+      EXPLAIN << "HloInstruction has " << inst->user_count()
+              << " users, but expected exactly " << user_num_ << " users.";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "which has exactly " << user_num_
+        << " users (but possibly is used multiple times by "
+           "same instruction)";
+  }
+
+ private:
+  int64_t user_num_;
+};
+
+class HloInstructionPatternAtMostNumUserImpl {
+ public:
+  explicit constexpr HloInstructionPatternAtMostNumUserImpl(int64_t user_num)
+      : user_num_(user_num) {}
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    if (inst->user_count() > user_num_) {
+      EXPLAIN << "HloInstruction has " << inst->user_count()
+              << " users, but expected less than or equal " << user_num_
+              << " users.";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "which has less than or equal " << user_num_
+        << " users (but possibly is used multiple times by "
+           "same instruction)";
+  }
+
+ private:
+  int64_t user_num_;
+};
+
 class HloInstructionPatternComparisonDirectionImpl {
  public:
   explicit constexpr HloInstructionPatternComparisonDirectionImpl(
@@ -2136,6 +2196,63 @@ class HloInstructionShardingImpl {
   std::optional<HloSharding> sharding_;
 };
 
+class HloInstructionControlDepsImpl {
+ public:
+  explicit HloInstructionControlDepsImpl(
+      absl::Span<HloInstruction* const> preds,
+      absl::Span<HloInstruction* const> succs)
+      : preds_(preds), succs_(succs) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    auto print_deps = [os](absl::Span<HloInstruction* const> deps,
+                           absl::string_view type) {
+      if (deps.empty()) {
+        *os << "no control " << type;
+      } else {
+        *os << "control " << type << " {" << absl::StrJoin(deps, ",", fmt)
+            << "}";
+      }
+    };
+
+    *os << "with ";
+    print_deps(preds_, "predecessors");
+    *os << " and ";
+    print_deps(succs_, "successors");
+  }
+
+ private:
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    auto match_deps = [&](absl::Span<HloInstruction* const> expected_deps,
+                          const PtrVec<HloInstruction*>& actual_deps,
+                          absl::string_view type) {
+      if (!absl::c_equal(expected_deps, actual_deps)) {
+        EXPLAIN << "HloInstruction expected to have control " << type << " {"
+                << absl::StrJoin(expected_deps, ",", fmt) << "} but has {"
+                << absl::StrJoin(actual_deps, ",", fmt) << "}";
+        return false;
+      }
+      return true;
+    };
+    return match_deps(preds_, inst->control_predecessors(), "predecessors") &&
+           match_deps(succs_, inst->control_successors(), "successors");
+  }
+
+  static void fmt(std::string* out, const HloInstruction* inst) {
+    absl::StrAppend(out, inst->name());
+  };
+
+  absl::Span<HloInstruction* const> preds_, succs_;
+};
+
 // Matches a constant scalar or effective scalar, optionally with a given value.
 template <typename ScalarTy>
 class HloConstantScalarImpl {
@@ -2319,7 +2436,7 @@ class HloInstructionPattern {
   }
 
   // Because we only specify the shape's element type and dims, this is
-  // effectivley checking shape-compatible-to, not shape-equal-to.  Perhaps this
+  // effectively checking shape-compatible-to, not shape-equal-to.  Perhaps this
   // function should be called WithShapeCompatibleTo, but the short name is
   // nice, and there's no ambiguity because there's no layout in the args!
   constexpr auto WithShape(PrimitiveType ty, absl::Span<const int64_t> dims) {
@@ -2418,6 +2535,18 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternOneUserImpl());
   }
 
+  // Modifies the pattern to match if the instruction is used by exactly
+  // user_num times by other instruction.
+  constexpr auto WithNumUser(int64_t user_num) const {
+    return AppendImpl(HloInstructionPatternNumUserImpl(user_num));
+  }
+
+  // Modifies the pattern to match if the instruction is used by less than
+  // user_num times by other instruction.
+  constexpr auto WithAtMostNumUser(int64_t user_num) const {
+    return AppendImpl(HloInstructionPatternAtMostNumUserImpl(user_num));
+  }
+
   // Modifies the pattern to match only if the instruction has the given
   // comparison direction.
   auto WithComparisonDirection(ComparisonDirection direction) const {
@@ -2451,6 +2580,11 @@ class HloInstructionPattern {
   auto WithSharding(absl::string_view sharding) const {
     return AppendImpl(
         HloInstructionShardingImpl(ParseSharding(sharding).value()));
+  }
+
+  auto WithControlDeps(absl::Span<HloInstruction* const> preds,
+                       absl::Span<HloInstruction* const> succs) {
+    return AppendImpl(HloInstructionControlDepsImpl(preds, succs));
   }
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
@@ -2525,6 +2659,11 @@ XLA_NULLOP_PATTERN(ReplicaId)
 #define XLA_UNOP_PATTERN(NAME)                                       \
   inline auto NAME() { return Op().WithOpcode(HloOpcode::k##NAME); } \
                                                                      \
+  template <typename HloInstructionType>                             \
+  inline auto NAME(HloInstructionType** matched_inst) {              \
+    return Op(matched_inst).WithOpcode(HloOpcode::k##NAME);          \
+  }                                                                  \
+                                                                     \
   template <typename Arg>                                            \
   inline auto NAME(Arg&& arg) {                                      \
     return Op()                                                      \
@@ -2539,10 +2678,10 @@ XLA_NULLOP_PATTERN(ReplicaId)
         .WithOperand(0, std::forward<Arg>(arg));                     \
   }
 XLA_UNOP_PATTERN(Abs)
-XLA_UNOP_PATTERN(RoundNearestAfz)
 XLA_UNOP_PATTERN(Bitcast)
 XLA_UNOP_PATTERN(BitcastConvert)
 XLA_UNOP_PATTERN(Broadcast)
+XLA_UNOP_PATTERN(Cbrt)
 XLA_UNOP_PATTERN(Ceil)
 XLA_UNOP_PATTERN(Convert)
 XLA_UNOP_PATTERN(Copy)
@@ -2550,11 +2689,16 @@ XLA_UNOP_PATTERN(Cos)
 XLA_UNOP_PATTERN(AllReduceStart)
 XLA_UNOP_PATTERN(AllReduceDone)
 XLA_UNOP_PATTERN(AllToAll)
+XLA_UNOP_PATTERN(RaggedAllToAll)
+XLA_UNOP_PATTERN(AsyncDone)
+XLA_UNOP_PATTERN(CollectiveBroadcast)
 XLA_UNOP_PATTERN(CollectivePermute)
 XLA_UNOP_PATTERN(CollectivePermuteStart)
 XLA_UNOP_PATTERN(CollectivePermuteDone)
 XLA_UNOP_PATTERN(Domain)
+XLA_UNOP_PATTERN(Erf)
 XLA_UNOP_PATTERN(Exp)
+XLA_UNOP_PATTERN(Expm1)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)
 XLA_UNOP_PATTERN(GetTupleElement)
@@ -2562,14 +2706,18 @@ XLA_UNOP_PATTERN(Imag)
 XLA_UNOP_PATTERN(Infeed)
 XLA_UNOP_PATTERN(IsFinite)
 XLA_UNOP_PATTERN(Log)
+XLA_UNOP_PATTERN(Logistic)
 XLA_UNOP_PATTERN(Not)
 XLA_UNOP_PATTERN(Negate)
+XLA_UNOP_PATTERN(OptimizationBarrier)
 XLA_UNOP_PATTERN(Real)
 XLA_UNOP_PATTERN(Recv)
 XLA_UNOP_PATTERN(RecvDone)
 XLA_UNOP_PATTERN(ReducePrecision)
 XLA_UNOP_PATTERN(Reshape)
 XLA_UNOP_PATTERN(Reverse)
+XLA_UNOP_PATTERN(RoundNearestAfz)
+XLA_UNOP_PATTERN(RoundNearestEven)
 XLA_UNOP_PATTERN(Rsqrt)
 XLA_UNOP_PATTERN(SendDone)
 XLA_UNOP_PATTERN(Sign)
@@ -2579,6 +2727,7 @@ XLA_UNOP_PATTERN(Sqrt)
 XLA_UNOP_PATTERN(Tan)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
+XLA_UNOP_PATTERN(While)
 #undef XLA_UNOP_PATTERN
 
 // Helpers for binary instructions.
@@ -2667,6 +2816,7 @@ XLA_COMMUTATIVE_BINOP_PATTERN(Xor)
         .WithOperand(2, std::forward<Arg2>(arg2));                     \
   }
 XLA_TERNOP_PATTERN(Clamp);
+XLA_TERNOP_PATTERN(RaggedDot);
 XLA_TERNOP_PATTERN(Select);
 XLA_TERNOP_PATTERN(SelectAndScatter);
 #undef XLA_TERNOP_PATTERN
@@ -2716,6 +2866,7 @@ inline auto WithOperands(Matcher&& m, int64_t operand_num, FirstArg&& first_arg,
 XLA_VARIADIC_OP_PATTERN(AfterAll);
 XLA_VARIADIC_OP_PATTERN(AllGather)
 XLA_VARIADIC_OP_PATTERN(AllReduce)
+XLA_VARIADIC_OP_PATTERN(AsyncStart)
 XLA_VARIADIC_OP_PATTERN(Concatenate);
 XLA_VARIADIC_OP_PATTERN(Conditional);
 XLA_VARIADIC_OP_PATTERN(DynamicSlice)

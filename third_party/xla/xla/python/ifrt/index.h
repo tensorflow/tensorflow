@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace ifrt {
@@ -55,6 +55,10 @@ class Index {
   bool operator!=(const Index& other) const {
     return elements_ != other.elements_;
   }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const Index& index);
+
   Index operator+(const Index& offset) const {
     CHECK_EQ(elements_.size(), offset.elements_.size());
     Index result = *this;
@@ -85,13 +89,24 @@ class Index {
     return *this = *this * multiplier;
   }
 
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Index& index) {
+    sink.Append(index.DebugString());
+  }
 
  private:
   Elements elements_;
 };
 
 std::ostream& operator<<(std::ostream& os, const Index& index);
+
+template <typename H>
+H AbslHashValue(H h, const Index& index) {
+  return H::combine(std::move(h), index.elements_);
+}
 
 }  // namespace ifrt
 }  // namespace xla

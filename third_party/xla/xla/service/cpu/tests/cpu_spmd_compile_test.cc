@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,15 +17,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "xla/hlo/utils/hlo_query.h"
+#include "absl/status/statusor.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -50,7 +50,7 @@ ENTRY entry {
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   // Verify that compilation succeeded.
-  StatusOr<std::unique_ptr<Executable>> executable =
+  absl::StatusOr<std::unique_ptr<Executable>> executable =
       CompileToExecutable(std::move(hlo_module));
   TF_EXPECT_OK(executable.status());
 }

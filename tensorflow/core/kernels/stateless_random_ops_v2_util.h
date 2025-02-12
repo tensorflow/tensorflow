@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
+absl::Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
   auto dtype = DataTypeToEnum<T>::v();
   if (tensor.dims() != 0) {
     return errors::InvalidArgument("input ", std::to_string(input_idx),
@@ -41,10 +41,10 @@ Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
                                    ", not ", DataTypeString(tensor.dtype()));
   }
   *result = tensor.flat<T>()(0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-inline StatusOr<std::tuple<Tensor, Tensor, Algorithm> >
+inline absl::StatusOr<std::tuple<Tensor, Tensor, Algorithm>>
 GetKeyCounterAlgFromInputs(OpKernelContext* ctx, int key_input_idx,
                            int counter_input_idx, int alg_input_idx) {
   const Tensor& key_t = ctx->input(key_input_idx);

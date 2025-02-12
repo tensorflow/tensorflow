@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/roll_op.h"
 
+#include <algorithm>
+#include <cstdint>
+
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/register_types_traits.h"
-#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -64,7 +69,7 @@ class RollOp : public OpKernel {
 
     // if there are any duplicate axes, shift_mod_sum will have the
     // total modulo sum of shifts for each dimension
-    gtl::InlinedVector<int32, 4> shift_mod_sum(num_dims, 0);
+    absl::InlinedVector<int32, 4> shift_mod_sum(num_dims, 0);
     for (int i = 0; i < num_shifts; i++) {
       int axis = axis_flat(i);
       if (axis < 0) {
@@ -78,13 +83,13 @@ class RollOp : public OpKernel {
       shift_mod_sum[axis] = (sum % ds + ds) % ds;
     }
     // the size of each dimension
-    gtl::InlinedVector<int32, 4> dim_size(num_dims);
+    absl::InlinedVector<int32, 4> dim_size(num_dims);
     // threshold[i] is the index that the roll starts to wrap back to the front
-    gtl::InlinedVector<int32, 4> threshold(num_dims);
+    absl::InlinedVector<int32, 4> threshold(num_dims);
     // dim_range is the number of indices over in the flattened tensor
     // you need to skip in order to make it over from one side of a dimension
     // to the other. Used to make the shifts wrap around after a threshold.
-    gtl::InlinedVector<int64_t, 4> dim_range(num_dims);
+    absl::InlinedVector<int64_t, 4> dim_range(num_dims);
     int64_t dim_size_prod = 1;  // dimension size product
     // inner shift dimension (inner most shifted dimension)
     int64_t isd = 0;
@@ -119,13 +124,13 @@ namespace functor {
 //    back to the front
 template <typename T>
 void DoRoll(const OpKernelContext* context, const int64_t num_elements,
-            const int num_dims, const gtl::ArraySlice<int32> dim_size,
-            const T* input, T* output, const gtl::ArraySlice<int32> threshold,
-            const gtl::ArraySlice<int64_t> dim_range) {
+            const int num_dims, const absl::Span<const int32> dim_size,
+            const T* input, T* output, const absl::Span<const int32> threshold,
+            const absl::Span<const int64_t> dim_range) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range](
                   int64_t start, int64_t end) {
     // array of indices for each dimension
-    gtl::InlinedVector<int, 4> indices(num_dims);
+    absl::InlinedVector<int, 4> indices(num_dims);
     int offset = 0;  // the shift along the flattened tensor for current element
     // initialize indices and offset
     for (int i = 0; i < num_dims; i++) {
@@ -183,17 +188,17 @@ template <typename T>
 // Use memcpy to copy memory in groups when the data type supports memcpy
 void DoRollWithMemcpy(const OpKernelContext* context,
                       const int64_t num_elements, const int num_dims,
-                      const gtl::ArraySlice<int32> dim_size, const T* input,
-                      T* output, const gtl::ArraySlice<int32> threshold,
-                      const gtl::ArraySlice<int64_t> dim_range,
+                      const absl::Span<const int32> dim_size, const T* input,
+                      T* output, const absl::Span<const int32> threshold,
+                      const absl::Span<const int64_t> dim_range,
                       const int64_t isd) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range, isd](
                   int64_t start, int64_t end) {
     // the number of indices over in the flattened tensor you need to skip in
     // order to make it over from one side of the isd to the other
-    const int64_t isd_range = std::max<int>(dim_range[isd], 1);
-    // the distance along the flattend tensor to the next element in the isd
-    const int64_t isd_stride = isd_range / std::max<int>(dim_size[isd], 1);
+    const int64_t isd_range = std::max<int64_t>(dim_range[isd], 1);
+    // the distance along the flattened tensor to the next element in the isd
+    const int64_t isd_stride = isd_range / std::max<int64_t>(dim_size[isd], 1);
 
     // start and end represent the i-th group currently so we will convert
     // them into numbers representing the i-th elements.
@@ -211,7 +216,7 @@ void DoRollWithMemcpy(const OpKernelContext* context,
 
     // array of indices for each dimension
     // indices = [i, j, k, l, m, n]
-    gtl::InlinedVector<int, 4> indices(num_dims);
+    absl::InlinedVector<int, 4> indices(num_dims);
     // the offset needed to make all inner non-shifting dimensions become 0
     int64_t remainder_offset = 0;
     // initialize indices
@@ -295,9 +300,10 @@ void DoRollWithMemcpy(const OpKernelContext* context,
   // Shard
   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
   const int64_t ave_group_size = dim_range[isd] / 2;
-  const int total_work = 2 * num_elements / std::max<int>(dim_range[isd], 1);
+  const int64_t total_work =
+      2 * num_elements / std::max<int64_t>(dim_range[isd], 1);
   // 25000 - experimentally determined with float and bool types
-  const int cost_per_group = 25000 * sizeof(T) * ave_group_size;
+  const int64_t cost_per_group = 25000 * sizeof(T) * ave_group_size;
   Shard(worker_threads->num_threads, worker_threads->workers, total_work,
         cost_per_group, std::move(work));
 }
@@ -305,10 +311,11 @@ void DoRollWithMemcpy(const OpKernelContext* context,
 template <typename T>
 struct Roll<CPUDevice, T> {
   void operator()(const OpKernelContext* context, const int64_t num_elements,
-                  const int num_dims, const gtl::ArraySlice<int32> dim_size,
+                  const int num_dims, const absl::Span<const int32> dim_size,
                   const T* input, T* output,
-                  const gtl::ArraySlice<int32> threshold,
-                  const gtl::ArraySlice<int64_t> dim_range, const int64_t isd) {
+                  const absl::Span<const int32> threshold,
+                  const absl::Span<const int64_t> dim_range,
+                  const int64_t isd) {
     if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
       // V2 copies memory in groups instead of element by element
       DoRollWithMemcpy<T>(context, num_elements, num_dims, dim_size, input,

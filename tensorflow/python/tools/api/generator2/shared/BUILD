@@ -18,6 +18,7 @@ py_strict_test(
     tags = ["no_pip"],
     deps = [
         ":exported_api",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/platform:client_testlib",
     ],
 )

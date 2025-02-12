@@ -108,7 +108,7 @@ class InputRewriter {
   // *new_input_str will be set to the empty string if the input should be
   // removed, which occurs if it is a control dependency for a node in the first
   // function.
-  Status RewriteInput(absl::string_view input_str, string* new_input_str);
+  absl::Status RewriteInput(absl::string_view input_str, string* new_input_str);
 
  private:
   bool IsInFirstFunction(absl::string_view node_name) {
@@ -116,26 +116,27 @@ class InputRewriter {
   }
 
   // Rewrite a control input. input_str is in the form "^node_name"
-  Status RewriteControlInput(absl::string_view input_str,
-                             string* new_input_str);
+  absl::Status RewriteControlInput(absl::string_view input_str,
+                                   string* new_input_str);
 
   // Rewrite an input that is an argument to original_function_. input_str is in
   // the form "fun_in" or "fun_in:number".
-  Status RewriteArgumentInput(absl::string_view input_str,
-                              string* new_input_str);
+  absl::Status RewriteArgumentInput(absl::string_view input_str,
+                                    string* new_input_str);
 
   // Rewrite an input that is the output of a node. input_str is in the form
   // "node:out" or "node:out:number"
-  Status RewriteNodeInput(absl::string_view input_str, string* new_input_str);
+  absl::Status RewriteNodeInput(absl::string_view input_str,
+                                string* new_input_str);
 
   // Rewrites an input, `input_str`, where the node producing `input_str` is in
   // first_function_ and the node consuming `input_str` is in second_function_.
   // This function adds an output argument to first_function_ and an input
   // argument to second_function_. "input_arg_def" is the ArgDef corresponding
   // to input_str, and must have the type() field set.
-  Status RewriteCrossFunctionInput(absl::string_view input_str,
-                                   const OpDef::ArgDef& input_arg_def,
-                                   string* new_input_str);
+  absl::Status RewriteCrossFunctionInput(absl::string_view input_str,
+                                         const OpDef::ArgDef& input_arg_def,
+                                         string* new_input_str);
 
   string unique_name(const std::string& name) {
     if (used_names_.count(name) == 0) {
@@ -173,12 +174,12 @@ class InputRewriter {
   std::unordered_set<string> used_names_;
 };
 
-Status InputRewriter::RewriteInput(absl::string_view input_str,
-                                   string* new_input_str) {
+absl::Status InputRewriter::RewriteInput(absl::string_view input_str,
+                                         string* new_input_str) {
   auto iter = input_map_.find(input_str);
   if (iter != input_map_.end()) {
     *new_input_str = iter->second;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (IsControlInput(input_str)) {
@@ -189,11 +190,11 @@ Status InputRewriter::RewriteInput(absl::string_view input_str,
     TF_RETURN_IF_ERROR(RewriteNodeInput(input_str, new_input_str));
   }
   input_map_.insert({input_str, *new_input_str});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status InputRewriter::RewriteControlInput(absl::string_view input_str,
-                                          string* new_input_str) {
+absl::Status InputRewriter::RewriteControlInput(absl::string_view input_str,
+                                                string* new_input_str) {
   DCHECK_EQ(input_str.at(0), '^');
   absl::string_view node_name = input_str.substr(1);
   if (IsInFirstFunction(node_name)) {
@@ -201,11 +202,11 @@ Status InputRewriter::RewriteControlInput(absl::string_view input_str,
   } else {
     *new_input_str = string{input_str};
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status InputRewriter::RewriteArgumentInput(absl::string_view input_str,
-                                           string* new_input_str) {
+absl::Status InputRewriter::RewriteArgumentInput(absl::string_view input_str,
+                                                 string* new_input_str) {
   std::vector<string> components = absl::StrSplit(input_str, ':');
   if (components.size() != 1 && components.size() != 2) {
     return errors::Internal("Found node with invalid argument input: ",
@@ -233,7 +234,7 @@ Status InputRewriter::RewriteArgumentInput(absl::string_view input_str,
       original_function_.signature().input_arg_size() - num_captured_inputs_) {
     // Argument is a captured input. No need to modify argument string.
     *new_input_str = string{input_str};
-    return OkStatus();
+    return absl::OkStatus();
   }
   const OpDef::ArgDef* found_arg_def =
       &original_function_.signature().input_arg(i);
@@ -254,8 +255,8 @@ Status InputRewriter::RewriteArgumentInput(absl::string_view input_str,
   return RewriteCrossFunctionInput(input_str, *found_arg_def, new_input_str);
 }
 
-Status InputRewriter::RewriteNodeInput(absl::string_view input_str,
-                                       string* new_input_str) {
+absl::Status InputRewriter::RewriteNodeInput(absl::string_view input_str,
+                                             string* new_input_str) {
   std::vector<string> components = absl::StrSplit(input_str, ':');
   if (components.size() != 2 && components.size() != 3) {
     return errors::Internal("Found node with invalid node input: ", input_str);
@@ -266,7 +267,7 @@ Status InputRewriter::RewriteNodeInput(absl::string_view input_str,
       components.size() == 3 ? components[2] : "0";
   if (!IsInFirstFunction(node_name)) {
     *new_input_str = string{input_str};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto index_iter = name_to_node_.find(node_name);
@@ -321,7 +322,7 @@ Status InputRewriter::RewriteNodeInput(absl::string_view input_str,
   return RewriteCrossFunctionInput(input_str, found_arg_def, new_input_str);
 }
 
-Status InputRewriter::RewriteCrossFunctionInput(
+absl::Status InputRewriter::RewriteCrossFunctionInput(
     absl::string_view input_str, const OpDef::ArgDef& input_arg_def,
     string* new_input_str) {
   DCHECK(input_arg_def.type() != DT_INVALID);
@@ -352,7 +353,7 @@ Status InputRewriter::RewriteCrossFunctionInput(
   added_input_arg->set_description(absl::StrCat("Input ", input_index));
 
   *new_input_str = added_input_arg->name();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void InitializeSignatures(
@@ -400,7 +401,7 @@ void InitializeSignatures(
 
 }  // namespace
 
-StatusOr<SplitResults> SplitFunction(
+absl::StatusOr<SplitResults> SplitFunction(
     const FunctionDef& function,
     const absl::flat_hash_set<absl::string_view>& nodes_in_first_function,
     int64_t num_captured_inputs, const FunctionLibraryDefinition& library) {

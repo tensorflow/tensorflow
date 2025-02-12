@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "BatchMatrixDiag"
   input_arg {
     name: "diagonal"

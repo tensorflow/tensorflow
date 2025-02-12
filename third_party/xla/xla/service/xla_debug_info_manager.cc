@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,13 +20,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
 
 namespace xla {
 
 void XlaDebugInfoManager::RegisterModule(
     std::shared_ptr<const HloModule> hlo_module,
-    std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
+    BufferAssignmentProto buffer_assignment) {
   CHECK(hlo_module != nullptr);
   absl::MutexLock lock(&mutex_);
   auto result = modules_.try_emplace(hlo_module->unique_id());
@@ -75,7 +79,7 @@ void XlaDebugInfoManager::StopTracing(
         modules_to_serialize.emplace_back(std::move(m));
         modules_.erase(cur_it);
       } else {
-        modules_to_serialize.emplace_back(m);
+        modules_to_serialize.push_back(m);
       }
     }
   }
@@ -83,13 +87,8 @@ void XlaDebugInfoManager::StopTracing(
   if (module_debug_info) {
     module_debug_info->clear();
     for (const auto& m : modules_to_serialize) {
-      // In real world, hlo_module and buffer_assignment will always be
-      // non-nullptr. Due to the inconvenience of creation of buffer_assignment
-      // object in test, we set it to nullptr and guard this for it.
       auto hlo_proto = std::make_unique<HloProto>(MakeHloProto(*m.hlo_module));
-      if (m.buffer_assignment != nullptr) {
-        *hlo_proto->mutable_buffer_assignment() = *m.buffer_assignment;
-      }
+      *hlo_proto->mutable_buffer_assignment() = m.buffer_assignment;
       module_debug_info->emplace_back(std::move(hlo_proto));
     }
   }

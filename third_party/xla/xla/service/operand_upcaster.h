@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,27 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_OPERAND_UPCASTER_H_
 #define XLA_SERVICE_OPERAND_UPCASTER_H_
 
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-// Inserts Convert to operands of instructions that allows result accumulation
-// as wider integral types.
-class OperandUpcaster : public OpExpanderPass {
- public:
-  explicit OperandUpcaster(HloPredicate extra_filter = nullptr)
-      : OpExpanderPass(std::move(extra_filter)) {}
-
-  absl::string_view name() const override { return "operand_upcaster"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/operand_upcaster.h"
 
 #endif  // XLA_SERVICE_OPERAND_UPCASTER_H_

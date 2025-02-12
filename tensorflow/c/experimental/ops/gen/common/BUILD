@@ -25,6 +25,8 @@ cc_library(
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:str_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
@@ -41,5 +43,6 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:types",
     ],
 )

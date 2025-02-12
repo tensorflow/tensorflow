@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,15 +19,14 @@ limitations under the License.
 #include <vector>
 
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/float8.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

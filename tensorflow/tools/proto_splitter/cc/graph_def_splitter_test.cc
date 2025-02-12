@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tools/proto_splitter/cc/graph_def_splitter.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <variant>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/cord.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -31,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
 #include "tensorflow/tools/proto_splitter/cc/test_util.h"
+#include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
@@ -40,22 +42,7 @@ namespace tensorflow {
 namespace tools::proto_splitter {
 namespace {
 
-// Ensures that all Messages are less than the max size. std::string chunks are
-// not limited by the max size, so they are ignored in this check.
-#define EXPECT_CHUNK_SIZES(chunks, max_size)                                \
-  do {                                                                      \
-    for (auto chunk : *chunks) {                                            \
-      if (std::holds_alternative<std::shared_ptr<tsl::protobuf::Message>>(  \
-              chunk)) {                                                     \
-        EXPECT_LE(std::get<std::shared_ptr<tsl::protobuf::Message>>(chunk)  \
-                      ->ByteSizeLong(),                                     \
-                  max_size);                                                \
-      } else if (std::holds_alternative<tsl::protobuf::Message*>(chunk)) {  \
-        EXPECT_LE(std::get<tsl::protobuf::Message*>(chunk)->ByteSizeLong(), \
-                  max_size);                                                \
-      }                                                                     \
-    }                                                                       \
-  } while (0)
+using ::tensorflow::proto_splitter::ChunkedMessage;
 
 TEST(GraphDefSplitterTest, TestLargeConstant) {
   GraphDef proto;
@@ -67,15 +54,29 @@ TEST(GraphDefSplitterTest, TestLargeConstant) {
 
   TF_EXPECT_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
                                            graph_def_path, &proto));
-  EXPECT_GE(proto.ByteSize(), GetMaxSize());
-  auto large_constant_1 =
+  EXPECT_GE(proto.ByteSizeLong(), GetMaxSize());
+  std::string large_constant_1, large_constant_2;
+  const std::variant<std::string, absl::Cord>& tensor_constant_1 =
       proto.node(2).attr().at("value").tensor().tensor_content();
-  auto large_constant_2 =
+  const std::variant<std::string, absl::Cord>& tensor_constant_2 =
       proto.node(4).attr().at("value").tensor().tensor_content();
+  if (std::holds_alternative<std::string>(tensor_constant_1)) {
+    large_constant_1 = std::get<std::string>(tensor_constant_1);
+  } else {
+    absl::CopyCordToString(std::get<absl::Cord>(tensor_constant_1),
+                           &large_constant_1);
+  }
+  if (std::holds_alternative<std::string>(tensor_constant_2)) {
+    large_constant_2 = std::get<std::string>(tensor_constant_2);
+  } else {
+    absl::CopyCordToString(std::get<absl::Cord>(tensor_constant_2),
+                           &large_constant_2);
+  }
 
   GraphDefSplitter splitter(&proto);
   TF_ASSERT_OK_AND_ASSIGN(auto x, splitter.Split());
-  auto chunked_message = x.second;
+  ChunkedMessage* chunked_message = x.chunked_message;
+  ASSERT_NE(chunked_message, nullptr);
   EXPECT_THAT(*chunked_message,
               EqualsProto(R"pb(chunk_index: 0
                                chunked_fields {
@@ -97,13 +98,14 @@ TEST(GraphDefSplitterTest, TestLargeConstant) {
                                  message { chunk_index: 2 }
                                })pb"));
 
-  auto chunks = x.first;
+  std::vector<MessageBytes>* chunks = x.chunks;
+  ASSERT_NE(chunks, nullptr);
   EXPECT_CHUNK_SIZES(chunks, max_size);
 
-  EXPECT_TRUE(std::holds_alternative<std::string>(chunks->at(1)));
-  EXPECT_EQ(large_constant_1, std::get<std::string>(chunks->at(1)));
-  EXPECT_TRUE(std::holds_alternative<std::string>(chunks->at(2)));
-  EXPECT_EQ(large_constant_2, std::get<std::string>(chunks->at(2)));
+  EXPECT_THAT((*chunks)[1],
+              ::testing::VariantWith<std::string>(large_constant_1));
+  EXPECT_THAT((*chunks)[2],
+              ::testing::VariantWith<std::string>(large_constant_2));
 }
 
 TEST(GraphDefSplitterTest, TestLargeNodes) {
@@ -127,7 +129,8 @@ TEST(GraphDefSplitterTest, TestLargeNodes) {
   GraphDefSplitter splitter(&proto);
 
   TF_ASSERT_OK_AND_ASSIGN(auto x, splitter.Split());
-  auto chunked_message = x.second;
+  ChunkedMessage* chunked_message = x.chunked_message;
+  ASSERT_NE(chunked_message, nullptr);
   EXPECT_THAT(*chunked_message, EqualsProto(R"pb(chunk_index: 0
                                                  chunked_fields {
                                                    field_tag { field: 1 }
@@ -149,29 +152,30 @@ TEST(GraphDefSplitterTest, TestLargeNodes) {
                                                    field_tag { index: 5 }
                                                    message { chunk_index: 4 }
                                                  })pb"));
-  auto chunks = x.first;
+  std::vector<MessageBytes>* chunks = x.chunks;
+  ASSERT_NE(chunks, nullptr);
   EXPECT_CHUNK_SIZES(chunks, max_size);
 
   EXPECT_TRUE(std::holds_alternative<std::shared_ptr<tsl::protobuf::Message>>(
-      chunks->at(1)));
+      (*chunks)[1]));
   EXPECT_TRUE(std::holds_alternative<std::shared_ptr<tsl::protobuf::Message>>(
-      chunks->at(2)));
+      (*chunks)[2]));
   EXPECT_TRUE(std::holds_alternative<std::shared_ptr<tsl::protobuf::Message>>(
-      chunks->at(3)));
+      (*chunks)[3]));
   EXPECT_TRUE(std::holds_alternative<std::shared_ptr<tsl::protobuf::Message>>(
-      chunks->at(4)));
+      (*chunks)[4]));
 
   EXPECT_THAT(
-      *std::get<std::shared_ptr<tsl::protobuf::Message>>(chunks->at(1)).get(),
+      *std::get<std::shared_ptr<tsl::protobuf::Message>>((*chunks)[1]).get(),
       EqualsProto(node_1));
   EXPECT_THAT(
-      *std::get<std::shared_ptr<tsl::protobuf::Message>>(chunks->at(2)).get(),
+      *std::get<std::shared_ptr<tsl::protobuf::Message>>((*chunks)[2]).get(),
       EqualsProto(node_2));
   EXPECT_THAT(
-      *std::get<std::shared_ptr<tsl::protobuf::Message>>(chunks->at(3)).get(),
+      *std::get<std::shared_ptr<tsl::protobuf::Message>>((*chunks)[3]).get(),
       EqualsProto(node_3));
   EXPECT_THAT(
-      *std::get<std::shared_ptr<tsl::protobuf::Message>>(chunks->at(4)).get(),
+      *std::get<std::shared_ptr<tsl::protobuf::Message>>((*chunks)[4]).get(),
       EqualsProto(node_5));
 }
 TEST(GraphDefSplitterTest, TestLotsNodes) {
@@ -179,7 +183,12 @@ TEST(GraphDefSplitterTest, TestLotsNodes) {
   const std::string graph_def_path =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "tools/proto_splitter/testdata", "split-lots-nodes.pb");
-  int64_t max_size = 500;
+
+  // split-lots-nodes.pb has 15 nodes that are 95 or 96 bytes each. The max size
+  // is set to "exactly" the size of 5 nodes, but with the extra encoding bytes,
+  // only 4 nodes should fit in each chunk. Thus, there should be exactly 4
+  // chunks created for all 15 nodes.
+  int64_t max_size = 96 * 5;
   DebugSetMaxSize(max_size);
 
   TF_EXPECT_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
@@ -191,18 +200,22 @@ TEST(GraphDefSplitterTest, TestLotsNodes) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto x, splitter.Split());
 
-  auto chunked_message = x.second;
+  ChunkedMessage* chunked_message = x.chunked_message;
+  ASSERT_NE(chunked_message, nullptr);
   EXPECT_THAT(
       *chunked_message,
       EqualsProto(R"pb(chunk_index: 0
                        chunked_fields { message { chunk_index: 1 } }
-                       chunked_fields { message { chunk_index: 2 } })pb"));
+                       chunked_fields { message { chunk_index: 2 } }
+                       chunked_fields { message { chunk_index: 3 } }
+                       chunked_fields { message { chunk_index: 4 } })pb"));
 
-  auto chunks = x.first;
+  std::vector<MessageBytes>* chunks = x.chunks;
+  ASSERT_NE(chunks, nullptr);
   EXPECT_CHUNK_SIZES(chunks, max_size);
 
   int actual_node_size = 0;
-  for (auto chunk : *chunks) {
+  for (MessageBytes& chunk : *chunks) {
     GraphDef* message = nullptr;
     if (std::holds_alternative<std::shared_ptr<tsl::protobuf::Message>>(
             chunk)) {
@@ -234,7 +247,8 @@ TEST(GraphDefSplitterTest, TestFunctionLotsOfNodes) {
   GraphDefSplitter splitter(&proto);
 
   TF_ASSERT_OK_AND_ASSIGN(auto x, splitter.Split());
-  auto chunks = x.first;
+  std::vector<MessageBytes>* chunks = x.chunks;
+  ASSERT_NE(chunks, nullptr);
   EXPECT_CHUNK_SIZES(chunks, max_size);
 }
 
@@ -253,7 +267,8 @@ TEST(GraphDefSplitterTest, TestFunctionLargeNodes) {
   GraphDefSplitter splitter(&proto);
 
   TF_ASSERT_OK_AND_ASSIGN(auto x, splitter.Split());
-  auto chunks = x.first;
+  std::vector<MessageBytes>* chunks = x.chunks;
+  ASSERT_NE(chunks, nullptr);
   EXPECT_CHUNK_SIZES(chunks, max_size);
 }
 
@@ -272,7 +287,8 @@ TEST(GraphDefSplitterTest, TestGraphAndFunction) {
   GraphDefSplitter splitter(&proto);
 
   TF_ASSERT_OK_AND_ASSIGN(auto x, splitter.Split());
-  auto chunks = x.first;
+  std::vector<MessageBytes>* chunks = x.chunks;
+  ASSERT_NE(chunks, nullptr);
   EXPECT_CHUNK_SIZES(chunks, max_size);
 
   TF_ASSERT_OK(splitter.Write("/tmp/hoi"));

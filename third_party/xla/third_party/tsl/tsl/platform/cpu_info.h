@@ -20,7 +20,8 @@ limitations under the License.
 
 // TODO(ahentz): This is not strictly required here but, for historical
 // reasons, many people depend on cpu_info.h in order to use kLittleEndian.
-#include "tsl/platform/byte_order.h"
+#include "xla/tsl/platform/byte_order.h"
+#include "tsl/platform/platform.h"
 
 #if defined(_MSC_VER)
 // included so __cpuidex function is available for GETCPUID on Windows
@@ -132,6 +133,11 @@ enum CPUFeature {
   AMX_TILE = 41,  // Tile configuration and load/store
   AMX_INT8 = 42,  // Int8 tile matrix multiplication
   AMX_BF16 = 43,  // Bfloat16 tile matrix multiplication
+
+  AVX512_FP16 = 44,     // Float16 neural network
+  AMX_FP16 = 45,        // Float16 tile matrix multiplication
+  AVX_NE_CONVERT = 46,  // Instructions for faster bfloat16, float16 convert.
+  AVX_VNNI_INT8 = 47,   // VNNI instructions for combinations of u8, s8 dtypes.
 };
 
 enum Aarch64CPU {
@@ -144,6 +150,24 @@ bool TestAarch64CPU(Aarch64CPU cpu);
 // Checks whether the current processor supports one of the features above.
 // Checks CPU registers to return hardware capabilities.
 bool TestCPUFeature(CPUFeature feature);
+
+// Checks whether the current processor is x86.
+constexpr bool IsX86CPU() {
+#ifdef PLATFORM_IS_X86
+  return true;
+#else
+  return false;
+#endif
+}
+
+// Checks whether the current processor is aarch64.
+constexpr bool IsAarch64CPU() {
+#if defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
+  return true;
+#else
+  return false;
+#endif
+}
 
 // Returns CPU Vendor string (i.e. 'GenuineIntel', 'AuthenticAMD', etc.)
 std::string CPUVendorIDString();

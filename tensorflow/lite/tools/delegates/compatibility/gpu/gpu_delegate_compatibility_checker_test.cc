@@ -22,6 +22,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
 
 namespace tflite {
 namespace tools {

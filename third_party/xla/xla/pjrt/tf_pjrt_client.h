@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_PJRT_TF_PJRT_CLIENT_H_
 #define XLA_PJRT_TF_PJRT_CLIENT_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -23,9 +25,29 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
+#include "xla/util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -42,7 +64,7 @@ class TfPjRtBuffer : public PjRtBuffer {
   const Shape& on_device_shape() const override {
     return wrapped_->on_device_shape();
   }
-  StatusOr<Shape> logical_on_device_shape() override {
+  absl::StatusOr<Shape> logical_on_device_shape() override {
     return wrapped_->logical_on_device_shape();
   }
   PjRtMemorySpace* memory_space() const override {
@@ -50,50 +72,48 @@ class TfPjRtBuffer : public PjRtBuffer {
   }
   PjRtDevice* device() const override { return wrapped_->device(); }
   PjRtClient* client() const override;
-  StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
+  absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override {
     return wrapped_->AcquireExternalReference();
   }
-  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override {
+  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override {
     return wrapped_->ToLiteral(literal);
   }
-  StatusOr<size_t> GetOnDeviceSizeInBytes() const override {
+  PjRtFuture<> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      override {
+    return wrapped_->LazyToLiteral(std::move(generator));
+  }
+  absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override {
     return wrapped_->GetOnDeviceSizeInBytes();
   }
-  PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
-                                   int64_t transfer_size) override {
+  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
+                             int64_t transfer_size) override {
     return wrapped_->CopyRawToHost(dst, offset, transfer_size);
   }
   void Delete() override { wrapped_->Delete(); }
-  StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
-      bool wait_for_operations_to_complete) override {
+  absl::StatusOr<std::unique_ptr<ExternalReference>>
+  ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override {
     return wrapped_->ReleaseDeviceMemoryOwnership(
         wait_for_operations_to_complete);
   }
   bool IsDeleted() override { return wrapped_->IsDeleted(); }
-  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) override;
-  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
-      PjRtMemorySpace* dst_memory_space) override {
-    return Unimplemented("CopyToMemorySpace not implemented");
-  }
-  void CopyToRemoteDevice(
-      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
-      RemoteSendCallback on_done) override {
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space) override;
+  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+                          RemoteSendCallback on_done) override {
     wrapped_->CopyToRemoteDevice(std::move(serialized_descriptor),
                                  std::move(on_done));
   }
   void CopyToRemoteDeviceScattered(
-      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      PjRtFuture<std::vector<std::string>> serialized_descriptors,
       std::vector<RemoteSendCallback> callbacks,
       const ScatterDetails& scatter_details) override {
     return wrapped_->CopyToRemoteDeviceScattered(
         std::move(serialized_descriptors), std::move(callbacks),
         scatter_details);
   }
-  PjRtFuture<Status> GetReadyFuture() override {
-    return wrapped_->GetReadyFuture();
-  }
+  PjRtFuture<> GetReadyFuture() override { return wrapped_->GetReadyFuture(); }
   bool IsOnCpu() const override { return wrapped_->IsOnCpu(); }
 
   // Not thread-safe. The caller should promises to have some external
@@ -133,32 +153,29 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
   absl::Span<PjRtDevice* const> addressable_devices() const override {
     return wrapped_->addressable_devices();
   }
-  StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
+  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
     return wrapped_->GetHloModules();
   }
-  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
-      const override {
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const override {
     return wrapped_->GetOutputMemoryKinds();
   }
   using PjRtLoadedExecutable::Execute;
-  StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
-      override;
+      std::optional<std::vector<PjRtFuture<>>>& returned_futures) override;
   using PjRtLoadedExecutable::ExecuteSharded;
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<Status>>& returned_future,
-      bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
   using PjRtLoadedExecutable::ExecutePortable;
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<Status>>& returned_future,
-      bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
 
   void Delete() override { return wrapped_->Delete(); }
   bool IsDeleted() override { return wrapped_->IsDeleted(); }
@@ -166,12 +183,16 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
     return wrapped_->IsReturnedFutureSupported();
   }
 
-  StatusOr<std::string> SerializeExecutable() const override {
+  absl::StatusOr<std::string> SerializeExecutable() const override {
     return wrapped_->SerializeExecutable();
   }
 
-  StatusOr<struct CompileOptions> GetCompileOptions() const override {
+  absl::StatusOr<struct CompileOptions> GetCompileOptions() const override {
     return wrapped_->GetCompileOptions();
+  }
+
+  absl::StatusOr<std::string> FingerprintExecutable() const override {
+    return wrapped_->FingerprintExecutable();
   }
 
  private:
@@ -198,16 +219,17 @@ class TfPjRtClient : public PjRtClient {
   absl::Span<PjRtDevice* const> addressable_devices() const override {
     return wrapped_->addressable_devices();
   }
-  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
-    return wrapped_->LookupDevice(device_id);
+  absl::StatusOr<PjRtDevice*> LookupDevice(
+      PjRtGlobalDeviceId global_device_id) const override {
+    return wrapped_->LookupDevice(global_device_id);
   }
-  StatusOr<PjRtDevice*> LookupAddressableDevice(
-      int local_hardware_id) const override {
+  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
+      PjRtLocalDeviceId local_device_id) const override {
     if (wrapped_ == nullptr) {
       return tsl::errors::Internal(
-          "Wrapped PJRT client in TfPjRtClient is already destoryed.");
+          "Wrapped PJRT client in TfPjRtClient is already destroyed.");
     }
-    return wrapped_->LookupAddressableDevice(local_hardware_id);
+    return wrapped_->LookupAddressableDevice(local_device_id);
   }
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override {
     return wrapped_->memory_spaces();
@@ -221,116 +243,101 @@ class TfPjRtClient : public PjRtClient {
   absl::string_view platform_version() const override {
     return wrapped_->platform_version();
   }
-  PjRtRuntimeType runtime_type() const override {
-    return wrapped_->runtime_type();
-  }
-  StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     return wrapped_->GetDefaultDeviceAssignment(num_replicas, num_partitions);
   }
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+  absl::StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dims) override {
+    return wrapped_->GetDefaultLayout(element_type, dims);
+  }
+  absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override {
     return wrapped_->GetHloCostAnalysis();
   }
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override {
     return WrapExecutable(wrapped_->Compile(computation, options));
   }
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override {
     return WrapExecutable(wrapped_->Compile(std::move(module), options));
   }
-  StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtLoadedExecutable& executable) const override {
-    return wrapped_->ExecutableFingerprint(UnwrapExecutable(executable));
-  }
 
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized,
       std::optional<CompileOptions> options) override {
     return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
   }
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtDevice* device) override {
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "CreateUninitializedBuffer not supported for TfPjRtClient.");
   }
-  StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
+  absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtDevice* device) override {
     return Unimplemented(
         "AsyncHostToDeviceTransferManager not supported for Tf.");
   }
-  StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
+  absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "AsyncHostToDeviceTransferManager not supported for Tf.");
   }
-  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer,
-      PjRtDevice* device) override {
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      PjRtMemorySpace* memory_space, const Layout* device_layout) override {
     return WrapBuffer(wrapped_->BufferFromHostBuffer(
         data, type, dims, byte_strides, host_buffer_semantics,
-        on_done_with_host_buffer, device));
+        std::move(on_done_with_host_buffer), memory_space, device_layout));
   }
-  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override {
-    return WrapBuffer(wrapped_->BufferFromHostBuffer(
-        data, type, dims, byte_strides, host_buffer_semantics,
-        on_done_with_host_buffer, device, device_layout));
+    return WrapBuffer(
+        wrapped_->BufferFromHostLiteral(literal, memory_space, device_layout));
   }
-  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) override {
-    return WrapBuffer(wrapped_->BufferFromHostLiteral(literal, device));
-  }
-  StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
-      void* device_ptr, const Shape& shape, PjRtDevice* device,
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+      void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override {
     return WrapBuffer(wrapped_->CreateViewOfDeviceBuffer(
-        device_ptr, shape, device, on_delete_callback, stream));
+        device_ptr, shape, memory_space, on_delete_callback, stream));
   }
-  StatusOr<std::uintptr_t> UnsafeBufferPointer(PjRtBuffer* buffer) override {
+  absl::StatusOr<std::uintptr_t> UnsafeBufferPointer(
+      PjRtBuffer* buffer) override {
     return wrapped_->UnsafeBufferPointer(UnwrapBuffer(buffer));
   }
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) override {
     return wrapped_->MakeCrossHostReceiveBuffers(shapes, device,
                                                  std::move(notifier));
   }
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
       PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
     return wrapped_->MakeCrossHostReceiveBuffersForGather(
         shapes, std::move(gather_details), device, std::move(notifier));
   }
-  StatusOr<ChannelHandle> CreateChannelHandle() override {
-    return wrapped_->CreateChannelHandle();
+  absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
+      const override {
+    return wrapped_->GetTopologyDescription();
   }
-  StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return wrapped_->CreateDeviceToHostChannelHandle();
-  }
-  StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return wrapped_->CreateHostToDeviceChannelHandle();
-  }
-  Status Defragment() override { return wrapped_->Defragment(); }
+  absl::Status Defragment() override { return wrapped_->Defragment(); }
 
   PjRtClient* wrapped() const { return wrapped_.get(); }
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> WrapBuffer(
-      StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap);
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> WrapBuffer(
+      absl::StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap);
 
   // Tracks a non-owning pointer of TfPjRtBuffer in TfPjRtClient.
   void TrackBuffer(TfPjRtBuffer* buffer);
@@ -355,12 +362,20 @@ class TfPjRtClient : public PjRtClient {
                 ->wrapped();
   }
 
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> WrapExecutable(
-      StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap);
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> WrapExecutable(
+      absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap);
 
   std::unique_ptr<PjRtClient> wrapped_;
-  absl::Mutex mu_;
-  absl::flat_hash_set<TfPjRtBuffer*> alive_buffers_ ABSL_GUARDED_BY(&mu_);
+
+  absl::flat_hash_map<int, int> mutex_id_from_device_id_;
+
+  // Depending on `sizeof(absl::flat_hash_set<TfPjRtBuffer*>)`, might need to
+  // add some padding to the struct.
+  struct DeviceBuffers {
+    absl::Mutex mu;
+    absl::flat_hash_set<TfPjRtBuffer*> alive_buffers ABSL_GUARDED_BY(mu);
+  };
+  std::vector<DeviceBuffers> alive_buffers_;
 };
 
 }  // namespace xla

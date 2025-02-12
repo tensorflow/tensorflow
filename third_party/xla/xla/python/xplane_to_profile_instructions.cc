@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,17 +29,17 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/status.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/types.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "xla/tsl/profiler/utils/file_system_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/types.h"
-#include "tsl/profiler/convert/xla_op_utils.h"
+#include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/file_system_utils.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tsl/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_utils.h"
-#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace xla {
 namespace {
@@ -117,7 +117,7 @@ void GetXPlaneLatencyInfo(
       if (fingerprint.has_value()) {
         key = absl::StrCat(fingerprint.value(), kCostNameSep, hlo_name.value());
       }
-      (*hlo_latency_info)[key].durations.emplace_back(latency);
+      (*hlo_latency_info)[key].durations.push_back(latency);
     });
   });
 }
@@ -177,7 +177,7 @@ void GetXPlaneHloModuleInfo(
 
 }  // namespace
 
-Status ConvertXplaneToProfiledInstructionsProto(
+absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     const std::string& logdir, tensorflow::profiler::ProfiledInstructionsProto*
                                    profiled_instructions_proto) {
   // Find the xplane files for each host under logdir.
@@ -194,11 +194,18 @@ Status ConvertXplaneToProfiledInstructionsProto(
       tensorflow::profiler::XSpace xspace;
       TF_RETURN_IF_ERROR(
           ReadBinaryProto(tsl::Env::Default(), xspace_path, &xspace));
-      xspaces.emplace_back(xspace);
+      xspaces.push_back(xspace);
     }
   }
 
-  // Gets the duration information for each hlo.
+  return ConvertXplaneToProfiledInstructionsProto(xspaces,
+                                                  profiled_instructions_proto);
+}
+
+absl::Status ConvertXplaneToProfiledInstructionsProto(
+    std::vector<tensorflow::profiler::XSpace> xspaces,
+    tensorflow::profiler::ProfiledInstructionsProto*
+        profiled_instructions_proto) {
   absl::flat_hash_map<std::string, HloLatencyInfo> hlo_latency_info;
   absl::flat_hash_map<std::string, std::string> hlo_module_info;
   // Iterate through each host.
@@ -237,7 +244,7 @@ Status ConvertXplaneToProfiledInstructionsProto(
     cost->set_name(iter.first);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

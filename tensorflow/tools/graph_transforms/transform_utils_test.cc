@@ -447,7 +447,7 @@ class TransformUtilsTest : public ::testing::Test {
           *(identity_node.mutable_input()->Add()) = original_copy.name();
           new_nodes->push_back(identity_node);
 
-          return OkStatus();
+          return absl::OkStatus();
         },
         {}, &replaced_graph_def));
 
@@ -615,7 +615,7 @@ class TransformUtilsTest : public ::testing::Test {
     TF_ASSERT_OK(root.ToGraphDef(&graph_def));
 
     GraphDef renamed_graph_def;
-    Status rename_status =
+    absl::Status rename_status =
         RenameNodeInputs(graph_def, {{"a", "d"}, {"d", "a"}},
                          std::unordered_set<string>(), &renamed_graph_def);
     EXPECT_FALSE(rename_status.ok());

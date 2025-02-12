@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <tuple>
-#include <vector>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -510,10 +512,10 @@ LogicalResult HandlePartitionedCallOp(
   } else {
     info.signature_change = true;
     for (auto& entry : callee_map) {
-      auto buffer_arg = entry.getFirst().dyn_cast<BlockArgument>();
+      auto buffer_arg = mlir::dyn_cast<BlockArgument>(entry.getFirst());
       if (!buffer_arg) continue;
       info.buffer_arg_to_size_arg[buffer_arg.getArgNumber()] =
-          entry.getSecond().size.cast<BlockArgument>().getArgNumber();
+          mlir::cast<BlockArgument>(entry.getSecond().size).getArgNumber();
     }
     if (lowered_callee != callee) {
       // Add the clone with a new name.
@@ -549,7 +551,8 @@ LogicalResult GetConstShapeValue(Value shape_value,
 // return error.
 LogicalResult GetElementShapeFromResultType(
     Type type, llvm::SmallVector<int64_t, 8>* shape) {
-  auto variant_type = getElementTypeOrSelf(type).dyn_cast<TF::VariantType>();
+  auto variant_type =
+      mlir::dyn_cast<TF::VariantType>(getElementTypeOrSelf(type));
   if (!variant_type || variant_type.getSubtypes().size() != 1) return failure();
   TensorType tensor_type = variant_type.getSubtypes().front();
   if (!tensor_type.hasStaticShape()) return failure();
@@ -619,7 +622,7 @@ LogicalResult HandleTensorListFromTensorOp(
   Value buffer = builder.create<TF::IdentityOp>(
       list.getLoc(), ArrayRef<Type>{list.getTensor().getType()},
       ArrayRef<Value>{list.getTensor()});
-  auto type = buffer.getType().cast<TensorType>();
+  auto type = mlir::cast<TensorType>(buffer.getType());
   if (!type.hasStaticShape()) {
     return list.emitOpError("TensorListFromTensorOp input has unknown shape.");
   }
@@ -733,8 +736,8 @@ LogicalResult HandleTensorListLengthOp(
   OpBuilder builder(length);
   if (it->getSecond().fixed) {
     auto dim = cutil::CreateScalarConst(
-        length.getInputHandle().getType().cast<RankedTensorType>().getDimSize(
-            0),
+        mlir::cast<RankedTensorType>(length.getInputHandle().getType())
+            .getDimSize(0),
         builder, length.getLoc());
     length.getLength().replaceAllUsesWith(dim);
   } else {
@@ -760,7 +763,7 @@ LogicalResult HandleTensorListElementShapeOp(
   }
   auto buffer = elem_shape.getInputHandle();
   auto result = cutil::GetR1Const(
-      buffer.getType().cast<RankedTensorType>().getShape().drop_front(),
+      mlir::cast<RankedTensorType>(buffer.getType()).getShape().drop_front(),
       OpBuilder(elem_shape), elem_shape.getLoc(),
       elem_shape.getShapeType().getIntOrFloatBitWidth());
   elem_shape.getElementShape().replaceAllUsesWith(result);
@@ -792,7 +795,8 @@ LogicalResult HandleTensorListScatterIntoExistingListOp(
   }
   auto buffer = scatter.getInputHandle();
   OpBuilder builder(scatter);
-  auto indices_type = scatter.getIndices().getType().cast<RankedTensorType>();
+  auto indices_type =
+      mlir::cast<RankedTensorType>(scatter.getIndices().getType());
   if (!indices_type) return scatter.emitOpError("unranked indices shape");
   auto shape_type = RankedTensorType::get({2}, builder.getIntegerType(32));
   auto shape = builder.create<TF::ConstOp>(
@@ -874,7 +878,8 @@ LogicalResult DecomposeTensorListOpsInternal(
     } else if (auto addn = llvm::dyn_cast<TF::AddNOp>(&op)) {
       auto it = buffer_to_size->find(addn.getOperand(0));
       if (it != buffer_to_size->end()) {
-        addn.getSum().setType(addn.getOperand(0).getType().cast<TensorType>());
+        addn.getSum().setType(
+            mlir::cast<TensorType>(addn.getOperand(0).getType()));
         auto size = it->getSecond();
         (*buffer_to_size)[addn.getSum()] = size;
       }

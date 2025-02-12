@@ -28,11 +28,11 @@ namespace functor {
 
 template <typename Device, typename T, typename Tidx>
 struct TopKFunctor {
-  static Status Compute(OpKernelContext* context, bool sorted, int k,
-                        const typename TTypes<T, 2>::ConstTensor& input,
-                        const int64_t num_rows, const int64_t num_cols,
-                        typename TTypes<T, 2>::Tensor values,
-                        typename TTypes<Tidx, 2>::Tensor indices);
+  static absl::Status Compute(OpKernelContext* context, bool sorted, int k,
+                              const typename TTypes<T, 2>::ConstTensor& input,
+                              const int64_t num_rows, const int64_t num_cols,
+                              typename TTypes<T, 2>::Tensor values,
+                              typename TTypes<Tidx, 2>::Tensor indices);
 };
 
 }  // end namespace functor

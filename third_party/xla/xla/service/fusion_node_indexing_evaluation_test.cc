@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"

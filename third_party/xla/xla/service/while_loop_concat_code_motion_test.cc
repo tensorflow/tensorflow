@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {

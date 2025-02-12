@@ -92,7 +92,13 @@ class ResizeBicubicOpTest : public OpsTestBase {
                                    std::array<float, 4>* weights,
                                    std::array<int64_t, 4>* indices) {
     const int64_t in_loc = scale * out_loc;
-    const float delta = scale * out_loc - in_loc;
+    // Ensure that the following calculation is kept in a float to match the
+    // rounding done in the optimised case. Merging it with the following line
+    // keeps an intermediate value at higher precision and that leads to a
+    // divergence in the result. So keep the following two lines separate to
+    // ensure that the calculation is rounded as expected.
+    const float in_loc_float = scale * out_loc;
+    const float delta = in_loc_float - in_loc;
     const int64_t offset = lrintf(delta * kTableSize);
     const float* coeffs_tab = GetCoeffsTable();
     *weights = {{coeffs_tab[offset * 2 + 1], coeffs_tab[offset * 2],
@@ -221,7 +227,7 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
 
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
   EXPECT_TRUE(
       absl::StrContains(s.message(), "output dimensions must be positive"))

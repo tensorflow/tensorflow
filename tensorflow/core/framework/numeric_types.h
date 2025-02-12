@@ -21,7 +21,7 @@ limitations under the License.
 // clang-format off
 // This include order is required to avoid instantiating templates
 // quantized types in the Eigen namespace before their specialization.
-#include "tsl/framework/numeric_types.h"
+#include "xla/tsl/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
 // clang-format on
 

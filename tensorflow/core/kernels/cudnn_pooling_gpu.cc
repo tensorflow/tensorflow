@@ -104,7 +104,9 @@ void DnnPooling3dImpl(OpKernelContext* context,
 
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
-
+  auto* dnn = stream->parent()->AsDnn();
+  OP_REQUIRES(context, dnn != nullptr,
+              errors::Internal("No DNN support for stream."));
 #if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
@@ -112,14 +114,15 @@ void DnnPooling3dImpl(OpKernelContext* context,
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
-  OP_REQUIRES_OK(context,
-                 stream->ThenPoolForward(pooling_desc, GetNumericOptions(),
-                                         input_desc, input_data, output_desc,
-                                         &output_data, &scratch_allocator));
+  OP_REQUIRES_OK(context, dnn->PoolForward(stream, pooling_desc,
+                                           GetNumericOptionsForCuDnn(),
+                                           input_desc, input_data, output_desc,
+                                           &output_data, &scratch_allocator));
 #else
-  OP_REQUIRES_OK(context, stream->ThenPoolForward(
-                              pooling_desc, GetNumericOptions(), input_desc,
-                              input_data, output_desc, &output_data));
+  OP_REQUIRES_OK(
+      context,
+      dnn->PoolForward(stream, pooling_desc, GetNumericOptionsForCuDnn(),
+                       input_desc, input_data, output_desc, &output_data));
 #endif
 
   if (data_format == FORMAT_NHWC) {
@@ -149,11 +152,9 @@ void DnnPooling3dOp<Eigen::bfloat16>::Compute(
     const std::array<int64_t, 3>& window, const std::array<int64_t, 3>& stride,
     const std::array<int64_t, 3>& padding, TensorFormat data_format,
     const Tensor& tensor_in, Tensor* output) {
-  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   auto* stream = context->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = !IsBF16SupportedInOps(stream);
+
   if (cast_to_float) {
     Tensor casted_in;
     Tensor casted_output;
@@ -296,6 +297,9 @@ void DnnPooling3dGradImpl(
 
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  auto* dnn = stream->parent()->AsDnn();
+  OP_REQUIRES(context, dnn != nullptr,
+              errors::Internal("No DNN support for stream."));
 
 #if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
@@ -306,16 +310,16 @@ void DnnPooling3dGradImpl(
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
   OP_REQUIRES_OK(
       context,
-      stream->ThenPoolBackward(
-          pooling_desc, GetNumericOptions(), orig_input_desc, orig_input_data,
-          orig_output_desc, orig_output_data, output_backprop_data,
-          &input_backprop_data, &scratch_allocator));
+      dnn->PoolBackward(stream, pooling_desc, GetNumericOptionsForCuDnn(),
+                        orig_input_desc, orig_input_data, orig_output_desc,
+                        orig_output_data, output_backprop_data,
+                        &input_backprop_data, &scratch_allocator));
 #else
-  OP_REQUIRES_OK(context,
-                 stream->ThenPoolBackward(
-                     pooling_desc, GetNumericOptions(), orig_input_desc,
-                     orig_input_data, orig_output_desc, orig_output_data,
-                     output_backprop_data, &input_backprop_data));
+  OP_REQUIRES_OK(context, dnn->PoolBackward(
+                              stream, pooling_desc, GetNumericOptionsForCuDnn(),
+                              orig_input_desc, orig_input_data,
+                              orig_output_desc, orig_output_data,
+                              output_backprop_data, &input_backprop_data));
 #endif
 
   if (data_format == FORMAT_NHWC) {
@@ -348,11 +352,8 @@ void DnnPooling3dGradOp<Eigen::bfloat16>::Compute(
     const std::array<int64_t, 3>& output_size, TensorFormat data_format,
     const Tensor& out_backprop, const TensorShape& tensor_in_shape,
     const Tensor* tensor_in, const Tensor* tensor_out, Tensor* input_backprop) {
-  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   auto* stream = context->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = !IsBF16SupportedInOps(stream);
   if (cast_to_float) {
     Tensor casted_out_backprop;
     Tensor casted_tensor_in;

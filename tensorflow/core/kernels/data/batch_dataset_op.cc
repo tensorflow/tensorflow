@@ -15,9 +15,17 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <functional>
+#include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -27,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/batch_util.h"
+#include "tsl/platform/mutex.h"
 
 namespace tensorflow {
 namespace data {
@@ -82,6 +91,15 @@ class BatchDatasetOp::Dataset : public DatasetBase {
             PartialTensorShape({-1}).Concatenate(input_shape));
       }
     }
+
+    random_indexing_compatible_ = absl::OkStatus();
+    if (!drop_remainder_) {
+      random_indexing_compatible_ = absl::FailedPreconditionError(absl::StrCat(
+          type_string(),
+          " does not support global shuffling with `drop_remainder=False`."));
+    } else if (input_ != nullptr) {
+      random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -117,17 +135,18 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     const int64 cardinality = Cardinality();
     if (index < 0 || index >= cardinality) {
       return errors::OutOfRange("Index out of range [0, ", cardinality,
@@ -142,16 +161,19 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(input_->Get(ctx, i, &batch_element_tuple));
       batch_elements.emplace_back(std::move(batch_element_tuple));
     }
-    TF_RETURN_IF_ERROR(CopyBatch(CopyBatchParams(ctx), batch_elements,
-                                 parallel_copy_,
-                                 /*allocation_callback=*/nullptr, out_tensors));
-    return OkStatus();
+    TF_RETURN_IF_ERROR(CopyBatch(AnyContext(ctx), std::move(batch_elements),
+                                 parallel_copy_, out_tensors));
+    return absl::OkStatus();
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* batch_size = nullptr;
@@ -163,7 +185,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, batch_size, drop_remainder},
                       {{kParallelCopy, parallel_copy}}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -174,13 +196,14 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
+      tsl::mutex_lock l(mu_);
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       // Each row of `batch_elements` is a tuple of tensors from the
       // input iterator.
       std::vector<std::vector<Tensor>> batch_elements;
@@ -188,31 +211,34 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         mutex_lock l(mu_);
         if (!input_impl_) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
         batch_elements.reserve(dataset()->reserve_size_);
         *end_of_sequence = false;
+        IteratorContextWithIndexMapper ctx_with_index_mapper(ctx, this);
         for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence; ++i) {
           std::vector<Tensor> batch_element_tuple;
-          TF_RETURN_IF_ERROR(
-              input_impl_->GetNext(ctx, &batch_element_tuple, end_of_sequence));
+          TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx_with_index_mapper.Get(),
+                                                  &batch_element_tuple,
+                                                  end_of_sequence));
           if (!*end_of_sequence) {
             batch_elements.emplace_back(std::move(batch_element_tuple));
           } else {
             input_impl_.reset();
           }
         }
+        ctx_with_index_mapper.MergeCheckpoint();
       }
 
       if (batch_elements.empty()) {
         DCHECK(*end_of_sequence);
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       if (dataset()->drop_remainder_ &&
           batch_elements.size() < dataset()->batch_size_) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Copy the retrieved batch elements into one output tensor per tuple
@@ -223,12 +249,24 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       // respective slice locations. This would require a different GetNext()
       // overload that supports zero-copy, and might make sense in an
       // optimization pass.
-      TF_RETURN_IF_ERROR(CopyBatch(
-          CopyBatchParams(ctx), batch_elements, dataset()->parallel_copy_,
-          /*allocation_callback=*/nullptr, out_tensors));
+      TF_RETURN_IF_ERROR(CopyBatch(AnyContext(ctx), std::move(batch_elements),
+                                   dataset()->parallel_copy_, out_tensors));
 
       *end_of_sequence = false;
-      return OkStatus();
+      return absl::OkStatus();
+    }
+
+    IndexMapperFn GetIndexMapper(
+        IndexMapperFn parent_index_mapper) const override {
+      int64_t batch_size = dataset()->batch_size_;
+      return [parent_index_mapper,
+              batch_size](size_t element_position) -> absl::StatusOr<size_t> {
+        size_t batch_element_position = element_position / batch_size;
+        size_t input_element_offset = element_position % batch_size;
+        TF_ASSIGN_OR_RETURN(size_t shuffled_element_position,
+                            parent_index_mapper(batch_element_position));
+        return shuffled_element_position * batch_size + input_element_offset;
+      };
     }
 
    protected:
@@ -237,29 +275,44 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       return model::MakeKnownRatioNode(std::move(args), dataset()->batch_size_);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           prefix(), kInputImplEmpty, static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
+
+      if (ctx->restored_element_count().has_value()) {
+        IteratorContext::Params params(ctx);
+        params.restored_element_count =
+            *ctx->restored_element_count() * dataset()->batch_size_;
+        IteratorContext ctx_copy(params);
+        if (!static_cast<bool>(input_empty)) {
+          TF_RETURN_IF_ERROR(RestoreInput(&ctx_copy, reader, input_impl_));
+          ctx->MergeCheckpoint(ctx_copy.checkpoint());
+        } else {
+          input_impl_.reset();
+        }
+        return absl::OkStatus();
+      }
+
       if (!static_cast<bool>(input_empty)) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       } else {
         input_impl_.reset();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -278,6 +331,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
   const DatasetBase* const input_;
   const int op_version_;
   std::vector<PartialTensorShape> output_shapes_;
+  absl::Status random_indexing_compatible_;
   const TraceMeMetadata traceme_metadata_;
 };
 

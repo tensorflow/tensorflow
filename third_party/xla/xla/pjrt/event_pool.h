@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef XLA_PJRT_EVENT_POOL_H_
 #define XLA_PJRT_EVENT_POOL_H_
 
+#include <cstdint>
 #include <memory>
 #include <stack>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 
@@ -76,19 +80,22 @@ class EventPool {
   // such as cudaStreamWaitEvent capture the state of the event at the time of
   // the host-side call and are not affected by a later host-side
   // cudaEventRecord.
-  StatusOr<Handle> ThenAllocateAndRecordEvent(se::Stream* stream);
+  absl::StatusOr<Handle> ThenAllocateAndRecordEvent(se::Stream* stream);
 
   // Version of ThenAllocateAndRecordEvent split into two phases; this is
   // sometimes helpful if we want to avoid failures by preallocating events.
-  StatusOr<Handle> AllocateEvent(se::StreamExecutor* executor);
+  absl::StatusOr<Handle> AllocateEvent(se::StreamExecutor* executor);
   void ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle);
 
  private:
   const bool allow_reuse_;
 
-  absl::Mutex mu_;
-  std::stack<std::unique_ptr<se::Event>> free_events_ ABSL_GUARDED_BY(mu_);
-  uint64_t next_sequence_number_ ABSL_GUARDED_BY(mu_);
+  absl::Mutex mu_free_events_;
+  std::stack<std::unique_ptr<se::Event>> free_events_
+      ABSL_GUARDED_BY(mu_free_events_);
+
+  absl::Mutex mu_sequence_number_;
+  uint64_t next_sequence_number_ ABSL_GUARDED_BY(mu_sequence_number_);
 };
 
 }  // namespace xla

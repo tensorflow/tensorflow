@@ -41,9 +41,9 @@ info. It does not have any negative impact on performance. */
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/port.h"
 #include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
@@ -118,14 +118,14 @@ Allocator* ThreadPoolDevice::GetScopedAllocator(AllocatorAttributes attr,
   return allocator_;
 }
 
-Status ThreadPoolDevice::MakeTensorFromProto(
+absl::Status ThreadPoolDevice::MakeTensorFromProto(
     const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
     Tensor* tensor) {
   if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
     Tensor parsed(tensor_proto.dtype());
     if (parsed.FromProto(allocator_, tensor_proto)) {
       *tensor = std::move(parsed);
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return errors::InvalidArgument("Cannot parse tensor from proto: ",
@@ -142,7 +142,7 @@ void ThreadPoolDevice::CopyTensorInSameDevice(
     return;
   }
   tensor::DeepCopy(*input_tensor, output_tensor);
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 namespace {
@@ -184,7 +184,7 @@ void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   op_kernel->Compute(context);
 
   if (context->status().ok() && node_file_writer_) {
-    Status s = node_file_writer_->RecordNodeExecution(op_kernel, context);
+    absl::Status s = node_file_writer_->RecordNodeExecution(op_kernel, context);
     if (!s.ok()) {
       LOG(ERROR) << s;
       context->SetStatus(s);
@@ -264,7 +264,10 @@ class MklCPUAllocatorFactory : public AllocatorFactory {
   }
 };
 
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (IsMKLEnabled() ? 200 : 50),
+// Performance is better with MklCPUAllocator. Hence, enabling it for ZenDNN
+// as well.
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator",
+                       ((IsMKLEnabled() || IsZenDnnEnabled()) ? 200 : 50),
                        MklCPUAllocatorFactory);
 
 }  // namespace

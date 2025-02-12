@@ -14,11 +14,14 @@
 # ==============================================================================
 """Defines types required for representative datasets for quantization."""
 
-import collections.abc
+from collections.abc import Collection, Sized
 import os
 from typing import Iterable, Mapping, Optional, Union
 
+import numpy as np
+
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
@@ -114,7 +117,11 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
   ```
   """
 
-  def __init__(self, path_map: Mapping[str, os.PathLike[str]]):
+  def __init__(
+      self,
+      path_map: Mapping[str, os.PathLike[str]],
+      expected_input_key_map: Optional[Mapping[str, Collection[str]]] = None,
+  ):
     """Initializes TFRecord represenatative dataset saver.
 
     Args:
@@ -122,8 +129,22 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
         to which a `RepresentativeDataset` is saved. The signature def keys
         should be a subset of the `SignatureDef` keys of the
         `representative_dataset` argument of the `save()` call.
+      expected_input_key_map: Signature def key -> expected input keys. If set,
+        validate that the sample has same set of input keys before saving.
+
+    Raises:
+      KeyError: If path_map and expected_input_key_map have different keys.
     """
     self.path_map: Mapping[str, os.PathLike[str]] = path_map
+    self.expected_input_key_map: Mapping[str, Collection[str]] = {}
+    if expected_input_key_map is not None:
+      if set(path_map.keys()) != set(expected_input_key_map.keys()):
+        raise KeyError(
+            'The `path_map` and `expected_input_key_map` should have the same'
+            ' set of keys.'
+        )
+
+      self.expected_input_key_map = expected_input_key_map
 
   def _save_tf_record_dataset(
       self,
@@ -140,10 +161,34 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
 
     Returns:
       a RepresentativeDatasetFile instance contains the path to the saved file.
+
+    Raises:
+      KeyError: If the set of input keys in the dataset samples doesn't match
+      the set of expected input keys.
     """
+    # When running in graph mode (TF1), tf.Tensor types should be converted to
+    # numpy ndarray types to be compatible with `make_tensor_proto`.
+    if not context.executing_eagerly():
+      with session.Session() as sess:
+        repr_ds = replace_tensors_by_numpy_ndarrays(repr_ds, sess)
+
+    expected_input_keys = self.expected_input_key_map.get(
+        signature_def_key, None
+    )
     tfrecord_file_path = self.path_map[signature_def_key]
     with python_io.TFRecordWriter(tfrecord_file_path) as writer:
       for repr_sample in repr_ds:
+        if (
+            expected_input_keys is not None
+            and set(repr_sample.keys()) != expected_input_keys
+        ):
+          raise KeyError(
+              'Invalid input keys for representative sample. The function'
+              f' expects input keys of: {set(expected_input_keys)}. Got:'
+              f' {set(repr_sample.keys())}. Please provide correct input keys'
+              ' for representative samples.'
+          )
+
         sample = _RepresentativeDataSample()
         for input_name, input_value in repr_sample.items():
           sample.tensor_proto_inputs[input_name].CopyFrom(
@@ -197,6 +242,22 @@ class RepresentativeDatasetLoader:
   """Representative dataset loader.
 
   Exposes the `load` method that loads the representative dataset from files.
+  """
+
+  def load(self) -> RepresentativeDatasetMapping:
+    """Loads the representative datasets.
+
+    Returns:
+      representative dataset mapping: A loaded signature def key ->
+      representative mapping.
+    """
+    raise NotImplementedError('Method "load" is not implemented.')
+
+
+class TfRecordRepresentativeDatasetLoader(RepresentativeDatasetLoader):
+  """TFRecord representative dataset loader.
+
+  Loads representative dataset stored in TFRecord files.
   """
 
   def __init__(
@@ -292,7 +353,7 @@ def get_num_samples(repr_ds: RepresentativeDataset) -> Optional[int]:
     is malformed; it simply means the size cannot be determined without
     iterating the whole dataset.
   """
-  if isinstance(repr_ds, collections.abc.Sized):
+  if isinstance(repr_ds, Sized):
     try:
       return len(repr_ds)
     except Exception as ex:  # pylint: disable=broad-except
@@ -302,3 +363,40 @@ def get_num_samples(repr_ds: RepresentativeDataset) -> Optional[int]:
       return None
   else:
     return None
+
+
+def create_feed_dict_from_input_data(
+    input_data: RepresentativeSample,
+    signature_def: meta_graph_pb2.SignatureDef,
+) -> Mapping[str, np.ndarray]:
+  """Constructs a feed_dict from input data.
+
+  Note: This function should only be used in graph mode.
+
+  This is a helper function that converts an 'input key -> input value' mapping
+  to a feed dict. A feed dict is an 'input tensor name -> input value' mapping
+  and can be directly passed to the `feed_dict` argument of `sess.run()`.
+
+  Args:
+    input_data: Input key -> input value mapping. The input keys should match
+      the input keys of `signature_def`.
+    signature_def: A SignatureDef representing the function that `input_data` is
+      an input to.
+
+  Returns:
+    Feed dict, which is intended to be used as input for `sess.run`. It is
+    essentially a mapping: input tensor name -> input value. Note that the input
+    value in the feed dict is not a `Tensor`.
+  """
+  feed_dict = {}
+  for input_key, input_value in input_data.items():
+    input_tensor_name = signature_def.inputs[input_key].name
+
+    value = input_value
+    if isinstance(input_value, core.Tensor):
+      # Take the data out of the tensor.
+      value = input_value.eval()
+
+    feed_dict[input_tensor_name] = value
+
+  return feed_dict

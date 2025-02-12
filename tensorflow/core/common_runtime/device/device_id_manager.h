@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_MANAGER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_MANAGER_H_
 
+#include "xla/tsl/framework/device_id_manager.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tsl/framework/device_id_manager.h"
 
 namespace tensorflow {
 using tsl::DeviceIdManager;  // NOLINT

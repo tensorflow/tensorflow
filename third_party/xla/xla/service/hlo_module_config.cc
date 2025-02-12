@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,11 +24,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/sharding_config.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
@@ -69,10 +74,14 @@ std::string HloModuleConfig::compilation_cache_key() const {
               entry_computation_layout_->result_shape().SerializeAsString());
   }
   if (seed() != 0) {
-    // TODO(b/32083678): force recompilation to reset global state.
     static std::atomic<int> counter{0};
     StrAppend(&key, "forcing recompile ", counter++);
   }
+  StrAppend(&key, "::exec_time_optimization_effort=",
+            exec_time_optimization_effort());
+  StrAppend(&key, "::memory_fitting_effort=", memory_fitting_effort());
+  StrAppend(&key, "::optimization_level=", optimization_level());
+  StrAppend(&key, "::memory_fitting_level=", memory_fitting_level());
   if (replica_count() != 1) {
     StrAppend(&key, "::replica_count=", replica_count());
   }
@@ -85,6 +94,9 @@ std::string HloModuleConfig::compilation_cache_key() const {
     StrAppend(&key, device_type());
   }
   StrAppend(&key, "::alias_passthrough_params=", alias_passthrough_params_);
+  StrAppend(&key, "::allow_spmd_sharding_propagation_to_parameters={",
+            absl::StrJoin(allow_spmd_sharding_propagation_to_parameters_, ","),
+            "}");
   StrAppend(&key, "::allow_spmd_sharding_propagation_to_output={",
             absl::StrJoin(allow_spmd_sharding_propagation_to_output_, ","),
             "}");
@@ -94,6 +106,7 @@ std::string HloModuleConfig::compilation_cache_key() const {
   if (device_memory_size() != 0) {
     StrAppend(&key, "::device_memory_size=", device_memory_size());
   }
+  StrAppend(&key, "::use_shardy_partitioner=", use_shardy_partitioner());
   return key;
 }
 
@@ -147,7 +160,7 @@ static void AssignProtoDotConfig(
     for (int64_t val : list_vector) {
       list.add_vals(val);
     }
-    proto.mutable_dot_config()->insert({key, std::move(list)});
+    proto.mutable_dot_config()->try_emplace(key, std::move(list));
   }
 }
 
@@ -195,7 +208,7 @@ static void AssignProtoPhaseOrderingConfig(
     pair.output_shape_index.assign(output_idx.begin(), output_idx.end());
     cfg_pairs.push_back(pair);
   }
-  config.set_shardable_value_update_pairs(cfg_pairs);
+  config.set_shardable_value_update_pairs(std::move(cfg_pairs));
 }
 
 static void AssignStructFusionConfig(HloModuleConfig& config,
@@ -210,7 +223,7 @@ static void AssignStructFusionConfig(HloModuleConfig& config,
     }
     module_config.push_back(std::move(temp));
   }
-  *config.mutable_fusion_config() = std::move(module_config);
+  config.set_fusion_config(std::move(module_config));
 }
 
 static void AssignStructDotConfig(HloModuleConfig& config,
@@ -252,10 +265,10 @@ static void AssignStructPhaseOrderingConfig(HloModuleConfig& config,
     }
     module_config.push_back(std::move(temp));
   }
-  *config.mutable_phase_ordering_config() = std::move(module_config);
+  config.set_phase_ordering_config(std::move(module_config));
 }
 
-StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
+HloModuleConfigProto HloModuleConfig::ToProto() const {
   HloModuleConfigProto proto;
   if (has_entry_computation_layout()) {
     *proto.mutable_entry_computation_layout() =
@@ -276,6 +289,10 @@ StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
   for (int64_t partitioning_id : auto_spmd_partitioning_mesh_ids_) {
     proto.add_auto_spmd_partitioning_mesh_ids(partitioning_id);
   }
+  proto.set_exec_time_optimization_effort(exec_time_optimization_effort_);
+  proto.set_memory_fitting_effort(memory_fitting_effort_);
+  proto.set_optimization_level(optimization_level_);
+  proto.set_memory_fitting_level(memory_fitting_level_);
   proto.set_deduplicate_hlo(deduplicate_hlo_);
   proto.set_intra_op_parallelism_threads(intra_op_parallelism_threads_);
   proto.set_device_type(device_type_);
@@ -283,7 +300,7 @@ StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
 
   if (has_static_device_assignment()) {
     auto proto_assignment = proto.mutable_static_device_assignment();
-    TF_RETURN_IF_ERROR(static_device_assignment_->Serialize(proto_assignment));
+    static_device_assignment_->Serialize(proto_assignment);
   }
   AssignProtoShardableValueUpdatePairs(
       proto.mutable_shardable_value_update_pairs(),
@@ -303,6 +320,9 @@ StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
   AssignProtoPhaseOrderingConfig(proto, phase_ordering_config_);
   proto.set_phase_index(phase_index_);
 
+  for (bool value : allow_spmd_sharding_propagation_to_parameters_) {
+    proto.add_allow_spmd_sharding_propagation_to_parameters(value);
+  }
   for (bool value : allow_spmd_sharding_propagation_to_output_) {
     proto.add_allow_spmd_sharding_propagation_to_output(value);
   }
@@ -315,11 +335,13 @@ StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
   proto.set_allow_separate_sharding_programs(allow_separate_sharding_programs_);
   proto.set_fdo_profile(fdo_profile_);
   proto.set_device_memory_size(device_memory_size_);
+  proto.set_use_shardy_partitioner(use_shardy_partitioner_);
+  *proto.mutable_sharding_config() = ShardingConfig::ToProto(sharding_config_);
   return proto;
 }
 
-StatusOr<std::unique_ptr<HloModuleConfig>> HloModuleConfig::CreateFromProto(
-    const HloModuleConfigProto& proto) {
+absl::StatusOr<std::unique_ptr<HloModuleConfig>>
+HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   auto config = std::make_unique<HloModuleConfig>();
 
   if (proto.has_entry_computation_layout()) {
@@ -343,6 +365,11 @@ StatusOr<std::unique_ptr<HloModuleConfig>> HloModuleConfig::CreateFromProto(
   config->auto_spmd_partitioning_mesh_ids_.assign(
       proto.auto_spmd_partitioning_mesh_ids().begin(),
       proto.auto_spmd_partitioning_mesh_ids().end());
+  config->exec_time_optimization_effort_ =
+      proto.exec_time_optimization_effort();
+  config->memory_fitting_effort_ = proto.memory_fitting_effort();
+  config->optimization_level_ = proto.optimization_level();
+  config->memory_fitting_level_ = proto.memory_fitting_level();
   config->deduplicate_hlo_ = proto.deduplicate_hlo();
   config->intra_op_parallelism_threads_ = proto.intra_op_parallelism_threads();
   config->device_type_ = proto.device_type();
@@ -370,6 +397,9 @@ StatusOr<std::unique_ptr<HloModuleConfig>> HloModuleConfig::CreateFromProto(
       proto.memory_space_assignment_config().end());
   AssignStructPhaseOrderingConfig(*config, proto);
   config->phase_index_ = proto.phase_index();
+  config->allow_spmd_sharding_propagation_to_parameters_.assign(
+      proto.allow_spmd_sharding_propagation_to_parameters().begin(),
+      proto.allow_spmd_sharding_propagation_to_parameters().end());
   config->allow_spmd_sharding_propagation_to_output_.assign(
       proto.allow_spmd_sharding_propagation_to_output().begin(),
       proto.allow_spmd_sharding_propagation_to_output().end());
@@ -381,6 +411,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> HloModuleConfig::CreateFromProto(
       proto.allow_separate_sharding_programs();
   config->fdo_profile_ = proto.fdo_profile();
   config->device_memory_size_ = proto.device_memory_size();
+  config->use_shardy_partitioner_ = proto.use_shardy_partitioner();
+  config->sharding_config_ = ShardingConfig::FromProto(proto.sharding_config());
   return std::move(config);
 }
 

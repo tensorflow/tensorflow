@@ -2,10 +2,10 @@ syntax = "proto3";
 
 package tensorflow.data;
 
+import "xla/tsl/protobuf/status.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/protobuf/data_service.proto";
 import "tensorflow/core/protobuf/snapshot.proto";
-import "tsl/protobuf/status.proto";
 
 // Next tag: 2
 message DatasetDef {
@@ -128,10 +128,20 @@ enum TargetWorkers {
 }
 
 // Information about one of a worker server's data transfer servers.
+// Next tag: 6
 message DataTransferServerInfo {
   string protocol = 1;
   string address = 2;
+
   // If provided, properties of the server used to determine compatibility with
   // a client.
   bytes compatibility_info = 3;
+
+  // If `true`, data service clients should fall back to gRPC for this server if
+  // they fail to create a data transfer client for it.
+  bool fall_back_to_grpc_at_client_creation_time = 4;
+
+  // If `true`, data service clients should fall back to gRPC for this server if
+  // it nonretryably fails to transfer an element.
+  bool fall_back_to_grpc_at_get_element_time = 5;
 }

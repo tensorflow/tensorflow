@@ -12,7 +12,7 @@ func.func @fuseMulIntoConv2d(%arg0: tensor<1x112x112x3xf32>) -> tensor<1x28x23x2
   // CHECK-SAME: [1.000000e+00, 4.000000e+00], [3.000000e+00, 8.000000e+00], [5.000000e+00, 1.200000e+01]
   // CHECK-SAME: [7.000000e+00, 1.600000e+01], [9.000000e+00, 2.000000e+01], [1.100000e+01, 2.400000e+01]
   // CHECK-SAME: [1.300000e+01, 2.800000e+01], [1.500000e+01, 3.200000e+01], [1.700000e+01, 3.600000e+01]
-  // CHECK: %[[CONV:.*]] = "tf.Conv2D"(%arg0, %[[CST]]) {data_format = "NHWC", dilations = [1, 2, 3, 1], explicit_paddings = [], padding = "SAME", strides = [1, 4, 5, 1], use_cudnn_on_gpu = true}
+  // CHECK: %[[CONV:.*]] = "tf.Conv2D"(%arg0, %[[CST]]) <{data_format = "NHWC", dilations = [1, 2, 3, 1], explicit_paddings = [], padding = "SAME", strides = [1, 4, 5, 1], use_cudnn_on_gpu = true}>
   // CHECK: return %[[CONV]] : tensor<1x28x23x2xf32>
 }
 
@@ -26,7 +26,7 @@ func.func @notfuseMulIntoConv2d(%arg0: tensor<1x112x112x3xf32>) -> tensor<1x28x2
 
   func.return %1 : tensor<1x28x23x2xf32>
   // CHECK: %cst_0 = arith.constant dense<3.000000e+00> : tensor<23x2xf32>
-  // CHECK: %0 = "tf.Conv2D"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 5, 1]}
+  // CHECK: %0 = "tf.Conv2D"(%arg0, %cst) <{data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 5, 1]}> {T = "tfdtype$DT_FLOAT"}
   // CHECK: %1 = "tf.Mul"(%0, %cst_0) : (tensor<1x28x23x2xf32>, tensor<23x2xf32>) -> tensor<1x28x23x2xf32>
   // CHECK: return %1 : tensor<1x28x23x2xf32>
 }
@@ -40,8 +40,8 @@ func.func @simplifyBroadcastReshape(%arg0: tensor<1x8x1x1x1x1x1x18xbf16>) -> ten
   %98 = "tf.Reshape"(%97, %cst_2) : (tensor<1x8x6x1x6x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
   func.return %98 : tensor<8x6x6x18xbf16>
 
-  // CHECK-DAG: %[[CST:.*]] = "tf.Const"() {value = dense<[8, 1, 1, 18]> : tensor<4xi64>} : () -> tensor<4xi64>
-  // CHECK-DAG: %[[CST1:.*]] =  "tf.Const"() {value = dense<[8, 6, 6, 18]> : tensor<4xi64>} : () -> tensor<4xi64>
+  // CHECK-DAG: %[[CST:.*]] = "tf.Const"() <{value = dense<[8, 1, 1, 18]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK-DAG: %[[CST1:.*]] =  "tf.Const"() <{value = dense<[8, 6, 6, 18]> : tensor<4xi64>}> : () -> tensor<4xi64>
   // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[CST]]) : (tensor<1x8x1x1x1x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x1x1x18xbf16>
   // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%[[RESHAPE]], %[[CST1]]) : (tensor<8x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
   // CHECK: return %[[BROADCAST]] : tensor<8x6x6x18xbf16>
@@ -55,8 +55,8 @@ func.func @simplifyBroadcastReshapeExtraDims(%arg0: tensor<1x8x1x1x1x1x1x18xbf16
   %98 = "tf.Reshape"(%97, %cst_2) : (tensor<7x1x8x6x1x6x1x1x18xbf16>, tensor<5xi64>) -> tensor<7x8x6x6x18xbf16>
   func.return %98 : tensor<7x8x6x6x18xbf16>
 
-  // CHECK-DAG: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 8, 1, 1, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
-  // CHECK-DAG: %[[CST1:.*]] =  "tf.Const"() {value = dense<[7, 8, 6, 6, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
+  // CHECK-DAG: %[[CST:.*]] = "tf.Const"() <{value = dense<[1, 8, 1, 1, 18]> : tensor<5xi64>}> : () -> tensor<5xi64>
+  // CHECK-DAG: %[[CST1:.*]] =  "tf.Const"() <{value = dense<[7, 8, 6, 6, 18]> : tensor<5xi64>}> : () -> tensor<5xi64>
   // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[CST]]) : (tensor<1x8x1x1x1x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x8x1x1x18xbf16>
   // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%[[RESHAPE]], %[[CST1]]) : (tensor<1x8x1x1x18xbf16>, tensor<5xi64>) -> tensor<7x8x6x6x18xbf16>
   // CHECK: return %[[BROADCAST]] : tensor<7x8x6x6x18xbf16>
@@ -70,8 +70,8 @@ func.func @simplifyBroadcastReshapeOnes(%arg0: tensor<1x1x1x1x1x1x1x18xbf16>) ->
   %98 = "tf.Reshape"(%97, %cst_2) : (tensor<1x1x6x1x6x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x6x1x6x18xbf16>
   func.return %98 : tensor<1x6x1x6x18xbf16>
 
-  // CHECK-DAG: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 1, 1, 1, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
-  // CHECK-DAG: %[[CST1:.*]] = "tf.Const"() {value = dense<[1, 6, 1, 6, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
+  // CHECK-DAG: %[[CST:.*]] = "tf.Const"() <{value = dense<[1, 1, 1, 1, 18]> : tensor<5xi64>}> : () -> tensor<5xi64>
+  // CHECK-DAG: %[[CST1:.*]] = "tf.Const"() <{value = dense<[1, 6, 1, 6, 18]> : tensor<5xi64>}> : () -> tensor<5xi64>
   // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[CST]]) : (tensor<1x1x1x1x1x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x1x1x1x18xbf16>
   // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%[[RESHAPE]], %[[CST1]]) : (tensor<1x1x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x6x1x6x18xbf16>
   // CHECK: return %[[BROADCAST]] : tensor<1x6x1x6x18xbf16>

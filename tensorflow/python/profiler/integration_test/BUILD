@@ -10,7 +10,6 @@ package(
 py_strict_library(
     name = "mnist_testing_utils",
     srcs = ["mnist_testing_utils.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:extra_py_tests_deps",
@@ -20,7 +19,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "profiler_api_test",
     srcs = ["profiler_api_test.py"],
-    python_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/283175845)
         "no_pip",

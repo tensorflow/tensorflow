@@ -16,8 +16,9 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/delegates/hexagon/builders/op_builder.h"
 
 namespace tflite {
 namespace delegates {

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +17,15 @@ limitations under the License.
 #define XLA_SERVICE_CPU_ONEDNN_MEMORY_UTIL_H_
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
+#include <memory>
+
 #include "dnnl.hpp"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
+#include "xla/literal.h"
+#include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/xla_data.pb.h"
 
@@ -31,7 +35,7 @@ namespace cpu {
 static const int kOneDnnMaxNDims = DNNL_MAX_NDIMS;
 
 struct StackAlloca {
-  llvm::IRBuilder<>* builder;
+  llvm::IRBuilderBase* builder;
   llvm::Value* value;
   void EmitLifetimeEnd() {
     builder->CreateLifetimeEnd(value, builder->getInt64(-1));
@@ -40,8 +44,13 @@ struct StackAlloca {
 
 // Declare as opaque to put structure definition together with dependant code.
 struct MemrefInfoPOD;
+using MemrefInfoHandler = std::shared_ptr<MemrefInfoPOD>;
 
-StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
+MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal);
+
+MemrefInfoHandler CreateMemrefFromShape(const Shape& shape, void* buf);
+
+StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilderBase& builder,
                                        const llvm_ir::IrArray& ir_array);
 
 inline dnnl::memory::data_type ToOneDnnDataType(PrimitiveType ptype) {
@@ -64,7 +73,7 @@ inline dnnl::memory::data_type ToOneDnnDataType(PrimitiveType ptype) {
 
     // TODO(intel-tf): properly handle not supported types:
     // S16, S64, U16, U32, U64, C64, C128, F8E5M2, F8E4M3FN, S4, U4,
-    // F8E4M3B11FNUZ
+    // F8E4M3B11FNUZ, F8E4M3, F8E3M4, F4E2M1FN, F8E8M0FNU
     default:
       return dt::undef;
   }
@@ -95,7 +104,7 @@ inline PrimitiveType ToXlaPrimitiveType(dnnl::memory::data_type dtype) {
 
 class MemrefInfo {
  public:
-  MemrefInfo(void* data);
+  explicit MemrefInfo(void* pod_data);
 
   dnnl::memory::dims GetOneDnnDims() const;
   dnnl::memory::dims GetOneDnnStrides() const;
@@ -105,9 +114,25 @@ class MemrefInfo {
 
   void Print();
 
+  int64_t GetChannels() const;
+  int64_t GetRank() const;
+
  private:
   MemrefInfoPOD* pod_;
 };
+
+absl::StatusOr<dnnl::memory::desc> TransposeLastTwoDims(
+    const dnnl::memory::desc& md);
+#define TRANSPOSE_LAST_TWO_DIMS_IF(pred, mem_desc)        \
+  if (pred) {                                             \
+    auto trans_mem_desc = TransposeLastTwoDims(mem_desc); \
+    XLA_LIGHTWEIGHT_CHECK(trans_mem_desc.ok());           \
+    mem_desc = *trans_mem_desc;                           \
+  }
+
+dnnl::memory::desc ShapeToMemDesc(const Shape& shape);
+
+Shape MemDescToXlaShapeFlattened(const dnnl::memory::desc& md);
 
 }  // namespace cpu
 }  // namespace xla

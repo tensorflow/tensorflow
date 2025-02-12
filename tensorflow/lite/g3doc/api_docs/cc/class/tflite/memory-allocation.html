@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+
+<html devsite="">
+<head>
+<title>tflite::MemoryAllocation Class Reference</title>
+<meta name="page_type" value="reference"/>
+<meta content="reference" name="page_type"/></head>
+<body><div id="top"><!-- do not remove this div --></div><h1>tflite::<wbr/>MemoryAllocation</h1><h2>Summary</h2><h3>Inheritance</h3>Inherits from: <a href="/lite/api_docs/cc/class/tflite/allocation">tflite::Allocation</a><table class="constructors responsive">
+<tr>
+<th colspan="2">
+<h3>Constructors and Destructors</h3>
+</th>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1_memory_allocation_1a2a2ab9ef98db52da8b839494b6183980">MemoryAllocation</a>(const void *ptr, size_t num_bytes, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+<br/>
+<div>Provides a (read-only) view of the provided buffer region as an allocation. </div>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1_memory_allocation_1a38b7a626189b9350afc1893e36605e2e">~MemoryAllocation</a>()</code>
+<br/>
+</td>
+</tr>
+</table><table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Public functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_memory_allocation_1aa643eaa215ae9b11d8f725b5f5a7cfd9">base</a>() const override</code>
+</td>
+<td>
+<div>
+<code>const void *</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_memory_allocation_1adb3bd9c85fb9fab1fe5afd5bbc482d28">bytes</a>() const override</code>
+</td>
+<td>
+<div>
+<code>size_t</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_memory_allocation_1a4fac8b140960856b0d065269dcfb22f4">valid</a>() const override</code>
+</td>
+<td>
+<div>
+<code>bool</code>
+</div>
+</td>
+</tr>
+</table><h2>Public functions</h2><div id="classtflite_1_1_memory_allocation_1a2a2ab9ef98db52da8b839494b6183980">
+<h3>MemoryAllocation</h3>
+<pre class="prettyprint"> MemoryAllocation(
+  const void *ptr,
+  size_t num_bytes,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Provides a (read-only) view of the provided buffer region as an allocation. </p>
+<p>Note: The caller retains ownership of <code>ptr</code>, and must ensure it remains valid for the lifetime of the class instance. </p>
+</div>
+</div><div id="classtflite_1_1_memory_allocation_1aa643eaa215ae9b11d8f725b5f5a7cfd9">
+<h3>base</h3>
+<pre class="prettyprint">const void * base() const override</pre>
+<div></div>
+</div><div id="classtflite_1_1_memory_allocation_1adb3bd9c85fb9fab1fe5afd5bbc482d28">
+<h3>bytes</h3>
+<pre class="prettyprint">size_t bytes() const override</pre>
+<div></div>
+</div><div id="classtflite_1_1_memory_allocation_1a4fac8b140960856b0d065269dcfb22f4">
+<h3>valid</h3>
+<pre class="prettyprint">bool valid() const override</pre>
+<div></div>
+</div><div id="classtflite_1_1_memory_allocation_1a38b7a626189b9350afc1893e36605e2e">
+<h3>~MemoryAllocation</h3>
+<pre class="prettyprint"> ~MemoryAllocation() override</pre>
+<div></div>
+</div></body>
+</html>

@@ -28,7 +28,11 @@ limitations under the License.
 inline constexpr const char* kDebugGroupMain = "main";
 inline constexpr const char* kDebugGroupOpStacktrace = "op_stacktrace";
 inline constexpr const char* kDebugGroupGraphOptPass = "graph_opt_pass";
-inline constexpr const char* kDebugGroupBridgePhase1 = "bridge_phase1";
+inline constexpr const char* kDebugGroupBridgePhase1Clustering =
+    "bridge_phase1_clustering";
+inline constexpr const char* kDebugGroupRuntimeLowering = "runtime_lowering";
+inline constexpr const char* kDebugGroupBridgePhase1ExecutorExport =
+    "bridge_phase1_executor_export";
 inline constexpr const char* kDebugGroupBridgePhase2 = "bridge_phase2";
 inline constexpr const char* kDebugGroupDTensorMlir = "dtensor_mlir";
 inline constexpr const char* kDebugGroupDTensorGraph = "dtensor_graph";

@@ -60,7 +60,7 @@ class GiantConstOp(test.TestCase):
   # are compiled correctly to HLO.
   def testGiantConst(self):
     # Disabling Mlir bridge since using the tf2xla implementation of
-    # StridedSliceop which would get exectued in this GiantConst test.
+    # StridedSliceop which would get executed in this GiantConst test.
     config.disable_mlir_bridge()
     strategy = get_tpu_strategy()
     types = {

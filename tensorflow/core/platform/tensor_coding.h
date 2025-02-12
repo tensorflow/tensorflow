@@ -31,7 +31,8 @@ namespace port {
 // Store src contents in *out.  If backing memory for src is shared with *out,
 // will ref obj during the call and will arrange to unref obj when no
 // longer needed.
-void AssignRefCounted(StringPiece src, core::RefCounted* obj, std::string* out);
+void AssignRefCounted(absl::string_view src, core::RefCounted* obj,
+                      std::string* out);
 
 // Copy contents of src to dst[0,src.size()-1].
 inline void CopyToArray(const std::string& src, char* dst) {
@@ -100,7 +101,8 @@ std::unique_ptr<StringListDecoder> NewStringListDecoder(const string& in);
 // Store src contents in *out.  If backing memory for src is shared with *out,
 // will ref obj during the call and will arrange to unref obj when no
 // longer needed.
-void AssignRefCounted(StringPiece src, core::RefCounted* obj, absl::Cord* out);
+void AssignRefCounted(absl::string_view src, core::RefCounted* obj,
+                      absl::Cord* out);
 
 // TODO(kmensah): Macro guard this with a check for Cord support.
 inline void CopyToArray(const absl::Cord& src, char* dst) {

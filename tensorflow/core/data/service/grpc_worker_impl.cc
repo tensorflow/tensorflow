@@ -41,13 +41,13 @@ GrpcWorkerImpl::GrpcWorkerImpl(const experimental::WorkerConfig& config,
   VLOG(1) << "Registered data service worker";
 }
 
-Status GrpcWorkerImpl::Start(
+absl::Status GrpcWorkerImpl::Start(
     const std::string& worker_address,
     const std::vector<DataTransferServerInfo>& transfer_servers) {
   worker_address_ = worker_address;
   TF_RETURN_IF_ERROR(impl_->Start(worker_address, transfer_servers));
   LocalWorkers::Add(worker_address, impl_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GrpcWorkerImpl::Stop() {

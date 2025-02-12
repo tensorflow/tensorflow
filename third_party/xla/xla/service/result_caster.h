@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,28 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_RESULT_CASTER_H_
 #define XLA_SERVICE_RESULT_CASTER_H_
 
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-// Inserts Convert to result of instructions to the preferred element type
-// specified by the instructions when direct accumulation of that type isn't
-// supported by the backend. This pass should run after OperandUpcaster.
-class ResultCaster : public OpExpanderPass {
- public:
-  explicit ResultCaster(HloPredicate extra_filter = nullptr)
-      : OpExpanderPass(std::move(extra_filter)) {}
-
-  absl::string_view name() const override { return "result_caster"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/result_caster.h"
 
 #endif  // XLA_SERVICE_RESULT_CASTER_H_

@@ -50,8 +50,8 @@ void TensorResponse::InitAlloc(DeviceBase* d, const AllocatorAttributes& aa) {
   allocator_ = device_->GetAllocator(alloc_attrs_);
 }
 
-Status TensorResponse::InitFrom(RecvTensorResponse* response) {
-  Status s;
+absl::Status TensorResponse::InitFrom(RecvTensorResponse* response) {
+  absl::Status s;
   meta_.Swap(response);
   if (on_host_) {
     if (!tensor_.FromProto(allocator_, meta_.tensor())) {
@@ -79,7 +79,7 @@ void TensorResponse::InitPartial(const RecvTensorResponse& response,
   tensor_ = std::move(t);
 }
 
-Status TensorResponse::ParseFrom(Source* source) {
+absl::Status TensorResponse::ParseFrom(Source* source) {
   if (!on_host_) {
     protobuf::io::CodedInputStream input(source->contents());
 
@@ -87,7 +87,7 @@ Status TensorResponse::ParseFrom(Source* source) {
     if (!meta_.ParseFromCodedStream(&input) || !input.ConsumedEntireMessage()) {
       return errors::InvalidArgument("Cannot parse tensor from response");
     }
-    Status s =
+    absl::Status s =
         device_->MakeTensorFromProto(meta_.tensor(), alloc_attrs_, &tensor_);
     // Reduce memory usage for big tensors.
     {
@@ -101,9 +101,9 @@ Status TensorResponse::ParseFrom(Source* source) {
     ClearTensor();
   }
   already_used_ = true;
-  if (ParseFast(source)) return OkStatus();
+  if (ParseFast(source)) return absl::OkStatus();
   meta_.Clear();
-  if (ParseSlow(source)) return OkStatus();
+  if (ParseSlow(source)) return absl::OkStatus();
   return errors::InvalidArgument("Cannot parse tensor from response");
 }
 
@@ -196,7 +196,7 @@ bool TensorResponse::ParseTensorSubmessage(
         seen_tensor_content = true;
         TensorShape shape(tensor_meta->tensor_shape());
         Tensor t(allocator_, tensor_meta->dtype(), shape);
-        StringPiece buf = t.tensor_data();
+        absl::string_view buf = t.tensor_data();
         if (static_cast<size_t>(num_bytes) != buf.size()) return false;
         // TODO(jeff,sanjay): Figure out a way to avoid this copy if
         // the underlying ZeroCopyInputStream data is properly aligned

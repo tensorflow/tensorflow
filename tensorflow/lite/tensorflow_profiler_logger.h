@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TENSORFLOW_PROFILER_LOGGER_H_
 #define TENSORFLOW_LITE_TENSORFLOW_PROFILER_LOGGER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 

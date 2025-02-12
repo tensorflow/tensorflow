@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,22 +17,27 @@ limitations under the License.
 #define XLA_SERVICE_GPU_COMPILE_MODULE_TO_LLVM_IR_H_
 
 #include <memory>
-#include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/executable.pb.h"
-#include "xla/service/gpu/gpu_device_info.h"
+#include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -40,42 +45,34 @@ namespace gpu {
 
 struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
+  std::unique_ptr<llvm::Module> llvm_module_constants;
   std::unique_ptr<BufferAssignment> buffer_assignment;
+  std::unique_ptr<ExecutionStreamAssignment> execution_stream_assignment;
   std::vector<BufferAllocation> allocations;
-  std::variant<GpuExecutable::OwnedThunkSequence,
-               GpuExecutable::OwnedGpuRuntimeProgram,
-               GpuExecutable::OwnedGpu2RuntimeProgram>
-      executable;
-  EntryFunctionAttributes entry_func_attrs;
+  std::unique_ptr<SequentialThunk> executable;
   std::vector<GpuExecutable::ConstantInfo> constants;
   absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> output_info;
   Shape output_shape;
   std::string module_name;
+  CompilationCacheProto kernel_compilation_cache;
+
+  // If true, the compiled module uses buffer allocations owned by
+  // buffer_assignment. Otherwise the compiled module uses buffer allocations
+  // stored in allocations.
+  bool use_original_allocations;
 };
 
-// Removes all globals from the given module that are both uninitialized and
-// have no uses within that module.
-void RemoveUnusedAndUninitializedGlobals(
-    llvm::Module* llvm_module,
-    const std::vector<GpuExecutable::ConstantInfo>& constants);
+absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
+                       absl::string_view cache_file_path);
 
-// Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
-// The GpuExecutable (and the Thunks that are part of it) are not returned.
-StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
+absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info,
-    const BufferValue::SizeFunction& buffer_size_bytes_function);
-
-Status CompileModuleToLlvmIrImpl(
-    HloModule* hlo_module, llvm::LLVMContext* llvm_context,
-    const std::string& target_triple, const std::string& data_layout,
-    const std::string& platform_name, se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info,
+    const se::DeviceDescription& gpu_device_info,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     const BufferValue::SizeFunction& buffer_size_bytes_function,
-    CompileModuleResults* results, se::StreamExecutor* stream_exec = nullptr);
+    bool split_constants_module = false);
 
 }  // namespace gpu
 }  // namespace xla

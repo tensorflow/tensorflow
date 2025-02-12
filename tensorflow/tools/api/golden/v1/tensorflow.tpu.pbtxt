@@ -6,7 +6,7 @@ tf_module {
   }
   member {
     name: "PaddingSpec"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "XLAOptions"

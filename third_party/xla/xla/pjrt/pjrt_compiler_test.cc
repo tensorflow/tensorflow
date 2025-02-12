@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,12 +26,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
-#include "xla/statusor.h"
-#include "tsl/lib/monitoring/cell_reader.h"
+#include "xla/tsl/lib/monitoring/cell_reader.h"
 #include "tsl/platform/status_matchers.h"
 
 namespace xla {
@@ -55,6 +54,11 @@ class PjRtTestTopology : public PjRtTopologyDescription {
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
     LOG(FATAL) << "Unused";
+  }
+  absl::StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type,
+      absl::Span<const int64_t> dims) const override {
+    return Unimplemented("TestTopology does not support GetDefaultLayout");
   }
 };
 
@@ -85,17 +89,22 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
         const override {
       LOG(FATAL) << "Unused";
     }
+    absl::StatusOr<Layout> GetDefaultLayout(
+        PrimitiveType element_type,
+        absl::Span<const int64_t> dims) const override {
+      return Unimplemented("TestTopology does not support GetDefaultLayout");
+    }
   };
   PjRtTestTopology topology;
 
   class PjRtTestCompiler : public PjRtCompiler {
    public:
-    StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+    absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
         CompileOptions options, const XlaComputation& computation,
         const PjRtTopologyDescription& topology, PjRtClient* client) override {
       return tsl::errors::Unimplemented("test compiler!");
     }
-    StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+    absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
         CompileOptions options, mlir::ModuleOp module,
         const PjRtTopologyDescription& topology, PjRtClient* client) override {
       return tsl::errors::Unimplemented("test compiler!");

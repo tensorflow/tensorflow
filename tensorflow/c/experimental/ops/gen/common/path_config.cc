@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/common/path_config.h"
 
-#include <iostream>
+#include <algorithm>
+#include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace generator {

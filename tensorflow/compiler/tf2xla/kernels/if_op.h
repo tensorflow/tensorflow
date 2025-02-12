@@ -20,6 +20,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -47,7 +51,8 @@ class XlaIfOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaIfOp);
+  XlaIfOp(const XlaIfOp&) = delete;
+  void operator=(const XlaIfOp&) = delete;
 
   NameAttrList then_branch_;
   NameAttrList else_branch_;

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "XlaSplitND"
   input_arg {
     name: "input"

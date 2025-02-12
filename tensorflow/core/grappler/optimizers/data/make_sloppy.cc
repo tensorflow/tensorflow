@@ -25,10 +25,10 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-Status MakeSloppy::OptimizeAndCollectStats(Cluster* cluster,
-                                           const GrapplerItem& item,
-                                           GraphDef* output,
-                                           OptimizationStats* stats) {
+absl::Status MakeSloppy::OptimizeAndCollectStats(Cluster* cluster,
+                                                 const GrapplerItem& item,
+                                                 GraphDef* output,
+                                                 OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
 
@@ -43,7 +43,7 @@ Status MakeSloppy::OptimizeAndCollectStats(Cluster* cluster,
       stats->num_changes++;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MakeSloppy, "make_sloppy");

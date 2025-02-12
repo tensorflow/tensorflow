@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/concat_spmd_expander.h"
 
+#include <cstdint>
 #include <optional>
 
+#include "absl/status/status.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -33,8 +38,8 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
-Status VerifyConcatLayout(mlir::Value concat_dim_operand,
-                          const Layout& concat_layout) {
+absl::Status VerifyConcatLayout(mlir::Value concat_dim_operand,
+                                const Layout& concat_layout) {
   TF_ASSIGN_OR_RETURN(int64_t concat_dim_value,
                       ExtractConstIntFromValue(concat_dim_operand));
   for (const auto& shard_and_dimension :
@@ -47,7 +52,7 @@ Status VerifyConcatLayout(mlir::Value concat_dim_operand,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<Layout> ReduceForConcatOutputLayout(mlir::Value concat_dim_operand,

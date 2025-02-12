@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,70 +16,87 @@ limitations under the License.
 #ifndef XLA_PYTHON_TYPES_H_
 #define XLA_PYTHON_TYPES_H_
 
-#include <algorithm>
+#include <Python.h>
+
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "pybind11/numpy.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
-#include "pybind11/stl.h"  // from @pybind11
-#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "nanobind/nanobind.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/shape.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
 // Converts a NumPy dtype to a PrimitiveType.
-StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
+absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type);
 
 // Converts a PrimitiveType to a Numpy dtype.
-StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
+absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type);
 
 // Converts an IFRT dtype to a NumPy dtype.
-StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype);
+absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype);
+
+absl::StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype);
+
+// Converts an IFRT dtype to a NumPy dtype. It specially converts `kToken` into
+// bool to avoid exposing the token type to the JAX dtype system, expecting JAX
+// internals to use a bool array to express a token input/output.
+absl::StatusOr<nb_dtype> IfrtDtypeToDtypeWithTokenCanonicalization(
+    ifrt::DType dtype);
 
 // Returns a Python buffer protocol (PEP 3118) format descriptor string for
 // `type`. Return nullptr if there is no suitable choice of format string.
 const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type);
 
 // Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
-StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
+absl::StatusOr<nanobind::str> TypeDescriptorForPrimitiveType(
+    PrimitiveType type);
 
 struct NumpyScalarTypes {
-  pybind11::object np_bool;
-  pybind11::object np_int4;
-  pybind11::object np_int8;
-  pybind11::object np_int16;
-  pybind11::object np_int32;
-  pybind11::object np_int64;
-  pybind11::object np_uint4;
-  pybind11::object np_uint8;
-  pybind11::object np_uint16;
-  pybind11::object np_uint32;
-  pybind11::object np_uint64;
-  pybind11::object np_bfloat16;
-  pybind11::object np_float8_e4m3fn;
-  pybind11::object np_float8_e4m3b11fnuz;
-  pybind11::object np_float8_e4m3fnuz;
-  pybind11::object np_float8_e5m2;
-  pybind11::object np_float8_e5m2fnuz;
-  pybind11::object np_float16;
-  pybind11::object np_float32;
-  pybind11::object np_float64;
-  pybind11::object np_complex64;
-  pybind11::object np_complex128;
-  pybind11::object np_longlong;
-  pybind11::object np_intc;
+  nanobind::object np_bool;
+  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.4.1.
+  std::optional<nanobind::object> np_int2;
+  nanobind::object np_int4;
+  nanobind::object np_int8;
+  nanobind::object np_int16;
+  nanobind::object np_int32;
+  nanobind::object np_int64;
+  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.4.1.
+  std::optional<nanobind::object> np_uint2;
+  nanobind::object np_uint4;
+  nanobind::object np_uint8;
+  nanobind::object np_uint16;
+  nanobind::object np_uint32;
+  nanobind::object np_uint64;
+  nanobind::object np_bfloat16;
+  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.5.0.
+  std::optional<nanobind::object> np_float4_e2m1fn;
+  std::optional<nanobind::object> np_float8_e3m4;
+  std::optional<nanobind::object> np_float8_e4m3;
+  nanobind::object np_float8_e4m3fn;
+  nanobind::object np_float8_e4m3b11fnuz;
+  nanobind::object np_float8_e4m3fnuz;
+  nanobind::object np_float8_e5m2;
+  nanobind::object np_float8_e5m2fnuz;
+  std::optional<nanobind::object> np_float8_e8m0fnu;
+  nanobind::object np_float16;
+  nanobind::object np_float32;
+  nanobind::object np_float64;
+  nanobind::object np_complex64;
+  nanobind::object np_complex128;
+  nanobind::object np_longlong;
+  nanobind::object np_intc;
 };
 const NumpyScalarTypes& GetNumpyScalarTypes();
 
@@ -100,53 +117,37 @@ std::vector<int64_t> StridesForShape(PrimitiveType element_type,
 // buffers with the literals. Takes ownership of `literal` and keeps the
 // necessary pieces alive using Python reference counting.
 // Requires the GIL.
-StatusOr<pybind11::object> LiteralToPython(std::shared_ptr<Literal> literal);
+absl::StatusOr<nanobind::object> LiteralToPython(
+    std::shared_ptr<Literal> literal);
 
-// Converts a Python object into an XLA shape and a vector of leaf buffers.
-// The leaf buffers correspond to a depth-first, left-to-right traversal of
-// the Python value.
-// Requires the GIL.
-struct PythonBufferTree {
-  // Holds a reference to the arrays pointed to by `leaves`, since we may
-  // need to make a copy if the array is not in a C-style layout.
-  absl::InlinedVector<pybind11::object, 1> arrays;
-  absl::InlinedVector<BorrowingLiteral, 1> leaves;
-  Shape shape;
-};
-StatusOr<PythonBufferTree> GetPythonBufferTree(
-    const pybind11::object& argument);
-
-// Converts a sequence of C++ ints to a Python tuple of ints.
-// Pybind11 by default converts a std::vector<T> to a Python list;
-// we frequently want a tuple instead e.g. for shapes.
 template <typename T>
-pybind11::tuple SpanToTuple(absl::Span<T const> xs) {
-  pybind11::tuple out(xs.size());
+nanobind::tuple SpanToNbTuple(absl::Span<T const> xs) {
+  nanobind::tuple out =
+      nanobind::steal<nanobind::tuple>(PyTuple_New(xs.size()));
   for (int i = 0; i < xs.size(); ++i) {
-    out[i] = pybind11::cast(xs[i]);
+    PyTuple_SET_ITEM(out.ptr(), i, nanobind::cast(xs[i]).release().ptr());
   }
   return out;
 }
-template <>
-pybind11::tuple SpanToTuple(absl::Span<int const> xs);
-template <>
-pybind11::tuple SpanToTuple(absl::Span<int64_t const> xs);
 
-// Converts a Python iterable/sequence of T to std::vector<T>
+// Converts a sequence of Python objects to a Python tuple, stealing the
+// references to the objects.
+nanobind::tuple MutableSpanToNbTuple(absl::Span<nanobind::object> xs);
+
 template <typename T>
-std::vector<T> IterableToVector(const pybind11::iterable& iterable) {
+std::vector<T> IterableToVector(const nanobind::iterable& iterable) {
   std::vector<T> output;
   for (auto item : iterable) {
-    output.push_back(item.cast<T>());
+    output.push_back(nanobind::cast<T>(item));
   }
   return output;
 }
 template <typename T>
-std::vector<T> SequenceToVector(const pybind11::sequence& sequence) {
+std::vector<T> SequenceToVector(const nanobind::sequence& sequence) {
   std::vector<T> output;
-  output.reserve(sequence.size());
+  output.reserve(PySequence_Size(sequence.ptr()));
   for (auto item : sequence) {
-    output.push_back(item.cast<T>());
+    output.push_back(nanobind::cast<T>(item));
   }
   return output;
 }
@@ -155,19 +156,15 @@ std::vector<T> SequenceToVector(const pybind11::sequence& sequence) {
 // xla::BorrowingLiteral. Converts a Python array-like object into a buffer
 // pointer and shape.
 struct CastToArrayResult {
-  pybind11::object array;  // Holds a reference to the array to keep it alive.
+  nanobind::object array;  // Holds a reference to the array to keep it alive.
   const char* buf_ptr;
   xla::Shape shape;
 };
-std::optional<CastToArrayResult> CastToArray(pybind11::handle h);
+std::optional<CastToArrayResult> CastToArray(nanobind::handle h);
 
 }  // namespace xla
 
-// This namespace is a documented pybind11 extension point.
-// Caution: Unusually for Google code, this code uses C++ exceptions because
-// they are the only mechanism for reporting cast failures to pybind11. However,
-// the exceptions are local to the binding code.
-namespace pybind11 {
+namespace nanobind {
 namespace detail {
 
 // Literals.
@@ -179,23 +176,29 @@ namespace detail {
 template <>
 struct type_caster<xla::BorrowingLiteral> {
  public:
-  PYBIND11_TYPE_CASTER(xla::BorrowingLiteral, _("xla::BorrowingLiteral"));
+  using Value = xla::BorrowingLiteral;
+  static constexpr auto Name = const_name("xla::BorrowingLiteral");  // NOLINT
+  template <typename T_>
+  using Cast = movable_cast_t<T_>;
+  explicit operator Value*() { return &value; }
+  explicit operator Value&() { return (Value&)value; }
+  explicit operator Value&&() { return (Value&&)value; }
+  Value value;
 
   // Pybind appears to keep type_casters alive until the callee has run.
-  absl::InlinedVector<pybind11::array, 1> arrays;
+  absl::InlinedVector<nanobind::object, 1> arrays;
 
-  bool load(handle input, bool) {
+  bool from_python(handle input, uint8_t, cleanup_list*) noexcept {
     // TODO(b/79707221): support nested tuples if/when XLA adds support for
     // nested BorrowingLiterals.
-    if (pybind11::isinstance<pybind11::tuple>(input)) {
-      pybind11::tuple tuple =
-          pybind11::reinterpret_borrow<pybind11::tuple>(input);
+    if (nanobind::isinstance<nanobind::tuple>(input)) {
+      nanobind::tuple tuple = nanobind::borrow<nanobind::tuple>(input);
       std::vector<xla::Shape> shapes;
       std::vector<const char*> buffers;
       arrays.reserve(tuple.size());
       shapes.reserve(tuple.size());
       buffers.reserve(tuple.size());
-      for (pybind11::handle entry : tuple) {
+      for (nanobind::handle entry : tuple) {
         auto c = xla::CastToArray(entry);
         if (!c) {
           return false;
@@ -221,241 +224,29 @@ struct type_caster<xla::BorrowingLiteral> {
 template <>
 struct type_caster<xla::LiteralSlice> {
  public:
-  PYBIND11_TYPE_CASTER(xla::LiteralSlice, _("xla::LiteralSlice"));
+  NB_TYPE_CASTER(xla::LiteralSlice, const_name("xla::LiteralSlice"));
 
   // Pybind appears to keep type_casters alive until the callee has run.
   type_caster<xla::BorrowingLiteral> literal_caster;
 
-  bool load(handle handle, bool convert) {
-    if (!literal_caster.load(handle, convert)) {
+  bool from_python(handle handle, uint8_t flags,
+                   cleanup_list* cleanup) noexcept {
+    if (!literal_caster.from_python(handle, flags, cleanup)) {
       return false;
     }
     value = static_cast<const xla::BorrowingLiteral&>(literal_caster);
     return true;
   }
-};
 
-// XLA protocol buffers
-// We don't actually care that these are the protocol buffers, we merely want
-// objects that duck type as protocol buffers. The client code currently avoids
-// depending on Python protocol buffers to avoid conflicting definitions from
-// different modules that both include XLA.
-
-template <>
-struct type_caster<xla::ConvolutionDimensionNumbers> {
- public:
-  PYBIND11_TYPE_CASTER(xla::ConvolutionDimensionNumbers,
-                       _("xla::ConvolutionDimensionNumbers"));
-
-  // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    value.set_input_batch_dimension(
-        getattr(handle, "input_batch_dimension").cast<int64_t>());
-    value.set_input_feature_dimension(
-        getattr(handle, "input_feature_dimension").cast<int64_t>());
-    value.set_output_batch_dimension(
-        getattr(handle, "output_batch_dimension").cast<int64_t>());
-    value.set_output_feature_dimension(
-        getattr(handle, "output_feature_dimension").cast<int64_t>());
-    value.set_kernel_input_feature_dimension(
-        getattr(handle, "kernel_input_feature_dimension").cast<int64_t>());
-    value.set_kernel_output_feature_dimension(
-        getattr(handle, "kernel_output_feature_dimension").cast<int64_t>());
-    std::vector<int64_t> dims;
-    dims = getattr(handle, "input_spatial_dimensions")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_input_spatial_dimensions()));
-    dims = getattr(handle, "kernel_spatial_dimensions")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_kernel_spatial_dimensions()));
-    dims = getattr(handle, "output_spatial_dimensions")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_output_spatial_dimensions()));
-    return true;
-  }
-};
-
-template <>
-struct type_caster<xla::DotDimensionNumbers> {
- public:
-  PYBIND11_TYPE_CASTER(xla::DotDimensionNumbers, _("xla::DotDimensionNumbers"));
-
-  // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    std::vector<int64_t> dims;
-    dims = getattr(handle, "lhs_contracting_dimensions")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_lhs_contracting_dimensions()));
-    dims = getattr(handle, "rhs_contracting_dimensions")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_rhs_contracting_dimensions()));
-    dims = getattr(handle, "lhs_batch_dimensions").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_lhs_batch_dimensions()));
-    dims = getattr(handle, "rhs_batch_dimensions").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_rhs_batch_dimensions()));
-    return true;
-  }
-};
-
-template <>
-struct type_caster<xla::GatherDimensionNumbers> {
- public:
-  PYBIND11_TYPE_CASTER(xla::GatherDimensionNumbers,
-                       _("xla::GatherDimensionNumbers"));
-
-  // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    std::vector<int64_t> dims;
-    dims = getattr(handle, "offset_dims").cast<std::vector<int64_t>>();
-    std::copy(
-        dims.begin(), dims.end(),
-        tsl::protobuf::RepeatedFieldBackInserter(value.mutable_offset_dims()));
-    dims = getattr(handle, "collapsed_slice_dims").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_collapsed_slice_dims()));
-    dims = getattr(handle, "start_index_map").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_start_index_map()));
-    value.set_index_vector_dim(
-        getattr(handle, "index_vector_dim").cast<int64_t>());
-    return true;
-  }
-};
-
-template <>
-struct type_caster<xla::ScatterDimensionNumbers> {
- public:
-  PYBIND11_TYPE_CASTER(xla::ScatterDimensionNumbers,
-                       _("xla::ScatterDimensionNumbers"));
-
-  // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    std::vector<int64_t> dims;
-    dims = getattr(handle, "update_window_dims").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_update_window_dims()));
-    dims = getattr(handle, "inserted_window_dims").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_inserted_window_dims()));
-    dims = getattr(handle, "scatter_dims_to_operand_dims")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_scatter_dims_to_operand_dims()));
-    value.set_index_vector_dim(
-        getattr(handle, "index_vector_dim").cast<int64_t>());
-    return true;
-  }
-};
-
-template <>
-struct type_caster<xla::ReplicaGroup> {
- public:
-  PYBIND11_TYPE_CASTER(xla::ReplicaGroup, _("xla::ReplicaGroup"));
-
-  // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    std::vector<int64_t> dims;
-    dims = getattr(handle, "replica_ids").cast<std::vector<int64_t>>();
-    std::copy(
-        dims.begin(), dims.end(),
-        tsl::protobuf::RepeatedFieldBackInserter(value.mutable_replica_ids()));
-    return true;
-  }
-};
-
-template <>
-struct type_caster<xla::PaddingConfig> {
- public:
-  PYBIND11_TYPE_CASTER(xla::PaddingConfig, _("xla::PaddingConfig"));
-
-  // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    sequence dimensions =
-        reinterpret_borrow<sequence>(getattr(handle, "dimensions"));
-
-    for (const auto& dimension : dimensions) {
-      xla::PaddingConfig::PaddingConfigDimension* config_dim =
-          value.add_dimensions();
-      config_dim->set_edge_padding_low(
-          getattr(dimension, "edge_padding_low").cast<int64_t>());
-      config_dim->set_edge_padding_high(
-          getattr(dimension, "edge_padding_high").cast<int64_t>());
-      config_dim->set_interior_padding(
-          getattr(dimension, "interior_padding").cast<int64_t>());
-    }
-    return true;
-  }
-};
-
-template <>
-struct type_caster<xla::OpMetadata> {
- public:
-  PYBIND11_TYPE_CASTER(xla::OpMetadata, _("xla::OpMetadata"));
-
-  // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    pybind11::handle op_type = getattr(handle, "op_type");
-    if (!op_type.is_none()) {
-      value.set_op_type(op_type.cast<std::string>());
-    }
-    pybind11::handle op_name = getattr(handle, "op_name");
-    if (!op_name.is_none()) {
-      value.set_op_name(op_name.cast<std::string>());
-    }
-    pybind11::handle source_file = getattr(handle, "source_file");
-    if (!source_file.is_none()) {
-      value.set_source_file(source_file.cast<std::string>());
-    }
-    pybind11::handle source_line = getattr(handle, "source_line");
-    if (!source_line.is_none()) {
-      value.set_source_line(source_line.cast<int32_t>());
-    }
-    return true;
-  }
-};
-
-template <>
-struct type_caster<xla::PrecisionConfig> {
- public:
-  PYBIND11_TYPE_CASTER(xla::PrecisionConfig, _("xla::PrecisionConfig"));
-
-  // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    if (handle.is_none()) {
-      return true;
-    }
-
-    sequence operand_precisions =
-        reinterpret_borrow<sequence>(getattr(handle, "operand_precision"));
-
-    for (const auto& operand_precision : operand_precisions) {
-      value.add_operand_precision(
-          operand_precision.cast<xla::PrecisionConfig::Precision>());
-    }
-    return true;
+  static handle from_cpp(xla::LiteralSlice src, rv_policy policy,
+                         cleanup_list* cleanup) noexcept {
+    PyErr_Format(PyExc_NotImplementedError,
+                 "LiteralSlice::from_cpp not implemented");
+    return handle();
   }
 };
 
 }  // namespace detail
-}  // namespace pybind11
+}  // namespace nanobind
 
 #endif  // XLA_PYTHON_TYPES_H_

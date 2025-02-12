@@ -1223,7 +1223,8 @@ class ComplexMakeRealImagTest(test.TestCase):
               math_ops.square(math_ops.imag(cplx)))
       epsilon = 1e-3
       jacob_t, jacob_n = gradient_checker.compute_gradient(
-          inx, list(x.shape), loss, [1], x_init_value=x, delta=epsilon)
+          inx, list(x.shape), loss, list(loss.shape), x_init_value=x,
+          delta=epsilon)
     self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
 
   def _compareBroadcastGradient(self, x):

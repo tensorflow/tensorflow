@@ -17,35 +17,46 @@
 // This file implements the entry point to compile a hlo op to a kernel.
 //
 //===----------------------------------------------------------------------===//
+#include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
 #include "mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace kernel_gen {
@@ -79,8 +90,8 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
 }
 
 // Compiles the given MLIR module via LLVM into an executable binary format.
-StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
-                                   mlir::ModuleOp module) {
+absl::StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
+                                         mlir::ModuleOp module) {
   // Translate the module.
   llvm::LLVMContext llvm_context;
   mlir::registerLLVMDialectTranslation(*module->getContext());
@@ -115,13 +126,13 @@ StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
   return ostream.str().str();
 }
 
-Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
-           llvm::StringRef host_triple,
-           llvm::ArrayRef<std::string> architectures,
-           llvm::ArrayRef<int64_t> tile_sizes,
-           llvm::ArrayRef<int64_t> unroll_factors, int64_t max_supported_rank,
-           bool print_ptx, bool print_llvmir, bool enable_ftz, bool index_64bit,
-           bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
+absl::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
+                 llvm::StringRef host_triple,
+                 llvm::ArrayRef<std::string> architectures,
+                 llvm::ArrayRef<int64_t> tile_sizes,
+                 llvm::ArrayRef<int64_t> unroll_factors, bool print_ptx,
+                 bool print_llvmir, bool enable_ftz, bool index_64bit,
+                 bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
   // Read TF code.
   std::string hlo_code;
   TF_RETURN_IF_ERROR(
@@ -138,9 +149,9 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       GenerateKernelForHloCode(context, hlo_code, architectures, tile_sizes,
-                               unroll_factors, max_supported_rank, print_ptx,
-                               print_llvmir, enable_ftz, index_64bit,
-                               jit_compile, jit_i64_indexed_for_large_tensors,
+                               unroll_factors, print_ptx, print_llvmir,
+                               enable_ftz, index_64bit, jit_compile,
+                               jit_i64_indexed_for_large_tensors,
                                /*apply_cl_options=*/true));
 
   // Get binary.
@@ -149,7 +160,7 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   // Write .a file.
   TF_RETURN_IF_ERROR(
       WriteStringToFile(Env::Default(), output_file.str(), binary));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -186,11 +197,6 @@ int main(int argc, char** argv) {
   llvm::cl::list<std::string> architectures(
       "arch", llvm::cl::desc("target architectures (e.g. sm_70 or compute_75)"),
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
-  llvm::cl::opt<int64_t> max_supported_rank(
-      "max-supported-rank",
-      llvm::cl::desc("maximum supported rank to be guaranteed by rank "
-                     "specialization lowering"),
-      llvm::cl::init(5));
   llvm::cl::list<int64_t> tile_sizes(
       "tile_sizes", llvm::cl::desc("tile sizes to use"), llvm::cl::ZeroOrMore,
       llvm::cl::CommaSeparated);
@@ -206,24 +212,35 @@ int main(int argc, char** argv) {
 
   tensorflow::InitMlir y(&argc, &argv);
 
+#ifdef TF_LLVM_X86_AVAILABLE
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
   LLVMInitializeX86AsmPrinter();
+#endif
 
+#ifdef TF_LLVM_AARCH64_AVAILABLE
   LLVMInitializeAArch64Target();
   LLVMInitializeAArch64TargetInfo();
   LLVMInitializeAArch64TargetMC();
   LLVMInitializeAArch64AsmPrinter();
+#endif
 
   mlir::registerPassManagerCLOptions();
   mlir::registerMLIRContextCLOptions();
+
+  // Forward cli options to XLA, as it will reset llvm options internally
+  // during the first invocation.
+  auto& xla_llvm_global_options =
+      xla::llvm_ir::LLVMCommandLineOptionsLock::GetGlobalOptions();
+  xla_llvm_global_options.insert(xla_llvm_global_options.end(), argv + 1,
+                                 argv + argc);
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op kernel generator\n");
 
   auto status = tensorflow::kernel_gen::Run(
       input_file, output_file, host_triple, architectures, tile_sizes,
-      unroll_factors, max_supported_rank, print_ptx, print_llvmir, enable_ftz,
-      index_64bit, jit_compile, jit_i64_indexed_for_large_tensors);
+      unroll_factors, print_ptx, print_llvmir, enable_ftz, index_64bit,
+      jit_compile, jit_i64_indexed_for_large_tensors);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;

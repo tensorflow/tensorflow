@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,16 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
-#include "xla/statusor.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
@@ -43,7 +43,7 @@ using ::testing::HasSubstr;
 XLA_TEST_F(ConcatTest, Concat_Nothing) {
   XlaBuilder builder(TestName());
   ConcatInDim(&builder, {}, 0);
-  StatusOr<XlaComputation> computation_status = builder.Build();
+  absl::StatusOr<XlaComputation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(computation_status.status().ToString(),
               HasSubstr("Concatenate expects at least one argument"));
@@ -75,7 +75,7 @@ XLA_TEST_F(ConcatTest, CannotConcatR0WithR0) {
   auto a = ConstantR0<float>(&builder, 42.0);
   auto b = ConstantR0<float>(&builder, 64.0);
   ConcatInDim(&builder, {a, b}, 0);
-  StatusOr<XlaComputation> computation_status = builder.Build();
+  absl::StatusOr<XlaComputation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(computation_status.status().ToString(),
               HasSubstr("out of bounds: 0"));
@@ -416,7 +416,7 @@ XLA_TEST_F(ConcatTest, CannotConcatOpaques) {
   auto x = Parameter(&builder, 0, r1f32, "x");
   auto y = Parameter(&builder, 1, opaque_shape, "y");
   ConcatInDim(&builder, {x, y}, 0);
-  StatusOr<XlaComputation> computation_status = builder.Build();
+  absl::StatusOr<XlaComputation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(
       computation_status.status().ToString(),
@@ -431,7 +431,7 @@ XLA_TEST_F(ConcatTest, CannotConcatTokens) {
   auto x = Parameter(&builder, 0, r1f32, "x");
   auto y = Parameter(&builder, 1, token_shape, "y");
   ConcatInDim(&builder, {x, y}, 0);
-  StatusOr<XlaComputation> computation_status = builder.Build();
+  absl::StatusOr<XlaComputation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(
       computation_status.status().ToString(),

@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/core/model_builder.h"
-#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {

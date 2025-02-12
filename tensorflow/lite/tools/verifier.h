@@ -12,11 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_LITE_TOOLS_VERIFIER_H_
 #define TENSORFLOW_LITE_TOOLS_VERIFIER_H_
 
-#include "tensorflow/lite/core/tools/verifier.h"
+/// For documentation, see third_party/tensorflow/lite/core/tools/verifier.h
+
+#include "tensorflow/lite/core/tools/verifier.h"  // IWYU pragma: export
 
 namespace tflite {
 

@@ -52,7 +52,7 @@ tf_class {
   }
   member_method {
     name: "as_graph_def"
-    argspec: "args=[\'self\', \'from_version\', \'add_shapes\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'self\', \'from_version\', \'add_shapes\', \'use_pybind11_proto\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'False\'], "
   }
   member_method {
     name: "as_graph_element"

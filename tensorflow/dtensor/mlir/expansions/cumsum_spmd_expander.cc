@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/cumsum_spmd_expander.h"
 
-#include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <string>
-#include <utility>
 
-#include "llvm/Support/FormatVariadic.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"

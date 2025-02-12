@@ -40,7 +40,7 @@ def AsyncSleep(delay, name=None):
   any time spent being blocked by another thread in `delay`. If it is blocked
   for a fraction of the time specified by `delay`, it only calls `sleep`
   (actually `usleep`) only for the remainder. If it is blocked for the full
-  time specified by `delay` or more, it returns without explictly calling
+  time specified by `delay` or more, it returns without explicitly calling
   `sleep`.
 
   Args:

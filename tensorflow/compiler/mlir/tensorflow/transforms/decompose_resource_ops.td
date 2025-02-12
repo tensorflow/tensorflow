@@ -38,6 +38,14 @@ def CheckHasResourceSubtype : Constraint<CPred<"HasResourceSubtype($0)">>;
 
 def CreateConstBoolAttrFalse : NativeCodeCall<"$_builder.getBoolAttr(false)">;
 
+def CreateTensorScatterAddOp : NativeCodeCall<
+    "$_builder.create<TF::TensorScatterAddOp>("
+    "$0.getLoc(), $0.getType(), $0, $1, $2, $_builder.getStringAttr(\"\"))">;
+
+def CreateTensorScatterUpdateOp : NativeCodeCall<
+    "$_builder.create<TF::TensorScatterUpdateOp>("
+    "$0.getLoc(), $0.getType(), $0, $1, $2, $_builder.getStringAttr(\"\"))">;
+
 def CreateTFReadVariableOpFromResourceHandle : NativeCodeCall<
     "$_builder.create<TF::ReadVariableOp>("
     "$0.getLoc(), GetResourceSubtype($1), $1)">;
@@ -54,6 +62,9 @@ def Clamp: NativeCodeCall<
     "$_builder.create<TF::ClipByValueOp>("
     "  $0.getLoc(),"
     "  $2.getType(), $2, $1, $3)">;
+
+def CopyXlaOutsideCompilationAttr: NativeCodeCallVoid<
+    "CopyXlaOutsideCompilationAttributesAdaptor($0, $1)">;
 
 def DecomposeAssignAddVariableOp :
   Pat<
@@ -338,12 +349,12 @@ def DecomposeResourceApplyAdamNesterov :
 def DecomposeResourceGather : Pat<
   (TF_ResourceGatherOp:$old_result
     $resource, $indices, $batch_dims, $validate_indices),
-  (TF_GatherV2Op
+  (TF_GatherV2Op:$dest
     (CreateTFReadVariableOp $old_result, $old_result, $resource),
     $indices,
     (TF_ConstOp $batch_dims), // axis
     $batch_dims
-  )>;
+  ), [], [(CopyXlaOutsideCompilationAttr $old_result, $dest)]>;
 
 // Pattern to decompose tf.ResourceScatterAdd into tf.ReadVariable,
 // tf.TensorScatterAdd, and tf.AssignVariable.
@@ -351,7 +362,7 @@ def DecomposeResourceScatterAdd : Pat<
   (TF_ResourceScatterAddOp:$src_op $resource, $indices, $updates),
   (TF_AssignVariableOp
     $resource,
-    (TF_TensorScatterAddOp
+    (CreateTensorScatterAddOp
       (CreateTFReadVariableOp $src_op, $updates, $resource),
       (TF_ExpandDimsOp $indices,
        (TF_ConstOp (GetScalarOfType<-1> $indices))),
@@ -366,7 +377,7 @@ def DecomposeResourceScatterUpdate : Pat<
   (TF_ResourceScatterUpdateOp:$src_op $resource, $indices, $updates),
   (TF_AssignVariableOp
     $resource,
-    (TF_TensorScatterUpdateOp
+    (CreateTensorScatterUpdateOp
       (CreateTFReadVariableOp $src_op, $updates, $resource),
       (TF_ExpandDimsOp $indices,
        (TF_ConstOp (GetScalarOfType<-1> $indices))),

@@ -36,9 +36,9 @@ struct StripTfAttributesPass
 
 bool ShouldStripAttr(NamedAttribute &namedAttr) {
   StringRef name = namedAttr.getName().strref();
-  if (name.startswith("tf.") || name.startswith("tf_")) return true;
+  if (name.starts_with("tf.") || name.starts_with("tf_")) return true;
   StringRef value = namedAttr.getValue().getDialect().getNamespace();
-  return value == "tf" || value.startswith("tf_");
+  return value == "tf" || value.starts_with("tf_");
 }
 
 void StripFunction(func::FuncOp func) {

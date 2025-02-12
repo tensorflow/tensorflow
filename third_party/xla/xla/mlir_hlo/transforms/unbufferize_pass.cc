@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Support/LLVM.h"
 #include "transforms/passes.h"
 
 namespace mlir {
@@ -54,7 +55,7 @@ void UnbufferizePass::runOnOperation() {
   IRMapping mapping;
   llvm::SmallDenseSet<BlockArgument> insertedArgs;
   funcOp->walk([&](bufferization::ToTensorOp op) {
-    auto arg = op.getMemref().dyn_cast<BlockArgument>();
+    auto arg = mlir::dyn_cast<BlockArgument>(op.getMemref());
     if (!arg) return;
     Value newValue = mapping.lookupOrNull(arg);
     if (newValue == nullptr) {
@@ -69,11 +70,11 @@ void UnbufferizePass::runOnOperation() {
   });
   SmallVector<Value> results;
   SmallVector<DictionaryAttr> resultAttrs;
-  funcOp->walk([&](memref::TensorStoreOp op) {
-    auto arg = op.getMemref().dyn_cast<BlockArgument>();
+  funcOp->walk([&](bufferization::MaterializeInDestinationOp op) {
+    auto arg = mlir::dyn_cast<BlockArgument>(op.getDest());
     if (!arg) return;
     argsToErase.set(arg.getArgNumber());
-    results.push_back(op.getTensor());
+    results.push_back(op.getSource());
     resultAttrs.push_back(funcOp.getArgAttrDict(arg.getArgNumber()));
     rewriter.eraseOp(op);
   });

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,11 +20,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_XFEED_MANAGER_H_
 #define XLA_SERVICE_CPU_XFEED_MANAGER_H_
 
+#include <cstdint>
 #include <deque>
+#include <string>
 
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -44,20 +47,13 @@ class XfeedBuffer {
   // The 'shape' parameter reflects what shape the embedded program was
   // expecting / producing with respect to this XfeedBuffer. E.g. this will
   // contain information about the layout of an outfed buffer.
-  virtual void Done(StatusOr<Shape> shape) = 0;
+  virtual void Done(absl::StatusOr<Shape> shape) = 0;
 };
 
 // Reusable component for managing the infeed and outfeed queue state.
 class XfeedQueueManager {
  public:
   XfeedQueueManager(std::string queue_name) : queue_name_(queue_name) {}
-
-  // Calls the completion callback for any enqueued buffers that have
-  // not been dequeued by the runtime, and empties the
-  // queue. Reset may not be called while a runtime computation is
-  // processing a dequeued buffer. The only safe way to ensure this
-  // condition is to call Reset when no computation is taking place.
-  void Reset();
 
   // Adds a sequence of buffers to the queue atomically. buffer->Done will be
   // called when the buffer will no longer be accessed by the XfeedManager,
@@ -82,16 +78,13 @@ class XfeedQueueManager {
   // error status. In the case of outfeed, this indicates the layout of the
   // shape that has been outfed. In the case of infeed, this can be used for
   // sanity checking purposes.
-  void ReleaseCurrentBuffer(int32_t length, void* data, StatusOr<Shape> shape);
+  void ReleaseCurrentBuffer(int32_t length, void* data,
+                            absl::StatusOr<Shape> shape);
 
  private:
   const std::string queue_name_;
 
   absl::Mutex mu_;
-
-  // Condition variable that is signaled every time a buffer is
-  // enqueued to an empty queue.
-  absl::CondVar cv_;
 
   // XfeedBuffer* queue contents are not owned, but buffer->Done must
   // be called when the buffer is no longer needed by the runtime.
@@ -106,8 +99,6 @@ class XfeedQueueManager {
 class XfeedManager {
  public:
   XfeedManager() = default;
-
-  void Reset();
 
   XfeedQueueManager* infeed() { return &infeed_; }
   XfeedQueueManager* outfeed() { return &outfeed_; }
