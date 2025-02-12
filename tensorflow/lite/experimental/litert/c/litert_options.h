@@ -196,6 +196,15 @@ LiteRtStatus LiteRtGetGatherBatchDimsOption(LiteRtOp op, int32_t* batch_dims);
 //==============================================================================
 LiteRtStatus LiteRtGetMeanKeepDimsOption(LiteRtOp op, bool* keepdims);
 
+//==============================================================================
+//
+// Get option APIs for LiteRt Split op.
+//  Options:
+// - num_splits : int32_t
+//
+//==============================================================================
+LiteRtStatus LiteRtGetSplitNumSplitsOption(LiteRtOp op, int32_t* num_splits);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

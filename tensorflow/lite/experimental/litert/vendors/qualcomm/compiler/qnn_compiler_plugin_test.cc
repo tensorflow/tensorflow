@@ -73,6 +73,7 @@ const auto kSupportedOps =
                     // "simple_pack_op.tflite",
                     "simple_gather_op.tflite",
                     "simple_mean_op.tflite",
+                    "simple_split_op.tflite",
                     kFeedForwardModel,
                     // kKeyEinsumModel,
                     // kQueryEinsumModel,

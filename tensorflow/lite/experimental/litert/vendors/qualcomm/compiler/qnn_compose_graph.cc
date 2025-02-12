@@ -50,8 +50,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/select_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/slice_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/softmax_op_builder.h"
-// #include
-// "third_party/tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/split_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/split_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/tanh_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/transpose_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
@@ -383,14 +382,14 @@ LiteRtStatus ConvertOp(
                                           output_tensors, beta);
       break;
     }
-    // TODO: Add options in C api.
-    // case LiteRtOpCode::kLiteRtOpCodeTflSplit: {
-    //   uint32_t num_splits =
-    //       detail::GetTflOptions(*litert_op.Get()).AsSplitOptions()->num_splits;
-    //   op_wrappers = ::qnn::BuildSplitOp(tensor_pool, input_tensors,
-    //                                     output_tensors, num_splits);
-    //   break;
-    // }
+    case LiteRtOpCode::kLiteRtOpCodeTflSplit: {
+      int32_t num_splits{};
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetSplitNumSplitsOption(litert_op.Get(), &num_splits));
+      op_wrappers = ::qnn::BuildSplitOp(tensor_pool, input_tensors,
+                                        output_tensors, num_splits);
+      break;
+    }
     case LiteRtOpCode::kLiteRtOpCodeTflTanh: {
       op_wrappers =
           ::qnn::BuildTanhOp(tensor_pool, input_tensors, output_tensors);
