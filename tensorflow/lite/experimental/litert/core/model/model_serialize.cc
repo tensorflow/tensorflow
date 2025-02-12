@@ -47,7 +47,6 @@ namespace {
 
 using TensorMap = absl::flat_hash_map<LiteRtTensor, int32_t>;
 
-
 // This is expected to be used to serialize the dispatch op custom code.
 TflOpCodePtr MakeCustomOpCode(std::string custom_code_name) {
   auto custom_code = std::make_unique<TflOpCode>();
@@ -67,6 +66,8 @@ class SerializationContext {
   using TflBufferInd = uint32_t;
   using TflOffsetTensorMap =
       absl::flat_hash_map<TflBufferInd, LiteRtModelT::BufferId>;
+  using TflBufferIdMap =
+      absl::flat_hash_map<LiteRtModelT::BufferId, TflBufferInd>;
 
   explicit SerializationContext(uint32_t dispatch_op_code_ind,
                                 LiteRtModelT& litert_model)
@@ -100,17 +101,23 @@ class SerializationContext {
       return litert_buf.Error().Status();
     }
 
-    auto& tfl_buffer =
-        tfl_model_->buffers.emplace_back(std::make_unique<TflBuffer>());
-    const auto tfl_buffer_ind = tfl_model_->buffers.size() - 1;
-
-    if (litert_buf_ctx->get().should_append) {
-      tfl_buffer->offset = 1;
-      tfl_buffer->size = 1;
-      offset_tensor_map_.emplace(tfl_buffer_ind, litert_buf_id);
+    TflBufferInd tfl_buffer_ind;
+    if (buffer_id_map_.contains(litert_buf_id)) {
+      tfl_buffer_ind = buffer_id_map_.at(litert_buf_id);
     } else {
-      tfl_buffer->data.assign(litert_buf->Data(),
-                              litert_buf->Data() + litert_buf->Size());
+      auto& tfl_buffer =
+          tfl_model_->buffers.emplace_back(std::make_unique<TflBuffer>());
+      tfl_buffer_ind = tfl_model_->buffers.size() - 1;
+
+      if (litert_buf_ctx->get().should_append) {
+        tfl_buffer->offset = 1;
+        tfl_buffer->size = 1;
+        offset_tensor_map_.emplace(tfl_buffer_ind, litert_buf_id);
+      } else {
+        tfl_buffer->data.assign(litert_buf->Data(),
+                                litert_buf->Data() + litert_buf->Size());
+      }
+      buffer_id_map_[litert_buf_id] = tfl_buffer_ind;
     }
 
     tfl_tensor.buffer = tfl_buffer_ind;
@@ -158,6 +165,7 @@ class SerializationContext {
 
   TflOpAssetMap op_asset_map_;
   TflOffsetTensorMap offset_tensor_map_;
+  TflBufferIdMap buffer_id_map_;
 };
 
 void SetOptions(const LiteRtOpT& litert_op, TflOp& tfl_op) {

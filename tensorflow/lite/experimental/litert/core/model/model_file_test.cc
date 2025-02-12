@@ -796,6 +796,9 @@ TEST_P(MultiSubgraphDupeConstTest, CheckGraph) {
     Tensor t(&cst);
     EXPECT_THAT(*t.WeightsData<float>(), ElementsAreArray(kWeights));
   }
+  auto buf_id_0 = model.Subgraph(0).Op(0).Input(1).Weights().GetBufferId();
+  auto buf_id_1 = model.Subgraph(1).Op(0).Input(1).Weights().GetBufferId();
+  ASSERT_EQ(buf_id_0, buf_id_1);
 }
 
 INSTANTIATE_TEST_SUITE_P(ModelLoadTests, MultiSubgraphDupeConstTest,
@@ -804,7 +807,7 @@ INSTANTIATE_TEST_SUITE_P(ModelLoadTests, MultiSubgraphDupeConstTest,
 INSTANTIATE_TEST_SUITE_P(ModelSerializeTests, MultiSubgraphDupeConstTest,
                          Values(MakeRoundTripFactory(kCstMultiSubgraph)));
 
-// Tests that programatically check litert against tflite models.
+// Tests that programmatically check litert against tflite models.
 //===---------------------------------------------------------------------------
 
 using ModelLoadOpCheckTest = TestWithModelPath;
