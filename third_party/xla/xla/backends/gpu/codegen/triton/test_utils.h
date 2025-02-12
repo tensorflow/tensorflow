@@ -64,7 +64,7 @@ absl::Status CreateTritonIrAndFileCheckForDot(
 inline BlockLevelParameters FromOutputTileSizes(
     std::vector<int64_t> output_tile_sizes) {
   BlockLevelParameters block_level_parameters;
-  block_level_parameters.output_tile_sizes = std::move(output_tile_sizes);
+  block_level_parameters.output_tile_sizes.push_back(output_tile_sizes);
   return block_level_parameters;
 }
 

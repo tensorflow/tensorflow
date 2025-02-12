@@ -160,7 +160,7 @@ absl::Status AnnotateDotOperandNestedFusionImpl(
   output_tile_sizes[non_contracting_dimensions[0]] = non_contracting_dim_size;
 
   BlockLevelParameters block_level_parameters;
-  block_level_parameters.output_tile_sizes = std::move(output_tile_sizes);
+  block_level_parameters.output_tile_sizes = {std::move(output_tile_sizes)};
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       nested_fusion.backend_config<GpuBackendConfig>());
@@ -319,8 +319,8 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
   backend_config.set_kind(std::string(kTritonFusionKind));
 
   BlockLevelParameters block_level_parameters;
-  block_level_parameters.output_tile_sizes.assign(output_tile_sizes.begin(),
-                                                  output_tile_sizes.end());
+  block_level_parameters.output_tile_sizes = {
+      std::vector<int64_t>(output_tile_sizes.begin(), output_tile_sizes.end())};
 
   *backend_config.mutable_block_level_fusion_config() =
       block_level_parameters.ToBlockLevelFusionConfig();

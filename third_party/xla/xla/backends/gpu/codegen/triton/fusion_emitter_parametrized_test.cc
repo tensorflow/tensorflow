@@ -267,7 +267,7 @@ ENTRY e {
   ROOT triton_fusion = f32[33,68]{1,0} fusion(p0), kind=kCustom,
     calls=triton_computation,
     backend_config={"fusion_backend_config":{"kind":"__triton",
-                    "block_level_fusion_config":{"output_tile_sizes":["1", "1"],"num_warps":"1"}}}
+                    "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "1"]}],"num_warps":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -444,7 +444,7 @@ ENTRY e {
   ROOT triton_fusion = f32[11,63]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_computation,
     backend_config={"fusion_backend_config":{"kind":"__triton",
-                    "block_level_fusion_config":{"output_tile_sizes":["1", "1"],"num_warps":"1"}}}
+                    "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "1"]}],"num_warps":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -2353,7 +2353,7 @@ ENTRY entry_computation {
   ROOT fusion = $0[400] fusion(p), kind=kCustom, calls=triton_computation,
     backend_config={ "operation_queue_id":"0", "wait_on_operation_queues":[],
       "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
-          "output_tile_sizes":["400"], "num_warps":"1"}},
+          "output_tiles":[{"sizes":["400"]}], "num_warps":"1"}},
       "force_earliest_schedule":false}
 })";
   const std::string hlo_test = absl::Substitute(

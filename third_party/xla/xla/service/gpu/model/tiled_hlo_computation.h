@@ -36,7 +36,7 @@ namespace gpu {
 // A container for block-level parameters. Currently only used for Triton
 // fusions.
 struct BlockLevelParameters {
-  std::vector<int64_t> output_tile_sizes;
+  std::vector<std::vector<int64_t>> output_tile_sizes;
 
   // Triton-specific parameters.
   int64_t num_warps = 1;
@@ -46,18 +46,24 @@ struct BlockLevelParameters {
   // Returns a BlockLevelParameters struct from a BlockLevelFusionConfig proto.
   static BlockLevelParameters FromBlockLevelFusionConfig(
       const BlockLevelFusionConfig& config) {
-    return BlockLevelParameters{
-        /*output_tile_sizes=*/
-        std::vector<int64_t>(config.output_tile_sizes().begin(),
-                             config.output_tile_sizes().end()),
-        /*num_warps=*/config.num_warps()};
+    BlockLevelParameters result;
+    result.num_warps = config.num_warps();
+    result.output_tile_sizes.reserve(config.output_tiles_size());
+    for (const auto& tile : config.output_tiles()) {
+      result.output_tile_sizes.push_back(
+          std::vector<int64_t>(tile.sizes().begin(), tile.sizes().end()));
+    }
+    return result;
   }
 
   // Returns a BlockLevelFusionConfig proto from a BlockLevelParameters struct.
   BlockLevelFusionConfig ToBlockLevelFusionConfig() const {
     BlockLevelFusionConfig config;
-    config.mutable_output_tile_sizes()->Add(output_tile_sizes.begin(),
-                                            output_tile_sizes.end());
+    for (const auto& tile_sizes : output_tile_sizes) {
+      Tile tile;
+      tile.mutable_sizes()->Add(tile_sizes.begin(), tile_sizes.end());
+      *config.add_output_tiles() = tile;
+    }
     config.set_num_warps(num_warps);
     return config;
   }

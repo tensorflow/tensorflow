@@ -938,6 +938,9 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
                          const HloFusionInstruction* fusion,
                          mlir::triton::FuncOp fn,
                          const BlockLevelParameters& block_level_parameters) {
+  if (block_level_parameters.output_tile_sizes.size() != 1) {
+    return absl::UnimplementedError("Codegen only supports 1 root right now");
+  }
   const HloComputation* computation = fusion->fused_instructions_computation();
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
       SymbolicTileAnalysis::AnalyzeComputation(
@@ -961,7 +964,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
 
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
                       symbolic_tile_analysis.ComputeTiledHloInstructions(
-                          block_level_parameters.output_tile_sizes,
+                          block_level_parameters.output_tile_sizes[0],
                           /*constraints_are_known_satisfied=*/false,
                           /*compute_all_tile_offset_indexing_maps=*/true));
   VLOG(3) << "Tiled HLO computation: " << tiled_hlo_computation.ToString();

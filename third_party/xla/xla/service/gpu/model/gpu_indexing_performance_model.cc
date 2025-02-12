@@ -525,7 +525,7 @@ absl::StatusOr<EstimateRunTimeData>
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     const HloFusionAdaptor& fusion_adaptor,
     const LaunchDimensions& launch_dimensions,
-    absl::Span<const int64_t> tile_sizes) {
+    const std::vector<std::vector<int64_t>>& tile_sizes) {
   // TODO(b/332714755): Add caching for SymbolicTileAnalysis.
   SymbolicTileAnalysisOrError analysis_or_error =
       SymbolicTileAnalysis::AnalyzeFusion(
@@ -536,11 +536,15 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     return absl::FailedPreconditionError(absl::StrCat(
         "SymbolicTileAnalysis failed. ", fusion_decision->Explain()));
   }
+  // TODO(b/390559452): Add support for more than one fusion root.
+  if (tile_sizes.size() != 1) {
+    return absl::UnimplementedError("Only 1 root is supported right now");
+  }
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                      analysis.ComputeTiledHloInstructions(tile_sizes));
+                      analysis.ComputeTiledHloInstructions(tile_sizes[0]));
 
   return EstimateRunTimeForTiledHloComputation(
       fusion_adaptor, tiled_hlo_computation, launch_dimensions);
@@ -620,8 +624,8 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
         estimate_run_time_data.exec_time <
             best_tiled_run_time_data->runtime_data.exec_time) {
       BlockLevelParameters block_level_parameters;
-      block_level_parameters.output_tile_sizes =
-          std::vector<int64_t>(tiling.begin(), tiling.end());
+      block_level_parameters.output_tile_sizes = {
+          std::vector<int64_t>(tiling.begin(), tiling.end())};
       block_level_parameters.num_warps =
           launch_dimensions.num_threads_per_block() / WarpSize(*device_info_);
 

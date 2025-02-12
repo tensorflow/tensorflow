@@ -845,7 +845,7 @@ triton_computation {
 ENTRY main {
   param_0 = f32[32,64] parameter(0)
   c_0 = f32[] constant(0)
-  ROOT triton_softmax = f32[32] fusion(param_0, c_0), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1"],"num_warps":"1"}}}
+  ROOT triton_softmax = f32[32] fusion(param_0, c_0), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1"]}],"num_warps":"1"}}}
 })");
   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
 
@@ -939,7 +939,7 @@ ENTRY main {
   param_0 = f32[125]{0} parameter(0)
   param_1 = f32[125,127]{1,0} parameter(1)
   producer_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=producer_computation
-  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","127"],"num_warps":"1"}}}
+  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","127"]}],"num_warps":"1"}}}
   ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_1, triton_softmax), kind=kLoop, calls=consumer_computation
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
@@ -958,7 +958,8 @@ ENTRY main {
   EXPECT_EQ(root->backend_config<GpuBackendConfig>()
                 ->fusion_backend_config()
                 .block_level_fusion_config()
-                .output_tile_sizes_size(),
+                .output_tiles(0)
+                .sizes_size(),
             2);
 }
 
@@ -988,7 +989,7 @@ consumer_computation.2 {
 
 ENTRY main {
   param_0 = f32[125]{0} parameter(0)
-  producer_fusion = f32[125,127] fusion(param_0), kind=kCustom, calls=producer_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","127"],"num_warps":"1"}}}
+  producer_fusion = f32[125,127] fusion(param_0), kind=kCustom, calls=producer_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","127"]}],"num_warps":"1"}}}
   consumer_fusion.1 = f32[125,127] fusion(producer_fusion), kind=kLoop, calls=consumer_computation.1
   consumer_fusion.2 = f32[125,127] fusion(producer_fusion), kind=kLoop, calls=consumer_computation.2
   ROOT tuple = (f32[125,127], f32[125,127]) tuple(consumer_fusion.1, consumer_fusion.2)
@@ -1010,7 +1011,8 @@ ENTRY main {
       backend_config1.fusion_backend_config().has_block_level_fusion_config());
   EXPECT_EQ(backend_config1.fusion_backend_config()
                 .block_level_fusion_config()
-                .output_tile_sizes_size(),
+                .output_tiles(0)
+                .sizes_size(),
             2);
 
   EXPECT_TRUE(IsGenericTritonFusion(*fusion2));
@@ -1020,7 +1022,8 @@ ENTRY main {
       backend_config2.fusion_backend_config().has_block_level_fusion_config());
   EXPECT_EQ(backend_config2.fusion_backend_config()
                 .block_level_fusion_config()
-                .output_tile_sizes_size(),
+                .output_tiles(0)
+                .sizes_size(),
             2);
 }
 
@@ -1044,7 +1047,7 @@ ENTRY main {
   param_0 = c64[] parameter(0)
   param_1 = f32[125,127] parameter(1)
   producer_fusion = f32[125,127] fusion(param_0), kind=kLoop, calls=producer_computation
-  ROOT triton_fusion = f32[125,127] fusion(producer_fusion, param_1), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","127"],"num_warps":"1"}}}
+  ROOT triton_fusion = f32[125,127] fusion(producer_fusion, param_1), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","127"]}],"num_warps":"1"}}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
@@ -1073,7 +1076,7 @@ consumer_computation {
 ENTRY main {
   param_0 = f32[] parameter(1)
   param_1 = c64[] parameter(0)
-  triton_fusion = f32[125,127] fusion(param_0), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","127"],"num_warps":"1"}}}
+  triton_fusion = f32[125,127] fusion(param_0), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","127"]}],"num_warps":"1"}}}
   ROOT consumer_fusion = f32[125,127] fusion(param_1, triton_fusion), kind=kLoop, calls=consumer_computation
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
