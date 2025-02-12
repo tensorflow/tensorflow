@@ -17,12 +17,19 @@ limitations under the License.
 // Must be included first.
 #include "tensorflow/python/lib/core/py_func.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 // clang-format: on
 
 #include <Python.h>
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <vector>
 
 #include "numpy/arrayobject.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -35,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
