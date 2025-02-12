@@ -5915,7 +5915,7 @@ HloModule bitcast_to_smaller
 
 ENTRY main {
   p = s32[10] parameter(0)
-  ROOT out = s8[10,4] bitcast-convert(p), result_accuracy={tolerance={rtol=0.5, atol=1.0, ulps=2}
+  ROOT out = s8[10,4] bitcast-convert(p), result_accuracy={tolerance={rtol=0.5, atol=1.0, ulps=2}}
 }
 )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
@@ -5974,6 +5974,25 @@ TEST_F(HloParserTest,
             wrapped_instr->statistics_viz().DebugString());
   EXPECT_EQ(OriginalValueToString(*async_done->original_value()),
             OriginalValueToString(*wrapped_instr->original_value()));
+}
+
+TEST_F(HloParserTest, ResultAccuracyToProto) {
+  const char* const hlo_string = R"(
+  HloModule exponential_hw
+
+  ENTRY exponential_hw {
+    %exponent = f32[] parameter(0)
+    ROOT %exponential = f32[] exponential(f32[] %exponent), result_accuracy={tolerance={rtol=0.5, atol=1.0, ulps=2}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* exp_hlo_instruction =
+      module->entry_computation()->root_instruction();
+  HloInstructionProto exp_hlo_inst_proto = exp_hlo_instruction->ToProto();
+  EXPECT_TRUE(exp_hlo_inst_proto.has_result_accuracy());
+  EXPECT_EQ(exp_hlo_inst_proto.result_accuracy().tolerance().rtol(), 0.5);
+  EXPECT_EQ(exp_hlo_inst_proto.result_accuracy().tolerance().atol(), 1.0);
 }
 
 }  // namespace
