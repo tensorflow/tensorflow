@@ -23,6 +23,7 @@ limitations under the License.
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "tensorflow/lite/examples/label_image/label_image.h"
 #include "tensorflow/lite/examples/label_image/log.h"
