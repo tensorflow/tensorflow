@@ -203,6 +203,30 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeTo
  
      return success();
    }
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
+@@ -21,9 +21,8 @@
+   return RankedTensorType::get(tensorType.getShape(), rewriter.getI1Type());
+ }];
+ 
+-Rewrite changeElementTypeToI8(type: Type) -> Type [{
+-  auto tensorType = llvm::cast<mlir::RankedTensorType>(type);
+-  return RankedTensorType::get(tensorType.getShape(), rewriter.getI8Type());
++Rewrite getScalarInt8Tensor() -> Type [{
++  return RankedTensorType::get({1}, rewriter.getI8Type());
+ }];
+ 
+ Rewrite zerosLike(op: Op, type: Type) -> Op [{
+@@ -159,7 +158,7 @@
+   let root = op<stablehlo.multiply>(input0 : Value<inputType: Tosa_Tensor>,
+                             input1 : Value<_: Tosa_Tensor>);
+   rewrite root with {
+-    let typei8 = changeElementTypeToI8(inputType);
++    let typei8 = getScalarInt8Tensor();
+     let zeros = zerosLike(root, typei8);
+     let mulResult = op<tosa.mul>(input0, input1, zeros) -> (inputType);
+     replace root with mulResult;
 diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
 --- stablehlo/stablehlo/dialect/Base.cpp
 +++ stablehlo/stablehlo/dialect/Base.cpp
