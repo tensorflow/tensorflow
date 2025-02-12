@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gtest/gtest.h>
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tools/run_hlo_module.pb.h"
