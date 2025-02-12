@@ -269,7 +269,6 @@ void AddPreQuantizationStableHloToTfPasses(
           {entry_function_name.str()}));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo_ext::createStablehloFlattenTuplePass());
-  pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   mlir::odml::AddMhloOptimizationPasses(
       pass_manager,
       /*add_fold_broadcast_pass=*/pass_config.enable_stablehlo_quantizer);

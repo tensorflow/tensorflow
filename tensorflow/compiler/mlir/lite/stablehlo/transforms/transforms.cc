@@ -87,6 +87,9 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
 
 void AddMhloOptimizationPasses(OpPassManager& pm,
                                const bool add_fold_broadcast_pass) {
+  pm.addNestedPass<func::FuncOp>(createStablehloUnfuseBatchNormPass());
+  // StableHLO -> MHLO legalization.
+  pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   // Rewrites some patterns for better performance.
   pm.addNestedPass<func::FuncOp>(createFuseConvolutionPass());
   pm.addNestedPass<func::FuncOp>(createOptimizePass());
@@ -106,16 +109,11 @@ void AddMhloOptimizationPasses(OpPassManager& pm,
 }
 
 void AddStablehloOptimizationPasses(OpPassManager& pm) {
-  pm.addNestedPass<func::FuncOp>(createStablehloUnfuseBatchNormPass());
-
   // The current plan of record is to avoid doing optimization passes
   // on StableHLO, treating StableHLO purely as an input format, and do all
   // optimizations via MHLO passes that can be shared with the OpenXLA compiler.
   // Therefore, this function inserts a StableHLO <=> MHLO roundtrip to make
   // this happen.
-
-  // StableHLO -> MHLO legalization.
-  pm.addPass(mhlo::createStablehloLegalizeToHloPass());
 
   AddMhloOptimizationPasses(pm, /*enable_stablehlo_quantizer=*/false);
   // TODO: b/293149194 - Add `createFoldBroadcastPass` back to
