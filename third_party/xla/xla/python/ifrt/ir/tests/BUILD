@@ -84,7 +84,7 @@ cc_library(
     testonly = True,
     srcs = ["executable_impl_test_base.cc"],
     hdrs = ["executable_impl_test_base.h"],
-    visibility = ["//xla/python/ifrt:friends"],
+    visibility = ["//xla/python/ifrt:users"],
     deps = [
         "//xla:status_macros",
         "//xla/mlir/utils:error_util",
@@ -117,7 +117,7 @@ cc_library(
     name = "executable_impl_test_lib",
     testonly = True,
     srcs = ["executable_impl_test_lib.cc"],
-    visibility = ["//xla/python/ifrt:friends"],
+    visibility = ["//xla/python/ifrt:users"],
     deps = [
         ":executable_impl_test_base",
         "//xla/pjrt:pjrt_executable",

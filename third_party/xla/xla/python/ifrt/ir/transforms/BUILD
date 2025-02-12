@@ -3,7 +3,7 @@ load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//xla/python/ifrt:friends"],
+    default_visibility = ["//xla/python/ifrt:users"],
     licenses = ["notice"],
 )
 
