@@ -34,6 +34,8 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 
@@ -41,6 +43,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
+namespace m = xla::match;
 using ::testing::UnorderedElementsAre;
 
 class GpuP2PPipelinerTest : public HloTestBase {
@@ -476,6 +479,101 @@ TEST_F(GpuP2PPipelinerTest, OneSendRecvWithOneConflictingAllReduce) {
               UnorderedElementsAre(recv_done_op));
   EXPECT_THAT(ar_op->control_predecessors(),
               UnorderedElementsAre(send_done_op));
+}
+
+TEST_F(GpuP2PPipelinerTest,
+       OneSendRecvWithConflictingAllReduceBeforeAndAfterLoop) {
+  const char* kHloStr = R"(
+    HloModule test
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    cond {
+      param = (u32[], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      n = u32[] constant(2)
+      ROOT result = pred[] compare(i, n), direction=LT
+    }
+
+    body {
+      param = (u32[], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      data = f32[64] get-tuple-element(param), index=1
+
+      // Decomposed cp_fwd.
+      after-all = token[] after-all()
+      recv = (f32[64], u32[], token[]) recv(after-all), channel_id=1,
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+      send = (f32[64], u32[], token[]) send(data, after-all), channel_id=1,
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
+          control-predecessors={recv}
+      recv_done = (f32[64], token[]) recv-done(recv), channel_id=1,
+          control-predecessors={send}
+      send_done = token[] send-done(send), channel_id=1,
+          control-predecessors={recv_done}
+      recv_data = f32[64] get-tuple-element(recv_done), index=0
+
+
+      c1 = u32[] constant(1)
+      i_ = u32[] add(u32[] i, u32[] c1)
+
+      ROOT result = (u32[], f32[64]) tuple(i_, recv_data)
+    }
+
+    ENTRY entry {
+      c0 = u32[] constant(0)
+      a = f32[] constant(42)
+      data = f32[64] broadcast(a), dimensions={}
+
+      // Conflicting all-reduce before loop.
+      ar = f32[64] all-reduce(data), channel_id=2, replica_groups={{0,1,2,3}},
+          to_apply=add
+
+      while_init = (u32[], f32[64]) tuple(c0, ar)
+      result = (u32[], f32[64]) while(while_init), condition=cond,
+         body=body
+
+      // Conflicting all-reduce after loop.
+      while_dep_data = f32[64] get-tuple-element(result), index=1
+      ROOT final_ar = f32[64] all-reduce(while_dep_data), channel_id=3,
+          replica_groups={{0,1,2,3}}, to_apply=add
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kHloStr, config_));
+
+  // Run pass.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunOptimizer(module.get(),
+                                 /*enable_partial_send_recv_pipelining=*/true));
+  EXPECT_TRUE(changed);
+
+  // Find ops around the while loop.
+  HloInstruction* ar_op = FindInstruction(module.get(), "ar");
+  HloInstruction* recv_op = FindInstruction(module.get(), "recv.1");
+  HloInstruction* send_op = FindInstruction(module.get(), "send.1");
+  HloInstruction* while_op = FindInstruction(module.get(), "while");
+  HloInstruction* recv_done_op = FindInstruction(module.get(), "recv_done.2");
+  HloInstruction* send_done_op = FindInstruction(module.get(), "send_done.2");
+  HloInstruction* final_ar_op = FindInstruction(module.get(), "final_ar");
+  EXPECT_THAT(while_op, GmockMatch(m::While(m::Tuple(
+                            m::Op(), m::Op().Is(ar_op), m::Op().Is(recv_op),
+                            m::Op().Is(send_op), m::Op()))));
+
+  // Expect control dependencies from conflicting all-reduce before the while
+  // loop to send/recv, expect control dependencies from send/recv-done to
+  // conflicting all-reduce after the loop.
+  EXPECT_THAT(recv_op->control_predecessors(), UnorderedElementsAre(ar_op));
+  EXPECT_THAT(send_op->control_predecessors(),
+              UnorderedElementsAre(recv_op, ar_op));
+  EXPECT_THAT(send_done_op->control_predecessors(),
+              UnorderedElementsAre(recv_done_op));
+  EXPECT_THAT(final_ar_op->control_predecessors(),
+              UnorderedElementsAre(recv_done_op, send_done_op));
 }
 
 }  // namespace

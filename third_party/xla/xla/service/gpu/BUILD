@@ -2242,11 +2242,14 @@ xla_cc_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_verifier",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
