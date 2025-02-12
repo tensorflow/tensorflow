@@ -694,6 +694,7 @@ xla_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:executable",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:gpu_executable",

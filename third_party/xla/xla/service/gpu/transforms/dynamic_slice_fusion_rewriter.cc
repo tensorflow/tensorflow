@@ -506,8 +506,9 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
       *gpu_config.mutable_fusion_backend_config();
   backend_config.set_kind("__custom_fusion");
   CustomFusionConfig config;
-  config.set_name(dynamic ? "dynamic_address_computation"
-                          : "address_computation");
+  config.set_name(std::string(
+      dynamic ? kDynamicSliceFusionWithDynamicAddressComputationConfigName
+              : kDynamicSliceFusionWithStaticAddressComputationConfigName));
   *backend_config.mutable_custom_fusion_config() = config;
   TF_RETURN_IF_ERROR(fusion->set_backend_config(std::move(gpu_config)));
 

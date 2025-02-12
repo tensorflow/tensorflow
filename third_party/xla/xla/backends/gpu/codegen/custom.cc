@@ -192,11 +192,18 @@ absl::Status CollectSliceInfo(
   if (arg_slice_instr == nullptr) {
     return absl::OkStatus();
   }
+  std::optional<HloInstruction*> async_caller = std::nullopt;
+  if (fusion_instr.parent()->IsAsyncComputation()) {
+    async_caller = fusion_instr.parent()->AsyncStart();
+  }
 
   std::vector<DynamicSliceThunk::Offset> arg_offsets;
   for (auto idx_op : arg_slice_instr->index_operands()) {
     const auto* param = Cast<HloParameterInstruction>(idx_op);
-    const auto* offset_value = fusion_instr.operand(param->parameter_number());
+    const HloInstruction* offset_value =
+        async_caller.has_value()
+            ? (*async_caller)->operand(param->parameter_number())
+            : fusion_instr.operand(param->parameter_number());
 
     VLOG(2) << "Offset value:" << offset_value->ToString();
 
@@ -893,7 +900,9 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
       fusion_instr.backend_config<xla::gpu::GpuBackendConfig>());
   const std::string fusion_name =
       backend_config.fusion_backend_config().custom_fusion_config().name();
-  TF_RET_CHECK(isDynamic == (fusion_name == "dynamic_address_computation"))
+  TF_RET_CHECK(isDynamic ==
+               (fusion_name ==
+                kDynamicSliceFusionWithDynamicAddressComputationConfigName))
       << "Dynamic index operation found in a fusion instruction that is not "
          "labelled dynamic_address_computation";
 
@@ -961,13 +970,21 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
         /*destination_value=*/nullptr});
     auto collective_start_thunk =
         std::make_unique<NcclThunkType>(thunk_info, instr, buffers);
-    auto collective_done_thunk = std::make_unique<NcclCollectiveDoneThunk>(
-        /*kind=*/collective_done_thunk_kind,
-        /*thunk_info=*/Thunk::ThunkInfo::WithProfileAnnotation(instr),
-        /*async_events=*/collective_start_thunk->async_events(),
-        /*async_stream_kind=*/AsyncStreamKind::kCollective);
+    std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events =
+        collective_start_thunk->async_events();
     seq.emplace_back(std::move(collective_start_thunk));
-    seq.emplace_back(std::move(collective_done_thunk));
+    // If the fusion is async, we do not emit the done thunk at the end.
+    if (fusion_instr.parent()->IsAsyncComputation()) {
+      ir_emitter_context.collectives_async_events().insert(
+          {fusion_instr.parent()->AsyncStart(), async_events});
+    } else {
+      auto collective_done_thunk = std::make_unique<NcclCollectiveDoneThunk>(
+          /*kind=*/collective_done_thunk_kind,
+          /*thunk_info=*/Thunk::ThunkInfo::WithProfileAnnotation(instr),
+          /*async_events=*/async_events,
+          /*async_stream_kind=*/AsyncStreamKind::kCollective);
+      seq.emplace_back(std::move(collective_done_thunk));
+    }
   } else {
     return implementable_status;
   }
