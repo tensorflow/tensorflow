@@ -190,6 +190,8 @@ xla_cc_test(
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/profiling:device_time_measurement",
+        "//xla/pjrt/profiling/test_util:mock_device_time_measurement",
         "//xla/service:gpu_plugin",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_memory",

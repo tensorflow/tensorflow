@@ -63,6 +63,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/profiling/device_time_measurement.h"
+#include "xla/pjrt/profiling/test_util/mock_device_time_measurement.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -1873,6 +1875,66 @@ TEST(StreamExecutorGpuClientTest, AutoLayoutIsSupported) {
   // Check that the assigned layouts are not default.
   EXPECT_NE(layouts[0]->ToString(), "{2,1,0}");
   EXPECT_NE(layouts[1]->ToString(), "{2,1,0}");
+}
+
+// Same test as SendRecvChunked, but check GPU device time measurement.
+TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurement) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kProgram, *client));
+
+  std::array<float, 2> sent_value = {0.0f, 0.0f};
+
+  // Send buffer to host.
+  SendCallback send_callback = {
+      /*channel_id=*/1, [&](const PjRtTransferMetadata& m, PjRtChunk chunk,
+                            int64_t total_size_in_bytes, bool done) {
+        float* data = reinterpret_cast<float*>(chunk.data());
+        sent_value[0] = data[0];
+        sent_value[1] = data[1];
+        return absl::OkStatus();
+      }};
+
+  // Recv buffer from host.
+  RecvCallback recv_callback = {
+      /*channel_id=*/2, [&](const PjRtTransferMetadata& m,
+                            std::unique_ptr<CopyToDeviceStream> stream) {
+        auto chunk0 = PjRtChunk::AllocateDefault(sizeof(float));
+        *reinterpret_cast<float*>(chunk0.data()) = 5.0f;
+        TF_CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
+
+        auto chunk1 = PjRtChunk::AllocateDefault(sizeof(float));
+        *reinterpret_cast<float*>(chunk1.data()) = 6.0f;
+        TF_CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
+
+        return absl::OkStatus();
+      }};
+
+  // Callbacks for point-to-point communication ops.
+  std::vector<std::vector<SendCallback>> send_callbacks = {{send_callback}};
+  std::vector<std::vector<RecvCallback>> recv_callbacks = {{recv_callback}};
+
+  ExecuteOptions opts;
+  opts.send_callbacks = send_callbacks;
+  opts.recv_callbacks = recv_callbacks;
+
+  // Test non-zero GPU device time measurement.
+  auto measurement0 = CreateDeviceTimeMeasurement();
+  auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          ExtractSingleResult(result));
+  EXPECT_EQ(sent_value[0], 2.0f);
+  EXPECT_EQ(sent_value[1], 3.0f);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<float>({5.0f, 6.0f}),
+                                     *result_literal));
+
+  // Check measurement after execution completes.
+  EXPECT_GT(
+      measurement0->GetTotalDuration(DeviceTimeMeasurement::DeviceType::kGpu),
+      absl::ZeroDuration());
 }
 
 struct ShardedAutotuningTestInfo {

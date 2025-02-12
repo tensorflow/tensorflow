@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_PROFILING_NO_OP_DEVICE_TIME_MEASUREMENT_H_
-#define XLA_PJRT_PROFILING_NO_OP_DEVICE_TIME_MEASUREMENT_H_
+#ifndef XLA_PJRT_PROFILING_TEST_UTIL_MOCK_DEVICE_TIME_MEASUREMENT_H_
+#define XLA_PJRT_PROFILING_TEST_UTIL_MOCK_DEVICE_TIME_MEASUREMENT_H_
 
 #include <cstdint>
 #include <memory>
@@ -26,24 +26,32 @@ limitations under the License.
 
 namespace xla {
 
-// No-op OSS implementation of DeviceTimeMeasurement.
-class NoOpDeviceTimeMeasurement : public DeviceTimeMeasurement {
+// Mock implementation of DeviceTimeMeasurement for testing.
+//
+// MockDeviceTimeMeasurement objects are tracked in a global stack. This should
+// only be used by local variables so that objects are destructed in the reverse
+// order of their creation.
+class MockDeviceTimeMeasurement : public DeviceTimeMeasurement {
  public:
-  NoOpDeviceTimeMeasurement() = default;
-  ~NoOpDeviceTimeMeasurement() override = default;
+  // Adds a MockDeviceTimeMeasurement object to the top of the global stack.
+  MockDeviceTimeMeasurement();
 
-  NoOpDeviceTimeMeasurement(const NoOpDeviceTimeMeasurement&) = delete;
-  NoOpDeviceTimeMeasurement& operator=(const NoOpDeviceTimeMeasurement&) =
+  // Removes the top-most MockDeviceTimeMeasurement object from
+  // the global stack.
+  ~MockDeviceTimeMeasurement() override;
+
+  MockDeviceTimeMeasurement(const MockDeviceTimeMeasurement&) = delete;
+  MockDeviceTimeMeasurement& operator=(const MockDeviceTimeMeasurement&) =
       delete;
 
   // Get the total device duration of the input device type (either GPU or TPU)
-  // since the creation of the DeviceTimeMeasurement object.
+  // since the creation of the MockDeviceTimeMeasurement object.
   absl::Duration GetTotalDuration(DeviceType device_type) override {
     return absl::ZeroDuration();
   };
 
   // Get the total device durations of all device types (GPU and TPU)
-  // since the creation of the DeviceTimeMeasurement object.
+  // since the creation of the MockDeviceTimeMeasurement object.
   absl::flat_hash_map<DeviceType, absl::Duration> GetTotalDurations() override {
     return device_type_durations_;
   }
@@ -54,11 +62,15 @@ class NoOpDeviceTimeMeasurement : public DeviceTimeMeasurement {
 
 std::unique_ptr<DeviceTimeMeasurement> CreateDeviceTimeMeasurement();
 
+// Returns the key (position) of the top-most MockDeviceTimeMeasurement object
+// in the global stack.
 std::optional<uint64_t> GetDeviceTimeMeasurementKey();
 
+// Records the elapsed device time for the MockDeviceTimeMeasurement at the
+// given key (position) in the global stack.
 void RecordDeviceTimeMeasurement(
     uint64_t key, absl::Duration elapsed,
     xla::DeviceTimeMeasurement::DeviceType device_type);
 
 }  // namespace xla
-#endif  // XLA_PJRT_PROFILING_NO_OP_DEVICE_TIME_MEASUREMENT_H_
+#endif  // XLA_PJRT_PROFILING_TEST_UTIL_MOCK_DEVICE_TIME_MEASUREMENT_H_
