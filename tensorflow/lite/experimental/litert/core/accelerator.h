@@ -56,9 +56,16 @@ struct LiteRtAcceleratorT {
       LiteRtAcceleratorT* accelerator,
       LiteRtHwAcceleratorSet* supported_hardware);
 
-  // Applies the accelerator to a compiled model.
-  LiteRtStatus (*ApplyToModel)(LiteRtAcceleratorT* accelerator,
-                               LiteRtCompiledModelT* supported_hardware);
+  // Creates a delegate for the accelerator.
+  // Used void** instead of TfLiteOpaqueDelegate** to avoid TFLite dependency.
+  LiteRtStatus (*CreateDelegate)(LiteRtAcceleratorT* accelerator,
+                                 void** delegate);
+
+  // Destroys created delegate for the accelerator.
+  // The function signature is matched with existing TfLiteOpaqueDelegate
+  // interface to use.
+  // Used void* instead of TfLiteOpaqueDelegate* to avoid TFLite dependency.
+  void (*DestroyDelegate)(void* delegate);
 
   // NOLINTEND(*-readability-class-member-naming)
 };

@@ -35,6 +35,7 @@
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
@@ -157,8 +158,44 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
     return Unexpected(kLiteRtStatusErrorRuntimeFailure);
   }
 
+  if (hardware_accelerators & kLiteRtHwAcceleratorGpu) {
+    // Query GPU accelerator and apply the delegate.
+    // TODO b/394958439 - Support NPU delegate here.
+    auto& registry = env->GetAcceleratorRegistry();
+    for (int i = 0; i < registry.size(); ++i) {
+      auto accelerator = registry.Get(i);
+      LiteRtHwAcceleratorSet accelerator_supported_hardware;
+      if ((*accelerator)
+              ->GetHardwareSupport(*accelerator,
+                                   &accelerator_supported_hardware) !=
+          kLiteRtStatusOk) {
+        continue;
+      }
+      if (accelerator_supported_hardware & kLiteRtHwAcceleratorGpu) {
+        TfLiteOpaqueDelegate* delegate_ptr = nullptr;
+        if ((*accelerator)
+                ->CreateDelegate(*accelerator,
+                                 reinterpret_cast<void**>(&delegate_ptr)) !=
+            kLiteRtStatusOk) {
+          continue;
+        }
+        auto delegate = tflite::TfLiteOpaqueDelegateUniquePtr(
+            delegate_ptr, reinterpret_cast<void (*)(TfLiteOpaqueDelegate*)>(
+                              (*accelerator)->DestroyDelegate));
+        if (compiled_model->interp_->ModifyGraphWithDelegate(delegate_ptr) !=
+            kTfLiteOk) {
+          return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                            "Failed to modify graph with delegate");
+        }
+        compiled_model->RegisterDelegate(std::move(delegate));
+        break;
+      }
+    }
+  }
+
   // Apply the dispatch delegate, unconditionally, since the loaded model may
   // have been compiled for NPU at AOT.
+  // TODO: b/394958439 - Get the DispatchDelegate from the AcceleratorRegistry.
   auto dispatch_delegate_options =
       litert::CreateDispatchDelegateOptionsPtr(*env);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),

@@ -95,13 +95,15 @@ LiteRtStatus LiteRtSetAcceleratorGetHardwareSupport(
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtSetApplyToModel(
+LiteRtStatus LiteRtSetDelegateFunction(
     LiteRtAccelerator accelerator,
-    LiteRtStatus (*ApplyToModel)(LiteRtAccelerator accelerator,
-                                 LiteRtCompiledModel compiled_model)) {
+    LiteRtStatus (*CreateDelegate)(LiteRtAccelerator accelerator,
+                                   void** delegate),
+    void (*DestroyDelegate)(void* delegate)) {
   if (!accelerator) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  accelerator->ApplyToModel = ApplyToModel;
+  accelerator->CreateDelegate = CreateDelegate;
+  accelerator->DestroyDelegate = DestroyDelegate;
   return kLiteRtStatusOk;
 }

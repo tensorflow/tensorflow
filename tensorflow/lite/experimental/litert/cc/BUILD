@@ -415,4 +415,36 @@ cc_test(
     ],
 )
 
+# copybara:uncomment_begin(google-only)
+# cc_test(
+#     name = "litert_compiled_model_gpu_test",
+#     srcs = ["litert_compiled_model_gpu_test.cc"],
+#     data = [
+#         "//tensorflow/lite/experimental/litert/test:testdata/simple_model.tflite",
+#     ],
+#     tags = [
+#         "requires-gpu-nvidia",
+#     ],
+#     deps = [
+#         ":litert_compiled_model",
+#         ":litert_environment",
+#         ":litert_model",
+#         ":litert_tensor_buffer",
+#         "@com_google_googletest//:gtest_main",
+#         "@com_google_absl//absl/debugging:leak_check",
+#         "@com_google_absl//absl/log:absl_log",
+#         "@com_google_absl//absl/strings:string_view",
+#         "@com_google_absl//absl/types:span",
+#         "//third_party/odml/infra/ml_drift_delegate:ml_drift_cl_accelerator",  # buildcleaner: keep
+#         "//tensorflow/lite:framework",
+#         "//tensorflow/lite/c:c_api_opaque",
+#         "//tensorflow/lite/c:common",
+#         "//tensorflow/lite/experimental/litert/c:litert_common",
+#         "//tensorflow/lite/experimental/litert/test:common",
+#         "//tensorflow/lite/experimental/litert/test:simple_model",
+#         "//tensorflow/lite/kernels:builtin_ops",
+#     ],
+# )
+# copybara:uncomment_end
+
 exports_files(srcs = glob(["litert_*.h"]))

@@ -19,7 +19,6 @@
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/core/accelerator.h"
 
@@ -55,10 +54,12 @@ class DummyAccelerator {
     return kLiteRtStatusOk;
   }
 
-  static LiteRtStatus ApplyToModel(LiteRtAccelerator accelerator,
-                                   LiteRtCompiledModel compiled_model) {
+  static LiteRtStatus CreateDelegate(LiteRtAccelerator accelerator,
+                                     void** delegate) {
     return kLiteRtStatusOk;
   }
+
+  static void DestroyDelegate(void* delegate) {}
 
   LiteRtHwAccelerators hardware_support_;
 };
@@ -91,12 +92,15 @@ TEST(LiteRtAcceleratorRegistrationTest, SetAcceleratorGetHardwareSupportWorks) {
             DummyAccelerator::GetHardwareSupport);
 }
 
-TEST(LiteRtAcceleratorRegistrationTest, SetAcceleratorApplyToModel) {
+TEST(LiteRtAcceleratorRegistrationTest, SetDelegateFunctionsWorks) {
   LiteRtAcceleratorT accelerator;
-  EXPECT_EQ(LiteRtSetApplyToModel(nullptr, DummyAccelerator::ApplyToModel),
+  EXPECT_EQ(LiteRtSetDelegateFunction(nullptr, DummyAccelerator::CreateDelegate,
+                                      DummyAccelerator::DestroyDelegate),
             kLiteRtStatusErrorInvalidArgument);
-  LiteRtSetApplyToModel(&accelerator, DummyAccelerator::ApplyToModel);
-  EXPECT_EQ(accelerator.ApplyToModel, DummyAccelerator::ApplyToModel);
+  LiteRtSetDelegateFunction(&accelerator, DummyAccelerator::CreateDelegate,
+                            DummyAccelerator::DestroyDelegate);
+  EXPECT_EQ(accelerator.CreateDelegate, DummyAccelerator::CreateDelegate);
+  EXPECT_EQ(accelerator.DestroyDelegate, DummyAccelerator::DestroyDelegate);
 }
 
 TEST(LiteRtAcceleratorRegistrationTest, CreateDestroyAcceleratorDoesntLeak) {
