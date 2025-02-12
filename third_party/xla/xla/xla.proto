@@ -746,6 +746,9 @@ message DebugOptions {
   // the code that emits a particular instruction.
   bool xla_gpu_unsupported_annotate_with_emitter_loc = 358;
 
+  // Internal testing flag to switch AllReduceDecomposer on or off.
+  bool xla_gpu_unsupported_enable_all_reduce_decomposer = 368;
+
   // Enable experimental tiling for Triton GEMM fusions.
   // TODO(b/393299275): remove the flag once the feature is stable.
   bool xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms = 367;
@@ -767,7 +770,6 @@ message DebugOptions {
   // If true, will verify that the numerical results of Triton fusions match
   // the results of regular emitters.
   bool xla_gpu_verify_triton_fusion_numerics = 291;
-
   // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
