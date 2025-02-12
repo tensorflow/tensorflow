@@ -54,6 +54,8 @@ ifrt_proxy_cc_test(
 ifrt_proxy_cc_test(
     name = "array_impl_test_tfrt_cpu",
     srcs = ["array_impl_test_tfrt_cpu.cc"],
+    # TODO(b/396205547): Remove `linkstatic = False`.
+    linkstatic = False,
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",
         "//xla/python/ifrt:array_impl_test_lib",
@@ -79,6 +81,8 @@ ifrt_proxy_cc_test(
     name = "remap_impl_test_tfrt_cpu",
     size = "small",
     srcs = ["remap_impl_test_tfrt_cpu.cc"],
+    # TODO(b/396205547): Remove `linkstatic = False`.
+    linkstatic = False,
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
         "//xla/python/ifrt:remap_impl_test_lib",

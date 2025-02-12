@@ -28,14 +28,14 @@ filegroup(
 )
 
 cc_library(
-    name = "cpu_codegen_test",
+    name = "cpu_codegen_test_main",
     testonly = True,
     hdrs = ["cpu_codegen_test.h"],
     deps = [
         "//xla/service:cpu_plugin",
         "//xla/tests:llvm_irgen_test_base",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -60,7 +60,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
@@ -70,14 +69,13 @@ xla_cc_test(
     name = "cpu_dyn_shape_test",
     srcs = ["cpu_dyn_shape_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
-        "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -98,7 +96,7 @@ xla_cc_test(
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -111,7 +109,7 @@ xla_cc_test(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -120,7 +118,7 @@ xla_cc_test(
     name = "cpu_external_constants_test",
     srcs = ["cpu_external_constants_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla:array2d",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -134,7 +132,7 @@ xla_cc_test(
     name = "cpu_noalias_test",
     srcs = ["cpu_noalias_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -149,9 +147,8 @@ xla_cc_test(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
@@ -161,7 +158,7 @@ xla_cc_test(
     name = "cpu_intrinsic_test",
     srcs = ["cpu_intrinsic_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
@@ -169,9 +166,8 @@ xla_cc_test(
         "//xla/service/cpu:cpu_compiler",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
@@ -184,7 +180,7 @@ xla_cc_test(
     copts = tsl_copts(),
     tags = ["no_mac_arm64"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -192,8 +188,7 @@ xla_cc_test(
         "//xla/service/cpu:test_header_helper",
         "//xla/tests:test_utils",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -201,13 +196,12 @@ xla_cc_test(
     name = "cpu_profiling_test",
     srcs = ["cpu_profiling_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
@@ -218,11 +212,10 @@ xla_cc_test(
     name = "tree_reduction_rewriter_test",
     srcs = ["tree_reduction_rewriter_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -247,7 +240,7 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -255,13 +248,12 @@ xla_cc_test(
     name = "cpu_literal_caching_test",
     srcs = ["cpu_literal_caching_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -269,12 +261,11 @@ xla_cc_test(
     name = "cpu_outfeed_test",
     srcs = ["cpu_outfeed_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -282,12 +273,11 @@ xla_cc_test(
     name = "cpu_key_value_sort_test",
     srcs = ["cpu_key_value_sort_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -295,7 +285,7 @@ xla_cc_test(
     name = "cpu_spmd_compile_test",
     srcs = ["cpu_spmd_compile_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla:debug_options_flags",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
@@ -303,9 +293,8 @@ xla_cc_test(
         "//xla/service/cpu:test_header_helper",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -313,7 +302,7 @@ xla_cc_test(
     name = "cpu_topk_test",
     srcs = ["cpu_topk_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
@@ -324,8 +313,7 @@ xla_cc_test(
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -333,7 +321,7 @@ xla_cc_test(
     name = "cpu_vectorization_test",
     srcs = ["cpu_vectorization_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
@@ -342,10 +330,9 @@ xla_cc_test(
         "//xla/service/cpu:cpu_compiler",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
@@ -357,12 +344,11 @@ xla_cc_test(
     name = "cpu_while_test",
     srcs = ["cpu_while_test.cc"],
     deps = [
-        ":cpu_codegen_test",
+        ":cpu_codegen_test_main",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],

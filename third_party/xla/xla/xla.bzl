@@ -71,8 +71,11 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
 def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):
     native.cc_binary(deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS, copts = copts, **kwargs)
 
-def xla_cc_test(name, deps = [], **kwargs):
+def xla_cc_test(name, deps = [], linkstatic = True, **kwargs):
     """A wrapper around cc_test that adds XLA-specific dependencies.
+
+    Also, it sets linkstatic to True by default, which is a good practice for catching duplicate
+    symbols at link time (e.g. linking in two main() functions).
 
     Use xla_cc_test or xla_test instead of cc_test in all .../xla/... directories except .../tsl/...,
     where tsl_cc_test should be used.
@@ -81,6 +84,7 @@ def xla_cc_test(name, deps = [], **kwargs):
     native.cc_test(
         name = name,
         deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS,
+        linkstatic = linkstatic,
         exec_properties = tf_exec_properties(kwargs),
         **kwargs
     )
