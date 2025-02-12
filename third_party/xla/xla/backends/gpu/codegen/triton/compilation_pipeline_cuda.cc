@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
+#include "third_party/triton/include/triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
-#include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
@@ -91,7 +91,11 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCSEPass());
 
   if (cc.IsAtLeastBlackwell()) {
+    pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
+    pm->addPass(mlir::createCanonicalizerPass());
+    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
     pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
+    pm->addPass(mlir::createCanonicalizerPass());
     pm->addPass(mt::gpu::createTritonGPULoopScheduling({num_stages}));
     pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
@@ -101,10 +105,15 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   } else if (cc.IsAtLeastAmpere()) {
     // Even though we don't run on pre-Ampere architectures anymore, we keep
     // this check for consistency with the upstream pipeline
+    pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
+    pm->addPass(mlir::createCanonicalizerPass());
+    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
     pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
     pm->addPass(mt::gpu::createTritonGPULoopScheduling({num_stages}));
     pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
+  } else {
+    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
   }
   pm->addPass(mt::gpu::createTritonGPUPrefetch());
   pm->addPass(
