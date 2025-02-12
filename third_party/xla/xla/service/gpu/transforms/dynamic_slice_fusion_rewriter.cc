@@ -211,11 +211,14 @@ bool IsValueFunctionOfLoopInductionVariable(const HloInstruction& value,
   }
   const HloInstruction* update = while_body->root_instruction()->operand(
       *loop_induction_variable_tuple_idx);
+  const HloInstruction* indvar_init =
+      while_op->operand(0)->operand(*loop_induction_variable_tuple_idx);
 
   // The `update` instruction and `value` should only depend on the induction
   // variable.
   return IsOnlyDependentOn(/*consumer=*/update, /*producer=*/indvar) &&
-         IsOnlyDependentOn(/*consumer=*/&value, /*producer=*/indvar);
+         IsOnlyDependentOn(/*consumer=*/&value, /*producer=*/indvar) &&
+         IsOnlyDependentOn(indvar_init, nullptr);
 }
 
 // This returns true for the constants that are handled in the dynamic slice
