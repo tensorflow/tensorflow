@@ -37,11 +37,11 @@ func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32, %dim: index) -> (f32
 
 // CHECK:        %[[INDEX:.*]] = xla.apply_indexing
 // CHECK-SAME:     #[[$MAP]](%[[DIM]])[%[[I]], %[[J]]]
-// CHECK:        %[[VAL1:.*]] = arith.cmpi sge, %[[INDEX]], %[[C0]] : index
-// CHECK:        %[[VAL2:.*]] = arith.cmpi sle, %[[INDEX]], %[[C90]] : index
+// CHECK-DAG:    %[[VAL2:.*]] = arith.cmpi sle, %[[INDEX]], %[[C90]] : index
+// CHECK-DAG:    %[[VAL1:.*]] = arith.cmpi sge, %[[INDEX]], %[[C0]] : index
 // CHECK:        %[[VAL3:.*]] = arith.andi %[[VAL1]], %[[VAL2]] : i1
-// CHECK:        %[[VAL4:.*]] = arith.cmpi sge, %[[DIM]], %[[C0]] : index
-// CHECK:        %[[VAL5:.*]] = arith.cmpi sle, %[[DIM]], %[[C3]] : index
+// CHECK-DAG:    %[[VAL5:.*]] = arith.cmpi sle, %[[DIM]], %[[C3]] : index
+// CHECK-DAG:    %[[VAL4:.*]] = arith.cmpi sge, %[[DIM]], %[[C0]] : index
 // CHECK:        %[[VAL6:.*]] = arith.andi %[[VAL4]], %[[VAL5]] : i1
 // CHECK:        %[[INBOUNDS:.*]] = arith.andi %[[VAL3]], %[[VAL6]] : i1
 // CHECK:        %[[IF_RESULT:.*]] = scf.if %[[INBOUNDS]] -> (f32) {
