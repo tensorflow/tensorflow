@@ -465,7 +465,6 @@ CHECK-NOT: fusion(
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseDynamicUpdateSliceIntoReduce) {
-  GTEST_SKIP() << "b/294198633";
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -533,11 +532,11 @@ ENTRY main {
 })";
 
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
-CHECK: ROOT {{.*}} dynamic-update-slice(
 CHECK: %[[REDUCE:.*]] = {{.*}} reduce(
 CHECK: ROOT {{.*}} log(%[[REDUCE]])
+CHECK: ROOT {{.*}} dynamic-update-slice(
 CHECK: ENTRY
-CHECK-COUNT-2: fusion(
+CHECK-COUNT-3: fusion(
   )");
 }
 
