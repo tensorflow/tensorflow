@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/collective_device_list.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -183,6 +184,18 @@ TEST(CollectiveDeviceListTest, IotaListFromProto2) {
               testing::ElementsAre(4, 5));
   EXPECT_THAT(list.iota_replica_group_list()->transpose_perm(),
               testing::ElementsAre(1, 0));
+}
+
+// TODO (b/391829695) : this is for debugging segfault only,
+// remove after the bug is fixed.
+TEST(CollectiveDeviceListTest, Stale) {
+  auto orig = std::make_unique<CollectiveDeviceList>(
+      std::vector<std::vector<int64_t>>({{1, 2, 3}}));
+  CollectiveDeviceList& ref = *orig;
+  EXPECT_FALSE(ref.stale_);
+  orig = std::make_unique<CollectiveDeviceList>(
+      std::vector<std::vector<int64_t>>({{1, 2}}));
+  EXPECT_DEATH(ref.ToString(), ".*");
 }
 
 }  // namespace xla

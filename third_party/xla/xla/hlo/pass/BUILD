@@ -45,6 +45,32 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "hlo_pass_fix_test",
+    srcs = ["hlo_pass_fix_test.cc"],
+    deps = [
+        ":hlo_pass",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:test_helpers",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_group",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service:pattern_matcher",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "hlo_pass_pipeline",
     srcs = [
