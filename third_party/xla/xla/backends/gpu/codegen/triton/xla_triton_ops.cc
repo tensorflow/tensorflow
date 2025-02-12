@@ -34,9 +34,6 @@ limitations under the License.
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Types.h"
 
-#define GET_ATTRDEF_CLASSES
-#include "xla/backends/gpu/codegen/triton/xla_triton_attrs.cc.inc"
-
 using mlir::Dialect;
 using mlir::DictionaryAttr;
 using mlir::Location;
@@ -51,19 +48,6 @@ using mlir::ValueRange;
 using mlir::triton::gpu::TensorOrMemDesc;
 
 namespace mlir::triton::xla {
-
-// TODO (b/350928208): Move initialize to xla_triton_dialect.cc.
-void XlaTritonDialect::initialize() {
-  addOperations<
-#define GET_OP_LIST
-#include "xla/backends/gpu/codegen/triton/xla_triton_ops.cc.inc"
-      >();
-  addAttributes<
-#define GET_ATTRDEF_LIST
-#include "xla/backends/gpu/codegen/triton/xla_triton_attrs.cc.inc"
-      >();
-}
-
 LogicalResult SparseDotOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,

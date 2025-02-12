@@ -489,10 +489,11 @@ cc_library(
 )
 
 td_library(
-    name = "xla_td_files",
+    name = "xla_triton_td_files",
     srcs = glob(["*.td"]),
     includes = ["."],
     deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
@@ -513,7 +514,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "xla_triton_dialect.td",
-    deps = [":xla_td_files"],
+    deps = [":xla_triton_td_files"],
 )
 
 gentbl_cc_library(
@@ -532,12 +533,36 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "xla_triton_ops.td",
     deps = [
-        ":xla_td_files",
+        ":xla_triton_td_files",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
         "@triton//:td_files",
     ],
+)
+
+gentbl_cc_library(
+    name = "xla_triton_types_inc_gen",
+    strip_include_prefix = ".",
+    tbl_outs = [
+        (
+            [
+                "-gen-typedef-decls",
+                "-typedefs-dialect=triton_xla",
+            ],
+            "xla_triton_types.h.inc",
+        ),
+        (
+            [
+                "-gen-typedef-defs",
+                "-typedefs-dialect=triton_xla",
+            ],
+            "xla_triton_types.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "xla_triton_types.td",
+    deps = [":xla_triton_td_files"],
 )
 
 gentbl_cc_library(
@@ -562,7 +587,7 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "xla_triton_attrs.td",
     deps = [
-        ":xla_td_files",
+        ":xla_triton_td_files",
         "@triton//:td_files",
     ],
 )
@@ -571,10 +596,13 @@ cc_library(
     name = "xla_triton",
     srcs = [
         "xla_triton_attrs.cc",
+        "xla_triton_dialect.cc",
         "xla_triton_ops.cc",
+        "xla_triton_types.cc",
     ],
     hdrs = ["xla_triton_ops.h"],
     deps = [
+        "xla_triton_types_inc_gen",
         ":xla_triton_attrs_inc_gen",
         ":xla_triton_dialect_inc_gen",
         ":xla_triton_ops_inc_gen",

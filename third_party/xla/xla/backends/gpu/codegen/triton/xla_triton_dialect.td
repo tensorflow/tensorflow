@@ -36,6 +36,7 @@ def XlaTritonDialect : Dialect {
 
   let cppNamespace = "::mlir::triton::xla";
   let useDefaultAttributePrinterParser = 1;
+  let useDefaultTypePrinterParser = 1;
 }
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_DIALECT_TD_
