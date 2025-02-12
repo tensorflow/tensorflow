@@ -60,6 +60,8 @@ class PyCpuLoadedHostCallback final
     return absl::bit_cast<uint64_t>(cpu_callback_.get());
   }
 
+  CpuCallback* cpu_callback() { return cpu_callback_.get(); }
+
   // LoadedHostCallback implementation.
 
   ~PyCpuLoadedHostCallback() override = default;
