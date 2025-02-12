@@ -714,6 +714,7 @@ TEST_P(IfrtBackendHandlerTest, MakeStringArrayFromHostBufferSuccess) {
 
 TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
   auto ifrt_request = NewIfrtRequest(NewOpId());
+  DType dtype = DType(DType::kF32);
   {
     AssembleArrayFromSingleDeviceArraysRequest* req =
         ifrt_request
@@ -728,6 +729,10 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
     if (Version().protocol_version() >=
         protocol_version::kClientHandlesOptimization2) {
       req->set_result_handle(1);
+    }
+    if (Version().protocol_version() >=
+        protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
+      *req->mutable_dtype() = dtype.ToProto();
     }
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
@@ -753,16 +758,31 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
               proto::SingleDeviceShardSemantics::
                   SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
     }
+    if (Version().protocol_version() >=
+        protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
+      *assemble_array_from_single_device_arrays->mutable_dtype() =
+          dtype.ToProto();
+    }
   }
 
   tsl::RCReference<xla::ifrt::MockArray> result =
       tsl::MakeRef<xla::ifrt::MockArray>();
   const Shape expected_shape({2, 2});
 
-  EXPECT_CALL(*mock_client_, AssembleArrayFromSingleDeviceArrays(
-                                 expected_shape, _,
-                                 ElementsAreArray(single_device_arrays), _, _))
-      .WillOnce(Return(std::move(result)));
+  if (Version().protocol_version() >=
+      protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
+    EXPECT_CALL(*mock_client_,
+                AssembleArrayFromSingleDeviceArrays(
+                    dtype, expected_shape, _,
+                    ElementsAreArray(single_device_arrays), _, _))
+        .WillOnce(Return(std::move(result)));
+  } else {
+    EXPECT_CALL(
+        *mock_client_,
+        AssembleArrayFromSingleDeviceArrays(
+            expected_shape, _, ElementsAreArray(single_device_arrays), _, _))
+        .WillOnce(Return(std::move(result)));
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
   EXPECT_NE(response->assemble_array_from_single_device_arrays_response()

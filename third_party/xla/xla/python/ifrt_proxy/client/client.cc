@@ -236,8 +236,8 @@ Client::AssembleArrayFromSingleDeviceArrays(
     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     ArrayCopySemantics semantics) {
   return Array::AssembleArrayFromSingleDeviceArrays(
-      this, rpc_helper_, std::move(shape), sharding, arrays, semantics,
-      SingleDeviceShardSemantics::kAllShards);
+      this, rpc_helper_, arrays[0]->dtype(), std::move(shape), sharding, arrays,
+      semantics, SingleDeviceShardSemantics::kAllShards);
 }
 
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
@@ -247,7 +247,7 @@ Client::AssembleArrayFromSingleDeviceArrays(
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
   return Array::AssembleArrayFromSingleDeviceArrays(
-      this, rpc_helper_, std::move(shape), sharding, arrays,
+      this, rpc_helper_, arrays[0]->dtype(), std::move(shape), sharding, arrays,
       array_copy_semantics, single_device_shard_semantics);
 }
 
@@ -258,7 +258,7 @@ Client::AssembleArrayFromSingleDeviceArrays(
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
   return Array::AssembleArrayFromSingleDeviceArrays(
-      this, rpc_helper_, std::move(shape), sharding, arrays,
+      this, rpc_helper_, dtype, std::move(shape), sharding, arrays,
       array_copy_semantics, single_device_shard_semantics);
 }
 

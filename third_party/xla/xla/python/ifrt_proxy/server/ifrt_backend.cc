@@ -68,6 +68,7 @@
 #include "xla/python/ifrt_proxy/common/proto_util.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/ifrt_proxy/server/version.h"
@@ -732,12 +733,25 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
                         FromSingleDeviceShardSemanticsProto(
                             assemble_request.single_device_shard_semantics()));
   }
-
-  TF_ASSIGN_OR_RETURN(
-      auto array,
-      client_->AssembleArrayFromSingleDeviceArrays(
-          std::move(shape), std::move(sharding), absl::MakeSpan(arrays),
-          array_copy_semantics, single_device_shard_semantics));
+  tsl::RCReference<xla::ifrt::Array> array;
+  if (version_.protocol_version() <
+      protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
+    if (arrays.empty()) {
+      return absl::InvalidArgumentError(
+          "AssembleArrayFromSingleDeviceArrays requires at least one array.");
+    }
+    TF_ASSIGN_OR_RETURN(array, client_->AssembleArrayFromSingleDeviceArrays(
+                                   std::move(shape), std::move(sharding),
+                                   absl::MakeSpan(arrays), array_copy_semantics,
+                                   single_device_shard_semantics));
+  } else {
+    TF_ASSIGN_OR_RETURN(DType dtype,
+                        DType::FromProto(assemble_request.dtype()));
+    TF_ASSIGN_OR_RETURN(array, client_->AssembleArrayFromSingleDeviceArrays(
+                                   dtype, std::move(shape), std::move(sharding),
+                                   absl::MakeSpan(arrays), array_copy_semantics,
+                                   single_device_shard_semantics));
+  }
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
 

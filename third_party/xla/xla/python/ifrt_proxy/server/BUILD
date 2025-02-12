@@ -136,6 +136,7 @@ cc_library(
         "//xla/python/ifrt_proxy/common:proto_util",
         "//xla/python/ifrt_proxy/common:types",
         "//xla/python/ifrt_proxy/common:types_proto_cc",
+        "//xla/python/ifrt_proxy/common:versions",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:env",

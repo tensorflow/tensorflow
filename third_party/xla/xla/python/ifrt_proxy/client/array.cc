@@ -297,7 +297,7 @@ bool Array::IsDeleted() const {
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
 Array::AssembleArrayFromSingleDeviceArrays(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-    Shape shape, std::shared_ptr<const Sharding> sharding,
+    DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
@@ -317,12 +317,12 @@ Array::AssembleArrayFromSingleDeviceArrays(
         "ifrt-proxy version < 8");
   }
   auto req = std::make_unique<AssembleArrayFromSingleDeviceArraysRequest>();
-  TF_RET_CHECK(!arrays.empty());
   *req->mutable_shape() = shape.ToProto();
   TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), sharding->ToProto());
   req->set_copy_semantics(ToArrayCopySemanticsProto(array_copy_semantics));
   req->set_single_device_shard_semantics(
       ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
+  *req->mutable_dtype() = dtype.ToProto();
   for (const tsl::RCReference<xla::ifrt::Array>& rcref : arrays) {
     Array* array = llvm::dyn_cast<Array>(rcref.get());
     if (array == nullptr) {
@@ -351,7 +351,7 @@ Array::AssembleArrayFromSingleDeviceArrays(
   }
 
   return tsl::RCReference<xla::ifrt::Array>(tsl::MakeRef<Array>(
-      client, std::move(rpc_helper), arrays[0]->dtype(), std::move(shape),
+      client, std::move(rpc_helper), dtype, std::move(shape),
       std::move(sharding), result_handle));
 }
 
