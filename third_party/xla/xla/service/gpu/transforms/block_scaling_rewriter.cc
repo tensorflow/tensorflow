@@ -198,17 +198,18 @@ absl::StatusOr<HloInstruction*> ExpandDequantizeCustomCall(
 
 // ----- Block scaled dot (cuDNN)
 
-enum class CompositeType {
+enum class CudnnMxType {
   // Not a supported composite type.
-  CUSTOM_TYPE,
-  // Input: E4M3FN, scale: E8M0, block size: 32.
+  UNSUPPORTED_TYPE,
+  // Input: E4M3FN, scale: E8M0FNU, block size: 32.
   MXFP8_E4M3FN,
-  // Input: E5M2, scale: E8M0, block size: 32.
+  // Input: E5M2, scale: E8M0FNU, block size: 32.
   MXFP8_E5M2,
+  // Input: E2M1FN, scale: E4M3FN, block size: 16.
+  NVFP4,
 };
 
-CompositeType GetCompositeType(const Shape& input_shape,
-                               const Shape& scale_shape) {
+CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape) {
   // Determine the block size from shapes.
   int block_size = GetBlockSize(input_shape, scale_shape).value_or(0);
 
@@ -216,26 +217,32 @@ CompositeType GetCompositeType(const Shape& input_shape,
   if (input_shape.element_type() == PrimitiveType::F8E4M3FN &&
       scale_shape.element_type() == PrimitiveType::F8E8M0FNU &&
       block_size == BlockScalingRewriter::kBlockSizeMXFP8) {
-    return CompositeType::MXFP8_E4M3FN;
+    return CudnnMxType::MXFP8_E4M3FN;
   }
   if (input_shape.element_type() == PrimitiveType::F8E5M2 &&
       scale_shape.element_type() == PrimitiveType::F8E8M0FNU &&
       block_size == BlockScalingRewriter::kBlockSizeMXFP8) {
-    return CompositeType::MXFP8_E5M2;
+    return CudnnMxType::MXFP8_E5M2;
   }
 
-  return CompositeType::CUSTOM_TYPE;
+  // NVFP4: the input is E2M1FN and the scale is E4M3FN.
+  if (input_shape.element_type() == PrimitiveType::F4E2M1FN &&
+      scale_shape.element_type() == PrimitiveType::F8E4M3FN &&
+      block_size == BlockScalingRewriter::kBlockSizeNVFP4) {
+    return CudnnMxType::NVFP4;
+  }
+
+  return CudnnMxType::UNSUPPORTED_TYPE;
 }
 
-bool IsSupportedByCudnn(CompositeType lhs, CompositeType rhs) {
+bool IsSupportedByCudnn(CudnnMxType lhs, CudnnMxType rhs) {
   // cuDNN supports mixing input types for MXFP8, but the E5M2/E5M2 combination
   // is not supported.
-  return (lhs == CompositeType::MXFP8_E4M3FN &&
-          rhs == CompositeType::MXFP8_E4M3FN) ||
-         (lhs == CompositeType::MXFP8_E4M3FN &&
-          rhs == CompositeType::MXFP8_E5M2) ||
-         (lhs == CompositeType::MXFP8_E5M2 &&
-          rhs == CompositeType::MXFP8_E4M3FN);
+  return (lhs == CudnnMxType::MXFP8_E4M3FN &&
+          rhs == CudnnMxType::MXFP8_E4M3FN) ||
+         (lhs == CudnnMxType::MXFP8_E4M3FN && rhs == CudnnMxType::MXFP8_E5M2) ||
+         (lhs == CudnnMxType::MXFP8_E5M2 && rhs == CudnnMxType::MXFP8_E4M3FN) ||
+         (lhs == CudnnMxType::NVFP4 && rhs == CudnnMxType::NVFP4);
 }
 
 // Reshape inputs to shapes compatible with cuDNN.
@@ -293,7 +300,12 @@ absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildScaledDotInputs(
                    scale_padding_config);
   }
 
-  // Swizzle scales to match cuDNN kernel.
+  // Swizzle scales to match the cuDNN kernel.
+  //
+  // Transposing scales is necessary to match the `scale_vec::1X` layout in
+  // TMEM. This transpose can potentially be done in the kernel (at the cost of
+  // using non-vectorized loads or using an extra shared memory buffer).
+  // https://docs.nvidia.com/cuda/parallel-thread-execution/#tcgen05-mma-scale-factor-a-layout-1x
   TF_ASSIGN_OR_RETURN(Shape scale_valid_shape, builder.GetShape(scale_op));
   int64_t scale_rows = scale_valid_shape.dimensions(1);
   int64_t scale_cols = scale_valid_shape.dimensions(2);
@@ -369,8 +381,8 @@ absl::StatusOr<XlaOp> BuildBlockScaledDot(
   // Use cuDNN kernel, if possible.
   if (allow_cudnn && rhs_scale_op.valid() &&
       IsSupportedByCudnn(
-          GetCompositeType(lhs_input->shape(), lhs_scale->shape()),
-          GetCompositeType(rhs_input->shape(), rhs_scale->shape()))) {
+          GetCudnnMxType(lhs_input->shape(), lhs_scale->shape()),
+          GetCudnnMxType(rhs_input->shape(), rhs_scale->shape()))) {
     return BuildCudnnScaledDot(lhs_op, rhs_op, lhs_scale_op, rhs_scale_op,
                                dnums, result_type);
   }

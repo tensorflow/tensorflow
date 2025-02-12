@@ -414,10 +414,14 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
       return absl::InternalError("Unsupported data type for block scaled dot");
   }
 
-  // cuDNN supports MXFP8 (block size 32, E8M0 scales).
-  TF_RET_CHECK(lhs_scale.type() == DataType::kF8E8M0FNU &&
-               rhs_scale.type() == DataType::kF8E8M0FNU);
-  const int block_size = BlockScalingRewriter::kBlockSizeMXFP8;
+  // cuDNN currently supports MXFP8 (block size 32, E8M0FNU scales) and NVFP4
+  // (block size 16, E4M3FN scales).
+  TF_RET_CHECK(lhs_scale.type() == rhs_scale.type());
+  TF_RET_CHECK(lhs_scale.type() == DataType::kF8E8M0FNU ||
+               lhs_scale.type() == DataType::kF8E4M3FN);
+  const int block_size = lhs_scale.type() == DataType::kF8E8M0FNU
+                             ? BlockScalingRewriter::kBlockSizeMXFP8
+                             : BlockScalingRewriter::kBlockSizeNVFP4;
 
   TF_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
                       se::gpu::GetCudnnBlockScaledDotOperationGraph(
