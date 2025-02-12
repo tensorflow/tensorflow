@@ -732,6 +732,9 @@ absl::StatusOr<ModuleHandle> RocmExecutor::LoadModuleFromHsaco(
 }
 
 DeviceMemoryBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
+  if (memory_space == static_cast<int64_t>(MemoryType::kCollective)) {
+    return DeviceMemoryBase(DeviceAllocate(rocm_context_, size), size);
+  }
   if (memory_space ==
       static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
     auto result = HostAllocate(rocm_context_, size);
