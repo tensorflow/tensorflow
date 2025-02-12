@@ -737,14 +737,18 @@ absl::StatusOr<Decision> CreateDotFusion(
     }
   }
 
-  bool should_use_triton_gemm_any =
-      dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any();
+  const DebugOptions& debug_options = dot.GetModule()->config().debug_options();
+  bool should_use_triton_gemm_any = debug_options.xla_gpu_triton_gemm_any();
 
   // TODO(b/395903738): Remove this once F16 -> F8E5M2 conversion is fixed.
   if (auto* cc = std::get_if<se::CudaComputeCapability>(&gpu_version)) {
     should_use_triton_gemm_any =
         should_use_triton_gemm_any && cc->IsAtLeastHopper();
   }
+
+  should_use_triton_gemm_any =
+      should_use_triton_gemm_any ||
+      debug_options.xla_gpu_unsupported_force_triton_gemm();
 
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();

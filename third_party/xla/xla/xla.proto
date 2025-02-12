@@ -756,6 +756,12 @@ message DebugOptions {
   // Internal debug/testing flag to switch Triton GEMM fusions on or off.
   bool xla_gpu_unsupported_enable_triton_gemm = 322;
 
+  // Internal debug/testing flag to force all GEMMs to use Triton, independently
+  // of known issues.
+  // TODO(b/395903738): use to make specific tests pass on A100 while working
+  // around this bug. The can be removed once the bug is fixed.
+  bool xla_gpu_unsupported_force_triton_gemm = 369;
+
   // This instructs the runtime whether to use memcpy for p2p communication when
   // source and target are located within a node(nvlink).
   bool xla_gpu_use_memcpy_local_p2p = 287;
@@ -1152,7 +1158,7 @@ message DebugOptions {
 
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
-  // Next id: 369
+  // Next id: 370
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
