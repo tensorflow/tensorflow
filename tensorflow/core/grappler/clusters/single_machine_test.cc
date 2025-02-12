@@ -52,7 +52,9 @@ class SingleMachineTest : public ::testing::Test {
 #endif
     cluster_ = std::make_unique<SingleMachine>(timeout_s, 3 /* num_cpu_cores */,
                                                0 /* num_gpus */);
+#if !defined(__APPLE__)
     TF_CHECK_OK(cluster_->EnablePeakMemoryStats());
+#endif
     TF_CHECK_OK(cluster_->Provision());
   }
 
