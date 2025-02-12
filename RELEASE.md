@@ -1,3 +1,18 @@
+# Release 2.18.1
+
+### Security
+* Updates curl to `8.11.0` to handle [CVE-2024-2004](https://github.com/advisories/GHSA-97xx-95pm-5qv6), [CVE-2024-2379](https://github.com/advisories/GHSA-wr4c-gwg7-p734), [CVE-2024-2398](https://github.com/advisories/GHSA-mq8w-c2j9-rqxc), [CVE-2024-2466](https://github.com/advisories/GHSA-9xr6-qf7m-2jv5), [CVE-2024-6197](https://github.com/advisories/GHSA-x3h8-3mf2-v794), [CVE-2024-7264](https://github.com/advisories/GHSA-97c4-2w4v-c7r8), [CVE-2024-8096](https://github.com/advisories/GHSA-gv3v-x3f3-7fxm) and [CVE-2024-9681](https://github.com/advisories/GHSA-g337-g667-mjvw).
+
+### Bug Fixes and Other Changes
+
+* Loosen `ml_dtypes` upperbound to `< 1.0.0` to reduce conflicts when installed with other ML ecosystem components.  
+
+### Breaking Changes
+
+* `tf.lite`
+    * Interpreter:
+      * `tf.lite.Interpreter` gives warning of future deletion and a redirection notice to its new location at `ai_edge_litert.interpreter`. See the [migration guide](https://ai.google.dev/edge/litert/migration) for details.
+
 # Release 2.18.0
 
 ## TensorFlow
