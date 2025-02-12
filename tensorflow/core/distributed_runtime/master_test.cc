@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/master.h"
 
+#include <cmath>
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "grpcpp/grpcpp.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
@@ -27,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.proto.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"

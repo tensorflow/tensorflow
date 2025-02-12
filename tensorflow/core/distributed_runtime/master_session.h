@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/graph_execution_state.h"
@@ -27,8 +28,11 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
