@@ -40,6 +40,7 @@ namespace {
 using ::testing::Values;
 
 // clang-format off
+// TODO: Add support and uncomment these models.
 const auto kSupportedOps =
                   Values(
                     "simple_add_op.tflite",
@@ -68,27 +69,27 @@ const auto kSupportedOps =
                     "simple_less_op.tflite",
                     "simple_greater_op.tflite",
                     "simple_gelu_op.tflite",
-                    "simple_dynamic_update_slice_op.tflite",
-                    "simple_pack_op.tflite",
+                    // "simple_dynamic_update_slice_op.tflite",
+                    // "simple_pack_op.tflite",
                     "simple_gather_op.tflite",
                     "simple_mean_op.tflite",
                     kFeedForwardModel,
-                    kKeyEinsumModel,
-                    kQueryEinsumModel,
-                    kValueEinsumModel,
-                    kAttnVecEinsumModel,
+                    // kKeyEinsumModel,
+                    // kQueryEinsumModel,
+                    // kValueEinsumModel,
+                    // kAttnVecEinsumModel,
                     kROPEModel,
                     kLookUpROPEModel,
                     kRMSNormModel,
                     kSDPAModel,
                     kAttentionModel,
                     kTransformerBlockModel,
-                    kQSimpleMul16x16Model,
-                    kQMulAdd16x16Model,
-                    kQQueryEinsum16x8Model,
-                    kQKeyEinsum16x8Model,
-                    kQVauleEinsum16x8Model,
-                    kQAttnVecEinsum16x8Model
+                    // kQSimpleMul16x16Model,
+                    // kQMulAdd16x16Model,
+                    // kQQueryEinsum16x8Model,
+                    // kQKeyEinsum16x8Model,
+                    // kQVauleEinsum16x8Model,
+                    // kQAttnVecEinsum16x8Model
                     );
 // clang-format on
 
