@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/service/gpu/amdgpu_compiler.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
