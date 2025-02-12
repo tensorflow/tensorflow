@@ -38,8 +38,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_future.h"
-#include "xla/pjrt/pjrt_stream_executor_client.h"
-#include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -648,23 +646,15 @@ absl::Status PreparePjRtExecutableArguments(
       } else {
         // Creates a PjRtBuffer from DeviceMemoryBase. The newly created
         // PjRtBuffer needs to be persisted till XLA execution is completed.
-        auto dmem = se::DeviceMemoryBase(
-            const_cast<char*>(tensor->tensor_data().data()),
-            tensor->tensor_data().size());
-        absl::Span<const std::shared_ptr<xla::BufferSequencingEvent>>
-            definition_events;
-        auto device_buffer = std::make_shared<xla::TrackedDeviceBuffer>(
-            /*allocator=*/nullptr, pjrt_device,
-            std::initializer_list<se::DeviceMemoryBase>{dmem},
-            definition_events, /*on_delete_callback=*/[]() {});
         xla::Shape device_shape;
         TF_RETURN_IF_ERROR(TensorShapeToXLAShape(
             tensor->dtype(), tensor->shape(), &device_shape));
-        std::unique_ptr<xla::PjRtBuffer> pjrt_buffer =
-            std::make_unique<xla::PjRtStreamExecutorBuffer>(
-                device_shape, std::move(device_buffer), pjrt_client,
-                pjrt_device,
-                pjrt_device->default_memory_space().value_or(nullptr));
+        TF_ASSIGN_OR_RETURN(
+            std::unique_ptr<xla::PjRtBuffer> pjrt_buffer,
+            pjrt_client->CreateViewOfDeviceBuffer(
+                const_cast<char*>(tensor->tensor_data().data()), device_shape,
+                pjrt_device->default_memory_space().value_or(nullptr),
+                [tensor = *tensor]() {}));
         owned_args->push_back(std::move(pjrt_buffer));
         args->push_back(owned_args->back().get());
       }
