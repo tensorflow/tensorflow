@@ -211,6 +211,10 @@ def xla_test(
     for. This tag is of the form "xla_${BACKEND}" (eg, "xla_cpu"). These
     tags can be used to gather tests for a particular backend into a test_suite.
 
+    Use xla_test instead of cc_test or xla_cc_test in all tests that need to run
+    on specific XLA backends. Do not use xla_test in .../tsl/... directories,
+    where tsl_cc_test should be used instead.
+
     Examples:
 
       # Generates the targets: foo_test_cpu and foo_test_gpu.

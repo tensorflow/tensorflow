@@ -816,6 +816,11 @@ def tsl_cc_test(
         name,
         deps = [],
         **kwargs):
+    """A wrapper around cc_test that adds protobuf deps if needed.
+
+    Use tsl_cc_test instead of cc_test in all .../tsl/... directories.
+    """
+
     native.cc_test(
         name = name,
         deps = deps + if_tsl_link_protobuf(

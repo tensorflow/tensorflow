@@ -72,6 +72,12 @@ def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):
     native.cc_binary(deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS, copts = copts, **kwargs)
 
 def xla_cc_test(name, deps = [], **kwargs):
+    """A wrapper around cc_test that adds XLA-specific dependencies.
+
+    Use xla_cc_test or xla_test instead of cc_test in all .../xla/... directories except .../tsl/...,
+    where tsl_cc_test should be used.
+    """
+
     native.cc_test(
         name = name,
         deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS,
