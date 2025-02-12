@@ -2325,8 +2325,7 @@ TEST_F(HloVerifierTest, ChannelVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().message(),
-              HasSubstr("used for different types of channel instructions"));
+  TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
 TEST_F(HloVerifierTest, ChannelVerifierPartiallyPipelinedAsyncRecv) {
@@ -2527,8 +2526,7 @@ TEST_F(HloVerifierTest, CollectiveChannelVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(verifier().Run(module.get()).status().message(),
-              HasSubstr("used for different types of channel instructions"));
+  TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
 TEST_F(HloVerifierTestLayoutSensitive, CollectivePermuteStartAndDone) {

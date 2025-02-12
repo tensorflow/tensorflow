@@ -2511,9 +2511,6 @@ absl::Status VerifyOriginalValue(const HloModule& module) {
 // collectives).
 absl::Status VerifyChannels(const HloModule& module,
                             const HloVerifierOpts& opts) {
-  absl::flat_hash_map<int64_t, std::vector<const HloInstruction*>>
-      channel_instructions;
-
   // Send/recv instruction must have a unique user. If it is the corresponding
   // send-done/recv-done operation, channel IDs must match.
   for (const HloComputation* computation : module.computations()) {
@@ -2522,7 +2519,6 @@ absl::Status VerifyChannels(const HloModule& module,
       if (!channel_instr || !channel_instr->channel_id()) {
         continue;
       }
-      channel_instructions[*channel_instr->channel_id()].push_back(instruction);
 
       switch (instruction->opcode()) {
         case HloOpcode::kSend: {
@@ -2561,29 +2557,6 @@ absl::Status VerifyChannels(const HloModule& module,
           break;
         default:
           break;
-      }
-    }
-  }
-
-  // Iterate over each channel to check invariants.
-  for (auto& [channel_id, instructions] : channel_instructions) {
-    const HloInstruction* first = instructions[0];
-    if (const auto* sendrecv = DynCast<HloSendRecvInstruction>(first)) {
-      absl::flat_hash_set<HloOpcode> opcodes;
-      for (const HloInstruction* instr : instructions) {
-        opcodes.insert(instr->opcode());
-        auto cast = DynCast<HloSendRecvInstruction>(instr);
-        TF_RET_CHECK(cast != nullptr)
-            << "channel " << channel_id
-            << " is used for different types of channel instructions";
-      }
-    } else {
-      if (opts.verify_unique_channel_ids) {
-        for (const HloInstruction* instr : instructions) {
-          TF_RET_CHECK(first->opcode() == instr->opcode())
-              << "channel " << channel_id
-              << " is used for different types of channel instructions";
-        }
       }
     }
   }
