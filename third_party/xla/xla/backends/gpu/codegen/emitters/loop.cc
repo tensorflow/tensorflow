@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/codegen/emitters/loop.h"
 
+#include <cstdint>
 #include <iterator>
 #include <optional>
 #include <vector>
