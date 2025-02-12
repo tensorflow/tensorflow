@@ -9,7 +9,7 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//xla/service/spmd/shardy/...",
+        "//xla/...",
     ],
 )
 

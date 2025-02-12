@@ -213,55 +213,6 @@ SmallVector<Value, 4> PadWithZeros(ValueRange values, int64_t size,
   return padded_values;
 }
 
-// Creates a new indexing map that is the same as `map` but with the range
-// variables at `range_var_indices` converted to the new dimensions variables at
-// and added to the end of dimension variables list. Potentially, it can be
-// moved to indexing_map.h.
-IndexingMap ConvertRangeVariableToDimension(
-    const IndexingMap& map, ArrayRef<int64_t> range_var_indices) {
-  CHECK(std::is_sorted(range_var_indices.begin(), range_var_indices.end()));
-  auto* mlir_context = map.GetMLIRContext();
-
-  AffineMap affine_map = map.GetAffineMap();
-  // Update the affine map and the variables.
-  std::vector<IndexingMap::Variable> dims = map.GetDimVars();
-  std::vector<IndexingMap::Variable> range_vars;
-  std::vector<IndexingMap::Variable> rt_vars = map.GetRTVars();
-  SmallVector<AffineExpr, 4> symbol_replacements;
-  symbol_replacements.reserve(affine_map.getNumSymbols());
-  int64_t range_var_count = 0;
-  int64_t range_var_indices_count = range_var_indices.size();
-  for (int i = 0; i < affine_map.getNumSymbols(); ++i) {
-    auto range_var = map.GetRangeVar(i);
-    if (range_var_count < range_var_indices_count &&
-        i == range_var_indices[range_var_count]) {
-      symbol_replacements.push_back(
-          getAffineDimExpr(affine_map.getNumDims(), mlir_context));
-      dims.push_back(range_var);
-      range_var_count++;
-    } else {
-      symbol_replacements.push_back(
-          getAffineSymbolExpr(i - range_var_count, mlir_context));
-      range_vars.push_back(range_var);
-    }
-  }
-
-  AffineMap converted_affine_map = affine_map.replaceDimsAndSymbols(
-      {}, symbol_replacements,
-      affine_map.getNumDims() + range_var_indices_count,
-      affine_map.getNumSymbols() - range_var_indices_count);
-
-  // Update the constraints.
-  std::vector<std::pair<AffineExpr, Interval>> constraints;
-  constraints.reserve(map.GetConstraintsCount());
-  for (auto constraint : map.GetConstraints()) {
-    constraints.push_back({constraint.first.replaceSymbols(symbol_replacements),
-                           constraint.second});
-  }
-  return IndexingMap{converted_affine_map, std::move(dims),
-                     std::move(range_vars), std::move(rt_vars), constraints};
-}
-
 }  // namespace
 
 class EmitterHelper {
@@ -738,7 +689,7 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
 
   // Convert index_id_loop and index_vector_id to dimension variables.
   IndexingMap slice_indexing =
-      ConvertRangeVariableToDimension(updates_map, {0});
+      ConvertRangeVariablesToDimensions(updates_map, {0});
 
   // Prepare loop initial values. Inits are packed as
   // [index_changed, is_inbounds, index_0,  ..., accumulator].

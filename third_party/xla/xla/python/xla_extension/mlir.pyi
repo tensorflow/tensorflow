@@ -32,4 +32,5 @@ def refine_polymorphic_shapes(
     mlir_module: Union[bytes, str],
     enable_shape_assertions: bool = ...,
     validate_static_shapes: bool = ...,
+    enable_shardy: bool = ...,
 ) -> bytes: ...
