@@ -65,6 +65,13 @@ litert_dynamic_lib(
     ],
 )
 
+# This is cc_library target for `libLiteRtDispatch.so`.
+cc_library(
+    name = "dispatch_api_shared_lib",
+    srcs = [":dispatch_api_so"],
+    linkstatic = 1,
+)
+
 cc_test(
     name = "dispatch_api_mediatek_test",
     srcs = [

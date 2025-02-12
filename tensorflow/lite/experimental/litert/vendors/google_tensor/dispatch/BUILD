@@ -64,6 +64,13 @@ litert_dynamic_lib(
     ],
 )
 
+# This is cc_library target for `libLiteRtDispatch.so`.
+cc_library(
+    name = "dispatch_api_shared_lib",
+    srcs = [":dispatch_api_so"],
+    linkstatic = 1,
+)
+
 # Copies the shared library so that it is available for use in test data as libLiteRtDispatch.so.
 copy_file(
     name = "copy_dispatch_api_so",
