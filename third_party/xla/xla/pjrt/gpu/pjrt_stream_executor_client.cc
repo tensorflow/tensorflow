@@ -62,7 +62,7 @@ limitations under the License.
 // See the comment on LocalDeviceState::AllocationModel for a discussion of the
 // different allocation semantics on CPU, GPU, and TPU.
 
-#include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/gpu/pjrt_stream_executor_client.h"
 
 #include <algorithm>
 #include <cstddef>

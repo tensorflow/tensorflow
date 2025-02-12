@@ -639,8 +639,6 @@ cc_library(
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:pjrt_common",
         "@local_xla//xla/pjrt:pjrt_future",
-        "@local_xla//xla/pjrt:pjrt_stream_executor_client",
-        "@local_xla//xla/pjrt:tracked_device_buffer",
         "@local_xla//xla/service:shaped_buffer",
         "@local_xla//xla/stream_executor:device_memory_allocator",
         "@local_xla//xla/stream_executor:platform_manager",

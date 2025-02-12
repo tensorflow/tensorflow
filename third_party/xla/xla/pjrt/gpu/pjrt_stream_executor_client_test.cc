@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/gpu/pjrt_stream_executor_client.h"
 
 #include <memory>
 #include <string>

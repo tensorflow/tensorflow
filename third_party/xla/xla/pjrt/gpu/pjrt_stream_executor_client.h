@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
-#define XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
+#ifndef XLA_PJRT_GPU_PJRT_STREAM_EXECUTOR_CLIENT_H_
+#define XLA_PJRT_GPU_PJRT_STREAM_EXECUTOR_CLIENT_H_
 
 #include <array>
 #include <cstddef>
@@ -1092,4 +1092,4 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
+#endif  // XLA_PJRT_GPU_PJRT_STREAM_EXECUTOR_CLIENT_H_
