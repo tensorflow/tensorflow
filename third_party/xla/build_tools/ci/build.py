@@ -29,7 +29,7 @@ import logging
 import os
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 
 # TODO(ddunleavy): move this to the bazelrc
@@ -107,7 +107,6 @@ class Build:
 
   type_: BuildType
   repo: str
-  image_url: Optional[str]
   target_patterns: Tuple[str, ...]
   configs: Tuple[str, ...] = ()
   build_tag_filters: Tuple[str, ...] = ()
@@ -148,12 +147,6 @@ class Build:
     )
     return ["bazel", subcommand, *all_options, "--", *self.target_patterns]
 
-  def docker_run_command(self, *, command: str, **kwargs: Any) -> List[str]:
-    assert self.image_url, "`docker run` has no meaning without an image."
-    options = _dict_to_cli_options(kwargs)
-
-    return ["docker", "run", *options, self.image_url, command]
-
   def commands(self) -> List[List[str]]:
     """Returns list of commands for a build."""
     cmds = []
@@ -177,54 +170,23 @@ class Build:
 
     cmds.extend(self.extra_setup_commands)
 
-    using_docker = self.image_url is not None
-
-    # pyformat:disable
-
-    if using_docker:
-      cmds.append(retry(["docker", "pull", self.image_url]))
-
-    container_name = "xla_ci"
-    _, repo_name = self.repo.split("/")
-
-    if using_docker:
-      cmds.append(
-          self.docker_run_command(command="bash", detach=True,
-                                  name=container_name, rm=True,
-                                  interactive=True, tty=True,
-                                  volume="./github:/github",
-                                  workdir=f"/github/{repo_name}"))
-    # pyformat:enable
-
-    # Prepend `docker exec <container_name>` iff we are using docker.
-    maybe_docker_exec = (
-        ["docker", "exec", container_name] if using_docker else []
-    )
-
     # We really want `bazel fetch` here, but it uses `bazel query` and not
     # `cquery`, which means that it fails due to config issues that aren't
     # problems in practice.
-
     # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
     # MacOS VM.
     if self.type_ not in (
         BuildType.MACOS_CPU_X86,
     ):
       cmds.append(
-          maybe_docker_exec
-          + retry(
+          retry(
               self.bazel_command(
                   subcommand="build", extra_options=("--nobuild",)
               )
           )
       )
-    cmds.append(maybe_docker_exec + self.bazel_command())
-    cmds.append(
-        maybe_docker_exec + ["bazel", "analyze-profile", "profile.json.gz"]
-    )
-
-    if using_docker:
-      cmds.append(["docker", "stop", container_name])
+    cmds.append(self.bazel_command())
+    cmds.append(["bazel", "analyze-profile", "profile.json.gz"])
 
     return cmds
 
@@ -243,19 +205,9 @@ def _tag_filters_for_compute_capability(
   return tag_filters
 
 
-_DEFAULT_IMAGE = "gcr.io/tensorflow-sigs/build:latest-python3.11"
-_ML_BUILD_IMAGE = (
-    "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest"
-)
-
-_ARM64_JAX_MULTI_PYTHON_IMAGE = "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64:jax-latest-multi-python"
-_ML_BUILD_ARM64_IMAGE = "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest"
-
-
 def nvidia_gpu_build_with_compute_capability(
     *,
     type_: BuildType,
-    image_url: Optional[str],
     configs: Tuple[str, ...],
     compute_capability: int,
 ) -> Build:
@@ -263,7 +215,6 @@ def nvidia_gpu_build_with_compute_capability(
   return Build(
       type_=type_,
       repo="openxla/xla",
-      image_url=image_url,
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=configs,
       test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
@@ -288,7 +239,6 @@ cpu_x86_tag_filter = (
 _CPU_X86_SELF_HOSTED_BUILD = Build(
     type_=BuildType.CPU_X86_SELF_HOSTED,
     repo="openxla/xla",
-    image_url=None,
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=cpu_x86_tag_filter,
@@ -306,7 +256,6 @@ cpu_arm_tag_filter = (
 _CPU_ARM64_SELF_HOSTED_BUILD = Build(
     type_=BuildType.CPU_ARM64_SELF_HOSTED,
     repo="openxla/xla",
-    image_url=None,
     configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
@@ -316,7 +265,6 @@ _CPU_ARM64_SELF_HOSTED_BUILD = Build(
 
 _GPU_T4_SELF_HOSTED_BUILD = nvidia_gpu_build_with_compute_capability(
     type_=BuildType.GPU_T4_SELF_HOSTED,
-    image_url=None,
     configs=("warnings", "rbe_linux_cuda_nvcc"),
     compute_capability=75,
 )
@@ -333,7 +281,6 @@ macos_tag_filter = (
 _MACOS_X86_BUILD = Build(
     type_=BuildType.MACOS_CPU_X86,
     repo="openxla/xla",
-    image_url=None,
     configs=("nonccl",),
     target_patterns=(
         "//xla/...",
@@ -367,7 +314,6 @@ _MACOS_X86_BUILD = Build(
 _JAX_CPU_SELF_HOSTED_BUILD = Build(
     type_=BuildType.JAX_CPU_SELF_HOSTED,
     repo="google/jax",
-    image_url=None,
     configs=("rbe_linux_x86_64",),
     target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
     test_env=dict(
@@ -384,7 +330,6 @@ _JAX_CPU_SELF_HOSTED_BUILD = Build(
 _JAX_GPU_SELF_HOSTED_BUILD = Build(
     type_=BuildType.JAX_X86_GPU_T4_SELF_HOSTED,
     repo="google/jax",
-    image_url=None,
     configs=("rbe_linux_x86_64_cuda",),
     target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
     build_tag_filters=("-multiaccelerator",),
@@ -422,7 +367,6 @@ tensorflow_gpu_tag_filters = tensorflow_tag_filters + (
 _TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
     type_=BuildType.TENSORFLOW_CPU_SELF_HOSTED,
     repo="tensorflow/tensorflow",
-    image_url=None,
     configs=(
         "release_cpu_linux",
         "rbe_linux_cpu",
@@ -448,7 +392,6 @@ _TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
 _TENSORFLOW_GPU_SELF_HOSTED_BUILD = Build(
     type_=BuildType.TENSORFLOW_X86_GPU_T4_SELF_HOSTED,
     repo="tensorflow/tensorflow",
-    image_url=None,
     configs=(
         "release_gpu_linux",
         "rbe_linux_cuda",
