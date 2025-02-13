@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_TESTLIB_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_TESTLIB_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 
 namespace tensorflow {
 namespace test {
