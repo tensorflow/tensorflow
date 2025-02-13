@@ -1227,7 +1227,7 @@ TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
     CHECK(inference != nullptr);
     CHECK(Cast<HloCustomCallInstruction>(hlo) != nullptr);
     handler_called = true;
-    return absl::OkStatus();
+    return hlo->IsCustomCall("MyCustomOp");
   };
   TF_ASSERT_OK(RunInference(/*op_supports_dynamism_handler=*/nullptr, handler));
 
