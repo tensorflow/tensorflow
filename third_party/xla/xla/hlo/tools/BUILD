@@ -1,6 +1,8 @@
 # Tools and utilities that aid in XLA development and usage.
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//xla:lit.bzl", "lit_test_suite")
+load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
 load(
     "//xla:xla.bzl",
     "xla_cc_binary",
@@ -190,5 +192,39 @@ xla_cc_binary(
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     deps = [
         "//xla/hlo/tools/hlo_opt:opt_main",
+    ],
+)
+
+py_strict_library(
+    name = "generate_hlo_test_checks",
+    srcs = ["generate_hlo_test_checks.py"],
+    srcs_version = "PY3",
+)
+
+py_strict_test(
+    name = "generate_hlo_test_checks_test",
+    srcs = ["generate_hlo_test_checks_test.py"],
+    data = [
+        "generate_hlo_test_checks_test_input.hlo",
+        "generate_hlo_test_checks_test_output.hlo",
+        ":hlo-opt",
+    ],
+    python_version = "PY3",
+    deps = [
+        ":generate_hlo_test_checks",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+# Whereas `:generate_hlo_test_checks_test` checks that the test-generation tool
+# behaves as expected, this test verifies that the expected reference output
+# from that test is itself a passing test.
+lit_test_suite(
+    name = "generate_hlo_test_checks_meta_test",
+    srcs = ["generate_hlo_test_checks_test_output.hlo"],
+    cfg = "//xla:lit.cfg.py",
+    tools = [
+        "//xla/hlo/tools:hlo-opt",
+        "@llvm-project//llvm:FileCheck",
     ],
 )

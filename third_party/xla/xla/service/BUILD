@@ -8,14 +8,12 @@ load(
     "if_rocm",
     "if_rocm_is_configured",
 )
-load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
 load(
     "//xla:xla.bzl",
     "xla_cc_binary",
     "xla_cc_test",
     "xla_internal",
     "xla_py_proto_library",
-    "xla_py_test_deps",
 )
 load("//xla/service:xla_compile.bzl", "xla_aot_compile_cpu", "xla_aot_compile_gpu", "xla_aot_compile_gpu_runtime_autotuning")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
@@ -5757,23 +5755,6 @@ xla_py_proto_library(
     name = "hlo_pb2",
     visibility = ["//visibility:public"],
     deps = [":hlo_proto"],
-)
-
-py_strict_library(
-    name = "generate_test_hlo_checks",
-    srcs = ["generate_test_hlo_checks.py"],
-)
-
-py_strict_test(
-    name = "generate_test_hlo_checks_test",
-    srcs = ["generate_test_hlo_checks_test.py"],
-    tags = [
-        "no_oss",
-    ],
-    deps = [
-        ":generate_test_hlo_checks",
-        "@absl_py//absl/testing:absltest",
-    ] + xla_py_test_deps(),
 )
 
 cc_library(
