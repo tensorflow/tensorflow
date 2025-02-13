@@ -198,11 +198,17 @@ fusion1 {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
+n {
+  p = f32[32,64] parameter(0)
+  n = f32[32,64] negate(p)
+}
+
 ENTRY e {
   p0 = f32[32,96] parameter(0)
   p1 = f32[96,64] parameter(1)
-  ROOT _ = f32[32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+  f = f32[32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+  n = f32[32,64] fusion(f), kind=kLoop, calls=n, control-predecessors={f}
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
@@ -212,9 +218,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::GetTupleElement(m::Fusion())));
+              GmockMatch(m::Fusion(m::GetTupleElement(m::Fusion()))));
   EXPECT_THAT(module->entry_computation()
                   ->root_instruction()
+                  ->operand(0)
                   ->operand(0)
                   ->fused_instructions_computation()
                   ->root_instruction(),
