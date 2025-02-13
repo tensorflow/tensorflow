@@ -392,6 +392,7 @@ cc_library(
         "//xla/pjrt:transpose",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
+        "//xla/python/compile_only_ifrt:client",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:custom_call_program",
