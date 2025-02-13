@@ -826,9 +826,15 @@ class PjRtCApiAsyncHostToDeviceTransferManager
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
-    absl::Span<const ShapeSpec> shape_specs,
-    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-    PjRtMemorySpace* memory_space) {
+    absl::Span<const Shape> shapes, PjRtDevice* device) {
+  absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
+  shape_specs.reserve(shapes.size());
+  for (const auto& shape : shapes) {
+    shape_specs.emplace_back(PjRtClient::ShapeSpec{
+        shape.element_type(),
+        DimensionVector(shape.dimensions().begin(), shape.dimensions().end())});
+  }
+  TF_ASSIGN_OR_RETURN(auto memory_space, device->default_memory_space());
   const PJRT_Api* c_api = pjrt_c_api();
   PJRT_Client_CreateBuffersForAsyncHostToDevice_Args args;
   args.struct_size =
@@ -843,26 +849,8 @@ PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
   for (int i = 0; i < shape_specs.size(); ++i) {
     args.shape_specs[i] = pjrt::ConvertToPjRtShapeSpec(*(iterator++));
   }
-  if (device_layouts.has_value()) {
-    args.num_device_layouts = device_layouts->size();
-    auto device_layout_list =
-        std::make_unique<std::vector<PJRT_Buffer_MemoryLayout*>>(
-            device_layouts->size());
-    for (int i = 0; i < device_layouts->size(); ++i) {
-      if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
-        const Layout& layout = (*device_layouts)[i].value();
-        TF_ASSIGN_OR_RETURN(pjrt::BufferMemoryLayoutData c_layout_data,
-                            pjrt::ConvertToBufferMemoryLayoutData(layout));
-        device_layout_list->emplace_back(&(c_layout_data.c_layout));
-      } else {
-        device_layout_list->emplace_back(nullptr);
-      }
-    }
-    args.device_layouts = device_layout_list->data();
-  } else {
-    args.num_device_layouts = 0;
-    args.device_layouts = nullptr;
-  }
+  args.num_device_layouts = 0;
+  args.device_layouts = nullptr;
   args.memory =
       tensorflow::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
 
@@ -874,40 +862,10 @@ PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
-    absl::Span<const ShapeSpec> shape_specs,
-    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-    PjRtDevice* device) {
-  TF_ASSIGN_OR_RETURN(auto memory_space, device->default_memory_space());
-  return CreateBuffersForAsyncHostToDevice(shape_specs, device_layouts,
-                                           memory_space);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
-    absl::Span<const Shape> shapes, PjRtDevice* device) {
-  absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
-  shape_specs.reserve(shapes.size());
-  for (const auto& shape : shapes) {
-    shape_specs.emplace_back(PjRtClient::ShapeSpec{
-        shape.element_type(),
-        DimensionVector(shape.dimensions().begin(), shape.dimensions().end())});
-  }
-  return CreateBuffersForAsyncHostToDevice(
-      shape_specs, /*device_layouts=*/std::nullopt, device);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const Shape> shapes, PjRtMemorySpace* memory_space) {
-  absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
-  shape_specs.reserve(shapes.size());
-  for (const auto& shape : shapes) {
-    shape_specs.emplace_back(PjRtClient::ShapeSpec{
-        shape.element_type(),
-        DimensionVector(shape.dimensions().begin(), shape.dimensions().end())});
-  }
-  return CreateBuffersForAsyncHostToDevice(
-      shape_specs, /*device_layouts=*/std::nullopt, memory_space);
+  CHECK_EQ(memory_space->devices().size(), 1);
+  PjRtDevice* device = memory_space->devices()[0];
+  return CreateBuffersForAsyncHostToDevice(shapes, device);
 }
 
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
