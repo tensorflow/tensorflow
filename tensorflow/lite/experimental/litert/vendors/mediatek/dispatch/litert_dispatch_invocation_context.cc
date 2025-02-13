@@ -318,11 +318,10 @@ LiteRtDispatchInvocationContextT::GetInputRequirements(
     }
 
     std::vector<uint32_t> padded_dimensions(tensor_type.layout.rank);
-    if (neuron_adapter_api_.api().compilation_get_input_padded_dimensions(
-            compilation_, input_index, padded_dimensions.data()) !=
-        NEURON_NO_ERROR) {
-      return litert::Error(kLiteRtStatusErrorRuntimeFailure,
-                           "Failed to get input padded dimensions");
+    // TODO: b/396735384 - Use NeuronCompilation_getInputPaddedDimensions() once
+    // it's fixed.
+    for (auto i = 0; i < tensor_type.layout.rank; ++i) {
+      padded_dimensions[i] = tensor_type.layout.dimensions[i];
     }
 
     input_requirements_builders_[input_index] =
