@@ -103,6 +103,10 @@ bool IsSynchronousCopyFromOrToHost(const HloInstruction* instruction);
 
 bool ComputeTypeIsHost(const HloInstruction* hlo_instruction);
 
+// Sets the frontend attribute of the instruction to indicate that the
+// instruction should be lowered as host compute.
+void SetHostComputeFrontendAttribute(HloInstruction& host_instruction);
+
 }  // namespace host_offload_utils
 }  // namespace xla
 

@@ -89,14 +89,6 @@ bool SetBuffersToMemorySpaceColor(
   return changed;
 }
 
-void SetHostComputeFrontendAttribute(HloInstruction& host_instruction) {
-  FrontendAttributes frontend_attributes =
-      host_instruction.frontend_attributes();
-  frontend_attributes.mutable_map()->insert(
-      {kXlaComputeTypeAttr, kXlaComputeTypeHost});
-  host_instruction.set_frontend_attributes(frontend_attributes);
-}
-
 }  // namespace
 
 bool HostOffloader::InstructionIsAllowedBetweenMoveToHostAndDus(
@@ -243,7 +235,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
           "memory space. Converting into host compute. This is likely to have "
           "a very high overhead.",
           instruction->name());
-      SetHostComputeFrontendAttribute(*instruction);
+      host_offload_utils::SetHostComputeFrontendAttribute(*instruction);
     }
     if (!already_saved_buffer) {
       const HloInstruction* instruction =
@@ -1107,11 +1099,11 @@ absl::StatusOr<bool> HostOffloader::HandleDynamicUpdateSlices() {
         operand_memory_space == Layout::kDefaultMemorySpace;
     if (host_to_device) {
       // This is only supported via host compute.
-      SetHostComputeFrontendAttribute(*dus);
+      host_offload_utils::SetHostComputeFrontendAttribute(*dus);
       changed = true;
     } else if (host_to_host) {
       // Host to host. Execute as host compute. Also set as host memory space.
-      SetHostComputeFrontendAttribute(*dus);
+      host_offload_utils::SetHostComputeFrontendAttribute(*dus);
       SetMemorySpace(dus->mutable_shape(), Layout::kHostMemorySpace);
       changed = true;
     } else if (device_to_host) {

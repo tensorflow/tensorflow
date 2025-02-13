@@ -125,6 +125,9 @@ absl::StatusOr<bool> ConvertToCustomCall(HloModule* module) {
       }
     }
   }
+  if (changed && module->has_schedule()) {
+    TF_RETURN_IF_ERROR(module->schedule().Update());
+  }
   return changed;
 }
 
