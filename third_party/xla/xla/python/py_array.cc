@@ -51,6 +51,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/pair.h"  // IWYU pragma: keep
 #include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
@@ -822,12 +823,18 @@ absl::Status PyArray::BlockUntilResultStatusIsReady() {
   return result_status.Await();
 }
 
-absl::StatusOr<nb::object> PyArray::SingleDeviceArrayToNumpyArray() {
+absl::StatusOr<std::pair<nb::object, bool>>
+PyArray::SingleDeviceArrayToNumpyArrayDidCopy() {
   TF_ASSIGN_OR_RETURN(auto arr, FullyReplicatedShard());
   auto result = arr.GetStorage().host_value.AsNumPyArray(
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
   TF_RETURN_IF_ERROR(arr.BlockUntilResultStatusIsReady());
   return result;
+}
+
+absl::StatusOr<nb::object> PyArray::SingleDeviceArrayToNumpyArray() {
+  TF_ASSIGN_OR_RETURN(auto result, SingleDeviceArrayToNumpyArrayDidCopy());
+  return result.first;
 }
 
 absl::Status PyArray::CopySingleDeviceArrayToHostAsync() {
@@ -1679,7 +1686,7 @@ bool IsZeroCopyableCpuBuffer(const PjRtBuffer* buf) {
 PyHostValue::PyHostValue() = default;
 PyHostValue::~PyHostValue() = default;
 
-absl::StatusOr<nb::object> PyHostValue::AsNumPyArray(
+absl::StatusOr<std::pair<nb::object, bool>> PyHostValue::AsNumPyArray(
     std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array) {
   if (ifrt_array->IsDeleted()) {
     return InvalidArgument("DeviceArray has been deleted.");
@@ -1724,7 +1731,7 @@ absl::StatusOr<nb::object> PyHostValue::AsNumPyArray(
       nb_numpy_ndarray array(dtype, shape->dimensions(),
                              ByteStridesForShape(*shape), data, hold_capsule);
       array.attr("flags").attr("writeable") = nb::bool_(false);
-      return array;
+      return std::make_pair(array, false);
     }
   }
 
@@ -1738,7 +1745,7 @@ absl::StatusOr<nb::object> PyHostValue::AsNumPyArray(
   if (string_array_contents_ != nullptr) {
     TF_RETURN_IF_ERROR(ConvertStringArrayContentsToNumpyArray(ifrt_array));
   }
-  return value_;
+  return std::make_pair(value_, true);
 }
 
 absl::Status PyHostValue::ConvertStringArrayContentsToNumpyArray(
@@ -1988,8 +1995,12 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
   type.attr("on_device_size_in_bytes") = nb::cpp_function(
       xla::ValueOrThrowWrapper(&PyArray::GetOnDeviceSizeInBytes),
       nb::is_method());
+  // TODO(danfm): Remove this after JAX 0.5.1 release (or sooner!).
   type.attr("_single_device_array_to_np_array") = nb::cpp_function(
       xla::ValueOrThrowWrapper(&PyArray::SingleDeviceArrayToNumpyArray),
+      nb::is_method());
+  type.attr("_single_device_array_to_np_array_did_copy") = nb::cpp_function(
+      xla::ValueOrThrowWrapper(&PyArray::SingleDeviceArrayToNumpyArrayDidCopy),
       nb::is_method());
   type.attr("_copy_single_device_array_to_host_async") = nb::cpp_function(
       [](PyArray& self) {
