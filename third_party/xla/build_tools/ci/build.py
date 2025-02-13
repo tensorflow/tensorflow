@@ -90,14 +90,11 @@ class BuildType(enum.Enum):
   """Enum representing all types of builds."""
   CPU_X86_SELF_HOSTED = enum.auto()
   CPU_ARM64_SELF_HOSTED = enum.auto()
-  GPU = enum.auto()
   GPU_T4_SELF_HOSTED = enum.auto()
-  GPU_CONTINUOUS = enum.auto()
 
   MACOS_CPU_X86 = enum.auto()
 
   JAX_CPU_SELF_HOSTED = enum.auto()
-  JAX_GPU = enum.auto()
   JAX_X86_GPU_T4_SELF_HOSTED = enum.auto()
 
   TENSORFLOW_CPU_SELF_HOSTED = enum.auto()
@@ -319,12 +316,6 @@ _CPU_ARM64_SELF_HOSTED_BUILD = Build(
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
 )
-_GPU_BUILD = nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.GPU,
-    image_url=_ML_BUILD_IMAGE,
-    configs=("warnings", "rbe_linux_cuda_nvcc"),
-    compute_capability=75,
-)
 
 _GPU_T4_SELF_HOSTED_BUILD = nvidia_gpu_build_with_compute_capability(
     type_=BuildType.GPU_T4_SELF_HOSTED,
@@ -390,28 +381,6 @@ _JAX_CPU_SELF_HOSTED_BUILD = Build(
         **_DEFAULT_BAZEL_OPTIONS,
         override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         repo_env="HERMETIC_PYTHON_VERSION=3.12",
-    ),
-)
-
-_JAX_GPU_BUILD = Build(
-    type_=BuildType.JAX_GPU,
-    repo="google/jax",
-    image_url=_DEFAULT_IMAGE,
-    configs=(
-        "rbe_linux_x86_64_cuda",
-    ),
-    target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
-    build_tag_filters=("-multiaccelerator",),
-    test_tag_filters=("-multiaccelerator",),
-    test_env=dict(
-        JAX_SKIP_SLOW_TESTS=1,
-        TF_CPP_MIN_LOG_LEVEL=0,
-        JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
-    ),
-    options=dict(
-        **_DEFAULT_BAZEL_OPTIONS,
-        override_repository="xla=/github/xla",
-        repo_env="HERMETIC_PYTHON_VERSION=3.10",
     ),
 )
 
@@ -486,10 +455,7 @@ _TENSORFLOW_GPU_SELF_HOSTED_BUILD = Build(
 )
 
 _KOKORO_JOB_NAME_TO_BUILD_MAP = {
-    "tensorflow/xla/linux/gpu/build_gpu": _GPU_BUILD,
-    "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
     "tensorflow/xla/macos/github_continuous/cpu_py39_full": _MACOS_X86_BUILD,
-    "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
     "xla-linux-x86-cpu": _CPU_X86_SELF_HOSTED_BUILD,
     "xla-linux-arm64-cpu": _CPU_ARM64_SELF_HOSTED_BUILD,
     "xla-linux-x86-gpu-t4": _GPU_T4_SELF_HOSTED_BUILD,
