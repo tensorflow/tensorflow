@@ -56,6 +56,7 @@ cc_library(
         "//xla/hlo/transforms/expanders:rng_expander",
         "//xla/hlo/transforms/expanders:stable_sort_expander",
         "//xla/hlo/transforms/expanders:stochastic_convert_decomposer",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/hlo/transforms/simplifiers:all_reduce_folder",
         "//xla/hlo/transforms/simplifiers:batch_dot_simplification",
         "//xla/hlo/transforms/simplifiers:broadcast_canonicalizer",

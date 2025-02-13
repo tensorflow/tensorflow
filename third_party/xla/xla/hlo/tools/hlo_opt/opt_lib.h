@@ -57,7 +57,7 @@ class OptProvider {
 
   // Runs input passes on a input module and returns the optimized module
   // string.
-  absl::StatusOr<std::optional<std::string>> BuildAndRunTransformPipeline(
+  absl::StatusOr<std::string> BuildAndRunTransformPipeline(
       std::unique_ptr<HloModule> input_module,
       const std::string& input_pass_names);
 

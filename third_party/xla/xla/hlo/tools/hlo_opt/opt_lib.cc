@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/stable_sort_expander.h"
 #include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
 #include "xla/hlo/transforms/operand_upcaster.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/all_reduce_folder.h"
 #include "xla/hlo/transforms/simplifiers/batch_dot_simplification.h"
 #include "xla/hlo/transforms/simplifiers/broadcast_canonicalizer.h"
@@ -138,9 +139,8 @@ absl::StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
   return module->ToString();
 }
 
-absl::StatusOr<std::optional<std::string>>
-OptProvider::BuildAndRunTransformPipeline(std::unique_ptr<HloModule> module,
-                                          const std::string& input_pass_names) {
+absl::StatusOr<std::string> OptProvider::BuildAndRunTransformPipeline(
+    std::unique_ptr<HloModule> module, const std::string& input_pass_names) {
   HloPassPipeline transforms_pipeline{"transforms_pipeline"};
   for (const auto& pass_name :
        std::vector<std::string>(absl::StrSplit(input_pass_names, ','))) {
@@ -148,7 +148,8 @@ OptProvider::BuildAndRunTransformPipeline(std::unique_ptr<HloModule> module,
     if (it != pass_registry_.end()) {
       it->second(transforms_pipeline);
     } else {
-      LOG(ERROR) << "Pass " << pass_name << " not found.";
+      return absl::InvalidArgumentError(
+          absl::StrCat("Pass ", pass_name, " not found."));
     }
   }
   CHECK_OK(transforms_pipeline.Run(module.get(), {}));
@@ -186,6 +187,7 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<BarToHelloModulePass>();
   // Hardware-independent HLO passes
   // go/keep-sorted start
+  RegisterPass<AlgebraicSimplifier>(AlgebraicSimplifierOptions());
   RegisterPass<AllGatherBroadcastReorder>();
   RegisterPass<AllReduceContiguous>();
   RegisterPass<AllReduceFolder>();

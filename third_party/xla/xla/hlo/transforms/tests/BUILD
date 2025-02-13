@@ -23,9 +23,10 @@ lit_test_suite(
     name = "hlo_opt_tests",
     srcs = enforce_glob(
         [
-            "run_single_pass.hlo",
-            "run_multiple_passes.hlo",
             "algebraic_simplifier.hlo",
+            "hlo_opt_expect_failure.hlo",
+            "run_multiple_passes.hlo",
+            "run_single_pass.hlo",
         ],
         include = [
             "*.hlo",
@@ -35,5 +36,6 @@ lit_test_suite(
     tools = [
         "//xla/hlo/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )
