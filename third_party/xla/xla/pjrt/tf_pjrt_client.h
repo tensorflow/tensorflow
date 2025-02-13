@@ -277,12 +277,6 @@ class TfPjRtClient : public PjRtClient {
   }
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) override {
-    return Unimplemented(
-        "AsyncHostToDeviceTransferManager not supported for Tf.");
-  }
-  absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "AsyncHostToDeviceTransferManager not supported for Tf.");

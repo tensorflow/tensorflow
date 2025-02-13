@@ -501,11 +501,12 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
+  auto* d = client->addressable_devices()[0];
   auto src_literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
   TF_ASSERT_OK_AND_ASSIGN(
       auto transfer_manager,
-      client->CreateBuffersForAsyncHostToDevice(
-          {src_literal.shape()}, client->addressable_devices()[0]));
+      client->CreateBuffersForAsyncHostToDevice({src_literal.shape()},
+                                                *d->default_memory_space()));
   auto buffer = transfer_manager->RetrieveBuffer(0);
 
   absl::Mutex mu;
@@ -586,11 +587,12 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
+  auto* d = client->addressable_devices()[0];
   auto src_literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
   TF_ASSERT_OK_AND_ASSIGN(
       auto transfer_manager,
-      client->CreateBuffersForAsyncHostToDevice(
-          {src_literal.shape()}, client->addressable_devices()[0]));
+      client->CreateBuffersForAsyncHostToDevice({src_literal.shape()},
+                                                *d->default_memory_space()));
   auto buffer = transfer_manager->RetrieveBuffer(0);
 
   absl::Mutex mu;
@@ -626,6 +628,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
+  auto* d = client->addressable_devices()[0];
   std::vector<Literal> src_literals;
   std::vector<Shape> src_shapes;
   for (int i = 0; i < 4; ++i) {
@@ -636,7 +639,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   }
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
-                              src_shapes, client->addressable_devices()[0]));
+                              src_shapes, *d->default_memory_space()));
   std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   for (int i = 0; i < src_shapes.size(); ++i) {
     buffers.emplace_back(transfer_manager->RetrieveBuffer(i));
@@ -949,7 +952,8 @@ TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {
   auto src_literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
   TF_ASSERT_OK_AND_ASSIGN(
       auto transfer_manager,
-      client->CreateBuffersForAsyncHostToDevice({src_literal.shape()}, d0));
+      client->CreateBuffersForAsyncHostToDevice({src_literal.shape()},
+                                                *d0->default_memory_space()));
   auto src_buffer = transfer_manager->RetrieveBuffer(0);
   // CopyToMemorySpace won't be enqueued until src_buffer is available.
   auto local_recv_buffer =

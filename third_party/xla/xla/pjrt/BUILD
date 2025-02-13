@@ -241,6 +241,20 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_client_utils",
+    srcs = ["pjrt_client_utils.cc"],
+    hdrs = ["pjrt_client_utils.h"],
+    visibility = internal_visibility(["//xla:friends"]),
+    deps = [
+        ":pjrt_client",
+        "//xla:shape_util",
+        "//xla:util",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "pjrt_client_test_common",
     testonly = 1,
     srcs = ["pjrt_client_test.cc"],

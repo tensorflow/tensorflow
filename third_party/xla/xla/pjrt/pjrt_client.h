@@ -767,18 +767,6 @@ class PjRtClient {
   CreateBuffersForAsyncHostToDevice(
       absl::Span<const ShapeSpec> shape_specs,
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-      PjRtDevice* device) {
-    return absl::UnimplementedError(absl::StrCat(
-        "CreateBuffersForAsyncHostToDevice with ShapeSpec and Layout is "
-        "not implemented on platform: ",
-        platform_name()));
-  }
-
-  // Variant of CreateBuffersForAsyncHostToDevice with PjRtMemorySpace.
-  virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(
-      absl::Span<const ShapeSpec> shape_specs,
-      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) {
     return absl::UnimplementedError(absl::StrCat(
         "CreateBuffersForAsyncHostToDevice with ShapeSpec and Layout is "
@@ -790,18 +778,16 @@ class PjRtClient {
   // shapes 'shapes'.
   virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) {
-    return Unimplemented(
-        "CreateBuffersForAsyncHostToDevice with on host is not implemented.");
-  }
-
-  // Variant of CreateBuffersForAsyncHostToDevice with PjRtMemorySpace.
-  virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtMemorySpace* memory_space) {
-    return Unimplemented(
-        "CreateBuffersForAsyncHostToDevice with PjRtMemorySpace is not "
-        "implemented.");
+    absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
+    shape_specs.reserve(shapes.size());
+    for (const auto& shape : shapes) {
+      shape_specs.emplace_back(ShapeSpec{
+          shape.element_type(), DimensionVector(shape.dimensions().begin(),
+                                                shape.dimensions().end())});
+    }
+    return CreateBuffersForAsyncHostToDevice(
+        shape_specs, /*device_layouts=*/std::nullopt, memory_space);
   }
 
   // Describes the semantics the caller to BufferFromHostBuffer expects from the
