@@ -1484,6 +1484,30 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "checkpoint_utils_iterator_test",
+    size = "small",
+    srcs = ["checkpoint_utils_iterator_test.py"],
+    deps = [
+        ":checkpoint_utils",
+        ":saver",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:init_ops",
+        "//tensorflow/python/ops:partitioned_variables",
+        "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:gfile",
+    ],
+)
+
+tf_py_strict_test(
     name = "checkpoint_utils_test",
     size = "small",
     srcs = ["checkpoint_utils_test.py"],
