@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/collective_conflict_analysis.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_pipeliner.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -44,20 +45,52 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::xla::match::GetTupleElement;
+using ::xla::match::Op;
+using ::xla::match::Parameter;
+using ::xla::match::Recv;
+using ::xla::match::Send;
+
 // Rather than pipelining the send/recv and *-done instructions, we only
 // pipeline send/recv instructions. This allows spanning async send/recv across
 // the loop boundary.
-bool PipelineOnlySendRecvStart(const HloInstruction* instr) {
-  return HloPredicateIsOp<HloOpcode::kRecv, HloOpcode::kSend>(instr);
+bool PipelineOnlySendRecvStart(
+    const HloInstruction* instruction,
+    absl::flat_hash_map<const HloInstruction*, bool>& cache) {
+  auto it = cache.find(instruction);
+  if (it != cache.end()) {
+    return it->second;
+  }
+
+  // Only pipeline send/recv instructions that operate on a loop parameter.
+  if (!Match(instruction, Recv()) &&
+      !Match(instruction, Send(GetTupleElement(Parameter()), Op()))) {
+    cache[instruction] = false;
+    return false;
+  }
+
+  // Only pipeline them if all control predecessors are also pipelined.
+  for (HloInstruction* other_instruction :
+       instruction->control_predecessors()) {
+    if (!PipelineOnlySendRecvStart(other_instruction, cache)) {
+      cache[instruction] = false;
+      return false;
+    }
+  }
+
+  cache.insert({instruction, true});
+  return true;
 }
 
-bool ShouldPipeline(const HloInstruction* instr) {
-  if (!HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(instr)) {
+bool ShouldPipeline(const HloInstruction* instruction) {
+  if (!HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(
+          instruction)) {
     return false;
   }
   // Not annotated for pipelining.
-  auto it = instr->frontend_attributes().map().find(kSendRecvPipelineAttr);
-  if (it == instr->frontend_attributes().map().end()) {
+  auto it =
+      instruction->frontend_attributes().map().find(kSendRecvPipelineAttr);
+  if (it == instruction->frontend_attributes().map().end()) {
     return false;
   }
 
@@ -65,20 +98,21 @@ bool ShouldPipeline(const HloInstruction* instr) {
   // predecessor will be dropped by the pipeliner, which is what we needed
   // when we rotate the RecvDone to the beginning of the while-body.
   auto allowed_predecessor = [&]() {
-    return instr->opcode() == HloOpcode::kRecvDone &&
-           instr->control_predecessors().size() == 1 &&
-           instr->control_predecessors()[0]->opcode() == HloOpcode::kSend;
+    return instruction->opcode() == HloOpcode::kRecvDone &&
+           instruction->control_predecessors().size() == 1 &&
+           instruction->control_predecessors()[0]->opcode() == HloOpcode::kSend;
   };
-  if (!instr->control_successors().empty() ||
-      (!instr->control_predecessors().empty() && !allowed_predecessor())) {
+  if (!instruction->control_successors().empty() ||
+      (!instruction->control_predecessors().empty() &&
+       !allowed_predecessor())) {
     return false;
   }
 
   // Checks that the SendDone or RecvDone is used for non-trivial computation.
   // This avoids repeatedly pipelining a loop.
   bool is_pipelined =
-      (instr->user_count() == 1 && instr->parent() != nullptr &&
-       instr->users()[0] == instr->parent()->root_instruction());
+      (instruction->user_count() == 1 && instruction->parent() != nullptr &&
+       instruction->users()[0] == instruction->parent()->root_instruction());
   return !is_pipelined;
 }
 
@@ -374,7 +408,7 @@ static absl::Status PostProcessPeeledSendRecvOps(
 absl::StatusOr<bool> GpuP2PPipeliner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto should_process = ShouldPipeline;
+  HloPredicate should_process = ShouldPipeline;
   CollectivePipeliner::HloPostprocessor postprocess_backward_peeled_op =
       PostprocessPeeledP2P;
   CollectivePipeliner::HloPostprocessor postprocess_backward_rotated_op =
@@ -384,8 +418,11 @@ absl::StatusOr<bool> GpuP2PPipeliner::Run(
   // for post-processing.
   std::vector<HloInstruction*> peeled_send_recvs;
   std::vector<HloInstruction*> rotated_send_recvs;
+  absl::flat_hash_map<const HloInstruction*, bool> should_process_cache;
   if (enable_partial_send_recv_pipelining_) {
-    should_process = PipelineOnlySendRecvStart;
+    should_process = [&](const HloInstruction* instruction) -> bool {
+      return PipelineOnlySendRecvStart(instruction, should_process_cache);
+    };
     postprocess_backward_peeled_op = [&](HloInstruction* it) {
       peeled_send_recvs.push_back(it);
       return absl::OkStatus();

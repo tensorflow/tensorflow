@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -700,6 +701,61 @@ TEST_F(GpuP2PPipelinerTest, TwoLoopsWithConflictingAllReduces) {
   EXPECT_THAT(final_ar_op->control_predecessors(),
               UnorderedElementsAre(send_done_b_op, recv_done_b_op,
                                    recv_done_a_op, send_done_a_op));
+}
+
+TEST_F(GpuP2PPipelinerTest, ConflictingControlDependencies) {
+  absl::string_view kHloStr = R"(
+    HloModule test
+
+    cond {
+      param = (u32[], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      n = u32[] constant(2)
+      ROOT result = pred[] compare(i, n), direction=LT
+    }
+
+    body {
+      param = (u32[], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      data = f32[64] get-tuple-element(param), index=1
+
+
+      // Avoids pipelining send.
+      after-all = token[] after-all()
+      data_ = f32[64] add(data, data)
+      send = (f32[64], u32[], token[]) send(data_, after-all), channel_id=2,
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+
+      // Could be pipelined if it didn't have a control dependency on send.
+      recv = (f32[64], u32[], token[]) recv(after-all), channel_id=1,
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
+          control-predecessors={send}
+      recv_done = (f32[64], token[]) recv-done(recv), channel_id=1
+      send_done = token[] send-done(send), channel_id=2
+      recv_data = f32[64] get-tuple-element(recv_done), index=0
+
+      c1 = u32[] constant(1)
+      i_ = u32[] add(u32[] i, u32[] c1)
+
+      ROOT result = (u32[], f32[64]) tuple(i_, recv_data)
+    }
+
+    ENTRY entry {
+      c0 = u32[] constant(0)
+      a = f32[] constant(42)
+      data = f32[64] broadcast(a), dimensions={}
+      while_init = (u32[], f32[64]) tuple(c0, data)
+      ROOT while = (u32[], f32[64]) while(while_init), condition=cond, body=body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kHloStr, config_));
+
+  // Run pass and expect no change.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunOptimizer(module.get(),
+                                 /*enable_partial_send_recv_pipelining=*/true));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace
