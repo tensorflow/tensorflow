@@ -1147,6 +1147,7 @@ TEST_F(DecomposerTest, OneSendRecvWithIndirectlyConflictingCollectives) {
   ASSERT_THAT(cp_cycle2, NotNull());
   ASSERT_THAT(cp_fwd_recv_done, NotNull());
   ASSERT_THAT(cp_fwd_send_done, NotNull());
+  ASSERT_THAT(cp_fwd_recv_done->control_predecessors(), ElementsAre());
   EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));

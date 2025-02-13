@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
@@ -2050,6 +2051,12 @@ absl::Status DirectSession::Finalize() {
   }
   execution_state_.reset();
   flib_def_.reset();
+  if (options_.config.experimental().finalize_clears_function_libraries()) {
+    mutex_lock l2(callables_lock_);
+    for (auto& [handle, callable] : callables_) {
+      callable.function_info->flib_def->Clear();
+    }
+  }
   finalized_ = true;
   return absl::OkStatus();
 }

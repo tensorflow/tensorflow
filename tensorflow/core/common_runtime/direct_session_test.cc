@@ -300,7 +300,49 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithCallables) {
   // Making a new callable fails because the session has been finalized.
   absl::Status s =
       session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle);
-  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(absl::IsFailedPrecondition(s));
+  EXPECT_TRUE(absl::StrContains(s.message(), "Session has been finalized."));
+}
+
+TEST_F(DirectSessionMinusAXTest,
+       RunSimpleNetwork_FinalizeAndClearFunctionLibrariesWithCallables) {
+  Initialize({3, 2, -1, 0});
+
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_finalize_clears_function_libraries(
+      true);
+  auto session = std::unique_ptr<Session>(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions({}, {y_ + ":0"}, {y_neg_}), &handle));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // The callable is usable after finalization.
+  for (int i = 0; i < 2; ++i) {
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+
+    ASSERT_EQ(1, outputs.size());
+    // The first output should be initialized and have the correct
+    // output.
+    auto mat = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+  }
+
+  TF_ASSERT_OK(session->ReleaseCallable(handle));
+
+  // Making a new callable fails because the session has been finalized.
+  absl::Status s =
+      session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle);
+  EXPECT_TRUE(absl::IsFailedPrecondition(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "Session has been finalized."));
 }
 
