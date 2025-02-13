@@ -140,7 +140,7 @@ inline bool operator==(const TiledHloInstruction& lhs,
 
   if (lhs.operands().empty() && rhs.operands().empty()) {
     // Tile offsets indexing is guaranteed to be computed only if tile sizes are
-    // different and the instruction has no operands.
+    // the same and the instruction has no operands.
     return lhs.tile_offsets_indexing() == rhs.tile_offsets_indexing();
   }
 
