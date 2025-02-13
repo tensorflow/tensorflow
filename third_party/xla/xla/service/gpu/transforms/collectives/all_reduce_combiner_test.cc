@@ -388,6 +388,49 @@ TEST_F(GpuAllReduceCombinerTest, CombinesSynchronousCollectivesMaximally) {
                         op::GetTupleElement(combined_all_reduce, 1)));
 }
 
+TEST_F(GpuAllReduceCombinerTest,
+       DoNotCombineCollectivesWithControlDependencies) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    add {
+      p0 = f16[] parameter(0)
+      p1 = f16[] parameter(1)
+      ROOT add = f16[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f16[10000000]{0} parameter(0)
+      p1 = f16[10000000]{0} parameter(1)
+
+      // This all-reduce must happen first, which is enforced by the control
+      // dependency and must be respected.
+      lead_ar = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add
+
+      // These all-reduce have control dependencies and must not be combined.
+      ar0 = f16[10000000]{0} all-reduce(p0), replica_groups={}, to_apply=add,
+          control-predecessors={lead_ar}
+      ar1 = f16[10000000]{0} all-reduce(p1), replica_groups={}, to_apply=add,
+          control-predecessors={lead_ar}
+      ROOT result = tuple(ar0, ar1)
+    }
+  )";
+  DeviceDescription device_info;
+  device_info.set_device_memory_size(10000000000);  // 10GB
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  GpuAllReduceCombiner combiner(
+      device_info, /*default_combine_threshold_in_bytes=*/
+      kDefaultAllReduceCombineThreshold,
+      /*combine_threshold_in_bytes=*/kDefaultAllReduceCombineThreshold,
+      /*combine_threshold_count=*/256, /*pointer_size=*/4);
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_sync_collective_combining(true);
+  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
+}
+
 }  // namespace
 
 }  // namespace xla::gpu

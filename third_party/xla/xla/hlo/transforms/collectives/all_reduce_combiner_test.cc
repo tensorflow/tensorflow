@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -41,7 +42,9 @@ namespace {
 
 using std::nullopt;
 using ::testing::AllOf;
+using tsl::testing::IsOkAndHolds;
 namespace op = xla::testing::opcode_matchers;
+
 int64_t kMaxCombineCount = 256;
 
 int64_t AllReduceCount(const HloModule& module) {
@@ -375,6 +378,44 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_EQ(AllReduceCount(*module), 2);
   EXPECT_FALSE(changed);
+}
+
+TEST_F(AllReduceCombinerTest, DoNotCombineWithControlDependencies) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  param0 = f32[128] parameter(0)
+  param1 = f32[128] parameter(1)
+
+  // This all-reduce must happen first, which is enforced by the control
+  // dependency and must be respected.
+  lead_ar = f32[128] all-reduce(param0), replica_groups={{0}}, to_apply=add,
+      channel_id=1
+
+  // These all-reduce have control dependencies and must not be combined.
+  ar0 = f32[128] all-reduce(lead_ar),
+      replica_groups={{0}}, to_apply=add, channel_id=2,
+      control-predecessors={lead_ar}
+  ar1 = f32[128] all-reduce(param1),
+      replica_groups={{0}}, to_apply=add, channel_id=3,
+      control-predecessors={lead_ar}
+  ROOT tuple = (f32[128], f32[128]) tuple(ar0, ar1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
+  ASSERT_EQ(AllReduceCount(*module), 3);
+  ASSERT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_EQ(AllReduceCount(*module), 3);
 }
 
 TEST_F(AllReduceCombinerTest, CrossCoreAllReduce) {
