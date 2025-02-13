@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <sstream>
+#include <string>
 
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
