@@ -84,6 +84,11 @@ class IotaReplicaGroupList {
 // replica groups, it may be used to represent these lists in compact forms.
 class CollectiveDeviceList {
  public:
+  // TODO (b/391829695) : this is for debugging only,
+  // remove after the bug is fixed.
+  bool stale_ = false;
+  ~CollectiveDeviceList() { stale_ = true; }
+
   explicit CollectiveDeviceList() = default;
 
   explicit CollectiveDeviceList(absl::Span<const ReplicaGroup> replica_groups)

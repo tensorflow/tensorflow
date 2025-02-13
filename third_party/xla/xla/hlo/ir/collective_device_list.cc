@@ -114,6 +114,9 @@ void CollectiveDeviceList::MaybeMaterializeFullReplicaGroupList() const {
 
 std::string CollectiveDeviceList::ToString(
     bool print_full_replica_group_list) const {
+  // TODO (b/391829695) : this is for debugging only,
+  // remove after the bug is fixed.
+  CHECK(!stale_);
   if (iota_replica_group_list_.has_value() && !print_full_replica_group_list) {
     return iota_replica_group_list_->ToString();
   }
