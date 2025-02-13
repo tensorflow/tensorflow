@@ -17,6 +17,8 @@ cc_library(
         "//xla/python:__pkg__",
     ],
     deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:protobuf",
