@@ -1486,8 +1486,6 @@ cc_library(
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms:operand_upcaster",
         "//xla/hlo/transforms:while_loop_trip_count_annotator",
-        "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
-        "//xla/hlo/translate/mhlo_to_hlo:location_exporter",
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/pjrt/distributed:key_value_store_interface",
