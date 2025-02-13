@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_datatype.h"
