@@ -206,11 +206,8 @@ class Build:
     # problems in practice.
 
     # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
-    # MacOS VM, and slightly change TF config (likely by specifying tag_filters
-    # manually).
+    # MacOS VM.
     if self.type_ not in (
-        BuildType.TENSORFLOW_CPU_SELF_HOSTED,
-        BuildType.TENSORFLOW_X86_GPU_T4_SELF_HOSTED,
         BuildType.MACOS_CPU_X86,
     ):
       cmds.append(
@@ -404,6 +401,24 @@ _JAX_GPU_SELF_HOSTED_BUILD = Build(
     ),
 )
 
+tensorflow_tag_filters = (
+    "-no_oss",
+    "-tf_tosa",
+    "-oss_excluded",
+    "-oss_serial",
+    "-tpu",
+    "-benchmark-test",
+    "-v1only",
+)
+
+tensorflow_cpu_tag_filters = tensorflow_tag_filters + ("-gpu",)
+tensorflow_gpu_tag_filters = tensorflow_tag_filters + (
+    "-no_gpu",
+    "-no_gpu_presubmit",
+    "-no_cuda11",
+    "+gpu",
+)
+
 _TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
     type_=BuildType.TENSORFLOW_CPU_SELF_HOSTED,
     repo="tensorflow/tensorflow",
@@ -411,7 +426,6 @@ _TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
     configs=(
         "release_cpu_linux",
         "rbe_linux_cpu",
-        "linux_cpu_pycpp_test_filters",
     ),
     target_patterns=(
         "//tensorflow/compiler/...",
@@ -420,11 +434,14 @@ _TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
         "-//tensorflow/python/distribute/...",
         "-//tensorflow/python/compiler/tensorrt/...",
     ),
+    build_tag_filters=tensorflow_cpu_tag_filters,
+    test_tag_filters=tensorflow_cpu_tag_filters,
     options=dict(
         verbose_failures=True,
         test_output="errors",
         override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         profile="profile.json.gz",
+        test_lang_filters="cc,py",
     ),
 )
 
@@ -435,7 +452,6 @@ _TENSORFLOW_GPU_SELF_HOSTED_BUILD = Build(
     configs=(
         "release_gpu_linux",
         "rbe_linux_cuda",
-        "linux_cuda_pycpp_test_filters",
     ),
     target_patterns=(
         "//tensorflow/compiler/...",
@@ -444,13 +460,14 @@ _TENSORFLOW_GPU_SELF_HOSTED_BUILD = Build(
         "-//tensorflow/python/distribute/...",
         "-//tensorflow/python/compiler/tensorrt/...",
     ),
-    build_tag_filters=("-no_oss", "+gpu"),
-    test_tag_filters=("-no_oss", "+gpu"),
+    build_tag_filters=tensorflow_gpu_tag_filters,
+    test_tag_filters=tensorflow_gpu_tag_filters,
     options=dict(
         verbose_failures=True,
         test_output="errors",
         override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         profile="profile.json.gz",
+        test_lang_filters="cc,py",
     ),
 )
 
