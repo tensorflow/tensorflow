@@ -13,10 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_XLA_TRITON_PASSES_TD_
-#define XLA_SERVICE_GPU_FUSIONS_TRITON_XLA_TRITON_PASSES_TD_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_
+#define XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_
 
 include "mlir/Pass/PassBase.td"
+
+def GeneralizeKernelSignaturePass
+    : Pass<"generalize-kernel-signature"> {
+  let summary = "Rewrite kernels to use generic data pointer arguments.";
+  let description = [{
+    Rewrite signatures of kernel functions from global pointers to generic
+    pointers and cast them to global ones within the kernel.
+  }];
+  let constructor = "CreateGeneralizeKernelSignaturePass()";
+}
 
 def SparseAddEncodingPass : Pass<"sparse-add-encoding", "mlir::ModuleOp"> {
   let summary = "Add sparse encoding for all the arguments of a SparseDotOp.";
@@ -106,4 +116,4 @@ def LoadInt4RewritePass
   let constructor = "CreateInt4ToPackedInt4RewritePass()";
 }
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_XLA_TRITON_PASSES_TD_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

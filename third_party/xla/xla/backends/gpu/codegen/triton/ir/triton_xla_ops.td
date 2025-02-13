@@ -14,15 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_OPS_TD_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_OPS_TD_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_
+#define XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
 include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
 include "mlir/Interfaces/ViewLikeInterface.td" // OffsetSizeAndStrideOpInterface
-include "xla/backends/gpu/codegen/triton/xla_triton_dialect.td"
-include "xla/backends/gpu/codegen/triton/xla_triton_types.td"
+include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.td"
+include "xla/backends/gpu/codegen/triton/ir/triton_xla_types.td"
 include "triton/Dialect/Triton/IR/TritonInterfaces.td"
 include "triton/Dialect/TritonGPU/IR/TritonGPUTypeInterfaces.td"
 include "triton/Dialect/Triton/IR/TritonTypes.td"
@@ -148,4 +148,4 @@ def TTXLA_InsertOp : TTXLA_Op<"insert", [Pure]> {
   }];
 }
 
-#endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_OPS_TD_
+#endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_

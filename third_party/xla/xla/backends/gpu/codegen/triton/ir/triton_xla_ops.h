@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_OPS_H_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_OPS_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_H_
+#define XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_H_
 
 #include "mlir/IR/Attributes.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinTypes.h"  // IWYU pragma: keep
@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
-#include "xla/backends/gpu/codegen/triton/xla_triton_dialect.h.inc"  // IWYU pragma: keep
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.h.inc"  // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/Dialect.h"  // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/Traits.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"  // IWYU pragma: keep
@@ -45,10 +45,10 @@ class DotLike<triton::xla::SparseDotOp>
 }  // namespace mlir::OpTrait
 
 #define GET_ATTRDEF_CLASSES
-#include "xla/backends/gpu/codegen/triton/xla_triton_attrs.h.inc"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_attrs.h.inc"
 #define GET_TYPEDEF_CLASSES
-#include "xla/backends/gpu/codegen/triton/xla_triton_types.h.inc"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_types.h.inc"
 #define GET_OP_CLASSES
-#include "xla/backends/gpu/codegen/triton/xla_triton_ops.h.inc"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h.inc"
 
-#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_OPS_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_H_

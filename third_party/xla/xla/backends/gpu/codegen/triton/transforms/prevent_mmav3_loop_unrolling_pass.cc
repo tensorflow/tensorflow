@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/backends/gpu/codegen/triton/xla_triton_ops.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 
@@ -29,7 +29,7 @@ namespace mlir::triton::xla {
 namespace {
 
 #define GEN_PASS_DEF_PREVENTMMAV3LOOPUNROLLINGPASS
-#include "xla/backends/gpu/codegen/triton/xla_triton_passes.h.inc"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
 struct PreventMmaV3LoopUnrollingPass
     : public impl::PreventMmaV3LoopUnrollingPassBase<

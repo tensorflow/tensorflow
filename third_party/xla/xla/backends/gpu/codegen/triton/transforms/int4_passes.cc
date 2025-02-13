@@ -50,7 +50,7 @@ namespace mt = ::mlir::triton;
 namespace ma = ::mlir::arith;
 
 #define GEN_PASS_DEF_LOADINT4REWRITEPASS
-#include "xla/backends/gpu/codegen/triton/xla_triton_passes.h.inc"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
 class I4ToI8Converter : public TypeConverter {
  public:

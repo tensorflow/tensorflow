@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/codegen/triton/xla_triton_ops.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 
 #include <optional>
 
@@ -30,7 +30,7 @@ limitations under the License.
 #include "mlir/IR/Region.h"
 #include "mlir/IR/TypeUtilities.h"  // IWYU pragma: keep
 #include "mlir/IR/ValueRange.h"
-#include "xla/backends/gpu/codegen/triton/xla_triton_dialect.cc.inc"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.cc.inc"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Types.h"
 
@@ -137,4 +137,4 @@ LogicalResult SparseDotOp::verify() {
 }  // namespace mlir::triton::xla
 
 #define GET_OP_CLASSES
-#include "xla/backends/gpu/codegen/triton/xla_triton_ops.cc.inc"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.cc.inc"

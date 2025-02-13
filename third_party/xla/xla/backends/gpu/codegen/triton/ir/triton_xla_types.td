@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_TYPES_TD_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_TYPES_TD_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_TYPES_TD_
+#define XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_TYPES_TD_
 
-include "xla/backends/gpu/codegen/triton/xla_triton_dialect.td"
+include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.td"
 include "mlir/IR/BuiltinTypes.td" // ValueSemantics
 include "mlir/IR/BuiltinTypeInterfaces.td"
 
@@ -56,4 +56,4 @@ def TTXLA_TiledTensorType : TTXLA_Type<"TiledTensor", "tiled_tensor", [
   }];
 }
 
-#endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_TYPES_TD_
+#endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_TYPES_TD_

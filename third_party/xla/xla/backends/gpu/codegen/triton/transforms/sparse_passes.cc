@@ -54,8 +54,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/triton/xla_triton_ops.h"
-#include "xla/backends/gpu/codegen/triton/xla_triton_passes.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "triton/Analysis/Allocation.h"
 #include "triton/Analysis/Membar.h"
 #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
@@ -122,7 +122,7 @@ bool ContainsOp(mlir::Operation *op,
 #define GEN_PASS_DEF_SPARSELOCALLOADTOLLVMPASS
 #define GEN_PASS_DEF_SPARSEREMOVELAYOUTCONVERSIONPASS
 #define GEN_PASS_DEF_SPARSEWGMMAOPTOLLVMPASS
-#include "xla/backends/gpu/codegen/triton/xla_triton_passes.h.inc"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
 constexpr int kThreadsPerWarp = 32;
 // Each 16x16 original sparse matrix tile requires 16 metadata values of

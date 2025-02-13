@@ -54,7 +54,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
-#include "xla/backends/gpu/codegen/triton/xla_triton_ops.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_DIALECT_TD_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_DIALECT_TD_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_DIALECT_TD_
+#define XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_DIALECT_TD_
 
 include "mlir/IR/DialectBase.td"
 
@@ -39,4 +39,4 @@ def XlaTritonDialect : Dialect {
   let useDefaultTypePrinterParser = 1;
 }
 
-#endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_DIALECT_TD_
+#endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_DIALECT_TD_

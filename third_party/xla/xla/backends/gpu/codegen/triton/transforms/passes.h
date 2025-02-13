@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_PASSES_H_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_PASSES_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_TRANSFORMS_PASSES_H_
+#define XLA_BACKENDS_GPU_CODEGEN_TRITON_TRANSFORMS_PASSES_H_
 
 #include <cstdint>
 #include <memory>
@@ -26,8 +26,9 @@ limitations under the License.
 namespace mlir::triton::xla {
 
 #define GEN_PASS_DECL
-#include "xla/backends/gpu/codegen/triton/xla_triton_passes.h.inc"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
+std::unique_ptr<mlir::Pass> CreateGeneralizeKernelSignaturePass();
 std::unique_ptr<mlir::Pass> CreateSparseAddEncodingPass(
     int32_t num_warps = 4, int32_t threads_per_warp = 32, int32_t num_ctas = 1);
 std::unique_ptr<mlir::Pass> CreateSparseBlockedToMMAPass();
@@ -44,8 +45,8 @@ bool ContainsOp(mlir::Operation* op,
                 llvm::function_ref<bool(mlir::Operation*)> fn);
 
 #define GEN_PASS_REGISTRATION
-#include "xla/backends/gpu/codegen/triton/xla_triton_passes.h.inc"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
 }  // namespace mlir::triton::xla
 
-#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_PASSES_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_TRANSFORMS_PASSES_H_

@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_ATTRS_TD_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_ATTRS_TD_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_ATTRS_TD_
+#define XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_ATTRS_TD_
 
 include "triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
-include "xla/backends/gpu/codegen/triton/xla_triton_dialect.td"
+include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.td"
 
 def TTXLA_SparseDotMetaEncodingAttr : DistributedEncoding<"SparseDotMetaEncoding",
 "sparse_dot_meta_encoding", [], XlaTritonDialect> {
@@ -33,4 +33,4 @@ def TTXLA_SparseDotMetaEncodingAttr : DistributedEncoding<"SparseDotMetaEncoding
 }
 
 
-#endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_XLA_TRITON_ATTRS_TD_
+#endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_ATTRS_TD_

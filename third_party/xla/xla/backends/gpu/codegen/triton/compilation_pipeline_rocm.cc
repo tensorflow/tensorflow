@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-#include "xla/backends/gpu/codegen/triton/xla_triton_passes.h"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
