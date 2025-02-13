@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 
 #include <memory>
-#include <string>
 
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
