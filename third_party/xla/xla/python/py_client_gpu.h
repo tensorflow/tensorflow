@@ -21,6 +21,7 @@ limitations under the License.
 #else
 #include "third_party/gpus/cuda/include/cuda.h"
 #endif
+#include "xla/ffi/ffi.h"
 #include "xla/service/custom_call_status.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -34,6 +35,8 @@ namespace xla {
 void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
                           const char* opaque, size_t opaque_len,
                           XlaCustomCallStatus* status);
+
+XLA_FFI_DECLARE_HANDLER_SYMBOL(kXlaFfiPythonGpuCallback);
 
 }  // namespace xla
 
