@@ -53,6 +53,7 @@ class CollectivePerfTableGen {
     UNSPECIFIED,
     ALL_REDUCE,
     ALL_GATHER,
+    REDUCE_SCATTER,
   };
 
   struct Config {

@@ -57,6 +57,7 @@ TEST_F(CollectivePerfTableGenTest, ConstantStepGeneratesConfigs) {
   cfg_.collective_types = {
       CollectivePerfTableGen::CollectiveType::ALL_REDUCE,
       CollectivePerfTableGen::CollectiveType::ALL_GATHER,
+      CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER,
   };
   IotaReplicaGroupList iota(1, 1);
   cfg_.replica_groups_list = {iota};
@@ -73,13 +74,14 @@ TEST_F(CollectivePerfTableGenTest, ConstantStepGeneratesConfigs) {
 
   DeviceHloInstructionProfiles profiles = gen->ComputeTable();
   EXPECT_EQ(profiles.entries_size(), 1);
-  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 10);
+  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 15);
 }
 
 TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigs) {
   cfg_.collective_types = {
       CollectivePerfTableGen::CollectiveType::ALL_REDUCE,
       CollectivePerfTableGen::CollectiveType::ALL_GATHER,
+      CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER,
   };
   IotaReplicaGroupList iota(1, 1);
   cfg_.replica_groups_list = {iota};
@@ -96,7 +98,7 @@ TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigs) {
 
   DeviceHloInstructionProfiles profiles = gen->ComputeTable();
   EXPECT_EQ(profiles.entries_size(), 1);
-  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 8);
+  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 12);
 }
 
 }  // namespace

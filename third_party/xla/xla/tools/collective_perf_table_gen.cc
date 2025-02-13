@@ -82,6 +82,9 @@ int64_t GetInputDim(CollectivePerfTableGen::CollectiveType type,
       dim_size = tensor_size_bytes /
                  (kBytesPerElem * replica_groups.num_devices_per_group());
       break;
+    case CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER:
+      dim_size = tensor_size_bytes / kBytesPerElem;
+      break;
     default:
       LOG(FATAL) << "Unsupported collective type.";
   }
@@ -97,6 +100,10 @@ int64_t GetOutputDim(CollectivePerfTableGen::CollectiveType type,
     case CollectivePerfTableGen::CollectiveType::ALL_REDUCE:
     case CollectivePerfTableGen::CollectiveType::ALL_GATHER:
       dim_size = tensor_size_bytes / kBytesPerElem;
+      break;
+    case CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER:
+      dim_size = tensor_size_bytes /
+                 (kBytesPerElem * replica_groups.num_devices_per_group());
       break;
     default:
       LOG(FATAL) << "Unsupported collective type.";
@@ -138,6 +145,26 @@ std::string GetHlo(CollectivePerfTableGen::CollectiveType type,
           p0 = $0[$1] parameter(0)
           ROOT _ = $0[$2] all-gather(p0), replica_groups=$3,
             use_global_device_ids=true, channel_id=1, dimensions={0}
+        }
+      )",
+                             "f32", input_dim, output_dim,
+                             replica_groups.ToString());
+      break;
+    case CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER:
+      hlo = absl::Substitute(R"(
+        HloModule m
+
+        add {
+          a = f32[] parameter(0)
+          b = f32[] parameter(1)
+          ROOT res = add(a, b)
+        }
+
+        ENTRY e {
+          p0 = $0[$1] parameter(0)
+          ROOT _ = $0[$2] reduce-scatter(p0), replica_groups=$3,
+            to_apply=add, use_global_device_ids=true, channel_id=1,
+            dimensions={0}
         }
       )",
                              "f32", input_dim, output_dim,

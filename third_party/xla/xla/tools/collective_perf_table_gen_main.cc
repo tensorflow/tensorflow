@@ -125,6 +125,10 @@ std::vector<CollectivePerfTableGen::CollectiveType> ParseCollectives(
       types.push_back(CollectivePerfTableGen::CollectiveType::ALL_GATHER);
       continue;
     }
+    if (token == "REDUCE_SCATTER") {
+      types.push_back(CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER);
+      continue;
+    }
   }
   CHECK_GT(types.size(), 0);
   return types;
@@ -170,7 +174,7 @@ int main(int argc, char* argv[]) {
                 "across the distributed system you run it on."),
       tsl::Flag("collectives", &collectives_unparsed,
                 "Comma separated list of collectives to generate perf table "
-                "for. Allowed values: ALL_REDUCE, ALL_GATHER."),
+                "for. Allowed values: ALL_REDUCE, ALL_GATHER, REDUCE_SCATTER."),
       tsl::Flag("tensor_size_bytes_spec", &tensor_size_bytes_spec_unparsed,
                 "Spec for a search sweep over transfer sizes. Format example: "
                 "start=1,stop=8,factor=2 generates {1,2,4,8}."),
