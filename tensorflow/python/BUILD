@@ -496,7 +496,10 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         # The headers here cannot be brought in via cc_header_only_library
         "//tensorflow/compiler/aot:llvm_targets",
-    ],
+    ] + select({
+        "@platforms//cpu:s390x": ["@llvm-project//llvm:TargetParser"],
+        "//conditions:default": [],
+    }),
 )
 
 tf_python_pybind_extension(
