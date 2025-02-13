@@ -88,10 +88,10 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
 void AddMhloOptimizationPasses(OpPassManager& pm,
                                const bool add_fold_broadcast_pass) {
   pm.addNestedPass<func::FuncOp>(createStablehloUnfuseBatchNormPass());
+  pm.addNestedPass<func::FuncOp>(createStablehloFuseConvolutionPass());
   // StableHLO -> MHLO legalization.
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   // Rewrites some patterns for better performance.
-  pm.addNestedPass<func::FuncOp>(createFuseConvolutionPass());
   pm.addNestedPass<func::FuncOp>(createOptimizePass());
   // Conditionally enable below pass because this causes unfused convolutions
   // described in b/293149194. This problem is not replicated in
