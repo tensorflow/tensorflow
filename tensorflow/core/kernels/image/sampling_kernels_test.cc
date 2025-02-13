@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/image/sampling_kernels.h"
 
+#include <vector>
+
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

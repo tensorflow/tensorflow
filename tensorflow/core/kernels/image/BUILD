@@ -204,6 +204,8 @@ tf_kernel_library(
     name = "decode_image_op",
     prefix = "decode_image_op",
     deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/util:byte_swap_array",
     ],
@@ -212,7 +214,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "draw_bounding_box_op",
     prefix = "draw_bounding_box_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@com_google_absl//absl/log"],
 )
 
 tf_kernel_library(
@@ -234,7 +236,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "extract_jpeg_shape_op",
     prefix = "extract_jpeg_shape_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@com_google_absl//absl/strings:string_view"],
 )
 
 tf_kernel_library(
@@ -270,7 +272,11 @@ tf_kernel_library(
     name = "non_max_suppression_op",
     features = ["-layering_check"],
     prefix = "non_max_suppression_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/kernels:gpu_prim_hdrs",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+    ] + if_cuda_or_rocm([
         "@com_google_absl//absl/strings",
     ]),
 )
@@ -278,7 +284,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scale_and_translate_op",
     prefix = "scale_and_translate_op",
-    deps = IMAGE_DEPS + [":sampling_kernels"],
+    deps = IMAGE_DEPS + [
+        ":sampling_kernels",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
@@ -317,7 +326,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sample_distorted_bounding_box_op",
     prefix = "sample_distorted_bounding_box_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:stateless_random_ops"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/kernels:stateless_random_ops",
+        "@com_google_absl//absl/log:check",
+    ],
 )
 
 tf_kernel_library(
@@ -443,6 +455,8 @@ tf_cc_test(
     srcs = ["encode_jpeg_op_test.cc"],
     deps = [
         ":encode_jpeg_op",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -453,6 +467,9 @@ cc_library(
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -463,6 +480,8 @@ cc_library(
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/util:byte_swap_array",
     ],
