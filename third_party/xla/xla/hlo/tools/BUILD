@@ -183,6 +183,7 @@ xla_cc_binary(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
         "@local_tsl//tsl/platform:protobuf",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 
