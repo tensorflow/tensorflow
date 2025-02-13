@@ -1995,10 +1995,6 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
   type.attr("on_device_size_in_bytes") = nb::cpp_function(
       xla::ValueOrThrowWrapper(&PyArray::GetOnDeviceSizeInBytes),
       nb::is_method());
-  // TODO(danfm): Remove this after JAX 0.5.1 release (or sooner!).
-  type.attr("_single_device_array_to_np_array") = nb::cpp_function(
-      xla::ValueOrThrowWrapper(&PyArray::SingleDeviceArrayToNumpyArray),
-      nb::is_method());
   type.attr("_single_device_array_to_np_array_did_copy") = nb::cpp_function(
       xla::ValueOrThrowWrapper(&PyArray::SingleDeviceArrayToNumpyArrayDidCopy),
       nb::is_method());

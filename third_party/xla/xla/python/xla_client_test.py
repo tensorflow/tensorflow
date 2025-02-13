@@ -83,7 +83,7 @@ def execute_with_python_values(executable, arguments, backend):  # pylint: disab
 # pylint: disable=invalid-name
 def jax_array_convert_to_array(self, dtype=None, copy=None):
   del copy
-  out = self._single_device_array_to_np_array()
+  out, _ = self._single_device_array_to_np_array_did_copy()
   if dtype is not None:
     out = out.astype(dtype)
   return out
