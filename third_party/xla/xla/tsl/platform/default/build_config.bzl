@@ -814,15 +814,20 @@ def tsl_protobuf_deps():
 # back into our binaries explicitly.
 def tsl_cc_test(
         name,
+        linkstatic = True,
         deps = [],
         **kwargs):
     """A wrapper around cc_test that adds protobuf deps if needed.
+
+    It also defaults to linkstatic = True, which is a good practice for catching duplicate
+    symbols at link time (e.g. linking in two main() functions).
 
     Use tsl_cc_test instead of cc_test in all .../tsl/... directories.
     """
 
     native.cc_test(
         name = name,
+        linkstatic = linkstatic,
         deps = deps + if_tsl_link_protobuf(
             [],
             [

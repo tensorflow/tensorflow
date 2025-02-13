@@ -764,6 +764,7 @@ tsl_cc_test(
     srcs = [
         "stacktrace_handler_test.cc",
     ],
+    linkstatic = False,  # In the OSS build, static linking affects the stacktrace.
     tags = ["no_windows"],
     deps = [
         ":stacktrace",
@@ -998,6 +999,7 @@ tsl_cc_test(
     srcs = [
         "stacktrace_test.cc",
     ],
+    linkstatic = False,  # In the OSS build, static linking affects the stacktrace.
     tags = ["no_windows"],
     deps = [
         ":stacktrace",
