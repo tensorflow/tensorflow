@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -22,7 +23,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
@@ -31,7 +31,6 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/cc/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_op.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_tensor.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/quantize_op_legalization.h"
 
 namespace litert {
@@ -151,6 +150,36 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
   absl::string_view op_data_string(reinterpret_cast<const char*>(op_data),
                                    op_data_size);
   ASSERT_EQ("qnn_partition_0", op_data_string);
+
+  LiteRtDestroyCompiledResult(compiled);
+}
+
+TEST(TestQnnPlugin, ShareContextBinary) {
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel("cst_multi_subgraph.tflite");
+
+  LiteRtCompiledResult compiled;
+  LITERT_ASSERT_OK(
+      LiteRtCompilerPluginCompile(plugin.get(), "V75", model.Get(), &compiled));
+  uint64_t num_byte_code;
+  LITERT_ASSERT_OK(
+      LiteRtCompiledResultNumByteCodeModules(compiled, &num_byte_code));
+  ASSERT_EQ(num_byte_code, 1);
+
+  LiteRtDestroyCompiledResult(compiled);
+}
+
+TEST(TestQnnPlugin, NotShareContextBinary) {
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel("multi_subgraph.tflite");
+
+  LiteRtCompiledResult compiled;
+  LITERT_ASSERT_OK(
+      LiteRtCompilerPluginCompile(plugin.get(), "V75", model.Get(), &compiled));
+  uint64_t num_byte_code;
+  LITERT_ASSERT_OK(
+      LiteRtCompiledResultNumByteCodeModules(compiled, &num_byte_code));
+  ASSERT_EQ(num_byte_code, 3);
 
   LiteRtDestroyCompiledResult(compiled);
 }
