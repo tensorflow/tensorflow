@@ -16,18 +16,13 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_DEVICE_LIST_H_
 #define XLA_PYTHON_IFRT_DEVICE_LIST_H_
 
-#include <atomic>
 #include <cstdint>
-#include <initializer_list>
 #include <string>
 #include <vector>
 
-#include "absl/base/call_once.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
@@ -104,74 +99,6 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   DeviceList() = default;
 
   virtual std::string ToString() const = 0;
-};
-
-// Simple implementation of `DeviceList` that contains a list of devices without
-// creating any runtime object in the IFRT implementation.
-//
-// This is a transitory type that will be replaced with (1) a non-IFRT container
-// defined by the user code (e.g., `std::vector<Device*>`) or (2) IFRT
-// implementation's own `DeviceList` constructed from its `xla::ifrt::Client`
-// API implementation.
-class BasicDeviceList : public llvm::RTTIExtends<BasicDeviceList, DeviceList> {
- public:
-  // Number of devices to inline in `Devices`.
-  static constexpr int kInlineDeviceSize = 1;
-
-  // TODO(hyeontaek): Consider using variant<Device*, std::vector<Device*>> for
-  // better performance.
-  using Devices = absl::InlinedVector<Device*, kInlineDeviceSize>;
-
-  // Constructor with a pre-populated `devices`.
-  static tsl::RCReference<DeviceList> Create(Devices devices);
-  static tsl::RCReference<DeviceList> Create(absl::Span<Device* const> devices);
-  static tsl::RCReference<DeviceList> Create(
-      std::initializer_list<Device*> devices);
-
-  ~BasicDeviceList() override = default;
-
-  absl::Span<Device* const> devices() const override { return devices_; }
-
-  DeviceList* AddressableDeviceList() const override;
-
-  bool operator==(const DeviceList& other) const override {
-    if (this == &other) {
-      return true;
-    }
-    const auto* other_basic_device_list =
-        llvm::dyn_cast<BasicDeviceList>(&other);
-    if (other_basic_device_list == nullptr) {
-      return false;
-    }
-    return devices_ == other_basic_device_list->devices_;
-  }
-
-  uint64_t hash() const override;
-
-  static char ID;  // NOLINT
-
- private:
-  explicit BasicDeviceList(Devices devices);
-
-  template <typename T, typename... Args>
-  friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
-
-  std::string ToString() const override;
-
-  Devices devices_;
-
-  // Addressable device list is dynamically computed and cached.
-  struct AddressableDeviceListCache {
-    absl::once_flag once_flag;
-    DeviceList* device_list = nullptr;
-    tsl::RCReference<DeviceList> device_list_holder;
-  };
-  mutable AddressableDeviceListCache addressable_device_list_cache_;
-
-  // Cached hash. 0 indicates the hash needs to be computed and cached.
-  // May be written multiple times with the same non-zero value.
-  static constexpr uint64_t kUnsetHash = 0;
-  mutable std::atomic<uint64_t> hash_;
 };
 
 // Returns the id of each device in `device_list`.

@@ -100,7 +100,6 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -304,6 +303,7 @@ cc_library(
         ":internal",
     ]),
     deps = [
+        ":basic_device_list",
         ":ifrt",
         ":mock",
         ":test_util",
@@ -445,6 +445,7 @@ cc_library(
     ]),
     deps = [
         ":attribute_map",
+        ":basic_device_list",
         ":ifrt",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -626,6 +627,29 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+cc_library(
+    name = "basic_device_list",
+    srcs = ["basic_device_list.cc"],
+    hdrs = ["basic_device_list.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+    deps = [
+        ":device_proto_cc",
+        ":ifrt",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 
