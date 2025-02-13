@@ -95,7 +95,10 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
               kDynamicSliceFusionWithStaticAddressComputationConfigName ||
           config_name ==
               kDynamicSliceFusionWithDynamicAddressComputationConfigName) {
-        return std::make_unique<DynamicSliceFusion>(analysis);
+        const HloFusionInfo* hlo_fusion_info =
+            dynamic_cast<const HloFusionInfo*>(&fusion_info);
+        return std::make_unique<DynamicSliceFusion>(
+            analysis, hlo_fusion_info->GetCallGraph());
       }
       return std::make_unique<CustomFusion>();
     }

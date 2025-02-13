@@ -62,8 +62,9 @@ class CustomFusion : public FusionInterface {
 // nested tuple.
 class DynamicSliceFusion : public FusionInterface {
  public:
-  explicit DynamicSliceFusion(const HloFusionAnalysis& analysis)
-      : analysis_(analysis) {}
+  explicit DynamicSliceFusion(const HloFusionAnalysis& analysis,
+                              const CallGraph& call_graph)
+      : analysis_(analysis), call_graph_(call_graph) {}
 
   absl::StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context,
@@ -71,6 +72,7 @@ class DynamicSliceFusion : public FusionInterface {
 
  private:
   const HloFusionAnalysis& analysis_;
+  const CallGraph& call_graph_;
 };
 
 }  // namespace gpu
