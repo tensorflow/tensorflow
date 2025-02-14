@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <variant>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/lib/math/math_util.h"
