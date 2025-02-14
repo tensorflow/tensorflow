@@ -72,13 +72,14 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
     "mlir::arith::ArithDialect",
     "mlir::stablehlo::StablehloDialect",
     "mlir::quant::QuantDialect",
+    "mlir::quant::ir::TFQuantDialect",
     "mlir::quantfork::QuantizationForkDialect",
     "TF::TensorFlowDialect",
   ];
 }
 
 def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::ModuleOp"> {
-  let summary = "Prepare StableHLO dialect for static range quantization by converting quantfork.stats into quantfork.qcast and dcast ops.";
+  let summary = "Prepare StableHLO dialect for static range quantization by converting quantization.stats into quantization.qcast and dcast ops.";
   let options = [
     Option<"enable_per_channel_quantized_weight_",
         "enable-per-channel-quantized-weight",
@@ -90,13 +91,14 @@ def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::ModuleOp"> {
   let dependentDialects = [
       "mlir::stablehlo::StablehloDialect",
       "mlir::quant::QuantDialect",
+    "mlir::quant::ir::TFQuantDialect",
       "mlir::quantfork::QuantizationForkDialect",
       "mlir::arith::ArithDialect",
   ];
 }
 
 def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
-  let summary = "Applies static-range quantization on ops by converting quantfork.qcast, quantfork.dcast, and float op into uniform quantized ops .";
+  let summary = "Applies static-range quantization on ops by converting quantization.qcast, quantization.dcast, and float op into uniform quantized ops .";
   let options = [
     Option<"enable_per_channel_quantized_weight_",
         "enable-per-channel-quantized-weight",
@@ -106,6 +108,7 @@ def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",
     "mlir::quant::QuantDialect",
+    "mlir::quant::ir::TFQuantDialect",
     "mlir::quantfork::QuantizationForkDialect",
   ];
 }
@@ -114,6 +117,7 @@ def PostQuantizePass : Pass<"stablehlo-post-quantize", "mlir::func::FuncOp"> {
   let summary = "Apply clean-up after quantization.";
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",
+    "mlir::quant::ir::TFQuantDialect",
     "mlir::quantfork::QuantizationForkDialect",
   ];
 }
@@ -193,6 +197,7 @@ def InsertWeightParamPass : Pass<"stablehlo-insert-weight-param", "mlir::func::F
       "mlir::stablehlo::StablehloDialect",
       "TF::TensorFlowDialect",
       "mlir::quant::QuantDialect",
+      "mlir::quant::ir::TFQuantDialect",
       "mlir::quantfork::QuantizationForkDialect",
   ];
 }
