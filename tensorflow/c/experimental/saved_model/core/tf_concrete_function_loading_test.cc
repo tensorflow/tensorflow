@@ -13,15 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"
 #include "tensorflow/c/experimental/saved_model/core/test_utils.h"
 #include "tensorflow/c/experimental/saved_model/core/tf_concrete_function_test_protos.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
