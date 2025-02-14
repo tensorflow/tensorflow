@@ -91,6 +91,14 @@ const auto kSupportedOps =
                     // kQVauleEinsum16x8Model,
                     // kQAttnVecEinsum16x8Model
                     );
+
+const auto kSupportedSocModels = Values(
+    "V68",
+    "V69",
+    "V73",
+    "V75",
+    "V79"
+);
 // clang-format on
 
 TEST(TestQnnPlugin, GetConfigInfo) {
@@ -275,6 +283,45 @@ TEST(TestLegalization, QuantizeOpLegalizedToQuantizeOp) {
   absl::string_view qnn_op_name(legalized_qnn_op.v1.typeName);
   EXPECT_EQ(qnn_op_name, kQnnOpName);
 }
+
+class QnnPlyginSupportedSocCompilationTest
+    : public ::testing::TestWithParam<std::string> {};
+
+TEST_P(QnnPlyginSupportedSocCompilationTest, CompileMulSubgraph) {
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel("one_mul.tflite");
+  auto soc_model = GetParam();
+
+  LiteRtCompiledResult compiled;
+  LITERT_ASSERT_OK(LiteRtCompilerPluginCompile(plugin.get(), soc_model.c_str(),
+                                               model.Get(), &compiled));
+
+  const void* byte_code;
+  size_t byte_code_size;
+
+  LITERT_ASSERT_OK(LiteRtGetCompiledResultByteCode(
+      compiled, /*byte_code_idx=*/0, &byte_code, &byte_code_size));
+
+  absl::string_view byte_code_string(reinterpret_cast<const char*>(byte_code),
+                                     byte_code_size);
+  ASSERT_FALSE(byte_code_string.empty());
+
+  const void* op_data;
+  size_t op_data_size;
+  LiteRtParamIndex byte_code_idx;
+
+  LITERT_ASSERT_OK(LiteRtGetCompiledResultCallInfo(
+      compiled, /*call_idx=*/0, &op_data, &op_data_size, &byte_code_idx));
+
+  absl::string_view op_data_string(reinterpret_cast<const char*>(op_data),
+                                   op_data_size);
+  ASSERT_EQ("qnn_partition_0", op_data_string);
+
+  LiteRtDestroyCompiledResult(compiled);
+}
+
+INSTANTIATE_TEST_SUITE_P(SupportedOpsTest, QnnPlyginSupportedSocCompilationTest,
+                         kSupportedSocModels);
 
 class QnnPluginOpValidationTest : public ::testing::TestWithParam<std::string> {
 };

@@ -65,6 +65,12 @@ constexpr std::pair<const char*, QnnHtpDevice_Arch_t> kPluginSocModels[] = {
     {"V79", QNN_HTP_DEVICE_ARCH_V79},
 };
 
+constexpr const char* kSocModelsSupportsWeightSharing[] = {
+  "V73",
+  "V75",
+  "V79",
+};
+
 constexpr LiteRtOpCode kSupportedOps[] = {
   kLiteRtOpCodeTflAdd,
   kLiteRtOpCodeTflDiv,
@@ -111,6 +117,12 @@ std::optional<QnnHtpDevice_Arch_t> FindSocModel(
     }
   }
   return soc_model;
+}
+
+bool IsWeightSharingSupported(absl::string_view soc_model_name) {
+  return std::find(std::begin(kSocModelsSupportsWeightSharing),
+                   std::end(kSocModelsSupportsWeightSharing),
+                   soc_model_name) != std::end(kSocModelsSupportsWeightSharing);
 }
 
 }  // namespace
@@ -358,6 +370,9 @@ LiteRtStatus LiteRtCompilerPluginCompile(
       // support legacy SoC.
       // TODO: use option to control weight sharing.
       auto context_configs = QnnManager::WeightSharingContextConfigs();
+      if (!IsWeightSharingSupported(soc_model)) {
+        context_configs = QnnManager::DefaultContextConfigs();
+      }
       auto context_handle =
           (*qnn_manager)->CreateContextHandle(context_configs);
       if (!context_handle) {
