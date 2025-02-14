@@ -75,7 +75,7 @@ jobs:
             repo: "tensorflow/tensorflow",
           },
           {
-            pool: "linux-x86-g2-16-l4-1gpu",
+            pool: "linux-x86-g2-48-l4-4gpu",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
             kokoro_job_name: "tensorflow-linux-x86-gpu-t4",
             pretty_name: "TensorFlow Linux x86 GPU T4",
