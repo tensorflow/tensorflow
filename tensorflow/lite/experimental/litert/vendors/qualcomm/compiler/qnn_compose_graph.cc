@@ -22,6 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -37,6 +38,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/cast_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/concatenation_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/dynamic_update_slice_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/elementwise_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/embedding_lookup_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/fully_connected_op_builder.h"
@@ -44,6 +46,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gelu_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/matmul_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/mean_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/pack_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/quantize_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reduce_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
@@ -164,10 +167,10 @@ LiteRtStatus ConvertTensor(const litert::Tensor& litert_tensor,
       }
       quantize_params.emplace<::qnn::AxisScaleOffsetQuantizeParamsWrapper>(
           per_channel_quant.quantized_dimension,
-          std::span<const float>{per_channel_quant.scales,
-                                 per_channel_quant.num_channels},
-          std::span<const std::int32_t>{zero_points.data(),
-                                        zero_points.size()});
+          absl::Span<const float>{per_channel_quant.scales,
+                                  per_channel_quant.num_channels},
+          absl::Span<const std::int32_t>{zero_points.data(),
+                                         zero_points.size()});
       break;
     }
     case kLiteRtQuantizationBlockWise: {
@@ -400,8 +403,24 @@ LiteRtStatus ConvertOp(
           ::qnn::BuildTransposeOp(tensor_pool, input_tensors, output_tensors);
       break;
     }
-    default: {
+    case LiteRtOpCode::kLiteRtOpCodeTflPack: {
+      int32_t axis{};
+      LiteRtGetPackAxisOption(litert_op.Get(), &axis);
+      op_wrappers =
+          ::qnn::BuildPackOp(tensor_pool, input_tensors, output_tensors, axis);
       break;
+    }
+
+    case LiteRtOpCode::kLiteRtOpCodeTflDynamicUpdateSlice: {
+      op_wrappers = ::qnn::BuildDynamicUpdateSliceOp(tensor_pool, input_tensors,
+                                                     output_tensors);
+      break;
+    }
+    default: {
+      LITERT_LOG(LITERT_ERROR,
+                 "LiteRT Op Code: %d is not supported in Qualcomm Compiler.",
+                 litert_op.Code());
+      return kLiteRtStatusErrorUnsupported;
     }
   }
   return kLiteRtStatusOk;
@@ -448,6 +467,8 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
         ::qnn::TensorWrapper* tensor_wrapper{nullptr};
         LITERT_RETURN_IF_ERROR(
             ConvertTensor(input, tensor_pool, tensor_wrapper));
+        // add into map to capture re-used static tensor
+        litert_tensor_to_wrapper.emplace(input.Get(), tensor_wrapper);
         input_tensors.emplace_back(*tensor_wrapper);
       } else {
         input_tensors.emplace_back(*(it->second));
