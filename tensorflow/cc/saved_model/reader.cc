@@ -105,8 +105,8 @@ Status ReadSavedModel(absl::string_view export_dir,
   auto saved_model_pbtxt_exists =
       internal::FileExists(Env::Default(), saved_model_pbtxt_path);
   if (saved_model_pbtxt_exists.value_or(false)) {
-    Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                                  saved_model_proto);
+    absl::Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
+                                        saved_model_proto);
     if (result.ok()) {
       metrics::SavedModelReadCount(
           saved_model::GetWriteVersion(*saved_model_proto))
