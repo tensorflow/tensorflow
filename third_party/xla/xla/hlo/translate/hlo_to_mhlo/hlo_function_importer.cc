@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Region.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
@@ -74,6 +75,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/primitive_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
@@ -1858,6 +1860,42 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "precision_config",
           ConvertPrecisionConfig(&instruction->precision_config(), builder_)));
+
+      // If the element types of the operands for convolution are different,
+      // insert a convert op to convert the operands to the common element type
+      // while preserving the values.
+      auto lhs = operands[0];
+      auto rhs = operands[1];
+      auto lhs_element_type = instruction->operand(0)->shape().element_type();
+      auto rhs_element_type = instruction->operand(1)->shape().element_type();
+      if (lhs_element_type != rhs_element_type) {
+        if (primitive_util::CastPreservesValues(lhs_element_type,
+                                                rhs_element_type)) {
+          auto convert_op_return_type =
+              mlir::cast<mlir::ShapedType>(lhs.getType())
+                  .clone(mlir::getElementTypeOrSelf(rhs));
+          lhs = func_builder->create<mlir::mhlo::ConvertOp>(
+              loc, convert_op_return_type, lhs);
+        } else if (primitive_util::CastPreservesValues(rhs_element_type,
+                                                       lhs_element_type)) {
+          auto convert_op_return_type =
+              mlir::cast<mlir::ShapedType>(rhs.getType())
+                  .clone(mlir::getElementTypeOrSelf(lhs));
+          rhs = func_builder->create<mlir::mhlo::ConvertOp>(
+              loc, convert_op_return_type, rhs);
+        } else {
+          return InvalidArgument(
+              "Unsupported conversion between element types of operands (%s "
+              "and %s) for convolution.",
+              instruction->operand(0)->shape().ToString(),
+              instruction->operand(1)->shape().ToString());
+        }
+        return func_builder
+            ->create<mlir::mhlo::ConvolutionOp>(
+                loc, result_type, std::vector<mlir::Value>{lhs, rhs},
+                attributes)
+            .getOperation();
+      }
 
       return func_builder
           ->create<mlir::mhlo::ConvolutionOp>(loc, result_type, operands,

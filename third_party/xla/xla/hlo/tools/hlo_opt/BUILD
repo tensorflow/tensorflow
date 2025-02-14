@@ -62,6 +62,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:broadcast_canonicalizer",
         "//xla/hlo/transforms/simplifiers:conditional_canonicalizer",
         "//xla/hlo/transforms/simplifiers:convert_mover",
+        "//xla/hlo/transforms/simplifiers:convert_operand_folding",
         "//xla/hlo/transforms/simplifiers:convolution_group_converter",
         "//xla/hlo/transforms/simplifiers:dynamic_dimension_simplifier",
         "//xla/hlo/transforms/simplifiers:flatten_call_graph",

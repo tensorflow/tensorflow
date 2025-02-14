@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/broadcast_canonicalizer.h"
 #include "xla/hlo/transforms/simplifiers/conditional_canonicalizer.h"
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
+#include "xla/hlo/transforms/simplifiers/convert_operand_folder.h"
 #include "xla/hlo/transforms/simplifiers/convolution_group_converter.h"
 #include "xla/hlo/transforms/simplifiers/dynamic_dimension_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
@@ -199,6 +200,7 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<ConditionalCanonicalizer>();
   RegisterPass<ConvertMemoryPlacementToInternalAnnotations>();
   RegisterPass<ConvertMover>();
+  RegisterPass<ConvertOperandFolding>();
   RegisterPass<Convolution4DExpander>();
   RegisterPass<ConvolutionPredExpander>();
   RegisterPass<DotDecomposer>();
