@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/scheduling_annotations_util.h"
 #include "xla/service/value_range.h"
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/shape.h"
@@ -59,8 +60,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -186,7 +185,8 @@ absl::Status ReplaceInductionVarUses(HloComputation* body,
 absl::StatusOr<std::unique_ptr<HloComputation>>
 UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
                                    WhileLoopConfig config,
-                                   const int64_t induction_value) {
+                                   const int64_t induction_value,
+                                   int64_t& next_scheduling_id) {
   // We clone the body since we are changing the computation.
   std::unique_ptr<HloComputation> while_body_clone =
       while_op->while_body()->Clone(
@@ -207,6 +207,7 @@ UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
                                              induction_value_constant,
                                              config.induction_var_idx));
 
+  absl::flat_hash_set<int64_t> seen_scheduling_ids;
   for (HloInstruction* body_inst : while_body_clone->instructions()) {
     // We need to assign a unique channel_id for the collective ops that are
     // unrolled within the while loop body or fusions containing collectives.
@@ -217,6 +218,18 @@ UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
       // channel_id across the module.
       collective->set_channel_id(unique_channel_id++);
     }
+
+    // We need to assign a unique id to each scheduling group (of instructions)
+    // that are unrolled within the while loop body.
+    std::optional<int64_t> scheduling_id = GetSchedulingAnnotation(body_inst);
+    if (scheduling_id.has_value()) {
+      if (!seen_scheduling_ids.contains(scheduling_id.value())) {
+        seen_scheduling_ids.insert(scheduling_id.value());
+        next_scheduling_id++;
+      }
+      SetSchedulingAnnotation(body_inst, next_scheduling_id);
+    }
+
     // Handle DynamicGte and DynamicTuple custom-calls created during unstacking
     // pass. All custom-calls must be replaced for the loop to be unrolled
     // successfully.
@@ -279,11 +292,15 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
   HloComputation* computation = while_op->parent();
   HloInstruction* unrolled_body_call_op;
   std::vector<HloInstruction*> call_operands = {while_op->operands().at(0)};
+
+  int64_t next_scheduling_id = NextSchedulingId(*while_op->GetModule());
   for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
     CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
 
     HloComputation* unrolled_body = module->AddEmbeddedComputation(
-        UnrollSingleIterationOfTrivialLoop(while_op, config, i).value());
+        UnrollSingleIterationOfTrivialLoop(while_op, config, i,
+                                           next_scheduling_id)
+            .value());
     unrolled_body_call_op =
         computation->AddInstruction(HloInstruction::CreateCall(
             while_op->shape(), call_operands, unrolled_body));
@@ -318,11 +335,14 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
   // We assume while has only one tuple parameter
   call_operands.emplace_back(std::move(p.value()));
 
+  int64_t next_scheduling_id = NextSchedulingId(*while_op->GetModule());
   for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
     CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
 
     HloComputation* unrolled_body = module->AddEmbeddedComputation(
-        UnrollSingleIterationOfTrivialLoop(while_op, config, i).value());
+        UnrollSingleIterationOfTrivialLoop(while_op, config, i,
+                                           next_scheduling_id)
+            .value());
 
     unrolled_body_call_op = body_builder.AddInstruction(
         HloInstruction::CreateCall(while_op->shape(), call_operands,
