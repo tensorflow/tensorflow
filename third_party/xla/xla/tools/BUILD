@@ -512,6 +512,7 @@ xla_cc_binary(
     ],
     deps = [
         ":run_hlo_module_lib",
+        ":run_hlo_module_proto_cc",
         "//xla:debug_options_flags",
         "//xla/hlo/translate/mhlo_to_hlo:translate",
         "//xla/hlo/translate/stablehlo_to_hlo:translate",
@@ -521,6 +522,9 @@ xla_cc_binary(
         "//xla/service:interpreter_plugin",
         "//xla/service:platform_util",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:logging",
