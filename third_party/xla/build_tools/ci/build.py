@@ -151,23 +151,6 @@ class Build:
     """Returns list of commands for a build."""
     cmds = []
 
-    if "self_hosted" not in self.type_.name.lower():
-      cmds.append([
-          f"{_KOKORO_ARTIFACTS_DIR}/github/xla/.kokoro/generate_index_html.sh",
-          "index.html",
-      ])
-    if self.repo != "openxla/xla":
-      _, repo_name = self.repo.split("/")
-
-      if "self_hosted" not in self.type_.name.lower():
-        cmds.append([
-            "git",
-            "clone",
-            "--depth=1",
-            f"https://github.com/{self.repo}",
-            f"./github/{repo_name}",
-        ])
-
     cmds.extend(self.extra_setup_commands)
 
     # We really want `bazel fetch` here, but it uses `bazel query` and not
@@ -175,9 +158,7 @@ class Build:
     # problems in practice.
     # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
     # MacOS VM.
-    if self.type_ not in (
-        BuildType.MACOS_CPU_X86,
-    ):
+    if self.type_ != BuildType.MACOS_CPU_X86:
       cmds.append(
           retry(
               self.bazel_command(
