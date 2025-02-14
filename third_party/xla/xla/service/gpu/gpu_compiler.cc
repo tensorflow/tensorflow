@@ -2236,14 +2236,14 @@ GpuCompiler::CompileToBackendResult(
   {
     xla::llvm_ir::LLVMCommandLineOptionsLock llvm_options_lock(
         GetLLVMCommandLineOptions(module->config().debug_options()));
-    // Compile the module
+    // Compile the module to thnks and llvm IR.
     TF_ASSIGN_OR_RETURN(
         compile_module_results,
-        CompileModuleToLlvmIr(
-            module, llvm_context, target_triple_, data_layout_,
-            platform->Name(), platform->id(), gpu_device_info,
-            GetCanShareBuffer(gpu_device_info), BufferSizeBytesFunction(),
-            /*split_constants_module=*/use_cache));
+        CompileModuleToLlvmIr(module, llvm_context, target_triple_,
+                              data_layout_, platform, gpu_device_info,
+                              GetCanShareBuffer(gpu_device_info),
+                              BufferSizeBytesFunction(),
+                              /*split_constants_module=*/use_cache));
   }
 
   if (user_pre_optimization_hook_) {
