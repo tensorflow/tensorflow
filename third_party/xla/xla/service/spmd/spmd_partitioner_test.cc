@@ -3960,6 +3960,34 @@ ENTRY %reshape {
                     op::Shape("bf16[40,16,8]")));
 }
 
+TEST_P(SpmdPartitioningTest, ReshapeWithReshard5) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %reshape {
+  p0 = bf16[24] parameter(0), sharding={devices=[4]<=[4]}
+  ROOT reshape = bf16[6,4] reshape(p0), sharding={devices=[4,1]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  auto param = AllOf(op::Parameter(0), op::Shape("bf16[6]"));
+  // Reshard param from {devices=[4]<=[4]} to {devices=[2,2]<=[4]
+  // last_tile_dim_replicate}
+  auto reshard_param = AllOf(op::AllReduce(op::DynamicUpdateSlice(_, param, _)),
+                             op::Shape("bf16[12]"));
+
+  auto reshape = AllOf(op::Reshape(reshard_param), op::Shape("bf16[3,4]"));
+
+  // Reshard reshape from {devices=[2,1,2]<=[4] last_tile_dim_replicate} to
+  // {devices=[4,1]<=[4]}
+  auto concat = op::Concatenate(
+      reshape, op::Pad(op::CollectivePermute(op::Slice(reshape)), _));
+  auto reshard_reshape = op::DynamicSlice(op::DynamicSlice(concat, _, _), _, _);
+  EXPECT_THAT(module->entry_computation()->root_instruction(), reshard_reshape);
+}
+
 TEST_P(SpmdPartitioningTest, PartialReplicateShardableReshape) {
   absl::string_view hlo_string = R"(
 HloModule module
