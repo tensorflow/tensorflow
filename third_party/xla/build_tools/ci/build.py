@@ -312,15 +312,6 @@ _MACOS_ARM64_BUILD = Build(
     build_tag_filters=macos_tag_filter,
     test_tag_filters=macos_tag_filter,
     extra_setup_commands=(
-        [
-            "sudo",
-            "wget",
-            "--no-verbose",
-            "-O",
-            "/usr/local/bin/bazel",
-            "https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-darwin-arm64",
-        ],
-        ["chmod", "+x", "/usr/local/bin/bazel"],
         ["bazel", "--version"],  # Sanity check due to strange failures
         ["mkdir", "-p", "/Volumes/BuildData/bazel_output"],
     ),
