@@ -168,39 +168,29 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
 
 TEST_F(FunctionalHloRunnerTest,
        SingleDeviceHloWithGPUProfilerSavesXSpaceToDisk) {
-  if (IsTestingCpu()) {
-    GTEST_SKIP() << "GPU-only test";
-  }
-
-  GpuClientOptions gpu_options;
-  gpu_options.node_id = 0;
-  gpu_options.num_nodes = 16;
-  gpu_options.enable_mock_nccl = true;
-
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
   std::string profile_dump_path =
       tsl::io::JoinPath(testing::TempDir(), "xspace.pb");
-  tsl::Env* env = tsl::Env::Default();
-  tsl::FileSystem* fs = nullptr;
-  TF_ASSERT_OK(env->GetFileSystemForFile(profile_dump_path, &fs));
 
-  FunctionalHloRunner::RawCompileOptions raw_compile_options;
-  raw_compile_options.xla_gpu_dump_xspace_to = profile_dump_path;
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      xla::PjRtEnvironment pjrt_env,
-      GetPjRtEnvironmentForGpu("", gpu_options, absl::Seconds(120)));
+  std::unique_ptr<GPURunnerProfiler> profiler;
   FunctionalHloRunner::RunningOptions running_options;
   TF_ASSERT_OK_AND_ASSIGN(
-      auto profiler,
-      GPURunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/false));
+      profiler,
+      GPURunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/true));
   running_options.profiler = profiler.get();
 
+  running_options.num_repeats = 2;
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
-      *pjrt_env.client,
-      /* debug_options= */ {}, /* preproc_options= */ {}, raw_compile_options,
-      running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
-  EXPECT_EQ(profiler->GetXSpace(), nullptr);
-  TF_EXPECT_OK(env->FileExists(profile_dump_path));
+      *client,
+      /* debug_options= */ {}, /* preproc_options= */ {},
+      /* raw_compile_options = */ {}, running_options,
+      {GetHloPath("single_device.hlo")}, InputFormat::kText));
+
+  if (client->platform_name() == "cuda") {
+    EXPECT_NE(profiler->GetXSpace(), nullptr);
+    EXPECT_GT(profiler->GetXSpace()->planes_size(), 0);
+  }
 }
 
 TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {

@@ -60,6 +60,8 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_or_rocm([
         "//xla/service:gpu_plugin",
+        "//xla/backends/profiler/gpu:cupti_tracer",
+        "//xla/backends/profiler/gpu:device_tracer",
     ]) + if_cuda([
         "//xla/stream_executor:cuda_platform",
     ] + if_google(
