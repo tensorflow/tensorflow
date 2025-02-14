@@ -159,7 +159,10 @@ class Build:
     # problems in practice.
     # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
     # MacOS VM.
-    if self.type_ != BuildType.MACOS_CPU_X86:
+    if (
+        self.type_ != BuildType.MACOS_CPU_X86
+        and self.type_ != BuildType.MACOS_CPU_ARM64
+    ):
       cmds.append(
           retry(
               self.bazel_command(
