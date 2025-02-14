@@ -1064,6 +1064,7 @@ cc_library(
     deps = [
         ":compiler",
         "//xla:debug_options_flags",
+        "//xla:status_macros",
         "//xla:types",
         "//xla:util",
         "//xla/stream_executor:device_description",

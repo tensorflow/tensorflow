@@ -1159,9 +1159,14 @@ message DebugOptions {
 
   bool xla_pjrt_allow_auto_layout_in_hlo = 344;
 
+  // If false, platform_util::GetDefaultPlatform() will return an error. Used as
+  // a safeguard for tests where GetDefaultPlatform() won't work properly and
+  // its use indicates an error in test setup.
+  bool xla_allow_get_default_platform = 371;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
-  // Next id: 371
+  // Next id: 372
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
