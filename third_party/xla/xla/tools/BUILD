@@ -19,7 +19,7 @@ load(
     "if_google",
     "tsl_gpu_library",
 )
-load("//xla/tsl:tsl.default.bzl", "filegroup")
+load("//xla/tsl:tsl.default.bzl", "filegroup", "tsl_pybind_extension")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -716,6 +716,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:backend",
+        "//xla/service:hlo_module_config",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/service/gpu/model:hlo_op_profiler_lib",
         "//xla/service/gpu/model:hlo_op_profiles",
@@ -759,6 +760,16 @@ cc_library(
     alwayslink = True,
 )
 
+tsl_pybind_extension(
+    name = "collective_perf_table_gen_bindings",
+    srcs = ["collective_perf_table_gen_bindings.cc"],
+    deps = [
+        ":collective_perf_table_gen",
+        "@com_google_absl//absl/log:check",
+        "@nanobind",
+    ],
+)
+
 xla_test(
     name = "collective_perf_table_gen_test",
     srcs = ["collective_perf_table_gen_test.cc"],
@@ -766,7 +777,6 @@ xla_test(
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [
         ":collective_perf_table_gen",
-        "//xla/hlo/ir:hlo",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",

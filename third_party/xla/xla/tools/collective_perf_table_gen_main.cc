@@ -29,8 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/collective_device_list.h"
-#include "xla/hlo/parser/hlo_parser.h"
+#include "absl/strings/substitute.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/tools/collective_perf_table_gen.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -76,7 +75,6 @@ to 4 GPUs.
 
 constexpr absl::string_view kDefaultCoordinatorAddress = "127.0.0.1:1234";
 
-using ::xla::IotaReplicaGroupList;
 using ::xla::gpu::CollectivePerfTableGen;
 using ::xla::gpu::DeviceHloInstructionProfiles;
 
@@ -89,27 +87,6 @@ std::pair<std::string /*key*/, std::string /*value*/> ExtractKV(
   std::string key = token.substr(0, delim_pos);
   std::string value = token.substr(delim_pos + 1);
   return {key, value};
-}
-
-IotaReplicaGroupList GetCollectiveDeviceList(
-    absl::string_view collective_device_list_unparsed) {
-  auto collective_device_list =
-      xla::ParseCollectiveDeviceListOnly(collective_device_list_unparsed);
-  CHECK_OK(collective_device_list);
-  CHECK(collective_device_list->iota_replica_group_list().has_value());
-
-  return *collective_device_list->iota_replica_group_list();
-}
-
-std::vector<IotaReplicaGroupList> GetCollectiveDeviceLists(
-    absl::string_view collective_device_lists_unparsed) {
-  std::vector<IotaReplicaGroupList> device_lists;
-  for (absl::string_view token :
-       absl::StrSplit(collective_device_lists_unparsed, ';')) {
-    device_lists.emplace_back(GetCollectiveDeviceList(token));
-  }
-  CHECK_GT(device_lists.size(), 0);
-  return device_lists;
 }
 
 std::vector<CollectivePerfTableGen::CollectiveType> ParseCollectives(
@@ -153,22 +130,49 @@ CollectivePerfTableGen::StepSpec ParseStepSpec(absl::string_view unparsed) {
   return spec;
 }
 
+std::vector<std::string> CollectiveDeviceLists(
+    absl::string_view device_list_unparsed) {
+  std::vector<std::string> result;
+  for (absl::string_view device_list :
+       absl::StrSplit(device_list_unparsed, ';')) {
+    result.emplace_back(device_list);
+  }
+  return result;
+}
+
+std::string DefaultCollectiveDevicesIfEmpty(
+    const std::string& collective_devices_spec_unparsed, int32_t num_nodes,
+    int32_t num_devices_per_host) {
+  if (collective_devices_spec_unparsed.empty()) {
+    return absl::Substitute("[1,$0]<=[$0];[$2,$1]<=[$1,$2]T(1,0)",
+                            num_devices_per_host * num_nodes, num_nodes,
+                            num_devices_per_host);
+  }
+  return collective_devices_spec_unparsed;
+}
+
 }  // namespace
 
 // TODO(b/390097558): Add an option to generate perf table for collective which
 // gets overlap to model resource contention.
 int main(int argc, char* argv[]) {
+  // Default args.
   int32_t num_nodes = 1;
+  int32_t num_devices_per_host = 8;
   int32_t task_id = 0;
-  std::string collectives_unparsed;
-  std::string tensor_size_bytes_spec_unparsed;
+  std::string collectives_unparsed = "ALL_REDUCE,ALL_GATHER,REDUCE_SCATTER";
+  std::string tensor_size_bytes_spec_unparsed =
+      "start=1024,stop=2147483648,factor=2";
   std::string collective_devices_spec_unparsed;
   std::string coordinator_address = std::string(kDefaultCoordinatorAddress);
   std::string output = std::string(CollectivePerfTableGen::Config::kStdout);
 
+  // Parse flags.
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("num_nodes", &num_nodes,
                 "Specifies number of processes across a distributed system."),
+      tsl::Flag("num_devices_per_host", &num_devices_per_host,
+                "Specified number of devices per host."),
       tsl::Flag("task_id", &task_id,
                 "Specifies task identifier of this process. Must be unique "
                 "across the distributed system you run it on."),
@@ -204,8 +208,10 @@ int main(int argc, char* argv[]) {
   cfg.task_id = task_id;
   cfg.collective_types = ParseCollectives(collectives_unparsed);
   cfg.tensor_size_bytes_spec = ParseStepSpec(tensor_size_bytes_spec_unparsed);
+  collective_devices_spec_unparsed = DefaultCollectiveDevicesIfEmpty(
+      collective_devices_spec_unparsed, num_nodes, num_devices_per_host);
   cfg.replica_groups_list =
-      GetCollectiveDeviceLists(collective_devices_spec_unparsed);
+      CollectiveDeviceLists(collective_devices_spec_unparsed);
   cfg.output = output;
 
   std::unique_ptr<CollectivePerfTableGen> gen =

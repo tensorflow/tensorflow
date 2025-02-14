@@ -19,7 +19,6 @@ limitations under the License.
 #include <variant>
 
 #include <gtest/gtest.h>
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/tests/hlo_test_base.h"
@@ -59,8 +58,7 @@ TEST_F(CollectivePerfTableGenTest, ConstantStepGeneratesConfigs) {
       CollectivePerfTableGen::CollectiveType::ALL_GATHER,
       CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER,
   };
-  IotaReplicaGroupList iota(1, 1);
-  cfg_.replica_groups_list = {iota};
+  cfg_.replica_groups_list.emplace_back("[1,1]<=[1]");
   CollectivePerfTableGen::StepSpec spec{
       /*start=*/4,
       /*stop=*/20,
@@ -83,8 +81,7 @@ TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigs) {
       CollectivePerfTableGen::CollectiveType::ALL_GATHER,
       CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER,
   };
-  IotaReplicaGroupList iota(1, 1);
-  cfg_.replica_groups_list = {iota};
+  cfg_.replica_groups_list.emplace_back("[1,1]<=[1]");
   CollectivePerfTableGen::StepSpec spec{
       /*start=*/4,
       /*stop=*/32,
