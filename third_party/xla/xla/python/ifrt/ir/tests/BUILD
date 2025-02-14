@@ -32,6 +32,7 @@ xla_cc_binary(
     testonly = True,
     srcs = ["ifrt-opt.cc"],
     deps = [
+        "//xla:xla_data_proto_cc",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
@@ -61,6 +62,7 @@ xla_cc_binary(
     srcs = ["ifrt-translate.cc"],
     deps = [
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:ifrt_ir_program",
         "//xla/python/ifrt/ir:ifrt_ir_program_serdes",  # build_cleaner: keep
