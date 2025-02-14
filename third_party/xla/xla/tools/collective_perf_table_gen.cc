@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/tools/collective_perf_table_gen.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -69,6 +72,31 @@ struct StaticSpec {
 
 struct ExplicitSpec {
   std::unique_ptr<HloModule> module;
+};
+
+struct ProfilingResult {
+  std::string device_info;
+  HloInstructionProto hlo_proto;
+  std::vector<HloInstructionProto> operands;
+  std::string fingerprint;
+  int64_t clock_cycles;
+  int64_t flops;
+  int64_t network_throughput;
+
+  struct Hash {
+    size_t operator()(const ProfilingResult& profiling_result) const {
+      return absl::HashOf(profiling_result.device_info,
+                          profiling_result.fingerprint);
+    }
+  };
+
+  struct Eq {
+    bool operator()(const ProfilingResult& lhs,
+                    const ProfilingResult& rhs) const {
+      return lhs.device_info == rhs.device_info &&
+             lhs.fingerprint == rhs.fingerprint;
+    }
+  };
 };
 
 int64_t GetInputDim(CollectivePerfTableGen::CollectiveType type,
@@ -398,6 +426,79 @@ absl::Status CollectivePerfTableGen::Dump(
                      ". Expecting .pb or .pbtxt suffix."));
   }
   return absl::OkStatus();
+}
+
+DeviceHloInstructionProfiles CollectivePerfTableGen::Merge(
+    absl::string_view merge_path) {
+  DeviceHloInstructionProfiles result;
+  std::vector<std::string> filenames;
+  CHECK_OK(
+      tsl::Env::Default()->GetChildren(std::string(merge_path), &filenames));
+
+  absl::flat_hash_set<ProfilingResult, ProfilingResult::Hash,
+                      ProfilingResult::Eq>
+      profiling_results;
+  uint64_t profiling_results_counter = 0;
+  for (const std::string& filename : filenames) {
+    // Read file.
+    std::string profile_path = absl::StrCat(merge_path, "/", filename);
+    DeviceHloInstructionProfiles partial_profile;
+
+    CHECK_OK(tsl::Env::Default()->FileExists(profile_path));
+    if (!tsl::ReadTextOrBinaryProto(tsl::Env::Default(), profile_path,
+                                    &partial_profile)
+             .ok()) {
+      LOG(WARNING) << "Cannot read :" << profile_path;
+      continue;
+    }
+
+    for (auto& [device_descriptor, data] : partial_profile.entries()) {
+      for (const HloInstructionProfile& profile : data.entries()) {
+        CHECK(!profile.fingerprint().empty())
+            << "Expected fingerprint to deduplicate: " << profile.DebugString();
+
+        ProfilingResult profiling_result{
+            device_descriptor,
+            std::move(profile.instruction()),
+            {
+                profile.operands().begin(),
+                profile.operands().end(),
+            },
+            std::move(profile.fingerprint()),
+            profile.clock_cycles(),
+            profile.flops(),
+            profile.network_throughput_bytes_per_sec(),
+        };
+        profiling_results.insert(profiling_result);
+        profiling_results_counter++;
+      }
+    }
+  }
+  LOG(INFO) << "Merging and deduplication entries count. Before "
+            << profiling_results_counter << ", after "
+            << profiling_results.size() << ".";
+
+  for (const ProfilingResult& profiling_result : profiling_results) {
+    std::string device_descriptor = profiling_result.device_info;
+    if (!result.mutable_entries()->contains(device_descriptor)) {
+      result.mutable_entries()->insert({device_descriptor, {}});
+    }
+
+    HloInstructionProfile profile_proto;
+    *profile_proto.mutable_instruction() =
+        std::move(profiling_result.hlo_proto);
+    for (auto op : profiling_result.operands) {
+      *profile_proto.add_operands() = std::move(op);
+    }
+    profile_proto.set_flops(profiling_result.flops);
+    profile_proto.set_clock_cycles(profiling_result.clock_cycles);
+    profile_proto.set_fingerprint(profiling_result.fingerprint);
+
+    *result.mutable_entries()->at(device_descriptor).add_entries() =
+        std::move(profile_proto);
+  }
+
+  return result;
 }
 
 }  // namespace xla::gpu

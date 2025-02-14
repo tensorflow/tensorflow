@@ -166,6 +166,7 @@ int main(int argc, char* argv[]) {
   std::string collective_devices_spec_unparsed;
   std::string coordinator_address = std::string(kDefaultCoordinatorAddress);
   std::string output = std::string(CollectivePerfTableGen::Config::kStdout);
+  std::string merge_path;
 
   // Parse flags.
   std::vector<tsl::Flag> flag_list = {
@@ -193,6 +194,10 @@ int main(int argc, char* argv[]) {
           "Output mode for the program. If set to 'stdout' performance table "
           "will be printed to the standard output. If given a file with .pbtxt "
           "or .pb extension it will append the contents to that file."),
+      tsl::Flag("merge_path", &merge_path,
+                "Path to DeviceHloInstructionProfiles files. When specified it "
+                "will merge all of the profiled files and write them to a "
+                "single file specified by `output`."),
   };
 
   std::string kUsageString =
@@ -216,7 +221,12 @@ int main(int argc, char* argv[]) {
 
   std::unique_ptr<CollectivePerfTableGen> gen =
       CollectivePerfTableGen::Create(cfg);
-  DeviceHloInstructionProfiles profiles = gen->ComputeTable();
+  DeviceHloInstructionProfiles profiles;
+  if (merge_path.empty()) {
+    profiles = gen->ComputeTable();
+  } else {
+    profiles = gen->Merge(merge_path);
+  };
   CHECK_OK(gen->Dump(profiles));
   return 0;
 }
