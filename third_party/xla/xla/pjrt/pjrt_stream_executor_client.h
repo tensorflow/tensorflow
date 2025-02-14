@@ -621,7 +621,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     // Confirms that the buffer was successfully donated to an execution.
     // Only valid for holds of type kDonation. Causes the buffer to become
     // invalid.
-    void ConfirmDonation();
+    // TODO(parkers): Only allow safe releases.
+    void ConfirmDonation(bool unsafe_release);
 
     // Adds the held device buffers in order to 'iterator'. Used to add the
     // buffers to an ExecutionInput. We require but do not verify that
@@ -819,7 +820,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   // Drops a donation hold and makes *this invalid for further use. Does a
   // sanity check that buffer==device_buffer_. Called after device_buffer_ was
   // successfully donated to an execution.
-  void ConfirmDonation(TrackedDeviceBuffer* device_buffer);
+  void ConfirmDonation(TrackedDeviceBuffer* device_buffer, bool unsafe_release);
 
   // Drops a hold without taking any other action. Does a sanity check that
   // buffer==device_buffer_ or device_buffer_==nullptr.

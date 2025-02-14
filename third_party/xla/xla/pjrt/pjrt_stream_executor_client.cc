@@ -136,6 +136,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -609,10 +610,11 @@ void PjRtStreamExecutorBuffer::ScopedHold::ConvertUsageHold(
   SetState(kConverted);
 }
 
-void PjRtStreamExecutorBuffer::ScopedHold::ConfirmDonation() {
+void PjRtStreamExecutorBuffer::ScopedHold::ConfirmDonation(
+    bool unsafe_release) {
   CHECK(ok());
   CHECK_EQ(type_, kDonation);
-  parent_->ConfirmDonation(buffer().get());
+  parent_->ConfirmDonation(buffer().get(), unsafe_release);
   SetState(kDonated);
 }
 
@@ -679,7 +681,7 @@ class ScopedHoldAsExternalReference : public PjRtBuffer::ExternalReference {
       : external_reference_(std::move(hold)) {
     CHECK(external_reference_.type() ==
           PjRtStreamExecutorBuffer::ScopedHold::kExternalReference);
-    data_ptr_ = external_reference_->device_memory().front().opaque();
+    data_ptr_ = external_reference_->device_memory().front()->opaque();
   }
 
   ~ScopedHoldAsExternalReference() override = default;
@@ -713,7 +715,7 @@ class TrackedDeviceBufferExternalReference
   explicit TrackedDeviceBufferExternalReference(
       std::shared_ptr<TrackedDeviceBuffer> tracked_device_buffer)
       : tracked_device_buffer_(std::move(tracked_device_buffer)) {
-    data_ptr_ = tracked_device_buffer_->device_memory()[0].opaque();
+    data_ptr_ = tracked_device_buffer_->device_memory()[0]->opaque();
   }
 
   ~TrackedDeviceBufferExternalReference() override = default;
@@ -756,7 +758,7 @@ PjRtStreamExecutorBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
   }
 
   // Copy all the data in the existing tracked_buffer.
-  absl::InlinedVector<se::DeviceMemoryBase, 4> buffers(
+  absl::InlinedVector<tsl::RCReference<RawSEDeviceMemory>, 4> buffers(
       tracked_buffer->device_memory().begin(),
       tracked_buffer->device_memory().end());
   auto original_definition_events = tracked_buffer->definition_events();
@@ -773,9 +775,7 @@ PjRtStreamExecutorBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
                            original_definition_events.end());
 
   auto new_device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      tracked_buffer->allocator(), device(), std::move(buffers),
-      std::move(definition_events),
-      /*on_delete_callback=*/nullptr);
+      device(), std::move(buffers), std::move(definition_events));
 
   // Make the new buffer which is identical to the old, except for the new
   // definition event.
@@ -800,7 +800,7 @@ PjRtStreamExecutorBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
         local_device->ReturnStreamToPool(std::move(stream));
       });
 
-  tracked_buffer.ConfirmDonation();
+  tracked_buffer.ConfirmDonation(false);
   return new_buffer;
 }
 
@@ -958,7 +958,8 @@ PjRtStreamExecutorClient::BufferFromHostBufferInternal(
         // memory that has already been allocated, and a possible Event
         // allocation.
 
-        se::DeviceMemoryBase device_memory = device_buffer->device_memory()[0];
+        se::DeviceMemoryBase device_memory =
+            device_buffer->device_memory()[0]->mem();
 
         // If applicable on the backend, stage the transfer via host memory
         // allocated via the host_memory_allocator. On GPU, this is pinned
@@ -1082,12 +1083,9 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
   definition_event->SetDefinedStatus(error);
 
   // Create an empty buffer.
-  auto* se_client = tensorflow::down_cast<PjRtStreamExecutorClient*>(this);
-  absl::Span<se::DeviceMemoryBase> buffers;
   auto dummy_device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      se_client->allocator(), device, buffers,
-      absl::MakeSpan(&definition_event, 1),
-      /*on_delete_callback=*/nullptr);
+      device, absl::Span<tsl::RCReference<RawSEDeviceMemory>>(),
+      absl::MakeSpan(&definition_event, 1));
 
   auto py_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
       shape, std::move(dummy_device_buffer), this, device,
@@ -1243,7 +1241,9 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
   CHECK_EQ(memory_space->devices().size(), 1);
   auto* device = memory_space->devices().front();
 
-  se::DeviceMemoryBase buffer(device_ptr, ShapeUtil::ByteSizeOf(shape));
+  auto buffer = RawSEDeviceMemory::CreateForeign(
+      se::DeviceMemoryBase(device_ptr, ShapeUtil::ByteSizeOf(shape)),
+      std::move(on_delete_callback));
 
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
@@ -1268,9 +1268,9 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
                                                definition_stream);
 
   auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      /*allocator=*/nullptr, device,
-      std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
-      std::move(on_delete_callback));
+      device,
+      std::initializer_list<tsl::RCReference<RawSEDeviceMemory>>{buffer},
+      definition_events);
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtStreamExecutorBuffer>(
       shape, std::move(device_buffer), this, device,
       device->default_memory_space().value_or(nullptr)));
@@ -1597,7 +1597,7 @@ void PjRtStreamExecutorBuffer::ConvertUsageHold(
 }
 
 void PjRtStreamExecutorBuffer::ConfirmDonation(
-    TrackedDeviceBuffer* device_buffer) {
+    TrackedDeviceBuffer* device_buffer, bool unsafe_release) {
   {
     absl::MutexLock lock(&mu_);
     CHECK_EQ(holds_[ScopedHold::kUsage], 0);
@@ -1609,7 +1609,7 @@ void PjRtStreamExecutorBuffer::ConfirmDonation(
     device_buffer->LockUseAndTransferUsageEvents();
     // Give up ownership of the device memory so we don't free it when the last
     // reference to device_buffer_ goes away.
-    device_buffer->ReleaseDeviceMemory();
+    device_buffer->ReleaseDeviceMemory(unsafe_release);
     // Make *this invalid so it can't be used again. Any threads blocking in
     // Release or GetBufferWithHold will see an invalid buffer and return.
     device_buffer_.reset();
@@ -1758,7 +1758,7 @@ absl::StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes()
     return InvalidArgument(
         "GetOnDeviceSizeInBytes called on tuple-shaped buffer");
   }
-  return device_buffer_->device_memory()[0].size();
+  return device_buffer_->device_memory()[0]->mem().size();
 }
 
 PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHost(void* dst, int64_t offset,
@@ -3064,7 +3064,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
         // Even though there was an error we need to call ConfirmDonation, which
         // renders b invalid, since the computation has been enqueued and b has
         // been donated.
-        b.ConfirmDonation();
+        b.ConfirmDonation(true);
       }
     }
     return event_or.status();
@@ -3085,7 +3085,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
                   stream, &buffers_to_release);
     } else {
       CHECK(b.type() == PjRtStreamExecutorBuffer::ScopedHold::kDonation);
-      b.ConfirmDonation();
+      b.ConfirmDonation(true);
     }
   }
 

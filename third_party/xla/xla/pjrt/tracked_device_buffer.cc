@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/event.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
@@ -184,6 +186,61 @@ void BufferSequencingEvent::ExecuteFutureTasks() {
   thread_pool_->Schedule(std::move(call_all_task_callbacks));
 }
 
+class AllocatedRawSEDeviceMemory : public RawSEDeviceMemory {
+ public:
+  AllocatedRawSEDeviceMemory(se::DeviceMemoryBase value, int device_ordinal,
+                             se::DeviceMemoryAllocator* allocator)
+      : RawSEDeviceMemory(value),
+        allocator_(allocator),
+        device_ordinal_(device_ordinal) {}
+
+  ~AllocatedRawSEDeviceMemory() override {
+    if (allocator_) {
+      absl::Status status = allocator_->Deallocate(device_ordinal_, mem());
+      if (!status.ok()) {
+        LOG(ERROR) << "Buffer deallocation failed: " << status;
+      }
+    }
+  }
+
+  void UnsafeReleaseMemory() override { allocator_ = nullptr; }
+
+ private:
+  se::DeviceMemoryAllocator* allocator_;
+  int device_ordinal_;
+};
+
+tsl::RCReference<RawSEDeviceMemory> RawSEDeviceMemory::Create(
+    se::DeviceMemoryBase value, PjRtDevice* device,
+    se::DeviceMemoryAllocator* allocator) {
+  return tsl::MakeRef<AllocatedRawSEDeviceMemory>(
+      value, device->local_device_id().value(), allocator);
+}
+
+class ForeignRawSEDeviceMemory : public RawSEDeviceMemory {
+ public:
+  ForeignRawSEDeviceMemory(se::DeviceMemoryBase value,
+                           absl::AnyInvocable<void() &&> on_delete_callback)
+      : RawSEDeviceMemory(value),
+        on_delete_callback_(std::move(on_delete_callback)) {}
+
+  ~ForeignRawSEDeviceMemory() override { std::move(on_delete_callback_)(); }
+
+  void UnsafeReleaseMemory() override {
+    LOG(FATAL) << "ForeignRawSEDeviceMemory cannot be donated.";
+  }
+
+ private:
+  absl::AnyInvocable<void() &&> on_delete_callback_;
+};
+
+tsl::RCReference<RawSEDeviceMemory> RawSEDeviceMemory::CreateForeign(
+    se::DeviceMemoryBase value,
+    absl::AnyInvocable<void() &&> on_delete_callback) {
+  return tsl::MakeRef<ForeignRawSEDeviceMemory>(value,
+                                                std::move(on_delete_callback));
+}
+
 /* static */ std::shared_ptr<TrackedDeviceBuffer>
 TrackedDeviceBuffer::FromScopedShapedBuffer(
     ScopedShapedBuffer* shaped_buffer,
@@ -191,21 +248,21 @@ TrackedDeviceBuffer::FromScopedShapedBuffer(
     PjRtDevice* device) {
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
       shaped_buffer->buffers().begin();
-  std::vector<se::DeviceMemoryBase> buffers;
+  std::vector<tsl::RCReference<RawSEDeviceMemory>> buffers;
   buffers.reserve(1);
 
   ShapeUtil::ForEachSubshape(
       shaped_buffer->on_device_shape(), [&](const Shape&, const ShapeIndex&) {
         CHECK(iterator != shaped_buffer->buffers().end());
-        buffers.push_back(iterator->second);
+        buffers.push_back(RawSEDeviceMemory::Create(
+            iterator->second, device, shaped_buffer->memory_allocator()));
         iterator->second = se::DeviceMemoryBase();
         ++iterator;
       });
   CHECK(iterator == shaped_buffer->buffers().end());
   return std::make_shared<TrackedDeviceBuffer>(
-      shaped_buffer->memory_allocator(), device,
-      absl::Span<se::DeviceMemoryBase>(buffers), definition_events,
-      /*on_delete_callback=*/nullptr);
+      device, absl::Span<tsl::RCReference<RawSEDeviceMemory>>(buffers),
+      definition_events);
 }
 
 ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
@@ -215,9 +272,9 @@ ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
                              device_->local_hardware_id().value());
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
       shaped_buffer.buffers().begin();
-  for (const se::DeviceMemoryBase& buf : device_memory_) {
+  for (const tsl::RCReference<RawSEDeviceMemory>& buf : device_memory_) {
     CHECK(iterator != shaped_buffer.buffers().end());
-    iterator->second = buf;
+    iterator->second = buf->mem();
     ++iterator;
   }
   CHECK(iterator == shaped_buffer.buffers().end());
@@ -230,10 +287,10 @@ ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
 void TrackedDeviceBuffer::AddToInputAsImmutable(
     ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
     const ShapeTree<MaybeOwningDeviceMemory>::iterator& end) const {
-  for (const se::DeviceMemoryBase& buf : device_memory_) {
+  for (const tsl::RCReference<RawSEDeviceMemory>& buf : device_memory_) {
     CHECK(*iterator != end);
     // Set buffers to be case (1) in the comment on ExecutionInput.
-    (*iterator)->second = MaybeOwningDeviceMemory(buf);
+    (*iterator)->second = MaybeOwningDeviceMemory(buf->mem());
     ++(*iterator);
   }
 }
@@ -243,42 +300,35 @@ void TrackedDeviceBuffer::AddToInputAsDonated(
     const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
     ExecutionInput* execution_input,
     se::DeviceMemoryAllocator* allocator) const {
-  for (const se::DeviceMemoryBase& buf : device_memory_) {
+  for (const tsl::RCReference<RawSEDeviceMemory>& buf : device_memory_) {
     CHECK(*iterator != end);
     // Set buffers to be case (2) in the comment on ExecutionInput.
     (*iterator)->second = MaybeOwningDeviceMemory(se::OwningDeviceMemory(
-        buf, device_->local_device_id().value(), allocator));
+        buf->mem(), device_->local_device_id().value(), allocator));
     execution_input->SetUnownedIndex((*iterator)->first);
     ++(*iterator);
   }
 }
 
 TrackedDeviceBuffer::TrackedDeviceBuffer(
-    se::DeviceMemoryAllocator* allocator, PjRtDevice* device,
-    absl::Span<se::DeviceMemoryBase const> device_memory,
-    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events,
-    absl::AnyInvocable<void() &&> on_delete_callback)
-    : allocator_(allocator),
-      device_(device),
+    PjRtDevice* device,
+    absl::Span<tsl::RCReference<RawSEDeviceMemory> const> device_memory,
+    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events)
+    : device_(device),
       device_memory_(device_memory.begin(), device_memory.end()),
       definition_events_(std::make_move_iterator(definition_events.begin()),
                          std::make_move_iterator(definition_events.end())),
-      in_use_(true),
-      on_delete_callback_(std::move(on_delete_callback)) {}
+      in_use_(true) {}
 
-TrackedDeviceBuffer::~TrackedDeviceBuffer() {
-  if (allocator_) {
-    for (const se::DeviceMemoryBase& buffer : device_memory_) {
-      absl::Status status =
-          allocator_->Deallocate(device_->local_device_id().value(), buffer);
-      if (!status.ok()) {
-        LOG(ERROR) << "Buffer deallocation failed: " << status;
-      }
+TrackedDeviceBuffer::~TrackedDeviceBuffer() = default;
+
+void TrackedDeviceBuffer::ReleaseDeviceMemory(bool unsafe_release) {
+  if (unsafe_release) {
+    for (auto& mem : device_memory_) {
+      mem->UnsafeReleaseMemory();
     }
   }
-  if (on_delete_callback_) {
-    std::move(on_delete_callback_)();
-  }
+  device_memory_.clear();
 }
 
 void TrackedDeviceBuffer::AddUsageEvent(
