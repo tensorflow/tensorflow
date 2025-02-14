@@ -103,10 +103,12 @@ cc_library(
     hdrs = ["op_stats_to_hlo_stats.h"],
     deps = [
         ":op_metrics_to_record",
+        "//tensorflow/core/profiler/convert:data_table_utils",
         "//tensorflow/core/profiler/protobuf:hlo_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/utils:math_utils",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
         "@local_xla//xla/tsl/profiler/utils:tf_op_utils",
     ],
@@ -1436,5 +1438,16 @@ cc_library(
     deps = [
         "@com_github_nlohmann_json//:json",
         "@com_google_absl//absl/container:btree",
+    ],
+)
+
+tf_cc_test(
+    name = "data_table_utils_test",
+    srcs = ["data_table_utils_test.cc"],
+    deps = [
+        ":data_table_utils",
+        "@com_github_nlohmann_json//:json",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )

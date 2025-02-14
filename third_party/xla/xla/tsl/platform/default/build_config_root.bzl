@@ -6,6 +6,12 @@ be separate to avoid cyclic references.
 
 load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
 load("@local_tsl//third_party/py/rules_pywrap:pywrap.bzl", "use_pywrap_rules")
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 # RBE settings for tests that require a GPU. This is used in exec_properties of rules
 # that need GPU access.

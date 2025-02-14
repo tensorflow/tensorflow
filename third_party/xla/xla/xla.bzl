@@ -8,6 +8,7 @@ load(
 load(
     "//xla/tsl:tsl.bzl",
     "tsl_copts",
+    "xla_bzl_visibility",
 )
 load(
     "//xla/tsl/platform:build_config_root.bzl",
@@ -18,6 +19,11 @@ load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 def xla_py_proto_library(**_kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.

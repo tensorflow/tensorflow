@@ -14,6 +14,13 @@ xla_aot_compile(
 
 """
 
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
+
 xla_compile_tool = "//xla/service:xla_compile"
 
 def xla_aot_compile_cpu(

@@ -1,5 +1,6 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
 load(
     "//xla/tsl/platform/default:build_config.bzl",
     _pyx_library = "pyx_library",
@@ -39,6 +40,16 @@ load(
     _tsl_grpc_credentials_deps = "tsl_grpc_credentials_deps",
     _tsl_protobuf_deps = "tsl_protobuf_deps",
 )
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+    # The following are legacy users of this .bzl file. DO NOT ADD NEW USERS.
+    # go/keep-sorted start
+    "learning/brain/experimental/tfq/configurator",
+    "learning/brain/experimental/tfq/proto",
+    # go/keep-sorted end
+]))
 
 pyx_library = _pyx_library
 tf_additional_all_protos = _tf_additional_all_protos

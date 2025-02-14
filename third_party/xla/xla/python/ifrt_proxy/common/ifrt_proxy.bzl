@@ -1,6 +1,12 @@
 """Common libraries for IFRT proxy."""
 
+load("//third_party/tensorflow/compiler/xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
 load("//xla:xla.bzl", "xla_cc_test")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 def ifrt_proxy_cc_test(**kwargs):
     xla_cc_test(**kwargs)

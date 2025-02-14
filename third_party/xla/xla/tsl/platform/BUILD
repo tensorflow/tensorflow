@@ -68,13 +68,13 @@ exports_files(
 bzl_library(
     name = "rules_cc_bzl",
     srcs = ["rules_cc.bzl"],
-    deps = tf_platform_alias("rules_cc_bzl"),
+    deps = ["//xla/tsl:tsl_core_bzl"] + tf_platform_alias("rules_cc_bzl"),
 )
 
 bzl_library(
     name = "build_config_root_bzl",
     srcs = ["build_config_root.bzl"],
-    deps = tf_platform_alias("build_config_root_bzl"),
+    deps = ["//xla/tsl:tsl_core_bzl"] + tf_platform_alias("build_config_root_bzl"),
 )
 
 filegroup(

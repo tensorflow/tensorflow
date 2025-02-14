@@ -4,6 +4,12 @@ TF profiler build macros for use in OSS.
 """
 
 load("//xla/tsl:tsl.bzl", "cc_header_only_library")
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 def tf_profiler_alias(target_dir, name):
     return target_dir + "oss:" + name

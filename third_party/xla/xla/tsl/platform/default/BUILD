@@ -559,18 +559,23 @@ bzl_library(
     # ],
     # copybara:uncomment_end
     visibility = internal_visibility(["//tensorflow:__subpackages__"]),
+    deps = ["//xla/tsl:tsl_core_bzl"],
 )
 
 bzl_library(
     name = "rules_cc_bzl",
     srcs = ["rules_cc.bzl"],
+    deps = ["//xla/tsl:tsl_core_bzl"],
 )
 
 bzl_library(
     name = "build_config_root_bzl",
     srcs = ["build_config_root.bzl"],
     # copybara:uncomment parse_tests = False,
-    deps = ["@local_tsl//third_party/py/rules_pywrap:pywrap_bzl"],
+    deps = [
+        "//xla/tsl:tsl_core_bzl",
+        "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
+    ],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.

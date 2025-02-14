@@ -1,6 +1,12 @@
 """build_defs for service/cpu."""
 
 load("//xla/tsl:tsl.bzl", "clean_dep")
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 def runtime_copts():
     """Returns copts used for CPU runtime libraries."""

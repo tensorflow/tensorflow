@@ -2,10 +2,16 @@
 
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:plugin.bzl", "plugins")
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 # Possible backend values for the GPU family.
 NVIDIA_GPU_BACKENDS = [

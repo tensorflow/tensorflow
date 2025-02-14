@@ -1,5 +1,6 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
 load(
     "//xla/tsl/platform/default:build_config_root.bzl",
     _if_llvm_aarch32_available = "if_llvm_aarch32_available",
@@ -20,6 +21,11 @@ load(
     _tf_exec_properties = "tf_exec_properties",
     _tf_gpu_tests_tags = "tf_gpu_tests_tags",
 )
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 if_llvm_aarch32_available = _if_llvm_aarch32_available
 if_llvm_aarch64_available = _if_llvm_aarch64_available

@@ -230,6 +230,7 @@ cc_library(
 #     srcs = ["ifrt_proxy.bzl"],
 #     parse_tests = False,
 #     visibility = ["//visibility:private"],
+#     deps = ["//xla/tsl:tsl_core_bzl"],
 # )
 #
 # bzl_library(
@@ -240,6 +241,7 @@ cc_library(
 #     deps = [
 #         "//devtools/build_cleaner/skylark:build_defs_lib",
 #         "//xla:xla_bzl",
+#         "//xla/tsl:tsl_core_bzl",
 #     ],
 # )
 # copybara:uncomment_end

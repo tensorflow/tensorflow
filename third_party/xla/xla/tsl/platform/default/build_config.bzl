@@ -10,6 +10,16 @@ load(
     "if_tsl_link_protobuf",
 )
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
+load("//third_party/tensorflow/compiler/xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+    # The following are legacy users of this .bzl file. DO NOT ADD NEW USERS.
+    # go/keep-sorted start
+    "third_party/tensorflow_serving",
+    # go/keep-sorted end
+]))
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.

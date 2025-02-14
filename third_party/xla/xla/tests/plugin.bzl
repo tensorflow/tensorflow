@@ -14,6 +14,13 @@
 # ==============================================================================
 """Additional XLA devices to be included in the unit test suite."""
 
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
+
 # Example:
 #
 # plugins = {

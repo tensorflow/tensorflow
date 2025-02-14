@@ -3988,6 +3988,58 @@ ENTRY %reshape {
   EXPECT_THAT(module->entry_computation()->root_instruction(), reshard_reshape);
 }
 
+TEST_P(SpmdPartitioningTest, ReshapeWithSpecialCache1) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %reshape {
+  p0 = bf16[8,8] parameter(0), sharding={replicated}
+  reshape = bf16[64] reshape(p0), sharding={devices=[4]<=[4]}
+  abs = bf16[64] abs(reshape), sharding={replicated}
+  ROOT tuple = (bf16[64], bf16[64]) tuple(reshape, abs), sharding={{devices=[4]<=[4]}, {replicated}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  auto param = AllOf(op::Shape("bf16[8,8]"), op::Parameter(0));
+  auto reshard_param =
+      AllOf(op::Shape("bf16[2,8]"), op::DynamicSlice(param, _, _));
+  auto reshape_1 = AllOf(op::Shape("bf16[16]"), op::Reshape(reshard_param));
+  auto reshape_2 = AllOf(op::Shape("bf16[64]"), op::Reshape(param));
+  auto abs = AllOf(op::Shape("bf16[64]"), op::Abs(reshape_2));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(reshape_1, abs));
+}
+
+// TODO(b/397731516). We can add a reshard cache for the reshape such that we
+// can avoid the reshard (dynamic-slice) on reshape.
+TEST_P(SpmdPartitioningTest, ReshapeWithSpecialCache2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %reshape {
+  p0 = bf16[8,8] parameter(0), sharding={devices=[4,1]<=[4]}
+  reshape = bf16[64] reshape(p0), sharding={replicated}
+  abs = bf16[64] abs(reshape), sharding={devices=[4]<=[4]}
+  ROOT tuple = (bf16[64], bf16[64]) tuple(reshape, abs), sharding={{replicated}, {devices=[4]<=[4]}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  auto param = AllOf(op::Shape("bf16[2,8]"), op::Parameter(0));
+  auto param_replicated = AllOf(
+      op::Shape("bf16[8,8]"), op::AllReduce(op::DynamicUpdateSlice(
+                                  op::Broadcast(op::Constant()), param, _, _)));
+  auto reshape = AllOf(op::Shape("bf16[64]"), op::Reshape(param_replicated));
+  auto reshape_resharded =
+      AllOf(op::Shape("bf16[16]"), op::DynamicSlice(reshape, _));
+  auto abs = AllOf(op::Shape("bf16[16]"), op::Abs(reshape_resharded));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(reshape, abs));
+}
+
 TEST_P(SpmdPartitioningTest, PartialReplicateShardableReshape) {
   absl::string_view hlo_string = R"(
 HloModule module
