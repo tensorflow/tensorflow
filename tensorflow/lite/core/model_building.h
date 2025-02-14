@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_MODEL_BUILDING_H_
 #define TENSORFLOW_LITE_CORE_MODEL_BUILDING_H_
 
-// This is an EXPERIMENTAL API to programatically build TFLite graphs. It may
+// This is an EXPERIMENTAL API to programmatically build TFLite graphs. It may
 // change or be removed at any time. Use it at your own risk.
 
 #include <array>
@@ -130,13 +130,13 @@ template <size_t Count>
                                  type);
 }
 
-// Allows building a TFLite interpreter programatically.
+// Allows building a TFLite interpreter programmatically.
 //
 // ```cpp
-// GraphBuilder builder;
-// Graph grap = builder.NewGraph();
+// ModelBuilder builder;
+// Graph graph = builder.NewGraph();
 //
-// auto [in1, in2] = NewInputs<2>(kTfLiteInt32);
+// auto [in1, in2] = NewInputs<2>(graph, kTfLiteInt32);
 // Tensor sum = Add(in1, in2);
 // Tensor abs1 = Abs(in1)
 // Tensor out = Mul(sum, abs1);
