@@ -389,6 +389,60 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "gpu_event",
+    srcs = ["gpu_event.cc"],
+    hdrs = ["gpu_event.h"],
+    deps = [
+        "//third_party/tf_runtime:hostcontext",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "stream_pool",
+    srcs = ["stream_pool.cc"],
+    hdrs = ["stream_pool.h"],
+    deps = [
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "tracked_tfrt_gpu_device_buffer",
+    srcs = ["tracked_tfrt_gpu_device_buffer.cc"],
+    hdrs = ["tracked_tfrt_gpu_device_buffer.h"],
+    deps = [
+        ":gpu_event",
+        "//tensorflow/core/framework:allocator",
+        "//third_party/tf_runtime:hostcontext",
+        "//xla:shape_tree",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/pjrt:pjrt_client",
+        "//xla/service:shaped_buffer",
+        "//xla/stream_executor:device_memory",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "host_memory_allocator",
+    hdrs = ["host_memory_allocator.h"],
+    deps = ["//tensorflow/core/framework:allocator"],
+)
+
 xla_test(
     name = "se_gpu_pjrt_compiler_test",
     srcs = ["se_gpu_pjrt_compiler_test.cc"],
