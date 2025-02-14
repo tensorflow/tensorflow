@@ -37,9 +37,9 @@ class LiteRtDispatchInvocationContextT {
   static litert::Expected<Ptr> CreateFromBytecode(
       const litert::google_tensor::Southbound& southbound,
       LiteRtDispatchDeviceContext device_context,
-      LiteRtDispatchExecutableType exec_type, const void* exec_bytecode,
-      size_t exec_bytecode_size, const char* function_name, int num_inputs,
-      int num_outputs);
+      LiteRtDispatchExecutableType exec_type,
+      const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
+      int num_inputs, int num_outputs);
 
   static litert::Expected<Ptr> CreateFromGraph(
       const litert::google_tensor::Southbound& southbound,

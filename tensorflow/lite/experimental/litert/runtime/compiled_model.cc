@@ -69,7 +69,8 @@ Expected<void> LiteRtCompiledModelT::Initialize() {
   tflite::ops::builtin::BuiltinOpResolver resolver;
   tflite::InterpreterBuilder(*fb_model_, resolver)(&interp_);
   if (interp_ == nullptr) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to build TFL interpreter");
   }
 
   signature_keys_ = interp_->signature_keys();
@@ -127,19 +128,22 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   if (new_flatbuffer) {
     model_buffer = reinterpret_cast<const char*>(new_flatbuffer->Data());
     model_buffer_size = new_flatbuffer->Size();
+
   } else if (auto init_model_buffer = detail::GetTflFlatbuffer(*model).Buf();
              init_model_buffer.Size() != 0) {
     // Use the saved the original FB pointer when the LiteRtModel was created
     // from a buffer.
     model_buffer = init_model_buffer.StrData();
     model_buffer_size = init_model_buffer.Size();
+
   } else {
     // TODO b/383120429 - Once LiteRtModel provide tflite::Model object, switch
     // to use it to initialize Interpreter instead of serializing LiteRtModel.
     auto [data, size, offset] = compiled_model->model_buf_.GetWeak();
     if (LiteRtSerializeModel(model, &data, &size, &offset,
                              /*destroy_model=*/false) != kLiteRtStatusOk) {
-      return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to serialize model");
     }
     compiled_model->alloc_ = std::make_unique<tflite::MemoryAllocation>(
         compiled_model->model_buf_.Data(), compiled_model->model_buf_.Size(),
@@ -148,14 +152,17 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
         reinterpret_cast<const char*>(compiled_model->alloc_->base());
     model_buffer_size = compiled_model->alloc_->bytes();
   }
+
   compiled_model->fb_model_ =
       tflite::FlatBufferModel::BuildFromBuffer(model_buffer, model_buffer_size);
   if (compiled_model->fb_model_ == nullptr) {
-    return Unexpected(kLiteRtStatusErrorFileIO);
+    return Unexpected(kLiteRtStatusErrorFileIO,
+                      "Failed to build flatbuffer from buffer");
   }
 
   if (auto res = compiled_model->Initialize(); !res.HasValue()) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to inizialize compiled model");
   }
 
   if (hardware_accelerators & kLiteRtHwAcceleratorGpu) {
@@ -200,6 +207,17 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
       litert::CreateDispatchDelegateOptionsPtr(*env);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            model_buffer);
+
+  auto* allocation = compiled_model->fb_model_->allocation();
+  if (allocation != nullptr &&
+      allocation->type() == tflite::Allocation::Type::kMMap) {
+    auto& mmap_allocation =
+        static_cast<const tflite::MMAPAllocation&>(*allocation);
+    int flatbuffer_fd = mmap_allocation.fd();
+    LiteRtDispatchDelegateAddAllocFdOption(dispatch_delegate_options.get(),
+                                           flatbuffer_fd);
+  }
+
   auto dispatch_delegate = litert::CreateDispatchDelegatePtr(
       *env, std::move(dispatch_delegate_options));
   if (auto status = compiled_model->interp_->ModifyGraphWithDelegate(
