@@ -2613,12 +2613,12 @@ class HloRaggedDotInstruction : public HloInstruction {
   // Creates a ragged dot op with operands 'lhs', 'rhs', and 'group_sizes'.
   // The `dimension_numbers` are for specifying:
   //   - batch and contracting dims for 'lhs'/'rhs' (as in HloDotInstruction),
-  //   - exactly one 'lhs' ragged dimension, and
+  //   - exactly one 'lhs' ragged dimension,
   //   - up to one 'rhs' group dimension.
   // The op takes on one of three modes, based on the kind of the ragged dim:
-  // 1. [b,m,k], [g,b,k,n], [g] -> [b,m,n], where the ragged dimension is the
+  // 1. [b,m,k], [g,b,k,n], [b,g] -> [b,m,n], where the ragged dimension is the
   //    non-contracting dimension (m) of the 'lhs'.
-  // 2. [b,m,k], [b,k,n], [g] -> [g,b,m,n], where the ragged dimension is the
+  // 2. [b,m,k], [b,k,n], [b,g] -> [g,b,m,n], where the ragged dimension is the
   //    contracting dimension (k) of the 'lhs' and 'rhs'.
   // 3. [b,m,k], [b,k,n], [g] -> [b,m,n], where the ragged dimension is the
   //    batch dimension (b) of the 'lhs' and 'rhs'.

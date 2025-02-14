@@ -3645,6 +3645,22 @@ ENTRY entry_computation {
   EXPECT_TRUE(status.ok()) << status;
 }
 
+TEST_F(HloVerifierTest, BatchedRaggedDotNonContracting) {
+  static const char* const kRaggedDotHloString = R"(
+HloModule module
+ENTRY entry_computation {
+  a = f32[19,11,5] parameter(0)
+  b = f32[3,19,5,7] parameter(1)
+  c = u32[19,3] parameter(2)
+  ROOT dot = f32[19,11,7] ragged-dot(a, b, c), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={1}, rhs_contracting_dims={2}, lhs_ragged_dims={1}, rhs_group_dims={0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kRaggedDotHloString));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok()) << status;
+}
+
 TEST_F(HloVerifierTest, UnaryOpWithResultAccuracy) {
   constexpr absl::string_view hlo_string = R"(
   HloModule exponential_hw
