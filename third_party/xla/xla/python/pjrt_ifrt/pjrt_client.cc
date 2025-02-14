@@ -675,11 +675,14 @@ AssembleStringArrayFromSingleDeviceStringArrays(
       return absl::InvalidArgumentError(
           "All single device arrays must be BasicStringArrays");
     }
-    if (!llvm::isa<SingleDeviceSharding>(basic_string_array->sharding())) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "All single device arrays must have single device sharding. got: %s "
-          "for shard index: %d",
-          basic_string_array->sharding().DebugString(), i));
+
+    if (!llvm::isa<SingleDeviceSharding>(basic_string_array->sharding()) &&
+        (basic_string_array->sharding().devices()->size() != 1)) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("All single device arrays must have single device "
+                          "sharding. got: %s "
+                          "for shard index: %d",
+                          basic_string_array->sharding().DebugString(), i));
     }
 
     basic_string_array->buffers().OnReady(
