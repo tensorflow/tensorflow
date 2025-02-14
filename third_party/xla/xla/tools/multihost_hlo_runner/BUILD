@@ -37,6 +37,7 @@ cc_library(
         ":functional_hlo_runner",
         "//xla:debug_options_flags",
         "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
@@ -188,6 +189,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
         "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
