@@ -76,7 +76,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_include_timestamp(false);
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
-  opts.set_xla_dump_hlo_as_long_text(false);
+  opts.set_xla_dump_hlo_as_long_text(true);
   opts.set_xla_dump_large_constants(false);
   opts.set_xla_dump_enable_mlir_pretty_form(true);
   opts.set_xla_gpu_unsupported_annotate_with_emitter_loc(false);
