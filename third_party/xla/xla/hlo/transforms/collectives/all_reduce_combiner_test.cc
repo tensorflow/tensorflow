@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/all_reduce_combiner.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -118,9 +120,8 @@ TEST_F(AllReduceCombinerTest, CombineAllReduces) {
   // Run the AllReduce combiner optimization pass.
   AllReduceCombiner combine(10 * 1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), inputs.size());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
   ASSERT_EQ(AllReduceCount(*module), 1);
-  EXPECT_TRUE(changed);
 
   ASSERT_EQ(root, computation->root_instruction());
   ASSERT_EQ(inputs.size(), root->operands().size());
@@ -166,10 +167,9 @@ TEST_F(AllReduceCombinerTest, CombineCrossReplicaReductionsInGroups) {
   // Run the AllReduce combiner optimization pass.
   AllReduceCombiner combine(10 * 1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), inputs.size());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
   ASSERT_EQ(AllReduceCount(*module), 3)
       << "expects 3 groups for 3 reduction types.";
-  EXPECT_TRUE(changed);
 }
 
 // Tests that the combination threshold is respected.
@@ -188,9 +188,8 @@ TEST_F(AllReduceCombinerTest, RespectThreshold) {
   {
     AllReduceCombiner combine((8 + 4) * 1024 - 1, kMaxCombineCount);
     ASSERT_EQ(AllReduceCount(*module), inputs.size());
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+    EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
     EXPECT_EQ(AllReduceCount(*module), inputs.size());
-    EXPECT_FALSE(changed);
   }
 
   // Run the AllReduce combiner optimization pass again with a slightly
@@ -198,9 +197,8 @@ TEST_F(AllReduceCombinerTest, RespectThreshold) {
   {
     AllReduceCombiner combine((8 + 4) * 1024, kMaxCombineCount);
     ASSERT_EQ(AllReduceCount(*module), inputs.size());
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+    EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
     EXPECT_EQ(AllReduceCount(*module), 1);
-    EXPECT_TRUE(changed);
   }
 }
 
@@ -226,9 +224,8 @@ TEST_F(AllReduceCombinerTest, NoDependentCombination) {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
   EXPECT_EQ(AllReduceCount(*module), 2);
-  EXPECT_FALSE(changed);
 }
 
 // Tests that AllReduce ops with different groups are not combined.
@@ -255,9 +252,8 @@ TEST_F(AllReduceCombinerTest, GroupAllReduce) {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
   EXPECT_EQ(AllReduceCount(*module), 2);
-  EXPECT_FALSE(changed);
 }
 
 TEST_F(AllReduceCombinerTest, DomainPreventsCombining) {
@@ -278,9 +274,11 @@ ENTRY entry {
   crs1 = f32[128] all-reduce(param1),
     replica_groups={}, to_apply=summit, sharding={maximal device=1}
   domain0 = f32[128] domain(crs0),
-    domain={kind="sharding", entry={{maximal device=0}, {maximal device=1}}, exit={maximal device=0}}
+    domain={kind="sharding", entry={{maximal device=0}, {maximal device=1}},
+    exit={maximal device=0}}
   domain1 = f32[128] domain(crs1),
-    domain={kind="sharding", entry={{maximal device=0}, {maximal device=1}}, exit={maximal device=1}}
+    domain={kind="sharding", entry={{maximal device=0}, {maximal device=1}},
+    exit={maximal device=1}}
   ROOT tuple = (f32[128], f32[128]) tuple(domain0, domain1),
     sharding={{maximal device=0}, {maximal device=1}}
 }
@@ -291,9 +289,8 @@ ENTRY entry {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
   EXPECT_EQ(AllReduceCount(*module), 2);
-  EXPECT_FALSE(changed);
 }
 
 // This test checks that two CRS instructions that are in separate domains
@@ -336,9 +333,8 @@ ENTRY entry {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 3);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
   EXPECT_EQ(AllReduceCount(*module), 2);
-  EXPECT_TRUE(changed);
 
   // Verify that the sharding is combined correctly.
   const HloInstruction* param0 =
@@ -375,9 +371,8 @@ ENTRY entry {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
   EXPECT_EQ(AllReduceCount(*module), 2);
-  EXPECT_FALSE(changed);
 }
 
 TEST_F(AllReduceCombinerTest, DoNotCombineWithControlDependencies) {
@@ -453,9 +448,8 @@ ENTRY entry {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 4);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
   EXPECT_EQ(AllReduceCount(*module), 2);
-  EXPECT_TRUE(changed);
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Add(op::Domain(op::GetTupleElement(AllOf(
@@ -501,9 +495,8 @@ ENTRY %comp {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 6);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
   EXPECT_EQ(AllReduceCount(*module), 4);
-  EXPECT_TRUE(changed);
 
   auto crs0 = op::AllReduce(op::Parameter(0), op::AllReduce(op::Parameter(1)));
   auto add = op::Add(op::AllReduce(op::GetTupleElement(crs0, 0)),
@@ -527,16 +520,17 @@ TEST_F(AllReduceCombinerTest, PreservesMetadata) {
     ENTRY entry {
       %param.0 = f32[32] parameter(0)
       %param.1 = f32[32] parameter(1)
-      %all-reduce.0 = f32[32] all-reduce(%param.0), replica_groups={}, to_apply=%add, metadata={op_type="test_type0" op_name="test_name0"}
-      %all-reduce.1 = f32[32] all-reduce(%param.1), replica_groups={}, to_apply=%add, metadata={op_type="test_type1" op_name="test_name1"}
+      %all-reduce.0 = f32[32] all-reduce(%param.0), replica_groups={},
+          to_apply=%add, metadata={op_type="test_type0" op_name="test_name0"}
+      %all-reduce.1 = f32[32] all-reduce(%param.1), replica_groups={},
+          to_apply=%add, metadata={op_type="test_type1" op_name="test_name1"}
       ROOT tuple = (f32[32], f32[32]) tuple(%all-reduce.0, %all-reduce.1)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
-  EXPECT_TRUE(changed);
+  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
   OpMetadata metadata;
   metadata.set_op_type("test_type0");
   metadata.set_op_name("test_name0");
