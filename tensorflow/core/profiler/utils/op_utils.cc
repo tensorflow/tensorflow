@@ -93,8 +93,7 @@ void HostOpMetricsDbBuilder::EnterOp(absl::string_view name,
                                      uint64 time_ps, uint64 children_time_ps) {
   uint64 self_time_ps = time_ps - children_time_ps;
   DCHECK_GE(time_ps, self_time_ps);
-  OpMetrics* op_metrics =
-      LookupOrInsertNewOpMetrics(/*hlo_module_id=*/0, name, /*fingerprint=*/0);
+  OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(/*hlo_module_id=*/0, name);
   if (op_metrics->category().empty())
     op_metrics->set_category(category.data(), category.size());
   op_metrics->set_num_cores(1);
@@ -125,8 +124,7 @@ void HostOpMetricsDbBuilder::EnterHostInfeedEnqueue(
 void DeviceOpMetricsDbBuilder::EnterOpMetadataFromHloModuleMap(
     uint64 program_id, absl::string_view op_name,
     const HloModuleMap& hlo_module_map) {
-  OpMetrics* op_metrics =
-      LookupOrInsertNewOpMetrics(program_id, op_name, /*fingerprint=*/0);
+  OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, op_name);
   tensorflow::profiler::EnterOpMetadataFromHloModuleMap(op_metrics,
                                                         hlo_module_map);
 }
@@ -138,8 +136,7 @@ void DeviceOpMetricsDbBuilder::EnterOpMetadata(
     absl::string_view long_name) {
   // We only need to add xla metadata once to each new op, as they are the
   // same across occurrences.
-  OpMetrics* op_metrics =
-      LookupOrInsertNewOpMetrics(program_id, program_name, /*fingerprint=*/0);
+  OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, program_name);
   if (op_metrics->occurrences() > 0 || !op_metrics->category().empty() ||
       !op_metrics->provenance().empty())
     return;
@@ -168,8 +165,7 @@ void DeviceOpMetricsDbBuilder::EnterOp(
                   is_eager);
   uint64 self_time_ps = time_ps - children_time_ps;
   DCHECK_GE(time_ps, self_time_ps);
-  OpMetrics* op_metrics =
-      LookupOrInsertNewOpMetrics(program_id, name, /*fingerprint=*/0);
+  OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, name);
   op_metrics->set_num_cores(1);
   op_metrics->set_occurrences(op_metrics->occurrences() + occurrences);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);

@@ -52,8 +52,7 @@ class OpMetricsDbBuilder {
   // Looks up the given OP name. If it is already in the database,
   // return its OpMetrics; otherwise, insert a new one.
   OpMetrics* LookupOrInsertNewOpMetrics(uint64 hlo_module_id,
-                                        absl::string_view name,
-                                        uint64_t fingerprint);
+                                        absl::string_view name);
 
   OpMetricsDb* db() { return db_; }
 
