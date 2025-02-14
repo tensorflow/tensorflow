@@ -35,7 +35,7 @@ _preemption_watcher_initialization_counter = monitoring.Counter(
 )
 _preemption_handling_counter = monitoring.Counter(
     "/tensorflow/api/distribution_strategy/preemption_watcher_handled",
-    "Counter for number of preempions catched and handled by PreemptionWatcher",
+    "Counter for number of preempions caught and handled by PreemptionWatcher",
 )
 
 _PREEMPTION_KEY = "TF_DEFAULT_PREEMPTION_NOTICE_KEY"

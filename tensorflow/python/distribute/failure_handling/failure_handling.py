@@ -810,7 +810,7 @@ class PreemptionCheckpointHandler(object):
 
     This function handles the preemption signal from any peer in the cluster by
     saving the training progress and exiting gracefully. It will
-    also broadcase any program error encountered during the execution of
+    also broadcast any program error encountered during the execution of
     `distributed_train_function` to all workers so that they can raise the same
     error.
 
