@@ -496,7 +496,7 @@ void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
 
       // Keep track of bytes accessed by this value.
       if (loop_index || prev_iteration_index) {
-        float bytes_accessed = cost_analysis_.base_costs().OutputBytesAccessed(
+        float bytes_accessed = cost_analysis_.OutputBytesAccessed(
             *position.instruction, position.index);
         pos_bytes += bytes_accessed;
         VLOG(3) << " accessed: " << bytes_accessed;
@@ -526,7 +526,7 @@ void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
 
       // Keep track of bytes accessed by this value.
       if (loop_index || next_iteration_index) {
-        float bytes_accessed = cost_analysis_.base_costs().OperandBytesAccessed(
+        float bytes_accessed = cost_analysis_.OperandBytesAccessed(
             *use.instruction, use.operand_number, use.operand_index);
         use_bytes += bytes_accessed;
         VLOG(3) << " accessed: " << bytes_accessed;
