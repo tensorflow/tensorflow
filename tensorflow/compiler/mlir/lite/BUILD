@@ -19,6 +19,7 @@ package(
     licenses = ["notice"],
 )
 
+# test
 package_group(
     name = "friends",
     packages = [
