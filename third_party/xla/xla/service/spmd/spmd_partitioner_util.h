@@ -960,6 +960,9 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
 PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
                                                    SpmdBuilder* b);
 
+// Returns the sharding of the given outfeed instruction.
+HloSharding GetOutfeedSharding(const HloInstruction* outfeed);
+
 }  // namespace spmd
 }  // namespace xla
 
