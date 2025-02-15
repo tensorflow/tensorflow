@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/ir_builder_mixin.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
