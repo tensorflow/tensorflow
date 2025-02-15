@@ -15,10 +15,7 @@ load(
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tf_openmp_copts", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
-load(
-    "//xla/tsl/mkl:build_defs.bzl",
-    "mkl_deps",
-)
+load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api", "mkl_deps")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
@@ -847,6 +844,7 @@ cc_library(
     name = "thunk_emitter",
     srcs = ["thunk_emitter.cc"],
     hdrs = ["thunk_emitter.h"],
+    local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
     deps = [
         ":backend_config_proto_cc",
         ":dot_op_emitter",
@@ -858,6 +856,8 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:onednn_emitter",
+        "//xla/backends/cpu:onednn_fusion",
         "//xla/backends/cpu:xnn_emitter",
         "//xla/backends/cpu:xnn_fusion",
         "//xla/backends/cpu/codegen:dot_kernel_emitter",
@@ -887,6 +887,7 @@ cc_library(
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:topk_thunk",
         "//xla/backends/cpu/runtime:while_thunk",
+        "//xla/backends/cpu/runtime/onednn:onednn_fusion_thunk",
         "//xla/backends/cpu/runtime/xnnpack:xnn_dot_thunk",
         "//xla/backends/cpu/runtime/xnnpack:xnn_fusion_thunk",
         "//xla/codegen:kernel_definition",

@@ -76,6 +76,8 @@ absl::string_view Thunk::KindToString(Kind kind) {
       return "while";
     case Kind::kXnnFusion:
       return "xnn-fusion";
+    case Kind::kOneDnnFusion:
+      return "onednn-fusion";
   }
 }
 

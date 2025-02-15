@@ -1362,6 +1362,9 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         return VerifyConvolutionThunkEquality(
             tsl::down_cast<const ConvolutionThunk&>(thunk_1),
             tsl::down_cast<const ConvolutionThunk&>(thunk_2));
+      case Thunk::Kind::kOneDnnFusion:
+        CHECK(false) << "Unsupported OneDNN fusion thunk type";
+        return false;
     }
 
     return true;

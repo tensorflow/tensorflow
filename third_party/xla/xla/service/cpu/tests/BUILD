@@ -4,6 +4,7 @@
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
+load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -436,6 +437,20 @@ xla_cc_test(
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "onednn_fusion_test",
+    srcs = ["onednn_fusion_test.cc"],
+    local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
+    deps = [
+        "//xla:error_spec",
+        "//xla/service:cpu_plugin",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
