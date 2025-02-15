@@ -2571,6 +2571,7 @@ absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       hlo->opcode() != HloOpcode::kTuple &&
       hlo->opcode() != HloOpcode::kParameter &&
       hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng &&
+      hlo->opcode() != HloOpcode::kInfeed &&
       hlo->opcode() != HloOpcode::kOutfeed &&
       hlo->opcode() != HloOpcode::kAllReduce &&
       hlo->opcode() != HloOpcode::kCall) {
@@ -4304,26 +4305,8 @@ absl::Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
     return absl::OkStatus();
   }
 
-  // TODO(b/260756663): Remove this fixup once this bug is fixed.
-  // The sharding for an outfeed might include sharding for the outfeed_shape
-  // and sharding for the output tuple. Piece out the sharding for the outfeed
-  // shape if needed.
-  HloSharding sharding = hlo->sharding();
+  HloSharding sharding = GetOutfeedSharding(hlo);
   const Shape& shape = hlo->operand(0)->shape();
-  const int64_t required_leaves = HloSharding::RequiredLeaves(shape);
-
-  // if the sharding is a tuple with one extra element as compared to outfeed
-  // shape, "fix up" the sharding to exclude the output tuple.
-  if (sharding.IsTuple() &&
-      sharding.tuple_elements().size() == required_leaves + 1) {
-    if (shape.IsTuple()) {
-      sharding = HloSharding::Tuple(
-          shape,
-          absl::MakeSpan(sharding.tuple_elements().data(), required_leaves));
-    } else {
-      sharding = sharding.tuple_elements().front();
-    }
-  }
 
   auto partitioned_operand =
       GetPartitionedHlo(hlo->operand(0)).Reshard(sharding);

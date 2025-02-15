@@ -94,7 +94,9 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
       }
     }
   }
-
+  if (sharding.IsManual()) {
+    return true;
+  }
   if (sharding.IsTileMaximal()) {
     return sharding.IsReplicated();
   }
@@ -2570,6 +2572,37 @@ PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
       phlo.hlo()->shape(), HloOpcode::kCopy, phlo.hlo()));
   copy_hlo->copy_sharding(phlo.hlo());
   return PartitionedHlo(copy_hlo, phlo.base_shape(), phlo.state());
+}
+
+HloSharding GetOutfeedSharding(const HloInstruction* outfeed) {
+  CHECK(outfeed->opcode() == HloOpcode::kOutfeed);
+
+  // TODO(b/260756663): Remove this fixup once this bug is fixed.
+  // The sharding for an outfeed might include sharding for the outfeed_shape
+  // and sharding for the output tuple. Piece out the sharding for the outfeed
+  // shape if needed.
+  HloSharding sharding = outfeed->sharding();
+  const Shape& shape = outfeed->operand(0)->shape();
+  const int64_t required_leaves = HloSharding::RequiredLeaves(shape);
+
+  // if the sharding is a tuple with one extra element as compared to outfeed
+  // shape, "fix up" the sharding to exclude the output tuple.
+  if (sharding.IsTuple() &&
+      sharding.tuple_elements().size() == required_leaves + 1) {
+    if (shape.IsTuple()) {
+      sharding = HloSharding::Tuple(
+          shape,
+          absl::MakeSpan(sharding.tuple_elements().data(), required_leaves));
+    } else {
+      sharding = sharding.tuple_elements().front();
+    }
+  } else if (!sharding.IsTuple() && outfeed->outfeed_shape().IsTuple()) {
+    // In this case the outfeed only contains the token sharding. Use the
+    // sharding from its tuple operand.
+    sharding = outfeed->operand(0)->sharding();
+  }
+
+  return sharding;
 }
 
 }  // namespace spmd
