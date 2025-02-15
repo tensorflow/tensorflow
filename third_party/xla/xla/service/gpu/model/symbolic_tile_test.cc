@@ -559,6 +559,36 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughReverseOfCombiningReshape) {
       )")));
 }
 
+TEST_F(SymbolicTileTest, CanPropagateTileThroughReverseOfCombiningReshape) {
+  // A reverse of a combining reshape creates a negative stride atop a
+  // multivariate tile. We start off with this indexing map: (d0, d1, d2, d3) ->
+  // (d0 * 24 - d1 * 6 - d2 + 23, d3),
+  //     domain: d0 in [0, 1], d1 in [0, 3], d2 in [0, 5], d3 in [0, 3]
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    computation {
+      p0 = f32[48,4]{1,0} parameter(0)
+      reshape = f32[2,4,6,4]{3,2,1,0} reshape(p0)
+      ROOT reverse = f32[2,4,6,4]{3,2,1,0} reverse(reshape), dimensions={1,2}
+    }
+
+    ENTRY e {
+      p0 = f32[48,4]{1,0} parameter(0)
+      ROOT fusion = f32[2,4,6,4]{3,2,1,0} fusion(p0), kind=kLoop, calls=computation
+    }
+  )"));
+
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: (d0, d1, d2, d3) -> (23, 0)
+        size_map: (d0, d1, d2, d3) -> ((d0 * d1) * d2, d3)
+        stride_map: (d0, d1, d2, d3) -> (((-d2 + 7) floordiv 6) * (((-d1 + 5) floordiv 4) * ((-((-d0 + 3) floordiv 2) + 1) * 24) - (-((-d1 + 5) floordiv 4) + 1) * 6) - (-((-d2 + 7) floordiv 6) + 1), 1)
+        constraints: d0 in [1, 1] && d1 in [1, 1] || d0 in [1, 1] && d2 in [1, 1] || d0 in [1, 1] && d2 in [6, 6] || d1 in [1, 1] && d2 in [1, 1] || d1 in [4, 4] && d2 in [1, 1] || d1 in [4, 4] && d2 in [6, 6]
+      )")));
+}
+
 TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReductionOfSplittedAxis) {
   // A split reshape of a reverse creates a sum of strided symbols.
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
