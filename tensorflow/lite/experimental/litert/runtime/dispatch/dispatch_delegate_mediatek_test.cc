@@ -51,14 +51,21 @@ using ::testing::Pointwise;
 
 static constexpr absl::string_view kNpuFile = kMediaTekModelFileName;
 static constexpr absl::string_view kTfliteFile = "simple_model_npu.tflite";
+static constexpr absl::string_view kDispatchLibraryDir = "/data/local/tmp";
 
 TEST(DispatchDelegate, MediaTekCpuBuffer) {
   auto runtime = MakeRuntimeFromTestFileWithNpuModel(kTfliteFile, kNpuFile);
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
   auto& interpreter = rt.Interpreter();
-
-  auto env = litert::Environment::Create({});
+  const std::vector<litert::Environment::Option> environment_options = {
+      litert::Environment::Option{
+          litert::Environment::OptionTag::DispatchLibraryDir,
+          kDispatchLibraryDir,
+      },
+  };
+  auto env =
+      litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
 
   litert::internal::ExternalLiteRtBufferContext buffer_context;
@@ -126,7 +133,14 @@ TEST(DispatchDelegate, MediaTekHwBuffer) {
   auto& rt = **runtime;
   auto& interpreter = rt.Interpreter();
 
-  auto env = litert::Environment::Create({});
+  const std::vector<litert::Environment::Option> environment_options = {
+      litert::Environment::Option{
+          litert::Environment::OptionTag::DispatchLibraryDir,
+          kDispatchLibraryDir,
+      },
+  };
+  auto env =
+      litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
 
   litert::internal::ExternalLiteRtBufferContext buffer_context;
@@ -248,7 +262,14 @@ TEST(DispatchDelegate, CompiledModel) {
   ASSERT_TRUE(options);
   ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu));
 
-  auto env = litert::Environment::Create({});
+  const std::vector<litert::Environment::Option> environment_options = {
+      litert::Environment::Option{
+          litert::Environment::OptionTag::DispatchLibraryDir,
+          kDispatchLibraryDir,
+      },
+  };
+  auto env =
+      litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
   auto res_compiled_model =
       CompiledModel::Create(*env, *model, std::move(*options));

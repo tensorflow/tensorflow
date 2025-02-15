@@ -57,13 +57,21 @@ namespace {
 
 constexpr absl::string_view kNpuFile = kGoogleTensorModelFileName;
 constexpr absl::string_view kTfliteFile = "simple_model_npu.tflite";
+constexpr absl::string_view kDispatchLibraryDir = "/data/local/tmp";
 
 TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
   auto runtime = MakeRuntimeFromTestFileWithNpuModel(kTfliteFile, kNpuFile);
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
   auto& interpreter = rt.Interpreter();
-  auto env = litert::Environment::Create({});
+  const std::vector<litert::Environment::Option> environment_options = {
+      litert::Environment::Option{
+          litert::Environment::OptionTag::DispatchLibraryDir,
+          kDispatchLibraryDir,
+      },
+  };
+  auto env =
+      litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
 
   internal::ExternalLiteRtBufferContext buffer_context;
@@ -130,7 +138,14 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
   auto& interpreter = rt.Interpreter();
-  auto env = litert::Environment::Create({});
+  const std::vector<litert::Environment::Option> environment_options = {
+      litert::Environment::Option{
+          litert::Environment::OptionTag::DispatchLibraryDir,
+          kDispatchLibraryDir,
+      },
+  };
+  auto env =
+      litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
 
   internal::ExternalLiteRtBufferContext buffer_context;
@@ -248,7 +263,14 @@ TEST(DispatchDelegate, CompiledModel) {
                   "GoogleTensor eTPU";
 #endif
 
-  auto env = litert::Environment::Create({});
+  const std::vector<litert::Environment::Option> environment_options = {
+      litert::Environment::Option{
+          litert::Environment::OptionTag::DispatchLibraryDir,
+          kDispatchLibraryDir,
+      },
+  };
+  auto env =
+      litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
 
   auto res_compiled_model = CompiledModel::Create(*env, *model);
@@ -311,7 +333,14 @@ TEST(DispatchDelegate, CompiledModelAsync) {
                   "GoogleTensor eTPU";
 #endif
 
-  auto env = litert::Environment::Create({});
+  const std::vector<litert::Environment::Option> environment_options = {
+      litert::Environment::Option{
+          litert::Environment::OptionTag::DispatchLibraryDir,
+          kDispatchLibraryDir,
+      },
+  };
+  auto env =
+      litert::Environment::Create(absl::MakeConstSpan(environment_options));
   ASSERT_TRUE(env);
 
   auto res_compiled_model = CompiledModel::Create(*env, *model);

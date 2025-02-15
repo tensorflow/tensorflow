@@ -37,7 +37,7 @@ litert_dynamic_lib(
     }),
     linkstatic = 1,
     shared_lib_name = "dispatch_api_so",
-    so_name = "libLiteRtDispatch.so",
+    so_name = "libLiteRtDispatch_Mediatek.so",
     tags = [
         # Remove when sdk is available to bazel.
         "nobuilder",
@@ -65,7 +65,7 @@ litert_dynamic_lib(
     ],
 )
 
-# This is cc_library target for `libLiteRtDispatch.so`.
+# This is cc_library target for `libLiteRtDispatch_Mediatek.so`.
 cc_library(
     name = "dispatch_api_shared_lib",
     srcs = [":dispatch_api_so"],

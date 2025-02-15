@@ -73,8 +73,23 @@ inline static LiteRtStatus ResolveLibSymbol(void* lib_handle,
 // kLiteRtStatusErrorInvalidArgument if the provided search_path doesn't
 // exist. All internal dynamically linked dependencies for litert should be
 // prefixed with "libLiteRtCompilerPlugin".
-LiteRtStatus FindLiteRtSharedLibs(absl::string_view search_path,
-                                  std::vector<std::string>& results);
+LiteRtStatus FindLiteRtCompilerPluginSharedLibs(
+    absl::string_view search_path, std::vector<std::string>& results);
+
+// Find all litert shared libraries in "search_path" and return
+// kLiteRtStatusErrorInvalidArgument if the provided search_path doesn't
+// exist. All internal dynamically linked dependencies for litert should be
+// prefixed with "libLiteRtDispatch".
+LiteRtStatus FindLiteRtDispatchSharedLibs(absl::string_view search_path,
+                                          std::vector<std::string>& results);
+
+// Find shared libraries for a given pattern in "search_path" and return
+// kLiteRtStatusErrorInvalidArgument if the provided search_path doesn't
+// exist.
+LiteRtStatus FindLiteRtSharedLibsHelper(const std::string& search_path,
+                                        const std::string& lib_pattern,
+                                        bool full_match,
+                                        std::vector<std::string>& results);
 
 // Get details about the dynamic library including its .so dependencies.
 void DLLInfo(void* lib_handle, std::ostream& out = std::cerr);

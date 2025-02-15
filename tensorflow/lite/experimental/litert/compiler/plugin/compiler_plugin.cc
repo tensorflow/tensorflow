@@ -257,7 +257,7 @@ Expected<std::vector<CompilerPlugin>> CompilerPlugin::LoadPlugins(
     // Skip paths that are not valid.
     if (Exists(search_path)) {
       LITERT_RETURN_IF_ERROR(
-          FindLiteRtSharedLibs(search_path, plugin_lib_paths));
+          FindLiteRtCompilerPluginSharedLibs(search_path, plugin_lib_paths));
     }
   }
 

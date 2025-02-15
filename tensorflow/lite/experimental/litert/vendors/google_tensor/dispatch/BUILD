@@ -43,7 +43,7 @@ litert_dynamic_lib(
     }),
     linkstatic = 1,
     shared_lib_name = "dispatch_api_so",
-    so_name = "libLiteRtDispatch.so",
+    so_name = "libLiteRtDispatch_GoogleTensor.so",
     tags = [
         # Don't build/test in OSS until Southbound is available.
         "nobuilder",
@@ -64,18 +64,18 @@ litert_dynamic_lib(
     ],
 )
 
-# This is cc_library target for `libLiteRtDispatch.so`.
+# This is cc_library target for `libLiteRtDispatch_GoogleTensor.so`.
 cc_library(
     name = "dispatch_api_shared_lib",
     srcs = [":dispatch_api_so"],
     linkstatic = 1,
 )
 
-# Copies the shared library so that it is available for use in test data as libLiteRtDispatch.so.
+# Copies the shared library so that it is available for use in test data as libLiteRtDispatch_GoogleTensor.so.
 copy_file(
     name = "copy_dispatch_api_so",
     src = "//tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch:dispatch_api_so",
-    target = "libLiteRtDispatch.so",
+    target = "libLiteRtDispatch_GoogleTensor.so",
 )
 
 cc_test(

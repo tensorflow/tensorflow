@@ -35,7 +35,7 @@ class Environment
 
   enum class OptionTag {
     CompilerPluginLibraryPath = kLiteRtEnvOptionTagCompilerPluginLibraryPath,
-    DispatchLibraryPath = kLiteRtEnvOptionTagDispatchLibraryPath,
+    DispatchLibraryDir = kLiteRtEnvOptionTagDispatchLibraryDir,
   };
 
   struct Option {

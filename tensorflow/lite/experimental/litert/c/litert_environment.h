@@ -24,7 +24,7 @@ extern "C" {
 
 typedef enum {
   kLiteRtEnvOptionTagCompilerPluginLibraryPath = 0,
-  kLiteRtEnvOptionTagDispatchLibraryPath = 1,
+  kLiteRtEnvOptionTagDispatchLibraryDir = 1,
   kLiteRtEnvOptionTagOpenClDeviceId = 2,
   kLiteRtEnvOptionTagOpenClPlatformId = 3,
   kLiteRtEnvOptionTagOpenClContext = 4,
