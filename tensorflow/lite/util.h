@@ -68,7 +68,7 @@ size_t CombineHashes(std::initializer_list<size_t> hashes);
 
 // Populates the size in bytes of a type into `bytes`. Returns kTfLiteOk for
 // valid types, and kTfLiteError otherwise.
-TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
+TfLiteStatus GetSizeOfType(TfLiteContext* context, TfLiteType type,
                            size_t* bytes);
 
 // Creates a stub TfLiteRegistration instance with the provided
