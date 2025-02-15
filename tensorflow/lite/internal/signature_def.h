@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <map>
 #include <string>
-#include <vector>
 
 namespace tflite {
 namespace internal {
@@ -28,10 +27,6 @@ struct SignatureDef {
   std::map<std::string, uint32_t> inputs;
   // Maps name in signature def as key to index of the tensor in the model.
   std::map<std::string, uint32_t> outputs;
-  // List of input names in signature def.
-  std::vector<std::string> input_names;
-  // List of output names in signature def.
-  std::vector<std::string> output_names;
   // The key of this SignatureDef in the SavedModel signature def map.
   std::string signature_key;
   // The subgraph index of the signature in the model.
