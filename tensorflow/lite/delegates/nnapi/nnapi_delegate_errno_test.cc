@@ -15,6 +15,7 @@ limitations under the License.
 #include <sys/mman.h>
 
 #include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/common.h"
