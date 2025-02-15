@@ -2221,7 +2221,6 @@ cc_library(
         "//xla/service:collective_conflict_analysis",
         "//xla/service:collective_ops_utils",
         "//xla/service:collective_pipeliner",
-        "//xla/service:pattern_matcher",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
