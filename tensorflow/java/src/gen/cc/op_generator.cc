@@ -19,10 +19,12 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <set>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/api_def.pb.h"
