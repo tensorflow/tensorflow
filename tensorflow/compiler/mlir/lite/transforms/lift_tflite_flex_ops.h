@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_LIFT_TFLITE_FLEX_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_LIFT_TFLITE_FLEX_OPS_H_
 
+#include <memory>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
