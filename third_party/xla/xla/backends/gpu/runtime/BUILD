@@ -834,6 +834,7 @@ cc_library(
         ":nccl_collective_thunk",
         ":nccl_p2p_thunk_common",
         ":thunk",
+        "//xla:executable_run_options",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/collectives:gpu_collectives",
@@ -843,6 +844,7 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer",
         "//xla/service:global_device_id",
+        "//xla/service:rendezvous",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/stream_executor:device_memory",
@@ -862,6 +864,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
