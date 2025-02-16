@@ -113,7 +113,7 @@ class ConstantSplitterFactory : public SizeSplitterFactory {
       tsl::protobuf::Message* message, ComposableSplitterBase* parent_splitter,
       std::vector<FieldType>* fields_in_parent, int size) override {
     if (size < GetMaxSize()) return nullptr;
-    NodeDef* node = tsl::protobuf::DynamicCastToGenerated<NodeDef>(message);
+    NodeDef* node = proto2::DynamicCastMessage<NodeDef>(message);
     if (node->op() != "Const")
       return absl::UnimplementedError(absl::StrCat(
           "Currently only able to split 'Const' nodes that are larger than the "
