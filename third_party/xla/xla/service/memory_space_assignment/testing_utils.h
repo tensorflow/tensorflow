@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/shape.h"
@@ -43,7 +42,7 @@ namespace memory_space_assignment {
 class FakeCostAnalysis : public CostAnalysis {
  public:
   static absl::StatusOr<std::unique_ptr<FakeCostAnalysis>> Create(
-      OpCostManager& op_cost_manager, const HloModule& module,
+      HloCostAnalysisCosts& cost_analysis_costs, const HloModule& module,
       const CostAnalysisOptions& options) {
     TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(&module));
     TF_ASSIGN_OR_RETURN(auto hlo_live_range,
@@ -51,7 +50,7 @@ class FakeCostAnalysis : public CostAnalysis {
                                           module.entry_computation()));
     auto call_graph = CallGraph::Build(&module);
     return absl::WrapUnique(new FakeCostAnalysis(
-        op_cost_manager, options, std::move(alias_analysis),
+        cost_analysis_costs, options, std::move(alias_analysis),
         std::move(hlo_live_range), std::move(call_graph)));
   }
 
@@ -105,12 +104,12 @@ class FakeCostAnalysis : public CostAnalysis {
   }
 
  protected:
-  FakeCostAnalysis(OpCostManager& op_cost_manager,
+  FakeCostAnalysis(HloCostAnalysisCosts& cost_analysis_costs,
                    const CostAnalysisOptions& options,
                    std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    std::unique_ptr<HloLiveRange> hlo_live_range,
                    std::unique_ptr<CallGraph> call_graph)
-      : CostAnalysis(op_cost_manager, options, std::move(alias_analysis),
+      : CostAnalysis(cost_analysis_costs, options, std::move(alias_analysis),
                      std::move(hlo_live_range), std::move(call_graph)) {}
 
  private:
