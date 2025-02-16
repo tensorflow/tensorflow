@@ -13,11 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
-#include <memory>
-#include <vector>
-
-#include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
 #include "xla/client/local_client.h"

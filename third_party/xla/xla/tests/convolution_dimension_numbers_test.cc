@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-#include <array>
+#include <cstdint>
 #include <memory>
 
 #include "absl/status/statusor.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

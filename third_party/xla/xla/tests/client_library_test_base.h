@@ -21,6 +21,8 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/bitmap.h"
 #include "xla/types.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/test.h"
