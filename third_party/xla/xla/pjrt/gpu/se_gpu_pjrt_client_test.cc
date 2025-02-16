@@ -1130,6 +1130,64 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientTest) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
+  GpuClientOptions options_staging;
+  options_staging.should_stage_host_to_device_transfers = true;
+  TF_ASSERT_OK_AND_ASSIGN(auto client_staging,
+                          GetStreamExecutorGpuClient(options_staging));
+
+  std::vector<float> data(1024, 1.0f);
+  Shape shape = ShapeUtil::MakeShape(F32, {1024});
+
+  auto* staging_client =
+      tensorflow::down_cast<StreamExecutorGpuClient*>(client_staging.get());
+
+  EXPECT_TRUE(staging_client->should_stage_host_to_device_transfers());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client_staging->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr,
+          client_staging->addressable_devices()[0]->memory_spaces()[0],
+          /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *literal, LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f))));
+}
+
+TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
+  GpuClientOptions options_no_staging;
+  options_no_staging.should_stage_host_to_device_transfers = false;
+  TF_ASSERT_OK_AND_ASSIGN(auto client_no_staging,
+                          GetStreamExecutorGpuClient(options_no_staging));
+
+  std::vector<float> data(1024, 1.0f);
+  Shape shape = ShapeUtil::MakeShape(F32, {1024});
+
+  auto* no_staging_client =
+      tensorflow::down_cast<StreamExecutorGpuClient*>(client_no_staging.get());
+
+  EXPECT_FALSE(no_staging_client->should_stage_host_to_device_transfers());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client_no_staging->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr,
+          client_no_staging->addressable_devices()[0]->memory_spaces()[0],
+          /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *literal, LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f))));
+}
+
 TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyTest) {
   GpuClientOptions options;
   options.enable_mock_nccl = true;
