@@ -15,10 +15,14 @@ limitations under the License.
 #include "tensorflow/core/util/memmapped_file_system.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstring>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
