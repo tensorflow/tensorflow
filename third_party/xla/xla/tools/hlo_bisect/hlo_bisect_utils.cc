@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/protobuf_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_verifier.h"

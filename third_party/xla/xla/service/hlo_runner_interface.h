@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -32,7 +31,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
@@ -208,36 +206,6 @@ class HloRunnerInterface {
 
   HloRunnerInterface() = default;
   virtual ~HloRunnerInterface() = default;
-
-  // Converts an HloModule from the given hlo textual IR string (in
-  // HloModule::ToString format).
-  static absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromString(
-      absl::string_view hlo_string, const DebugOptions& debug_options);
-
-  // Creates an HloModule from the given proto.
-  static absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
-      const HloModuleProto& proto,
-      const DebugOptions& debug_options = DebugOptions::default_instance());
-
-  // Reads the proto file in xla.HloProto format, creates and returns the
-  // HloModule.
-  static absl::StatusOr<std::unique_ptr<HloModule>>
-  ReadModuleFromBinaryProtoFile(
-      absl::string_view filename,
-      const DebugOptions& debug_options = DebugOptions::default_instance());
-
-  // Reads the proto file in xla.HloModule format, creates and returns the
-  // HloModule.
-  static absl::StatusOr<std::unique_ptr<HloModule>>
-  ReadModuleFromModuleBinaryProtofile(const std::string& filename,
-                                      const DebugOptions& debug_options);
-
-  // Reads the hlo text dump file in HloModule::ToString format, creates and
-  // returns the HloModule.
-  static absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
-      absl::string_view filename,
-      const DebugOptions& debug_options = DebugOptions::default_instance(),
-      const HloParserOptions& options = HloParserOptions());
 
   // Creates a runner-internal executable object given an HLO module and returns
   // a OpaqueExecutable. If run_hlo_passes is true, the HLO passes will be run

@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/shape.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -44,25 +45,6 @@ limitations under the License.
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
-
-// Supported input formats for the input HLO module.
-enum class InputFormat {
-  kText,                 // Text format returned by HloModule::ToString().
-  kProtoText,            // Protobuf text format of an xla::HloProto message.
-  kProtoBinary,          // Protobuf binary format of an xla::HloProto message.
-  kSnapshotProtoBinary,  // HloSnapshot protobuf binary format. Can be dumped by
-                         // TensorFlow by setting the environment variable
-                         // xla_dump_hlo_snapshots.
-  kUnoptimizedSnapshotProtoBinary,  // HloUnoptimizedSnapshot protobuf binary
-                                    // format. Can be dumped by
-                                    // setting the flag
-                                    // xla_dump_hlo_snapshots in conjunction
-                                    // with xla_dump_as_text.
-  kUnoptimizedSnapshotProtoText,    // HloUnoptimizedSnapshot protobuf text
-                                    // format. Can be dumped by TensorFlow by
-                                    // setting the flag xla_dump_hlo_snapshots
-                                    // in conjunction with xla_dump_as_text.
-};
 
 enum class OutputFormat : std::uint8_t {
   kText,         // Text format returned by Literal::ToString().
@@ -133,10 +115,6 @@ class GPURunnerProfiler : public XSpaceProfilerInterface {
   // The XSpace proto to be returned by GetXSpace().
   std::unique_ptr<tensorflow::profiler::XSpace> xspace_;
 };
-
-bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
-                   std::string* error);
-std::string AbslUnparseFlag(InputFormat input_format);
 
 bool AbslParseFlag(absl::string_view text, OutputFormat* output_format,
                    std::string* error);
@@ -304,15 +282,6 @@ class FunctionalHloRunner {
     }
   };
 
-  struct HloModuleAndArguments {
-    std::unique_ptr<HloModule> hlo_module;
-
-    // The outer `std::vector` represents the list of shards. The inner
-    // `std::vector<Literal>` represents a list of arguments for a single shard
-    // partition.
-    std::vector<std::vector<Literal>> arguments;
-  };
-
   struct ReplicasAndPartitions {
     int replicas = 1;
     int partitions = 1;
@@ -403,19 +372,6 @@ class FunctionalHloRunner {
       const PerDeviceLiteralVecType& arguments,
       const RunningOptions& running_options,
       std::minstd_rand0* engine = nullptr);
-
-  static absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
-      absl::string_view hlo_file);
-
-  static absl::StatusOr<HloModuleAndArguments>
-  ReadModuleFromSnapshotBinaryProtoFile(absl::string_view hlo_file);
-  static absl::StatusOr<HloModuleAndArguments>
-  ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(absl::string_view hlo_file);
-  static absl::StatusOr<HloModuleAndArguments>
-  ReadModuleFromUnoptimizedSnapshotTextProtoFile(absl::string_view hlo_file);
-
-  static absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
-      absl::string_view hlo_file, InputFormat input_format);
 
   // This would ideally be private, but we need it for the implementation of
   // MultihostHloRunner.
