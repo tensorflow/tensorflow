@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
+#include "xla/mlir_hlo/deallocation/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/transforms/gpu_passes.h"
@@ -274,8 +275,7 @@ absl::Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
   pm.addNestedPass<FuncOp>(mlir::bufferization::createPromoteBuffersToStackPass(
       [](Value alloc) { return IsSmallAlloc(alloc); }));
   // Free all temporaries,
-  pm.addNestedPass<FuncOp>(
-      ::mlir::bufferization::createBufferDeallocationPass());
+  pm.addNestedPass<FuncOp>(mlir::deallocation::createBufferDeallocationPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createConvertLinalgToLoopsPass());
 

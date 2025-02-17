@@ -1,11 +1,2295 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/test/Analysis/live-stmts.cpp b/clang/test/Analysis/live-stmts.cpp
---- a/clang/test/Analysis/live-stmts.cpp
-+++ b/clang/test/Analysis/live-stmts.cpp
-@@ -1,3 +1,6 @@
-+// Disabling this flaky test, see https://github.com/llvm/llvm-project/pull/126913#issuecomment-2655850766
-+// UNSUPPORTED: true
-+
- // RUN: %clang_analyze_cc1 -w -analyzer-checker=debug.DumpLiveExprs %s 2>&1\
- // RUN:   | FileCheck %s
+diff -ruN --strip-trailing-cr a/libcxx/src/iostream.cpp b/libcxx/src/iostream.cpp
+--- a/libcxx/src/iostream.cpp
++++ b/libcxx/src/iostream.cpp
+@@ -18,8 +18,8 @@
  
+ template <class StreamT, class BufferT>
+ union stream_data {
+-  stream_data() {}
+-  ~stream_data() {}
++  constexpr stream_data() {}
++  constexpr ~stream_data() {}
+   struct {
+     // The stream has to be the first element, since that's referenced by the stream declarations in <iostream>
+     StreamT stream;
+@@ -38,13 +38,19 @@
+ #define CHAR_MANGLING_wchar_t "_W"
+ #define CHAR_MANGLING(CharT) CHAR_MANGLING_##CharT
+ 
++#ifdef _LIBCPP_COMPILER_CLANG_BASED
++#  define STRING_DATA_CONSTINIT constinit
++#else
++#  define STRING_DATA_CONSTINIT
++#endif
++
+ #ifdef _LIBCPP_ABI_MICROSOFT
+ #  define STREAM(StreamT, BufferT, CharT, var)                                                                         \
+-    stream_data<StreamT<CharT>, BufferT<CharT>> var __asm__(                                                           \
++    STRING_DATA_CONSTINIT stream_data<StreamT<CharT>, BufferT<CharT>> var __asm__(                                     \
+         "?" #var "@" ABI_NAMESPACE_STR "@std@@3V?$" #StreamT                                                           \
+         "@" CHAR_MANGLING(CharT) "U?$char_traits@" CHAR_MANGLING(CharT) "@" ABI_NAMESPACE_STR "@std@@@12@A")
+ #else
+-#  define STREAM(StreamT, BufferT, CharT, var) stream_data<StreamT<CharT>, BufferT<CharT>> var
++#  define STREAM(StreamT, BufferT, CharT, var) STRING_DATA_CONSTINIT stream_data<StreamT<CharT>, BufferT<CharT>> var
+ #endif
+ 
+ // These definitions and the declarations in <iostream> technically cause ODR violations, since they have different
+diff -ruN --strip-trailing-cr a/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp b/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
+--- a/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
++++ b/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
+@@ -0,0 +1,20 @@
++//===----------------------------------------------------------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#include <iostream>
++
++// FIXME: Remove after issue https://github.com/llvm/llvm-project/issues/127348 resolved.
++extern "C" const char* __asan_default_options() { return "check_initialization_order=true:strict_init_order=true"; }
++
++// Test that ios used from globals constructors doesn't trigger Asan initialization-order-fiasco.
++
++struct Global {
++  Global() { std::cout << "Hello!"; }
++} global;
++
++int main(int, char**) { return 0; }
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp b/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp
+--- a/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp
++++ b/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp
+@@ -27,7 +27,6 @@
+ #include "cl_common_defines.h"
+ #include "llvm/ADT/APFloat.h"
+ #include "llvm/ADT/APInt.h"
+-#include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/DenseMap.h"
+ #include "llvm/ADT/DenseSet.h"
+ #include "llvm/ADT/SmallString.h"
+@@ -48,7 +47,6 @@
+ #include "llvm/CodeGen/TargetRegisterInfo.h"
+ #include "llvm/CodeGen/ValueTypes.h"
+ #include "llvm/CodeGenTypes/MachineValueType.h"
+-#include "llvm/IR/Argument.h"
+ #include "llvm/IR/Attributes.h"
+ #include "llvm/IR/BasicBlock.h"
+ #include "llvm/IR/Constant.h"
+@@ -95,19 +93,20 @@
+ 
+ #define DEPOTNAME "__local_depot"
+ 
+-/// discoverDependentGlobals - Return a set of GlobalVariables on which \p V
++/// DiscoverDependentGlobals - Return a set of GlobalVariables on which \p V
+ /// depends.
+ static void
+-discoverDependentGlobals(const Value *V,
++DiscoverDependentGlobals(const Value *V,
+                          DenseSet<const GlobalVariable *> &Globals) {
+-  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(V)) {
++  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(V))
+     Globals.insert(GV);
+-    return;
++  else {
++    if (const User *U = dyn_cast<User>(V)) {
++      for (unsigned i = 0, e = U->getNumOperands(); i != e; ++i) {
++        DiscoverDependentGlobals(U->getOperand(i), Globals);
++      }
++    }
+   }
+-
+-  if (const User *U = dyn_cast<User>(V))
+-    for (const auto &O : U->operands())
+-      discoverDependentGlobals(O, Globals);
+ }
+ 
+ /// VisitGlobalVariableForEmission - Add \p GV to the list of GlobalVariable
+@@ -128,8 +127,8 @@
+ 
+   // Make sure we visit all dependents first
+   DenseSet<const GlobalVariable *> Others;
+-  for (const auto &O : GV->operands())
+-    discoverDependentGlobals(O, Others);
++  for (unsigned i = 0, e = GV->getNumOperands(); i != e; ++i)
++    DiscoverDependentGlobals(GV->getOperand(i), Others);
+ 
+   for (const GlobalVariable *GV : Others)
+     VisitGlobalVariableForEmission(GV, Order, Visited, Visiting);
+@@ -624,8 +623,9 @@
+   if (!C)
+     return false;
+ 
+-  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(C))
++  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(C)) {
+     return GV->getName() != "llvm.used";
++  }
+ 
+   for (const User *U : C->users())
+     if (const Constant *C = dyn_cast<Constant>(U))
+@@ -635,23 +635,25 @@
+   return false;
+ }
+ 
+-static bool usedInOneFunc(const User *U, Function const *&OneFunc) {
+-  if (const GlobalVariable *OtherGV = dyn_cast<GlobalVariable>(U))
+-    if (OtherGV->getName() == "llvm.used")
++static bool usedInOneFunc(const User *U, Function const *&oneFunc) {
++  if (const GlobalVariable *othergv = dyn_cast<GlobalVariable>(U)) {
++    if (othergv->getName() == "llvm.used")
+       return true;
++  }
+ 
+-  if (const Instruction *I = dyn_cast<Instruction>(U)) {
+-    if (const Function *CurFunc = I->getFunction()) {
+-      if (OneFunc && (CurFunc != OneFunc))
++  if (const Instruction *instr = dyn_cast<Instruction>(U)) {
++    if (instr->getParent() && instr->getParent()->getParent()) {
++      const Function *curFunc = instr->getParent()->getParent();
++      if (oneFunc && (curFunc != oneFunc))
+         return false;
+-      OneFunc = CurFunc;
++      oneFunc = curFunc;
+       return true;
+-    }
+-    return false;
++    } else
++      return false;
+   }
+ 
+   for (const User *UU : U->users())
+-    if (!usedInOneFunc(UU, OneFunc))
++    if (!usedInOneFunc(UU, oneFunc))
+       return false;
+ 
+   return true;
+@@ -664,15 +666,16 @@
+  * 2. Does it have local linkage?
+  * 3. Is the global variable referenced only in one function?
+  */
+-static bool canDemoteGlobalVar(const GlobalVariable *GV, Function const *&f) {
+-  if (!GV->hasLocalLinkage())
++static bool canDemoteGlobalVar(const GlobalVariable *gv, Function const *&f) {
++  if (!gv->hasLocalLinkage())
+     return false;
+-  if (GV->getAddressSpace() != ADDRESS_SPACE_SHARED)
++  PointerType *Pty = gv->getType();
++  if (Pty->getAddressSpace() != ADDRESS_SPACE_SHARED)
+     return false;
+ 
+   const Function *oneFunc = nullptr;
+ 
+-  bool flag = usedInOneFunc(GV, oneFunc);
++  bool flag = usedInOneFunc(gv, oneFunc);
+   if (!flag)
+     return false;
+   if (!oneFunc)
+@@ -682,22 +685,27 @@
+ }
+ 
+ static bool useFuncSeen(const Constant *C,
+-                        const SmallPtrSetImpl<const Function *> &SeenSet) {
++                        DenseMap<const Function *, bool> &seenMap) {
+   for (const User *U : C->users()) {
+     if (const Constant *cu = dyn_cast<Constant>(U)) {
+-      if (useFuncSeen(cu, SeenSet))
++      if (useFuncSeen(cu, seenMap))
+         return true;
+     } else if (const Instruction *I = dyn_cast<Instruction>(U)) {
+-      if (const Function *Caller = I->getFunction())
+-        if (SeenSet.contains(Caller))
+-          return true;
++      const BasicBlock *bb = I->getParent();
++      if (!bb)
++        continue;
++      const Function *caller = bb->getParent();
++      if (!caller)
++        continue;
++      if (seenMap.contains(caller))
++        return true;
+     }
+   }
+   return false;
+ }
+ 
+ void NVPTXAsmPrinter::emitDeclarations(const Module &M, raw_ostream &O) {
+-  SmallPtrSet<const Function *, 32> SeenSet;
++  DenseMap<const Function *, bool> seenMap;
+   for (const Function &F : M) {
+     if (F.getAttributes().hasFnAttr("nvptx-libcall-callee")) {
+       emitDeclaration(&F, O);
+@@ -723,7 +731,7 @@
+         }
+         // Emit a declaration of this function if the function that
+         // uses this constant expr has already been seen.
+-        if (useFuncSeen(C, SeenSet)) {
++        if (useFuncSeen(C, seenMap)) {
+           emitDeclaration(&F, O);
+           break;
+         }
+@@ -731,19 +739,23 @@
+ 
+       if (!isa<Instruction>(U))
+         continue;
+-      const Function *Caller = cast<Instruction>(U)->getFunction();
+-      if (!Caller)
++      const Instruction *instr = cast<Instruction>(U);
++      const BasicBlock *bb = instr->getParent();
++      if (!bb)
++        continue;
++      const Function *caller = bb->getParent();
++      if (!caller)
+         continue;
+ 
+       // If a caller has already been seen, then the caller is
+       // appearing in the module before the callee. so print out
+       // a declaration for the callee.
+-      if (SeenSet.contains(Caller)) {
++      if (seenMap.contains(caller)) {
+         emitDeclaration(&F, O);
+         break;
+       }
+     }
+-    SeenSet.insert(&F);
++    seenMap[&F] = true;
+   }
+   for (const GlobalAlias &GA : M.aliases())
+     emitAliasDeclaration(&GA, O);
+@@ -806,7 +818,7 @@
+ 
+   // Print out module-level global variables in proper order
+   for (const GlobalVariable *GV : Globals)
+-    printModuleLevelGV(GV, OS2, /*ProcessDemoted=*/false, STI);
++    printModuleLevelGV(GV, OS2, /*processDemoted=*/false, STI);
+ 
+   OS2 << '\n';
+ 
+@@ -827,14 +839,16 @@
+ 
+ void NVPTXAsmPrinter::emitHeader(Module &M, raw_ostream &O,
+                                  const NVPTXSubtarget &STI) {
+-  const unsigned PTXVersion = STI.getPTXVersion();
++  O << "//\n";
++  O << "// Generated by LLVM NVPTX Back-End\n";
++  O << "//\n";
++  O << "\n";
+ 
+-  O << "//\n"
+-       "// Generated by LLVM NVPTX Back-End\n"
+-       "//\n"
+-       "\n"
+-    << ".version " << (PTXVersion / 10) << "." << (PTXVersion % 10) << "\n"
+-    << ".target " << STI.getTargetName();
++  unsigned PTXVersion = STI.getPTXVersion();
++  O << ".version " << (PTXVersion / 10) << "." << (PTXVersion % 10) << "\n";
++
++  O << ".target ";
++  O << STI.getTargetName();
+ 
+   const NVPTXTargetMachine &NTM = static_cast<const NVPTXTargetMachine &>(TM);
+   if (NTM.getDrvInterface() == NVPTX::NVCL)
+@@ -857,9 +871,16 @@
+   if (HasFullDebugInfo)
+     O << ", debug";
+ 
+-  O << "\n"
+-    << ".address_size " << (NTM.is64Bit() ? "64" : "32") << "\n"
+-    << "\n";
++  O << "\n";
++
++  O << ".address_size ";
++  if (NTM.is64Bit())
++    O << "64";
++  else
++    O << "32";
++  O << "\n";
++
++  O << "\n";
+ }
+ 
+ bool NVPTXAsmPrinter::doFinalization(Module &M) {
+@@ -907,28 +928,41 @@
+                                            raw_ostream &O) {
+   if (static_cast<NVPTXTargetMachine &>(TM).getDrvInterface() == NVPTX::CUDA) {
+     if (V->hasExternalLinkage()) {
+-      if (const auto *GVar = dyn_cast<GlobalVariable>(V))
+-        O << (GVar->hasInitializer() ? ".visible " : ".extern ");
+-      else if (V->isDeclaration())
++      if (isa<GlobalVariable>(V)) {
++        const GlobalVariable *GVar = cast<GlobalVariable>(V);
++        if (GVar) {
++          if (GVar->hasInitializer())
++            O << ".visible ";
++          else
++            O << ".extern ";
++        }
++      } else if (V->isDeclaration())
+         O << ".extern ";
+       else
+         O << ".visible ";
+     } else if (V->hasAppendingLinkage()) {
+-      report_fatal_error("Symbol '" + (V->hasName() ? V->getName() : "") +
+-                         "' has unsupported appending linkage type");
+-    } else if (!V->hasInternalLinkage() && !V->hasPrivateLinkage()) {
++      std::string msg;
++      msg.append("Error: ");
++      msg.append("Symbol ");
++      if (V->hasName())
++        msg.append(std::string(V->getName()));
++      msg.append("has unsupported appending linkage type");
++      llvm_unreachable(msg.c_str());
++    } else if (!V->hasInternalLinkage() &&
++               !V->hasPrivateLinkage()) {
+       O << ".weak ";
+     }
+   }
+ }
+ 
+ void NVPTXAsmPrinter::printModuleLevelGV(const GlobalVariable *GVar,
+-                                         raw_ostream &O, bool ProcessDemoted,
++                                         raw_ostream &O, bool processDemoted,
+                                          const NVPTXSubtarget &STI) {
+   // Skip meta data
+-  if (GVar->hasSection())
++  if (GVar->hasSection()) {
+     if (GVar->getSection() == "llvm.metadata")
+       return;
++  }
+ 
+   // Skip LLVM intrinsic global variables
+   if (GVar->getName().starts_with("llvm.") ||
+@@ -1035,20 +1069,20 @@
+   }
+ 
+   if (GVar->hasPrivateLinkage()) {
+-    if (GVar->getName().starts_with("unrollpragma"))
++    if (strncmp(GVar->getName().data(), "unrollpragma", 12) == 0)
+       return;
+ 
+     // FIXME - need better way (e.g. Metadata) to avoid generating this global
+-    if (GVar->getName().starts_with("filename"))
++    if (strncmp(GVar->getName().data(), "filename", 8) == 0)
+       return;
+     if (GVar->use_empty())
+       return;
+   }
+ 
+-  const Function *DemotedFunc = nullptr;
+-  if (!ProcessDemoted && canDemoteGlobalVar(GVar, DemotedFunc)) {
++  const Function *demotedFunc = nullptr;
++  if (!processDemoted && canDemoteGlobalVar(GVar, demotedFunc)) {
+     O << "// " << GVar->getName() << " has been demoted\n";
+-    localDecls[DemotedFunc].push_back(GVar);
++    localDecls[demotedFunc].push_back(GVar);
+     return;
+   }
+ 
+@@ -1056,14 +1090,17 @@
+   emitPTXAddressSpace(GVar->getAddressSpace(), O);
+ 
+   if (isManaged(*GVar)) {
+-    if (STI.getPTXVersion() < 40 || STI.getSmVersion() < 30)
++    if (STI.getPTXVersion() < 40 || STI.getSmVersion() < 30) {
+       report_fatal_error(
+           ".attribute(.managed) requires PTX version >= 4.0 and sm_30");
++    }
+     O << " .attribute(.managed)";
+   }
+ 
+-  O << " .align "
+-    << GVar->getAlign().value_or(DL.getPrefTypeAlign(ETy)).value();
++  if (MaybeAlign A = GVar->getAlign())
++    O << " .align " << A->value();
++  else
++    O << " .align " << (int)DL.getPrefTypeAlign(ETy).value();
+ 
+   if (ETy->isFloatingPointTy() || ETy->isPointerTy() ||
+       (ETy->isIntegerTy() && ETy->getScalarSizeInBits() <= 64)) {
+@@ -1100,6 +1137,8 @@
+       }
+     }
+   } else {
++    uint64_t ElementSize = 0;
++
+     // Although PTX has direct support for struct type and array type and
+     // LLVM IR is very similar to PTX, the LLVM CodeGen does not support for
+     // targets that support these high level field accesses. Structs, arrays
+@@ -1108,8 +1147,8 @@
+     case Type::IntegerTyID: // Integers larger than 64 bits
+     case Type::StructTyID:
+     case Type::ArrayTyID:
+-    case Type::FixedVectorTyID: {
+-      const uint64_t ElementSize = DL.getTypeStoreSize(ETy);
++    case Type::FixedVectorTyID:
++      ElementSize = DL.getTypeStoreSize(ETy);
+       // Ptx allows variable initilization only for constant and
+       // global state spaces.
+       if (((GVar->getAddressSpace() == ADDRESS_SPACE_GLOBAL) ||
+@@ -1120,7 +1159,7 @@
+           AggBuffer aggBuffer(ElementSize, *this);
+           bufferAggregateConstant(Initializer, &aggBuffer);
+           if (aggBuffer.numSymbols()) {
+-            const unsigned int ptrSize = MAI->getCodePointerSize();
++            unsigned int ptrSize = MAI->getCodePointerSize();
+             if (ElementSize % ptrSize ||
+                 !aggBuffer.allSymbolsAligned(ptrSize)) {
+               // Print in bytes and use the mask() operator for pointers.
+@@ -1151,17 +1190,22 @@
+         } else {
+           O << " .b8 ";
+           getSymbol(GVar)->print(O, MAI);
+-          if (ElementSize)
+-            O << "[" << ElementSize << "]";
++          if (ElementSize) {
++            O << "[";
++            O << ElementSize;
++            O << "]";
++          }
+         }
+       } else {
+         O << " .b8 ";
+         getSymbol(GVar)->print(O, MAI);
+-        if (ElementSize)
+-          O << "[" << ElementSize << "]";
++        if (ElementSize) {
++          O << "[";
++          O << ElementSize;
++          O << "]";
++        }
+       }
+       break;
+-    }
+     default:
+       llvm_unreachable("type not supported yet");
+     }
+@@ -1185,7 +1229,7 @@
+       Name->print(os, AP.MAI);
+     }
+   } else if (const ConstantExpr *CExpr = dyn_cast<ConstantExpr>(v0)) {
+-    const MCExpr *Expr = AP.lowerConstantForGV(CExpr, false);
++    const MCExpr *Expr = AP.lowerConstantForGV(cast<Constant>(CExpr), false);
+     AP.printMCExpr(*Expr, os);
+   } else
+     llvm_unreachable("symbol type unknown");
+@@ -1254,18 +1298,18 @@
+   }
+ }
+ 
+-void NVPTXAsmPrinter::emitDemotedVars(const Function *F, raw_ostream &O) {
+-  auto It = localDecls.find(F);
++void NVPTXAsmPrinter::emitDemotedVars(const Function *f, raw_ostream &O) {
++  auto It = localDecls.find(f);
+   if (It == localDecls.end())
+     return;
+ 
+-  ArrayRef<const GlobalVariable *> GVars = It->second;
++  std::vector<const GlobalVariable *> &gvars = It->second;
+ 
+   const NVPTXTargetMachine &NTM = static_cast<const NVPTXTargetMachine &>(TM);
+   const NVPTXSubtarget &STI =
+       *static_cast<const NVPTXSubtarget *>(NTM.getSubtargetImpl());
+ 
+-  for (const GlobalVariable *GV : GVars) {
++  for (const GlobalVariable *GV : gvars) {
+     O << "\t// demoted variable\n\t";
+     printModuleLevelGV(GV, O, /*processDemoted=*/true, STI);
+   }
+@@ -1300,11 +1344,13 @@
+     unsigned NumBits = cast<IntegerType>(Ty)->getBitWidth();
+     if (NumBits == 1)
+       return "pred";
+-    if (NumBits <= 64) {
++    else if (NumBits <= 64) {
+       std::string name = "u";
+       return name + utostr(NumBits);
++    } else {
++      llvm_unreachable("Integer too large");
++      break;
+     }
+-    llvm_unreachable("Integer too large");
+     break;
+   }
+   case Type::BFloatTyID:
+@@ -1347,14 +1393,16 @@
+   O << ".";
+   emitPTXAddressSpace(GVar->getType()->getAddressSpace(), O);
+   if (isManaged(*GVar)) {
+-    if (STI.getPTXVersion() < 40 || STI.getSmVersion() < 30)
++    if (STI.getPTXVersion() < 40 || STI.getSmVersion() < 30) {
+       report_fatal_error(
+           ".attribute(.managed) requires PTX version >= 4.0 and sm_30");
+-
++    }
+     O << " .attribute(.managed)";
+   }
+-  O << " .align "
+-    << GVar->getAlign().value_or(DL.getPrefTypeAlign(ETy)).value();
++  if (MaybeAlign A = GVar->getAlign())
++    O << " .align " << A->value();
++  else
++    O << " .align " << (int)DL.getPrefTypeAlign(ETy).value();
+ 
+   // Special case for i128
+   if (ETy->isIntegerTy(128)) {
+@@ -1365,7 +1413,9 @@
+   }
+ 
+   if (ETy->isFloatingPointTy() || ETy->isIntOrPtrTy()) {
+-    O << " ." << getPTXFundamentalTypeStr(ETy) << " ";
++    O << " .";
++    O << getPTXFundamentalTypeStr(ETy);
++    O << " ";
+     getSymbol(GVar)->print(O, MAI);
+     return;
+   }
+@@ -1396,13 +1446,16 @@
+ 
+ void NVPTXAsmPrinter::emitFunctionParamList(const Function *F, raw_ostream &O) {
+   const DataLayout &DL = getDataLayout();
++  const AttributeList &PAL = F->getAttributes();
+   const NVPTXSubtarget &STI = TM.getSubtarget<NVPTXSubtarget>(*F);
+   const auto *TLI = cast<NVPTXTargetLowering>(STI.getTargetLowering());
+   const NVPTXMachineFunctionInfo *MFI =
+       MF ? MF->getInfo<NVPTXMachineFunctionInfo>() : nullptr;
+ 
+-  bool IsFirst = true;
+-  const bool IsKernelFunc = isKernelFunction(*F);
++  Function::const_arg_iterator I, E;
++  unsigned paramIndex = 0;
++  bool first = true;
++  bool isKernelFunc = isKernelFunction(*F);
+ 
+   if (F->arg_empty() && !F->isVarArg()) {
+     O << "()";
+@@ -1411,143 +1464,161 @@
+ 
+   O << "(\n";
+ 
+-  for (const Argument &Arg : F->args()) {
+-    Type *Ty = Arg.getType();
+-    const std::string ParamSym = TLI->getParamName(F, Arg.getArgNo());
++  for (I = F->arg_begin(), E = F->arg_end(); I != E; ++I, paramIndex++) {
++    Type *Ty = I->getType();
+ 
+-    if (!IsFirst)
++    if (!first)
+       O << ",\n";
+ 
+-    IsFirst = false;
++    first = false;
+ 
+     // Handle image/sampler parameters
+-    if (IsKernelFunc) {
+-      const bool IsSampler = isSampler(Arg);
+-      const bool IsTexture = !IsSampler && isImageReadOnly(Arg);
+-      const bool IsSurface = !IsSampler && !IsTexture &&
+-                             (isImageReadWrite(Arg) || isImageWriteOnly(Arg));
+-      if (IsSampler || IsTexture || IsSurface) {
+-        const bool EmitImgPtr = !MFI || !MFI->checkImageHandleSymbol(ParamSym);
+-        O << "\t.param ";
+-        if (EmitImgPtr)
+-          O << ".u64 .ptr ";
+-
+-        if (IsSampler)
+-          O << ".samplerref ";
+-        else if (IsTexture)
+-          O << ".texref ";
+-        else // IsSurface
+-          O << ".samplerref ";
+-        O << ParamSym;
++    if (isKernelFunc) {
++      if (isSampler(*I) || isImage(*I)) {
++        std::string ParamSym;
++        raw_string_ostream ParamStr(ParamSym);
++        ParamStr << F->getName() << "_param_" << paramIndex;
++        ParamStr.flush();
++        bool EmitImagePtr = !MFI || !MFI->checkImageHandleSymbol(ParamSym);
++        if (isImage(*I)) {
++          if (isImageWriteOnly(*I) || isImageReadWrite(*I)) {
++            if (EmitImagePtr)
++              O << "\t.param .u64 .ptr .surfref ";
++            else
++              O << "\t.param .surfref ";
++            O << TLI->getParamName(F, paramIndex);
++          }
++          else { // Default image is read_only
++            if (EmitImagePtr)
++              O << "\t.param .u64 .ptr .texref ";
++            else
++              O << "\t.param .texref ";
++            O << TLI->getParamName(F, paramIndex);
++          }
++        } else {
++          if (EmitImagePtr)
++            O << "\t.param .u64 .ptr .samplerref ";
++          else
++            O << "\t.param .samplerref ";
++          O << TLI->getParamName(F, paramIndex);
++        }
+         continue;
+       }
+     }
+ 
+-    auto GetOptimalAlignForParam = [TLI, &DL, F, &Arg](Type *Ty) -> Align {
++    auto getOptimalAlignForParam = [TLI, &DL, &PAL, F,
++                                    paramIndex](Type *Ty) -> Align {
+       if (MaybeAlign StackAlign =
+-              getAlign(*F, Arg.getArgNo() + AttributeList::FirstArgIndex))
++              getAlign(*F, paramIndex + AttributeList::FirstArgIndex))
+         return StackAlign.value();
+ 
+       Align TypeAlign = TLI->getFunctionParamOptimizedAlign(F, Ty, DL);
+-      MaybeAlign ParamAlign =
+-          Arg.hasByValAttr() ? Arg.getParamAlign() : MaybeAlign();
++      MaybeAlign ParamAlign = PAL.getParamAlignment(paramIndex);
+       return std::max(TypeAlign, ParamAlign.valueOrOne());
+     };
+ 
+-    if (Arg.hasByValAttr()) {
+-      // param has byVal attribute.
+-      Type *ETy = Arg.getParamByValType();
+-      assert(ETy && "Param should have byval type");
+-
+-      // Print .param .align <a> .b8 .param[size];
+-      // <a>  = optimal alignment for the element type; always multiple of
+-      //        PAL.getParamAlignment
+-      // size = typeallocsize of element type
+-      const Align OptimalAlign =
+-          IsKernelFunc ? GetOptimalAlignForParam(ETy)
+-                       : TLI->getFunctionByValParamAlign(
+-                             F, ETy, Arg.getParamAlign().valueOrOne(), DL);
+-
+-      O << "\t.param .align " << OptimalAlign.value() << " .b8 " << ParamSym
+-        << "[" << DL.getTypeAllocSize(ETy) << "]";
+-      continue;
+-    }
+-
+-    if (ShouldPassAsArray(Ty)) {
+-      // Just print .param .align <a> .b8 .param[size];
+-      // <a>  = optimal alignment for the element type; always multiple of
+-      //        PAL.getParamAlignment
+-      // size = typeallocsize of element type
+-      Align OptimalAlign = GetOptimalAlignForParam(Ty);
+-
+-      O << "\t.param .align " << OptimalAlign.value() << " .b8 " << ParamSym
+-        << "[" << DL.getTypeAllocSize(Ty) << "]";
++    if (!PAL.hasParamAttr(paramIndex, Attribute::ByVal)) {
++      if (ShouldPassAsArray(Ty)) {
++        // Just print .param .align <a> .b8 .param[size];
++        // <a>  = optimal alignment for the element type; always multiple of
++        //        PAL.getParamAlignment
++        // size = typeallocsize of element type
++        Align OptimalAlign = getOptimalAlignForParam(Ty);
++
++        O << "\t.param .align " << OptimalAlign.value() << " .b8 ";
++        O << TLI->getParamName(F, paramIndex);
++        O << "[" << DL.getTypeAllocSize(Ty) << "]";
+ 
+-      continue;
+-    }
+-    // Just a scalar
+-    auto *PTy = dyn_cast<PointerType>(Ty);
+-    unsigned PTySizeInBits = 0;
+-    if (PTy) {
+-      PTySizeInBits =
+-          TLI->getPointerTy(DL, PTy->getAddressSpace()).getSizeInBits();
+-      assert(PTySizeInBits && "Invalid pointer size");
+-    }
+-
+-    if (IsKernelFunc) {
++        continue;
++      }
++      // Just a scalar
++      auto *PTy = dyn_cast<PointerType>(Ty);
++      unsigned PTySizeInBits = 0;
+       if (PTy) {
+-        O << "\t.param .u" << PTySizeInBits << " .ptr";
++        PTySizeInBits =
++            TLI->getPointerTy(DL, PTy->getAddressSpace()).getSizeInBits();
++        assert(PTySizeInBits && "Invalid pointer size");
++      }
+ 
+-        switch (PTy->getAddressSpace()) {
+-        default:
+-          break;
+-        case ADDRESS_SPACE_GLOBAL:
+-          O << " .global";
+-          break;
+-        case ADDRESS_SPACE_SHARED:
+-          O << " .shared";
+-          break;
+-        case ADDRESS_SPACE_CONST:
+-          O << " .const";
+-          break;
+-        case ADDRESS_SPACE_LOCAL:
+-          O << " .local";
+-          break;
++      if (isKernelFunc) {
++        if (PTy) {
++          O << "\t.param .u" << PTySizeInBits << " .ptr";
++
++          switch (PTy->getAddressSpace()) {
++          default:
++            break;
++          case ADDRESS_SPACE_GLOBAL:
++            O << " .global";
++            break;
++          case ADDRESS_SPACE_SHARED:
++            O << " .shared";
++            break;
++          case ADDRESS_SPACE_CONST:
++            O << " .const";
++            break;
++          case ADDRESS_SPACE_LOCAL:
++            O << " .local";
++            break;
++          }
++
++          O << " .align " << I->getParamAlign().valueOrOne().value();
++          O << " " << TLI->getParamName(F, paramIndex);
++          continue;
+         }
+ 
+-        O << " .align " << Arg.getParamAlign().valueOrOne().value() << " "
+-          << ParamSym;
++        // non-pointer scalar to kernel func
++        O << "\t.param .";
++        // Special case: predicate operands become .u8 types
++        if (Ty->isIntegerTy(1))
++          O << "u8";
++        else
++          O << getPTXFundamentalTypeStr(Ty);
++        O << " ";
++        O << TLI->getParamName(F, paramIndex);
+         continue;
+       }
+-
+-      // non-pointer scalar to kernel func
+-      O << "\t.param .";
+-      // Special case: predicate operands become .u8 types
+-      if (Ty->isIntegerTy(1))
+-        O << "u8";
+-      else
+-        O << getPTXFundamentalTypeStr(Ty);
+-      O << " " << ParamSym;
++      // Non-kernel function, just print .param .b<size> for ABI
++      // and .reg .b<size> for non-ABI
++      unsigned sz = 0;
++      if (isa<IntegerType>(Ty)) {
++        sz = cast<IntegerType>(Ty)->getBitWidth();
++        sz = promoteScalarArgumentSize(sz);
++      } else if (PTy) {
++        assert(PTySizeInBits && "Invalid pointer size");
++        sz = PTySizeInBits;
++      } else
++        sz = Ty->getPrimitiveSizeInBits();
++      O << "\t.param .b" << sz << " ";
++      O << TLI->getParamName(F, paramIndex);
+       continue;
+     }
+-    // Non-kernel function, just print .param .b<size> for ABI
+-    // and .reg .b<size> for non-ABI
+-    unsigned Size;
+-    if (auto *ITy = dyn_cast<IntegerType>(Ty)) {
+-      Size = promoteScalarArgumentSize(ITy->getBitWidth());
+-    } else if (PTy) {
+-      assert(PTySizeInBits && "Invalid pointer size");
+-      Size = PTySizeInBits;
+-    } else
+-      Size = Ty->getPrimitiveSizeInBits();
+-    O << "\t.param .b" << Size << " " << ParamSym;
++
++    // param has byVal attribute.
++    Type *ETy = PAL.getParamByValType(paramIndex);
++    assert(ETy && "Param should have byval type");
++
++    // Print .param .align <a> .b8 .param[size];
++    // <a>  = optimal alignment for the element type; always multiple of
++    //        PAL.getParamAlignment
++    // size = typeallocsize of element type
++    Align OptimalAlign =
++        isKernelFunc
++            ? getOptimalAlignForParam(ETy)
++            : TLI->getFunctionByValParamAlign(
++                  F, ETy, PAL.getParamAlignment(paramIndex).valueOrOne(), DL);
++
++    unsigned sz = DL.getTypeAllocSize(ETy);
++    O << "\t.param .align " << OptimalAlign.value() << " .b8 ";
++    O << TLI->getParamName(F, paramIndex);
++    O << "[" << sz << "]";
+   }
+ 
+   if (F->isVarArg()) {
+-    if (!IsFirst)
++    if (!first)
+       O << ",\n";
+-    O << "\t.param .align " << STI.getMaxRequiredAlignment() << " .b8 "
+-      << TLI->getParamName(F, /* vararg */ -1) << "[]";
++    O << "\t.param .align " << STI.getMaxRequiredAlignment();
++    O << " .b8 ";
++    O << TLI->getParamName(F, /* vararg */ -1) << "[]";
+   }
+ 
+   O << "\n)";
+@@ -1570,11 +1641,11 @@
+     O << "\t.local .align " << MFI.getMaxAlign().value() << " .b8 \t"
+       << DEPOTNAME << getFunctionNumber() << "[" << NumBytes << "];\n";
+     if (static_cast<const NVPTXTargetMachine &>(MF.getTarget()).is64Bit()) {
+-      O << "\t.reg .b64 \t%SP;\n"
+-        << "\t.reg .b64 \t%SPL;\n";
++      O << "\t.reg .b64 \t%SP;\n";
++      O << "\t.reg .b64 \t%SPL;\n";
+     } else {
+-      O << "\t.reg .b32 \t%SP;\n"
+-        << "\t.reg .b32 \t%SPL;\n";
++      O << "\t.reg .b32 \t%SP;\n";
++      O << "\t.reg .b32 \t%SPL;\n";
+     }
+   }
+ 
+@@ -1591,16 +1662,29 @@
+     regmap.insert(std::make_pair(vr, n + 1));
+   }
+ 
++  // Emit register declarations
++  // @TODO: Extract out the real register usage
++  // O << "\t.reg .pred %p<" << NVPTXNumRegisters << ">;\n";
++  // O << "\t.reg .s16 %rc<" << NVPTXNumRegisters << ">;\n";
++  // O << "\t.reg .s16 %rs<" << NVPTXNumRegisters << ">;\n";
++  // O << "\t.reg .s32 %r<" << NVPTXNumRegisters << ">;\n";
++  // O << "\t.reg .s64 %rd<" << NVPTXNumRegisters << ">;\n";
++  // O << "\t.reg .f32 %f<" << NVPTXNumRegisters << ">;\n";
++  // O << "\t.reg .f64 %fd<" << NVPTXNumRegisters << ">;\n";
++
+   // Emit declaration of the virtual registers or 'physical' registers for
+   // each register class
+-  for (const TargetRegisterClass *RC : TRI->regclasses()) {
+-    const unsigned N = VRegMapping[RC].size();
++  for (unsigned i=0; i< TRI->getNumRegClasses(); i++) {
++    const TargetRegisterClass *RC = TRI->getRegClass(i);
++    DenseMap<unsigned, unsigned> &regmap = VRegMapping[RC];
++    std::string rcname = getNVPTXRegClassName(RC);
++    std::string rcStr = getNVPTXRegClassStr(RC);
++    int n = regmap.size();
+ 
+     // Only declare those registers that may be used.
+-    if (N) {
+-      const StringRef RCName = getNVPTXRegClassName(RC);
+-      const StringRef RCStr = getNVPTXRegClassStr(RC);
+-      O << "\t.reg " << RCName << " \t" << RCStr << "<" << (N + 1) << ">;\n";
++    if (n) {
++       O << "\t.reg " << rcname << " \t" << rcStr << "<" << (n+1)
++         << ">;\n";
+     }
+   }
+ 
+@@ -1627,8 +1711,7 @@
+   }
+ }
+ 
+-void NVPTXAsmPrinter::printFPConstant(const ConstantFP *Fp,
+-                                      raw_ostream &O) const {
++void NVPTXAsmPrinter::printFPConstant(const ConstantFP *Fp, raw_ostream &O) {
+   APFloat APF = APFloat(Fp->getValueAPF()); // make a copy
+   bool ignored;
+   unsigned int numHex;
+@@ -1663,7 +1746,10 @@
+     return;
+   }
+   if (const GlobalValue *GVar = dyn_cast<GlobalValue>(CPV)) {
+-    const bool IsNonGenericPointer = GVar->getAddressSpace() != 0;
++    bool IsNonGenericPointer = false;
++    if (GVar->getType()->getAddressSpace() != 0) {
++      IsNonGenericPointer = true;
++    }
+     if (EmitGeneric && !isa<Function>(CPV) && !IsNonGenericPointer) {
+       O << "generic(";
+       getSymbol(GVar)->print(O, MAI);
+@@ -1712,7 +1798,7 @@
+ 
+   switch (CPV->getType()->getTypeID()) {
+   case Type::IntegerTyID:
+-    if (const auto *CI = dyn_cast<ConstantInt>(CPV)) {
++    if (const auto CI = dyn_cast<ConstantInt>(CPV)) {
+       AddIntToBuffer(CI->getValue());
+       break;
+     }
+@@ -1826,8 +1912,7 @@
+ /// expressions that are representable in PTX and create
+ /// NVPTXGenericMCSymbolRefExpr nodes for addrspacecast instructions.
+ const MCExpr *
+-NVPTXAsmPrinter::lowerConstantForGV(const Constant *CV,
+-                                    bool ProcessingGeneric) const {
++NVPTXAsmPrinter::lowerConstantForGV(const Constant *CV, bool ProcessingGeneric) {
+   MCContext &Ctx = OutContext;
+ 
+   if (CV->isNullValue() || isa<UndefValue>(CV))
+@@ -1837,10 +1922,13 @@
+     return MCConstantExpr::create(CI->getZExtValue(), Ctx);
+ 
+   if (const GlobalValue *GV = dyn_cast<GlobalValue>(CV)) {
+-    const MCSymbolRefExpr *Expr = MCSymbolRefExpr::create(getSymbol(GV), Ctx);
+-    if (ProcessingGeneric)
++    const MCSymbolRefExpr *Expr =
++      MCSymbolRefExpr::create(getSymbol(GV), Ctx);
++    if (ProcessingGeneric) {
+       return NVPTXGenericMCSymbolRefExpr::create(Expr, Ctx);
+-    return Expr;
++    } else {
++      return Expr;
++    }
+   }
+ 
+   const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV);
+@@ -1953,7 +2041,7 @@
+ }
+ 
+ // Copy of MCExpr::print customized for NVPTX
+-void NVPTXAsmPrinter::printMCExpr(const MCExpr &Expr, raw_ostream &OS) const {
++void NVPTXAsmPrinter::printMCExpr(const MCExpr &Expr, raw_ostream &OS) {
+   switch (Expr.getKind()) {
+   case MCExpr::Target:
+     return cast<MCTargetExpr>(&Expr)->printImpl(OS, MAI);
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.h b/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.h
+--- a/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.h
++++ b/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.h
+@@ -101,13 +101,15 @@
+     // SymbolsBeforeStripping[i].
+     SmallVector<const Value *, 4> SymbolsBeforeStripping;
+     unsigned curpos;
+-    const NVPTXAsmPrinter &AP;
+-    const bool EmitGeneric;
++    NVPTXAsmPrinter &AP;
++    bool EmitGeneric;
+ 
+   public:
+-    AggBuffer(unsigned size, const NVPTXAsmPrinter &AP)
+-        : size(size), buffer(size), curpos(0), AP(AP),
+-          EmitGeneric(AP.EmitGeneric) {}
++    AggBuffer(unsigned size, NVPTXAsmPrinter &AP)
++        : size(size), buffer(size), AP(AP) {
++      curpos = 0;
++      EmitGeneric = AP.EmitGeneric;
++    }
+ 
+     // Copy Num bytes from Ptr.
+     // if Bytes > Num, zero fill up to Bytes.
+@@ -153,6 +155,7 @@
+   StringRef getPassName() const override { return "NVPTX Assembly Printer"; }
+ 
+   const Function *F;
++  std::string CurrentFnName;
+ 
+   void emitStartOfAsmFile(Module &M) override;
+   void emitBasicBlockStart(const MachineBasicBlock &MBB) override;
+@@ -187,9 +190,8 @@
+   bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
+                              const char *ExtraCode, raw_ostream &) override;
+ 
+-  const MCExpr *lowerConstantForGV(const Constant *CV,
+-                                   bool ProcessingGeneric) const;
+-  void printMCExpr(const MCExpr &Expr, raw_ostream &OS) const;
++  const MCExpr *lowerConstantForGV(const Constant *CV, bool ProcessingGeneric);
++  void printMCExpr(const MCExpr &Expr, raw_ostream &OS);
+ 
+ protected:
+   bool doInitialization(Module &M) override;
+@@ -215,7 +217,7 @@
+   void emitPTXAddressSpace(unsigned int AddressSpace, raw_ostream &O) const;
+   std::string getPTXFundamentalTypeStr(Type *Ty, bool = true) const;
+   void printScalarConstant(const Constant *CPV, raw_ostream &O);
+-  void printFPConstant(const ConstantFP *Fp, raw_ostream &O) const;
++  void printFPConstant(const ConstantFP *Fp, raw_ostream &O);
+   void bufferLEByte(const Constant *CPV, int Bytes, AggBuffer *aggBuffer);
+   void bufferAggregateConstant(const Constant *CV, AggBuffer *aggBuffer);
+ 
+@@ -243,7 +245,7 @@
+   // Since the address value should always be generic in CUDA C and always
+   // be specific in OpenCL, we use this simple control here.
+   //
+-  const bool EmitGeneric;
++  bool EmitGeneric;
+ 
+ public:
+   NVPTXAsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer)
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXRegisterInfo.cpp b/llvm/lib/Target/NVPTX/NVPTXRegisterInfo.cpp
+--- a/llvm/lib/Target/NVPTX/NVPTXRegisterInfo.cpp
++++ b/llvm/lib/Target/NVPTX/NVPTXRegisterInfo.cpp
+@@ -24,7 +24,7 @@
+ #define DEBUG_TYPE "nvptx-reg-info"
+ 
+ namespace llvm {
+-StringRef getNVPTXRegClassName(TargetRegisterClass const *RC) {
++std::string getNVPTXRegClassName(TargetRegisterClass const *RC) {
+   if (RC == &NVPTX::Float32RegsRegClass)
+     return ".f32";
+   if (RC == &NVPTX::Float64RegsRegClass)
+@@ -62,7 +62,7 @@
+   return "INTERNAL";
+ }
+ 
+-StringRef getNVPTXRegClassStr(TargetRegisterClass const *RC) {
++std::string getNVPTXRegClassStr(TargetRegisterClass const *RC) {
+   if (RC == &NVPTX::Float32RegsRegClass)
+     return "%f";
+   if (RC == &NVPTX::Float64RegsRegClass)
+@@ -81,7 +81,7 @@
+     return "!Special!";
+   return "INTERNAL";
+ }
+-} // namespace llvm
++}
+ 
+ NVPTXRegisterInfo::NVPTXRegisterInfo()
+     : NVPTXGenRegisterInfo(0), StrPool(StrAlloc) {}
+@@ -144,10 +144,11 @@
+   debugRegisterMap.clear();
+ }
+ 
+-static uint64_t encodeRegisterForDwarf(StringRef RegisterName) {
+-  if (RegisterName.size() > 8)
++static uint64_t encodeRegisterForDwarf(std::string registerName) {
++  if (registerName.length() > 8) {
+     // The name is more than 8 characters long, and so won't fit into 64 bits.
+     return 0;
++  }
+ 
+   // Encode the name string into a DWARF register number using cuda-gdb's
+   // encoding.  See cuda_check_dwarf2_reg_ptx_virtual_register in cuda-tdep.c,
+@@ -156,14 +157,14 @@
+   // number, which is stored in ULEB128, but in practice must be no more than 8
+   // bytes (excluding null terminator, which is not included).
+   uint64_t result = 0;
+-  for (unsigned char c : RegisterName)
++  for (unsigned char c : registerName)
+     result = (result << 8) | c;
+   return result;
+ }
+ 
+ void NVPTXRegisterInfo::addToDebugRegisterMap(
+-    uint64_t preEncodedVirtualRegister, StringRef RegisterName) const {
+-  uint64_t mapped = encodeRegisterForDwarf(RegisterName);
++    uint64_t preEncodedVirtualRegister, std::string registerName) const {
++  uint64_t mapped = encodeRegisterForDwarf(registerName);
+   if (mapped == 0)
+     return;
+   debugRegisterMap.insert({preEncodedVirtualRegister, mapped});
+@@ -171,13 +172,13 @@
+ 
+ int64_t NVPTXRegisterInfo::getDwarfRegNum(MCRegister RegNum, bool isEH) const {
+   if (RegNum.isPhysical()) {
+-    StringRef Name = NVPTXInstPrinter::getRegisterName(RegNum.id());
++    std::string name = NVPTXInstPrinter::getRegisterName(RegNum.id());
+     // In NVPTXFrameLowering.cpp, we do arrange for %Depot to be accessible from
+     // %SP. Using the %Depot register doesn't provide any debug info in
+     // cuda-gdb, but switching it to %SP does.
+     if (RegNum.id() == NVPTX::VRDepot)
+-      Name = "%SP";
+-    return encodeRegisterForDwarf(Name);
++      name = "%SP";
++    return encodeRegisterForDwarf(name);
+   }
+   uint64_t lookup = debugRegisterMap.lookup(RegNum.id());
+   if (lookup)
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXRegisterInfo.h b/llvm/lib/Target/NVPTX/NVPTXRegisterInfo.h
+--- a/llvm/lib/Target/NVPTX/NVPTXRegisterInfo.h
++++ b/llvm/lib/Target/NVPTX/NVPTXRegisterInfo.h
+@@ -69,13 +69,13 @@
+   // here, because the proper encoding for debug registers is available only
+   // temporarily during ASM emission.
+   void addToDebugRegisterMap(uint64_t preEncodedVirtualRegister,
+-                             StringRef RegisterName) const;
++                             std::string registerName) const;
+   void clearDebugRegisterMap() const;
+   int64_t getDwarfRegNum(MCRegister RegNum, bool isEH) const override;
+ };
+ 
+-StringRef getNVPTXRegClassName(const TargetRegisterClass *RC);
+-StringRef getNVPTXRegClassStr(const TargetRegisterClass *RC);
++std::string getNVPTXRegClassName(const TargetRegisterClass *RC);
++std::string getNVPTXRegClassStr(const TargetRegisterClass *RC);
+ 
+ } // end namespace llvm
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+@@ -12197,11 +12197,7 @@
+     TreeEntry &E = *VectorizableTree[Idx];
+     if (!E.isGather())
+       continue;
+-    if ((E.hasState() && E.getOpcode() != Instruction::Load) ||
+-        (!E.hasState() &&
+-         all_of(E.Scalars, IsaPred<ExtractElementInst, LoadInst>)) ||
+-        (isa<ExtractElementInst>(E.Scalars.front()) &&
+-         getSameOpcode(ArrayRef(E.Scalars).drop_front(), *TLI).valid()))
++    if (E.hasState() && E.getOpcode() != Instruction::Load)
+       return false;
+     if (isSplat(E.Scalars) || allConstant(E.Scalars))
+       continue;
+@@ -19417,9 +19413,6 @@
+   /// Checks if the optimization of original scalar identity operations on
+   /// matched horizontal reductions is enabled and allowed.
+   bool IsSupportedHorRdxIdentityOp = false;
+-  /// Contains vector values for reduction including their scale factor and
+-  /// signedness.
+-  SmallVector<std::tuple<Value *, unsigned, bool>> VectorValuesAndScales;
+ 
+   static bool isCmpSelMinMax(Instruction *I) {
+     return match(I, m_Select(m_Cmp(), m_Value(), m_Value())) &&
+@@ -19470,23 +19463,19 @@
+   /// Creates reduction operation with the current opcode.
+   static Value *createOp(IRBuilderBase &Builder, RecurKind Kind, Value *LHS,
+                          Value *RHS, const Twine &Name, bool UseSelect) {
+-    Type *OpTy = LHS->getType();
+-    assert(OpTy == RHS->getType() && "Expected LHS and RHS of same type");
+     switch (Kind) {
+     case RecurKind::Or: {
+-      if (UseSelect && OpTy == CmpInst::makeCmpResultType(OpTy))
+-        return Builder.CreateSelect(
+-            LHS, ConstantInt::getAllOnesValue(CmpInst::makeCmpResultType(OpTy)),
+-            RHS, Name);
++      if (UseSelect &&
++          LHS->getType() == CmpInst::makeCmpResultType(LHS->getType()))
++        return Builder.CreateSelect(LHS, Builder.getTrue(), RHS, Name);
+       unsigned RdxOpcode = RecurrenceDescriptor::getOpcode(Kind);
+       return Builder.CreateBinOp((Instruction::BinaryOps)RdxOpcode, LHS, RHS,
+                                  Name);
+     }
+     case RecurKind::And: {
+-      if (UseSelect && OpTy == CmpInst::makeCmpResultType(OpTy))
+-        return Builder.CreateSelect(
+-            LHS, RHS,
+-            ConstantInt::getNullValue(CmpInst::makeCmpResultType(OpTy)), Name);
++      if (UseSelect &&
++          LHS->getType() == CmpInst::makeCmpResultType(LHS->getType()))
++        return Builder.CreateSelect(LHS, RHS, Builder.getFalse(), Name);
+       unsigned RdxOpcode = RecurrenceDescriptor::getOpcode(Kind);
+       return Builder.CreateBinOp((Instruction::BinaryOps)RdxOpcode, LHS, RHS,
+                                  Name);
+@@ -20361,11 +20350,12 @@
+                                          SameValuesCounter, TrackedToOrig);
+         }
+ 
++        Value *ReducedSubTree;
+         Type *ScalarTy = VL.front()->getType();
+         if (isa<FixedVectorType>(ScalarTy)) {
+           assert(SLPReVec && "FixedVectorType is not expected.");
+           unsigned ScalarTyNumElements = getNumElements(ScalarTy);
+-          Value *ReducedSubTree = PoisonValue::get(getWidenedType(
++          ReducedSubTree = PoisonValue::get(FixedVectorType::get(
+               VectorizedRoot->getType()->getScalarType(), ScalarTyNumElements));
+           for (unsigned I : seq<unsigned>(ScalarTyNumElements)) {
+             // Do reduction for each lane.
+@@ -20383,33 +20373,30 @@
+             SmallVector<int, 16> Mask =
+                 createStrideMask(I, ScalarTyNumElements, VL.size());
+             Value *Lane = Builder.CreateShuffleVector(VectorizedRoot, Mask);
+-            Value *Val =
+-                createSingleOp(Builder, *TTI, Lane,
+-                               OptReusedScalars && SameScaleFactor
+-                                   ? SameValuesCounter.front().second
+-                                   : 1,
+-                               Lane->getType()->getScalarType() !=
+-                                       VL.front()->getType()->getScalarType()
+-                                   ? V.isSignedMinBitwidthRootNode()
+-                                   : true,
+-                               RdxRootInst->getType());
+-            ReducedSubTree =
+-                Builder.CreateInsertElement(ReducedSubTree, Val, I);
++            ReducedSubTree = Builder.CreateInsertElement(
++                ReducedSubTree,
++                emitReduction(Lane, Builder, TTI, RdxRootInst->getType()), I);
+           }
+-          VectorizedTree = GetNewVectorizedTree(VectorizedTree, ReducedSubTree);
+         } else {
+-          Type *VecTy = VectorizedRoot->getType();
+-          Type *RedScalarTy = VecTy->getScalarType();
+-          VectorValuesAndScales.emplace_back(
+-              VectorizedRoot,
+-              OptReusedScalars && SameScaleFactor
+-                  ? SameValuesCounter.front().second
+-                  : 1,
+-              RedScalarTy != ScalarTy->getScalarType()
+-                  ? V.isSignedMinBitwidthRootNode()
+-                  : true);
++          ReducedSubTree = emitReduction(VectorizedRoot, Builder, TTI,
++                                         RdxRootInst->getType());
+         }
++        if (ReducedSubTree->getType() != VL.front()->getType()) {
++          assert(ReducedSubTree->getType() != VL.front()->getType() &&
++                 "Expected different reduction type.");
++          ReducedSubTree =
++              Builder.CreateIntCast(ReducedSubTree, VL.front()->getType(),
++                                    V.isSignedMinBitwidthRootNode());
++        }
++
++        // Improved analysis for add/fadd/xor reductions with same scale factor
++        // for all operands of reductions. We can emit scalar ops for them
++        // instead.
++        if (OptReusedScalars && SameScaleFactor)
++          ReducedSubTree = emitScaleForReusedOps(
++              ReducedSubTree, Builder, SameValuesCounter.front().second);
+ 
++        VectorizedTree = GetNewVectorizedTree(VectorizedTree, ReducedSubTree);
+         // Count vectorized reduced values to exclude them from final reduction.
+         for (Value *RdxVal : VL) {
+           Value *OrigV = TrackedToOrig.at(RdxVal);
+@@ -20438,10 +20425,6 @@
+         continue;
+       }
+     }
+-    if (!VectorValuesAndScales.empty())
+-      VectorizedTree = GetNewVectorizedTree(
+-          VectorizedTree,
+-          emitReduction(Builder, *TTI, ReductionRoot->getType()));
+     if (VectorizedTree) {
+       // Reorder operands of bool logical op in the natural order to avoid
+       // possible problem with poison propagation. If not possible to reorder
+@@ -20576,22 +20559,6 @@
+   }
+ 
+ private:
+-  /// Creates the reduction from the given \p Vec vector value with the given
+-  /// scale \p Scale and signedness \p IsSigned.
+-  Value *createSingleOp(IRBuilderBase &Builder, const TargetTransformInfo &TTI,
+-                        Value *Vec, unsigned Scale, bool IsSigned,
+-                        Type *DestTy) {
+-    Value *Rdx = emitReduction(Vec, Builder, &TTI, DestTy);
+-    if (Rdx->getType() != DestTy->getScalarType())
+-      Rdx = Builder.CreateIntCast(Rdx, DestTy, IsSigned);
+-    // Improved analysis for add/fadd/xor reductions with same scale
+-    // factor for all operands of reductions. We can emit scalar ops for
+-    // them instead.
+-    if (Scale > 1)
+-      Rdx = emitScaleForReusedOps(Rdx, Builder, Scale);
+-    return Rdx;
+-  }
+-
+   /// Calculate the cost of a reduction.
+   InstructionCost getReductionCost(TargetTransformInfo *TTI,
+                                    ArrayRef<Value *> ReducedVals,
+@@ -20634,12 +20601,6 @@
+       }
+       return Cost;
+     };
+-    // Require reduction cost if:
+-    // 1. This type is not a full register type and no other vectors with the
+-    // same type in the storage (first vector with small type).
+-    // 2. The storage does not have any vector with full vector use (first
+-    // vector with full register use).
+-    bool DoesRequireReductionOp = !AllConsts && VectorValuesAndScales.empty();
+     switch (RdxKind) {
+     case RecurKind::Add:
+     case RecurKind::Mul:
+@@ -20663,7 +20624,7 @@
+           VectorCost += TTI->getScalarizationOverhead(
+               VecTy, APInt::getAllOnes(ScalarTyNumElements), /*Insert*/ true,
+               /*Extract*/ false, TTI::TCK_RecipThroughput);
+-        } else if (DoesRequireReductionOp) {
++        } else {
+           Type *RedTy = VectorTy->getElementType();
+           auto [RType, IsSigned] = R.getRootNodeTypeWithNoCast().value_or(
+               std::make_pair(RedTy, true));
+@@ -20675,20 +20636,6 @@
+                 RdxOpcode, !IsSigned, RedTy, getWidenedType(RType, ReduxWidth),
+                 FMF, CostKind);
+           }
+-        } else {
+-          Type *RedTy = VectorTy->getElementType();
+-          auto [RType, IsSigned] = R.getRootNodeTypeWithNoCast().value_or(
+-              std::make_pair(RedTy, true));
+-          VectorType *RVecTy = getWidenedType(RType, ReduxWidth);
+-          VectorCost +=
+-              TTI->getArithmeticInstrCost(RdxOpcode, RVecTy, CostKind);
+-          if (RType != RedTy) {
+-            unsigned Opcode = Instruction::Trunc;
+-            if (RedTy->getScalarSizeInBits() > RType->getScalarSizeInBits())
+-              Opcode = IsSigned ? Instruction::SExt : Instruction::ZExt;
+-            VectorCost += TTI->getCastInstrCost(
+-                Opcode, VectorTy, RVecTy, TTI::CastContextHint::None, CostKind);
+-          }
+         }
+       }
+       ScalarCost = EvaluateScalarCost([&]() {
+@@ -20705,27 +20652,8 @@
+     case RecurKind::UMax:
+     case RecurKind::UMin: {
+       Intrinsic::ID Id = getMinMaxReductionIntrinsicOp(RdxKind);
+-      if (!AllConsts) {
+-        if (DoesRequireReductionOp) {
+-          VectorCost = TTI->getMinMaxReductionCost(Id, VectorTy, FMF, CostKind);
+-        } else {
+-          // Check if the previous reduction already exists and account it as
+-          // series of operations + single reduction.
+-          Type *RedTy = VectorTy->getElementType();
+-          auto [RType, IsSigned] = R.getRootNodeTypeWithNoCast().value_or(
+-              std::make_pair(RedTy, true));
+-          VectorType *RVecTy = getWidenedType(RType, ReduxWidth);
+-          IntrinsicCostAttributes ICA(Id, RVecTy, {RVecTy, RVecTy}, FMF);
+-          VectorCost += TTI->getIntrinsicInstrCost(ICA, CostKind);
+-          if (RType != RedTy) {
+-            unsigned Opcode = Instruction::Trunc;
+-            if (RedTy->getScalarSizeInBits() > RType->getScalarSizeInBits())
+-              Opcode = IsSigned ? Instruction::SExt : Instruction::ZExt;
+-            VectorCost += TTI->getCastInstrCost(
+-                Opcode, VectorTy, RVecTy, TTI::CastContextHint::None, CostKind);
+-          }
+-        }
+-      }
++      if (!AllConsts)
++        VectorCost = TTI->getMinMaxReductionCost(Id, VectorTy, FMF, CostKind);
+       ScalarCost = EvaluateScalarCost([&]() {
+         IntrinsicCostAttributes ICA(Id, ScalarTy, {ScalarTy, ScalarTy}, FMF);
+         return TTI->getIntrinsicInstrCost(ICA, CostKind);
+@@ -20742,160 +20670,6 @@
+     return VectorCost - ScalarCost;
+   }
+ 
+-  /// Splits the values, stored in VectorValuesAndScales, into registers/free
+-  /// sub-registers, combines them with the given reduction operation as a
+-  /// vector operation and then performs single (small enough) reduction.
+-  Value *emitReduction(IRBuilderBase &Builder, const TargetTransformInfo &TTI,
+-                       Type *DestTy) {
+-    Value *ReducedSubTree = nullptr;
+-    // Creates reduction and combines with the previous reduction.
+-    auto CreateSingleOp = [&](Value *Vec, unsigned Scale, bool IsSigned) {
+-      Value *Rdx = createSingleOp(Builder, TTI, Vec, Scale, IsSigned, DestTy);
+-      if (ReducedSubTree)
+-        ReducedSubTree = createOp(Builder, RdxKind, ReducedSubTree, Rdx,
+-                                  "op.rdx", ReductionOps);
+-      else
+-        ReducedSubTree = Rdx;
+-    };
+-    if (VectorValuesAndScales.size() == 1) {
+-      const auto &[Vec, Scale, IsSigned] = VectorValuesAndScales.front();
+-      CreateSingleOp(Vec, Scale, IsSigned);
+-      return ReducedSubTree;
+-    }
+-    // Scales Vec using given Cnt scale factor and then performs vector combine
+-    // with previous value of VecOp.
+-    Value *VecRes = nullptr;
+-    bool VecResSignedness = false;
+-    auto CreateVecOp = [&](Value *Vec, unsigned Cnt, bool IsSigned) {
+-      Type *ScalarTy = Vec->getType()->getScalarType();
+-      // Scale Vec using given Cnt scale factor.
+-      if (Cnt > 1) {
+-        ElementCount EC = cast<VectorType>(Vec->getType())->getElementCount();
+-        switch (RdxKind) {
+-        case RecurKind::Add: {
+-          if (ScalarTy == Builder.getInt1Ty() && ScalarTy != DestTy) {
+-            unsigned VF = getNumElements(Vec->getType());
+-            LLVM_DEBUG(dbgs() << "SLP: ctpop " << Cnt << "of " << Vec
+-                              << ". (HorRdx)\n");
+-            SmallVector<int> Mask(Cnt * VF, PoisonMaskElem);
+-            for (unsigned I : seq<unsigned>(Cnt))
+-              std::iota(std::next(Mask.begin(), VF * I),
+-                        std::next(Mask.begin(), VF * (I + 1)), 0);
+-            ++NumVectorInstructions;
+-            Vec = Builder.CreateShuffleVector(Vec, Mask);
+-            break;
+-          }
+-          // res = mul vv, n
+-          if (ScalarTy != DestTy->getScalarType())
+-            Vec = Builder.CreateIntCast(
+-                Vec, getWidenedType(DestTy, getNumElements(Vec->getType())),
+-                IsSigned);
+-          Value *Scale = ConstantVector::getSplat(
+-              EC, ConstantInt::get(DestTy->getScalarType(), Cnt));
+-          LLVM_DEBUG(dbgs() << "SLP: Add (to-mul) " << Cnt << "of " << Vec
+-                            << ". (HorRdx)\n");
+-          ++NumVectorInstructions;
+-          Vec = Builder.CreateMul(Vec, Scale);
+-          break;
+-        }
+-        case RecurKind::Xor: {
+-          // res = n % 2 ? 0 : vv
+-          LLVM_DEBUG(dbgs()
+-                     << "SLP: Xor " << Cnt << "of " << Vec << ". (HorRdx)\n");
+-          if (Cnt % 2 == 0)
+-            Vec = Constant::getNullValue(Vec->getType());
+-          break;
+-        }
+-        case RecurKind::FAdd: {
+-          // res = fmul v, n
+-          Value *Scale =
+-              ConstantVector::getSplat(EC, ConstantFP::get(ScalarTy, Cnt));
+-          LLVM_DEBUG(dbgs() << "SLP: FAdd (to-fmul) " << Cnt << "of " << Vec
+-                            << ". (HorRdx)\n");
+-          ++NumVectorInstructions;
+-          Vec = Builder.CreateFMul(Vec, Scale);
+-          break;
+-        }
+-        case RecurKind::And:
+-        case RecurKind::Or:
+-        case RecurKind::SMax:
+-        case RecurKind::SMin:
+-        case RecurKind::UMax:
+-        case RecurKind::UMin:
+-        case RecurKind::FMax:
+-        case RecurKind::FMin:
+-        case RecurKind::FMaximum:
+-        case RecurKind::FMinimum:
+-          // res = vv
+-          break;
+-        case RecurKind::Mul:
+-        case RecurKind::FMul:
+-        case RecurKind::FMulAdd:
+-        case RecurKind::IAnyOf:
+-        case RecurKind::FAnyOf:
+-        case RecurKind::IFindLastIV:
+-        case RecurKind::FFindLastIV:
+-        case RecurKind::None:
+-          llvm_unreachable("Unexpected reduction kind for repeated scalar.");
+-        }
+-      }
+-      // Combine Vec with the previous VecOp.
+-      if (!VecRes) {
+-        VecRes = Vec;
+-        VecResSignedness = IsSigned;
+-      } else {
+-        ++NumVectorInstructions;
+-        if (ScalarTy == Builder.getInt1Ty() && ScalarTy != DestTy) {
+-          // Handle ctpop.
+-          unsigned VecResVF = getNumElements(VecRes->getType());
+-          unsigned VecVF = getNumElements(Vec->getType());
+-          SmallVector<int> Mask(VecResVF + VecVF, PoisonMaskElem);
+-          std::iota(Mask.begin(), Mask.end(), 0);
+-          // Ensure that VecRes is always larger than Vec
+-          if (VecResVF < VecVF) {
+-            std::swap(VecRes, Vec);
+-            std::swap(VecResVF, VecVF);
+-          }
+-          if (VecResVF != VecVF) {
+-            SmallVector<int> ResizeMask(VecResVF, PoisonMaskElem);
+-            std::iota(Mask.begin(), std::next(Mask.begin(), VecVF), 0);
+-            Vec = Builder.CreateShuffleVector(Vec, ResizeMask);
+-          }
+-          VecRes = Builder.CreateShuffleVector(VecRes, Vec, Mask, "rdx.op");
+-          return;
+-        }
+-        if (VecRes->getType()->getScalarType() != DestTy->getScalarType())
+-          VecRes = Builder.CreateIntCast(
+-              VecRes, getWidenedType(DestTy, getNumElements(VecRes->getType())),
+-              VecResSignedness);
+-        if (ScalarTy != DestTy->getScalarType())
+-          Vec = Builder.CreateIntCast(
+-              Vec, getWidenedType(DestTy, getNumElements(Vec->getType())),
+-              IsSigned);
+-        unsigned VecResVF = getNumElements(VecRes->getType());
+-        unsigned VecVF = getNumElements(Vec->getType());
+-        // Ensure that VecRes is always larger than Vec
+-        if (VecResVF < VecVF) {
+-          std::swap(VecRes, Vec);
+-          std::swap(VecResVF, VecVF);
+-        }
+-        // extract + op + insert
+-        Value *Op = VecRes;
+-        if (VecResVF != VecVF)
+-          Op = createExtractVector(Builder, VecRes, VecVF, /*Index=*/0);
+-        Op = createOp(Builder, RdxKind, Op, Vec, "rdx.op", ReductionOps);
+-        if (VecResVF != VecVF)
+-          Op = createInsertVector(Builder, VecRes, Op, /*Index=*/0);
+-        VecRes = Op;
+-      }
+-    };
+-    for (auto [Vec, Scale, IsSigned] : VectorValuesAndScales)
+-      CreateVecOp(Vec, Scale, IsSigned);
+-    CreateSingleOp(VecRes, /*Scale=*/1, /*IsSigned=*/false);
+-
+-    return ReducedSubTree;
+-  }
+-
+   /// Emit a horizontal reduction of the vectorized value.
+   Value *emitReduction(Value *VectorizedValue, IRBuilderBase &Builder,
+                        const TargetTransformInfo *TTI, Type *DestTy) {
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/InstructionsState-is-invalid-0.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/InstructionsState-is-invalid-0.ll
+--- a/llvm/test/Transforms/SLPVectorizer/AArch64/InstructionsState-is-invalid-0.ll
++++ b/llvm/test/Transforms/SLPVectorizer/AArch64/InstructionsState-is-invalid-0.ll
+@@ -19,8 +19,9 @@
+ ; CHECK-NEXT:    [[TMP8:%.*]] = shufflevector <4 x ptr> [[TMP7]], <4 x ptr> poison, <4 x i32> <i32 0, i32 0, i32 0, i32 1>
+ ; CHECK-NEXT:    [[TMP9:%.*]] = icmp ult <4 x ptr> [[TMP8]], zeroinitializer
+ ; CHECK-NEXT:    [[TMP10:%.*]] = and <4 x i1> [[TMP9]], zeroinitializer
+-; CHECK-NEXT:    [[RDX_OP:%.*]] = or <4 x i1> [[TMP5]], [[TMP10]]
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[RDX_OP]])
++; CHECK-NEXT:    [[TMP11:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP5]])
++; CHECK-NEXT:    [[TMP12:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP10]])
++; CHECK-NEXT:    [[OP_RDX:%.*]] = or i1 [[TMP11]], [[TMP12]]
+ ; CHECK-NEXT:    br i1 [[OP_RDX]], label [[DOTLR_PH:%.*]], label [[VECTOR_PH:%.*]]
+ ; CHECK:       vector.ph:
+ ; CHECK-NEXT:    ret void
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/reduce-fadd.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/reduce-fadd.ll
+--- a/llvm/test/Transforms/SLPVectorizer/AArch64/reduce-fadd.ll
++++ b/llvm/test/Transforms/SLPVectorizer/AArch64/reduce-fadd.ll
+@@ -81,9 +81,10 @@
+ ; NOFP16-SAME: <8 x half> [[VEC8:%.*]]) #[[ATTR0]] {
+ ; NOFP16-NEXT:  [[ENTRY:.*:]]
+ ; NOFP16-NEXT:    [[TMP0:%.*]] = shufflevector <8 x half> [[VEC8]], <8 x half> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; NOFP16-NEXT:    [[TMP1:%.*]] = call fast half @llvm.vector.reduce.fadd.v4f16(half 0xH0000, <4 x half> [[TMP0]])
+ ; NOFP16-NEXT:    [[TMP2:%.*]] = shufflevector <8 x half> [[VEC8]], <8 x half> poison, <4 x i32> <i32 4, i32 5, i32 6, i32 7>
+-; NOFP16-NEXT:    [[RDX_OP:%.*]] = fadd fast <4 x half> [[TMP0]], [[TMP2]]
+-; NOFP16-NEXT:    [[OP_RDX3:%.*]] = call fast half @llvm.vector.reduce.fadd.v4f16(half 0xH0000, <4 x half> [[RDX_OP]])
++; NOFP16-NEXT:    [[TMP3:%.*]] = call fast half @llvm.vector.reduce.fadd.v4f16(half 0xH0000, <4 x half> [[TMP2]])
++; NOFP16-NEXT:    [[OP_RDX3:%.*]] = fadd fast half [[TMP1]], [[TMP3]]
+ ; NOFP16-NEXT:    ret half [[OP_RDX3]]
+ ;
+ ; FULLFP16-LABEL: define half @reduce_fast_half8(
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AMDGPU/reduction.ll b/llvm/test/Transforms/SLPVectorizer/AMDGPU/reduction.ll
+--- a/llvm/test/Transforms/SLPVectorizer/AMDGPU/reduction.ll
++++ b/llvm/test/Transforms/SLPVectorizer/AMDGPU/reduction.ll
+@@ -57,9 +57,10 @@
+ ; VI-LABEL: @reduction_half16(
+ ; VI-NEXT:  entry:
+ ; VI-NEXT:    [[TMP0:%.*]] = shufflevector <16 x half> [[VEC16:%.*]], <16 x half> poison, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
++; VI-NEXT:    [[TMP1:%.*]] = call fast half @llvm.vector.reduce.fadd.v8f16(half 0xH0000, <8 x half> [[TMP0]])
+ ; VI-NEXT:    [[TMP2:%.*]] = shufflevector <16 x half> [[VEC16]], <16 x half> poison, <8 x i32> <i32 8, i32 9, i32 10, i32 11, i32 12, i32 13, i32 14, i32 15>
+-; VI-NEXT:    [[RDX_OP:%.*]] = fadd fast <8 x half> [[TMP0]], [[TMP2]]
+-; VI-NEXT:    [[OP_RDX:%.*]] = call fast half @llvm.vector.reduce.fadd.v8f16(half 0xH0000, <8 x half> [[RDX_OP]])
++; VI-NEXT:    [[TMP3:%.*]] = call fast half @llvm.vector.reduce.fadd.v8f16(half 0xH0000, <8 x half> [[TMP2]])
++; VI-NEXT:    [[OP_RDX:%.*]] = fadd fast half [[TMP1]], [[TMP3]]
+ ; VI-NEXT:    ret half [[OP_RDX]]
+ ;
+ entry:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/partial-register-extract.ll b/llvm/test/Transforms/SLPVectorizer/partial-register-extract.ll
+--- a/llvm/test/Transforms/SLPVectorizer/partial-register-extract.ll
++++ b/llvm/test/Transforms/SLPVectorizer/partial-register-extract.ll
+@@ -23,11 +23,10 @@
+ ; CHECK-NEXT:    [[OP_RDX1:%.*]] = or i64 [[TMP9]], [[I8_I_I]]
+ ; CHECK-NEXT:    [[OP_RDX2:%.*]] = or i64 [[OP_RDX1]], [[I9_I_I]]
+ ; CHECK-NEXT:    [[TMP10:%.*]] = freeze <16 x i1> [[TMP4]]
++; CHECK-NEXT:    [[TMP11:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[TMP10]])
+ ; CHECK-NEXT:    [[TMP12:%.*]] = freeze <4 x i1> [[TMP2]]
+-; CHECK-NEXT:    [[TMP14:%.*]] = call <4 x i1> @llvm.vector.extract.v4i1.v16i1(<16 x i1> [[TMP10]], i64 0)
+-; CHECK-NEXT:    [[RDX_OP:%.*]] = select <4 x i1> [[TMP14]], <4 x i1> splat (i1 true), <4 x i1> [[TMP12]]
+-; CHECK-NEXT:    [[TMP13:%.*]] = call <16 x i1> @llvm.vector.insert.v16i1.v4i1(<16 x i1> [[TMP10]], <4 x i1> [[RDX_OP]], i64 0)
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[TMP13]])
++; CHECK-NEXT:    [[TMP13:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP12]])
++; CHECK-NEXT:    [[OP_RDX:%.*]] = select i1 [[TMP11]], i1 true, i1 [[TMP13]]
+ ; CHECK-NEXT:    [[AND252_US_I_24_I_I:%.*]] = select i1 [[OP_RDX]], i32 0, i32 0
+ ; CHECK-NEXT:    br label %[[INC]]
+ ; CHECK:       [[INC]]:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/reduction-modified-values.ll b/llvm/test/Transforms/SLPVectorizer/reduction-modified-values.ll
+--- a/llvm/test/Transforms/SLPVectorizer/reduction-modified-values.ll
++++ b/llvm/test/Transforms/SLPVectorizer/reduction-modified-values.ll
+@@ -7,8 +7,9 @@
+ ; CHECK-NEXT:  bb:
+ ; CHECK-NEXT:    [[TMP0:%.*]] = shufflevector <4 x i32> zeroinitializer, <4 x i32> zeroinitializer, <4 x i32> <i32 0, i32 1, i32 2, i32 7>
+ ; CHECK-NEXT:    [[TMP1:%.*]] = or <4 x i32> [[TMP0]], zeroinitializer
+-; CHECK-NEXT:    [[RDX_OP:%.*]] = add <4 x i32> [[TMP1]], [[TMP0]]
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> [[RDX_OP]])
++; CHECK-NEXT:    [[TMP2:%.*]] = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> [[TMP1]])
++; CHECK-NEXT:    [[TMP3:%.*]] = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> [[TMP0]])
++; CHECK-NEXT:    [[OP_RDX:%.*]] = add i32 [[TMP2]], [[TMP3]]
+ ; CHECK-NEXT:    ret i32 [[OP_RDX]]
+ ;
+ bb:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/RISCV/horizontal-list.ll b/llvm/test/Transforms/SLPVectorizer/RISCV/horizontal-list.ll
+--- a/llvm/test/Transforms/SLPVectorizer/RISCV/horizontal-list.ll
++++ b/llvm/test/Transforms/SLPVectorizer/RISCV/horizontal-list.ll
+@@ -18,7 +18,7 @@
+ ; YAML-NEXT: Function:        test
+ ; YAML-NEXT: Args:
+ ; YAML-NEXT:   - String:          'Vectorized horizontal reduction with cost '
+-; YAML-NEXT:   - Cost:            '-15'
++; YAML-NEXT:   - Cost:            '-14'
+ ; YAML-NEXT:   - String:          ' and with tree size '
+ ; YAML-NEXT:   - TreeSize:        '1'
+ ; YAML-NEXT: ...
+@@ -28,7 +28,7 @@
+ ; YAML-NEXT: Function:        test
+ ; YAML-NEXT: Args:
+ ; YAML-NEXT:   - String:          'Vectorized horizontal reduction with cost '
+-; YAML-NEXT:   - Cost:            '-6'
++; YAML-NEXT:   - Cost:            '-4'
+ ; YAML-NEXT:   - String:          ' and with tree size '
+ ; YAML-NEXT:   - TreeSize:        '1'
+ ; YAML-NEXT:...
+@@ -45,13 +45,11 @@
+ ; CHECK-NEXT:    [[TMP3:%.*]] = load float, ptr [[ARRAYIDX_28]], align 4
+ ; CHECK-NEXT:    [[ARRAYIDX_29:%.*]] = getelementptr inbounds float, ptr [[X]], i64 30
+ ; CHECK-NEXT:    [[TMP4:%.*]] = load float, ptr [[ARRAYIDX_29]], align 4
+-; CHECK-NEXT:    [[TMP5:%.*]] = call fast <8 x float> @llvm.vector.extract.v8f32.v16f32(<16 x float> [[TMP0]], i64 0)
+-; CHECK-NEXT:    [[RDX_OP:%.*]] = fadd fast <8 x float> [[TMP5]], [[TMP1]]
+-; CHECK-NEXT:    [[TMP6:%.*]] = call fast <16 x float> @llvm.vector.insert.v16f32.v8f32(<16 x float> [[TMP0]], <8 x float> [[RDX_OP]], i64 0)
+-; CHECK-NEXT:    [[RDX_OP4:%.*]] = call fast <4 x float> @llvm.vector.extract.v4f32.v16f32(<16 x float> [[TMP6]], i64 0)
+-; CHECK-NEXT:    [[RDX_OP5:%.*]] = fadd fast <4 x float> [[RDX_OP4]], [[TMP2]]
+-; CHECK-NEXT:    [[TMP8:%.*]] = call fast <16 x float> @llvm.vector.insert.v16f32.v4f32(<16 x float> [[TMP6]], <4 x float> [[RDX_OP5]], i64 0)
+-; CHECK-NEXT:    [[OP_RDX1:%.*]] = call fast float @llvm.vector.reduce.fadd.v16f32(float 0.000000e+00, <16 x float> [[TMP8]])
++; CHECK-NEXT:    [[TMP5:%.*]] = call fast float @llvm.vector.reduce.fadd.v16f32(float 0.000000e+00, <16 x float> [[TMP0]])
++; CHECK-NEXT:    [[TMP6:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP1]])
++; CHECK-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP5]], [[TMP6]]
++; CHECK-NEXT:    [[TMP7:%.*]] = call fast float @llvm.vector.reduce.fadd.v4f32(float 0.000000e+00, <4 x float> [[TMP2]])
++; CHECK-NEXT:    [[OP_RDX1:%.*]] = fadd fast float [[OP_RDX]], [[TMP7]]
+ ; CHECK-NEXT:    [[OP_RDX2:%.*]] = fadd fast float [[OP_RDX1]], [[TMP3]]
+ ; CHECK-NEXT:    [[OP_RDX3:%.*]] = fadd fast float [[OP_RDX2]], [[TMP4]]
+ ; CHECK-NEXT:    ret float [[OP_RDX3]]
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/RISCV/reductions.ll b/llvm/test/Transforms/SLPVectorizer/RISCV/reductions.ll
+--- a/llvm/test/Transforms/SLPVectorizer/RISCV/reductions.ll
++++ b/llvm/test/Transforms/SLPVectorizer/RISCV/reductions.ll
+@@ -341,13 +341,14 @@
+ ; ZVFHMIN-NEXT:    [[TMP3:%.*]] = icmp ult <16 x i64> [[TMP2]], zeroinitializer
+ ; ZVFHMIN-NEXT:    [[TMP4:%.*]] = insertelement <16 x i64> <i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 poison, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0>, i64 [[TMP1]], i32 6
+ ; ZVFHMIN-NEXT:    [[TMP5:%.*]] = icmp ult <16 x i64> [[TMP4]], zeroinitializer
+-; ZVFHMIN-NEXT:    [[RDX_OP:%.*]] = or <16 x i1> [[TMP3]], [[TMP5]]
+-; ZVFHMIN-NEXT:    [[OP_RDX:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[RDX_OP]])
++; ZVFHMIN-NEXT:    [[TMP6:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[TMP3]])
++; ZVFHMIN-NEXT:    [[TMP7:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[TMP5]])
++; ZVFHMIN-NEXT:    [[OP_RDX:%.*]] = or i1 [[TMP6]], [[TMP7]]
+ ; ZVFHMIN-NEXT:    br i1 [[OP_RDX]], label [[TMP9:%.*]], label [[TMP8:%.*]]
+-; ZVFHMIN:       7:
+-; ZVFHMIN-NEXT:    ret void
+ ; ZVFHMIN:       8:
+ ; ZVFHMIN-NEXT:    ret void
++; ZVFHMIN:       9:
++; ZVFHMIN-NEXT:    ret void
+ ;
+ ; ZVL128-LABEL: @reduce_or_2(
+ ; ZVL128-NEXT:    [[TMP1:%.*]] = shl i64 0, 0
+@@ -355,13 +356,14 @@
+ ; ZVL128-NEXT:    [[TMP3:%.*]] = icmp ult <16 x i64> [[TMP2]], zeroinitializer
+ ; ZVL128-NEXT:    [[TMP4:%.*]] = insertelement <16 x i64> <i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 poison, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0>, i64 [[TMP1]], i32 6
+ ; ZVL128-NEXT:    [[TMP5:%.*]] = icmp ult <16 x i64> [[TMP4]], zeroinitializer
+-; ZVL128-NEXT:    [[RDX_OP:%.*]] = or <16 x i1> [[TMP3]], [[TMP5]]
+-; ZVL128-NEXT:    [[OP_RDX:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[RDX_OP]])
++; ZVL128-NEXT:    [[TMP6:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[TMP3]])
++; ZVL128-NEXT:    [[TMP7:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[TMP5]])
++; ZVL128-NEXT:    [[OP_RDX:%.*]] = or i1 [[TMP6]], [[TMP7]]
+ ; ZVL128-NEXT:    br i1 [[OP_RDX]], label [[TMP9:%.*]], label [[TMP8:%.*]]
+-; ZVL128:       7:
+-; ZVL128-NEXT:    ret void
+ ; ZVL128:       8:
+ ; ZVL128-NEXT:    ret void
++; ZVL128:       9:
++; ZVL128-NEXT:    ret void
+ ;
+ ; ZVL256-LABEL: @reduce_or_2(
+ ; ZVL256-NEXT:    [[TMP1:%.*]] = shl i64 0, 0
+@@ -369,13 +371,14 @@
+ ; ZVL256-NEXT:    [[TMP3:%.*]] = icmp ult <16 x i64> [[TMP2]], zeroinitializer
+ ; ZVL256-NEXT:    [[TMP4:%.*]] = insertelement <16 x i64> <i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 poison, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0>, i64 [[TMP1]], i32 6
+ ; ZVL256-NEXT:    [[TMP5:%.*]] = icmp ult <16 x i64> [[TMP4]], zeroinitializer
+-; ZVL256-NEXT:    [[RDX_OP:%.*]] = or <16 x i1> [[TMP3]], [[TMP5]]
+-; ZVL256-NEXT:    [[OP_RDX:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[RDX_OP]])
++; ZVL256-NEXT:    [[TMP6:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[TMP3]])
++; ZVL256-NEXT:    [[TMP7:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[TMP5]])
++; ZVL256-NEXT:    [[OP_RDX:%.*]] = or i1 [[TMP6]], [[TMP7]]
+ ; ZVL256-NEXT:    br i1 [[OP_RDX]], label [[TMP9:%.*]], label [[TMP8:%.*]]
+-; ZVL256:       7:
+-; ZVL256-NEXT:    ret void
+ ; ZVL256:       8:
+ ; ZVL256-NEXT:    ret void
++; ZVL256:       9:
++; ZVL256-NEXT:    ret void
+ ;
+ ; ZVL512-LABEL: @reduce_or_2(
+ ; ZVL512-NEXT:    [[TMP1:%.*]] = shl i64 0, 0
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/scalarization-overhead.ll b/llvm/test/Transforms/SLPVectorizer/scalarization-overhead.ll
+--- a/llvm/test/Transforms/SLPVectorizer/scalarization-overhead.ll
++++ b/llvm/test/Transforms/SLPVectorizer/scalarization-overhead.ll
+@@ -13,7 +13,7 @@
+ ; CHECK-NEXT:    [[REASS_ADD:%.*]] = add i16 poison, [[TMP0]]
+ ; CHECK-NEXT:    [[TMP2:%.*]] = call i16 @llvm.vector.reduce.add.v4i16(<4 x i16> [[TMP1]])
+ ; CHECK-NEXT:    [[TMP3:%.*]] = mul i16 [[TMP2]], 2
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = add i16 poison, [[TMP3]]
++; CHECK-NEXT:    [[OP_RDX:%.*]] = add i16 [[TMP3]], poison
+ ; CHECK-NEXT:    [[REASS_MUL24:%.*]] = shl i16 [[OP_RDX]], 2
+ ; CHECK-NEXT:    [[CALL:%.*]] = call i16 @check_i16(i16 noundef 1, i16 noundef [[REASS_MUL24]], i16 noundef 5120)
+ ; CHECK-NEXT:    ret void
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/bool-mask.ll b/llvm/test/Transforms/SLPVectorizer/X86/bool-mask.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/bool-mask.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/bool-mask.ll
+@@ -1,8 +1,8 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
+-; RUN: opt < %s -passes=slp-vectorizer -S -mtriple=x86_64-unknown -mcpu=x86-64    -S | FileCheck %s --check-prefixes=SSE,SSE2
+-; RUN: opt < %s -passes=slp-vectorizer -S -mtriple=x86_64-unknown -mcpu=x86-64-v2 -S | FileCheck %s --check-prefixes=SSE,SSE4
+-; RUN: opt < %s -passes=slp-vectorizer -S -mtriple=x86_64-unknown -mcpu=x86-64-v3 -S | FileCheck %s --check-prefixes=AVX
+-; RUN: opt < %s -passes=slp-vectorizer -S -mtriple=x86_64-unknown -mcpu=x86-64-v4 -S | FileCheck %s --check-prefixes=AVX512
++; RUN: opt < %s -passes=slp-vectorizer -S -mtriple=x86_64-unknown -mcpu=x86-64    -S | FileCheck %s --check-prefixes=CHECK,SSE,SSE2
++; RUN: opt < %s -passes=slp-vectorizer -S -mtriple=x86_64-unknown -mcpu=x86-64-v2 -S | FileCheck %s --check-prefixes=CHECK,SSE,SSE4
++; RUN: opt < %s -passes=slp-vectorizer -S -mtriple=x86_64-unknown -mcpu=x86-64-v3 -S | FileCheck %s --check-prefixes=CHECK,AVX
++; RUN: opt < %s -passes=slp-vectorizer -S -mtriple=x86_64-unknown -mcpu=x86-64-v4 -S | FileCheck %s --check-prefixes=CHECK,AVX512
+ 
+ ; // PR42652
+ ; unsigned long bitmask_16xi8(const char *src) {
+@@ -15,110 +15,39 @@
+ ; }
+ 
+ define i64 @bitmask_16xi8(ptr nocapture noundef readonly %src) {
+-; SSE-LABEL: @bitmask_16xi8(
+-; SSE-NEXT:  entry:
+-; SSE-NEXT:    [[TMP0:%.*]] = load i8, ptr [[SRC:%.*]], align 1
+-; SSE-NEXT:    [[TOBOOL_NOT:%.*]] = icmp ne i8 [[TMP0]], 0
+-; SSE-NEXT:    [[OR:%.*]] = zext i1 [[TOBOOL_NOT]] to i64
+-; SSE-NEXT:    [[ARRAYIDX_1:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 1
+-; SSE-NEXT:    [[TMP1:%.*]] = load <8 x i8>, ptr [[ARRAYIDX_1]], align 1
+-; SSE-NEXT:    [[TMP2:%.*]] = icmp eq <8 x i8> [[TMP1]], zeroinitializer
+-; SSE-NEXT:    [[TMP3:%.*]] = select <8 x i1> [[TMP2]], <8 x i64> zeroinitializer, <8 x i64> <i64 2, i64 4, i64 8, i64 16, i64 32, i64 64, i64 128, i64 256>
+-; SSE-NEXT:    [[ARRAYIDX_9:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 9
+-; SSE-NEXT:    [[TMP4:%.*]] = load <4 x i8>, ptr [[ARRAYIDX_9]], align 1
+-; SSE-NEXT:    [[TMP5:%.*]] = icmp eq <4 x i8> [[TMP4]], zeroinitializer
+-; SSE-NEXT:    [[TMP6:%.*]] = select <4 x i1> [[TMP5]], <4 x i64> zeroinitializer, <4 x i64> <i64 512, i64 1024, i64 2048, i64 4096>
+-; SSE-NEXT:    [[ARRAYIDX_13:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 13
+-; SSE-NEXT:    [[TMP7:%.*]] = load i8, ptr [[ARRAYIDX_13]], align 1
+-; SSE-NEXT:    [[TOBOOL_NOT_13:%.*]] = icmp eq i8 [[TMP7]], 0
+-; SSE-NEXT:    [[OR_13:%.*]] = select i1 [[TOBOOL_NOT_13]], i64 0, i64 8192
+-; SSE-NEXT:    [[ARRAYIDX_14:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 14
+-; SSE-NEXT:    [[TMP8:%.*]] = load i8, ptr [[ARRAYIDX_14]], align 1
+-; SSE-NEXT:    [[TOBOOL_NOT_14:%.*]] = icmp eq i8 [[TMP8]], 0
+-; SSE-NEXT:    [[OR_14:%.*]] = select i1 [[TOBOOL_NOT_14]], i64 0, i64 16384
+-; SSE-NEXT:    [[ARRAYIDX_15:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 15
+-; SSE-NEXT:    [[TMP9:%.*]] = load i8, ptr [[ARRAYIDX_15]], align 1
+-; SSE-NEXT:    [[TOBOOL_NOT_15:%.*]] = icmp eq i8 [[TMP9]], 0
+-; SSE-NEXT:    [[OR_15:%.*]] = select i1 [[TOBOOL_NOT_15]], i64 0, i64 32768
+-; SSE-NEXT:    [[TMP10:%.*]] = call <4 x i64> @llvm.vector.extract.v4i64.v8i64(<8 x i64> [[TMP3]], i64 0)
+-; SSE-NEXT:    [[RDX_OP:%.*]] = or <4 x i64> [[TMP10]], [[TMP6]]
+-; SSE-NEXT:    [[TMP11:%.*]] = call <8 x i64> @llvm.vector.insert.v8i64.v4i64(<8 x i64> [[TMP3]], <4 x i64> [[RDX_OP]], i64 0)
+-; SSE-NEXT:    [[TMP16:%.*]] = call i64 @llvm.vector.reduce.or.v8i64(<8 x i64> [[TMP11]])
+-; SSE-NEXT:    [[OP_RDX:%.*]] = or i64 [[TMP16]], [[OR_13]]
+-; SSE-NEXT:    [[OP_RDX5:%.*]] = or i64 [[OR_14]], [[OR_15]]
+-; SSE-NEXT:    [[OP_RDX6:%.*]] = or i64 [[OP_RDX]], [[OP_RDX5]]
+-; SSE-NEXT:    [[OP_RDX7:%.*]] = or i64 [[OP_RDX6]], [[OR]]
+-; SSE-NEXT:    ret i64 [[OP_RDX7]]
+-;
+-; AVX-LABEL: @bitmask_16xi8(
+-; AVX-NEXT:  entry:
+-; AVX-NEXT:    [[TMP0:%.*]] = load i8, ptr [[SRC:%.*]], align 1
+-; AVX-NEXT:    [[TOBOOL_NOT:%.*]] = icmp ne i8 [[TMP0]], 0
+-; AVX-NEXT:    [[OR:%.*]] = zext i1 [[TOBOOL_NOT]] to i64
+-; AVX-NEXT:    [[ARRAYIDX_1:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 1
+-; AVX-NEXT:    [[TMP1:%.*]] = load <8 x i8>, ptr [[ARRAYIDX_1]], align 1
+-; AVX-NEXT:    [[TMP2:%.*]] = icmp eq <8 x i8> [[TMP1]], zeroinitializer
+-; AVX-NEXT:    [[TMP3:%.*]] = select <8 x i1> [[TMP2]], <8 x i64> zeroinitializer, <8 x i64> <i64 2, i64 4, i64 8, i64 16, i64 32, i64 64, i64 128, i64 256>
+-; AVX-NEXT:    [[ARRAYIDX_9:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 9
+-; AVX-NEXT:    [[TMP4:%.*]] = load <4 x i8>, ptr [[ARRAYIDX_9]], align 1
+-; AVX-NEXT:    [[TMP5:%.*]] = icmp eq <4 x i8> [[TMP4]], zeroinitializer
+-; AVX-NEXT:    [[TMP6:%.*]] = select <4 x i1> [[TMP5]], <4 x i64> zeroinitializer, <4 x i64> <i64 512, i64 1024, i64 2048, i64 4096>
+-; AVX-NEXT:    [[ARRAYIDX_13:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 13
+-; AVX-NEXT:    [[TMP7:%.*]] = load i8, ptr [[ARRAYIDX_13]], align 1
+-; AVX-NEXT:    [[TOBOOL_NOT_13:%.*]] = icmp eq i8 [[TMP7]], 0
+-; AVX-NEXT:    [[OR_13:%.*]] = select i1 [[TOBOOL_NOT_13]], i64 0, i64 8192
+-; AVX-NEXT:    [[ARRAYIDX_14:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 14
+-; AVX-NEXT:    [[TMP8:%.*]] = load i8, ptr [[ARRAYIDX_14]], align 1
+-; AVX-NEXT:    [[TOBOOL_NOT_14:%.*]] = icmp eq i8 [[TMP8]], 0
+-; AVX-NEXT:    [[OR_14:%.*]] = select i1 [[TOBOOL_NOT_14]], i64 0, i64 16384
+-; AVX-NEXT:    [[ARRAYIDX_15:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 15
+-; AVX-NEXT:    [[TMP9:%.*]] = load i8, ptr [[ARRAYIDX_15]], align 1
+-; AVX-NEXT:    [[TOBOOL_NOT_15:%.*]] = icmp eq i8 [[TMP9]], 0
+-; AVX-NEXT:    [[OR_15:%.*]] = select i1 [[TOBOOL_NOT_15]], i64 0, i64 32768
+-; AVX-NEXT:    [[TMP10:%.*]] = call <4 x i64> @llvm.vector.extract.v4i64.v8i64(<8 x i64> [[TMP3]], i64 0)
+-; AVX-NEXT:    [[RDX_OP:%.*]] = or <4 x i64> [[TMP10]], [[TMP6]]
+-; AVX-NEXT:    [[TMP11:%.*]] = call <8 x i64> @llvm.vector.insert.v8i64.v4i64(<8 x i64> [[TMP3]], <4 x i64> [[RDX_OP]], i64 0)
+-; AVX-NEXT:    [[TMP12:%.*]] = call i64 @llvm.vector.reduce.or.v8i64(<8 x i64> [[TMP11]])
+-; AVX-NEXT:    [[OP_RDX:%.*]] = or i64 [[TMP12]], [[OR_13]]
+-; AVX-NEXT:    [[OP_RDX2:%.*]] = or i64 [[OR_14]], [[OR_15]]
+-; AVX-NEXT:    [[OP_RDX3:%.*]] = or i64 [[OP_RDX]], [[OP_RDX2]]
+-; AVX-NEXT:    [[OP_RDX4:%.*]] = or i64 [[OP_RDX3]], [[OR]]
+-; AVX-NEXT:    ret i64 [[OP_RDX4]]
+-;
+-; AVX512-LABEL: @bitmask_16xi8(
+-; AVX512-NEXT:  entry:
+-; AVX512-NEXT:    [[TMP0:%.*]] = load i8, ptr [[SRC:%.*]], align 1
+-; AVX512-NEXT:    [[TOBOOL_NOT:%.*]] = icmp ne i8 [[TMP0]], 0
+-; AVX512-NEXT:    [[OR:%.*]] = zext i1 [[TOBOOL_NOT]] to i64
+-; AVX512-NEXT:    [[ARRAYIDX_1:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 1
+-; AVX512-NEXT:    [[TMP1:%.*]] = load <8 x i8>, ptr [[ARRAYIDX_1]], align 1
+-; AVX512-NEXT:    [[TMP2:%.*]] = icmp eq <8 x i8> [[TMP1]], zeroinitializer
+-; AVX512-NEXT:    [[TMP3:%.*]] = select <8 x i1> [[TMP2]], <8 x i64> zeroinitializer, <8 x i64> <i64 2, i64 4, i64 8, i64 16, i64 32, i64 64, i64 128, i64 256>
+-; AVX512-NEXT:    [[ARRAYIDX_9:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 9
+-; AVX512-NEXT:    [[TMP4:%.*]] = load <4 x i8>, ptr [[ARRAYIDX_9]], align 1
+-; AVX512-NEXT:    [[TMP5:%.*]] = icmp eq <4 x i8> [[TMP4]], zeroinitializer
+-; AVX512-NEXT:    [[TMP6:%.*]] = select <4 x i1> [[TMP5]], <4 x i64> zeroinitializer, <4 x i64> <i64 512, i64 1024, i64 2048, i64 4096>
+-; AVX512-NEXT:    [[ARRAYIDX_13:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 13
+-; AVX512-NEXT:    [[TMP7:%.*]] = load i8, ptr [[ARRAYIDX_13]], align 1
+-; AVX512-NEXT:    [[TOBOOL_NOT_13:%.*]] = icmp eq i8 [[TMP7]], 0
+-; AVX512-NEXT:    [[OR_13:%.*]] = select i1 [[TOBOOL_NOT_13]], i64 0, i64 8192
+-; AVX512-NEXT:    [[ARRAYIDX_14:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 14
+-; AVX512-NEXT:    [[TMP8:%.*]] = load i8, ptr [[ARRAYIDX_14]], align 1
+-; AVX512-NEXT:    [[TOBOOL_NOT_14:%.*]] = icmp eq i8 [[TMP8]], 0
+-; AVX512-NEXT:    [[OR_14:%.*]] = select i1 [[TOBOOL_NOT_14]], i64 0, i64 16384
+-; AVX512-NEXT:    [[ARRAYIDX_15:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 15
+-; AVX512-NEXT:    [[TMP9:%.*]] = load i8, ptr [[ARRAYIDX_15]], align 1
+-; AVX512-NEXT:    [[TOBOOL_NOT_15:%.*]] = icmp eq i8 [[TMP9]], 0
+-; AVX512-NEXT:    [[OR_15:%.*]] = select i1 [[TOBOOL_NOT_15]], i64 0, i64 32768
+-; AVX512-NEXT:    [[TMP10:%.*]] = call <4 x i64> @llvm.vector.extract.v4i64.v8i64(<8 x i64> [[TMP3]], i64 0)
+-; AVX512-NEXT:    [[RDX_OP:%.*]] = or <4 x i64> [[TMP10]], [[TMP6]]
+-; AVX512-NEXT:    [[TMP11:%.*]] = call <8 x i64> @llvm.vector.insert.v8i64.v4i64(<8 x i64> [[TMP3]], <4 x i64> [[RDX_OP]], i64 0)
+-; AVX512-NEXT:    [[TMP12:%.*]] = call i64 @llvm.vector.reduce.or.v8i64(<8 x i64> [[TMP11]])
+-; AVX512-NEXT:    [[OP_RDX:%.*]] = or i64 [[TMP12]], [[OR_13]]
+-; AVX512-NEXT:    [[OP_RDX2:%.*]] = or i64 [[OR_14]], [[OR_15]]
+-; AVX512-NEXT:    [[OP_RDX3:%.*]] = or i64 [[OP_RDX]], [[OP_RDX2]]
+-; AVX512-NEXT:    [[OP_RDX4:%.*]] = or i64 [[OP_RDX3]], [[OR]]
+-; AVX512-NEXT:    ret i64 [[OP_RDX4]]
++; CHECK-LABEL: @bitmask_16xi8(
++; CHECK-NEXT:  entry:
++; CHECK-NEXT:    [[TMP0:%.*]] = load i8, ptr [[SRC:%.*]], align 1
++; CHECK-NEXT:    [[TOBOOL_NOT:%.*]] = icmp ne i8 [[TMP0]], 0
++; CHECK-NEXT:    [[OR:%.*]] = zext i1 [[TOBOOL_NOT]] to i64
++; CHECK-NEXT:    [[ARRAYIDX_1:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 1
++; CHECK-NEXT:    [[TMP1:%.*]] = load <8 x i8>, ptr [[ARRAYIDX_1]], align 1
++; CHECK-NEXT:    [[TMP2:%.*]] = icmp eq <8 x i8> [[TMP1]], zeroinitializer
++; CHECK-NEXT:    [[TMP3:%.*]] = select <8 x i1> [[TMP2]], <8 x i64> zeroinitializer, <8 x i64> <i64 2, i64 4, i64 8, i64 16, i64 32, i64 64, i64 128, i64 256>
++; CHECK-NEXT:    [[ARRAYIDX_9:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 9
++; CHECK-NEXT:    [[TMP4:%.*]] = load <4 x i8>, ptr [[ARRAYIDX_9]], align 1
++; CHECK-NEXT:    [[TMP5:%.*]] = icmp eq <4 x i8> [[TMP4]], zeroinitializer
++; CHECK-NEXT:    [[TMP6:%.*]] = select <4 x i1> [[TMP5]], <4 x i64> zeroinitializer, <4 x i64> <i64 512, i64 1024, i64 2048, i64 4096>
++; CHECK-NEXT:    [[ARRAYIDX_13:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 13
++; CHECK-NEXT:    [[TMP7:%.*]] = load i8, ptr [[ARRAYIDX_13]], align 1
++; CHECK-NEXT:    [[TOBOOL_NOT_13:%.*]] = icmp eq i8 [[TMP7]], 0
++; CHECK-NEXT:    [[OR_13:%.*]] = select i1 [[TOBOOL_NOT_13]], i64 0, i64 8192
++; CHECK-NEXT:    [[ARRAYIDX_14:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 14
++; CHECK-NEXT:    [[TMP8:%.*]] = load i8, ptr [[ARRAYIDX_14]], align 1
++; CHECK-NEXT:    [[TOBOOL_NOT_14:%.*]] = icmp eq i8 [[TMP8]], 0
++; CHECK-NEXT:    [[OR_14:%.*]] = select i1 [[TOBOOL_NOT_14]], i64 0, i64 16384
++; CHECK-NEXT:    [[ARRAYIDX_15:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 15
++; CHECK-NEXT:    [[TMP9:%.*]] = load i8, ptr [[ARRAYIDX_15]], align 1
++; CHECK-NEXT:    [[TOBOOL_NOT_15:%.*]] = icmp eq i8 [[TMP9]], 0
++; CHECK-NEXT:    [[OR_15:%.*]] = select i1 [[TOBOOL_NOT_15]], i64 0, i64 32768
++; CHECK-NEXT:    [[TMP10:%.*]] = call i64 @llvm.vector.reduce.or.v8i64(<8 x i64> [[TMP3]])
++; CHECK-NEXT:    [[TMP11:%.*]] = call i64 @llvm.vector.reduce.or.v4i64(<4 x i64> [[TMP6]])
++; CHECK-NEXT:    [[OP_RDX:%.*]] = or i64 [[TMP10]], [[TMP11]]
++; CHECK-NEXT:    [[OP_RDX1:%.*]] = or i64 [[OP_RDX]], [[OR_13]]
++; CHECK-NEXT:    [[OP_RDX2:%.*]] = or i64 [[OR_14]], [[OR_15]]
++; CHECK-NEXT:    [[OP_RDX3:%.*]] = or i64 [[OP_RDX1]], [[OP_RDX2]]
++; CHECK-NEXT:    [[OP_RDX4:%.*]] = or i64 [[OP_RDX3]], [[OR]]
++; CHECK-NEXT:    ret i64 [[OP_RDX4]]
+ ;
+ entry:
+   %0 = load i8, ptr %src, align 1
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/external-used-across-reductions.ll b/llvm/test/Transforms/SLPVectorizer/X86/external-used-across-reductions.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/external-used-across-reductions.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/external-used-across-reductions.ll
+@@ -14,8 +14,9 @@
+ ; CHECK-NEXT:    [[TMP6:%.*]] = phi <8 x i64> [ [[TMP0]], [[ENTRY]] ], [ [[TMP1]], [[LOOP]] ]
+ ; CHECK-NEXT:    [[TMP7:%.*]] = mul <8 x i64> [[TMP6]], splat (i64 4)
+ ; CHECK-NEXT:    [[TMP5:%.*]] = mul <8 x i64> [[TMP1]], splat (i64 2)
+-; CHECK-NEXT:    [[RDX_OP:%.*]] = add <8 x i64> [[TMP7]], [[TMP5]]
+-; CHECK-NEXT:    [[OP_RDX16:%.*]] = call i64 @llvm.vector.reduce.add.v8i64(<8 x i64> [[RDX_OP]])
++; CHECK-NEXT:    [[TMP9:%.*]] = call i64 @llvm.vector.reduce.add.v8i64(<8 x i64> [[TMP7]])
++; CHECK-NEXT:    [[TMP8:%.*]] = call i64 @llvm.vector.reduce.add.v8i64(<8 x i64> [[TMP5]])
++; CHECK-NEXT:    [[OP_RDX16:%.*]] = add i64 [[TMP9]], [[TMP8]]
+ ; CHECK-NEXT:    [[OP_RDX25]] = add i64 [[OP_RDX16]], [[TMP3]]
+ ; CHECK-NEXT:    br label [[LOOP]]
+ ;
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/extractelemets-extended-by-poison.ll b/llvm/test/Transforms/SLPVectorizer/X86/extractelemets-extended-by-poison.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/extractelemets-extended-by-poison.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/extractelemets-extended-by-poison.ll
+@@ -19,10 +19,9 @@
+ ; CHECK-NEXT:    [[TMP8:%.*]] = add <16 x i32> [[TMP7]], zeroinitializer
+ ; CHECK-NEXT:    [[TMP9:%.*]] = extractelement <4 x i64> [[TMP0]], i32 0
+ ; CHECK-NEXT:    [[INC_3_3_I_1:%.*]] = or i64 [[TMP9]], 0
+-; CHECK-NEXT:    [[TMP16:%.*]] = call <8 x i32> @llvm.vector.extract.v8i32.v16i32(<16 x i32> [[TMP8]], i64 0)
+-; CHECK-NEXT:    [[RDX_OP:%.*]] = or <8 x i32> [[TMP16]], [[TMP15]]
+-; CHECK-NEXT:    [[TMP17:%.*]] = call <16 x i32> @llvm.vector.insert.v16i32.v8i32(<16 x i32> [[TMP8]], <8 x i32> [[RDX_OP]], i64 0)
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = call i32 @llvm.vector.reduce.or.v16i32(<16 x i32> [[TMP17]])
++; CHECK-NEXT:    [[TMP10:%.*]] = call i32 @llvm.vector.reduce.or.v16i32(<16 x i32> [[TMP8]])
++; CHECK-NEXT:    [[TMP11:%.*]] = call i32 @llvm.vector.reduce.or.v8i32(<8 x i32> [[TMP15]])
++; CHECK-NEXT:    [[OP_RDX:%.*]] = or i32 [[TMP10]], [[TMP11]]
+ ; CHECK-NEXT:    ret i32 [[OP_RDX]]
+ ;
+ entry:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/extract-scalar-from-undef.ll b/llvm/test/Transforms/SLPVectorizer/X86/extract-scalar-from-undef.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/extract-scalar-from-undef.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/extract-scalar-from-undef.ll
+@@ -18,7 +18,7 @@
+ ; CHECK-NEXT:    [[TMP8:%.*]] = add <8 x i32> zeroinitializer, [[TMP7]]
+ ; CHECK-NEXT:    [[TMP9:%.*]] = xor <8 x i32> [[TMP8]], zeroinitializer
+ ; CHECK-NEXT:    [[TMP10:%.*]] = call i32 @llvm.vector.reduce.add.v8i32(<8 x i32> [[TMP9]])
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = add i32 0, [[TMP10]]
++; CHECK-NEXT:    [[OP_RDX:%.*]] = add i32 [[TMP10]], 0
+ ; CHECK-NEXT:    [[TMP64:%.*]] = zext i32 [[OP_RDX]] to i64
+ ; CHECK-NEXT:    ret i64 [[TMP64]]
+ ;
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/horizontal-list.ll b/llvm/test/Transforms/SLPVectorizer/X86/horizontal-list.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/horizontal-list.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/horizontal-list.ll
+@@ -16,9 +16,9 @@
+ ; CHECK-NEXT:    [[TMP1:%.*]] = load <4 x float>, ptr @arr, align 16
+ ; CHECK-NEXT:    [[TMP2:%.*]] = load <4 x float>, ptr @arr1, align 16
+ ; CHECK-NEXT:    [[TMP3:%.*]] = fmul fast <4 x float> [[TMP2]], [[TMP1]]
+-; CHECK-NEXT:    [[TMP5:%.*]] = fmul fast float [[CONV]], 2.000000e+00
+ ; CHECK-NEXT:    [[TMP4:%.*]] = call fast float @llvm.vector.reduce.fadd.v4f32(float 0.000000e+00, <4 x float> [[TMP3]])
+-; CHECK-NEXT:    [[TMP6:%.*]] = fmul fast float [[TMP4]], 2.000000e+00
++; CHECK-NEXT:    [[TMP5:%.*]] = fmul fast float [[TMP4]], 2.000000e+00
++; CHECK-NEXT:    [[TMP6:%.*]] = fmul fast float [[CONV]], 2.000000e+00
+ ; CHECK-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP5]], [[TMP6]]
+ ; CHECK-NEXT:    store float [[OP_RDX]], ptr @res, align 4
+ ; CHECK-NEXT:    ret float [[OP_RDX]]
+@@ -32,8 +32,8 @@
+ ; THRESHOLD-NEXT:    [[TMP2:%.*]] = load <4 x float>, ptr @arr1, align 16
+ ; THRESHOLD-NEXT:    [[TMP3:%.*]] = fmul fast <4 x float> [[TMP2]], [[TMP1]]
+ ; THRESHOLD-NEXT:    [[TMP4:%.*]] = call fast float @llvm.vector.reduce.fadd.v4f32(float 0.000000e+00, <4 x float> [[TMP3]])
+-; THRESHOLD-NEXT:    [[TMP5:%.*]] = insertelement <2 x float> poison, float [[CONV]], i32 0
+-; THRESHOLD-NEXT:    [[TMP6:%.*]] = insertelement <2 x float> [[TMP5]], float [[TMP4]], i32 1
++; THRESHOLD-NEXT:    [[TMP5:%.*]] = insertelement <2 x float> poison, float [[TMP4]], i32 0
++; THRESHOLD-NEXT:    [[TMP6:%.*]] = insertelement <2 x float> [[TMP5]], float [[CONV]], i32 1
+ ; THRESHOLD-NEXT:    [[TMP7:%.*]] = fmul fast <2 x float> [[TMP6]], splat (float 2.000000e+00)
+ ; THRESHOLD-NEXT:    [[TMP8:%.*]] = extractelement <2 x float> [[TMP7]], i32 0
+ ; THRESHOLD-NEXT:    [[TMP9:%.*]] = extractelement <2 x float> [[TMP7]], i32 1
+@@ -605,10 +605,9 @@
+ ; CHECK-NEXT:    [[TMP3:%.*]] = load float, ptr [[ARRAYIDX_28]], align 4
+ ; CHECK-NEXT:    [[ARRAYIDX_29:%.*]] = getelementptr inbounds float, ptr [[X]], i64 30
+ ; CHECK-NEXT:    [[TMP4:%.*]] = load float, ptr [[ARRAYIDX_29]], align 4
+-; CHECK-NEXT:    [[RDX_OP2:%.*]] = call fast <4 x float> @llvm.vector.extract.v4f32.v24f32(<24 x float> [[TMP0]], i64 0)
+-; CHECK-NEXT:    [[RDX_OP3:%.*]] = fadd fast <4 x float> [[RDX_OP2]], [[TMP2]]
+-; CHECK-NEXT:    [[TMP5:%.*]] = call fast <24 x float> @llvm.vector.insert.v24f32.v4f32(<24 x float> [[TMP0]], <4 x float> [[RDX_OP3]], i64 0)
+-; CHECK-NEXT:    [[OP_RDX1:%.*]] = call fast float @llvm.vector.reduce.fadd.v24f32(float 0.000000e+00, <24 x float> [[TMP5]])
++; CHECK-NEXT:    [[OP_RDX:%.*]] = call fast float @llvm.vector.reduce.fadd.v24f32(float 0.000000e+00, <24 x float> [[TMP0]])
++; CHECK-NEXT:    [[TMP7:%.*]] = call fast float @llvm.vector.reduce.fadd.v4f32(float 0.000000e+00, <4 x float> [[TMP2]])
++; CHECK-NEXT:    [[OP_RDX1:%.*]] = fadd fast float [[OP_RDX]], [[TMP7]]
+ ; CHECK-NEXT:    [[OP_RDX2:%.*]] = fadd fast float [[OP_RDX1]], [[TMP3]]
+ ; CHECK-NEXT:    [[OP_RDX3:%.*]] = fadd fast float [[OP_RDX2]], [[TMP4]]
+ ; CHECK-NEXT:    ret float [[OP_RDX3]]
+@@ -623,10 +622,9 @@
+ ; THRESHOLD-NEXT:    [[TMP3:%.*]] = load float, ptr [[ARRAYIDX_28]], align 4
+ ; THRESHOLD-NEXT:    [[ARRAYIDX_29:%.*]] = getelementptr inbounds float, ptr [[X]], i64 30
+ ; THRESHOLD-NEXT:    [[TMP4:%.*]] = load float, ptr [[ARRAYIDX_29]], align 4
+-; THRESHOLD-NEXT:    [[RDX_OP2:%.*]] = call fast <4 x float> @llvm.vector.extract.v4f32.v24f32(<24 x float> [[TMP0]], i64 0)
+-; THRESHOLD-NEXT:    [[RDX_OP3:%.*]] = fadd fast <4 x float> [[RDX_OP2]], [[TMP2]]
+-; THRESHOLD-NEXT:    [[TMP5:%.*]] = call fast <24 x float> @llvm.vector.insert.v24f32.v4f32(<24 x float> [[TMP0]], <4 x float> [[RDX_OP3]], i64 0)
+-; THRESHOLD-NEXT:    [[OP_RDX1:%.*]] = call fast float @llvm.vector.reduce.fadd.v24f32(float 0.000000e+00, <24 x float> [[TMP5]])
++; THRESHOLD-NEXT:    [[OP_RDX:%.*]] = call fast float @llvm.vector.reduce.fadd.v24f32(float 0.000000e+00, <24 x float> [[TMP0]])
++; THRESHOLD-NEXT:    [[TMP7:%.*]] = call fast float @llvm.vector.reduce.fadd.v4f32(float 0.000000e+00, <4 x float> [[TMP2]])
++; THRESHOLD-NEXT:    [[OP_RDX1:%.*]] = fadd fast float [[OP_RDX]], [[TMP7]]
+ ; THRESHOLD-NEXT:    [[OP_RDX2:%.*]] = fadd fast float [[OP_RDX1]], [[TMP3]]
+ ; THRESHOLD-NEXT:    [[OP_RDX3:%.*]] = fadd fast float [[OP_RDX2]], [[TMP4]]
+ ; THRESHOLD-NEXT:    ret float [[OP_RDX3]]
+@@ -730,9 +728,9 @@
+ ; CHECK-NEXT:    [[MUL:%.*]] = mul nsw i32 [[B:%.*]], [[A:%.*]]
+ ; CHECK-NEXT:    [[CONV:%.*]] = sitofp i32 [[MUL]] to float
+ ; CHECK-NEXT:    [[TMP0:%.*]] = load <8 x float>, ptr [[X:%.*]], align 4
++; CHECK-NEXT:    [[TMP1:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
+ ; CHECK-NEXT:    [[TMP2:%.*]] = fmul fast float [[CONV]], 2.000000e+00
+-; CHECK-NEXT:    [[TMP3:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP2]], [[TMP3]]
++; CHECK-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP1]], [[TMP2]]
+ ; CHECK-NEXT:    [[OP_RDX1:%.*]] = fadd fast float [[OP_RDX]], 3.000000e+00
+ ; CHECK-NEXT:    ret float [[OP_RDX1]]
+ ;
+@@ -741,9 +739,9 @@
+ ; THRESHOLD-NEXT:    [[MUL:%.*]] = mul nsw i32 [[B:%.*]], [[A:%.*]]
+ ; THRESHOLD-NEXT:    [[CONV:%.*]] = sitofp i32 [[MUL]] to float
+ ; THRESHOLD-NEXT:    [[TMP0:%.*]] = load <8 x float>, ptr [[X:%.*]], align 4
++; THRESHOLD-NEXT:    [[TMP1:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
+ ; THRESHOLD-NEXT:    [[TMP2:%.*]] = fmul fast float [[CONV]], 2.000000e+00
+-; THRESHOLD-NEXT:    [[TMP3:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
+-; THRESHOLD-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP2]], [[TMP3]]
++; THRESHOLD-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP1]], [[TMP2]]
+ ; THRESHOLD-NEXT:    [[OP_RDX1:%.*]] = fadd fast float [[OP_RDX]], 3.000000e+00
+ ; THRESHOLD-NEXT:    ret float [[OP_RDX1]]
+ ;
+@@ -784,10 +782,10 @@
+ ; CHECK-NEXT:    [[MUL:%.*]] = mul nsw i32 [[B:%.*]], [[A:%.*]]
+ ; CHECK-NEXT:    [[CONV:%.*]] = sitofp i32 [[MUL]] to float
+ ; CHECK-NEXT:    [[TMP0:%.*]] = load <8 x float>, ptr [[X:%.*]], align 4
++; CHECK-NEXT:    [[TMP1:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
++; CHECK-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP1]], 1.300000e+01
+ ; CHECK-NEXT:    [[TMP2:%.*]] = fmul fast float [[CONV]], 2.000000e+00
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = fadd fast float 1.300000e+01, [[TMP2]]
+-; CHECK-NEXT:    [[TMP3:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
+-; CHECK-NEXT:    [[OP_RDX1:%.*]] = fadd fast float [[OP_RDX]], [[TMP3]]
++; CHECK-NEXT:    [[OP_RDX1:%.*]] = fadd fast float [[OP_RDX]], [[TMP2]]
+ ; CHECK-NEXT:    ret float [[OP_RDX1]]
+ ;
+ ; THRESHOLD-LABEL: @extra_args_same_several_times(
+@@ -795,10 +793,10 @@
+ ; THRESHOLD-NEXT:    [[MUL:%.*]] = mul nsw i32 [[B:%.*]], [[A:%.*]]
+ ; THRESHOLD-NEXT:    [[CONV:%.*]] = sitofp i32 [[MUL]] to float
+ ; THRESHOLD-NEXT:    [[TMP0:%.*]] = load <8 x float>, ptr [[X:%.*]], align 4
++; THRESHOLD-NEXT:    [[TMP1:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
++; THRESHOLD-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP1]], 1.300000e+01
+ ; THRESHOLD-NEXT:    [[TMP2:%.*]] = fmul fast float [[CONV]], 2.000000e+00
+-; THRESHOLD-NEXT:    [[OP_RDX:%.*]] = fadd fast float 1.300000e+01, [[TMP2]]
+-; THRESHOLD-NEXT:    [[TMP3:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
+-; THRESHOLD-NEXT:    [[OP_RDX1:%.*]] = fadd fast float [[OP_RDX]], [[TMP3]]
++; THRESHOLD-NEXT:    [[OP_RDX1:%.*]] = fadd fast float [[OP_RDX]], [[TMP2]]
+ ; THRESHOLD-NEXT:    ret float [[OP_RDX1]]
+ ;
+   entry:
+@@ -841,9 +839,9 @@
+ ; CHECK-NEXT:    [[CONV:%.*]] = sitofp i32 [[MUL]] to float
+ ; CHECK-NEXT:    [[CONVC:%.*]] = sitofp i32 [[C:%.*]] to float
+ ; CHECK-NEXT:    [[TMP0:%.*]] = load <8 x float>, ptr [[X:%.*]], align 4
++; CHECK-NEXT:    [[TMP1:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
+ ; CHECK-NEXT:    [[TMP2:%.*]] = fmul fast float [[CONV]], 2.000000e+00
+-; CHECK-NEXT:    [[TMP3:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP2]], [[TMP3]]
++; CHECK-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP1]], [[TMP2]]
+ ; CHECK-NEXT:    [[OP_RDX1:%.*]] = fadd fast float [[OP_RDX]], 3.000000e+00
+ ; CHECK-NEXT:    [[OP_RDX2:%.*]] = fadd fast float [[OP_RDX1]], [[CONVC]]
+ ; CHECK-NEXT:    ret float [[OP_RDX2]]
+@@ -854,9 +852,9 @@
+ ; THRESHOLD-NEXT:    [[CONV:%.*]] = sitofp i32 [[MUL]] to float
+ ; THRESHOLD-NEXT:    [[CONVC:%.*]] = sitofp i32 [[C:%.*]] to float
+ ; THRESHOLD-NEXT:    [[TMP0:%.*]] = load <8 x float>, ptr [[X:%.*]], align 4
++; THRESHOLD-NEXT:    [[TMP1:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
+ ; THRESHOLD-NEXT:    [[TMP2:%.*]] = fmul fast float [[CONV]], 2.000000e+00
+-; THRESHOLD-NEXT:    [[TMP3:%.*]] = call fast float @llvm.vector.reduce.fadd.v8f32(float 0.000000e+00, <8 x float> [[TMP0]])
+-; THRESHOLD-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP2]], [[TMP3]]
++; THRESHOLD-NEXT:    [[OP_RDX:%.*]] = fadd fast float [[TMP1]], [[TMP2]]
+ ; THRESHOLD-NEXT:    [[OP_RDX1:%.*]] = fadd fast float [[OP_RDX]], 3.000000e+00
+ ; THRESHOLD-NEXT:    [[OP_RDX2:%.*]] = fadd fast float [[OP_RDX1]], [[CONVC]]
+ ; THRESHOLD-NEXT:    ret float [[OP_RDX2]]
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/horizontal-minmax.ll b/llvm/test/Transforms/SLPVectorizer/X86/horizontal-minmax.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/horizontal-minmax.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/horizontal-minmax.ll
+@@ -984,16 +984,22 @@
+ ; SSE4-NEXT:    ret i32 [[OP_RDX7]]
+ ;
+ ; AVX-LABEL: @maxi8_wrong_parent(
+-; AVX-NEXT:    [[TMP2:%.*]] = load <2 x i32>, ptr @arr, align 16
++; AVX-NEXT:    [[TMP2:%.*]] = load i32, ptr @arr, align 16
++; AVX-NEXT:    [[TMP3:%.*]] = load i32, ptr getelementptr inbounds ([32 x i32], ptr @arr, i64 0, i64 1), align 4
+ ; AVX-NEXT:    br label [[PP:%.*]]
+ ; AVX:       pp:
+ ; AVX-NEXT:    [[TMP4:%.*]] = load <4 x i32>, ptr getelementptr inbounds ([32 x i32], ptr @arr, i64 0, i64 2), align 8
+-; AVX-NEXT:    [[TMP7:%.*]] = load <2 x i32>, ptr getelementptr inbounds ([32 x i32], ptr @arr, i64 0, i64 6), align 8
+-; AVX-NEXT:    [[TMP5:%.*]] = call <4 x i32> @llvm.vector.insert.v4i32.v2i32(<4 x i32> poison, <2 x i32> [[TMP7]], i64 0)
+-; AVX-NEXT:    [[TMP6:%.*]] = call <4 x i32> @llvm.vector.insert.v4i32.v2i32(<4 x i32> [[TMP5]], <2 x i32> [[TMP2]], i64 2)
+-; AVX-NEXT:    [[RDX_OP:%.*]] = icmp sgt <4 x i32> [[TMP4]], [[TMP6]]
+-; AVX-NEXT:    [[RDX_OP1:%.*]] = select <4 x i1> [[RDX_OP]], <4 x i32> [[TMP4]], <4 x i32> [[TMP6]]
+-; AVX-NEXT:    [[OP_RDX7:%.*]] = call i32 @llvm.vector.reduce.smax.v4i32(<4 x i32> [[RDX_OP1]])
++; AVX-NEXT:    [[TMP5:%.*]] = load i32, ptr getelementptr inbounds ([32 x i32], ptr @arr, i64 0, i64 6), align 8
++; AVX-NEXT:    [[TMP6:%.*]] = load i32, ptr getelementptr inbounds ([32 x i32], ptr @arr, i64 0, i64 7), align 4
++; AVX-NEXT:    [[TMP7:%.*]] = call i32 @llvm.vector.reduce.smax.v4i32(<4 x i32> [[TMP4]])
++; AVX-NEXT:    [[OP_RDX:%.*]] = icmp sgt i32 [[TMP7]], [[TMP5]]
++; AVX-NEXT:    [[OP_RDX1:%.*]] = select i1 [[OP_RDX]], i32 [[TMP7]], i32 [[TMP5]]
++; AVX-NEXT:    [[OP_RDX2:%.*]] = icmp sgt i32 [[TMP6]], [[TMP2]]
++; AVX-NEXT:    [[OP_RDX3:%.*]] = select i1 [[OP_RDX2]], i32 [[TMP6]], i32 [[TMP2]]
++; AVX-NEXT:    [[OP_RDX4:%.*]] = icmp sgt i32 [[OP_RDX1]], [[OP_RDX3]]
++; AVX-NEXT:    [[OP_RDX5:%.*]] = select i1 [[OP_RDX4]], i32 [[OP_RDX1]], i32 [[OP_RDX3]]
++; AVX-NEXT:    [[OP_RDX6:%.*]] = icmp sgt i32 [[OP_RDX5]], [[TMP3]]
++; AVX-NEXT:    [[OP_RDX7:%.*]] = select i1 [[OP_RDX6]], i32 [[OP_RDX5]], i32 [[TMP3]]
+ ; AVX-NEXT:    ret i32 [[OP_RDX7]]
+ ;
+ ; THRESH-LABEL: @maxi8_wrong_parent(
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/malformed_phis.ll b/llvm/test/Transforms/SLPVectorizer/X86/malformed_phis.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/malformed_phis.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/malformed_phis.ll
+@@ -103,15 +103,39 @@
+ ; CHECK:       bb2:
+ ; CHECK-NEXT:    br label [[BB3]]
+ ; CHECK:       bb3:
+-; CHECK-NEXT:    [[TMP2:%.*]] = phi <2 x i32> [ splat (i32 3), [[BB1]] ], [ poison, [[BB2:%.*]] ]
+-; CHECK-NEXT:    [[TMP3:%.*]] = shufflevector <2 x i32> [[TMP2]], <2 x i32> poison, <28 x i32> <i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 1>
+-; CHECK-NEXT:    [[VAL4:%.*]] = extractelement <28 x i32> [[TMP3]], i32 0
++; CHECK-NEXT:    [[VAL:%.*]] = phi i32 [ 3, [[BB1]] ], [ 3, [[BB2:%.*]] ]
++; CHECK-NEXT:    [[VAL4:%.*]] = phi i32 [ 3, [[BB1]] ], [ 3, [[BB2]] ]
+ ; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <32 x i32> poison, i32 [[VAL4]], i32 0
+ ; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <32 x i32> [[TMP0]], <32 x i32> poison, <32 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP5:%.*]] = call <28 x i32> @llvm.vector.extract.v28i32.v32i32(<32 x i32> [[TMP1]], i64 0)
+-; CHECK-NEXT:    [[RDX_OP:%.*]] = mul <28 x i32> [[TMP5]], [[TMP3]]
+-; CHECK-NEXT:    [[TMP6:%.*]] = call <32 x i32> @llvm.vector.insert.v32i32.v28i32(<32 x i32> [[TMP1]], <28 x i32> [[RDX_OP]], i64 0)
+-; CHECK-NEXT:    [[OP_RDX27:%.*]] = call i32 @llvm.vector.reduce.mul.v32i32(<32 x i32> [[TMP6]])
++; CHECK-NEXT:    [[TMP2:%.*]] = call i32 @llvm.vector.reduce.mul.v32i32(<32 x i32> [[TMP1]])
++; CHECK-NEXT:    [[OP_RDX:%.*]] = mul i32 [[TMP2]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX1:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX2:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX3:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX4:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX5:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX6:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX7:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX8:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX9:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX10:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX11:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX12:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX13:%.*]] = mul i32 [[VAL4]], [[VAL4]]
++; CHECK-NEXT:    [[OP_RDX14:%.*]] = mul i32 [[OP_RDX]], [[OP_RDX1]]
++; CHECK-NEXT:    [[OP_RDX15:%.*]] = mul i32 [[OP_RDX2]], [[OP_RDX3]]
++; CHECK-NEXT:    [[OP_RDX16:%.*]] = mul i32 [[OP_RDX4]], [[OP_RDX5]]
++; CHECK-NEXT:    [[OP_RDX17:%.*]] = mul i32 [[OP_RDX6]], [[OP_RDX7]]
++; CHECK-NEXT:    [[OP_RDX18:%.*]] = mul i32 [[OP_RDX8]], [[OP_RDX9]]
++; CHECK-NEXT:    [[OP_RDX19:%.*]] = mul i32 [[OP_RDX10]], [[OP_RDX11]]
++; CHECK-NEXT:    [[OP_RDX20:%.*]] = mul i32 [[OP_RDX12]], [[OP_RDX13]]
++; CHECK-NEXT:    [[OP_RDX21:%.*]] = mul i32 [[OP_RDX14]], [[OP_RDX15]]
++; CHECK-NEXT:    [[OP_RDX22:%.*]] = mul i32 [[OP_RDX16]], [[OP_RDX17]]
++; CHECK-NEXT:    [[OP_RDX23:%.*]] = mul i32 [[OP_RDX18]], [[OP_RDX19]]
++; CHECK-NEXT:    [[OP_RDX24:%.*]] = mul i32 [[OP_RDX20]], [[VAL]]
++; CHECK-NEXT:    [[OP_RDX25:%.*]] = mul i32 [[OP_RDX21]], [[OP_RDX22]]
++; CHECK-NEXT:    [[OP_RDX26:%.*]] = mul i32 [[OP_RDX23]], [[OP_RDX24]]
++; CHECK-NEXT:    [[OP_RDX27:%.*]] = mul i32 [[OP_RDX25]], [[OP_RDX26]]
+ ; CHECK-NEXT:    [[VAL64:%.*]] = add i32 3, [[OP_RDX27]]
+ ; CHECK-NEXT:    [[VAL65:%.*]] = sext i32 [[VAL64]] to i64
+ ; CHECK-NEXT:    ret i64 [[VAL65]]
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/multi-tracked-reduced-value.ll b/llvm/test/Transforms/SLPVectorizer/X86/multi-tracked-reduced-value.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/multi-tracked-reduced-value.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/multi-tracked-reduced-value.ll
+@@ -8,12 +8,12 @@
+ ; CHECK-NEXT:    [[TMP1:%.*]] = trunc i32 0 to i8
+ ; CHECK-NEXT:    [[TMP2:%.*]] = trunc i32 0 to i8
+ ; CHECK-NEXT:    [[TMP3:%.*]] = trunc i32 0 to i8
+-; CHECK-NEXT:    [[OP_RDX1:%.*]] = or i8 [[TMP0]], [[TMP2]]
++; CHECK-NEXT:    [[TMP4:%.*]] = call i8 @llvm.vector.reduce.or.v8i8(<8 x i8> zeroinitializer)
++; CHECK-NEXT:    [[OP_RDX:%.*]] = or i8 [[TMP4]], [[TMP0]]
++; CHECK-NEXT:    [[OP_RDX1:%.*]] = or i8 [[OP_RDX]], [[TMP2]]
+ ; CHECK-NEXT:    [[OP_RDX2:%.*]] = or i8 [[OP_RDX1]], [[TMP0]]
+ ; CHECK-NEXT:    [[OP_RDX3:%.*]] = or i8 [[OP_RDX2]], [[TMP1]]
+-; CHECK-NEXT:    [[OP_RDX5:%.*]] = or i8 [[OP_RDX3]], [[TMP3]]
+-; CHECK-NEXT:    [[TMP4:%.*]] = call i8 @llvm.vector.reduce.or.v8i8(<8 x i8> zeroinitializer)
+-; CHECK-NEXT:    [[OP_RDX4:%.*]] = or i8 [[OP_RDX5]], [[TMP4]]
++; CHECK-NEXT:    [[OP_RDX4:%.*]] = or i8 [[OP_RDX3]], [[TMP3]]
+ ; CHECK-NEXT:    ret i8 [[OP_RDX4]]
+ ;
+ entry:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/phi-node-reshuffled-part.ll b/llvm/test/Transforms/SLPVectorizer/X86/phi-node-reshuffled-part.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/phi-node-reshuffled-part.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/phi-node-reshuffled-part.ll
+@@ -14,7 +14,7 @@
+ ; CHECK-NEXT:    [[TMP4:%.*]] = call <8 x i1> @llvm.vector.insert.v8i1.v4i1(<8 x i1> <i1 poison, i1 poison, i1 poison, i1 poison, i1 false, i1 false, i1 false, i1 false>, <4 x i1> [[TMP3]], i64 0)
+ ; CHECK-NEXT:    [[TMP5:%.*]] = select <8 x i1> [[TMP4]], <8 x i64> zeroinitializer, <8 x i64> zeroinitializer
+ ; CHECK-NEXT:    [[TMP6:%.*]] = call i64 @llvm.vector.reduce.or.v8i64(<8 x i64> [[TMP5]])
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = or i64 0, [[TMP6]]
++; CHECK-NEXT:    [[OP_RDX:%.*]] = or i64 [[TMP6]], 0
+ ; CHECK-NEXT:    store i64 [[OP_RDX]], ptr null, align 8
+ ; CHECK-NEXT:    ret void
+ ;
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/reduced-val-extracted-and-externally-used.ll b/llvm/test/Transforms/SLPVectorizer/X86/reduced-val-extracted-and-externally-used.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/reduced-val-extracted-and-externally-used.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/reduced-val-extracted-and-externally-used.ll
+@@ -8,23 +8,23 @@
+ ; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <2 x i32> <i32 poison, i32 0>, i32 [[ARG]], i32 0
+ ; CHECK-NEXT:    br label %[[BB1:.*]]
+ ; CHECK:       [[BB1]]:
+-; CHECK-NEXT:    [[PHI:%.*]] = phi i32 [ 0, %[[BB]] ], [ [[TMP5:%.*]], %[[BB1]] ]
+-; CHECK-NEXT:    [[PHI2:%.*]] = phi i32 [ 0, %[[BB]] ], [ [[TMP6:%.*]], %[[BB1]] ]
++; CHECK-NEXT:    [[PHI2:%.*]] = phi i32 [ 0, %[[BB]] ], [ [[TMP5:%.*]], %[[BB1]] ]
++; CHECK-NEXT:    [[PHI:%.*]] = phi i32 [ 0, %[[BB]] ], [ [[TMP6:%.*]], %[[BB1]] ]
+ ; CHECK-NEXT:    [[PHI3:%.*]] = phi i32 [ 0, %[[BB]] ], [ [[OP_RDX4:%.*]], %[[BB1]] ]
+ ; CHECK-NEXT:    [[TMP1:%.*]] = phi <2 x i32> [ zeroinitializer, %[[BB]] ], [ [[TMP4:%.*]], %[[BB1]] ]
+ ; CHECK-NEXT:    [[TMP2:%.*]] = shufflevector <2 x i32> [[TMP1]], <2 x i32> poison, <8 x i32> <i32 0, i32 0, i32 1, i32 0, i32 0, i32 1, i32 0, i32 0>
+-; CHECK-NEXT:    [[ADD:%.*]] = add i32 [[PHI2]], 0
+-; CHECK-NEXT:    [[ADD4:%.*]] = add i32 [[PHI2]], 0
+-; CHECK-NEXT:    [[ADD23:%.*]] = add i32 [[PHI]], 0
+-; CHECK-NEXT:    [[ADD6:%.*]] = add i32 [[PHI2]], 0
++; CHECK-NEXT:    [[ADD17:%.*]] = add i32 [[PHI]], 0
++; CHECK-NEXT:    [[ADD4:%.*]] = add i32 [[PHI]], 0
++; CHECK-NEXT:    [[ADD19:%.*]] = add i32 [[PHI2]], 0
++; CHECK-NEXT:    [[ADD6:%.*]] = add i32 [[PHI]], 0
+ ; CHECK-NEXT:    [[TMP3:%.*]] = add <8 x i32> [[TMP2]], zeroinitializer
+ ; CHECK-NEXT:    [[TMP4]] = add <2 x i32> [[TMP0]], <i32 0, i32 1>
+ ; CHECK-NEXT:    [[TMP5]] = extractelement <2 x i32> [[TMP4]], i32 1
+ ; CHECK-NEXT:    [[TMP6]] = extractelement <2 x i32> [[TMP4]], i32 0
+ ; CHECK-NEXT:    [[TMP7:%.*]] = call i32 @llvm.vector.reduce.xor.v8i32(<8 x i32> [[TMP3]])
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = xor i32 [[TMP7]], [[ADD]]
++; CHECK-NEXT:    [[OP_RDX:%.*]] = xor i32 [[TMP7]], [[ADD17]]
+ ; CHECK-NEXT:    [[OP_RDX1:%.*]] = xor i32 [[ADD4]], [[ADD6]]
+-; CHECK-NEXT:    [[OP_RDX2:%.*]] = xor i32 [[ADD23]], [[TMP6]]
++; CHECK-NEXT:    [[OP_RDX2:%.*]] = xor i32 [[ADD19]], [[TMP6]]
+ ; CHECK-NEXT:    [[OP_RDX3:%.*]] = xor i32 [[OP_RDX]], [[OP_RDX1]]
+ ; CHECK-NEXT:    [[OP_RDX4]] = xor i32 [[OP_RDX3]], [[OP_RDX2]]
+ ; CHECK-NEXT:    [[ICMP:%.*]] = icmp ult i32 [[TMP5]], 0
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/reduced-value-vectorized-later.ll b/llvm/test/Transforms/SLPVectorizer/X86/reduced-value-vectorized-later.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/reduced-value-vectorized-later.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/reduced-value-vectorized-later.ll
+@@ -4,10 +4,9 @@
+ define i16 @test() {
+ ; CHECK-LABEL: define i16 @test() {
+ ; CHECK-NEXT:  [[ENTRY:.*:]]
+-; CHECK-NEXT:    [[TMP0:%.*]] = call <4 x i16> @llvm.vector.extract.v4i16.v8i16(<8 x i16> zeroinitializer, i64 0)
+-; CHECK-NEXT:    [[RDX_OP:%.*]] = or <4 x i16> [[TMP0]], zeroinitializer
+-; CHECK-NEXT:    [[TMP1:%.*]] = call <8 x i16> @llvm.vector.insert.v8i16.v4i16(<8 x i16> zeroinitializer, <4 x i16> [[RDX_OP]], i64 0)
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = call i16 @llvm.vector.reduce.or.v8i16(<8 x i16> [[TMP1]])
++; CHECK-NEXT:    [[TMP0:%.*]] = call i16 @llvm.vector.reduce.or.v8i16(<8 x i16> zeroinitializer)
++; CHECK-NEXT:    [[TMP1:%.*]] = call i16 @llvm.vector.reduce.or.v4i16(<4 x i16> zeroinitializer)
++; CHECK-NEXT:    [[OP_RDX:%.*]] = or i16 [[TMP0]], [[TMP1]]
+ ; CHECK-NEXT:    [[OP_RDX1:%.*]] = or i16 [[OP_RDX]], 0
+ ; CHECK-NEXT:    ret i16 [[OP_RDX1]]
+ ;
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/reduction-extracted-value.ll b/llvm/test/Transforms/SLPVectorizer/X86/reduction-extracted-value.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/reduction-extracted-value.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/reduction-extracted-value.ll
+@@ -4,15 +4,19 @@
+ define i32 @foo() {
+ ; CHECK-LABEL: @foo(
+ ; CHECK-NEXT:  bb:
++; CHECK-NEXT:    [[TMP0:%.*]] = extractelement <2 x i32> zeroinitializer, i32 0
+ ; CHECK-NEXT:    [[TMP1:%.*]] = or <4 x i32> zeroinitializer, zeroinitializer
+ ; CHECK-NEXT:    [[TMP2:%.*]] = extractelement <4 x i32> [[TMP1]], i32 0
+ ; CHECK-NEXT:    [[TMP3:%.*]] = mul <4 x i32> [[TMP1]], zeroinitializer
+ ; CHECK-NEXT:    [[TMP4:%.*]] = add <4 x i32> [[TMP3]], zeroinitializer
+-; CHECK-NEXT:    [[RDX_OP:%.*]] = mul <4 x i32> [[TMP4]], zeroinitializer
+-; CHECK-NEXT:    [[TMP5:%.*]] = call i32 @llvm.vector.reduce.mul.v4i32(<4 x i32> [[RDX_OP]])
++; CHECK-NEXT:    [[TMP5:%.*]] = call i32 @llvm.vector.reduce.mul.v4i32(<4 x i32> [[TMP4]])
+ ; CHECK-NEXT:    [[OP_RDX:%.*]] = mul i32 0, [[TMP5]]
+ ; CHECK-NEXT:    [[OP_RDX1:%.*]] = mul i32 [[OP_RDX]], 0
+-; CHECK-NEXT:    [[OP_RDX6:%.*]] = mul i32 [[OP_RDX1]], [[TMP2]]
++; CHECK-NEXT:    [[OP_RDX2:%.*]] = mul i32 [[TMP0]], [[TMP0]]
++; CHECK-NEXT:    [[OP_RDX3:%.*]] = mul i32 [[TMP0]], [[TMP0]]
++; CHECK-NEXT:    [[OP_RDX4:%.*]] = mul i32 [[OP_RDX1]], [[OP_RDX2]]
++; CHECK-NEXT:    [[OP_RDX5:%.*]] = mul i32 [[OP_RDX3]], [[TMP2]]
++; CHECK-NEXT:    [[OP_RDX6:%.*]] = mul i32 [[OP_RDX4]], [[OP_RDX5]]
+ ; CHECK-NEXT:    ret i32 [[OP_RDX6]]
+ ;
+ bb:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/revectorized_rdx_crash.ll b/llvm/test/Transforms/SLPVectorizer/X86/revectorized_rdx_crash.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/revectorized_rdx_crash.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/revectorized_rdx_crash.ll
+@@ -21,10 +21,10 @@
+ ; CHECK-NEXT:    [[I1:%.*]] = getelementptr inbounds [100 x i32], ptr [[P]], i64 0, i64 3
+ ; CHECK-NEXT:    [[TMP0:%.*]] = load <4 x i32>, ptr [[I]], align 8
+ ; CHECK-NEXT:    [[TMP1:%.*]] = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> [[TMP0]])
+-; CHECK-NEXT:    [[OP_RDX3:%.*]] = add i32 0, [[TMP1]]
++; CHECK-NEXT:    [[OP_RDX3:%.*]] = add i32 [[TMP1]], 0
+ ; CHECK-NEXT:    [[TMP2:%.*]] = load <4 x i32>, ptr [[I1]], align 4
+ ; CHECK-NEXT:    [[TMP3:%.*]] = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> [[TMP2]])
+-; CHECK-NEXT:    [[OP_RDX2:%.*]] = add i32 0, [[TMP3]]
++; CHECK-NEXT:    [[OP_RDX2:%.*]] = add i32 [[TMP3]], 0
+ ; CHECK-NEXT:    [[TMP4:%.*]] = mul i32 [[OP_RDX3]], 2
+ ; CHECK-NEXT:    [[OP_RDX:%.*]] = add i32 0, [[TMP4]]
+ ; CHECK-NEXT:    [[TMP5:%.*]] = mul i32 [[OP_RDX2]], 2
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/undef_vect.ll b/llvm/test/Transforms/SLPVectorizer/X86/undef_vect.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/undef_vect.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/undef_vect.ll
+@@ -9,8 +9,8 @@
+ ; CHECK-NEXT:    [[DOTSROA_CAST_4:%.*]] = getelementptr inbounds %"struct.std::h.0.4.8.12.16.20.24.28.248.0.1.2.3.76", ptr [[P:%.*]], i64 4, i32 0
+ ; CHECK-NEXT:    [[TMP1:%.*]] = load <8 x i32>, ptr [[DOTSROA_CAST_4]], align 4
+ ; CHECK-NEXT:    [[TMP2:%.*]] = call i32 @llvm.vector.reduce.smax.v8i32(<8 x i32> [[TMP1]])
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = icmp sgt i32 0, [[TMP2]]
+-; CHECK-NEXT:    [[OP_RDX1:%.*]] = select i1 [[OP_RDX]], i32 0, i32 [[TMP2]]
++; CHECK-NEXT:    [[OP_RDX:%.*]] = icmp sgt i32 [[TMP2]], 0
++; CHECK-NEXT:    [[OP_RDX1:%.*]] = select i1 [[OP_RDX]], i32 [[TMP2]], i32 0
+ ; CHECK-NEXT:    [[DOTSROA_SPECULATED_9:%.*]] = select i1 false, i32 0, i32 [[OP_RDX1]]
+ ; CHECK-NEXT:    [[CMP_I1_10:%.*]] = icmp slt i32 [[DOTSROA_SPECULATED_9]], 0
+ ; CHECK-NEXT:    ret void
+diff -ruN --strip-trailing-cr a/llvm/unittests/SandboxIR/RegionTest.cpp b/llvm/unittests/SandboxIR/RegionTest.cpp
+--- a/llvm/unittests/SandboxIR/RegionTest.cpp
++++ b/llvm/unittests/SandboxIR/RegionTest.cpp
+@@ -362,9 +362,8 @@
+   llvm::Function *LLVMF = &*M->getFunction("foo");
+   sandboxir::Context Ctx(C);
+   auto *F = Ctx.createFunction(LLVMF);
+-#ifndef NDEBUG
+-  EXPECT_DEATH(sandboxir::Region::createRegionsFromMD(*F, *TTI), ".*Gap*");
+-#endif
++  EXPECT_DEBUG_DEATH(sandboxir::Region::createRegionsFromMD(*F, *TTI),
++                     ".*Gap*");
+ }
+ 
+ // Check that we get an assertion failure if we try to set the same index more
+@@ -383,9 +382,8 @@
+   llvm::Function *LLVMF = &*M->getFunction("foo");
+   sandboxir::Context Ctx(C);
+   auto *F = Ctx.createFunction(LLVMF);
+-#ifndef NDEBUG
+-  EXPECT_DEATH(sandboxir::Region::createRegionsFromMD(*F, *TTI), ".*already.*");
+-#endif // NDEBUG
++  EXPECT_DEBUG_DEATH(sandboxir::Region::createRegionsFromMD(*F, *TTI),
++                     ".*already.*");
+ }
+ 
+ TEST_F(RegionTest, AuxRoundTrip) {
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/libc_configure_options.bzl b/utils/bazel/llvm-project-overlay/libc/libc_configure_options.bzl
+--- a/utils/bazel/llvm-project-overlay/libc/libc_configure_options.bzl
++++ b/utils/bazel/llvm-project-overlay/libc/libc_configure_options.bzl
+@@ -24,7 +24,7 @@
+     # Documentation in libc/src/string/memory_utils/...
+     # "LIBC_COPT_MEMCPY_USE_EMBEDDED_TINY",
+     # "LIBC_COPT_MEMCPY_X86_USE_REPMOVSB_FROM_SIZE",
+-    "LIBC_COPT_MEMCPY_X86_USE_SOFTWARE_PREFETCHING",
++    # "LIBC_COPT_MEMCPY_X86_USE_SOFTWARE_PREFETCHING",
+     "LIBC_COPT_MEMSET_X86_USE_SOFTWARE_PREFETCHING",
+ 
+     # Documentation in libc/docs/dev/printf_behavior.rst
