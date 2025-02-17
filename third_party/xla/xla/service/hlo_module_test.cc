@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "third_party/protobuf/message_lite.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -63,7 +64,8 @@ namespace xla {
 std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
     std::unique_ptr<tsl::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
-      tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
+      proto2::DownCastMessage<test::TestCompilationEnvironment1>(
+          msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment1>();
     env->set_some_flag(100);
