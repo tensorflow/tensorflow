@@ -309,7 +309,10 @@ cc_test(
     deps = [
         ":c_api_types",
         ":common",
+        "//tensorflow/lite:array",
+        "//tensorflow/lite:test_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
