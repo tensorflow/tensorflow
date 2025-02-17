@@ -310,13 +310,15 @@ _MACOS_ARM64_BUILD = Build(
     options=dict(
         **_DEFAULT_BAZEL_OPTIONS,
         macos_minimum_os="10.15",
-        test_tmpdir="/Volumes/BuildData/bazel_output",
+        test_tmpdir="/tmpfs/bazel_output",
+        test_size_filters="small,medium",
     ),
     build_tag_filters=macos_tag_filter,
     test_tag_filters=macos_tag_filter,
     extra_setup_commands=(
+        ["df", "-h"],  # Debug "No space left on device" error: b/396611909.
         ["bazel", "--version"],  # Sanity check due to strange failures
-        ["mkdir", "-p", "/Volumes/BuildData/bazel_output"],
+        ["mkdir", "-p", "/tmpfs/bazel_output"],
     ),
 )
 
