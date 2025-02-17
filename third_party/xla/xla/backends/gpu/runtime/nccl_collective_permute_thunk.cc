@@ -262,14 +262,21 @@ absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
       auto receiver_event = receiver_barrier_events_.find(current_id);
       TF_RETURN_IF_ERROR(stream.RecordEvent(receiver_event->second.get()));
     }
+    TF_ASSIGN_OR_RETURN(
+        size_t num_local_participants,
+        GetNumLocalParticipants(*params.collective_params,
+                                config().replica_groups, config().group_mode));
+
     auto rendezvous_name = absl::StrFormat(
-        "rendezvous of collective-permute; run_id=%d; op id:%d",
-        params.collective_params->run_id.ToInt(), config_.config.op_id);
+        "rendezvous of collective-permute; run_id=%d; op id:%d; "
+        "num_local_participants:%d",
+        params.collective_params->run_id.ToInt(), config_.config.op_id,
+        num_local_participants);
     auto rendezvous_key = CallRendezvousKey{params.collective_params->run_id};
 
     // Perform a rendezvous to make sure all receivers have their events
     // recorded.
-    Rendezvous(rendezvous_name, rendezvous_key, device_count_,
+    Rendezvous(rendezvous_name, rendezvous_key, num_local_participants,
                /*warn_stuck_timeout=*/absl::Seconds(20),
                /*terminate_timeout=*/absl::Seconds(40));
 
