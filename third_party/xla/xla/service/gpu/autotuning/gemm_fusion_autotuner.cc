@@ -128,7 +128,7 @@ using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 namespace {
 
 // Minimum tile size.
-constexpr int kMinTileSize = 16;
+constexpr int kMinTileSize = 1;
 
 // Default tiling when autotuning is disabled.
 constexpr TritonGemmConfig kDefaultGemmTiling = {32, 32, 32, 1, 1, 4};
