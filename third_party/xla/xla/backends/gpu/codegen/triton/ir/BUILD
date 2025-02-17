@@ -127,10 +127,10 @@ cc_library(
     ],
     hdrs = ["triton_xla_ops.h"],
     deps = [
-        "triton_xla_types_inc_gen",
         ":triton_xla_attrs_inc_gen",
         ":triton_xla_dialect_inc_gen",
         ":triton_xla_ops_inc_gen",
+        ":triton_xla_types_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",

@@ -23,19 +23,26 @@ limitations under the License.
 namespace mlir::triton::xla {
 
 mlir::Type TiledTensorType::parse(mlir::AsmParser &parser) {
-  mlir::SmallVector<int64_t, 4> shape;
+  mlir::SmallVector<int64_t, 4> tile_shape, original_shape;
   mlir::Type type;
   if (parser.parseLess() ||
-      parser.parseDimensionList(shape, /*allowDynamic=*/false) ||
+      parser.parseDimensionList(tile_shape, /*allowDynamic=*/false,
+                                /*withTrailingX=*/false) ||
+      parser.parseVerticalBar() ||
+      parser.parseDimensionList(original_shape, /*allowDynamic=*/false,
+                                /*withTrailingX=*/true) ||
       parser.parseType(type) || parser.parseGreater()) {
     return {};
   }
-  return TiledTensorType::get(parser.getContext(), shape, type);
+  return TiledTensorType::get(parser.getContext(), tile_shape, original_shape,
+                              type);
 }
 
 void TiledTensorType::print(mlir::AsmPrinter &printer) const {
   printer << "<";
-  printer.printDimensionList(getShape());
+  printer.printDimensionList(getTileShape());
+  printer << "|";
+  printer.printDimensionList(getOriginalShape());
   printer << "x" << getElementType() << ">";
 }
 

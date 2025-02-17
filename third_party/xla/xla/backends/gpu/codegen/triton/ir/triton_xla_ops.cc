@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 
+#include <cassert>
 #include <optional>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/Casting.h"
@@ -30,6 +32,8 @@ limitations under the License.
 #include "mlir/IR/Region.h"
 #include "mlir/IR/TypeUtilities.h"  // IWYU pragma: keep
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.cc.inc"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Types.h"
@@ -48,6 +52,11 @@ using mlir::ValueRange;
 using mlir::triton::gpu::TensorOrMemDesc;
 
 namespace mlir::triton::xla {
+
+//===----------------------------------------------------------------------===//
+// SparseDotOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult SparseDotOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
@@ -132,6 +141,160 @@ LogicalResult SparseDotOp::verify() {
   auto interface = llvm::cast<DialectInferLayoutInterface>(&dialect);
   return interface->verifyDotOpEncodingCompatibility(getOperation(), aEncoding,
                                                      bEncoding);
+}
+
+//===----------------------------------------------------------------------===//
+// TileOp
+//===----------------------------------------------------------------------===//
+
+void TileOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "tiled_tensor");
+}
+
+mlir::ParseResult parseI64ArrayAttr(mlir::AsmParser& parser,
+                                    mlir::DenseI64ArrayAttr& array) {
+  array = mlir::dyn_cast_or_null<mlir::DenseI64ArrayAttr>(
+      mlir::DenseI64ArrayAttr::parse(parser, mlir::Type{}));
+  if (!array) return mlir::failure();
+  return mlir::success();
+}
+
+ParseResult TileOp::parse(OpAsmParser& parser, OperationState& result) {
+  OpAsmParser::UnresolvedOperand src;
+  TiledTensorType tiled_tensor_type;
+  DenseI64ArrayAttr offsets, sizes, strides;
+  if (parser.parseOperand(src) || parseI64ArrayAttr(parser, offsets) ||
+      parseI64ArrayAttr(parser, sizes) || parseI64ArrayAttr(parser, strides) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(tiled_tensor_type)) {
+    return failure();
+  }
+  if (parser.resolveOperand(src, tiled_tensor_type.getOriginalType(),
+                            result.operands)) {
+    return failure();
+  }
+  result.addAttribute("offsets", offsets);
+  result.addAttribute("sizes", sizes);
+  result.addAttribute("strides", strides);
+  result.addTypes(tiled_tensor_type);
+  return success();
+}
+
+void TileOp::print(OpAsmPrinter& p) {
+  p << ' ' << getTensor();
+  p << '[';
+  llvm::interleaveComma(getOffsets(), p);
+  p << "][";
+  llvm::interleaveComma(getSizes(), p);
+  p << "][";
+  llvm::interleaveComma(getStrides(), p);
+  p << "] : " << getType();
+}
+
+LogicalResult TileOp::verify() {
+  // TODO(b/396112896): Implement this.
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ExtractOp
+//===----------------------------------------------------------------------===//
+
+void ExtractOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "extracted_tile");
+}
+
+ParseResult ExtractOp::parse(OpAsmParser& parser, OperationState& result) {
+  Builder& builder = parser.getBuilder();
+
+  OpAsmParser::UnresolvedOperand tiled_tensor;
+  Type tile_type, original_type;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> offsets;
+  if (parser.parseOperand(tiled_tensor) ||
+      parser.parseOperandList(offsets, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(original_type) || parser.parseKeyword("to") ||
+      parser.parseType(tile_type)) {
+    return failure();
+  }
+  auto tiled_tensor_type = TiledTensorType::get(
+      parser.getContext(), mlir::cast<RankedTensorType>(tile_type),
+      mlir::cast<RankedTensorType>(original_type));
+  auto index_type = builder.getIndexType();
+  if (parser.resolveOperand(tiled_tensor, tiled_tensor_type, result.operands) ||
+      parser.resolveOperands(offsets, index_type, result.operands)) {
+    return failure();
+  }
+  result.addTypes(tile_type);
+  return success();
+}
+
+void ExtractOp::print(OpAsmPrinter& p) {
+  TiledTensorType tiled_type = getSrc().getType();
+  p << ' ' << getSrc() << '[';
+  llvm::interleaveComma(getOffsets(), p);
+  p << ']';
+  p.printOptionalAttrDict((*this)->getAttrs());
+  p << " : " << tiled_type.getOriginalType() << " to "
+    << tiled_type.getTileType();
+}
+
+LogicalResult ExtractOp::verify() {
+  // TODO(b/396112896): Implement this.
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// InsertOp
+//===----------------------------------------------------------------------===//
+
+void InsertOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "inserted_tile");
+}
+
+ParseResult InsertOp::parse(OpAsmParser& parser, OperationState& result) {
+  Builder& builder = parser.getBuilder();
+
+  OpAsmParser::UnresolvedOperand tile, tiled_tensor;
+  Type tile_type, original_type;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> offsets;
+  if (parser.parseOperand(tile) || parser.parseKeyword("into") ||
+      parser.parseOperand(tiled_tensor) ||
+      parser.parseOperandList(offsets, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(tile_type) || parser.parseKeyword("into") ||
+      parser.parseType(original_type) ||
+      parser.resolveOperand(tile, tile_type, result.operands)) {
+    return failure();
+  }
+  auto tiled_tensor_type = TiledTensorType::get(
+      parser.getContext(), mlir::cast<RankedTensorType>(tile_type),
+      mlir::cast<RankedTensorType>(original_type));
+
+  auto index_type = builder.getIndexType();
+  if (parser.resolveOperand(tiled_tensor, tiled_tensor_type, result.operands) ||
+      parser.resolveOperands(offsets, index_type, result.operands)) {
+    return failure();
+  }
+  result.addTypes(original_type);
+  return success();
+}
+
+void InsertOp::print(OpAsmPrinter& p) {
+  TiledTensorType tiled_type = getDst().getType();
+  p << ' ' << getSrc() << " into " << getDst() << "[";
+  llvm::interleaveComma(getOffsets(), p);
+  p << ']';
+  p.printOptionalAttrDict((*this)->getAttrs());
+  p << " : " << tiled_type.getTileType() << " into "
+    << tiled_type.getOriginalType();
+}
+
+LogicalResult InsertOp::verify() {
+  // TODO(b/396112896): Implement this.
+  return success();
 }
 
 }  // namespace mlir::triton::xla

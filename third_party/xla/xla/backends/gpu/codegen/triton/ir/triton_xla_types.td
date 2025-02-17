@@ -30,30 +30,46 @@ class TTXLA_Type<string name, string typeMnemonic, list<Trait> traits = []> :
 }
 
 def TTXLA_TiledTensorType : TTXLA_Type<"TiledTensor", "tiled_tensor", [
-      ShapedTypeInterface, ValueSemantics]> {
+    ValueSemantics]> {
   let summary = "A tile of a tensor.";
   let description = [{
     Usage:
       This type will typically be constructed via triton_xla.tile op. The intent
       is to capture tiling information and pass it along to other ops such as
       triton_xla.extract and triton_xla.insert. Refer to the ops for examples.
+
+    Example:
+      ```
+      !triton_xla.tiled_tensor<16x64|320x512xbf16>
+      ```
+      this type represents a 16x64 tile of a 320x512 bf16 tensor.
   }];
 
   let parameters = (ins
-    ArrayRefParameter<"int64_t">:$shape,
-    "Type":$elementType
+    ArrayRefParameter<"int64_t">:$tile_shape,
+    ArrayRefParameter<"int64_t">:$original_shape,
+    "Type":$element_type
   );
 
-  let hasCustomAssemblyFormat = 1;
-
+ let builders = [
+    TypeBuilder<(ins
+      "RankedTensorType":$tile_type,
+      "RankedTensorType":$original_type),
+    [{
+      assert(original_type.getElementType() == tile_type.getElementType());
+      return $_get($_ctxt, tile_type.getShape(), original_type.getShape(),
+                           original_type.getElementType());
+    }]>
+  ];
   let extraClassDeclaration = [{
-    TiledTensorType cloneWith(std::optional<llvm::ArrayRef<int64_t>> shape,
-                              mlir::Type elementType) const {
-        return TiledTensorType::get(getContext(), shape.value_or(getShape()),
-                                    elementType);
+    RankedTensorType getOriginalType() const {
+      return RankedTensorType::get(getOriginalShape(), getElementType());
     }
-    bool hasRank() const { return true; }
+    RankedTensorType getTileType() const {
+      return RankedTensorType::get(getTileShape(), getElementType());
+    }
   }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_TYPES_TD_
