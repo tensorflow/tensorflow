@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <utility>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
