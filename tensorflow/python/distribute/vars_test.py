@@ -817,9 +817,11 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       self.skipTest("Assigning PerReplica values is not supported. See"
                     " sponge/80ba41f8-4220-4516-98ce-bbad48f9f11a.")
 
-    self.skipTest("We don't support assiging PerReplica values in cross "
-                  "replica context or replica context. see error in "
-                  "sponge/2b2e54c1-eda6-4534-82e1-c73b1dcd517f.")
+    self.skipTest(
+        "We don't support assigning PerReplica values in cross "
+        "replica context or replica context. see error in "
+        "sponge/2b2e54c1-eda6-4534-82e1-c73b1dcd517f."
+    )
 
     with distribution.scope():
       per_replica_value = values.PerReplica(
