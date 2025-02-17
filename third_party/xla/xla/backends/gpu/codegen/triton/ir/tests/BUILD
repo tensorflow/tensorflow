@@ -21,7 +21,6 @@ package_group(
 #     tools = [
 #         "@llvm-project//llvm:FileCheck",
 #         "//xla/service/gpu/tests:xla-opt",
-#         "@triton//:triton-opt",
 #     ],
 # )
 # copybara:uncomment_end
