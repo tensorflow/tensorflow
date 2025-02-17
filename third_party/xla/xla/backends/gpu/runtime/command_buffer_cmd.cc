@@ -959,10 +959,11 @@ CommandBufferCmd::BufferUseVector IfElseCmd::buffers() {
 //===----------------------------------------------------------------------===//
 
 CaseCmd::CaseCmd(ExecutionStreamId execution_stream_id,
-                 BufferAllocation::Slice index,
+                 BufferAllocation::Slice index, bool index_is_bool,
                  std::vector<CommandBufferCmdSequence> branches_commands)
     : CommandBufferCmd(CommandBufferCmdType::kCaseCmd, execution_stream_id),
       index_(index),
+      index_is_bool_(index_is_bool),
       branches_commands_(std::move(branches_commands)) {}
 
 absl::Status CaseCmd::Initialize(const Thunk::InitializeParams& params,
@@ -983,10 +984,17 @@ absl::Status CaseCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "CaseCmd: execution_scope_id=" << execution_scope_id.value();
   VLOG(5) << "  index: " << index_ << " (" << index.opaque() << ")";
 
-  return command_buffer->Case(execution_scope_id,
-                              se::DeviceMemory<int32_t>(index),
-                              CreateBuilders(absl::MakeSpan(branches_commands_),
-                                             &execute_params, &record_params));
+  if (index_is_bool_) {
+    return command_buffer->Case(
+        execution_scope_id, se::DeviceMemory<bool>(index),
+        CreateBuilders(absl::MakeSpan(branches_commands_), &execute_params,
+                       &record_params));
+  } else {
+    return command_buffer->Case(
+        execution_scope_id, se::DeviceMemory<int32_t>(index),
+        CreateBuilders(absl::MakeSpan(branches_commands_), &execute_params,
+                       &record_params));
+  }
 }
 
 bool CaseCmd::force_update() {

@@ -155,9 +155,9 @@ static absl::StatusOr<Command> Convert(
         ConvertToCommands(branch_thunk->thunks(), synchronization_mode));
     branch_cmds.emplace_back(std::move(cmds));
   }
-  return std::make_unique<CaseCmd>(thunk.execution_stream_id(),
-                                   thunk.branch_index_buffer(),
-                                   std::move(branch_cmds));
+  return std::make_unique<CaseCmd>(
+      thunk.execution_stream_id(), thunk.branch_index_buffer(),
+      thunk.branch_index_is_bool(), std::move(branch_cmds));
 }
 
 static absl::StatusOr<Command> Convert(const NcclAllReduceStartThunk& thunk) {

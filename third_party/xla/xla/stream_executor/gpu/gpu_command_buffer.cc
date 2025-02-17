@@ -607,7 +607,8 @@ absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
 }
 
 absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
-                                    DeviceMemory<int32_t> index,
+                                    DeviceMemory<uint8_t> index,
+                                    bool index_is_bool,
                                     std::vector<Builder> branches) {
   constexpr size_t kBranchBatchSize = 8;
   int32_t batch_offset = 0;
@@ -631,7 +632,8 @@ absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
     auto set_cond_fn = [&, batch_offset, enable_conditional_default](
                            ExecutionScopeId id,
                            GraphConditionalHandles conditionals) {
-      return LaunchSetCaseConditionKernel(id, conditionals, index, batch_offset,
+      return LaunchSetCaseConditionKernel(id, conditionals, index,
+                                          index_is_bool, batch_offset,
                                           enable_conditional_default);
     };
 
@@ -649,6 +651,24 @@ absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
     batch_offset += batch_size;
   }
   return absl::OkStatus();
+}
+
+absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
+                                    DeviceMemory<bool> index,
+                                    std::vector<Builder> branches) {
+  return Case(
+      execution_scope_id,
+      DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
+      /*index_is_bool=*/true, branches);
+}
+
+absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
+                                    DeviceMemory<int32_t> index,
+                                    std::vector<Builder> branches) {
+  return Case(
+      execution_scope_id,
+      DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
+      /*index_is_bool=*/false, branches);
 }
 
 absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,

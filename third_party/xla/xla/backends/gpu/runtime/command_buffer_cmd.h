@@ -662,6 +662,7 @@ class IfElseCmd : public CommandBufferCmd {
 class CaseCmd : public CommandBufferCmd {
  public:
   CaseCmd(ExecutionStreamId execution_stream_id, BufferAllocation::Slice index,
+          bool index_is_bool,
           std::vector<CommandBufferCmdSequence> branches_commands);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
@@ -677,6 +678,7 @@ class CaseCmd : public CommandBufferCmd {
 
  private:
   BufferAllocation::Slice index_;
+  bool index_is_bool_;
   std::vector<CommandBufferCmdSequence> branches_commands_;
 };
 

@@ -73,6 +73,7 @@ class ConditionalThunk : public Thunk {
   }
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  bool branch_index_is_bool() const { return config_.branch_index_is_bool; }
 
  private:
   const ConditionalThunkConfig config_;

@@ -65,7 +65,7 @@ class RocmCommandBuffer : public GpuCommandBuffer {
       DeviceMemory<bool> predicate) override;
   absl::Status LaunchSetCaseConditionKernel(
       ExecutionScopeId execution_scope_id, GraphConditionalHandles conditionals,
-      DeviceMemory<int32_t> index, int32_t batch_offset,
+      DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
       bool enable_conditional_default) override;
   absl::Status LaunchSetForConditionKernel(ExecutionScopeId execution_scope_id,
                                            GraphConditionalHandle conditional,

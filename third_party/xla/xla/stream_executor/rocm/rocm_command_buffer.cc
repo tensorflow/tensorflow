@@ -122,7 +122,7 @@ absl::Status RocmCommandBuffer::LaunchSetIfElseConditionKernel(
 
 absl::Status RocmCommandBuffer::LaunchSetCaseConditionKernel(
     ExecutionScopeId execution_scope_id, GraphConditionalHandles conditionals,
-    DeviceMemory<int32_t> index, int32_t batch_offset,
+    DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
     bool enable_conditional_default) {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
