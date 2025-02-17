@@ -18,11 +18,9 @@ limitations under the License.
 #include <errno.h>
 #include <sys/stat.h>
 
-#include <fstream>
-#include <iterator>
-#include <sstream>
+#include <cstddef>
+#include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
