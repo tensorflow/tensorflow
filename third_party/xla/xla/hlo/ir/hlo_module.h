@@ -421,13 +421,14 @@ class HloModule {
   HloModuleProto ToProto() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
       const HloModuleProto& proto, const HloModuleConfig& module_config,
-      bool prohibit_empty_literal = true);
+      bool prohibit_empty_literal = true,
+      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr);
 
   // Convert an HloModule to or from a proto that includes module configuration
   HloModuleProtoWithConfig ToProtoWithConfig() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
-      const HloModuleProtoWithConfig& proto,
-      bool prohibit_empty_literal = true);
+      const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
+      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.

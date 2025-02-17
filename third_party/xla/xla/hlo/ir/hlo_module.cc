@@ -556,7 +556,8 @@ absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
 /* static */
 absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config,
-    bool prohibit_empty_literal) {
+    bool prohibit_empty_literal,
+    std::unique_ptr<CompilationEnvironments> comp_envs) {
   VLOG(2) << "CreateFromProto()";
   XLA_VLOG_LINES(3, proto.DebugString());
 
@@ -609,7 +610,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   TF_RET_CHECK(entry != nullptr);
 
-  auto module = std::make_unique<HloModule>(proto.name(), module_config);
+  auto module = comp_envs
+                    ? std::make_unique<HloModule>(proto.name(), module_config,
+                                                  std::move(comp_envs))
+                    : std::make_unique<HloModule>(proto.name(), module_config);
 
   // Sort the computations in the proto id's order.
   absl::c_sort(computations, [&](const std::unique_ptr<HloComputation>& a,
@@ -803,12 +807,14 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
-    const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal) {
+    const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal,
+    std::unique_ptr<CompilationEnvironments> comp_envs) {
   const auto& hlo_module_proto = proto.hlo_module();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> config_ptr,
                       HloModuleConfig::CreateFromProto(proto.config()));
   return HloModule::CreateFromProto(hlo_module_proto, *config_ptr,
-                                    prohibit_empty_literal);
+                                    prohibit_empty_literal,
+                                    std::move(comp_envs));
 }
 
 namespace {
