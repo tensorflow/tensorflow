@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
