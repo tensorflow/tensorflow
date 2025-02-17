@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <type_traits>
+#include <utility>
 
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
