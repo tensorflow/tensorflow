@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "third_party/protobuf/message_lite.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/computation_placer.h"
@@ -43,7 +44,8 @@ namespace {
 std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
     std::unique_ptr<tsl::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
-      tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
+      proto2::DownCastMessage<test::TestCompilationEnvironment1>(
+          msg.release()));
   return env;
 }
 
