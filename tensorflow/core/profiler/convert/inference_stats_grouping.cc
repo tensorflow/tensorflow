@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/platform/protobuf.h"
