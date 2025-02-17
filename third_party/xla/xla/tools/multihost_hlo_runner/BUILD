@@ -163,6 +163,7 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "//xla/service:hlo_runner_interface",
         "//xla/tests:test_utils",
         "//xla/tools:hlo_control_flow_flattening",
         "//xla/tsl/platform:env",
