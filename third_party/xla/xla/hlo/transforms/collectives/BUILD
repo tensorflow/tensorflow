@@ -353,6 +353,49 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "collective_permute_combiner",
+    srcs = ["collective_permute_combiner.cc"],
+    hdrs = ["collective_permute_combiner.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/hlo/utils:hlo_sharding_util",
+        "//xla/service:collective_combiner_utils",
+        "//xla/service:collective_permute_key",
+        "//xla/service:hlo_domain_map",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_permute_combiner_test",
+    srcs = ["collective_permute_combiner_test.cc"],
+    deps = [
+        ":collective_permute_combiner",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "collective_transformation_reorderer",
     srcs = ["collective_transformation_reorderer.cc"],
     hdrs = ["collective_transformation_reorderer.h"],
