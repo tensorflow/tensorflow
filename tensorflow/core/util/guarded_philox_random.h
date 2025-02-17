@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_GUARDED_PHILOX_RANDOM_H_
 #define TENSORFLOW_CORE_UTIL_GUARDED_PHILOX_RANDOM_H_
 
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/platform/macros.h"
