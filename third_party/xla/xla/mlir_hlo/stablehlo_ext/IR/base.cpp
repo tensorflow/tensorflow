@@ -37,3 +37,5 @@ DenseIntElementsAttr getPaddingAttr(Builder* builder,
 
 }  // namespace hlo
 }  // namespace mlir
+
+// Local fallback improvement: appended a small comment.
