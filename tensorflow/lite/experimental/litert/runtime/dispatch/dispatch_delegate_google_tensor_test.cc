@@ -288,8 +288,7 @@ TEST(DispatchDelegate, CompiledModel) {
                               CompiledModel::Create(env, model));
 
   // Check CompiledModel buffer requirements.
-  // input expects host memory.
-  // output expects AHWB.
+  // input and output expect AHWB.
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBufferRequirements input_buffer_requirements_arg0,
       compiled_model.GetInputBufferRequirements(signature_index,
@@ -298,7 +297,7 @@ TEST(DispatchDelegate, CompiledModel) {
       std::vector<LiteRtTensorBufferType> input_buffer_types_arg0,
       input_buffer_requirements_arg0.SupportedTypes());
   EXPECT_THAT(input_buffer_types_arg0,
-              ElementsAre(kLiteRtTensorBufferTypeHostMemory));
+              ElementsAre(kLiteRtTensorBufferTypeAhwb));
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBufferRequirements input_buffer_requirements_arg1,
@@ -308,7 +307,7 @@ TEST(DispatchDelegate, CompiledModel) {
       std::vector<LiteRtTensorBufferType> input_buffer_types_arg1,
       input_buffer_requirements_arg1.SupportedTypes());
   EXPECT_THAT(input_buffer_types_arg1,
-              ElementsAre(kLiteRtTensorBufferTypeHostMemory));
+              ElementsAre(kLiteRtTensorBufferTypeAhwb));
 
   LITERT_ASSERT_OK_AND_ASSIGN(
       TensorBufferRequirements output_buffer_requirements,
