@@ -1557,8 +1557,8 @@ void GPURunnerProfiler::UploadSession() {
   CHECK(!dump_path_.empty());
 
   LOG(INFO) << "Saving xspace result to " << dump_path_;
-  // Save in binary format to create xprof sessions and extract device stats.
-  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), dump_path_, *xspace_.get()));
+  // Save in text format to create xprof sessions and extract device stats.
+  CHECK_OK(WriteTextProto(tsl::Env::Default(), dump_path_, *xspace_.get()));
   if (!keep_xspace_) {
     xspace_ = nullptr;
   }
