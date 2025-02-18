@@ -339,14 +339,12 @@ class IterateByCategory(Generic[_T]):
         continue
 
       T = TypeVar("T", bound=_T)
-      expected_type = Union[
+      ExpectedTypes = Union[
           collections.deque[T], tuple[collections.deque[T], ...], None
       ]
       raise TypeError(
           f"`{self._select_buffer}` returned a value of type "
-          f"`{type(which_buffer).__name__}`; expected one of "
-          f"`{expected_type}"
-          f"`."
+          f"`{type(which_buffer).__name__}`; expected one of `{ExpectedTypes}`."
       )
 
     raise StopIteration()
