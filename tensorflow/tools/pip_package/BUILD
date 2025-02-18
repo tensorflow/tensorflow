@@ -11,6 +11,7 @@ load(
     "@local_tsl//third_party/py:py_manylinux_compliance_test.bzl",
     "verify_manylinux_compliance_test",
 )
+load("@local_tsl//third_party/py:python_wheel.bzl", "collect_data_files", "transitive_py_deps")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
 load(
@@ -20,8 +21,6 @@ load(
     "tf_cuda_tests_tags",
     "tf_exec_properties",
 )
-load("//tensorflow/tools/pip_package/utils:data_deps.bzl", "collect_data_files")
-load("//tensorflow/tools/pip_package/utils:py_deps.bzl", "transitive_py_deps")
 load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel", "tf_wheel_dep")
 
 package(default_visibility = ["//visibility:public"])
