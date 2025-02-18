@@ -1,61 +1,24 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/libcxx/src/iostream.cpp b/libcxx/src/iostream.cpp
---- a/libcxx/src/iostream.cpp
-+++ b/libcxx/src/iostream.cpp
-@@ -18,8 +18,8 @@
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+--- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
++++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+@@ -47,6 +47,7 @@
  
- template <class StreamT, class BufferT>
- union stream_data {
--  stream_data() {}
--  ~stream_data() {}
-+  constexpr stream_data() {}
-+  constexpr ~stream_data() {}
-   struct {
-     // The stream has to be the first element, since that's referenced by the stream declarations in <iostream>
-     StreamT stream;
-@@ -38,13 +38,19 @@
- #define CHAR_MANGLING_wchar_t "_W"
- #define CHAR_MANGLING(CharT) CHAR_MANGLING_##CharT
+ linux_defines = posix_defines + [
+     "_GNU_SOURCE",
++    "HAVE_GETAUXVAL=1",
+     "HAVE_MALLINFO=1",
+     "HAVE_SBRK=1",
+     "HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC=1",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h b/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
+--- a/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
++++ b/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
+@@ -296,7 +296,7 @@
  
-+#ifdef _LIBCPP_COMPILER_CLANG_BASED
-+#  define STRING_DATA_CONSTINIT constinit
-+#else
-+#  define STRING_DATA_CONSTINIT
-+#endif
-+
- #ifdef _LIBCPP_ABI_MICROSOFT
- #  define STREAM(StreamT, BufferT, CharT, var)                                                                         \
--    stream_data<StreamT<CharT>, BufferT<CharT>> var __asm__(                                                           \
-+    STRING_DATA_CONSTINIT stream_data<StreamT<CharT>, BufferT<CharT>> var __asm__(                                     \
-         "?" #var "@" ABI_NAMESPACE_STR "@std@@3V?$" #StreamT                                                           \
-         "@" CHAR_MANGLING(CharT) "U?$char_traits@" CHAR_MANGLING(CharT) "@" ABI_NAMESPACE_STR "@std@@@12@A")
- #else
--#  define STREAM(StreamT, BufferT, CharT, var) stream_data<StreamT<CharT>, BufferT<CharT>> var
-+#  define STREAM(StreamT, BufferT, CharT, var) STRING_DATA_CONSTINIT stream_data<StreamT<CharT>, BufferT<CharT>> var
- #endif
+ /* HAVE_PROC_PID_RUSAGE defined in Bazel */
  
- // These definitions and the declarations in <iostream> technically cause ODR violations, since they have different
-diff -ruN --strip-trailing-cr a/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp b/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
---- a/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
-+++ b/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
-@@ -0,0 +1,20 @@
-+//===----------------------------------------------------------------------===//
-+//
-+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-+// See https://llvm.org/LICENSE.txt for license information.
-+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-+//
-+//===----------------------------------------------------------------------===//
-+
-+#include <iostream>
-+
-+// FIXME: Remove after issue https://github.com/llvm/llvm-project/issues/127348 resolved.
-+extern "C" const char* __asan_default_options() { return "check_initialization_order=true:strict_init_order=true"; }
-+
-+// Test that ios used from globals constructors doesn't trigger Asan initialization-order-fiasco.
-+
-+struct Global {
-+  Global() { std::cout << "Hello!"; }
-+} global;
-+
-+int main(int, char**) { return 0; }
+-#define HAVE_GETAUXVAL 1
++/* HAVE_GETAUXVAL defined in Bazel */
+ 
+ /* Directly provide definitions here behind platform preprocessor definitions.
+  * The preprocessor conditions are sufficient to handle all of the configuration

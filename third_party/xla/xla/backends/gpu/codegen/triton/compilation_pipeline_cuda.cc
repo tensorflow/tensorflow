@@ -130,7 +130,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   }
   pm->addPass(mlir::createTritonNvidiaGPUMMALoweringPass());
   pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
-  pm->addPass(mlir::createConvertSCFToCFPass());
+  pm->addPass(mlir::createSCFToControlFlowPass());
   pm->addPass(mlir::createConvertIndexToLLVMPass());
   pm->addPass(mt::gpu::createAllocateSharedMemoryPass());
   pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
