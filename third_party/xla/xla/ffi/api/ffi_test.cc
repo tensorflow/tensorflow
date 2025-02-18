@@ -450,6 +450,24 @@ TEST(FfiTest, RunId) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, DeviceOrdinal) {
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  auto handler =
+      Ffi::Bind().Ctx<DeviceOrdinal>().To([&](int32_t device_ordinal) {
+        EXPECT_EQ(device_ordinal, 42);
+        return Error::Success();
+      });
+
+  CallOptions options;
+  options.device_ordinal = 42;
+
+  auto status = Call(*handler, call_frame, options);
+
+  TF_ASSERT_OK(status);
+}
+
 TEST(FfiTest, AnyBufferArgument) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
