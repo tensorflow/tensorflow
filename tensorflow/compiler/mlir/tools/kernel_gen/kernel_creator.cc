@@ -299,7 +299,7 @@ absl::Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
   // Constraints are removed as late as possible and before lowering to CFG.
   pm.addNestedPass<FuncOp>(::mlir::createConvertShapeConstraintsPass());
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
-  pm.addPass(::mlir::createConvertSCFToCFPass());
+  pm.addPass(::mlir::createSCFToControlFlowPass());
   // Map asserts to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
   if (failed(pm.run(module))) {
@@ -335,7 +335,7 @@ absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   // pm.enableVerifier(false);
   if (apply_cl_options) tensorflow::applyTensorflowAndCLOptions(pm);
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
-  kernelPm.addPass(::mlir::createConvertSCFToCFPass());
+  kernelPm.addPass(::mlir::createSCFToControlFlowPass());
 #if TENSORFLOW_USE_ROCM
   kernelPm.addPass(mlir::createGpuKernelToRocdlPass());
 #elif GOOGLE_CUDA
