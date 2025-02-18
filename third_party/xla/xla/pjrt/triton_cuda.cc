@@ -140,7 +140,7 @@ absl::Status TritonToLLVM(
   // TODO(slebedev): Uncomment once we upgrade Triton internally.
   // pm.addPass(mlir::triton::NVIDIA::createDecomposeUnsupportedConversionsPass());
   pm.addPass(mlir::triton::gpu::createTritonGPUCombineTensorSelectAndIf());
-  pm.addPass(mlir::createConvertSCFToCFPass());
+  pm.addPass(mlir::createSCFToControlFlowPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mlir::triton::gpu::createAllocateSharedMemoryPass());
   pm.addPass(mlir::triton::gpu::createTritonGPUGlobalScratchAllocationPass());
