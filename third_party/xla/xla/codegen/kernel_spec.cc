@@ -25,20 +25,22 @@ limitations under the License.
 namespace xla {
 
 KernelSpec::KernelSpec(absl::string_view name, se::ThreadDim thread_dim,
-                       BufferUses buffer_uses,
+                       Buffers argument_buffers, Buffers result_buffers,
                        std::optional<size_t> scratch_bytes)
     : KernelSpec(name, se::ClusterDim(), se::BlockDim(), thread_dim,
-                 std::move(buffer_uses), std::move(scratch_bytes)) {}
+                 std::move(argument_buffers), std::move(result_buffers),
+                 std::move(scratch_bytes)) {}
 
 KernelSpec::KernelSpec(absl::string_view name, se::ClusterDim cluster_dim,
                        se::BlockDim block_dim, se::ThreadDim thread_dim,
-                       BufferUses buffer_uses,
+                       Buffers argument_buffers, Buffers result_buffers,
                        std::optional<size_t> scratch_bytes)
     : name_(name),
       cluster_dim_(cluster_dim),
       block_dim_(block_dim),
       thread_dim_(thread_dim),
-      buffer_uses_(std::move(buffer_uses)),
+      argument_buffers_(std::move(argument_buffers)),
+      result_buffers_(std::move(result_buffers)),
       scratch_bytes_(scratch_bytes) {}
 
 }  // namespace xla

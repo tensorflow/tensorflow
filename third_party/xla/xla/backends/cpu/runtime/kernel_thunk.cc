@@ -364,20 +364,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
 absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     Thunk::Info info, const KernelSpec& kernel_spec,
     std::optional<uint64_t> min_alignment) {
-  std::vector<BufferAllocation::Slice> arguments_buffers;
-  std::vector<BufferAllocation::Slice> results_buffers;
-
-  for (const BufferUse& buffer_use : kernel_spec.buffer_uses()) {
-    if (buffer_use.access() == BufferUse::kRead) {
-      arguments_buffers.push_back(buffer_use.slice());
-    } else {
-      results_buffers.push_back(buffer_use.slice());
-    }
-  }
-
-  return Create(std::move(info), arguments_buffers, results_buffers,
-                kernel_spec.name(), kernel_spec.thread_dim(), std::nullopt,
-                min_alignment);
+  return Create(std::move(info), kernel_spec.argument_buffers(),
+                kernel_spec.result_buffers(), kernel_spec.name(),
+                kernel_spec.thread_dim(), std::nullopt, min_alignment);
 }
 
 }  // namespace xla::cpu

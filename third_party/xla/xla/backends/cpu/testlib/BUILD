@@ -150,6 +150,7 @@ xla_cc_test(
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_ir_kernel_source",
         "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

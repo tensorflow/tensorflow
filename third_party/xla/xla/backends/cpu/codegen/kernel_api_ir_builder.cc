@@ -393,12 +393,14 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   b.CreateRet(
       llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(context_)));
 
-  absl::InlinedVector<BufferUse, 8> buffer_uses;
+  absl::InlinedVector<BufferAllocation::Slice, 8> argument_buffers;
   for (const KernelParameter& argument : arguments) {
-    buffer_uses.push_back(BufferUse::Read(argument.slice));
+    argument_buffers.push_back(argument.slice);
   }
+
+  absl::InlinedVector<BufferAllocation::Slice, 8> result_buffers;
   for (const KernelParameter& result : results) {
-    buffer_uses.push_back(BufferUse::Write(result.slice));
+    result_buffers.push_back(result.slice);
   }
 
   return KernelPrototype{function,
@@ -408,7 +410,8 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
                          std::move(ir_arguments),
                          std::move(ir_results),
                          std::move(invariant_arguments),
-                         std::move(buffer_uses)};
+                         std::move(argument_buffers),
+                         std::move(result_buffers)};
 }
 
 std::unique_ptr<llvm::Module> KernelApiIrBuilder::CreateModule(
