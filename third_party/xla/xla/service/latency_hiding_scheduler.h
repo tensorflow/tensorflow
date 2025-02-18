@@ -452,6 +452,7 @@ class HloEdge {
   }
   const HloGraphNode& Target() const { return *target_; }
   HloGraphNode& Target() { return *target_; }
+  HloGraphNode* TargetPtr() { return target_; }
   std::string ToString() const;
 
  private:
