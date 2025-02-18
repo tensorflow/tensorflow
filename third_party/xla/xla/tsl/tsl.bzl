@@ -122,6 +122,19 @@ def internal_visibility(internal_targets):
     """
     return if_google(internal_targets, ["//visibility:public"])
 
+def _make_abs_targets(targets):
+    return ["//" + target for target in targets]
+
+def xla_bzl_visibility(targets):
+    """To be used in a .bzl file's visibility declaration:
+
+    visibility(xla_bzl_visibility(targets))
+
+    expands to visibility(targets) inside Google, but visibility("public") in OSS.
+    """
+
+    return if_google(_make_abs_targets(targets), "public")
+
 # TODO(jakeharmon): Use this to replace if_static
 # TODO(b/356020232): remove completely after migration is done
 def if_tsl_link_protobuf(if_true, if_false = []):
