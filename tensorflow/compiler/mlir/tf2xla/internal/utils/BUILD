@@ -39,6 +39,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:Pass",
         "@stablehlo//:chlo_ops",
     ],

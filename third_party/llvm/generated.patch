@@ -1,61 +1,223 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/libcxx/src/iostream.cpp b/libcxx/src/iostream.cpp
---- a/libcxx/src/iostream.cpp
-+++ b/libcxx/src/iostream.cpp
-@@ -18,8 +18,8 @@
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Linalg/IR/LinalgInterfaces.cpp b/mlir/lib/Dialect/Linalg/IR/LinalgInterfaces.cpp
+--- a/mlir/lib/Dialect/Linalg/IR/LinalgInterfaces.cpp
++++ b/mlir/lib/Dialect/Linalg/IR/LinalgInterfaces.cpp
+@@ -13,8 +13,6 @@
+ #include "mlir/Dialect/Arith/Utils/Utils.h"
+ #include "mlir/Dialect/Complex/IR/Complex.h"
+ #include "mlir/Dialect/Linalg/IR/Linalg.h"
+-#include "mlir/Dialect/MemRef/IR/MemRef.h"
+-#include "mlir/Dialect/Tensor/IR/Tensor.h"
+ #include "mlir/IR/AffineExpr.h"
+ #include "mlir/IR/AffineExprVisitor.h"
+ #include "mlir/IR/AffineMap.h"
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Tensor/IR/TensorOps.cpp b/mlir/lib/Dialect/Tensor/IR/TensorOps.cpp
+--- a/mlir/lib/Dialect/Tensor/IR/TensorOps.cpp
++++ b/mlir/lib/Dialect/Tensor/IR/TensorOps.cpp
+@@ -10,9 +10,8 @@
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Arith/Utils/Utils.h"
+ #include "mlir/Dialect/Complex/IR/Complex.h"
+-#include "mlir/Dialect/Linalg/IR/Linalg.h"
++#include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+-#include "mlir/Dialect/Tensor/Utils/Utils.h"
+ #include "mlir/Dialect/Utils/IndexingUtils.h"
+ #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
+ #include "mlir/Dialect/Utils/StaticValueUtils.h"
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+--- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
++++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+@@ -47,6 +47,7 @@
  
- template <class StreamT, class BufferT>
- union stream_data {
--  stream_data() {}
--  ~stream_data() {}
-+  constexpr stream_data() {}
-+  constexpr ~stream_data() {}
-   struct {
-     // The stream has to be the first element, since that's referenced by the stream declarations in <iostream>
-     StreamT stream;
-@@ -38,13 +38,19 @@
- #define CHAR_MANGLING_wchar_t "_W"
- #define CHAR_MANGLING(CharT) CHAR_MANGLING_##CharT
+ linux_defines = posix_defines + [
+     "_GNU_SOURCE",
++    "HAVE_GETAUXVAL=1",
+     "HAVE_MALLINFO=1",
+     "HAVE_SBRK=1",
+     "HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC=1",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h b/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
+--- a/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
++++ b/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
+@@ -296,7 +296,7 @@
  
-+#ifdef _LIBCPP_COMPILER_CLANG_BASED
-+#  define STRING_DATA_CONSTINIT constinit
-+#else
-+#  define STRING_DATA_CONSTINIT
-+#endif
-+
- #ifdef _LIBCPP_ABI_MICROSOFT
- #  define STREAM(StreamT, BufferT, CharT, var)                                                                         \
--    stream_data<StreamT<CharT>, BufferT<CharT>> var __asm__(                                                           \
-+    STRING_DATA_CONSTINIT stream_data<StreamT<CharT>, BufferT<CharT>> var __asm__(                                     \
-         "?" #var "@" ABI_NAMESPACE_STR "@std@@3V?$" #StreamT                                                           \
-         "@" CHAR_MANGLING(CharT) "U?$char_traits@" CHAR_MANGLING(CharT) "@" ABI_NAMESPACE_STR "@std@@@12@A")
- #else
--#  define STREAM(StreamT, BufferT, CharT, var) stream_data<StreamT<CharT>, BufferT<CharT>> var
-+#  define STREAM(StreamT, BufferT, CharT, var) STRING_DATA_CONSTINIT stream_data<StreamT<CharT>, BufferT<CharT>> var
- #endif
+ /* HAVE_PROC_PID_RUSAGE defined in Bazel */
  
- // These definitions and the declarations in <iostream> technically cause ODR violations, since they have different
-diff -ruN --strip-trailing-cr a/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp b/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
---- a/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
-+++ b/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
-@@ -0,0 +1,20 @@
-+//===----------------------------------------------------------------------===//
-+//
-+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-+// See https://llvm.org/LICENSE.txt for license information.
-+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-+//
-+//===----------------------------------------------------------------------===//
+-#define HAVE_GETAUXVAL 1
++/* HAVE_GETAUXVAL defined in Bazel */
+ 
+ /* Directly provide definitions here behind platform preprocessor definitions.
+  * The preprocessor conditions are sufficient to handle all of the configuration
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -7763,7 +7763,6 @@
+     name = "TensorOpsTdFiles",
+     srcs = [
+         "include/mlir/Dialect/Tensor/IR/TensorBase.td",
+-        "include/mlir/Dialect/Tensor/IR/TensorInterfaces.td",
+         "include/mlir/Dialect/Tensor/IR/TensorOps.td",
+     ],
+     includes = ["include"],
+@@ -7813,23 +7812,6 @@
+     deps = [":TensorOpsTdFiles"],
+ )
+ 
+-gentbl_cc_library(
+-    name = "TensorInterfacesIncGen",
+-    tbl_outs = [
+-        (
+-            ["--gen-op-interface-decls"],
+-            "include/mlir/Dialect/Tensor/IR/TensorInterfaces.h.inc",
+-        ),
+-        (
+-            ["--gen-op-interface-defs"],
+-            "include/mlir/Dialect/Tensor/IR/TensorInterfaces.cpp.inc",
+-        ),
+-    ],
+-    tblgen = ":mlir-tblgen",
+-    td_file = "include/mlir/Dialect/Tensor/IR/TensorInterfaces.td",
+-    deps = [":TensorOpsTdFiles"],
+-)
+-
+ cc_library(
+     name = "TensorDialect",
+     srcs = [
+@@ -7859,13 +7841,13 @@
+         ":InferIntRangeInterface",
+         ":InferTypeOpInterface",
+         ":InliningUtils",
++        ":LinalgInterfaces",
+         ":LoopLikeInterface",
+         ":ParallelCombiningOpInterface",
+         ":ShapedOpInterfaces",
+         ":SideEffectInterfaces",
+         ":SubsetOpInterface",
+         ":Support",
+-        ":TensorInterfacesIncGen",
+         ":TensorOpsIncGen",
+         ":TilingInterface",
+         ":TransformDialectInterfaces",
+@@ -11207,6 +11189,23 @@
+ )
+ 
+ gentbl_cc_library(
++    name = "LinalgRelayoutOpsIncGen",
++    tbl_outs = [
++        (
++            ["-gen-op-decls"],
++            "include/mlir/Dialect/Linalg/IR/LinalgRelayoutOps.h.inc",
++        ),
++        (
++            ["-gen-op-defs"],
++            "include/mlir/Dialect/Linalg/IR/LinalgRelayoutOps.cpp.inc",
++        ),
++    ],
++    tblgen = ":mlir-tblgen",
++    td_file = "include/mlir/Dialect/Linalg/IR/LinalgRelayoutOps.td",
++    deps = [":LinalgOpsTdFiles"],
++)
 +
-+#include <iostream>
++gentbl_cc_library(
+     name = "LinalgEnumsIncGen",
+     tbl_outs = [
+         (
+@@ -11533,9 +11532,49 @@
+ )
+ 
+ cc_library(
++    name = "LinalgInterfaces",
++    srcs = [
++        "include/mlir/Dialect/Linalg/IR/Linalg.h",
++        "lib/Dialect/Linalg/IR/LinalgInterfaces.cpp",
++    ],
++    hdrs = ["include/mlir/Dialect/Linalg/IR/LinalgInterfaces.h"],
++    includes = ["include"],
++    deps = [
++        ":AffineDialect",
++        ":ArithDialect",
++        ":ArithUtils",
++        ":BytecodeOpInterface",
++        ":ComplexDialect",
++        ":ControlFlowInterfaces",
++        ":CopyOpInterface",
++        ":DestinationStyleOpInterface",
++        ":DialectUtils",
++        ":IR",
++        ":InferTypeOpInterface",
++        ":LinalgEnumsIncGen",
++        ":LinalgInterfacesIncGen",
++        ":LinalgOpsIncGen",
++        ":LinalgRelayoutOpsIncGen",
++        ":LinalgStructuredOpsIncGen",
++        ":SideEffectInterfaces",
++        ":Support",
++        ":TilingInterface",
++        ":ViewLikeInterface",
++        "//llvm:Support",
++    ],
++)
 +
-+// FIXME: Remove after issue https://github.com/llvm/llvm-project/issues/127348 resolved.
-+extern "C" const char* __asan_default_options() { return "check_initialization_order=true:strict_init_order=true"; }
-+
-+// Test that ios used from globals constructors doesn't trigger Asan initialization-order-fiasco.
-+
-+struct Global {
-+  Global() { std::cout << "Hello!"; }
-+} global;
-+
-+int main(int, char**) { return 0; }
++cc_library(
+     name = "LinalgDialect",
+-    srcs = glob(["lib/Dialect/Linalg/IR/*.cpp"]),
+-    hdrs = glob(["include/mlir/Dialect/Linalg/IR/*.h"]),
++    srcs = [
++        "lib/Dialect/Linalg/IR/LinalgDialect.cpp",
++        "lib/Dialect/Linalg/IR/LinalgOps.cpp",
++        "lib/Dialect/Linalg/IR/ValueBoundsOpInterfaceImpl.cpp",
++    ],
++    hdrs = [
++        "include/mlir/Dialect/Linalg/IR/Linalg.h",
++        "include/mlir/Dialect/Linalg/IR/ValueBoundsOpInterfaceImpl.h",
++    ],
+     includes = ["include"],
+     deps = [
+         ":AffineDialect",
+@@ -11554,9 +11593,10 @@
+         ":InferTypeOpInterface",
+         ":InliningUtils",
+         ":LinalgEnumsIncGen",
+-        ":LinalgInterfacesIncGen",
++        ":LinalgInterfaces",
+         ":LinalgNamedStructuredOpsYamlIncGen",
+         ":LinalgOpsIncGen",
++        ":LinalgRelayoutOpsIncGen",
+         ":LinalgStructuredOpsIncGen",
+         ":MathDialect",
+         ":MemRefDialect",
+@@ -11568,6 +11608,7 @@
+         ":SubsetOpInterface",
+         ":Support",
+         ":TensorDialect",
++        ":TensorUtils",
+         ":TilingInterface",
+         ":ValueBoundsOpInterface",
+         ":ViewLikeInterface",
+@@ -11599,6 +11640,7 @@
+         ":IR",
+         ":IndexDialect",
+         ":LinalgDialect",
++        ":LinalgInterfaces",
+         ":LinalgMatchOpsIncGen",
+         ":LinalgTransformEnumsIncGen",
+         ":LinalgTransformOpsIncGen",
+@@ -11710,6 +11752,7 @@
+         ":IR",
+         ":IndexDialect",
+         ":LinalgDialect",
++        ":LinalgInterfaces",
+         ":LinalgPassIncGen",
+         ":LinalgStructuredOpsIncGen",
+         ":LinalgUtils",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/test/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/test/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/test/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/test/BUILD.bazel
+@@ -425,6 +425,7 @@
+         "//mlir:LLVMDialect",
+         "//mlir:LLVMIRToLLVMTranslation",
+         "//mlir:LinalgDialect",
++        "//mlir:LinalgInterfaces",
+         "//mlir:LoopLikeInterface",
+         "//mlir:MemorySlotInterfaces",
+         "//mlir:Pass",
