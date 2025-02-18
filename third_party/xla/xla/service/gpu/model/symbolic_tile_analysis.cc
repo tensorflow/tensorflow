@@ -53,6 +53,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/layout.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -61,6 +64,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -345,6 +349,48 @@ void SortTiledHloInstructionsInPostOrder(
                });
 }
 
+// Extension of SymbolicTiledHloInstruction for fusions that holds the analysis
+// of the fusion's computation.
+class SymbolicTiledHloFusionInstruction : public SymbolicTiledHloInstruction {
+ public:
+  SymbolicTiledHloFusionInstruction(const HloInstruction* hlo,
+                                    IndexingMap indexing_map,
+                                    SymbolicTileAnalysis analysis)
+      : SymbolicTiledHloInstruction(hlo, std::move(indexing_map)),
+        analysis_(std::move(analysis)) {}
+
+  SymbolicTileAnalysis analysis_;
+};
+
+// Returns the tile sizes of the instruction from its fusion backend's config.
+//
+// Assumes that the fusion instruction has a single output.
+absl::StatusOr<std::vector<int64_t>> GetFusionBlockTileSizes(
+    const HloInstruction* instruction) {
+  if (!instruction->has_backend_config()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Instruction ", instruction->ToString(),
+                     " does not have backend config."));
+  }
+  TF_ASSIGN_OR_RETURN(auto backend_config,
+                      instruction->backend_config<GpuBackendConfig>());
+  auto& block_level_config =
+      backend_config.fusion_backend_config().block_level_fusion_config();
+  if (block_level_config.output_tiles_size() != 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Only fusions with a single output tile are supported, got ",
+        block_level_config.output_tiles_size(),
+        " output tiles for instruction ", instruction->ToString()));
+  }
+  const auto& output_tile = block_level_config.output_tiles().Get(0);
+  std::vector<int64_t> tile_sizes;
+  tile_sizes.reserve(output_tile.sizes_size());
+  for (int64_t s : output_tile.sizes()) {
+    tile_sizes.push_back(s);
+  }
+  return tile_sizes;
+}
+
 }  // anonymous namespace
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeComputation(
@@ -366,11 +412,15 @@ void SortTiledHloInstructionsInPostOrder(
     return FusionDecision::Forbid("Multi-output fusions are not supported. ")
            << fusion.ToString();
   }
-  auto& root = roots[0];
+  const HloInstruction* root = &roots.front().instruction();
+  // Handle the case of a single-instruction computation.
+  if (root->opcode() == HloOpcode::kParameter) {
+    root = fusion.GetParameters()[root->parameter_number()];
+  }
 
   auto [root_tiled_hlo, _] = tiled_hlo_instructions_set.Insert(
       std::make_unique<SymbolicTiledHloInstruction>(
-          &root.instruction(), CreateIdentityMap(root.shape(), ctx)));
+          root, CreateIdentityMap(root->shape(), ctx)));
 
   std::vector<SymbolicTiledHloInstruction*> worklist = {root_tiled_hlo};
 
@@ -406,10 +456,32 @@ void SortTiledHloInstructionsInPostOrder(
       operand_indexing_map.RescaleSymbols();
       operand_indexing_map.RemoveUnusedSymbols();
 
-      auto [operand_tiled_hlo, inserted] = tiled_hlo_instructions_set.Insert(
-          std::make_unique<SymbolicTiledHloInstruction>(
-              &operand.instruction(), std::move(operand_indexing_map)));
+      std::unique_ptr<SymbolicTiledHloInstruction> tiled_operand;
+      if (operand.opcode() == HloOpcode::kFusion) {
+        auto hlo_module = operand.instruction().GetModule();
+        if (hlo_module) {
+          auto debug_options = hlo_module->config().debug_options();
+          QCHECK(
+              debug_options
+                  .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms())  // NOLINT
+              << "Nested fusions should only appear for Triton GEMMs.";
+        }
+        auto analysis_or = SymbolicTileAnalysis::AnalyzeComputation(
+            *operand.instruction().fused_instructions_computation(), ctx,
+            emitter_specific_constraints_builder);
+        if (std::holds_alternative<FusionDecision>(analysis_or)) {
+          return analysis_or;
+        }
+        tiled_operand = std::make_unique<SymbolicTiledHloFusionInstruction>(
+            &operand.instruction(), std::move(operand_indexing_map),
+            std::get<SymbolicTileAnalysis>(std::move(analysis_or)));
+      } else {
+        tiled_operand = std::make_unique<SymbolicTiledHloInstruction>(
+            &operand.instruction(), std::move(operand_indexing_map));
+      }
 
+      auto [operand_tiled_hlo, inserted] =
+          tiled_hlo_instructions_set.Insert(std::move(tiled_operand));
       tiled_hlo_instruction->AppendOperand(operand_tiled_hlo);
 
       if (inserted) {
@@ -558,47 +630,79 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
   // additional hash calculations.
   tiled_hlo_instructions_set.Reserve(symbolic_tiled_hlo_instructions_.size());
 
-  for (const std::unique_ptr<SymbolicTiledHloInstruction>& symbolic_tiled_hlo :
+  for (const std::unique_ptr<SymbolicTiledHloInstruction>& symbolic_tiling :
        symbolic_tiled_hlo_instructions_) {
     llvm::SmallVector<int64_t> tile_sizes;
-    auto it = tile_sizes_map.find(symbolic_tiled_hlo.get());
+    auto it = tile_sizes_map.find(symbolic_tiling.get());
     if (it != tile_sizes_map.end()) {
       tile_sizes = it->second;
     } else {
-      tile_sizes = EvaluateTileSizes(symbolic_tiled_hlo->symbolic_tile(),
-                                     tile_parameters);
+      tile_sizes =
+          EvaluateTileSizes(symbolic_tiling->symbolic_tile(), tile_parameters);
     }
 
-    llvm::SmallVector<int64_t> tile_strides = EvaluateTileStrides(
-        symbolic_tiled_hlo->symbolic_tile(), tile_parameters);
+    llvm::SmallVector<int64_t> tile_strides =
+        EvaluateTileStrides(symbolic_tiling->symbolic_tile(), tile_parameters);
 
     std::optional<IndexingMap> tile_offset_indexing;
+    const HloInstruction* hlo = symbolic_tiling->hlo();
     if (compute_all_tile_offset_indexing_maps ||
-        parameters_with_offset_indexing.contains(symbolic_tiled_hlo->hlo()) ||
-        symbolic_tiled_hlo->hlo()->opcode() == HloOpcode::kIota) {
+        parameters_with_offset_indexing.contains(hlo) ||
+        hlo->opcode() == HloOpcode::kIota) {
       TF_ASSIGN_OR_RETURN(
           tile_offset_indexing,
           ComputeTileOffsetIndexing(
-              *symbolic_tiled_hlo,
-              output_tiling_info.output_tile_offset_indexing, context_));
+              *symbolic_tiling, output_tiling_info.output_tile_offset_indexing,
+              context_));
     }
 
     llvm::SmallVector<const TiledHloInstruction*> operands;
     for (const SymbolicTiledHloInstruction* operand :
-         symbolic_tiled_hlo->operands()) {
+         symbolic_tiling->operands()) {
       operands.push_back(symbolic_to_tiled_hlo_map.at(operand));
     }
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo_holder,
-                        TiledHloInstruction::Create(
-                            symbolic_tiled_hlo->hlo(), std::move(operands),
-                            std::move(tile_sizes), std::move(tile_strides),
-                            std::move(tile_offset_indexing)));
+    std::unique_ptr<TiledHloInstruction> tiled_instruction;
+    if (hlo->opcode() == HloOpcode::kFusion) {
+      auto hlo_module = hlo->GetModule();
+      if (hlo_module) {
+        auto debug_options = hlo_module->config().debug_options();
+        QCHECK(
+            debug_options
+                .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms())
+            << "Nested fusions should only appear for Triton GEMMs.";
+      }
+
+      // Compute the tiling for the computation of the nested fusion.
+      auto* symbolic_fusion_tiling =
+          static_cast<const SymbolicTiledHloFusionInstruction*>(
+              symbolic_tiling.get());
+      TF_ASSIGN_OR_RETURN(std::vector<int64_t> nested_tile_parameters,
+                          GetFusionBlockTileSizes(hlo));
+      TF_ASSIGN_OR_RETURN(
+          auto tiled_hlo_computation,
+          symbolic_fusion_tiling->analysis_.ComputeTiledHloInstructions(
+              nested_tile_parameters, constraints_are_known_satisfied,
+              compute_all_tile_offset_indexing_maps));
+      TF_ASSIGN_OR_RETURN(tiled_instruction,
+                          TiledHloFusionInstruction::Create(
+                              hlo, std::move(operands),
+                              std::make_unique<TiledHloComputation>(
+                                  std::move(tiled_hlo_computation)),
+                              std::move(tile_sizes), std::move(tile_strides),
+                              std::move(tile_offset_indexing)));
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          tiled_instruction,
+          TiledHloInstruction::Create(
+              hlo, std::move(operands), std::move(tile_sizes),
+              std::move(tile_strides), std::move(tile_offset_indexing)));
+    }
 
     auto [tiled_hlo, inserted] =
-        tiled_hlo_instructions_set.Insert(std::move(tiled_hlo_holder));
+        tiled_hlo_instructions_set.Insert(std::move(tiled_instruction));
 
-    symbolic_to_tiled_hlo_map[symbolic_tiled_hlo.get()] = tiled_hlo;
+    symbolic_to_tiled_hlo_map[symbolic_tiling.get()] = tiled_hlo;
   }
   return TiledHloComputation::FromSortedTiledHloInstructions(
       tiled_hlo_instructions_set.ExtractData(),
