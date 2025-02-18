@@ -238,9 +238,9 @@ bool GpuScheduleCrossesOverlapLimit(
   return false;
 }
 
-//===--------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 // GpuAsyncTrackerBase
-//===--------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 GpuAsyncTrackerBase::GpuAsyncTrackerBase(const SchedulerConfig& config,
                                          GetCanonicalAsyncOpFunc func)
     : AsyncTracker(config, func) {}
@@ -320,9 +320,9 @@ void GpuAsyncTrackerBase::PostProcessScheduleGraph(
   }
 }
 
-//===--------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 // GpuAsyncTracker
-//===--------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 GpuAsyncTracker::GpuAsyncTracker(const SchedulerConfig& config)
     : GpuAsyncTrackerBase(config) {}
 
@@ -469,9 +469,9 @@ int64_t GpuAsyncTracker::GetNumResourcesPerInstruction(
   return num_resources - (found ? 1 : 0);
 }
 
-//===--------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 // GpuLatencyEstimator
-//===--------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 GpuLatencyEstimator::GpuLatencyEstimator(int64_t pointer_size,
                                          GetCanonicalAsyncOpFunc func)
     : ApproximateLatencyEstimator(func), pointer_size_(pointer_size) {}
@@ -530,9 +530,9 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::GetLatencyBetween(
   return ApproximateLatencyEstimator::kLowLatency;
 }
 
-//===--------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 // GPUProfileStatisticsAggregator
-//===--------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 
 void GPUProfileStatisticsAggregator::HandleMissingInstructionCost(
     const HloInstruction& instruction) {
