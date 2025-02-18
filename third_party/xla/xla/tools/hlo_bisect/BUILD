@@ -86,6 +86,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:dump",
+        "//xla/service:hlo_module_util",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
         "//xla/service:hlo_runner",

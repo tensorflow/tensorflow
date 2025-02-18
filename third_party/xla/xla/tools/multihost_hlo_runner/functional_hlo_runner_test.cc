@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/status_macros.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -584,9 +585,8 @@ TEST_F(FunctionalHloRunnerTest, Sharded2DevicesHloUnoptimizedSnapshot) {
 }
 
 TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshot) {
-  FunctionalHloRunner::HloModuleAndArguments hlo_module_and_arguments_from_text;
-  FunctionalHloRunner::HloModuleAndArguments
-      hlo_module_and_arguments_from_binary;
+  HloModuleAndArguments hlo_module_and_arguments_from_text;
+  HloModuleAndArguments hlo_module_and_arguments_from_binary;
   std::string path_to_text_hlo =
       GetHloPath("sharded_unoptimized_hlo_snapshot.pbtxt");
   std::string path_to_binary_hlo =
@@ -602,12 +602,10 @@ TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshot) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       hlo_module_and_arguments_from_text,
-      FunctionalHloRunner::ReadModuleFromUnoptimizedSnapshotTextProtoFile(
-          path_to_text_hlo));
+      ReadModuleFromUnoptimizedSnapshotTextProtoFile(path_to_text_hlo));
   TF_ASSERT_OK_AND_ASSIGN(
       hlo_module_and_arguments_from_binary,
-      FunctionalHloRunner::ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(
-          path_to_binary_hlo));
+      ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(path_to_binary_hlo));
   CHECK_EQ(hlo_module_and_arguments_from_binary.arguments.size(), 2);
 
   CHECK_EQ(hlo_module_and_arguments_from_text.hlo_module->ToString(),
@@ -635,7 +633,7 @@ TEST_F(FunctionalHloRunnerTest, FixFakeArguments) {
 }
 
 TEST(FunctionalHloRunnerTest, TestHloUnoptimizedSnapshotDeSerialization) {
-  FunctionalHloRunner::HloModuleAndArguments hlo_module_and_arguments_from_text;
+  HloModuleAndArguments hlo_module_and_arguments_from_text;
   std::string path_to_text_hlo =
       GetHloPath("sharded_unoptimized_hlo_snapshot.pbtxt");
 

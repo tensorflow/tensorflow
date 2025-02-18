@@ -18,8 +18,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_PROTO_UTIL_H_
 #define XLA_SERVICE_HLO_PROTO_UTIL_H_
 
-#include <string>
-
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -34,16 +32,6 @@ HloProto MakeHloProto(const HloModule& module,
 // Returns a serialized representation of the HLO state, but buffer assignment
 // will not be included in the output.
 HloProto MakeHloProto(const HloModule& module);
-
-// Create an HLO state from serialized representation. In addition to
-// creating the proto with HloModule::CreateFromProto(...) it also
-// uses HloVerifier to ensure basic invariants are held.
-// The HLO module could be a pre-optimizations (default) or post-optimizations
-// module, which affects how the HLO module is verified, e.g., mixed-precision
-// is allowed in post-optimizations HLOs.
-absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
-    const HloModuleProto& proto, const HloModuleConfig& module_config,
-    bool is_module_post_optimizations = false);
 
 // Returns the shapes of the parameters of the entry computation. Shape pointers
 // refer to shapes inside of the given HloProto.
