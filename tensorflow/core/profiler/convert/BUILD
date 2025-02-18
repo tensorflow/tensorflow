@@ -929,7 +929,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        # copybara:uncomment "//third_party/json",
         # copybara:uncomment(b/360874576) "//tensorflow/compiler/mlir/lite/experimental/google/tooling/google:direct_hlo_to_json_graph_convert",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_graph_dumper",
@@ -938,6 +937,7 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler/utils:hlo_module_utils",
         "//tensorflow/core/profiler/utils:hlo_proto_to_module",
+        # copybara:uncomment "@com_github_nlohmann_json//:json",
     ],
 )
 
@@ -1422,5 +1422,14 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@com_google_googletest//:gtest",
         "@local_xla//xla/tsl/profiler/utils:timespan",
+    ],
+)
+
+cc_library(
+    name = "data_table_utils",
+    hdrs = ["data_table_utils.h"],
+    deps = [
+        "@com_github_nlohmann_json//:json",
+        "@com_google_absl//absl/container:btree",
     ],
 )
