@@ -244,7 +244,7 @@ LiteRtCompiledModelT::GetInputBufferRequirements(
     return Unexpected(kLiteRtStatusErrorNotFound,
                       "Failed to get signature runner");
   }
-  auto input_names = runner->input_names();
+  auto input_names = runner->subgraph_input_names();
   if (input_index >= input_names.size()) {
     return Unexpected(kLiteRtStatusErrorIndexOOB, "Input index out of range");
   }
@@ -265,7 +265,7 @@ LiteRtCompiledModelT::GetOutputBufferRequirements(
     return Unexpected(kLiteRtStatusErrorNotFound,
                       "Failed to get signature runner");
   }
-  auto output_names = runner->output_names();
+  auto output_names = runner->subgraph_output_names();
   if (output_index >= output_names.size()) {
     return Unexpected(kLiteRtStatusErrorIndexOOB, "Output index out of range");
   }
@@ -385,12 +385,12 @@ Expected<void> LiteRtCompiledModelT::Run(
                       "Failed to get signature runner");
   }
   size_t num_inputs = input_buffers.size();
-  if (num_inputs != runner->input_names().size()) {
+  if (num_inputs != runner->subgraph_input_names().size()) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                       "Input buffer size mismatch");
   }
   size_t num_outputs = output_buffers.size();
-  if (num_outputs != runner->output_names().size()) {
+  if (num_outputs != runner->subgraph_output_names().size()) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                       "Output buffer size mismatch");
   }
@@ -414,7 +414,7 @@ Expected<void> LiteRtCompiledModelT::Run(
     }
   });
   for (int i = 0; i < num_inputs; ++i) {
-    const auto& input_name = runner->input_names()[i];
+    const auto& input_name = runner->subgraph_input_names()[i];
     auto* input_tensor = runner->input_tensor(input_name);
     auto res =
         RegisterBuffer(runner, input_tensor, input_name, input_buffers[i],
@@ -426,8 +426,8 @@ Expected<void> LiteRtCompiledModelT::Run(
     }
   }
 
-  for (int i = 0; i < runner->output_names().size(); ++i) {
-    const auto& output_name = runner->output_names()[i];
+  for (int i = 0; i < runner->subgraph_output_names().size(); ++i) {
+    const auto& output_name = runner->subgraph_output_names()[i];
     auto* output_tensor = runner->output_tensor(output_name);
     auto res = RegisterBuffer(runner, const_cast<TfLiteTensor*>(output_tensor),
                               output_name, output_buffers[i],

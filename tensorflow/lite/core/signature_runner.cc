@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/core/signature_runner.h"
 
 #include <cstdint>
+#include <map>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
@@ -35,6 +36,26 @@ SignatureRunner::SignatureRunner(const internal::SignatureDef* signature_def,
   }
   for (const auto& it : signature_def_->outputs) {
     output_names_.push_back(it.first.c_str());
+  }
+
+  // Create the list of input and output tensor names in the order of subgraph
+  // inputs and outputs.
+  std::map<uint32_t, const char*> inputs_reverse_map;
+  for (const auto& it : signature_def_->inputs) {
+    inputs_reverse_map[it.second] = it.first.c_str();
+  }
+  subgraph_input_names_.reserve(subgraph_->inputs().size());
+  for (int i = 0; i < subgraph_->inputs().size(); ++i) {
+    subgraph_input_names_.push_back(inputs_reverse_map[subgraph_->inputs()[i]]);
+  }
+  std::map<uint32_t, const char*> outputs_reverse_map;
+  for (const auto& it : signature_def_->outputs) {
+    outputs_reverse_map[it.second] = it.first.c_str();
+  }
+  subgraph_output_names_.reserve(subgraph_->outputs().size());
+  for (int i = 0; i < subgraph_->outputs().size(); ++i) {
+    subgraph_output_names_.push_back(
+        outputs_reverse_map[subgraph_->outputs()[i]]);
   }
 }
 

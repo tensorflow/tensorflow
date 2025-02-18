@@ -297,6 +297,7 @@ LiteRtStatus UnpackSignatures(std::vector<TflSignaturePtr>& tfl_signatures,
         tfl_outputs.size() != litert_subgraph->Outputs().size()) {
       LITERT_LOG(LITERT_ERROR,
                  "Signature has incorrect number of input/outputs");
+      return kLiteRtStatusErrorInvalidFlatbuffer;
     }
 
     // The tensor names may not be matched between signature and subgraph.
@@ -315,15 +316,17 @@ LiteRtStatus UnpackSignatures(std::vector<TflSignaturePtr>& tfl_signatures,
       index_litert_output->SetName(tfl_output->name);
     }
 
-    auto get_name = [](const auto& tfl_tensor) { return tfl_tensor->name; };
-
-    std::vector<std::string> input_names(tfl_inputs.size());
-    std::transform(tfl_inputs.cbegin(), tfl_inputs.cend(), input_names.begin(),
-                   get_name);
-
-    std::vector<std::string> output_names(tfl_outputs.size());
-    std::transform(tfl_outputs.cbegin(), tfl_outputs.cend(),
-                   output_names.begin(), get_name);
+    // Keep signature input/output names in the same order as the subgraph.
+    std::vector<std::string> input_names;
+    input_names.reserve(tfl_inputs.size());
+    for (auto& tensor : litert_subgraph->Inputs()) {
+      input_names.push_back(std::string(tensor->Name()));
+    }
+    std::vector<std::string> output_names;
+    output_names.reserve(tfl_outputs.size());
+    for (auto& tensor : litert_subgraph->Outputs()) {
+      output_names.push_back(std::string(tensor->Name()));
+    }
 
     parent.EmplaceSignature(litert_subgraph, std::move(input_names),
                             std::move(output_names),
