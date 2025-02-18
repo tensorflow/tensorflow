@@ -21,8 +21,11 @@ limitations under the License.
 #include <string.h>
 
 #include <algorithm>
+#include <initializer_list>
+#include <type_traits>
 
 #include "absl/meta/type_traits.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace tsl {
