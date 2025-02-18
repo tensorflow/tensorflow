@@ -85,6 +85,7 @@ py_strict_library(
     srcs = ["xla_client_test.py"],
     visibility = [":friends"],
     deps = [
+        ":py_host_callback_proto_py_proto",
         ":xla_client",
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",
@@ -108,6 +109,7 @@ py_strict_test(
     ],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":custom_calls_testlib",
+        ":py_host_callback_proto_py_proto",
         ":xla_client",
         ":xla_extension",
         "@absl_py//absl/flags",
@@ -141,6 +143,7 @@ py_strict_test(
         "requires-gpu-nvidia",
     ] + if_google(["config-cuda-only"]),  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
+        ":py_host_callback_proto_py_proto",
         ":xla_client",
         ":xla_extension",
         "@absl_py//absl/flags",
@@ -1219,6 +1222,9 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@nanobind",
+        "//third_party/protobuf",
+        "//third_party/py/google/protobuf:proto_api",
+        "@local_config_python//:python_headers",
         "//xla:array",
         "//xla:debug_options_flags",
         "//xla:literal",

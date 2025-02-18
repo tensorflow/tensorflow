@@ -361,6 +361,11 @@ class CompiledMemoryStats:
   serialized_hlo_proto: bytes
   def __str__(self) -> str: ...
 
+class CompilationEnvironments:
+  def __init__(self) -> None: ...
+  def __repr__(self) -> str: ...
+  def AddEnv(self, env: Any) -> None: ...
+
 class ExecutableBuildOptions:
   def __init__(self) -> None: ...
   def __repr__(self) -> str: ...
@@ -375,6 +380,7 @@ class ExecutableBuildOptions:
   auto_spmd_partitioning_mesh_shape: List[int]
   auto_spmd_partitioning_mesh_ids: List[int]
   use_shardy_partitioner: bool
+  comp_envs: CompilationEnvironments
 
 class PrecisionConfig_Precision(enum.IntEnum):
   DEFAULT: int
