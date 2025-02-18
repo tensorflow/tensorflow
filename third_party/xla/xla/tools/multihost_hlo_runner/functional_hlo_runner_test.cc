@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
@@ -190,6 +191,8 @@ TEST_F(FunctionalHloRunnerTest,
   if (client->platform_name() == "cuda") {
     EXPECT_NE(profiler->GetXSpace(), nullptr);
     EXPECT_GT(profiler->GetXSpace()->planes_size(), 0);
+    tensorflow::profiler::XSpace xspace;
+    TF_CHECK_OK(ReadTextProto(tsl::Env::Default(), profile_dump_path, &xspace));
   }
 }
 
