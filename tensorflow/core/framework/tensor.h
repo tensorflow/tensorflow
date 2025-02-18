@@ -173,7 +173,7 @@ class Tensor {
 
   /// \brief Creates a tensor with the input datatype, shape and buf.
   ///
-  /// Takes an ownership of the bufffer from the reference counted pointer.
+  /// Takes an ownership of the buffer from the reference counted pointer.
   Tensor(DataType type, TensorShape shape, core::RefCountPtr<TensorBuffer> buf);
 
   /// \brief Creates an empty Tensor of the given data type.
