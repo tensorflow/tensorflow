@@ -121,7 +121,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   const int custom_lds_size = 0;
   pm->addPass(mlir::triton::AMD::createOptimizeLDSUsagePass(cc.gfx_version(),
                                                             custom_lds_size));
-  pm->addPass(mlir::createConvertSCFToCFPass());
+  pm->addPass(mlir::createSCFToControlFlowPass());
   pm->addPass(mlir::createConvertIndexToLLVMPass());
   pm->addPass(mt::gpu::createAllocateSharedMemoryPass());
   pm->addPass(mt::createConvertTritonAMDGPUToLLVMPass(cc.gfx_version(), true));
