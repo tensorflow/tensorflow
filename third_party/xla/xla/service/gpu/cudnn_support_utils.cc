@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
