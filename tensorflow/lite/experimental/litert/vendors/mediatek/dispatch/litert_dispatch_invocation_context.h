@@ -32,9 +32,9 @@ class LiteRtDispatchInvocationContextT {
   static litert::Expected<Ptr> Create(
       litert::mediatek::NeuronAdapterApi& neuron_adapter_api,
       LiteRtDispatchDeviceContext device_context,
-      LiteRtDispatchExecutableType exec_type,
-      const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
-      int num_inputs, int num_outputs);
+      LiteRtDispatchExecutableType exec_type, const void* exec_bytecode_ptr,
+      size_t exec_bytecode_size, const char* function_name, int num_inputs,
+      int num_outputs);
 
   ~LiteRtDispatchInvocationContextT();
 

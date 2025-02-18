@@ -200,13 +200,12 @@ LiteRtStatus UnregisterTensorBuffer(LiteRtDispatchDeviceContext device_context,
 
 LiteRtStatus InvocationContextCreate(
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType exec_type,
-    const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
-    int num_inputs, int num_outputs,
-    LiteRtDispatchInvocationContext* invocation_context) {
+    LiteRtDispatchExecutableType exec_type, const void* exec_bytecode,
+    size_t exec_bytecode_size, const char* function_name, int num_inputs,
+    int num_outputs, LiteRtDispatchInvocationContext* invocation_context) {
   if (auto result = LiteRtDispatchInvocationContextT::CreateFromBytecode(
-          *TheSouthbound, device_context, exec_type, exec_bytecode_buffer,
-          function_name, num_inputs, num_outputs);
+          *TheSouthbound, device_context, exec_type, exec_bytecode,
+          exec_bytecode_size, function_name, num_inputs, num_outputs);
       result) {
     *invocation_context = result->release();
     return kLiteRtStatusOk;
@@ -418,9 +417,10 @@ LiteRtStatus ConnectGraphOutput(LiteRtDispatchGraph graph, int output_index,
 
 LiteRtStatus LoadExecutable(LiteRtDispatchDeviceContext device_context,
                             LiteRtDispatchExecutableType type,
-                            const LiteRtMemBuffer* bytecode_buffer,
+                            const void* bytecode, size_t bytecode_size,
                             LiteRtDispatchExecutableHandle* exec_handle) {
-  if (auto result = device_context->LoadExecutable(type, bytecode_buffer);
+  if (auto result =
+          device_context->LoadExecutable(type, bytecode, bytecode_size);
       result) {
     *exec_handle = *result;
     return kLiteRtStatusOk;

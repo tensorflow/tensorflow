@@ -131,12 +131,6 @@ TfLiteStatus LiteRtDispatchDelegateAddAllocBaseOption(
   return kTfLiteOk;
 }
 
-TfLiteStatus LiteRtDispatchDelegateAddAllocFdOption(
-    LiteRtDispatchDelegateOptions* options, int alloc_fd) {
-  AddAllocFdOption(alloc_fd, *options);
-  return kTfLiteOk;
-}
-
 void LiteRtDestroyDispatchDelegateOptions(
     LiteRtDispatchDelegateOptions* options) {
   delete options;

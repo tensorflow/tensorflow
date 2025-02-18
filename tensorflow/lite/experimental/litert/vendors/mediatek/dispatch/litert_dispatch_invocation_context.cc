@@ -229,15 +229,11 @@ Expected<LiteRtDispatchInvocationContextT::Ptr>
 LiteRtDispatchInvocationContextT::Create(
     litert::mediatek::NeuronAdapterApi& neuron_adapter_api,
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType exec_type,
-    const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
-    int num_inputs, int num_outputs) {
-  auto exec_bytecode_ptr =
-      static_cast<const uint8_t*>(exec_bytecode_buffer->base_addr) +
-      exec_bytecode_buffer->offset;
+    LiteRtDispatchExecutableType exec_type, const void* bytecode_ptr,
+    size_t bytecode_size, const char* function_name, int num_inputs,
+    int num_outputs) {
   auto model_and_compilation = LoadModelAndCompilation(
-      neuron_adapter_api, exec_bytecode_ptr, exec_bytecode_buffer->size,
-      num_inputs, num_outputs);
+      neuron_adapter_api, bytecode_ptr, bytecode_size, num_inputs, num_outputs);
   if (!model_and_compilation) {
     return model_and_compilation.Error();
   }

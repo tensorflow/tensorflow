@@ -224,8 +224,9 @@ litert::Expected<void> LiteRtDispatchDeviceContextT::DestroyGraph(
 }
 
 litert::Expected<LiteRtDispatchExecutableHandle>
-LiteRtDispatchDeviceContextT::LoadExecutable(
-    LiteRtDispatchExecutableType type, const LiteRtMemBuffer* bytecode_buffer) {
+LiteRtDispatchDeviceContextT::LoadExecutable(LiteRtDispatchExecutableType type,
+                                             const void* bytecode,
+                                             size_t bytecode_size) {
   auto thr_load_sq_container = southbound_.api().thr_load_sq_container;
   if (!thr_load_sq_container) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
@@ -247,25 +248,9 @@ LiteRtDispatchDeviceContextT::LoadExecutable(
   }
 
   ThrSqContainerHandle sq_handle;
-  ThrStatus status;
-  if (bytecode_buffer->fd >= 0 &&
-      // Unfortunately thrLoadSqContainerFd doesn't support passing an
-      // offset. So if the offset is non-zero, we fallback to passing a CPU
-      // memory address right below.
-      (bytecode_buffer->offset == 0)) {
-    bool lazy_loading = false;
-    status = southbound_.api().thr_load_sq_container_fd(
-        thr_context_, thr_type, bytecode_buffer->fd, bytecode_buffer->size,
-        lazy_loading, &sq_handle);
-  } else {
-    auto bytecode_ptr =
-        static_cast<const uint8_t*>(bytecode_buffer->base_addr) +
-        bytecode_buffer->offset;
-    status = southbound_.api().thr_load_sq_container(
-        thr_context_, thr_type, bytecode_ptr, bytecode_buffer->size,
-        &sq_handle);
-  }
-  if (status != kThrStatusSuccess) {
+  if (auto status = thr_load_sq_container(thr_context_, thr_type, bytecode,
+                                          bytecode_size, &sq_handle);
+      status != kThrStatusSuccess) {
     LITERT_LOG(LITERT_ERROR, "thr_load_sq_container failed: %d", status);
     return Error(kLiteRtStatusErrorRuntimeFailure,
                  "thr_load_sq_container failed");
