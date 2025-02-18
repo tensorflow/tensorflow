@@ -404,16 +404,6 @@ class FunctionalHloRunner {
       const RunningOptions& running_options,
       std::minstd_rand0* engine = nullptr);
 
-  static absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
-      absl::string_view hlo_file);
-
-  static absl::StatusOr<HloModuleAndArguments>
-  ReadModuleFromSnapshotBinaryProtoFile(absl::string_view hlo_file);
-  static absl::StatusOr<HloModuleAndArguments>
-  ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(absl::string_view hlo_file);
-  static absl::StatusOr<HloModuleAndArguments>
-  ReadModuleFromUnoptimizedSnapshotTextProtoFile(absl::string_view hlo_file);
-
   static absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
       absl::string_view hlo_file, InputFormat input_format);
 
