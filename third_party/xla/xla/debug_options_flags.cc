@@ -313,6 +313,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
   opts.set_xla_gpu_experimental_enable_sync_collective_combining(false);
+  opts.set_xla_allow_get_default_platform(true);
   return opts;
 }
 
@@ -2250,6 +2251,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_experimental_enable_sync_collective_combining),
       debug_options->xla_gpu_experimental_enable_sync_collective_combining(),
       "Enable sync collective combining."));
+  flag_list->push_back(tsl::Flag(
+      "xla_allow_get_default_platform",
+      bool_setter_for(&DebugOptions::set_xla_allow_get_default_platform),
+      debug_options->xla_allow_get_default_platform(),
+      "If false, GetDefaultPlatform will cause an error if called."));
 }  // NOLINT(readability/fn_size)1
 
 // Allocates flag_values and flag_objects; this function must not be called more
