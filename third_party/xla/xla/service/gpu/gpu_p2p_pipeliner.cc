@@ -353,6 +353,8 @@ static HloInstruction* FindSendRecvDoneInstruction(HloInstruction* instr) {
 static absl::Status AddControlDependencies(
     std::vector<HloInstruction*>& from_instructions, HloInstruction* to_instr) {
   for (HloInstruction* from_instr : from_instructions) {
+    VLOG(5) << "Adding control dependency from " << from_instr->ToShortString()
+            << " to " << to_instr->ToShortString();
     TF_RETURN_IF_ERROR(from_instr->AddControlDependencyTo(to_instr));
   }
   return absl::OkStatus();
@@ -362,6 +364,8 @@ static absl::Status AddControlDependencies(
     HloInstruction* from_instr,
     absl::flat_hash_set<HloInstruction*>& to_instructions) {
   for (HloInstruction* to_instr : to_instructions) {
+    VLOG(5) << "Adding control dependency from " << from_instr->ToShortString()
+            << " to " << to_instr->ToShortString();
     TF_RETURN_IF_ERROR(from_instr->AddControlDependencyTo(to_instr));
   }
   return absl::OkStatus();
@@ -398,7 +402,7 @@ static absl::Status PostProcessPeeledSendRecvOps(
       if (peeled_send_recvs_set.contains(instr)) continue;
       unpeeled_conflicting_collectives.insert(instr);
     }
-    VLOG(5) << "#Conflicting collectives: "
+    VLOG(5) << "Conflicting collectives: "
             << unpeeled_conflicting_collectives.size();
 
     // Find the while loop.
@@ -432,6 +436,7 @@ static absl::Status PostProcessPeeledSendRecvOps(
     // peeled send/recv instruction. This guarantees that the conflicting
     // collectives cannot slip in between the peeled send/recv instructions
     // where it could cause a deadlock.
+    VLOG(5) << "Adding control dependencies FROM dominating conflicting";
     TF_RETURN_IF_ERROR(AddControlDependencies(
         dominating_unpeeled_conflicting_collectives, peeled_instr));
 
@@ -440,6 +445,7 @@ static absl::Status PostProcessPeeledSendRecvOps(
     // while loop. This guarantees that the conflicting collectives cannot slip
     // in between the peeled send/recv instructions where it could cause a
     // deadlock.
+    VLOG(5) << "Adding control dependencies TO dominating conflicting";
     HloInstruction* done_op = FindSendRecvDoneInstruction(peeled_instr);
     CHECK_NE(done_op, nullptr);
     TF_RETURN_IF_ERROR(
