@@ -258,6 +258,8 @@ data::CompilerOptions ToFB(CompilerOptions type) {
       return data::CompilerOptions::CL_2_0;
     case CompilerOptions::kCl30:
       return data::CompilerOptions::CL_3_0;
+    case CompilerOptions::kClRegisterAllocation64:
+      return data::CompilerOptions::CL_REGISTER_ALLOCATION_64;
   }
 }
 
@@ -301,6 +303,8 @@ CompilerOptions ToEnum(data::CompilerOptions type) {
       return CompilerOptions::kCl20;
     case data::CompilerOptions::CL_3_0:
       return CompilerOptions::kCl30;
+    case data::CompilerOptions::CL_REGISTER_ALLOCATION_64:
+      return CompilerOptions::kClRegisterAllocation64;
   }
 }
 

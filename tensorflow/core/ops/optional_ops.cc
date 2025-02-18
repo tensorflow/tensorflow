@@ -52,7 +52,7 @@ REGISTER_OP("OptionalFromValue")
                                       ret_types.args(0));
       }
       c->set_output_handle_shapes_and_types(0, shapes_and_types);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("OptionalNone")

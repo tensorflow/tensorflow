@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,16 +19,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/tests/verified_hlo_module.h"
-#include "tsl/platform/test.h"
-#include "tsl/profiler/convert/xla_op_utils.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "xla/tsl/profiler/rpc/client/save_profile.h"
+#include "xla/tsl/profiler/utils/file_system_utils.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/rpc/client/save_profile.h"
-#include "tsl/profiler/utils/file_system_utils.h"
-#include "tsl/profiler/utils/xplane_builder.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace xla {
 namespace {
@@ -176,7 +176,7 @@ void CreateXSpaceWithFingerprint(XSpace* space, int first_device_latency,
 }
 
 TEST(XplaneToProfiledInstructionsProtoTest,
-     ConvertXplaneToProfiledInstructionsProto) {
+     ConvertXplaneUnderLogdirToProfiledInstructionsProto) {
   tensorflow::profiler::ProfiledInstructionsProto profile_proto;
   std::string logdir = testing::TempDir() + "/logdir";
   std::string run = tsl::profiler::GetCurrentTimeStampAsString();
@@ -194,14 +194,15 @@ TEST(XplaneToProfiledInstructionsProtoTest,
   EXPECT_TRUE(status.ok());
 
   EXPECT_TRUE(
-      ConvertXplaneToProfiledInstructionsProto(path, &profile_proto).ok());
+      ConvertXplaneUnderLogdirToProfiledInstructionsProto(path, &profile_proto)
+          .ok());
   EXPECT_EQ(profile_proto.costs_size(), 1);
   EXPECT_EQ(profile_proto.costs(0).cost_us(), 10);
   EXPECT_EQ(profile_proto.costs(0).name(), "custom-call");
 }
 
 TEST(XplaneToProfiledInstructionsProtoTest,
-     ConvertXplaneToProfiledInstructionsProtoWithFingerprint) {
+     ConvertXplaneUnderLogdirToProfiledInstructionsProtoWithFingerprint) {
   tensorflow::profiler::ProfiledInstructionsProto profile_proto;
   std::string logdir = testing::TempDir() + "/logdir";
   std::string run = tsl::profiler::GetCurrentTimeStampAsString();
@@ -219,7 +220,44 @@ TEST(XplaneToProfiledInstructionsProtoTest,
   EXPECT_TRUE(status.ok());
 
   EXPECT_TRUE(
-      ConvertXplaneToProfiledInstructionsProto(path, &profile_proto).ok());
+      ConvertXplaneUnderLogdirToProfiledInstructionsProto(path, &profile_proto)
+          .ok());
+  EXPECT_EQ(profile_proto.costs_size(), 1);
+  EXPECT_EQ(profile_proto.costs(0).cost_us(), 10);
+  EXPECT_EQ(profile_proto.costs(0).name(), "08a5::custom-call");
+}
+
+TEST(XplaneToProfiledInstructionsProtoTest,
+     ConvertXplaneToProfiledInstructionsProto) {
+  tensorflow::profiler::ProfiledInstructionsProto profile_proto;
+
+  XSpace xspace_a;
+  CreateXSpace(&xspace_a, 10000, 10000);
+
+  XSpace xspace_b;
+  CreateXSpace(&xspace_b, 15000, 5000);
+
+  EXPECT_TRUE(ConvertXplaneToProfiledInstructionsProto({xspace_a, xspace_b},
+                                                       &profile_proto)
+                  .ok());
+  EXPECT_EQ(profile_proto.costs_size(), 1);
+  EXPECT_EQ(profile_proto.costs(0).cost_us(), 10);
+  EXPECT_EQ(profile_proto.costs(0).name(), "custom-call");
+}
+
+TEST(XplaneToProfiledInstructionsProtoTest,
+     ConvertXplaneToProfiledInstructionsProtoWithFingerprint) {
+  tensorflow::profiler::ProfiledInstructionsProto profile_proto;
+
+  XSpace xspace_a;
+  CreateXSpaceWithFingerprint(&xspace_a, 10000, 10000);
+
+  XSpace xspace_b;
+  CreateXSpaceWithFingerprint(&xspace_b, 15000, 5000);
+
+  EXPECT_TRUE(ConvertXplaneToProfiledInstructionsProto({xspace_a, xspace_b},
+                                                       &profile_proto)
+                  .ok());
   EXPECT_EQ(profile_proto.costs_size(), 1);
   EXPECT_EQ(profile_proto.costs(0).cost_us(), 10);
   EXPECT_EQ(profile_proto.costs(0).name(), "08a5::custom-call");

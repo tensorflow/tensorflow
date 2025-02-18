@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/tf_threadpool_concurrent_work_queue.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -34,7 +36,7 @@ namespace tfrt_stub {
 
 using ::tensorflow::thread::ThreadPoolInterface;
 
-StatusOr<std::unique_ptr<WorkQueueInterface>>
+absl::StatusOr<std::unique_ptr<WorkQueueInterface>>
 TfThreadPoolWorkQueue::InitializeRequest(int64_t request_id) const {
   return {std::make_unique<TfThreadPoolWorkQueue>(
       request_id, intra_op_threadpool_, inter_op_threadpool_)};

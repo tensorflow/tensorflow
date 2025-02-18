@@ -15,16 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/delegates/compatibility/common/delegate_compatibility_checker_base.h"
 
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include <cstdlib>
 
 #include "absl/status/status.h"
-#include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/delegates/compatibility/common/delegate_compatibility_checker_util.h"
+#include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
+#include "tensorflow/lite/tools/versioning/op_signature.h"
 
 namespace tflite {
 namespace tools {

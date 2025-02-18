@@ -25,12 +25,17 @@ REQUIREMENTS=$2
 
 add-apt-repository ppa:deadsnakes/ppa
 # Install Python packages for this container's version
-cat >pythons.txt <<EOF
+if [[ ${VERSION} == "python3.13-nogil" ]]; then
+  cat >pythons.txt <<EOF
+$VERSION
+EOF
+else
+  cat >pythons.txt <<EOF
 $VERSION
 $VERSION-dev
 $VERSION-venv
-$VERSION-distutils
 EOF
+fi
 /setup.packages.sh pythons.txt
 
 # Re-link pyconfig.h from aarch64-linux-gnu into the devtoolset directory

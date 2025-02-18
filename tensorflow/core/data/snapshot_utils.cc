@@ -27,6 +27,11 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/lib/io/snappy/snappy_inputbuffer.h"
+#include "xla/tsl/lib/io/snappy/snappy_outputbuffer.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -47,11 +52,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tsl/lib/io/snappy/snappy_inputbuffer.h"
-#include "tsl/lib/io/snappy/snappy_outputbuffer.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -115,10 +115,10 @@ std::string GetCheckpointFileName(const std::string& shard_directory,
                       static_cast<unsigned long long>(checkpoint_id)));
 }
 
-Status Writer::Create(Env* env, const std::string& filename,
-                      const std::string& compression_type, int version,
-                      const DataTypeVector& dtypes,
-                      std::unique_ptr<Writer>* out_writer) {
+absl::Status Writer::Create(Env* env, const std::string& filename,
+                            const std::string& compression_type, int version,
+                            const DataTypeVector& dtypes,
+                            std::unique_ptr<Writer>* out_writer) {
   switch (version) {
     case 1:
       *out_writer =
@@ -140,16 +140,16 @@ TFRecordWriter::TFRecordWriter(const std::string& filename,
                                const std::string& compression_type)
     : filename_(filename), compression_type_(compression_type) {}
 
-Status TFRecordWriter::Initialize(tensorflow::Env* env) {
+absl::Status TFRecordWriter::Initialize(tensorflow::Env* env) {
   TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
 
   record_writer_ = std::make_unique<io::RecordWriter>(
       dest_.get(), io::RecordWriterOptions::CreateRecordWriterOptions(
                        /*compression_type=*/compression_type_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TFRecordWriter::WriteTensors(const std::vector<Tensor>& tensors) {
+absl::Status TFRecordWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   for (const auto& tensor : tensors) {
     TensorProto proto;
     tensor.AsProtoTensorContent(&proto);
@@ -174,15 +174,15 @@ Status TFRecordWriter::WriteTensors(const std::vector<Tensor>& tensors) {
     TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto_serialized));
 #endif  // TF_CORD_SUPPORT
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TFRecordWriter::Sync() {
+absl::Status TFRecordWriter::Sync() {
   TF_RETURN_IF_ERROR(record_writer_->Flush());
   return dest_->Flush();
 }
 
-Status TFRecordWriter::Close() {
+absl::Status TFRecordWriter::Close() {
   if (record_writer_ != nullptr) {
     TF_RETURN_IF_ERROR(Sync());
     TF_RETURN_IF_ERROR(record_writer_->Close());
@@ -190,11 +190,11 @@ Status TFRecordWriter::Close() {
     record_writer_ = nullptr;
     dest_ = nullptr;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TFRecordWriter::~TFRecordWriter() {
-  Status s = Close();
+  absl::Status s = Close();
   if (!s.ok()) {
     LOG(ERROR) << "Failed to close snapshot file " << filename_ << ": " << s;
   }
@@ -207,7 +207,7 @@ CustomWriter::CustomWriter(const std::string& filename,
       compression_type_(compression_type),
       dtypes_(dtypes) {}
 
-Status CustomWriter::Initialize(tensorflow::Env* env) {
+absl::Status CustomWriter::Initialize(tensorflow::Env* env) {
   TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
 #if defined(IS_SLIM_BUILD)
   if (compression_type_ != io::compression::kNone) {
@@ -238,10 +238,10 @@ Status CustomWriter::Initialize(tensorflow::Env* env) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
+absl::Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   if (compression_type_ != io::compression::kSnappy) {
     experimental::SnapshotRecord record;
     for (const auto& tensor : tensors) {
@@ -321,12 +321,12 @@ Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
 #endif  // TF_CORD_SUPPORT
   TF_RETURN_IF_ERROR(WriteRecord(metadata_serialized));
   TF_RETURN_IF_ERROR(WriteRecord(output));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CustomWriter::Sync() { return dest_->Sync(); }
+absl::Status CustomWriter::Sync() { return dest_->Sync(); }
 
-Status CustomWriter::Close() {
+absl::Status CustomWriter::Close() {
   if (dest_ != nullptr) {
     TF_RETURN_IF_ERROR(dest_->Close());
     dest_ = nullptr;
@@ -335,36 +335,36 @@ Status CustomWriter::Close() {
     TF_RETURN_IF_ERROR(zlib_underlying_dest_->Close());
     zlib_underlying_dest_ = nullptr;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 CustomWriter::~CustomWriter() {
-  Status s = Close();
+  absl::Status s = Close();
   if (!s.ok()) {
     LOG(ERROR) << "Could not finish writing file: " << s;
   }
 }
 
-Status CustomWriter::WriteRecord(const StringPiece& data) {
+absl::Status CustomWriter::WriteRecord(const absl::string_view& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
-  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
   return dest_->Append(data);
 }
 
 #if defined(TF_CORD_SUPPORT)
-Status CustomWriter::WriteRecord(const absl::Cord& data) {
+absl::Status CustomWriter::WriteRecord(const absl::Cord& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
-  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
   return dest_->Append(data);
 }
 #endif  // TF_CORD_SUPPORT
 
-Status Reader::Create(Env* env, const std::string& filename,
-                      const string& compression_type, int version,
-                      const DataTypeVector& dtypes,
-                      std::unique_ptr<Reader>* out_reader) {
+absl::Status Reader::Create(Env* env, const std::string& filename,
+                            const string& compression_type, int version,
+                            const DataTypeVector& dtypes,
+                            std::unique_ptr<Reader>* out_reader) {
   switch (version) {
     // CustomReader is able to read a legacy snapshot file format (v0) though
     // custom writer doesn't have the ability to write it any more since it is
@@ -386,13 +386,13 @@ Status Reader::Create(Env* env, const std::string& filename,
   return (*out_reader)->Initialize(env);
 }
 
-Status Reader::SkipRecords(int64_t num_records) {
+absl::Status Reader::SkipRecords(int64_t num_records) {
   // TODO(frankchn): Optimize to not parse the entire Tensor and actually skip.
   for (int i = 0; i < num_records; ++i) {
     std::vector<Tensor> unused_tensors;
     TF_RETURN_IF_ERROR(ReadTensors(&unused_tensors));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class Reader::Dataset : public DatasetBase {
@@ -418,16 +418,17 @@ class Reader::Dataset : public DatasetBase {
 
   std::string DebugString() const override { return "SnapshotDatasetReader"; }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return OkStatus();
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return OkStatus(); }
+  absl::Status CheckExternalState() const override { return absl::OkStatus(); }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** node) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** node) const override {
     Node* shard_dir = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(shard_dir_, &shard_dir));
 
@@ -463,7 +464,7 @@ class Reader::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params),
           start_index_(dataset()->start_index_) {}
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       // TODO(jsimsa): This only needs to happen when we are not restoring but
       // parallel_interleave op implementation caches IteratorContext (and thus
       // the is_restoring bit ends up being inaccurate).
@@ -474,34 +475,34 @@ class Reader::Dataset : public DatasetBase {
     }
 
    protected:
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       *end_of_sequence = false;
-      Status s = reader_->ReadTensors(out_tensors);
+      absl::Status s = reader_->ReadTensors(out_tensors);
       if (!absl::IsOutOfRange(s)) {
         start_index_++;
         return s;
       }
-      Status status = AdvanceToNextFile(ctx->env());
+      absl::Status status = AdvanceToNextFile(ctx->env());
       if (absl::IsNotFound(status)) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
       return status;
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurrentCheckpointID),
                                              current_checkpoint_id_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kStartIndex), start_index_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentCheckpointID),
                                             &current_checkpoint_id_));
       TF_RETURN_IF_ERROR(
@@ -514,7 +515,7 @@ class Reader::Dataset : public DatasetBase {
     }
 
    private:
-    Status AdvanceToNextFile(Env* env) {
+    absl::Status AdvanceToNextFile(Env* env) {
       start_index_ = 0;
       current_checkpoint_id_++;
       TF_RETURN_IF_ERROR(env->FileExists(GetCurrentFilename()));
@@ -528,12 +529,12 @@ class Reader::Dataset : public DatasetBase {
     }
 
     // TODO(frankchn): Optimize this to not parse every single element.
-    Status AdvanceToStartIndex(IteratorContext* ctx) {
+    absl::Status AdvanceToStartIndex(IteratorContext* ctx) {
       for (int64_t i = 0; i < start_index_; ++i) {
         std::vector<Tensor> unused;
         TF_RETURN_IF_ERROR(reader_->ReadTensors(&unused));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     std::unique_ptr<Reader> reader_;
@@ -579,7 +580,7 @@ class Reader::NestedDataset : public DatasetBase {
                          std::vector<DatasetBase*> datasets)
       : DatasetBase(std::move(ctx)), datasets_(datasets) {
     dtypes_.push_back(DT_VARIANT);
-    gtl::InlinedVector<int64_t, 1> element_dim_sizes;
+    absl::InlinedVector<int64_t, 1UL> element_dim_sizes;
     element_dim_sizes.push_back(1);
     partial_shapes_.emplace_back(element_dim_sizes);
   }
@@ -594,17 +595,18 @@ class Reader::NestedDataset : public DatasetBase {
     return "SnapshotNestedDatasetReader";
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return OkStatus(); }
+  absl::Status CheckExternalState() const override { return absl::OkStatus(); }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** node) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** node) const override {
     std::vector<Node*> input_graph_nodes;
     input_graph_nodes.reserve(datasets_.size());
     for (const auto& dataset : datasets_) {
@@ -616,7 +618,7 @@ class Reader::NestedDataset : public DatasetBase {
         b->AddDataset(this, /*inputs=*/{},
                       /*list_inputs=*/{std::make_pair(0, input_graph_nodes)},
                       /*attrs=*/{}, node));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -636,9 +638,9 @@ class Reader::NestedDataset : public DatasetBase {
         : DatasetIterator<NestedDataset>(params) {}
 
    protected:
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       const int64_t num_datasets = dataset()->datasets_.size();
       *end_of_sequence = num_datasets == index_;
       if (!*end_of_sequence) {
@@ -651,19 +653,19 @@ class Reader::NestedDataset : public DatasetBase {
 
         index_++;
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), index_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &index_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -689,13 +691,11 @@ void Reader::NestedDatasetOp::MakeDataset(OpKernelContext* ctx,
   (*output)->Initialize(/*metadata=*/{});
 }
 
-Status Reader::MakeNestedDataset(Env* env,
-                                 const std::vector<std::string>& shard_dirs,
-                                 const string& compression_type, int version,
-                                 const DataTypeVector& dtypes,
-                                 const std::vector<PartialTensorShape>& shapes,
-                                 const int64_t start_index,
-                                 DatasetBase** output) {
+absl::Status Reader::MakeNestedDataset(
+    Env* env, const std::vector<std::string>& shard_dirs,
+    const string& compression_type, int version, const DataTypeVector& dtypes,
+    const std::vector<PartialTensorShape>& shapes, const int64_t start_index,
+    DatasetBase** output) {
   std::vector<DatasetBase*> datasets;
 
   datasets.reserve(shard_dirs.size());
@@ -725,7 +725,7 @@ Status Reader::MakeNestedDataset(Env* env,
                 datasets.end());
   }
   MakeNestedDataset(datasets, output);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void Reader::MakeNestedDataset(const std::vector<DatasetBase*>& datasets,
@@ -742,10 +742,11 @@ TFRecordReaderImpl::TFRecordReaderImpl(
     std::optional<int64_t> output_buffer_size)
     : filename_(filename),
       offset_(0),
+      bytes_read_(0),
       compression_(compression),
       output_buffer_size_(output_buffer_size) {}
 
-Status TFRecordReaderImpl::Initialize(Env* env) {
+absl::Status TFRecordReaderImpl::Initialize(Env* env) {
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
   auto options = io::RecordReaderOptions::CreateRecordReaderOptions(
       /*compression_type=*/compression_);
@@ -756,19 +757,21 @@ Status TFRecordReaderImpl::Initialize(Env* env) {
   }
 #endif  // IS_SLIM_BUILD
   record_reader_ = std::make_unique<io::RecordReader>(file_.get(), options);
-  return OkStatus();
+  bytes_read_ = 0;
+  return absl::OkStatus();
 }
 
-StatusOr<Tensor> TFRecordReaderImpl::GetNext() {
+absl::StatusOr<Tensor> TFRecordReaderImpl::GetNext() {
   tstring record;
   TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
+  bytes_read_ += record.size();
   return Parse(record);
 }
 
-StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
+absl::StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
   std::vector<Tensor> tensors;
   while (true) {
-    StatusOr<Tensor> tensor = GetNext();
+    absl::StatusOr<Tensor> tensor = GetNext();
     if (absl::IsOutOfRange(tensor.status())) {
       return tensors;
     }
@@ -778,7 +781,7 @@ StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
   return tensors;
 }
 
-StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
+absl::StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
   TensorProto proto;
   if (!proto.ParseFromArray(record.data(), record.size())) {
     return errors::DataLoss(
@@ -795,14 +798,14 @@ StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
   return tensor;
 }
 
-Status TFRecordReader::ReadTensors(std::vector<Tensor>* read_tensors) {
+absl::Status TFRecordReader::ReadTensors(std::vector<Tensor>* read_tensors) {
   read_tensors->clear();
   read_tensors->reserve(dtypes_.size());
   for (int i = 0; i < dtypes_.size(); ++i) {
     TF_ASSIGN_OR_RETURN(Tensor tensor, reader_impl_.GetNext());
     read_tensors->push_back(std::move(tensor));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 CustomReader::CustomReader(const std::string& filename,
@@ -813,7 +816,7 @@ CustomReader::CustomReader(const std::string& filename,
       version_(version),
       dtypes_(dtypes) {}
 
-Status CustomReader::Initialize(Env* env) {
+absl::Status CustomReader::Initialize(Env* env) {
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
   input_stream_ = std::make_unique<io::RandomAccessInputStream>(file_.get());
 
@@ -852,13 +855,13 @@ Status CustomReader::Initialize(Env* env) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
-  profiler::TraceMe activity(
+absl::Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
+  tsl::profiler::TraceMe activity(
       [&]() { return absl::StrCat(kClassName, kSeparator, "ReadTensors"); },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   if (version_ == 0 || compression_type_ != io::compression::kSnappy) {
     return ReadTensorsV0(read_tensors);
   }
@@ -906,15 +909,15 @@ Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
       complex_index++;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CustomReader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
+absl::Status CustomReader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
   experimental::SnapshotRecord record;
 #if defined(PLATFORM_GOOGLE)
   absl::Cord c;
   TF_RETURN_IF_ERROR(ReadRecord(&c));
-  record.ParseFromCord(c);
+  record.ParseFromString(c);
 #else   // PLATFORM_GOOGLE
   tstring record_bytes;
   TF_RETURN_IF_ERROR(ReadRecord(&record_bytes));
@@ -927,10 +930,10 @@ Status CustomReader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
       return errors::DataLoss("Unable to parse tensor from proto.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CustomReader::SnappyUncompress(
+absl::Status CustomReader::SnappyUncompress(
     const experimental::SnapshotTensorMetadata* metadata,
     std::vector<Tensor>* simple_tensors,
     std::vector<std::pair<std::unique_ptr<char[]>, size_t>>*
@@ -977,10 +980,10 @@ Status CustomReader::SnappyUncompress(
                                            iov.data(), num_tensors)) {
     return errors::Internal("Failed to perform snappy decompression.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CustomReader::ReadRecord(tstring* record) {
+absl::Status CustomReader::ReadRecord(tstring* record) {
   tstring header;
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
   uint64 length = core::DecodeFixed64(header.data());
@@ -988,7 +991,7 @@ Status CustomReader::ReadRecord(tstring* record) {
 }
 
 #if defined(TF_CORD_SUPPORT)
-Status CustomReader::ReadRecord(absl::Cord* record) {
+absl::Status CustomReader::ReadRecord(absl::Cord* record) {
   tstring header;
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
   uint64 length = core::DecodeFixed64(header.data());
@@ -1000,13 +1003,14 @@ Status CustomReader::ReadRecord(absl::Cord* record) {
     absl::string_view tmp_str_view(*tmp_str);
     record->Append(absl::MakeCordFromExternal(
         tmp_str_view, [tmp_str](absl::string_view) { delete tmp_str; }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 #endif  // TF_CORD_SUPPORT
 
-Status WriteMetadataFile(Env* env, const string& dir,
-                         const experimental::SnapshotMetadataRecord* metadata) {
+absl::Status WriteMetadataFile(
+    Env* env, const string& dir,
+    const experimental::SnapshotMetadataRecord* metadata) {
   string metadata_filename = io::JoinPath(dir, kMetadataFilename);
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
   std::string tmp_filename =
@@ -1015,7 +1019,7 @@ Status WriteMetadataFile(Env* env, const string& dir,
   return env->RenameFile(tmp_filename, metadata_filename);
 }
 
-Status WriteMetadataFile(
+absl::Status WriteMetadataFile(
     Env* env, const string& dir,
     const experimental::DistributedSnapshotMetadata* metadata) {
   string metadata_filename = io::JoinPath(dir, kMetadataFilename);
@@ -1026,36 +1030,36 @@ Status WriteMetadataFile(
   return env->RenameFile(tmp_filename, metadata_filename);
 }
 
-Status ReadMetadataFile(Env* env, const string& dir,
-                        experimental::SnapshotMetadataRecord* metadata,
-                        bool* file_exists) {
+absl::Status ReadMetadataFile(Env* env, const string& dir,
+                              experimental::SnapshotMetadataRecord* metadata,
+                              bool* file_exists) {
   string metadata_filename = io::JoinPath(dir, kMetadataFilename);
-  Status s = env->FileExists(metadata_filename);
+  absl::Status s = env->FileExists(metadata_filename);
   *file_exists = s.ok();
 
   if (*file_exists) {
     return ReadBinaryProto(env, metadata_filename, metadata);
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
-Status ReadMetadataFile(Env* env, const string& dir,
-                        experimental::DistributedSnapshotMetadata* metadata,
-                        bool* file_exists) {
+absl::Status ReadMetadataFile(
+    Env* env, const string& dir,
+    experimental::DistributedSnapshotMetadata* metadata, bool* file_exists) {
   string metadata_filename = io::JoinPath(dir, kMetadataFilename);
-  Status s = env->FileExists(metadata_filename);
+  absl::Status s = env->FileExists(metadata_filename);
   *file_exists = s.ok();
 
   if (*file_exists) {
     return ReadBinaryProto(env, metadata_filename, metadata);
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
-Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
-                        const GraphDef* graph) {
+absl::Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
+                              const GraphDef* graph) {
   std::string hash_hex =
       strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
   std::string graph_file =
@@ -1066,10 +1070,10 @@ Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
   return WriteTextProto(env, graph_file, *graph);
 }
 
-Status DetermineOpState(const std::string& mode_string, bool file_exists,
-                        const experimental::SnapshotMetadataRecord* metadata,
-                        const uint64 pending_snapshot_expiry_seconds,
-                        Mode* mode) {
+absl::Status DetermineOpState(
+    const std::string& mode_string, bool file_exists,
+    const experimental::SnapshotMetadataRecord* metadata,
+    const uint64 pending_snapshot_expiry_seconds, Mode* mode) {
   if (mode_string == kModeRead) {
     // In read mode, we should expect a metadata file is written.
     if (!file_exists) {
@@ -1077,30 +1081,30 @@ Status DetermineOpState(const std::string& mode_string, bool file_exists,
     }
     LOG(INFO) << "Overriding mode to reader.";
     *mode = READER;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (mode_string == kModeWrite) {
     LOG(INFO) << "Overriding mode to writer.";
     *mode = WRITER;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (mode_string == kModePassthrough) {
     LOG(INFO) << "Overriding mode to passthrough.";
     *mode = PASSTHROUGH;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (!file_exists) {
     *mode = WRITER;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (metadata->finalized()) {
     // File found, snapshot has been finalized.
     *mode = READER;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t expiration_timer = static_cast<int64_t>(EnvTime::NowMicros()) -
@@ -1109,11 +1113,11 @@ Status DetermineOpState(const std::string& mode_string, bool file_exists,
   if (metadata->creation_timestamp() >= expiration_timer) {
     // Someone else is already writing and time has not expired.
     *mode = PASSTHROUGH;
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     // Time has expired, we write regardless.
     *mode = WRITER;
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -1121,7 +1125,7 @@ AsyncWriter::AsyncWriter(Env* env, int64_t file_index,
                          const std::string& shard_directory,
                          uint64 checkpoint_id, const std::string& compression,
                          int64_t version, const DataTypeVector& output_types,
-                         std::function<void(Status)> done) {
+                         std::function<void(absl::Status)> done) {
   thread_ = absl::WrapUnique(env->StartThread(
       ThreadOptions(), absl::StrCat("writer_thread_", file_index),
       [this, env, shard_directory, checkpoint_id, compression, version,
@@ -1154,10 +1158,12 @@ void AsyncWriter::Consume(ElementOrEOF* be) {
 
 bool AsyncWriter::ElementAvailable() { return !deque_.empty(); }
 
-Status AsyncWriter::WriterThread(Env* env, const std::string& shard_directory,
-                                 uint64 checkpoint_id,
-                                 const std::string& compression,
-                                 int64_t version, DataTypeVector output_types) {
+absl::Status AsyncWriter::WriterThread(Env* env,
+                                       const std::string& shard_directory,
+                                       uint64 checkpoint_id,
+                                       const std::string& compression,
+                                       int64_t version,
+                                       DataTypeVector output_types) {
   std::unique_ptr<snapshot_util::Writer> writer;
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
 
@@ -1176,7 +1182,7 @@ Status AsyncWriter::WriterThread(Env* env, const std::string& shard_directory,
 
     TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

@@ -13,15 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 
+# buildifier: disable=out-of-order-load
+
+# Placeholder: load proto_library
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library")
+
+# copybara:comment_begin(oss-only)
+load("@local_xla//xla/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
+# copybara:comment_end
+
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
-
-# copybara:comment_begin(oss-only)
-load("@local_tsl//tsl/platform/default:build_config.bzl", "tf_proto_library_py")
-# copybara:comment_end
+# copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -140,12 +145,7 @@ cc_library(
     name = "nnapi_plugin_impl",
     hdrs = ["nnapi_plugin.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = nnapi_plugin_impl_visibility_allowlist() + [
-        "//tensorflow/lite/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
-    ],
+    visibility = nnapi_plugin_impl_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
     ],
@@ -156,13 +156,13 @@ cc_library(
     srcs = ["hexagon_plugin.cc"],
     deps = [
         ":configuration_fbs",
-        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/memory",
     ] + select({
-        "//third_party/bazel_platforms/cpu:aarch64": [
+        "@platforms//cpu:aarch64": [
             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
-        "//third_party/bazel_platforms/cpu:armv7": [
+        "@platforms//cpu:armv7": [
             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
@@ -209,7 +209,7 @@ cc_library(
     deps = [
         ":configuration_fbs",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/memory",
     ] + select({
         "//tensorflow:macos": [

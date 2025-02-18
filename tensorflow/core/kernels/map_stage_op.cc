@@ -163,20 +163,20 @@ class StagingMap : public ResourceBase {
   }
 
   // Check that the index is within bounds
-  Status check_index(const Tensor& key, std::size_t index)
+  absl::Status check_index(const Tensor& key, std::size_t index)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (index >= dtypes_.size()) {
-      return Status(errors::InvalidArgument(
+      return absl::Status(errors::InvalidArgument(
           "Index '", index, "' for key '", key.scalar<int64_t>()(),
           "' was out of bounds '", dtypes_.size(), "'."));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status copy_or_move_tensors(OptionalTuple* map_tuple, const Tensor& key,
-                              const Tensor& indices, Tuple* output,
-                              bool copy = false)
+  absl::Status copy_or_move_tensors(OptionalTuple* map_tuple, const Tensor& key,
+                                    const Tensor& indices, Tuple* output,
+                                    bool copy = false)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     auto findices = indices.flat<int>();
 
@@ -188,7 +188,7 @@ class StagingMap : public ResourceBase {
 
       // Insist on a value present at the specified index
       if (!(*map_tuple)[index].has_value()) {
-        return Status(errors::InvalidArgument(
+        return absl::Status(errors::InvalidArgument(
             "Tensor at index '", index, "' for key '", key.scalar<int64_t>()(),
             "' has already been removed."));
       }
@@ -203,13 +203,13 @@ class StagingMap : public ResourceBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Check that the optional value at the specified index
   // is uninitialized
-  Status check_index_uninitialized(const Tensor& key, std::size_t index,
-                                   const OptionalTuple& tuple)
+  absl::Status check_index_uninitialized(const Tensor& key, std::size_t index,
+                                         const OptionalTuple& tuple)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (tuple[index].has_value()) {
       return errors::InvalidArgument("The tensor for index '", index,
@@ -218,11 +218,11 @@ class StagingMap : public ResourceBase {
                                      dtypes_.size(), "'.");
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Check that the indices are strictly ordered
-  Status check_index_ordering(const Tensor& indices) {
+  absl::Status check_index_ordering(const Tensor& indices) {
     if (indices.NumElements() == 0) {
       return errors::InvalidArgument("Indices are empty");
     }
@@ -237,11 +237,11 @@ class StagingMap : public ResourceBase {
       return errors::InvalidArgument("Indices are not strictly ordered");
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Check bytes are within memory limits memory limits
-  Status check_memory_limit(std::size_t bytes)
+  absl::Status check_memory_limit(std::size_t bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (has_memory_limit() && bytes > memory_limit_) {
       return errors::ResourceExhausted(
@@ -250,12 +250,13 @@ class StagingMap : public ResourceBase {
           "'.");
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Insert incomplete data into the Barrier
-  Status put_incomplete(const KeyType& key, const Tensor& indices,
-                        OptionalTuple* tuple, tensorflow::mutex_lock* lock)
+  absl::Status put_incomplete(const KeyType& key, const Tensor& indices,
+                              OptionalTuple* tuple,
+                              tensorflow::mutex_lock* lock)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     auto findices = indices.flat<int>();
 
@@ -327,18 +328,18 @@ class StagingMap : public ResourceBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Does the insertion into the actual staging area
-  Status put_complete(const KeyType& key, OptionalTuple* tuple)
+  absl::Status put_complete(const KeyType& key, OptionalTuple* tuple)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     // Insert key and tuples into the map
     map_.insert({key, std::move(*tuple)});
 
     notify_removers();
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  public:
@@ -350,7 +351,7 @@ class StagingMap : public ResourceBase {
         memory_limit_(memory_limit),
         current_bytes_(0) {}
 
-  Status put(KeyType* key, const Tensor* indices, OptionalTuple* tuple) {
+  absl::Status put(KeyType* key, const Tensor* indices, OptionalTuple* tuple) {
     tensorflow::mutex_lock lock(mu_);
 
     // Sanity check the indices
@@ -376,10 +377,10 @@ class StagingMap : public ResourceBase {
     // Update the current size
     current_bytes_ += tuple_bytes;
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status get(const KeyType* key, const Tensor* indices, Tuple* tuple) {
+  absl::Status get(const KeyType* key, const Tensor* indices, Tuple* tuple) {
     tensorflow::mutex_lock lock(mu_);
 
     // Sanity check the indices
@@ -398,10 +399,10 @@ class StagingMap : public ResourceBase {
     // Update bytes in the Staging Area
     current_bytes_ -= get_tuple_bytes(*tuple);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status pop(const KeyType* key, const Tensor* indices, Tuple* tuple) {
+  absl::Status pop(const KeyType* key, const Tensor* indices, Tuple* tuple) {
     tensorflow::mutex_lock lock(mu_);
 
     // Sanity check the indices
@@ -429,10 +430,10 @@ class StagingMap : public ResourceBase {
 
     notify_inserters_if_bounded();
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status popitem(KeyType* key, const Tensor* indices, Tuple* tuple) {
+  absl::Status popitem(KeyType* key, const Tensor* indices, Tuple* tuple) {
     tensorflow::mutex_lock lock(mu_);
 
     // Sanity check the indices
@@ -464,10 +465,10 @@ class StagingMap : public ResourceBase {
 
     notify_inserters_if_bounded();
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status clear() {
+  absl::Status clear() {
     tensorflow::mutex_lock lock(mu_);
     map_.clear();
     incomplete_.clear();
@@ -475,7 +476,7 @@ class StagingMap : public ResourceBase {
 
     notify_inserters_if_bounded();
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::size_t incomplete_size() {
@@ -492,13 +493,13 @@ class StagingMap : public ResourceBase {
 };
 
 template <bool Ordered>
-Status GetStagingMap(OpKernelContext* ctx, const NodeDef& ndef,
-                     StagingMap<Ordered>** map) {
+absl::Status GetStagingMap(OpKernelContext* ctx, const NodeDef& ndef,
+                           StagingMap<Ordered>** map) {
   auto rm = ctx->resource_manager();
   ContainerInfo cinfo;
 
   // Lambda for creating the Staging Area
-  auto create_fn = [&ndef](StagingMap<Ordered>** ret) -> Status {
+  auto create_fn = [&ndef](StagingMap<Ordered>** ret) -> absl::Status {
     DataTypeVector dtypes;
     int64_t capacity;
     int64_t memory_limit;
@@ -506,13 +507,13 @@ Status GetStagingMap(OpKernelContext* ctx, const NodeDef& ndef,
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "memory_limit", &memory_limit));
     *ret = new StagingMap<Ordered>(dtypes, capacity, memory_limit);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   TF_RETURN_IF_ERROR(cinfo.Init(rm, ndef, true /* use name() */));
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<StagingMap<Ordered>>(
       cinfo.container(), cinfo.name(), map, create_fn));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <bool Ordered>
@@ -587,6 +588,10 @@ class MapUnstageOp : public OpKernel {
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(key_tensor->shape()),
+                errors::InvalidArgument("key must be an int64 scalar: ",
+                                        key_tensor->shape().DebugString()));
+
     OP_REQUIRES_OK(ctx, map->pop(key_tensor, indices_tensor, &tuple));
 
     OP_REQUIRES(

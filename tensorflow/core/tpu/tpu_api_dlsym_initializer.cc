@@ -16,6 +16,7 @@ limitations under the License.
 #include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <link.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -23,6 +24,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,8 +38,8 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "xla/stream_executor/tpu/tpu_initialize_util.h"
 #include "xla/stream_executor/tpu/tpu_platform.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 
 #if !defined(PLATFORM_GOOGLE)
 #include "xla/stream_executor/tpu/tpu_library_init_fns.inc"
@@ -98,9 +100,24 @@ absl::Status FindAndLoadTpuLibrary() {
     }
   }
 
+  // Check if libtpu pip package is installed along with tf whl. In that case,
+  // libtpu should be in the path `python3.x/site_packages/libtpu/libtpu.so`.
+  std::filesystem::path canonicalPath = std::filesystem::canonical(so_name);
+  std::filesystem::path whl_libtpu_path =
+      std::filesystem::path(canonicalPath).parent_path().parent_path() /
+      "libtpu/libtpu.so";
+
   const char* env_value = getenv("TPU_LIBRARY_PATH");
-  const char* libtpu_path =
-      env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
+  const char* libtpu_path = nullptr;
+  if (env_value && strlen(env_value) > 0) {
+    libtpu_path = env_value;
+  } else if (std::filesystem::exists(whl_libtpu_path)) {
+    // whl_libtpu_path must outlive libtpu_path.
+    libtpu_path = whl_libtpu_path.c_str();
+  } else {
+    libtpu_path = "libtpu.so";
+  }
+
   LOG(INFO) << "Libtpu path is: " << libtpu_path;
   void* library = dlopen(libtpu_path, RTLD_LAZY);
   if (library == nullptr) {

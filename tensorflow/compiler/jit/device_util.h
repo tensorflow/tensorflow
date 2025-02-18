@@ -20,11 +20,12 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/numeric/bits.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
@@ -79,7 +80,7 @@ class DeviceSet {
         uint64 only_lowest_bit_set = word & -word;
         // The number of trailing zeros in a non-zero word is the index of the
         // least significant 1.
-        int bit_index = ctz_uint64(word);
+        int bit_index = absl::countr_zero(word);
         if (!func(DeviceId(word_index * kWordSize + bit_index))) {
           return;
         }
@@ -89,20 +90,6 @@ class DeviceSet {
   }
 
  private:
-  static int ctz_uint64(uint64 x) {
-    DCHECK_NE(x, 0);
-#ifdef __GNUC__
-    return __builtin_ctzl(x);
-#else
-    int result = 0u;
-    while ((x & 1u) == 0u) {
-      x >>= 1;
-      ++result;
-    }
-    return result;
-#endif
-  }
-
   absl::InlinedVector<uint64, 1> storage_;
 
   const int kWordSize = 64;
@@ -118,7 +105,7 @@ class DeviceInfoCache {
     return names_[device.id()];
   }
 
-  StatusOr<DeviceId> GetIdFor(absl::string_view name);
+  absl::StatusOr<DeviceId> GetIdFor(absl::string_view name);
 
   using DeviceRegistration = const XlaOpRegistry::DeviceRegistration;
 
@@ -126,7 +113,8 @@ class DeviceInfoCache {
     return id_to_compilation_device_[device.id()];
   }
 
-  StatusOr<DeviceRegistration*> GetCompilationDevice(absl::string_view name) {
+  absl::StatusOr<DeviceRegistration*> GetCompilationDevice(
+      absl::string_view name) {
     TF_ASSIGN_OR_RETURN(DeviceId device_id, GetIdFor(name));
     return GetCompilationDevice(device_id);
   }
@@ -137,7 +125,8 @@ class DeviceInfoCache {
 
   using DeviceTypeConstRef = std::reference_wrapper<const DeviceType>;
 
-  StatusOr<DeviceTypeConstRef> GetDeviceTypeFor(absl::string_view device_name) {
+  absl::StatusOr<DeviceTypeConstRef> GetDeviceTypeFor(
+      absl::string_view device_name) {
     TF_ASSIGN_OR_RETURN(DeviceId device_id, GetIdFor(device_name));
     return std::cref(*id_to_device_type_[device_id.id()]);
   }
@@ -160,7 +149,8 @@ class DeviceInfoCache {
 }  // namespace jit
 
 // Returns the DeviceType corresponding to 'device'.
-Status DeviceNameToDeviceType(const string& device, DeviceType* device_type);
+absl::Status DeviceNameToDeviceType(const string& device,
+                                    DeviceType* device_type);
 
 // Picks the device for which XLA should compile a cluster that contains
 // operations placed in devices in `devices`.  For instance a cluster that
@@ -196,7 +186,7 @@ Status DeviceNameToDeviceType(const string& device, DeviceType* device_type);
 //   case it is the responsibility of the optimization pass that injected the
 //   CPU nodes into the cluster to ensure that these nodes can be compiled by
 //   the unknown XLA backend.
-StatusOr<jit::DeviceId> PickDeviceForXla(
+absl::StatusOr<jit::DeviceId> PickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 
@@ -205,7 +195,7 @@ StatusOr<jit::DeviceId> PickDeviceForXla(
 //
 // We return a failing Status for errors unrelated to the device choice
 // algorithm itself.
-StatusOr<std::optional<jit::DeviceId>> MaybePickDeviceForXla(
+absl::StatusOr<std::optional<jit::DeviceId>> MaybePickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 }  // namespace tensorflow

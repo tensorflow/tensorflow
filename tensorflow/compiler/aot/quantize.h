@@ -21,15 +21,15 @@ limitations under the License.
 #include <ostream>
 
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace tfcompile {
 
-using QuantizeXlaFn = std::function<Status(const tf2xla::Config& config,
-                                           xla::XlaComputation* computation)>;
+using QuantizeXlaFn = std::function<absl::Status(
+    const tf2xla::Config& config, xla::XlaComputation* computation)>;
 
 // Set the static quantization function to the `fn` if it hasn't been set.
 // Return false if the static function has been set.

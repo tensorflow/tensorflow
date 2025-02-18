@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_OP_UTILS_H_
 #define TENSORFLOW_DTENSOR_MLIR_OP_UTILS_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
 namespace tensorflow {

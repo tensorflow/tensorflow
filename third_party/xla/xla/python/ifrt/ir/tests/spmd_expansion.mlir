@@ -1,9 +1,9 @@
 // RUN: ifrt-opt %s -spmd-expansion -split-input-file -verify-diagnostics | FileCheck %s
 
 #device = #ifrt<devices[0,1]>
-#sharding = #ifrt.sharding<2x1 to [0] on 2>
+#sharding = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @identity_axis0_sharded
-module @identity_axis0_sharded attributes {ifrt.devices = #device} {
+module @identity_axis0_sharded attributes {ifrt.num_devices = 2} {
   // CHECK-NEXT: func.func @main
   // CHECK-SAME: %[[ARG:.*]]: tensor<1x2xi32>
   // CHECK-NEXT: return %[[ARG]]
@@ -20,10 +20,10 @@ module @identity_axis0_sharded attributes {ifrt.devices = #device} {
 // -----
 
 #device = #ifrt<devices[0,1]>
-#sharding = #ifrt.sharding<1x2 to [0] on 2>
+#sharding = #ifrt.sharding_param<1x2 to [0] on 2>
 // CHECK-LABEL: @identity_axis1_sharded
 module @identity_axis1_sharded
-    attributes {ifrt.devices = #device, ifrt.entry_function = "entry_func"} {
+    attributes {ifrt.num_devices = 2, ifrt.entry_function = "entry_func"} {
   // CHECK-NEXT: func.func @entry_func
   // CHECK-SAME: %[[ARG:.*]]: tensor<2x1xi32>
   // CHECK-NEXT: return %[[ARG]]
@@ -40,9 +40,9 @@ module @identity_axis1_sharded
 // -----
 
 #device = #ifrt<devices[0,1,2,3,4,5]>
-#sharding = #ifrt.sharding<3x2 to [1,0] on 2x3>
+#sharding = #ifrt.sharding_param<3x2 to [1,0] on 2x3>
 // CHECK-LABEL: @identify_both_axes_sharded
-module @identify_both_axes_sharded attributes {ifrt.devices = #device} {
+module @identify_both_axes_sharded attributes {ifrt.num_devices = 6} {
   // CHECK-NEXT: func.func @main
   // CHECK-SAME: %[[ARG:.*]]: tensor<1x1xi32>
   // CHECK-NEXT: return %[[ARG]]
@@ -60,7 +60,7 @@ module @identify_both_axes_sharded attributes {ifrt.devices = #device} {
 
 #device = #ifrt<devices[0,1]>
 // CHECK-LABEL: @with_func_call
-module @with_func_call attributes {ifrt.devices = #device} {
+module @with_func_call attributes {ifrt.num_devices = 2} {
   // CHECK-NEXT: func.func @main
   // CHECK-SAME: %[[ARG:.*]]: tensor<1x2xi32>
   // CHECK-SAME: tensor<1x2xi32>
@@ -70,10 +70,12 @@ module @with_func_call attributes {ifrt.devices = #device} {
   // CHECK: return
   // CHECK-SAME: tensor<1x2xi32>
   func.func @main(
-      %arg0: tensor<2x2xi32> {ifrt.sharding = #ifrt.sharding<2x1 to [0] on 2>,
-      ifrt.devices = #device})
-      -> (tensor<2x2xi32> {ifrt.sharding = #ifrt.sharding<2x1 to [0] on 2>,
-      ifrt.devices = #device}) {
+      %arg0: tensor<2x2xi32> {
+        ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>,
+        ifrt.devices = #device})
+      -> (tensor<2x2xi32> {
+        ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>,
+        ifrt.devices = #device}) {
     %0 = func.call @identify(%arg0) : (tensor<2x2xi32>) -> tensor<2x2xi32>
     return %0 : tensor<2x2xi32>
   }
@@ -92,7 +94,7 @@ module @with_func_call attributes {ifrt.devices = #device} {
 
 #device = #ifrt<devices[0,1]>
 // CHECK-LABEL: @with_nested_func_call
-module @with_nested_func_call attributes {ifrt.devices = #device} {
+module @with_nested_func_call attributes {ifrt.num_devices = 2} {
   // CHECK-NEXT: func.func @main
   // CHECK-SAME: %[[ARG:.*]]: tensor<1x2xi32>
   // CHECK-SAME: tensor<1x2xi32>
@@ -102,10 +104,12 @@ module @with_nested_func_call attributes {ifrt.devices = #device} {
   // CHECK: return
   // CHECK-SAME: tensor<1x2xi32>
   func.func @main(
-      %arg0: tensor<2x2xi32> {ifrt.sharding = #ifrt.sharding<2x1 to [0] on 2>,
-      ifrt.devices = #device})
-      -> (tensor<2x2xi32> {ifrt.sharding = #ifrt.sharding<2x1 to [0] on 2>,
-      ifrt.devices = #device}) {
+      %arg0: tensor<2x2xi32> {
+        ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>,
+        ifrt.devices = #device})
+      -> (tensor<2x2xi32> {
+        ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>,
+        ifrt.devices = #device}) {
     %0 = func.call @call_identify(%arg0) : (tensor<2x2xi32>) -> tensor<2x2xi32>
     return %0 : tensor<2x2xi32>
   }
@@ -135,20 +139,19 @@ module @with_nested_func_call attributes {ifrt.devices = #device} {
 
 // -----
 
-#device = #ifrt<devices[0,1]>
-#sharding = #ifrt.sharding<1x2 to [0] on 2>
+#sharding = #ifrt.sharding_param<1x2 to [0] on 2>
 // expected-error@+1 {{cannot find entry function `main`}}
 module @missing_main_function
-    attributes {ifrt.devices = #device} {
+    attributes {ifrt.num_devices = 2} {
 }
 
 // -----
 
 #device = #ifrt<devices[0,1]>
-#sharding = #ifrt.sharding<1x2 to [0] on 2>
+#sharding = #ifrt.sharding_param<1x2 to [0] on 2>
 // expected-error@+1 {{cannot find entry function `entry_func`}}
 module @missing_entry_function
-    attributes {ifrt.devices = #device, ifrt.entry_function = "entry_func"} {
+    attributes {ifrt.num_devices = 2, ifrt.entry_function = "entry_func"} {
   func.func @main(
       %arg0: tensor<2x2xi32> {ifrt.sharding = #sharding,
       ifrt.devices = #device})
@@ -161,8 +164,8 @@ module @missing_entry_function
 // -----
 
 #device = #ifrt<devices[0,1]>
-#sharding = #ifrt.sharding<2x1 to [0] on 2>
-module @non_divisible_global_shape attributes {ifrt.devices = #device} {
+#sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+module @non_divisible_global_shape attributes {ifrt.num_devices = 2} {
   // expected-error@+1 {{Global shape is not divisible by the number of shards in dimension 0. Global size: 3, number of shards: 2}}
   func.func @main(
       %arg0: tensor<3x2xi32> {ifrt.sharding = #sharding,

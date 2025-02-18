@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,38 +13,46 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <random>
+#include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
+#include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
-#include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-// Use a bool parameter to indicate whether to use bfloat16.
-class ReshapeTest : public ::testing::WithParamInterface<bool>,
+class ReshapeTest : public ::testing::WithParamInterface<PrimitiveType>,
                     public ClientLibraryTestBase {
  public:
-  ReshapeTest() { set_use_bfloat16(GetParam()); }
+  ReshapeTest() { set_float_type(GetParam()); }
 
   ErrorSpec zero_error_spec_{0.0};
 };
@@ -649,16 +657,15 @@ XLA_TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   XlaComputation computation = builder.Build().value();
   ExecutionOptions execution_options = execution_options_;
   *execution_options.mutable_shape_with_output_layout() =
-      ShapeUtil::MakeShapeWithDenseLayout(use_bfloat16() ? BF16 : F32, {2, 8},
-                                          {1, 0})
+      ShapeUtil::MakeShapeWithDenseLayout(FloatType(), {2, 8}, {1, 0})
           .ToProto();
   Literal actual =
       client_
           ->ExecuteAndTransfer(computation, {input.get()}, &execution_options)
           .value();
   Literal expected = LiteralUtil::CreateR2FromArray2D<float>(expected_array);
-  if (use_bfloat16()) {
-    expected = LiteralUtil::ConvertF32ToBF16(expected);
+  if (FloatType() != F32) {
+    expected = MaybeConvertLiteralToTestType(expected);
   }
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
 }
@@ -805,8 +812,8 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
 
   ExecutionOptions execution_options = execution_options_;
   *execution_options.mutable_shape_with_output_layout() =
-      ShapeUtil::MakeShapeWithDenseLayout(use_bfloat16() ? BF16 : F32,
-                                          {7, 2, 3, 5}, {2, 3, 0, 1})
+      ShapeUtil::MakeShapeWithDenseLayout(FloatType(), {7, 2, 3, 5},
+                                          {2, 3, 0, 1})
           .ToProto();
   Literal output_literal =
       client_
@@ -816,11 +823,29 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
 
   // Since the reshape is a no-op, verify that it does not change the underlying
   // data.
-  if (use_bfloat16()) {
-    auto expected = LiteralUtil::ConvertF32ToBF16(input_literal);
-    EXPECT_EQ(expected.data<bfloat16>(), output_literal.data<bfloat16>());
-  } else {
-    EXPECT_EQ(input_literal.data<float>(), output_literal.data<float>());
+  switch (FloatType()) {
+    case F32:
+      EXPECT_EQ(input_literal.data<float>(), output_literal.data<float>());
+      break;
+    case BF16: {
+      auto expected = MaybeConvertLiteralToTestType(input_literal);
+      EXPECT_EQ(expected.data<bfloat16>(), output_literal.data<bfloat16>());
+      break;
+    }
+    case F8E4M3FN: {
+      auto expected = MaybeConvertLiteralToTestType(input_literal);
+      EXPECT_EQ(expected.data<tsl::float8_e4m3fn>(),
+                output_literal.data<tsl::float8_e4m3fn>());
+      break;
+    }
+    case F8E5M2: {
+      auto expected = MaybeConvertLiteralToTestType(input_literal);
+      EXPECT_EQ(expected.data<tsl::float8_e5m2>(),
+                output_literal.data<tsl::float8_e5m2>());
+      break;
+    }
+    default:
+      LOG(FATAL) << "Unsupported float type: " << FloatType();
   }
 }
 
@@ -1014,12 +1039,22 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
                            zero_error_spec_, &expected.shape());
 }
 
-#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
-INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest, ::testing::Bool());
-#else
 INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest,
-                        ::testing::ValuesIn(std::vector<bool>{false}));
-#endif
+                        ::testing::ValuesIn({F32, BF16, F8E5M2, F8E4M3FN}));
+
+using ReshapeHloTest = HloTestBase;
+
+TEST_F(ReshapeHloTest, NoHloPasses) {
+  const std::string hlo_string = R"(
+    HloModule Bug, is_scheduled=true
+
+    ENTRY entry {
+      %p0 = u32[1,35]{1,0} parameter(0)
+      %reshape.4 = u32[35]{0} reshape(u32[1,35]{1,0} %p0)
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string, ErrorSpec{0.01, 0.01}));
+}
 
 }  // namespace
 }  // namespace xla

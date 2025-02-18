@@ -51,7 +51,7 @@ class PrefetchAutotuner {
   int64_t buffer_limit() const { return buffer_limit_; }
 
   // Reports whether the element size has been set.
-  int64_t HasElementSize() const { return element_size_bytes_.has_value(); }
+  bool HasElementSize() const { return element_size_bytes_.has_value(); }
   // Sets the element size to use for predicting memory usage. Element size must
   // be set before the autotuner can increase the buffer size.
   void SetElementSize(int64_t element_size_bytes);

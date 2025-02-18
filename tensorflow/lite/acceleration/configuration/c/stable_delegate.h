@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_ACCELERATION_CONFIGURATION_C_STABLE_DELEGATE_H_
 #define TENSORFLOW_LITE_ACCELERATION_CONFIGURATION_C_STABLE_DELEGATE_H_
 
+/// For documentation, see
+/// third_party/tensorflow/lite/core/acceleration/configuration/c/stable_delegate.h
+
 #include "tensorflow/lite/core/acceleration/configuration/c/stable_delegate.h"
 
 #endif  // TENSORFLOW_LITE_ACCELERATION_CONFIGURATION_C_STABLE_DELEGATE_H_

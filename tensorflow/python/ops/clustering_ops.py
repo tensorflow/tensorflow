@@ -47,7 +47,6 @@ RANDOM_INIT = 'random'
 KMEANS_PLUS_PLUS_INIT = 'kmeans_plus_plus'
 KMC2_INIT = 'kmc2'
 
-# The name of the variable holding the cluster centers. Used by the Estimator.
 CLUSTERS_VAR_NAME = 'clusters'
 
 

@@ -13,13 +13,11 @@ package(
 py_strict_library(
     name = "ipynb",
     srcs = ["ipynb.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "ast_edits",
     srcs = ["ast_edits.py"],
-    srcs_version = "PY3",
     deps = [
         "@pasta",
         "@six_archive//:six",  # buildcleaner: keep
@@ -29,10 +27,9 @@ py_strict_library(
 py_strict_test(
     name = "ast_edits_test",
     srcs = ["ast_edits_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":ast_edits",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -41,8 +38,6 @@ py_strict_test(
 py_strict_binary(
     name = "tf_upgrade",
     srcs = ["tf_upgrade.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":tf_upgrade_lib",
         "@six_archive//:six",
@@ -52,21 +47,19 @@ py_strict_binary(
 py_strict_library(
     name = "tf_upgrade_lib",
     srcs = ["tf_upgrade.py"],
-    srcs_version = "PY3",
     deps = [":ast_edits"],
 )
 
 py_strict_test(
     name = "tf_upgrade_test",
     srcs = ["tf_upgrade_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_pip",
     ],
     deps = [
         ":ast_edits",
         ":tf_upgrade_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -76,21 +69,18 @@ py_strict_library(
     name = "renames_v2",
     srcs = ["renames_v2.py"],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
 )
 
 py_strict_library(
     name = "reorders_v2",
     srcs = ["reorders_v2.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "all_renames_v2",
     srcs = ["all_renames_v2.py"],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [":renames_v2"],
 )
@@ -98,10 +88,9 @@ py_strict_library(
 py_strict_test(
     name = "all_renames_v2_test",
     srcs = ["all_renames_v2_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":all_renames_v2",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -110,14 +99,12 @@ py_strict_test(
 py_strict_library(
     name = "module_deprecations_v2",
     srcs = ["module_deprecations_v2.py"],
-    srcs_version = "PY3",
     deps = [":ast_edits"],
 )
 
 py_strict_library(
     name = "tf_upgrade_v2_lib",
     srcs = ["tf_upgrade_v2.py"],
-    srcs_version = "PY3",
     deps = [
         ":all_renames_v2",
         ":ast_edits",
@@ -130,7 +117,6 @@ py_strict_library(
 py_strict_library(
     name = "tf_upgrade_v2_safety_lib",
     srcs = ["tf_upgrade_v2_safety.py"],
-    srcs_version = "PY3",
     deps = [
         ":all_renames_v2",
         ":ast_edits",
@@ -142,8 +128,6 @@ py_strict_binary(
     name = "tf_upgrade_v2",
     srcs = ["tf_upgrade_v2_main.py"],
     main = "tf_upgrade_v2_main.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":ast_edits",
         ":ipynb",
@@ -155,9 +139,7 @@ py_strict_binary(
 py_strict_test(
     name = "tf_upgrade_v2_test",
     srcs = ["tf_upgrade_v2_test.py"],
-    python_version = "PY3",
     shard_count = 5,
-    srcs_version = "PY3",
     tags = [
         "no_windows",
         "v1only",
@@ -165,14 +147,16 @@ py_strict_test(
     deps = [
         ":ast_edits",
         ":tf_upgrade_v2_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "@six_archive//:six",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
         "@absl_py//absl/testing:parameterized",
@@ -182,11 +166,10 @@ py_strict_test(
 py_strict_test(
     name = "tf_upgrade_v2_safety_test",
     srcs = ["tf_upgrade_v2_safety_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":ast_edits",
         ":tf_upgrade_v2_safety_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -222,8 +205,6 @@ py_strict_test(
     name = "test_file_v1_0",
     size = "medium",
     srcs = ["test_file_v1_0.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:test_lib",
@@ -252,8 +233,6 @@ py_strict_test(
     name = "test_file_v1_12",
     size = "medium",
     srcs = ["testdata/test_file_v1_12.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_windows",
         "v1only",
@@ -269,8 +248,6 @@ py_strict_test(
     name = "test_file_v2_0",
     size = "medium",
     srcs = ["test_file_v2_0.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:test_lib",

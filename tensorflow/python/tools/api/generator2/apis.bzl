@@ -29,10 +29,4 @@ APIS = {
             "//tensorflow/compiler/mlir/quantization/tensorflow/python:all",
         ]),
     },
-    "tensorflow_estimator": {
-        "decorator": "tensorflow_estimator.python.estimator.estimator_export.estimator_export",
-        "target_patterns": compile_patterns([
-            "//tensorflow_estimator/...",
-        ]),
-    },
 }

@@ -15,7 +15,6 @@ py_strict_library(
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":base_cluster_resolver_py",
@@ -31,7 +30,6 @@ py_strict_library(
 py_strict_library(
     name = "base_cluster_resolver_py",
     srcs = ["cluster_resolver.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
@@ -46,7 +44,6 @@ py_strict_library(
 py_strict_library(
     name = "gce_cluster_resolver_py",
     srcs = ["gce_cluster_resolver.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python/training:server_lib",
@@ -57,7 +54,6 @@ py_strict_library(
 py_strict_library(
     name = "tfconfig_cluster_resolver_py",
     srcs = ["tfconfig_cluster_resolver.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python/training:server_lib",
@@ -68,7 +64,6 @@ py_strict_library(
 py_strict_library(
     name = "sagemaker_cluster_resolver_py",
     srcs = ["sagemaker_cluster_resolver.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python/training:server_lib",
@@ -79,7 +74,6 @@ py_strict_library(
 py_strict_library(
     name = "tpu_cluster_resolver_py",
     srcs = ["tpu_cluster_resolver.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/distribute/cluster_resolver/tpu:tpu_cluster_resolver_py",
         "//tensorflow/python/util:tf_export",
@@ -89,7 +83,6 @@ py_strict_library(
 py_strict_library(
     name = "slurm_cluster_resolver_py",
     srcs = ["slurm_cluster_resolver.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python/training:server_lib",
@@ -100,7 +93,6 @@ py_strict_library(
 py_strict_library(
     name = "kubernetes_cluster_resolver_py",
     srcs = ["kubernetes_cluster_resolver.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python/training:server_lib",

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,13 +22,13 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/service/hlo_module_group_metadata.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "tsl/platform/status.h"
 
 namespace xla {
@@ -68,7 +68,7 @@ class HloModuleGroupUtil {
 
   // Function called on each instruction group during the DFS traversal. See the
   // comment for VisitTopologicalOrder()).
-  using VisitFunction = absl::FunctionRef<Status(
+  using VisitFunction = absl::FunctionRef<absl::Status(
       HloInstruction* hlo,
       const std::vector<HloInstruction*>& instruction_group)>;
 
@@ -91,19 +91,20 @@ class HloModuleGroupUtil {
   // * send_recv_as_one_group: if true, treat (Recv, Send, RecvDone, SendDone)
   // as one group.
   using VisitStates = absl::flat_hash_map<HloInstruction*, VisitState>;
-  Status VisitTopologicalOrder(VisitStates* visit_state,
-                               VisitFunction visit_function,
-                               HloInstruction* root,
-                               bool send_recv_as_one_group = false);
+  absl::Status VisitTopologicalOrder(VisitStates* visit_state,
+                                     VisitFunction visit_function,
+                                     HloInstruction* root,
+                                     bool send_recv_as_one_group = false);
 
   // Verifies that the computations are well-formed (e.g., no cycles).
-  Status VerifyComputations(absl::Span<HloComputation* const> computations);
+  absl::Status VerifyComputations(
+      absl::Span<HloComputation* const> computations);
 
   // Below Reachability utils resemble those in HloComputation, except that
   // they can handle instructions across multiple computations.
   //
   // Creates the reachability map for the instructions in the computations.
-  StatusOr<std::unique_ptr<HloReachabilityMap>> ComputeReachability(
+  absl::StatusOr<std::unique_ptr<HloReachabilityMap>> ComputeReachability(
       absl::Span<HloComputation* const> computations);
 
   // Updates the reachability of the given instruction, taking the global

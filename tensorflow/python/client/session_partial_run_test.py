@@ -26,7 +26,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
 
-
 class PartialRunTest(test_util.TensorFlowTestCase):
 
   def RunTestPartialRun(self, sess):

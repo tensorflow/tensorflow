@@ -29,10 +29,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
-typedef tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 4>
-    TFE_InputTensorHandles;
-typedef tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 2>
-    TFE_OutputTensorHandles;
+typedef absl::InlinedVector<TFE_TensorHandle*, 4UL> TFE_InputTensorHandles;
+typedef absl::InlinedVector<TFE_TensorHandle*, 2UL> TFE_OutputTensorHandles;
 
 // Execute a TensorFlow operation.
 //
@@ -114,7 +112,7 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception);
 // Returns 0 if 'status' is ok. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
 // TFE_Py_RegisterExceptionClass), and returns -1.
-int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
+int MaybeRaiseExceptionFromStatus(const absl::Status& status,
                                   PyObject* exception);
 
 // Returns the string associated with the passed-in python object.

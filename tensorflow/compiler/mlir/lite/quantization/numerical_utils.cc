@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <optional>
 
@@ -26,8 +27,17 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-// This method is adopted from TFLite:
-// ["tensorflow/lite/kernels/internal/quantization_util.cc"]
+// Converts a double-precision floating-point multiplier to a quantized
+// multiplier.
+//
+// Args:
+//   double_multiplier: The double-precision floating-point multiplier.
+//
+// Returns:
+//   A quantized multiplier, represented as a pair of integers: the quantized
+//   multiplier and the shift amount. The shift amount is the number of bits
+//   that the quantized multiplier should be shifted to the right before being
+//   used.
 QuantizedMultiplier QuantizeMultiplier(double double_multiplier) {
   if (double_multiplier < 1e-6) {
     return {0, 0};
@@ -35,30 +45,36 @@ QuantizedMultiplier QuantizeMultiplier(double double_multiplier) {
 
   int32_t shift;
   const double q = frexp(double_multiplier, &shift);
-  auto q_fixed = static_cast<int64_t>(round(q * (1LL << 31)));
-  assert(q_fixed <= (1LL << 31));
-  if (q_fixed == (1LL << 31)) {
-    q_fixed /= 2;
+  int64_t quantized_multiplier = round(q * (1LL << 31));
+  assert(quantized_multiplier <= (1LL << 31));
+  if (quantized_multiplier == (1LL << 31)) {
+    quantized_multiplier /= 2;
     ++shift;
   }
-  assert(q_fixed <= std::numeric_limits<int32_t>::max());
-  // A shift amount smaller than -31 would cause all bits to be shifted out
-  // and thus all results would be zero. We implement that instead with
-  // q_fixed==0, so as to avoid hitting issues with right-shift
-  // operations with shift amounts greater than 31. Note that this happens
-  // roughly when abs(double_multiplier) < 2^-31 and the present handling means
-  // that we're effectively flushing tiny double_multiplier's to zero.
-  // We could conceivably handle values in the range (roughly) [32, 63]
-  // as 'denormals' i.e. (shift==0, q_fixed < 2^30). In that point of view
-  // the present handling is just doing 'flush denormals to zero'. We could
-  // reconsider and actually generate nonzero denormals if a need arises.
-  if (shift < -31) {
-    shift = 0;
-    q_fixed = 0;
+  assert(quantized_multiplier <= std::numeric_limits<int32_t>::max());
+
+  // Check that the shift amount is not greater than 31 or less than -31.
+  if (shift > 31 || shift < -31) {
+    return {0, 0};
   }
-  return {static_cast<int32_t>(q_fixed), shift};
+
+  return {static_cast<int32_t>(quantized_multiplier), shift};
 }
 
+// Calculates the quantized range for a given scale, zero point, minimum and
+// maximum values, and quantization range.
+//
+// Args:
+//   scale: The scale factor for the quantized values.
+//   zero_point: The zero point for the quantized values.
+//   rmin: The minimum value of the quantized values.
+//   rmax: The maximum value of the quantized values.
+//   qmin: The minimum value of the quantization range.
+//   qmax: The maximum value of the quantization range.
+//
+// Returns:
+//   A quantized range, represented as a pair of integers: the minimum and
+//   maximum quantized values.
 QuantizedRange CalculateQuantizedRange(double scale, int32_t zero_point,
                                        std::optional<double> rmin,
                                        std::optional<double> rmax, int32_t qmin,

@@ -13,32 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status ResolveFakeQuantArgsFromVars::Run(Model* model,
-                                                       std::size_t op_index,
-                                                       bool* modified) {
+absl::Status ResolveFakeQuantArgsFromVars::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
   *modified = false;
   const auto fakequant_it = model->operators.begin() + op_index;
   auto* fakequant_base_op = fakequant_it->get();
   if (fakequant_base_op->type != OperatorType::kFakeQuant) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   auto* fakequant_op = static_cast<FakeQuantOperator*>(fakequant_base_op);
 
   if (fakequant_op->minmax) {
     // Already resolved.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   CHECK_EQ(fakequant_op->inputs.size(), 3);
@@ -46,7 +49,7 @@ namespace toco {
   // resolved to constant arrays.
   for (int i = 1; i <= 2; i++) {
     if (!IsConstantParameterArray(*model, fakequant_op->inputs[i])) {
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -79,7 +82,7 @@ namespace toco {
   }
   fakequant_op->inputs.resize(1);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

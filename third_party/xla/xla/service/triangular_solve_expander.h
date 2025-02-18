@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_SERVICE_TRIANGULAR_SOLVE_EXPANDER_H_
 
 #include "absl/container/flat_hash_map.h"
-#include "xla/client/xla_builder.h"
-#include "xla/service/op_expander_pass.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 namespace xla {
 
@@ -36,7 +36,7 @@ class TriangularSolveExpander : public OpExpanderPass {
 
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
   // Performs a triangular solve using an algorithm from MAGMA, which inverts

@@ -31,8 +31,8 @@ namespace tensorflow {
 // `fld` is used to store rewritten functions.
 // `global_fld` is used to potentially supply stack traces for functions when
 // they are not found in `fld`.
-Status RearrangeFunctionArguments(
-    std::function<Status(const NameAttrList&, const FunctionBody**)>
+absl::Status RearrangeFunctionArguments(
+    std::function<absl::Status(const NameAttrList&, const FunctionBody**)>
         get_function_body_fn,
     Graph* g, FunctionLibraryDefinition* fld,
     const FunctionLibraryDefinition* global_fld = nullptr);

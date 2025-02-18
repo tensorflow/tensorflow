@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//tensorflow/lite/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
+load("//tensorflow/lite/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

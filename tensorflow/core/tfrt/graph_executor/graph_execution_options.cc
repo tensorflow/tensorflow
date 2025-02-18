@@ -17,6 +17,7 @@ limitations under the License.
 #include <ostream>
 
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 // TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
@@ -117,14 +118,17 @@ void UpdateTpuTargetByBridgeCompatibility(
 
 std::ostream& operator<<(std::ostream& os,
                          const GraphExecutionOptions& options) {
-  return os << "{"
-            << "run_placer_grappler_on_functions = "
+  return os << "{" << "run_placer_grappler_on_functions = "
             << options.run_placer_grappler_on_functions
             << ", enable_grappler_function_optimizer = "
             << options.enable_grappler_function_optimizer
             << ", enable_tfrt_gpu = " << options.enable_tfrt_gpu
-            << ", runtime = " << options.runtime
-            << ", model_metadata = " << options.model_metadata.DebugString()
+            << ", use_ifrt = " << options.use_ifrt << ", runtime = "
+            << options.runtime
+            // clang-tidy off
+            << ", model_metadata = "
+            << options.model_metadata.DebugString()
+            // clang-tidy on
             << ", compile_options = " << options.compile_options << "}";
 }
 

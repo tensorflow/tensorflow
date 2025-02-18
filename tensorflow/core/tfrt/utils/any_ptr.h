@@ -123,9 +123,9 @@ class UniqueAnyPtr {
   UniqueAnyPtr& operator=(const UniqueAnyPtr& other) = delete;
 
   // Allow move.
-  UniqueAnyPtr(UniqueAnyPtr&& other) { swap(other); }
+  UniqueAnyPtr(UniqueAnyPtr&& other) noexcept { swap(other); }
 
-  UniqueAnyPtr& operator=(UniqueAnyPtr&& other) {
+  UniqueAnyPtr& operator=(UniqueAnyPtr&& other) noexcept {
     swap(other);
     return *this;
   }
@@ -139,7 +139,7 @@ class UniqueAnyPtr {
   /// Accessor for the underlying pointer as an AnyPtr.
   const AnyPtr& as_any_ptr() const { return ptr_; }
 
-  void swap(UniqueAnyPtr& other) {
+  void swap(UniqueAnyPtr& other) noexcept {
     using ::std::swap;
     swap(ptr_, other.ptr_);
     swap(deleter_, other.deleter_);

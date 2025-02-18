@@ -21,25 +21,25 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/test.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
-Status ParseTextProto(absl::string_view text_proto,
-                      tpu::TPUEmbeddingConfiguration* parsed_proto) {
+absl::Status ParseTextProto(absl::string_view text_proto,
+                            tpu::TPUEmbeddingConfiguration* parsed_proto) {
   tsl::protobuf::TextFormat::Parser parser;
   // Attempt to parse as text.
   tsl::protobuf::io::ArrayInputStream input_stream(text_proto.data(),
                                                    text_proto.size());
   if (parser.Parse(&input_stream, parsed_proto)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   parsed_proto->Clear();
   return errors::InvalidArgument("Could not parse text proto: ", text_proto);

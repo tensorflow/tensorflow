@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "DummySeedGenerator"
   output_arg {
     name: "handle"

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,17 +18,20 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/backend.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/service.h"
+#include "xla/shape.h"
 
 namespace xla {
 // Validates the computation argument layouts, and returns the corresponding
 // HloModuleConfig.
-StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
+absl::StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
     const XlaComputation& computation,
     absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options,

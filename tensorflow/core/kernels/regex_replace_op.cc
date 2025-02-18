@@ -30,8 +30,8 @@ namespace {
 // Context requirements:
 //  - "input" string Tensor at input_index=0
 //  - "output" string Tensor at output_index=0
-Status InternalCompute(const RE2& regex, const string& rewrite,
-                       const bool replace_global, OpKernelContext* ctx) {
+absl::Status InternalCompute(const RE2& regex, const string& rewrite,
+                             const bool replace_global, OpKernelContext* ctx) {
   const Tensor* input_tensor;
   TF_RETURN_IF_ERROR(ctx->input("input", &input_tensor));
   Tensor* output_tensor;
@@ -59,7 +59,7 @@ Status InternalCompute(const RE2& regex, const string& rewrite,
     }
     output_flat(i) = std::move(buf);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -115,7 +115,8 @@ class RegexReplaceOp : public OpKernel {
   mutex mu_;
   std::shared_ptr<RE2> regex_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RegexReplaceOp);
+  RegexReplaceOp(const RegexReplaceOp&) = delete;
+  void operator=(const RegexReplaceOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("RegexReplace").Device(DEVICE_CPU),

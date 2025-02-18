@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,23 +15,30 @@ limitations under the License.
 
 #include "xla/service/allocation_tracker.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "xla/map_util.h"
-#include "xla/service/transfer_manager.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
-StatusOr<GlobalDataHandle> AllocationTracker::Register(
+absl::StatusOr<GlobalDataHandle> AllocationTracker::Register(
     ScopedShapedBuffer shaped_buffer, const std::string& tag) {
   absl::MutexLock lock(&mutex_);
   VLOG(2) << "Register";
@@ -40,7 +47,7 @@ StatusOr<GlobalDataHandle> AllocationTracker::Register(
   return RegisterInternal(std::move(replicated_buffers), tag);
 }
 
-StatusOr<GlobalDataHandle> AllocationTracker::RegisterReplicatedBuffers(
+absl::StatusOr<GlobalDataHandle> AllocationTracker::RegisterReplicatedBuffers(
     std::vector<ScopedShapedBuffer> replicated_buffers,
     const std::string& tag) {
   absl::MutexLock lock(&mutex_);
@@ -57,7 +64,7 @@ static ShapedBuffer ReleaseIfScopedShapedBuffer(ScopedShapedBuffer b) {
 }
 
 template <typename ShapedBufferTy>
-StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
+absl::StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
     std::vector<ShapedBufferTy> replicated_buffers, const std::string& tag) {
   static_assert(std::is_same<ShapedBufferTy, ShapedBuffer>::value ||
                     std::is_same<ShapedBufferTy, ScopedShapedBuffer>::value,
@@ -94,7 +101,7 @@ StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
   return result;
 }
 
-Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
+absl::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   absl::MutexLock lock(&mutex_);
   VLOG(2) << "Unregister("
           << "handle: " << data.handle() << ")";
@@ -123,11 +130,11 @@ Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   for (auto& shaped_buffer : it->second) {
     shaped_buffer.reset();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
-    const GlobalDataHandle& data) {
+absl::StatusOr<std::vector<GlobalDataHandle>>
+AllocationTracker::DeconstructTuple(const GlobalDataHandle& data) {
   absl::MutexLock lock(&mutex_);
 
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
@@ -164,13 +171,13 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
   return std::move(element_handles);
 }
 
-StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::Resolve(
+absl::StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::Resolve(
     const GlobalDataHandle& data) const {
   absl::MutexLock lock(&mutex_);
   return AllocationTracker::ResolveInternal(data);
 }
 
-StatusOr<const ShapedBuffer*> AllocationTracker::ResolveForReplica(
+absl::StatusOr<const ShapedBuffer*> AllocationTracker::ResolveForReplica(
     const GlobalDataHandle& data, int replica_id) const {
   absl::MutexLock lock(&mutex_);
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
@@ -184,8 +191,8 @@ StatusOr<const ShapedBuffer*> AllocationTracker::ResolveForReplica(
   return replicated_buffers[replica_id];
 }
 
-StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::ResolveInternal(
-    const GlobalDataHandle& data) const {
+absl::StatusOr<std::vector<const ShapedBuffer*>>
+AllocationTracker::ResolveInternal(const GlobalDataHandle& data) const {
   VLOG(2) << "resolve:" << data.handle();
   auto it = handle_to_shaped_buffers_.find(data.handle());
   if (it == handle_to_shaped_buffers_.end()) {
@@ -218,8 +225,8 @@ void AllocationTracker::AddAllocationOrIncrementRefCount(
   }
 }
 
-Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
-                                            int device_ordinal) {
+absl::Status AllocationTracker::DecrementRefCount(
+    se::DeviceMemoryBase device_memory, int device_ordinal) {
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   TF_RET_CHECK(it != allocation_map.end());
@@ -231,7 +238,7 @@ Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
   } else {
     allocation.ref_count--;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

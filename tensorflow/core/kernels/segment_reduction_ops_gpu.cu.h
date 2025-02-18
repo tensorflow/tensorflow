@@ -33,9 +33,7 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 #include "tensorflow/core/util/permutation_input_iterator.h"
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-#include "xla/stream_executor/cuda/cuda_activation.h"
-#elif (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+#if (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #include "tensorflow/core/platform/rocm.h"
 #endif
 
@@ -977,9 +975,10 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
                   typename TTypes<T>::ConstMatrix input_flat,
                   typename TTypes<Index>::ConstVec indices_vec,
                   typename TTypes<SegmentId>::ConstVec segment_vec,
-                  typename TTypes<T>::Matrix output_flat) {
+                  Tensor* output) {
     const GPUDevice& device = context->eigen_gpu_device();
 
+    auto output_flat = output->flat_outer_dims<T>();
     const SegmentId nsegments = input_flat.dimension(0);
     const Index ninner = input_flat.dimension(1);
     const Index nouter = indices_vec.dimension(0);
@@ -1294,18 +1293,15 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
     // Copy the last element of sorted_indices_unique_ids back to the host to
     // obtain num_unique.
     ScratchSpace<Toffsets> last_idx_host(context, 1, /*on_host=*/true);
-    OP_REQUIRES_ASYNC(
+    OP_REQUIRES_OK_ASYNC(
         context,
-        stream
-            ->ThenMemcpy(
-                last_idx_host.mutable_data(),
-                se::DeviceMemoryBase(
-                    const_cast<Toffsets*>(sorted_indices_unique_ids_ptr) +
-                        (nouter - 1),
-                    sizeof(*last_idx_host.data())),
-                sizeof(*last_idx_host.data()))
-            .ok(),
-        absl::InternalError("Failed to copy last_idx to host"), done);
+        stream->Memcpy(last_idx_host.mutable_data(),
+                       se::DeviceMemoryBase(const_cast<Toffsets*>(
+                                                sorted_indices_unique_ids_ptr) +
+                                                (nouter - 1),
+                                            sizeof(*last_idx_host.data())),
+                       sizeof(*last_idx_host.data())),
+        done);
 
     auto async_finish_computation =
         [this, context, dense_output_shape, nouter, ninner, input,
@@ -1317,8 +1313,8 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
       const GPUDevice& device = context->eigen_gpu_device();
       Toffsets num_unique = (*last_idx_host.data()) + 1;
 
-      se::gpu::ScopedActivateExecutorContext scoped_activation{
-          context->op_device_context()->stream()->parent()};
+      std::unique_ptr<se::ActivateContext> scoped_activation =
+          context->op_device_context()->stream()->parent()->Activate();
 
       TensorShape output_shape = dense_output_shape;
       OP_REQUIRES_OK_ASYNC(context,

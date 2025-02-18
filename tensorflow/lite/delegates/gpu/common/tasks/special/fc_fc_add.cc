@@ -108,15 +108,6 @@ std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
   std::string c;
-  switch (op_def.precision) {
-    case CalculationsPrecision::F32:
-      c += "#define FLT16 float16\n";
-      break;
-    case CalculationsPrecision::F32_F16:
-    case CalculationsPrecision::F16:
-      c += "#define FLT16 half16\n";
-      break;
-  }
 
   c += "#define WG_X " + std::to_string(work_group_size_.x) + "\n";
   c += "#define WG_Y " + std::to_string(work_group_size_.y) + "\n";
@@ -132,11 +123,11 @@ std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
       FLT4 v = args.src_tensor_0.Read(0, 0, c);
 )";
   if (weights_are_buffer) {
-    c += R"(FLT16 w = args.weights0.Read(c * args.dst_tensor.Slices() + gid);
-      FLT4 partial = v.x * FLT16_0123(w);
-      partial += v.y * FLT16_4567(w);
-      partial += v.z * FLT16_89ab(w);
-      partial += v.w * FLT16_cdef(w);
+    c += R"(int weights_index = (c * args.dst_tensor.Slices() + gid) * 4;
+      FLT4 partial = v.x * args.weights0.Read(weights_index + 0);
+      partial += v.y * args.weights0.Read(weights_index + 1);
+      partial += v.z * args.weights0.Read(weights_index + 2);
+      partial += v.w * args.weights0.Read(weights_index + 3);
       s += TO_ACCUM_TYPE(partial);
 )";
   } else {
@@ -169,11 +160,11 @@ std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
       FLT4 v = args.src_tensor_1.Read(0, 0, c);
       )";
   if (weights_are_buffer) {
-    c += R"(FLT16 w = args.weights1.Read(c * args.dst_tensor.Slices() + gid);
-      FLT4 partial = v.x * FLT16_0123(w);
-      partial += v.y * FLT16_4567(w);
-      partial += v.z * FLT16_89ab(w);
-      partial += v.w * FLT16_cdef(w);
+    c += R"(int weights_index = (c * args.dst_tensor.Slices() + gid) * 4;
+      FLT4 partial = v.x * args.weights1.Read(weights_index + 0);
+      partial += v.y * args.weights1.Read(weights_index + 1);
+      partial += v.z * args.weights1.Read(weights_index + 2);
+      partial += v.w * args.weights1.Read(weights_index + 3);
       s += TO_ACCUM_TYPE(partial);
 )";
   } else {

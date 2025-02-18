@@ -18,7 +18,6 @@ import collections
 import functools
 import re
 import threading
-import warnings
 
 import numpy as np
 import wrapt
@@ -42,6 +41,7 @@ from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -141,14 +141,19 @@ _REGISTERED_EXPANSIONS = [
 
 def _convert_to_numpy_obj(numpy_dtype, obj):
   """Explicitly convert obj based on numpy type except for string type."""
-  return numpy_dtype(obj) if numpy_dtype is not object else str(obj)
+  return (
+      numpy_dtype(np.array(obj).astype(numpy_dtype))
+      if numpy_dtype is not object
+      else str(obj)
+  )
 
 
 def register_session_run_conversion_functions(
     tensor_type,
     fetch_function,
     feed_function=None,
-    feed_function_for_partial_run=None):
+    feed_function_for_partial_run=None,
+):
   """Register fetch and feed conversion functions for `tf.Session.run()`.
 
   This function registers a triple of conversion functions for fetching and/or
@@ -1182,7 +1187,7 @@ class BaseSession(SessionInterface):
             np_val = subfeed_val.to_numpy_array()
             feed_handles[subfeed_t.ref()] = subfeed_val
           else:
-            np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
+            np_val = numpy_compat.np_asarray(subfeed_val, subfeed_dtype)
 
           if (not is_tensor_handle_feed and
               not subfeed_t.get_shape().is_compatible_with(np_val.shape)):
@@ -1790,10 +1795,14 @@ class InteractiveSession(BaseSession):
     super(InteractiveSession, self).__init__(target, graph, config)
     with InteractiveSession._count_lock:
       if InteractiveSession._active_session_count > 0:
-        warnings.warn('An interactive session is already active. This can '
-                      'cause out-of-memory errors in some cases. You must '
-                      'explicitly call `InteractiveSession.close()` to release '
-                      'resources held by the other session(s).')
+        logging.error(
+            'An interactive session is already active. This can cause'
+            ' out-of-memory errors or some other unexpected errors (due to'
+            ' the unpredictable timing of garbage collection) in some cases.'
+            ' You must explicitly call `InteractiveSession.close()` to release'
+            ' resources held by the other session(s). Please use `tf.Session()`'
+            ' if you intend to productionize.'
+        )
       InteractiveSession._active_session_count += 1
     # NOTE(mrry): We do not use `Session._closed` here because it has unhelpful
     # semantics (in particular, it is not set to true if `Session.close()` is

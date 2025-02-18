@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 
-#include <memory>
+#include <cstddef>
 
 namespace tflite {
 namespace python_utils {

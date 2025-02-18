@@ -1,0 +1,42 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  param_0.8 = f32[512,512]{1,0} parameter(0)
+  param_1.10 = f32[128,128]{1,0} parameter(1)
+  param_3.32 = s32[] parameter(3)
+  two = s32[] constant(2)
+  param_3_mod_2 = s32[] remainder(param_3.32, two)
+  one = s32[] constant(1)
+  param_3_plus_one = s32[] add(param_3_mod_2, one)
+  param_2.32 = s32[] parameter(2)
+  param_2_plus_one = s32[] add(param_2.32, one)
+  ROOT dynamic-update-slice.5.1 = f32[512,512]{1,0} dynamic-update-slice(
+    param_0.8, param_1.10, param_2_plus_one, param_3_plus_one)
+}
+// CHECK:     func.func @main(
+// CHECK-SAME:  %[[ARG0:[^:]+]]: tensor<512x512xf32>
+// CHECK-SAME:  , %[[ARG1:[^:]+]]: tensor<128x128xf32>
+// CHECK-SAME:  , %[[ARG2:[^:]+]]: tensor<i32>
+// CHECK-SAME:  , %[[ARG3:[^:]+]]: tensor<i32>
+// CHECK-SAME:  , %[[ARG4:[^:]+]]: tensor<512x512xf32>
+// CHECK-DAG:   %[[C_384:.*]] = arith.constant 384
+// CHECK-DAG:   %[[C_0:.*]] = arith.constant 0
+// CHECK:       %[[THREAD_ID:.*]] = gpu.thread_id  x
+// CHECK:       %[[BLOCK_ID:.*]] = gpu.block_id  x
+// CHECK:     xla.loop
+// CHECK-SAME:  -> (%[[RA:.*]], %[[RB:.*]]) in
+// CHECK:       %[[I0:.*]] = xla.pure_call @fusion_param_2_plus_one
+// CHECK:       %[[I1:.*]] = xla.pure_call @fusion_param_3_plus_one
+// CHECK:       %[[IDX0:.*]] = arith.index_cast %[[I0]]
+// CHECK:       %[[MIN0:.*]] = arith.minsi %[[IDX0]], %[[C_384]]
+// CHECK:       %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[C_0]]
+// CHECK:       %[[ADD0:.*]] = arith.addi %[[RA]], %[[MAX0]]
+// CHECK:       %[[IDX1:.*]] = arith.index_cast %[[I1]]
+// CHECK:       %[[MIN1:.*]] = arith.minsi %[[IDX1]], %[[C_384]]
+// CHECK:       %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[C_0]]
+// CHECK:       %[[ADD1:.*]] = arith.addi %[[RB]], %[[MAX1]]
+// CHECK:       %[[UPDATE:.*]] = xla.pure_call @fusion_param_1_10
+// CHECK:       %[[INSERT:.*]] = tensor.insert %[[UPDATE:.*]] into %{{[a-z0-9]+}}[%[[ADD0]], %[[ADD1]]]
+// CHECK:       xla.yield %[[INSERT]]

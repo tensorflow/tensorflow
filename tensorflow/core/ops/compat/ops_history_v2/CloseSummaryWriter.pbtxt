@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CloseSummaryWriter"
   input_arg {
     name: "writer"

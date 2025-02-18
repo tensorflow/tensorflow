@@ -284,7 +284,6 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
     StrAttr:$code,
     I64ArrayAttr:$tileSizes,
     I64ArrayAttr:$unrollFactors,
-    I64Attr:$maxSupportedRank,
     BoolAttr:$enableFtz,
     BoolAttr:$index64Bit,
     BoolAttr:$cpuCodegen

@@ -60,7 +60,7 @@ def _validate_cluster_spec(cluster_spec,
   2) whether there is such a task type as `task_type` in the `cluster_spec`. The
      only exception is `evaluator`. In other words, it is still a valid
      configuration when `task_type` is `evaluator` but it doesn't appear in
-     `cluster_spec`. This is to be compatible with `TF_CONFIG` in Estimator.
+     `cluster_spec`.
   3) whether there is at most one "chief" job.
   4) whether there is at most one "evaluator" job.
   5) whether the `task_id` is smaller than the number of tasks for that

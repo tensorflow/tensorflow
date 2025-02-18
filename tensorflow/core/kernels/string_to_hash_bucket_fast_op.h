@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <uint64 hash(StringPiece)>
+template <uint64 hash(absl::string_view)>
 class StringToHashBucketOp : public OpKernel {
  public:
   explicit StringToHashBucketOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -58,7 +58,8 @@ class StringToHashBucketOp : public OpKernel {
  private:
   int64_t num_buckets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StringToHashBucketOp);
+  StringToHashBucketOp(const StringToHashBucketOp&) = delete;
+  void operator=(const StringToHashBucketOp&) = delete;
 };
 
 }  // namespace tensorflow

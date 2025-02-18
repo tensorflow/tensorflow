@@ -1,3 +1,4 @@
+// RUN: tf-opt -verify-diagnostics -tf-saved-model-lift-variables-test=import-variables-as-dense-resources=true -split-input-file %s | FileCheck --check-prefix=CheckWithDense %s --dump-input=fail
 // RUN: tf-opt -verify-diagnostics -tf-saved-model-lift-variables-test -split-input-file %s | FileCheck %s --dump-input=fail
 
 module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
@@ -15,11 +16,23 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   }
   // CHECK: "tf_saved_model.global_tensor"()
   // CHECK:    sym_name = "dense/kernel"
+  // CHECK:    value = dense<0.000000e+00>
   // CHECK: "tf_saved_model.global_tensor"()
   // CHECK:    sym_name = "dense/bias"
+  // CHECK:    value = dense<0.000000e+00>
   // CHECK:  func @serving_default(
   // CHECK:    %arg0: tensor<!tf_type.resource<tensor<100x50xf32>>> {tf_saved_model.bound_input = @"dense/kernel"},
   // CHECK:    %arg1: tensor<!tf_type.resource<tensor<50xf32>>> {tf_saved_model.bound_input = @"dense/bias"})
+
+  // CheckWithDense: "tf_saved_model.global_tensor"()
+  // CheckWithDense:    sym_name = "dense/kernel"
+  // CheckWithDense:    value = dense_resource<dense_elements_f32>
+  // CheckWithDense: "tf_saved_model.global_tensor"()
+  // CheckWithDense:    sym_name = "dense/bias"
+  // CheckWithDense:    value = dense_resource<dense_elements_f32_1>
+  // CheckWithDense:  func @serving_default(
+  // CheckWithDense:    %arg0: tensor<!tf_type.resource<tensor<100x50xf32>>> {tf_saved_model.bound_input = @"dense/kernel"},
+  // CheckWithDense:    %arg1: tensor<!tf_type.resource<tensor<50xf32>>> {tf_saved_model.bound_input = @"dense/bias"})
 }
 
 // -----
@@ -49,8 +62,10 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   }
   // CHECK: "tf_saved_model.global_tensor"()
   // CHECK:    sym_name = "dense/kernel"
+  // CHECK:    value = dense<0.000000e+00>
   // CHECK: "tf_saved_model.global_tensor"()
   // CHECK:    sym_name = "dense/bias"
+  // CHECK:    value = dense<0.000000e+00>
   // CHECK:  func @f(
   // CHECK:    %arg0: tensor<!tf_type.resource<tensor<100x50xf32>>> {tf_saved_model.bound_input = @"dense/kernel"},
   // CHECK:    %arg1: tensor<!tf_type.resource<tensor<50xf32>>> {tf_saved_model.bound_input = @"dense/bias"})
@@ -58,6 +73,20 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   // CHECK:  func @f2(
   // CHECK:    %arg0: tensor<!tf_type.resource<tensor<100x50xf32>>> {tf_saved_model.bound_input = @"dense/kernel"},
   // CHECK:    %arg1: tensor<!tf_type.resource<tensor<50xf32>>> {tf_saved_model.bound_input = @"dense/bias"})
+
+  // CheckWithDense: "tf_saved_model.global_tensor"()
+  // CheckWithDense:    sym_name = "dense/kernel"
+  // CheckWithDense:    value = dense_resource<dense_elements_f32>
+  // CheckWithDense: "tf_saved_model.global_tensor"()
+  // CheckWithDense:    sym_name = "dense/bias"
+  // CheckWithDense:    value = dense_resource<dense_elements_f32_1>
+  // CheckWithDense:  func @f(
+  // CheckWithDense:    %arg0: tensor<!tf_type.resource<tensor<100x50xf32>>> {tf_saved_model.bound_input = @"dense/kernel"},
+  // CheckWithDense:    %arg1: tensor<!tf_type.resource<tensor<50xf32>>> {tf_saved_model.bound_input = @"dense/bias"})
+
+  // CheckWithDense:  func @f2(
+  // CheckWithDense:    %arg0: tensor<!tf_type.resource<tensor<100x50xf32>>> {tf_saved_model.bound_input = @"dense/kernel"},
+  // CheckWithDense:    %arg1: tensor<!tf_type.resource<tensor<50xf32>>> {tf_saved_model.bound_input = @"dense/bias"})
 }
 
 // -----
@@ -75,9 +104,21 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   }
   // CHECK: "tf_saved_model.global_tensor"()
   // CHECK:    sym_name = "dense/kernel"
+  // CHECK:    value = dense<0.000000e+00>
   // CHECK: "tf_saved_model.global_tensor"()
   // CHECK:    sym_name = "dense/bias"
+  // CHECK:    value = dense<0.000000e+00>
   // CHECK:  func @serving_default(
   // CHECK:    %arg0: tensor<!tf_type.resource<tensor<100x50xf32>>> {tf_saved_model.bound_input = @"dense/kernel"},
   // CHECK:    %arg1: tensor<!tf_type.resource<tensor<50xf32>>> {tf_saved_model.bound_input = @"dense/bias"})
+
+  // CheckWithDense: "tf_saved_model.global_tensor"()
+  // CheckWithDense:    sym_name = "dense/kernel"
+  // CheckWithDense:    value = dense_resource<dense_elements_f32>
+  // CheckWithDense: "tf_saved_model.global_tensor"()
+  // CheckWithDense:    sym_name = "dense/bias"
+  // CheckWithDense:    value = dense_resource<dense_elements_f32_1>
+  // CheckWithDense:  func @serving_default(
+  // CheckWithDense:    %arg0: tensor<!tf_type.resource<tensor<100x50xf32>>> {tf_saved_model.bound_input = @"dense/kernel"},
+  // CheckWithDense:    %arg1: tensor<!tf_type.resource<tensor<50xf32>>> {tf_saved_model.bound_input = @"dense/bias"})
 }

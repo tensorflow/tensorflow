@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/delegates/compatibility/common/online_helper_delegate.h"
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
 
 namespace tflite {
 namespace tools {

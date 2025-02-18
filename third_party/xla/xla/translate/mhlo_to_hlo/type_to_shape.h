@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,20 +16,7 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_
 #define XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_
 
-#include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "xla/shape.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla {
-
-// Returns a XLA Shape equivalent of a MLIR Type, else returns empty shape.
-Shape TypeToShape(mlir::Type type);
-
-// Returns a XLA PrimitiveType equivalent of a MLIR Type that represents a
-// primitive type (e.g., i8, f32), else returns PRIMITIVE_TYPE_INVALID.
-PrimitiveType TypeToPrimitiveType(mlir::Type type);
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 
 #endif  // XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_

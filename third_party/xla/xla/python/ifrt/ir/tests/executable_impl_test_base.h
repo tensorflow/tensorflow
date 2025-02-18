@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,15 +21,19 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/shape.h"
-#include "tsl/platform/test.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -50,16 +54,25 @@ class IfrtIrExecutableImplTestBase : public testing::Test {
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromFile(
       absl::string_view file_path);
 
+  // Serializes the program with the requested compatibility requirement, and
+  // deserializes it back. Returns the deserialized program.
+  // This helper method should be used in tests that verify program results
+  // after the IFRT -> VIFRT -> IFRT round trip.
+  absl::StatusOr<std::unique_ptr<IfrtIRProgram>> SerDeRoundTrip(
+      std::unique_ptr<IfrtIRProgram> program,
+      Version::CompatibilityRequirement compatibility_requirement,
+      bool propagate_shardings = false);
+
   // Creates an Array from per shard data.
   // TODO(hyeontaek): Remove this when MakeArrayFromHostBuffer supports it
   // directly.
   absl::StatusOr<tsl::RCReference<Array>> CreateArray(
       absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
-      ShardingParam sharding_param, DeviceList device_list);
+      ShardingParam sharding_param, tsl::RCReference<DeviceList> device_list);
 
   // Picks a given number of devices.
   // Error when `count` is larger than the total number of devices.
-  absl::StatusOr<DeviceList> PickDevices(int count);
+  absl::StatusOr<tsl::RCReference<DeviceList>> PickDevices(int count);
 
   mlir::MLIRContext mlir_context_;
   std::shared_ptr<Client> client_;

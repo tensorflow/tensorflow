@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,67 +16,40 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
+#include <variant>
 
-#include "tsl/lib/math/math_util.h"
+#include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/lib/math/math_util.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
-static const uint64_t kUninitializedUint64 = -1ULL;
-/* static */ const char *DeviceDescription::kUndefinedString = "<undefined>";
-
-DeviceDescription::DeviceDescription()
-    : device_vendor_(kUndefinedString),
-      platform_version_(kUndefinedString),
-      driver_version_(kUndefinedString),
-      runtime_version_(kUndefinedString),
-      pci_bus_id_(kUndefinedString),
-      name_(kUndefinedString),
-      model_str_(kUndefinedString),
-      thread_dim_limit_(kUninitializedUint64, kUninitializedUint64,
-                        kUninitializedUint64),
-      block_dim_limit_(kUninitializedUint64, kUninitializedUint64,
-                       kUninitializedUint64),
-      threads_per_core_limit_(kUninitializedUint64),
-      threads_per_block_limit_(kUninitializedUint64),
-      threads_per_warp_(kUninitializedUint64),
-      registers_per_core_limit_(kUninitializedUint64),
-      registers_per_block_limit_(kUninitializedUint64),
-      device_address_bits_(kUninitializedUint64),
-      device_memory_size_(kUninitializedUint64),
-      memory_bandwidth_(kUninitializedUint64),
-      shared_memory_per_core_(kUninitializedUint64),
-      shared_memory_per_block_(kUninitializedUint64),
-      clock_rate_ghz_(-1.0),
-      numa_node_(-1),
-      core_count_(-1),
-      ecc_enabled_(false) {}
-
-DeviceDescription::DeviceDescription(const GpuDeviceInfoProto &proto) {
-  if (proto.has_cuda_compute_capability()) {
-    gpu_compute_capability_ =
-        stream_executor::CudaComputeCapability(proto.cuda_compute_capability());
-  } else {
-    gpu_compute_capability_ =
-        stream_executor::RocmComputeCapability(proto.rocm_compute_capability());
-  }
-  threads_per_block_limit_ = proto.threads_per_block_limit();
-  threads_per_warp_ = proto.threads_per_warp();
-  shared_memory_per_block_ = proto.shared_memory_per_block();
-  shared_memory_per_block_optin_ = proto.shared_memory_per_block_optin();
-  shared_memory_per_core_ = proto.shared_memory_per_core();
-  threads_per_core_limit_ = proto.threads_per_core_limit();
-  core_count_ = proto.core_count();
-  fpus_per_core_ = proto.fpus_per_core();
-  block_dim_limit_ =
-      BlockDim(proto.block_dim_limit_x(), proto.block_dim_limit_y(),
-               proto.block_dim_limit_z());
-  memory_bandwidth_ = proto.memory_bandwidth();
-  l2_cache_size_ = proto.l2_cache_size();
-  clock_rate_ghz_ = proto.clock_rate_ghz();
-  device_memory_size_ = proto.device_memory_size();
-}
+DeviceDescription::DeviceDescription(const GpuDeviceInfoProto &proto)
+    : block_dim_limit_(BlockDim(proto.block_dim_limit_x(),
+                                proto.block_dim_limit_y(),
+                                proto.block_dim_limit_z())),
+      threads_per_core_limit_(proto.threads_per_core_limit()),
+      threads_per_block_limit_(proto.threads_per_block_limit()),
+      threads_per_warp_(proto.threads_per_warp()),
+      registers_per_core_limit_(proto.registers_per_core_limit()),
+      registers_per_block_limit_(proto.registers_per_block_limit()),
+      device_memory_size_(proto.device_memory_size()),
+      l2_cache_size_(proto.l2_cache_size()),
+      memory_bandwidth_(proto.memory_bandwidth()),
+      shared_memory_per_core_(proto.shared_memory_per_core()),
+      shared_memory_per_block_(proto.shared_memory_per_block()),
+      shared_memory_per_block_optin_(proto.shared_memory_per_block_optin()),
+      clock_rate_ghz_(proto.clock_rate_ghz()),
+      gpu_compute_capability_(
+          proto.has_cuda_compute_capability()
+              ? GpuComputeCapability(stream_executor::CudaComputeCapability(
+                    proto.cuda_compute_capability()))
+              : GpuComputeCapability(stream_executor::RocmComputeCapability(
+                    proto.rocm_compute_capability()))),
+      core_count_(proto.core_count()),
+      fpus_per_core_(proto.fpus_per_core()) {}
 
 GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   stream_executor::GpuDeviceInfoProto proto;
@@ -102,7 +75,13 @@ GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   proto.set_l2_cache_size(l2_cache_size_);
   proto.set_clock_rate_ghz(clock_rate_ghz_);
   proto.set_device_memory_size(device_memory_size_);
+  proto.set_registers_per_core_limit(registers_per_core_limit_);
+  proto.set_registers_per_block_limit(registers_per_block_limit_);
   return proto;
+}
+
+std::string DeviceDescription::ToString() const {
+  return ToGpuProto().DebugString();
 }
 
 const GpuComputeCapability &DeviceDescription::gpu_compute_capability() const {

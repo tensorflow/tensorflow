@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/metrics.h"
 
-#include "absl/strings/str_cat.h"
-#include "tsl/lib/monitoring/counter.h"
-#include "tsl/lib/monitoring/gauge.h"
+#include <cstdint>
+
+#include "xla/tsl/lib/monitoring/counter.h"
+#include "xla/tsl/lib/monitoring/gauge.h"
 
 namespace xla {
 namespace {

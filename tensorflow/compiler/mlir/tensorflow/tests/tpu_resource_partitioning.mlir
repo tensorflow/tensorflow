@@ -148,6 +148,8 @@ func.func @resource_missing_subtype(%arg0: tensor<!tf_type.resource>, %arg1: ten
 
 // -----
 
+func.func private @computation(%arg0: tensor<i32>) -> tensor<i32>
+
 func.func @missing_num_cores_per_replica(%arg0: tensor<!tf_type.resource<tensor<i32>>>) {
   // expected-error@+1 {{op num cores per replica unavailable}}
   %0 = "tf.TPUPartitionedInputV2"(%arg0) {_XlaSharding = "", partition_dims = [], is_packed = true} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
@@ -158,6 +160,8 @@ func.func @missing_num_cores_per_replica(%arg0: tensor<!tf_type.resource<tensor<
 }
 
 // -----
+
+func.func private @computation(%arg0: tensor<i32>) -> tensor<i32>
 
 func.func @mismatch_num_cores_per_replica(%arg0: tensor<!tf_type.resource<tensor<i32>>>) {
   // expected-error@+1 {{expects 2 operands but found 3}}
@@ -242,6 +246,8 @@ func.func @non_replicated_sharding(%arg0: tensor<!tf_type.resource<tensor<i32>>>
 }
 
 // -----
+
+func.func private @computation(%arg0: tensor<i32>) -> tensor<i32>
 
 func.func @packed_replicated(%arg0: tensor<!tf_type.resource<tensor<i32>>> {tf.device = "COMPOSITE"}) {
   // expected-error@+1 {{support}}

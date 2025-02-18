@@ -323,20 +323,21 @@ inline int ReadPackedPrimitives(const void* bufp, const size_t len,
 // to the desired type for TensorFlow and stored.
 template <class ValueType, class TensorType,
           enum WireFormatLite::FieldType DeclaredType>
-inline Status ReadPrimitive(CodedInputStream* input, int index, void* data) {
+inline absl::Status ReadPrimitive(CodedInputStream* input, int index,
+                                  void* data) {
   ValueType v;
   if (!WireFormatLite::ReadPrimitive<ValueType, DeclaredType>(input, &v)) {
     return errors::DataLoss("Failed reading primitive");
   }
 
   reinterpret_cast<TensorType*>(data)[index] = v;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Reads a string, submessage, or other variable-length field from a
 // serialized proto.
 // May read all or part of a repeated field.
-inline Status ReadBytes(CodedInputStream* input, int index, void* datap) {
+inline absl::Status ReadBytes(CodedInputStream* input, int index, void* datap) {
   tstring* data = reinterpret_cast<tstring*>(datap) + index;
 
   uint32 length;
@@ -349,13 +350,13 @@ inline Status ReadBytes(CodedInputStream* input, int index, void* datap) {
   if (!input->ReadRaw(data->data(), length)) {
     return errors::DataLoss("Failed reading bytes");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Reads a tag-delimited field (TYPE_GROUP) from a serialized proto,
 // as a bytestring.
-inline Status ReadGroupBytes(CodedInputStream* input, int field_number,
-                             int index, void* datap) {
+inline absl::Status ReadGroupBytes(CodedInputStream* input, int field_number,
+                                   int index, void* datap) {
   // WireFormatLite::SkipField has an option to emit the
   // skipped bytes to an output stream. We could do better by implementing our
   // own scanner but this is simpler for now.
@@ -382,13 +383,14 @@ inline Status ReadGroupBytes(CodedInputStream* input, int field_number,
     }
   }
   *data = buf;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Reads a single field value from a CodedInputStream into a tensor.
-inline Status ReadValue(CodedInputStream* input,
-                        WireFormatLite::FieldType field_type, int field_number,
-                        DataType dtype, int index, void* datap) {
+inline absl::Status ReadValue(CodedInputStream* input,
+                              WireFormatLite::FieldType field_type,
+                              int field_number, DataType dtype, int index,
+                              void* datap) {
   // Dispatch to the appropriately typed field reader based on the schema type.
   switch (field_type) {
     case WireFormatLite::TYPE_DOUBLE:
@@ -502,26 +504,26 @@ inline Status ReadValue(CodedInputStream* input,
 }
 
 // Reads and stores a length-delimited list of values.
-inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
-                                  const WireFormatLite::FieldType field_type,
-                                  const int field_number, const DataType dtype,
-                                  const int stride, int* index, void* data) {
+inline absl::Status ReadPackedFromArray(
+    const void* buf, size_t buf_size,
+    const WireFormatLite::FieldType field_type, const int field_number,
+    const DataType dtype, const int stride, int* index, void* data) {
   // Dispatch to the appropriately typed field reader based on the schema type.
   switch (field_type) {
     case WireFormatLite::TYPE_DOUBLE:
       *index += ReadPackedPrimitives<double, WireFormatLite::TYPE_DOUBLE>(
           buf, buf_size, *index, stride, data);
-      return OkStatus();
+      return absl::OkStatus();
     case WireFormatLite::TYPE_FLOAT:
       switch (dtype) {
         case DataType::DT_DOUBLE:
           *index += ReadPackedPrimitives<double, WireFormatLite::TYPE_FLOAT>(
               buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         case DataType::DT_FLOAT:
           *index += ReadPackedPrimitives<float, WireFormatLite::TYPE_FLOAT>(
               buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return errors::DataLoss("Failed reading TYPE_FLOAT for ",
                                   DataTypeString(dtype));
@@ -529,21 +531,21 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
     case WireFormatLite::TYPE_INT64:
       *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_INT64>(
           buf, buf_size, *index, stride, data);
-      return OkStatus();
+      return absl::OkStatus();
     case WireFormatLite::TYPE_UINT64:
       *index += ReadPackedPrimitives<uint64, WireFormatLite::TYPE_UINT64>(
           buf, buf_size, *index, stride, data);
-      return OkStatus();
+      return absl::OkStatus();
     case WireFormatLite::TYPE_INT32:
       switch (dtype) {
         case DataType::DT_INT64:
           *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_INT32>(
               buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         case DataType::DT_INT32:
           *index += ReadPackedPrimitives<int32, WireFormatLite::TYPE_INT32>(
               buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return errors::DataLoss("Failed reading TYPE_INT32 for ",
                                   DataTypeString(dtype));
@@ -551,17 +553,17 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
     case WireFormatLite::TYPE_FIXED64:
       *index += ReadPackedPrimitives<uint64, WireFormatLite::TYPE_FIXED64>(
           buf, buf_size, *index, stride, data);
-      return OkStatus();
+      return absl::OkStatus();
     case WireFormatLite::TYPE_FIXED32:
       switch (dtype) {
         case DataType::DT_UINT64:
           *index += ReadPackedPrimitives<uint64, WireFormatLite::TYPE_FIXED32>(
               buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         case DataType::DT_UINT32:
           *index += ReadPackedPrimitives<uint32, WireFormatLite::TYPE_FIXED32>(
               buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return errors::DataLoss("Failed reading TYPE_FIXED32 for ",
                                   DataTypeString(dtype));
@@ -569,7 +571,7 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
     case WireFormatLite::TYPE_BOOL:
       *index += ReadPackedPrimitives<bool, WireFormatLite::TYPE_BOOL>(
           buf, buf_size, *index, stride, data);
-      return OkStatus();
+      return absl::OkStatus();
     case WireFormatLite::TYPE_STRING:
     case WireFormatLite::TYPE_GROUP:
     case WireFormatLite::TYPE_MESSAGE:
@@ -580,11 +582,11 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
         case DataType::DT_UINT64:
           *index += ReadPackedPrimitives<uint64, WireFormatLite::TYPE_UINT32>(
               buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         case DataType::DT_UINT32:
           *index += ReadPackedPrimitives<uint32, WireFormatLite::TYPE_UINT32>(
               buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return errors::DataLoss("Failed reading TYPE_UINT32 for ",
                                   DataTypeString(dtype));
@@ -592,18 +594,18 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
     case WireFormatLite::TYPE_ENUM:
       *index += ReadPackedPrimitives<int32, WireFormatLite::TYPE_ENUM>(
           buf, buf_size, *index, stride, data);
-      return OkStatus();
+      return absl::OkStatus();
     case WireFormatLite::TYPE_SFIXED32:
       switch (dtype) {
         case DataType::DT_INT64:
           *index +=
               ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_SFIXED32>(
                   buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         case DataType::DT_INT32:
           *index += ReadPackedPrimitives<int32, WireFormatLite::TYPE_SFIXED32>(
               buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return errors::DataLoss("Failed reading TYPE_INT32 for ",
                                   DataTypeString(dtype));
@@ -611,18 +613,18 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
     case WireFormatLite::TYPE_SFIXED64:
       *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_SFIXED64>(
           buf, buf_size, *index, stride, data);
-      return OkStatus();
+      return absl::OkStatus();
 
     case WireFormatLite::TYPE_SINT32:
       switch (dtype) {
         case DataType::DT_INT64:
           *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_SINT32>(
               buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         case DataType::DT_INT32:
           *index += ReadPackedPrimitives<int32, WireFormatLite::TYPE_SINT32>(
               buf, buf_size, *index, stride, data);
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return errors::DataLoss("Failed reading TYPE_SINT32 for ",
                                   DataTypeString(dtype));
@@ -630,7 +632,7 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
     case WireFormatLite::TYPE_SINT64:
       *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_SINT64>(
           buf, buf_size, *index, stride, data);
-      return OkStatus();
+      return absl::OkStatus();
       // default: intentionally omitted in order to enable static checking.
   }
   // Unreachable.

@@ -98,9 +98,6 @@ pip3 install --upgrade termcolor
 pip3 install keras-nightly --no-deps
 pip3 install --upgrade h5py==3.1.0
 
-# Estimator
-pip3 install tf-estimator-nightly --no-deps
-
 # Tensorboard
 pip3 install tb-nightly --no-deps
 

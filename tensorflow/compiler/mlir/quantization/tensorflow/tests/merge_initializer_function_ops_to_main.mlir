@@ -146,14 +146,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-NEXT: %[[OUT:.*]], %[[CTL:.*]] = tf_executor.island wraps "tf.PartitionedCall"(%[[ARG]])
 // CHECK-SAME: f = @serving_default
 // Checks that the contents of @NoOp are copied here.
-// CHECK-DAG: %[[OUT_0:.*]], %[[CTL_0:.*]] = tf_executor.island wraps "tf.Const"() {{{.*value = dense<"test_1">.*}}}
-// CHECK-DAG: %[[OUT_1:.*]], %[[CTL_1:.*]] = tf_executor.island wraps "tf.Const"() {{{.*value = dense<1>.*}}}
+// CHECK-DAG: %[[OUT_0:.*]], %[[CTL_0:.*]] = tf_executor.island wraps "tf.Const"() <{{{.*value = dense<"test_1">.*}}}>
+// CHECK-DAG: %[[OUT_1:.*]], %[[CTL_1:.*]] = tf_executor.island wraps "tf.Const"() <{{{.*value = dense<1>.*}}}>
 
 // CHECK-NEXT: %[[OUT_2:.*]], %[[CTL_2:.*]] = tf_executor.island wraps "tf.HashTableV2"()
 // CHECK-NEXT: %[[CTL_3:.*]] = tf_executor.island wraps "tf.LookupTableImportV2"(%[[OUT_2]], %[[OUT_0]], %[[OUT_1]])
 
-// CHECK-DAG: %[[OUT_3:.*]], %[[CTL_4:.*]] = tf_executor.island wraps "tf.Const"() {{{.*value = dense<"test_2">.*}}}
-// CHECK-DAG: %[[OUT_4:.*]], %[[CTL_5:.*]] = tf_executor.island wraps "tf.Const"() {{{.*value = dense<2>.*}}}
+// CHECK-DAG: %[[OUT_3:.*]], %[[CTL_4:.*]] = tf_executor.island wraps "tf.Const"() <{{{.*value = dense<"test_2">.*}}}>
+// CHECK-DAG: %[[OUT_4:.*]], %[[CTL_5:.*]] = tf_executor.island wraps "tf.Const"() <{{{.*value = dense<2>.*}}}>
 
 // CHECK-NEXT: %[[OUT_5:.*]], %[[CTL_6:.*]] = tf_executor.island(%[[CTL_3]]) wraps "tf.HashTableV2"()
 // CHECK-NEXT: %[[CTL_7:.*]] = tf_executor.island wraps "tf.LookupTableImportV2"(%[[OUT_5]], %[[OUT_3]], %[[OUT_4]])
@@ -303,7 +303,7 @@ func.func @NoOp_0(%arg0: tensor<!tf_type.string> {tf_saved_model.bound_input = @
 // CHECK-LABEL: module
 module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@init_func_restore_op]} : () -> ()
-// CHECK: "tf_saved_model.session_initializer"() {initializers = []}
+// CHECK: "tf_saved_model.session_initializer"() <{initializers = []}>
 
   func.func @init_func_restore_op(%arg: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]})
     attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"], tf_saved_model.initializer_type = "restore_op"} {
@@ -330,9 +330,9 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-NEXT: tf_executor.graph
 
 // Checks that the ops from @init_func_restore_op are cloned.
-// CHECK-DAG: %[[CONST_0:.*]], %[[CTL:.*]] = tf_executor.island wraps "tf.Const"() {{{.*value = dense<""> : tensor<1x!tf_type\.string>.*}}}
-// CHECK-DAG: %[[CONST_1:.*]], %[[CTL_0:.*]] = tf_executor.island wraps "tf.Const"() {{{.*value = dense<"var_0"> : tensor<1x!tf_type\.string>.*}}}
-// CHECK: %[[VAR_HANDLE:.*]], %[[CTL_1:.*]] = tf_executor.island wraps "tf.VarHandleOp"() {{{.*shared_name = "var_0".*}}}
+// CHECK-DAG: %[[CONST_0:.*]], %[[CTL:.*]] = tf_executor.island wraps "tf.Const"() <{{{.*value = dense<""> : tensor<1x!tf_type\.string>.*}}}>
+// CHECK-DAG: %[[CONST_1:.*]], %[[CTL_0:.*]] = tf_executor.island wraps "tf.Const"() <{{{.*value = dense<"var_0"> : tensor<1x!tf_type\.string>.*}}}>
+// CHECK: %[[VAR_HANDLE:.*]], %[[CTL_1:.*]] = tf_executor.island wraps "tf.VarHandleOp"() <{{{.*shared_name = "var_0".*}}}>
 // CHECK: %[[RESTORE:.*]], %[[CTL_2:.*]] = tf_executor.island wraps "tf.RestoreV2"(%[[ARG]], %[[CONST_1]], %[[CONST_0]])
 // CHECK: %[[CTL_3:.*]] = tf_executor.island wraps "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[RESTORE]])
 // CHECK: %[[CTL_4:.*]] = tf_executor.island(%[[CTL_3]]) wraps "tf.NoOp"()
@@ -383,7 +383,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-LABEL: module
 module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@init_func_restore_op]} : () -> ()
-// CHECK: "tf_saved_model.session_initializer"() {initializers = []}
+// CHECK: "tf_saved_model.session_initializer"() <{initializers = []}>
 
   func.func @init_func_restore_op(%arg: tensor<!tf_type.string> {tf_saved_model.index_path = ["file_prefix"]})
     attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"], tf_saved_model.initializer_type = "restore_op"} {

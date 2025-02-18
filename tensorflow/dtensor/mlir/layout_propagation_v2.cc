@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
+#include <cassert>
 #include <deque>
 #include <iterator>
 #include <memory>
@@ -23,13 +23,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -43,13 +49,15 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/core/platform/errors.h"
@@ -57,11 +65,11 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -113,7 +121,7 @@ void UpdateLayoutForSkippedOps(
   llvm::SmallVector<mlir::Value, 4> skipped_values;
   TraceUseToNextTFOp(&operand, func_to_caller, &skipped_values);
   for (const mlir::Value& skipped_value : skipped_values)
-    if ((!skipped_value.isa<mlir::OpResult>() ||
+    if ((!mlir::isa<mlir::OpResult>(skipped_value) ||
          !mlir::isa<mlir::TF::DTensorLayout, mlir::tf_device::ClusterOp>(
              skipped_value.getDefiningOp())) &&
         layouts.find(skipped_value) == layouts.end())
@@ -705,8 +713,8 @@ mlir::LogicalResult UpdateLayoutsForOp(
 
 mlir::LogicalResult InsertDTensorLayoutOps(
     mlir::OpBuilder& builder,
-    const llvm::DenseMap<mlir::Value, Layout>& merged_layouts) {
-  for (const auto& merged_layout : merged_layouts) {
+    llvm::DenseMap<mlir::Value, Layout>& merged_layouts) {
+  for (auto& merged_layout : merged_layouts) {
     // merged_layout is a pair of mlir::Value and Layout.
     // If there is only one user of the Value and that user is a DTensorLayout
     // op, then we can skip creating the op as the layout is already there. Note
@@ -724,7 +732,7 @@ mlir::LogicalResult InsertDTensorLayoutOps(
     // resource type elements.
     mlir::Type value_type = GetSubtypeOrSelf(merged_layout.first);
 
-    if (auto type = value_type.dyn_cast<mlir::TensorType>()) {
+    if (auto type = mlir::dyn_cast<mlir::TensorType>(value_type)) {
       auto layout_op = builder.create<mlir::TF::DTensorLayout>(
           merged_layout.first.getLoc(), merged_layout.first, layout_attr,
           mlir::TF::ShapeAttr::get(builder.getContext(), type));
@@ -810,7 +818,7 @@ void GetOperationsNeedingUpdate(
         if (!mlir::isa<mlir::TF::CopyToMeshOp>(use->getOwner()))
           operations.insert(use->getOwner());
     // If this is an OpResult, also add the op that produces it.
-    if (value.isa<mlir::OpResult>() &&
+    if (mlir::isa<mlir::OpResult>(value) &&
         !mlir::isa<mlir::TF::CopyToMeshOp>(value.getDefiningOp()))
       operations.insert(value.getDefiningOp());
   }
@@ -933,7 +941,7 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
   // Print an operand, this could be both the OpResult or a BlockArgument.
   // We also print the layout if it exists and the type.
   void printOperand(mlir::Value value, llvm::raw_ostream& os) override {
-    if (auto result = value.dyn_cast<mlir::OpResult>()) {
+    if (auto result = mlir::dyn_cast<mlir::OpResult>(value)) {
       // If DTensorLayout ops are already in the module, we need to skip them
       // since we aren't printing them out.
       if (mlir::isa<mlir::TF::DTensorLayout>(result.getDefiningOp())) {
@@ -946,7 +954,7 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
       os << "%" << location_[result.getDefiningOp()];
       if (result.getDefiningOp()->getNumResults() > 1)
         os << ":" << result.getResultNumber();
-    } else if (auto argument = value.dyn_cast<mlir::BlockArgument>()) {
+    } else if (auto argument = mlir::dyn_cast<mlir::BlockArgument>(value)) {
       if (arguments_.find(argument) == arguments_.end())
         arguments_[argument] = next_argument_++;
       os << "%arg" << arguments_[argument];
@@ -1203,7 +1211,7 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
           mlir::cast<mlir::TF::DTensorLayout>(input_layout_op).getLayout();
 
       // Inputs to Yield should also be a DTensorLayout op.
-      if (!yield_op->getOperand(i).isa<mlir::OpResult>() ||
+      if (!mlir::isa<mlir::OpResult>(yield_op->getOperand(i)) ||
           !mlir::isa<mlir::TF::DTensorLayout>(
               yield_op->getOperand(i).getDefiningOp()))
         return yield_op->emitOpError()
@@ -1220,12 +1228,12 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
 
       // Insert the first Relayout op (in the loop body).
       builder.setInsertionPointAfter(output_layout_op);
-      if (!yield_op->getOperand(i).getType().isa<mlir::TensorType>())
+      if (!mlir::isa<mlir::TensorType>(yield_op->getOperand(i).getType()))
         return yield_op->emitOpError()
                << "operand " << i << " does not have TensorType";
       mlir::TF::ShapeAttr global_shape = mlir::TF::ShapeAttr::get(
           builder.getContext(),
-          yield_op->getOperand(i).getType().cast<mlir::TensorType>());
+          mlir::cast<mlir::TensorType>(yield_op->getOperand(i).getType()));
       mlir::TF::RelayoutOp first_relayout =
           builder.create<mlir::TF::RelayoutOp>(
               op.getLoc(), yield_op->getOperand(i).getType(),
@@ -1349,7 +1357,7 @@ void FindRootsAndEmitError(
 // Runs an iteration of layout propagation, where we merge producer and consumer
 // requests and then recompute recommended layouts on all operations that
 // are connected to an updated layout.
-Status RunOneIteration(
+absl::Status RunOneIteration(
     llvm::DenseSet<mlir::Value>& is_locked,
     llvm::DenseSet<mlir::Value>& is_updated,
     llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
@@ -1359,7 +1367,7 @@ Status RunOneIteration(
     llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers,
     llvm::DenseMap<mlir::Value, Layout>& merged_layouts, mlir::ModuleOp& module,
     int stage, int* steps) {
-  if (is_updated.empty()) return OkStatus();
+  if (is_updated.empty()) return absl::OkStatus();
   // Merge any possibly updated layouts.
   if (mlir::failed(
           MergeAndGetUpdatedLayouts(is_locked, is_updated, producer_request,
@@ -1384,14 +1392,15 @@ Status RunOneIteration(
       return errors::Internal("UpdateLayoutsForOp failed to update layouts.");
   }
   ++(*steps);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Compares every value's layouts in `merged_a` with the ones in `merged_b`,
 // and store the values that differ in `changed`.
-Status CompareMergedLayouts(const llvm::DenseMap<mlir::Value, Layout>& merged_a,
-                            const llvm::DenseMap<mlir::Value, Layout>& merged_b,
-                            llvm::DenseSet<mlir::Value>& changed) {
+absl::Status CompareMergedLayouts(
+    const llvm::DenseMap<mlir::Value, Layout>& merged_a,
+    const llvm::DenseMap<mlir::Value, Layout>& merged_b,
+    llvm::DenseSet<mlir::Value>& changed) {
   if (merged_a.size() != merged_b.size())
     return errors::Internal(
         "Both merged_layouts did not have the same number of set layouts.");
@@ -1406,7 +1415,7 @@ Status CompareMergedLayouts(const llvm::DenseMap<mlir::Value, Layout>& merged_a,
       changed.insert(value);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // MLIR pass that propagates layout for all ops the module.
@@ -1484,16 +1493,16 @@ struct DLayoutPropagationPassV2
     int stage = 0;
 
     llvm::DenseMap<mlir::Value, Layout> merged_layouts;
-    Status status;
+    absl::Status status;
 
     while (!is_updated.empty() && stage < kLayoutPropagationMaxStages) {
       ++stage;
       int steps = 0;
       // Step 1. Run the layout propagation v2 until convergence or max steps.
       while (!is_updated.empty() && steps < LayoutPropagationMaxSteps()) {
-        Status status = RunOneIteration(is_locked, is_updated, producer_request,
-                                        consumer_requests, producers, consumers,
-                                        merged_layouts, module, stage, &steps);
+        absl::Status status = RunOneIteration(
+            is_locked, is_updated, producer_request, consumer_requests,
+            producers, consumers, merged_layouts, module, stage, &steps);
         if (!status.ok()) {
           module.emitOpError() << "Failure running iteration.";
           return signalPassFailure();

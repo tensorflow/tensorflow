@@ -56,7 +56,7 @@ void SimplePropagatorState::ActivateRoots(
 void SimplePropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
                                              EntryVector* outputs,
                                              TaggedNodeSeq* ready) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&]() {
         return strings::StrCat(
             "ExecutorPropagateOutputs#", "id=", step_id_,
@@ -65,7 +65,7 @@ void SimplePropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
             ",num_output_control_edges=",
             tagged_node.node_item->num_output_control_edges, "#");
       },
-      profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
+      tsl::profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
   // Propagates outputs along out edges, and puts newly ready nodes
   // into the ready queue.
@@ -89,8 +89,11 @@ void SimplePropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
       input_tensors_[dst_loc] = (*outputs)[src_slot];
     }
 
+    // NOTE: This must be both an acquire and a release operation, because the
+    // operation may have completed in another thread and we need to be able to
+    // read whatever that other thread wrote to memory.
     int32_t previous_num_pending =
-        pending_[dst_id].fetch_sub(1, std::memory_order_release);
+        pending_[dst_id].fetch_sub(1, std::memory_order_acq_rel);
     if (previous_num_pending == 1) ready->emplace_back(&gview.node_ref(dst_id));
   }
 
@@ -98,7 +101,7 @@ void SimplePropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
     const int dst_id = e.dst_id;
 
     int32_t previous_num_pending =
-        pending_[dst_id].fetch_sub(1, std::memory_order_release);
+        pending_[dst_id].fetch_sub(1, std::memory_order_acq_rel);
     if (previous_num_pending == 1) ready->emplace_back(&gview.node_ref(dst_id));
   }
 }

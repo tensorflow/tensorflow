@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+constexpr int kDefaultSparseCoreMinibatchMaxDivisionLevel = 6;
 constexpr bool kDefaultDisableTableStacking = false;
 constexpr int64_t kDefaultXlaSparseCoreStackingMemLimit = 2097152;
 constexpr int64_t kDefaultXlaSparseCoreStackingTableShardLimit = 2147483648;

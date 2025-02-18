@@ -47,7 +47,7 @@ class CSRSparseMatrixConjFunctor {
  public:
   explicit CSRSparseMatrixConjFunctor(OpKernelContext* ctx) : ctx_(ctx) {}
 
-  Status operator()(const CSRSparseMatrix& a, CSRSparseMatrix* b) {
+  absl::Status operator()(const CSRSparseMatrix& a, CSRSparseMatrix* b) {
     const int total_nnz = a.total_nnz();
     Tensor b_values_t;
     TF_RETURN_IF_ERROR(ctx_->allocate_temp(
@@ -60,7 +60,7 @@ class CSRSparseMatrixConjFunctor {
     functor::UnaryFunctor<Device, functor::conj<T>> func;
     func(d, b->values().flat<T>() /*out*/, a.values().flat<T>() /*in*/);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

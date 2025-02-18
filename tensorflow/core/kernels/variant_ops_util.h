@@ -27,8 +27,8 @@ class Tensor;
 class Variant;
 
 void AddNVariant(OpKernelContext* ctx,
-                 std::function<Status(OpKernelContext*, const Variant&,
-                                      const Variant&, Variant*)>
+                 std::function<absl::Status(OpKernelContext*, const Variant&,
+                                            const Variant&, Variant*)>
                      binary_add_variant);
 
 }  // namespace tensorflow

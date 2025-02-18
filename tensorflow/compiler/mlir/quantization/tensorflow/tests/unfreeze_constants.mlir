@@ -15,7 +15,7 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-SAME: tf_saved_model.initializer_type = "restore_op"
 
 // Check that variable is initialized by assigning the const value within the initializer function.
-// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<8xf32>}
+// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<8xf32>}>
 // CHECK-DAG: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"() {{.*shared_name = "const_0".*}}
 // CHECK-DAG: "tf.AssignVariableOp"(%[[VAR_HANDLE_0]], %[[CST_0]])
 
@@ -44,11 +44,11 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-SAME: tf_saved_model.exported_names = ["tf_saved_model.session_initializer_restore_op"]
 // CHECK-SAME: tf_saved_model.initializer_type = "restore_op"
 
-// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {{{.*value = dense<1.000000e\+00> : tensor<8xf32>.*}}}
+// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() <{{{.*value = dense<1.000000e\+00> : tensor<8xf32>.*}}}>
 // CHECK-DAG: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"() {{.*shared_name = "const_0".*}}
 // CHECK-DAG: "tf.AssignVariableOp"(%[[VAR_HANDLE_0]], %[[CST_0]])
 
-// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() {{{.*value = dense<2.000000e\+00> : tensor<8xf32>.*}}}
+// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() <{{{.*value = dense<2.000000e\+00> : tensor<8xf32>.*}}}>
 // CHECK-DAG: %[[VAR_HANDLE_1:.*]] = "tf.VarHandleOp"()  {{.*shared_name = "const_1".*}}
 // CHECK-DAG: "tf.AssignVariableOp"(%[[VAR_HANDLE_1]], %[[CST_1]])
 
@@ -84,11 +84,11 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-SAME: tf_saved_model.exported_names = ["tf_saved_model.session_initializer_init"]
 // CHECK-SAME: tf_saved_model.initializer_type = "restore_op"
 
-// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<8xf32>}
+// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<8xf32>}>
 // CHECK-DAG: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"()
 // CHECK-DAG: "tf.AssignVariableOp"(%[[VAR_HANDLE_0]], %[[CST_0]])
 
-// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<8xf32>}
+// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() <{value = dense<2.000000e+00> : tensor<8xf32>}>
 // CHECK-DAG: %[[VAR_HANDLE_1:.*]] = "tf.VarHandleOp"()
 // CHECK-DAG: "tf.AssignVariableOp"(%[[VAR_HANDLE_1]], %[[CST_1]])
 
@@ -123,7 +123,7 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-SAME: tf_saved_model.exported_names = ["tf_saved_model.session_initializer_restore_op"]
 // CHECK-SAME: tf_saved_model.initializer_type = "restore_op"
 
-// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {value = dense<3.000000e+00> : tensor<8xf32>}
+// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() <{value = dense<3.000000e+00> : tensor<8xf32>}>
 // CHECK-DAG: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"()
 // CHECK-DAG: "tf.AssignVariableOp"(%[[VAR_HANDLE_0]], %[[CST_0]])
 
@@ -185,7 +185,7 @@ module attributes {tf_saved_model.semantics} {
 
 // Check that `tf.VarHandleOp` is only created for the constant that is larger
 // than the threshold (16 bytes for this test).
-// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {{{.*value = dense<5.000000e\+00> : tensor<8xf32>.*}}}
+// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() <{{{.*value = dense<5.000000e\+00> : tensor<8xf32>.*}}}>
 // CHECK-DAG: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"() {{.*shared_name = "const_0".*}}
 // CHECK-DAG: "tf.AssignVariableOp"(%[[VAR_HANDLE_0]], %[[CST_0]])
 
@@ -199,8 +199,8 @@ module attributes {tf_saved_model.semantics} {
 // CHECK: @serving_default
 // CHECK-DAG: %[[VAR_HANDLE_2:.*]] = "tf.VarHandleOp"() {{.*shared_name = "const_0".*}} : () -> tensor<!tf_type.resource<tensor<8xf32>>>
 // CHECK-DAG: %[[READ_VAR_0:.*]] = "tf.ReadVariableOp"(%[[VAR_HANDLE_2]]) : (tensor<!tf_type.resource<tensor<8xf32>>>) -> tensor<8xf32>
-// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() {{{.*value = dense<5.000000e\+00> : tensor<4xf32>.*}}}
-// CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {{{.*value = dense<0> : tensor<i64>.*}}}
+// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() <{{{.*value = dense<5.000000e\+00> : tensor<4xf32>.*}}}>
+// CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() <{{{.*value = dense<0> : tensor<i64>.*}}}>
 // CHECK-DAG: %[[CONCAT:.*]] = "tf.ConcatV2"(%[[READ_VAR_0]], %[[CST_1]], %[[AXIS]])
 // CHECK: return %[[CONCAT]] : tensor<12xf32>
 }
@@ -214,7 +214,7 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 // CHECK: func.func @init_func_restore_op()
-// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<8xf32>}
+// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<8xf32>}>
 // Check that the variable's shared_name contains the fused loc's items joined
 // by the delimiter "_" and suffixed with a number.
 // CHECK-DAG: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"() {{.*shared_name = "apple_banana_0".*}}
@@ -247,7 +247,7 @@ module attributes {tf_saved_model.semantics} {
     %cst_2 = "tf.Const"() {value = dense<1.0> : tensor<1x5x5x1024xf32>} : () -> tensor<1x5x5x1024xf32>
     // Check that these constants are unfrozen.
     // CHECK: func private @__inference_main
-    // CHECK: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"() {container = "", shared_name = "const_0"} : () -> tensor<!tf_type.resource<tensor<1x5x5x1024xf32>>>
+    // CHECK: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "const_0"}> : () -> tensor<!tf_type.resource<tensor<1x5x5x1024xf32>>>
     // CHECK: %[[READ_VAR_0:.*]] = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<1x5x5x1024xf32>>>) -> tensor<1x5x5x1024xf32>
     %0:3 = "tf.While"(%cst_0, %cst_1, %arg0) {T = [i32, i32, f32], _lower_using_switch_merge = true, _num_original_outputs = 4 : i64, _read_only_resource_inputs = [], body = @while_body, cond = @while_cond, device = "", is_stateless = true, output_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<1x5x5x1024>], parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<1x5x5x1024xf32>) -> (tensor<i32>, tensor<i32>, tensor<1x5x5x1024xf32>)
     %1 = "tf.AddV2"(%0#2, %cst_2) {device = ""} : (tensor<1x5x5x1024xf32>, tensor<1x5x5x1024xf32>) -> tensor<1x5x5x1024xf32>
@@ -260,7 +260,7 @@ module attributes {tf_saved_model.semantics} {
     %cst_0 = "tf.Const"() {value = dense<1.0> : tensor<1x5x5x1024xf32>} : () -> tensor<1x5x5x1024xf32>
     // Check that these constants are remained in constants.
     // CHECK: func private @while_body
-    // CHECK-DAG:  %[[CST_0:.*]]= "tf.Const"() {value = dense<1.000000e+00> : tensor<1x5x5x1024xf32>} : () -> tensor<1x5x5x1024xf32>
+    // CHECK-DAG:  %[[CST_0:.*]]= "tf.Const"() <{value = dense<1.000000e+00> : tensor<1x5x5x1024xf32>}> : () -> tensor<1x5x5x1024xf32>
     %0 = "tf.AddV2"(%arg0, %cst) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
     %1 = "tf.Identity"(%0) {device = ""} : (tensor<i32>) -> tensor<i32>
     %2 = "tf.Identity"(%arg1) {device = ""} : (tensor<i32>) -> tensor<i32>
@@ -269,13 +269,13 @@ module attributes {tf_saved_model.semantics} {
     return %1, %2, %5 : tensor<i32>, tensor<i32>, tensor<1x5x5x1024xf32>
   }
 
-  func.func private @while_cond(%arg0: tensor<i32> {tf._user_specified_name = "while/loop_counter"}, %arg1: tensor<i32> {tf._user_specified_name = "while/maximum_iterations"}, %arg2: tensor<1x5x5x1024xf32>) -> tensor<i1> 
+  func.func private @while_cond(%arg0: tensor<i32> {tf._user_specified_name = "while/loop_counter"}, %arg1: tensor<i32> {tf._user_specified_name = "while/maximum_iterations"}, %arg2: tensor<1x5x5x1024xf32>) -> tensor<i1>
   attributes {tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<1x5x5x1024>], tf._original_func_name = "while_cond_60"} {
     %cst = "tf.Const"() {value = dense<[0, 1, 2, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
     %cst_0 = "tf.Const"() {value = dense<5.0> : tensor<f32>} : () -> tensor<f32>
     // Check that these constants are remained in constants.
     // CHECK: func private @while_cond
-    // CHECK-DAG:  %[[CST:.*]]= "tf.Const"() {value = dense<[0, 1, 2, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+    // CHECK-DAG:  %[[CST:.*]]= "tf.Const"() <{value = dense<[0, 1, 2, 3]> : tensor<4xi32>}> : () -> tensor<4xi32>
     %0 = "tf.Sum"(%arg2, %cst) {device = "", keep_dims = false} : (tensor<1x5x5x1024xf32>, tensor<4xi32>) -> tensor<f32>
     %1 = "tf.Less"(%0, %cst_0) {device = ""} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     %2 = "tf.Identity"(%1) {device = ""} : (tensor<i1>) -> tensor<i1>

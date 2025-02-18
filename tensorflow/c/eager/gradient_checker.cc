@@ -46,10 +46,10 @@ void GetDims(const TF_Tensor* t, int64_t* out_dims) {
 
 // Runs model as is if output is a scalar,
 // else sums the output tensor before returning.
-Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
-                      absl::Span<AbstractTensorHandle* const> inputs,
-                      absl::Span<AbstractTensorHandle*> outputs,
-                      bool use_function) {
+absl::Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
+                            absl::Span<AbstractTensorHandle* const> inputs,
+                            absl::Span<AbstractTensorHandle*> outputs,
+                            bool use_function) {
   AbstractTensorHandle* model_outputs[1];
 
   // Run the model.
@@ -65,7 +65,7 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
   // If the output is a scalar, then return the scalar output
   if (num_dims_out == 0) {
     outputs[0] = model_out.release();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Else, reduce sum the output to get a scalar
@@ -85,14 +85,14 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
   // Reduce sum the output on all dimensions.
   TF_RETURN_IF_ERROR(ops::Sum(ctx, model_out.get(), sum_dims.get(), &outputs[0],
                               /*keep_dims=*/false, "sum_output"));
-  return OkStatus();
+  return absl::OkStatus();
 }
 // ========================= End Helper Functions==============================
 
-Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
-                         absl::Span<AbstractTensorHandle* const> inputs,
-                         int input_index, bool use_function,
-                         AbstractTensorHandle** numerical_grad) {
+absl::Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
+                               absl::Span<AbstractTensorHandle* const> inputs,
+                               int input_index, bool use_function,
+                               AbstractTensorHandle** numerical_grad) {
   vector<AbstractTensorHandle*> theta_inputs(inputs.size());
   for (int i{}; i < inputs.size(); ++i) {
     theta_inputs[i] = inputs[i];
@@ -198,7 +198,7 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
   TF_RETURN_IF_ERROR(TestTensorHandleWithDims<float, TF_FLOAT>(
       ctx, dtheta_approx.data(), theta_dims.data(), num_dims, numerical_grad));
   TF_DeleteTensor(theta_tensor);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gradients

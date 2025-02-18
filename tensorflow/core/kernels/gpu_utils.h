@@ -42,6 +42,10 @@ class AutotuneResult;
 
 namespace tensorflow {
 
+// Returns true if bfloat16 is directly supported in Ops and inputs shall not be
+// casted to floats to perform the computations and then back.
+bool IsBF16SupportedInOps(se::Stream* stream);
+
 class NodeDef;
 using xla::AutotuneResult;
 
@@ -238,7 +242,8 @@ class AutotuneMap {
   int32 max_autotune_global_count_;
   int32 autotune_global_count_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AutotuneMap);
+  AutotuneMap(const AutotuneMap&) = delete;
+  void operator=(const AutotuneMap&) = delete;
 };
 
 // A Singleton helper that manages the global autotune results by groups.

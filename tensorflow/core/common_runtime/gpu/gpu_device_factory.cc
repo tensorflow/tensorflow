@@ -18,11 +18,11 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "xla/tsl/framework/device_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/platform/numa.h"
-#include "tsl/framework/device_id.h"
 
 namespace tensorflow {
 

@@ -14,6 +14,7 @@
 # ==============================================================================
 """Registers protos with tf_export that should be public."""
 
+from xla.tsl.protobuf import histogram_pb2
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import summary_pb2
@@ -21,7 +22,6 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.util import tf_export
-from tsl.protobuf import histogram_pb2
 
 AttrValue = tf_export.tf_export(v1=['AttrValue'])(attr_value_pb2.AttrValue)
 ConfigProto = tf_export.tf_export(v1=['ConfigProto'])(config_pb2.ConfigProto)

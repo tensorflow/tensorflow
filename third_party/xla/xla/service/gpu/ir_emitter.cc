@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emitter.h"
 
+#include <cstdint>
 #include <utility>
+#include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/primitive_util.h"
 #include "xla/service/elemental_ir_emitter.h"
-#include "xla/service/gpu/elemental_ir_emitter.h"
+#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -35,11 +39,8 @@ limitations under the License.
 #include "xla/service/llvm_ir/tuple_ops.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
-
-using llvm_ir::SetToFirstInsertPoint;
 
 namespace gpu {
 
@@ -49,7 +50,7 @@ IrEmitter::IrEmitter(IrEmitterContext* ir_emitter_context, bool is_nested)
       b_(module_->getContext()),
       bindings_(&b_, module_, is_nested) {}
 
-Status IrEmitter::DefaultAction(HloInstruction* hlo) {
+absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
@@ -58,15 +59,15 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
     };
   }
   return EmitTargetElementLoop(
-      *hlo, GpuElementalIrEmitter(*ir_emitter_context_, &b_)
+      *hlo, ElementalIrEmitter(module_, &b_)
                 .MakeElementGenerator(hlo, operand_to_generator));
 }
 
-Status IrEmitter::HandleConstant(HloInstruction* constant) {
-  return OkStatus();
+absl::Status IrEmitter::HandleConstant(HloInstruction* constant) {
+  return absl::OkStatus();
 }
 
-Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
+absl::Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   VLOG(2) << "HandleAddDependency: " << add_dependency->ToString();
   const HloInstruction* operand = add_dependency->operand(0);
   // Add_Dependency is a no-op, but we still want to bind it to an llvm::Value
@@ -75,10 +76,11 @@ Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   if (bindings_.BoundToIrValue(*operand)) {
     bindings_.BindHloToIrValue(*add_dependency, GetBasePointer(*operand));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
+absl::Status IrEmitter::HandleGetTupleElement(
+    HloInstruction* get_tuple_element) {
   auto operand = get_tuple_element->operand(0);
   CHECK(bindings_.BoundToIrValue(*operand));
   bindings_.BindHloToIrValue(
@@ -88,110 +90,68 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
           // TODO(b/26344050): tighten the alignment here
           // based on the real element type.
           /*alignment=*/1, GetBasePointer(*operand),
-          llvm_ir::ShapeToIrType(operand->shape(), module_), &b_));
-  return OkStatus();
+          llvm_ir::ShapeToIrType(operand->shape(), module_->getContext()),
+          &b_));
+  return absl::OkStatus();
 }
 
-Status IrEmitter::HandleSend(HloInstruction*) {
+absl::Status IrEmitter::HandleSend(HloInstruction*) {
   return Unimplemented("Send is not implemented on GPU");
 }
 
-Status IrEmitter::HandleSendDone(HloInstruction*) {
+absl::Status IrEmitter::HandleSendDone(HloInstruction*) {
   return Unimplemented("Send-Done is not implemented on GPU");
 }
 
-Status IrEmitter::HandleRecv(HloInstruction*) {
+absl::Status IrEmitter::HandleRecv(HloInstruction*) {
   return Unimplemented("Recv is not implemented on GPU");
 }
 
-Status IrEmitter::HandleRecvDone(HloInstruction*) {
+absl::Status IrEmitter::HandleRecvDone(HloInstruction*) {
   return Unimplemented("Recv-done is not implemented on GPU");
 }
 
-Status IrEmitter::HandleScatter(HloInstruction*) {
+absl::Status IrEmitter::HandleScatter(HloInstruction*) {
   return Unimplemented("Scatter is not implemented on GPUs.");
 }
 
-Status IrEmitter::HandleTuple(HloInstruction* tuple) {
+absl::Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   std::vector<llvm::Value*> base_ptrs;
   for (const HloInstruction* operand : tuple->operands()) {
     base_ptrs.push_back(GetBasePointer(*operand));
   }
   llvm_ir::EmitTuple(GetIrArray(*tuple, *tuple), base_ptrs, &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-bool IrEmitter::IsEmittingForAMDGPU() const {
-  llvm::Triple target_triple = llvm::Triple(module_->getTargetTriple());
-  return target_triple.isAMDGPU();
-}
-
-namespace {
-llvm::Value* Real(llvm::Value* x, llvm::IRBuilder<>* b) {
-  return b->CreateExtractValue(x, {0});
-}
-
-llvm::Value* Imag(llvm::Value* x, llvm::IRBuilder<>* b) {
-  return b->CreateExtractValue(x, {1});
-}
-
-std::pair<llvm::Value*, llvm::Value*> MultiplyComplex(llvm::Value* lhs_value,
-                                                      llvm::Value* rhs_value,
-                                                      llvm::IRBuilder<>* b) {
-  llvm::Value* lhs_real = Real(lhs_value, b);
-  llvm::Value* lhs_imag = Imag(lhs_value, b);
-  llvm::Value* rhs_real = Real(rhs_value, b);
-  llvm::Value* rhs_imag = Imag(rhs_value, b);
-  llvm::Value* real_result1 = b->CreateFMul(lhs_real, rhs_real);
-  llvm::Value* real_result2 = b->CreateFMul(lhs_imag, rhs_imag);
-  llvm::Value* real_result = b->CreateFSub(real_result1, real_result2);
-  llvm::Value* imag_result1 = b->CreateFMul(lhs_real, rhs_imag);
-  llvm::Value* imag_result2 = b->CreateFMul(lhs_imag, rhs_real);
-  llvm::Value* imag_result = b->CreateFAdd(imag_result1, imag_result2);
-  return {real_result, imag_result};
-}
-}  // namespace
-
-Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
+absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
     // Emit no code for an empty output.
-    return OkStatus();
+    return absl::OkStatus();
   }
   // TODO(b/31409998): Support convolution with dilation.
   return Unimplemented(
       "Hit a case for convolution that is not implemented on GPU.");
 }
 
-Status IrEmitter::HandleFft(HloInstruction* fft) {
+absl::Status IrEmitter::HandleFft(HloInstruction* fft) {
   if (ShapeUtil::IsZeroElementArray(fft->shape())) {
     // Emit no code for an empty output.
-    return OkStatus();
+    return absl::OkStatus();
   }
   return Unimplemented("Hit a case for fft that is not implemented on GPU.");
 }
 
-Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
+absl::Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   return Unimplemented(
       "AllReduce cannot be nested inside of fusion, map, etc.");
 }
 
-Status IrEmitter::HandleParameter(HloInstruction* parameter) {
-  return OkStatus();
+absl::Status IrEmitter::HandleParameter(HloInstruction* parameter) {
+  return absl::OkStatus();
 }
 
-Status IrEmitter::HandleFusion(HloInstruction* fusion) {
-  // kFusion for library calls should be handled by
-  // IrEmitterUnnested::HandleFusion.
-  CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
-  GpuElementalIrEmitter elemental_emitter(*ir_emitter_context_, &b_);
-  FusedIrEmitter fused_emitter(elemental_emitter);
-  BindFusionArguments(fusion, &fused_emitter);
-  TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
-                                          *fusion->fused_expression_root()));
-  return EmitTargetElementLoop(*fusion, generator);
-}
-
-Status IrEmitter::HandleCall(HloInstruction* call) {
+absl::Status IrEmitter::HandleCall(HloInstruction* call) {
   std::vector<llvm::Value*> operand_addresses;
   for (HloInstruction* operand : call->operands()) {
     operand_addresses.push_back(GetBasePointer(*operand));
@@ -200,35 +160,35 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
                                operand_addresses, GetBasePointer(*call));
 }
 
-Status IrEmitter::HandleCustomCall(HloInstruction*) {
+absl::Status IrEmitter::HandleCustomCall(HloInstruction*) {
   return Unimplemented("custom-call");
 }
 
-Status IrEmitter::HandleInfeed(HloInstruction*) {
+absl::Status IrEmitter::HandleInfeed(HloInstruction*) {
   // TODO(b/30467474): Implement infeed on GPU.
   return Unimplemented("Infeed is not supported on GPU.");
 }
 
-Status IrEmitter::HandleOutfeed(HloInstruction*) {
+absl::Status IrEmitter::HandleOutfeed(HloInstruction*) {
   // TODO(b/34359662): Implement outfeed on GPU.
   return Unimplemented("Outfeed is not supported on GPU.");
 }
 
-Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
+absl::Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormInference directly.  It "
       "should be lowered before IR emission to HLO-soup using "
       "BatchNormRewriter.");
 }
 
-Status IrEmitter::HandleBatchNormTraining(HloInstruction*) {
+absl::Status IrEmitter::HandleBatchNormTraining(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormTraining directly.  It "
       "should be lowered before IR emission to HLO-soup using "
       "BatchNormRewriter.");
 }
 
-Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
+absl::Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormGrad directly.  It should "
       "be lowered before IR emission to HLO-soup using BatchNormRewriter.");
@@ -259,16 +219,6 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
           return GetIrArray(*operand, *fusion)
               .EmitReadArrayElement(index, &b_, operand->name());
         });
-  }
-}
-
-void IrEmitter::MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
-                                        const char* sync_scope_id) {
-  if (IsEmittingForAMDGPU() &&
-      ir_emitter_context_->rocm_compute_capability().gcn_arch_name().substr(
-          0, 6) == "gfx90a") {
-    b_.CreateFence(atomic_ordering,
-                   b_.getContext().getOrInsertSyncScopeID(sync_scope_id));
   }
 }
 

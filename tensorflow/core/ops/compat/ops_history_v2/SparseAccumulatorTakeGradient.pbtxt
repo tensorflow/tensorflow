@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseAccumulatorTakeGradient"
   input_arg {
     name: "handle"

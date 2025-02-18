@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,12 +24,19 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/while_loop_analysis.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -129,6 +136,9 @@ std::optional<MovableCluster> FindMovableClusterAtBodyRoot(
       }
     }
   }
+  if (cluster.collective_permute == nullptr) {
+    return std::nullopt;
+  }
   return cluster;
 }
 
@@ -148,8 +158,8 @@ absl::flat_hash_set<int64_t> FindIndicesUnusedAfterLoop(HloInstruction* loop) {
   return indices;
 }
 
-StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
-                                      HloInstruction* loop) {
+absl::StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
+                                            HloInstruction* loop) {
   HloComputation* body = loop->while_body();
   HloInstruction* root = body->root_instruction();
   if (root->opcode() != HloOpcode::kTuple ||
@@ -295,7 +305,7 @@ StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
   return changed;
 }
 
-StatusOr<bool> CollectivePermuteMotion::Run(
+absl::StatusOr<bool> CollectivePermuteMotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

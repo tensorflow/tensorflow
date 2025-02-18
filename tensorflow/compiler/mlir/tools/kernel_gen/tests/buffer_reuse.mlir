@@ -157,7 +157,7 @@ func.func @memref.reinterpret_cast_alias(%arg : memref<f32>, %n : index)
   %reinterpreted = memref.reinterpret_cast %arg to
       offset: [0],
       sizes: [%n],
-      strides: [%c0]: memref<f32> to memref<?xf32>
+      strides: [%c0]: memref<f32> to memref<?xf32, strided<[?], offset: ?>>
 
   // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32]
@@ -167,7 +167,7 @@ func.func @memref.reinterpret_cast_alias(%arg : memref<f32>, %n : index)
   linalg.generic {
     indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
     iterator_types = ["parallel"]
-  } ins(%reinterpreted : memref<?xf32>) outs(%result : memref<?xf32>) {
+  } ins(%reinterpreted : memref<?xf32, strided<[?], offset: ?>>) outs(%result : memref<?xf32>) {
   ^bb0(%a : f32, %b : f32):
     linalg.yield %a : f32
   }
@@ -534,7 +534,7 @@ func.func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
     %12 = math.absf %arg1 : f32
     linalg.yield %12 : f32
   }
-  %10 = bufferization.to_memref %0 : memref<?xindex>
+  %10 = bufferization.to_memref %0 : tensor<?xindex> to memref<?xindex>
   %11 = memref.reshape %9(%10)
       : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
   func.return %11 : memref<*xf32>

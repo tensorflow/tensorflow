@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,22 +16,27 @@ limitations under the License.
 #ifndef XLA_PJRT_TRACKED_DEVICE_BUFFER_H_
 #define XLA_PJRT_TRACKED_DEVICE_BUFFER_H_
 
-#include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "xla/pjrt/event_pool.h"
-#include "xla/pjrt/local_device_state.h"
-#include "xla/pjrt/utils.h"
-#include "xla/runtime/async_runtime.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/service/executable.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -43,7 +48,7 @@ namespace xla {
 // stream (e.g., a transfer or compute kernel) the buffer's definition event.
 //
 // After the operation that populates the value of a buffer has been enqueued on
-// 'stream', RecordOnStream(stream) should also be called to trigger the
+// 'stream', SetSequencingEvent() should also be called to trigger the
 // definition event after the operation has completed.
 //
 // After the buffer is read on 'stream' another event should be added so that
@@ -64,7 +69,7 @@ class BufferSequencingEvent {
  public:
   explicit BufferSequencingEvent(tsl::thread::ThreadPool* thread_pool)
       : thread_pool_(thread_pool),
-        defined_status_(tsl::MakeUnconstructedAsyncValueRef<Status>()) {}
+        defined_status_(tsl::MakeUnconstructedAsyncValueRef<absl::Status>()) {}
 
   // Sets the sequencing event to 'event', which is recorded on 'stream'. Must
   // be called at most once. Unblocks any other host threads that are blocked in
@@ -73,23 +78,18 @@ class BufferSequencingEvent {
 
   // Adds synchronization events to 'stream' that wait for this event to be
   // defined on 'stream'. Does nothing if the event is already known to have
-  // occurred by the tail of 'stream'. If RecordOnStream has not yet been
+  // occurred by the tail of 'stream'. If SetSequencingEvent has not yet been
   // called, blocks the calling thread until the event has been recorded.
   void WaitForEventOnStream(se::Stream* stream);
 
   // Same as WaitForEventOnStream, but takes a raw platform-specific
   // stream. Currently on implemented for CUDA and ROCM GPU, where stream is a
   // GpuStreamHandle (e.g. a cudaStream_t).
-  Status WaitForEventOnExternalStream(std::intptr_t stream);
-
-  // Returns true if the event is known to have occurred by the tail of
-  // 'stream'. If RecordOnStream has not yet been called, blocks the calling
-  // thread until the event has been recorded.
-  bool DefinedOn(se::Stream* stream);
+  absl::Status WaitForEventOnExternalStream(std::intptr_t stream);
 
   // Returns true if the event is known by the host to have already occurred. If
-  // RecordOnStream has not yet been called, blocks the calling thread until the
-  // event has been recorded.
+  // SetSequencingEvent has not yet been called, blocks the calling thread
+  // until the event has been recorded.
   bool IsComplete();
 
   // Compares the sequence numbers of two recorded events. It is illegal to call
@@ -123,10 +123,12 @@ class BufferSequencingEvent {
 
   bool IsDefined() {
     absl::MutexLock lock(&mu_);
-    return defined_status_.IsConcrete();
+    return IsDefinedNoLock();
   }
 
-  void SetDefinedStatus(Status status) {
+  bool IsDefinedNoLock() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  void SetDefinedStatus(absl::Status status) {
     {
       absl::MutexLock lock(&mu_);
       defined_status_.emplace(status);
@@ -135,11 +137,29 @@ class BufferSequencingEvent {
     this->ExecuteFutureTasks();
   }
 
-  Status GetDefinedStatus() {
+  absl::Status GetDefinedStatus() {
     absl::MutexLock lock(&mu_);
     CHECK(defined_status_.IsConcrete());
     return defined_status_.get();
   }
+
+  bool IsPredeterminedError() {
+    absl::MutexLock lock(&mu_);
+    return defined_status_.IsConcrete() && !defined_status_.get().ok();
+  }
+
+  // Returns true if either:
+  // 1. The event IsPredeterminedError
+  // Or:
+  // 2. The event is known to have occurred by the tail of 'stream'.
+  // If SetSequencingEvent and SetDefinedStatus has not yet been called,
+  // blocks the calling thread until either of those 2 happens.
+  // This is checking the above 2 conditions with a single lock. This is needed
+  // in case a buffer is set as an error buffer in a different thread after
+  // IsPredeterminedError() check and before DefinedOn() check, in which case
+  // DefinedOn() would indefinitely wait since the event is never recorded when
+  // the buffer is predetermined error.
+  bool IsPredeterminedErrorOrDefinedOn(se::Stream* stream);
 
  private:
   bool EventHasBeenRecorded() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -172,7 +192,33 @@ class BufferSequencingEvent {
 
   // Indicates if the buffer is in an error status. And error status is used to
   // propagate the error to the buffer consumers.
-  tsl::AsyncValueRef<Status> defined_status_ ABSL_GUARDED_BY(mu_);
+  tsl::AsyncValueRef<absl::Status> defined_status_ ABSL_GUARDED_BY(mu_);
+};
+
+// TODO(parkers): Implement PjRtRawBuffer API.
+class RawSEDeviceMemory : public tsl::ReferenceCounted<RawSEDeviceMemory> {
+ public:
+  explicit RawSEDeviceMemory(se::DeviceMemoryBase value) : value_(value) {}
+
+  virtual ~RawSEDeviceMemory() = default;
+
+  const se::DeviceMemoryBase& mem() const { return value_; }
+
+  void* opaque() const { return value_.opaque(); }
+
+  // TODO(parkers): Donate this ref-counted object instead of the underlying
+  // buffer.
+  virtual void UnsafeReleaseMemory() = 0;
+
+  static tsl::RCReference<RawSEDeviceMemory> Create(
+      se::DeviceMemoryBase value, PjRtDevice* device,
+      se::DeviceMemoryAllocator* allocator);
+  static tsl::RCReference<RawSEDeviceMemory> CreateForeign(
+      se::DeviceMemoryBase value,
+      absl::AnyInvocable<void() &&> on_delete_callback);
+
+ private:
+  se::DeviceMemoryBase value_;
 };
 
 // Class that represents a tuple of device buffers. Like a ScopedShapedBuffer it
@@ -198,7 +244,8 @@ class TrackedDeviceBuffer {
   static std::shared_ptr<TrackedDeviceBuffer> FromScopedShapedBuffer(
       ScopedShapedBuffer* shaped_buffer,
       absl::Span<const std::shared_ptr<BufferSequencingEvent>>
-          definition_events);
+          definition_events,
+      PjRtDevice* device);
 
   // Builds a ShapedBuffer view onto the buffers of 'tree'.
   ShapedBuffer AsShapedBuffer(const Shape& on_device_shape) const;
@@ -226,12 +273,11 @@ class TrackedDeviceBuffer {
       ExecutionInput* execution_input,
       se::DeviceMemoryAllocator* allocator) const;
 
-  se::DeviceMemoryAllocator* allocator() const { return allocator_; }
-  int device_ordinal() const { return device_ordinal_; }
-  absl::InlinedVector<se::DeviceMemoryBase, 1>& device_memory() {
+  absl::InlinedVector<tsl::RCReference<RawSEDeviceMemory>, 1>& device_memory() {
     return device_memory_;
   }
-  const absl::InlinedVector<se::DeviceMemoryBase, 1>& device_memory() const {
+  const absl::InlinedVector<tsl::RCReference<RawSEDeviceMemory>, 1>&
+  device_memory() const {
     return device_memory_;
   }
   absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events()
@@ -244,7 +290,7 @@ class TrackedDeviceBuffer {
 
   // Relinquishes ownership of the buffer's device memory, e.g., after the
   // buffer is passed to a computation that aliases its inputs to outputs.
-  void ReleaseDeviceMemory() { device_memory_.clear(); }
+  void ReleaseDeviceMemory(bool unsafe_release);
 
   // Indicates that the buffer has been used on a stream.
   //
@@ -267,21 +313,18 @@ class TrackedDeviceBuffer {
   StreamAndEventContainer LockUseAndTransferUsageEvents();
 
   TrackedDeviceBuffer() : in_use_(true) {}
-  TrackedDeviceBuffer(se::DeviceMemoryAllocator* allocator, int device_ordinal,
-                      absl::Span<se::DeviceMemoryBase const> device_memory,
-                      absl::Span<const std::shared_ptr<BufferSequencingEvent>>
-                          definition_events,
-                      std::function<void()> on_delete_callback);
+  TrackedDeviceBuffer(
+      PjRtDevice* device,
+      absl::Span<tsl::RCReference<RawSEDeviceMemory> const> device_memory,
+      absl::Span<const std::shared_ptr<BufferSequencingEvent>>
+          definition_events);
   ~TrackedDeviceBuffer();
 
  private:
-  // Are the buffers in device_memory_ owned? If so, which allocator and device
-  // ordinal? May be nullptr, indicating the buffers are not owned.
-  se::DeviceMemoryAllocator* allocator_;
-  int device_ordinal_;
+  PjRtDevice* device_;
 
   // Each host-side buffer may have several buffers on-device.
-  absl::InlinedVector<se::DeviceMemoryBase, 1> device_memory_;
+  absl::InlinedVector<tsl::RCReference<RawSEDeviceMemory>, 1> device_memory_;
 
   // Events that are triggered when the content of one or more buffers is ready
   // during multistream execution. May be nullptr, which is used in the
@@ -300,7 +343,7 @@ class TrackedDeviceBuffer {
   StreamAndEventContainer usage_events_;
 
   // A callback to call when the TrackedDeviceBuffer is about to be destroyed.
-  std::function<void()> on_delete_callback_;
+  absl::AnyInvocable<void() &&> on_delete_callback_;
 };
 
 // Populates 'events' with the set of buffer events for buffer. If

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -49,10 +50,12 @@ namespace tensorflow {
 namespace tpu {
 
 // List of parameters for lowering Mlir to HLO IR.
+// If mlir_module_op is set, it will be used instead of mlir_module.
 struct MlirToHloArgs {
   absl::string_view mlir_module;
   ConfigProto::Experimental::MlirBridgeRollout rollout_state =
       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+  std::optional<mlir::ModuleOp> mlir_module_op;
 };
 
 // Variant of guaranteed constant tensors types.
@@ -62,7 +65,7 @@ using GuaranteedConsts = std::variant<absl::Span<const TensorProto* const>,
 // List of parameters for lowering function library definition to HLO IR.
 struct FunctionToHloArgs {
   const NameAttrList* const function;
-  const FunctionLibraryDefinition* const flib_def;
+  const FunctionLibraryDefinition* flib_def;
   int graph_def_version;
   GuaranteedConsts guaranteed_constants;
 };

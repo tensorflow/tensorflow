@@ -1,6 +1,6 @@
 # copybara:uncomment_begin(oss-unused)
-# load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
 # load("//net/grpc:cc_grpc_library.bzl", "cc_grpc_library")
+# load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
 # copybara:uncomment_end
 
 # For platform specific build config
@@ -69,17 +69,15 @@ tf_proto_library(
 tf_proto_library(
     name = "conv_autotuning_proto",
     srcs = ["conv_autotuning.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "@local_tsl//tsl/protobuf:dnn_proto",
+        "@local_xla//xla/tsl/protobuf:dnn_proto",
     ],
 )
 
 tf_proto_library(
     name = "worker_proto",
     srcs = ["worker.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
     visibility = if_google(
         ["//tensorflow:internal"],
@@ -91,8 +89,6 @@ tf_proto_library(
     name = "worker_service_proto",
     srcs = ["worker_service.proto"],
     has_services = 1,
-    cc_api_version = 2,
-    cc_stubby_versions = ["2"],
     create_service = True,
     protodeps = [":worker_proto"],
 )
@@ -100,7 +96,6 @@ tf_proto_library(
 tf_proto_library(
     name = "master_proto",
     srcs = ["master.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
     visibility = ["//tensorflow:internal"],
 )
@@ -109,8 +104,6 @@ tf_proto_library(
     name = "master_service_proto",
     srcs = ["master_service.proto"],
     has_services = 1,
-    cc_api_version = 2,
-    cc_stubby_versions = ["2"],
     create_service = True,
     protodeps = [":master_proto"],
 )
@@ -119,8 +112,6 @@ tf_proto_library(
     name = "eager_service_proto",
     srcs = ["eager_service.proto"],
     has_services = 1,
-    cc_api_version = 2,
-    cc_stubby_versions = ["2"],
     create_grpc_library = True,
     create_service = True,
     protodeps = tf_additional_all_protos(),
@@ -129,7 +120,6 @@ tf_proto_library(
 tf_proto_library(
     name = "replay_log_proto",
     srcs = ["replay_log.proto"],
-    cc_api_version = 2,
     protodeps = [
         ":master_proto",
     ] + tf_additional_all_protos(),
@@ -139,8 +129,9 @@ tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
-    exports = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
+    protodeps = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
+    visibility = ["//visibility:public"],
+    exports = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
 )
 
 exports_files(
@@ -205,21 +196,21 @@ tf_proto_library(
         "core_platform_payloads.proto",
         "fingerprint.proto",
     ],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
-        "@local_tsl//tsl/protobuf:bfc_memory_map_proto",
-        "@local_tsl//tsl/protobuf:coordination_config_proto",
-        "@local_tsl//tsl/protobuf:rpc_options_proto",
-        "@local_tsl//tsl/protobuf:status_proto",
+        "@local_xla//xla/tsl/protobuf:bfc_memory_map_proto",
+        "@local_xla//xla/tsl/protobuf:coordination_config_proto",
+        "@local_xla//xla/tsl/protobuf:rpc_options_proto",
+        "@local_xla//xla/tsl/protobuf:status_proto",
     ],
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
+    visibility = ["//visibility:public"],
     exports = [
-        "@local_tsl//tsl/protobuf:bfc_memory_map_proto",
-        "@local_tsl//tsl/protobuf:rpc_options_proto",
-        "@local_tsl//tsl/protobuf:status_proto",
+        "@local_xla//xla/tsl/protobuf:bfc_memory_map_proto",
+        "@local_xla//xla/tsl/protobuf:rpc_options_proto",
+        "@local_xla//xla/tsl/protobuf:status_proto",
     ],
 )
 
@@ -235,7 +226,7 @@ tf_proto_library(
 # cc_grpc_library(
 #     name = "master_service_cc_grpc_proto",
 #     srcs = [":master_service_proto"],
-#     compatible_with = ["//buildenv/target:gce"],
+#     compatible_with = ["//buildenv/target:non_prod"],
 #     generate_mocks = True,
 #     service_namespace = "grpc_gen",
 #     deps = [":master_service_proto_cc"],

@@ -25,7 +25,7 @@ namespace reference_integer_ops {
 inline void LogSoftmax(int32_t input_multiplier, int32_t input_shift,
                        int32_t reverse_multiplier, int32_t reverse_shift,
                        int32_t diff_min, int32_t outer_size, int32_t depth,
-                       const int8* input_data, int8* output_data) {
+                       const int8_t* input_data, int8_t* output_data) {
   static constexpr int8_t kMinInt8 = std::numeric_limits<int8_t>::min();
   static constexpr int8_t kMaxInt8 = std::numeric_limits<int8_t>::max();
   static constexpr int32_t kMinInt32 = std::numeric_limits<int32_t>::min();
@@ -39,11 +39,11 @@ inline void LogSoftmax(int32_t input_multiplier, int32_t input_shift,
   static constexpr int kInputIntegerBits = 5;
   static constexpr int kAccumulationIntegerBits = 12;
   static constexpr int kOutputIntegerBits = 4;
-  using F5 = gemmlowp::FixedPoint<int32, kInputIntegerBits>;
-  using F12 = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
+  using F5 = gemmlowp::FixedPoint<int32_t, kInputIntegerBits>;
+  using F12 = gemmlowp::FixedPoint<int32_t, kAccumulationIntegerBits>;
 
   for (int outer_index = 0; outer_index < outer_size; ++outer_index) {
-    int8 max_in_row = kMinInt8;
+    int8_t max_in_row = kMinInt8;
     for (int inner_index = 0; inner_index < depth; ++inner_index) {
       max_in_row =
           std::max(max_in_row, input_data[outer_index * depth + inner_index]);

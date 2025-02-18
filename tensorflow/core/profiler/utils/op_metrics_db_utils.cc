@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 
@@ -23,18 +25,19 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/tf_op_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tsl/profiler/utils/tf_op_utils.h"
-#include "tsl/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 const absl::string_view kIdle = "IDLE";
+const uint32_t kSparseCoreIndexStart = 1000000;
 
 namespace {
 
@@ -111,6 +114,9 @@ void SetOpMetadataFromHloEventMetadata(
   hlo_event_metadata.ForEachStat([&](const XStatVisitor& stat) {
     if (stat.Type().has_value()) {
       switch (static_cast<StatType>(*stat.Type())) {
+        case StatType::kProgramId:
+          op_metrics->set_hlo_module_id(stat.IntOrUintValue());
+          break;
         case StatType::kHloCategory:
           op_metrics->set_category(std::string(stat.StrOrRefValue()));
           break;
@@ -119,6 +125,9 @@ void SetOpMetadataFromHloEventMetadata(
           break;
         case StatType::kFlops:
           op_metrics->set_flops(stat.IntOrUintValue());
+          break;
+        case StatType::kModelFlops:
+          op_metrics->set_model_flops(stat.IntOrUintValue());
           break;
         case StatType::kBytesAccessed:
           op_metrics->set_bytes_accessed(stat.IntOrUintValue());
@@ -177,6 +186,7 @@ void SetOpMetricsFromHloEvent(const tsl::profiler::XEventVisitor& hlo_event,
     op_metrics->set_min_time_ps(min_duration_ps);
     op_metrics->set_self_time_ps(self_duration_ps);
     op_metrics->set_dma_stall_ps(dma_stall_ps);
+    op_metrics->set_num_cores(1);
   } else {
     op_metrics->set_occurrences(op_metrics->occurrences() +
                                 hlo_event.NumOccurrences());
@@ -190,6 +200,12 @@ void SetOpMetricsFromHloEvent(const tsl::profiler::XEventVisitor& hlo_event,
 
 void AdjustFlopsAndBytesAccessed(OpMetrics& op_metrics) {
   op_metrics.set_flops(op_metrics.flops() * op_metrics.occurrences());
+  if (op_metrics.model_flops() > 0) {
+    op_metrics.set_model_flops(op_metrics.model_flops() *
+                               op_metrics.occurrences());
+  } else {
+    op_metrics.set_model_flops(op_metrics.flops());
+  }
   op_metrics.set_bytes_accessed(op_metrics.bytes_accessed() *
                                 op_metrics.occurrences());
   for (auto& memory_access : *op_metrics.mutable_memory_accessed_breakdown()) {
@@ -202,7 +218,7 @@ void AdjustFlopsAndBytesAccessed(OpMetrics& op_metrics) {
 
 OpMetricsDbBuilder::OpMetricsDbBuilder(OpMetricsDb* db) : db_(db) {
   DCHECK_NE(db_, nullptr);
-  DCHECK_EQ(db_->metrics_db_size(), 0);
+  DCHECK_EQ(db_->metrics_db_size(), db->metrics_db_size());
 }
 
 OpMetrics* OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
@@ -219,6 +235,19 @@ OpMetrics* OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
 void XEventsOpMetricsDbBuilder::AddOpMetric(
     const tsl::profiler::XEventVisitor& event) {
   OpKey key = GetOpKeyFromHloEventMetadata(event.Metadata());
+  std::optional<XStatVisitor> stat = event.GetStat(StatType::kStepIdleTimePs);
+  if (stat.has_value()) {
+    uint64_t idle_time_ps = stat->IntOrUintValue();
+    OpMetrics op_metrics;
+    op_metrics.set_self_time_ps(event.DurationPs() - idle_time_ps);
+    op_metrics.set_name("sparse_core_busy_ops");
+    // TODO: Make it meaningful after SC stats are available.
+    op_metrics.set_category("sparse_core_busy_ops");
+    constexpr uint64_t kMaxProgramId = std::numeric_limits<uint64_t>::max();
+    constexpr uint64_t kMaxSymbolId = std::numeric_limits<uint64_t>::max();
+    flat_op_metric_[kMaxProgramId][kMaxSymbolId] = op_metrics;
+    SetOpMetricsFromHloEvent(event, &op_metrics);
+  }
   if (!key.program_id.has_value() || !key.symbol_id.has_value()) return;
   OpMetricBySymbol& op_metric_by_symbol =
       flat_op_metric_[key.program_id.value()];
@@ -250,7 +279,8 @@ OpMetricsDb XEventsOpMetricsDbBuilder::Finalize() {
 }
 
 double IdleTimeRatio(const OpMetricsDb& db) {
-  return 1.0 - SafeDivide(db.total_op_time_ps(), db.total_time_ps());
+  return 1.0 -
+         tsl::profiler::SafeDivide(db.total_op_time_ps(), db.total_time_ps());
 }
 
 uint64 IdleTimePs(const OpMetricsDb& db) {
@@ -271,14 +301,15 @@ void AddIdleOp(OpMetricsDb& db) {
   SetIdleOp(idle_time_ps, *db.add_metrics_db());
 }
 
-absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db) {
+std::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db) {
   if (db.total_host_infeed_enq_start_timestamp_ps_diff() > 0) {
     // We use total_host_infeed_enq_start_timestamp_ps_diff to approximate the
     // total host time.
-    return SafeDivide(db.total_host_infeed_enq_duration_ps(),
-                      db.total_host_infeed_enq_start_timestamp_ps_diff());
+    return tsl::profiler::SafeDivide(
+        db.total_host_infeed_enq_duration_ps(),
+        db.total_host_infeed_enq_start_timestamp_ps_diff());
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(

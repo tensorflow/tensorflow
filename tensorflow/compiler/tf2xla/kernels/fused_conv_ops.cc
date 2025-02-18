@@ -13,17 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/math.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -88,7 +91,7 @@ class FusedConv2DInt8Op : public XlaOpKernel {
         ctx, ctx->num_inputs() == 6,
         errors::InvalidArgument("_FusedConv2D must have 6 inputs but has ",
                                 ctx->num_inputs()));
-    StatusOr<ConvOpAttrs> conv_attrs =
+    absl::StatusOr<ConvOpAttrs> conv_attrs =
         ConvOpAttrs::Create(/*num_spatial_dims=*/2, /*depthwise=*/false, ctx);
     OP_REQUIRES_OK(ctx, conv_attrs.status());
     conv_attrs_ = conv_attrs.value();
@@ -116,7 +119,7 @@ class FusedConv2DInt8Op : public XlaOpKernel {
                                                  : ActivationMode::kRelu;
   }
 
-  Status DoCompile(XlaOpKernelContext* ctx) {
+  absl::Status DoCompile(XlaOpKernelContext* ctx) {
     XlaOp conv_input = ctx->Input(0);
     XlaOp filter = ctx->Input(1);
     XlaOp bias = ctx->Input(2);
@@ -277,7 +280,7 @@ class FusedConv2DInt8Op : public XlaOpKernel {
     }
 
     ctx->SetOutput(0, result);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

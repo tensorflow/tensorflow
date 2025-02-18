@@ -21,7 +21,7 @@ from typing import Iterable
 from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
-from tensorflow.python.data.experimental.service import _pywrap_utils
+from tensorflow.python.data.experimental.service import _pywrap_utils_exp
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -109,7 +109,7 @@ class DispatcherConfig(
       worker_max_concurrent_snapshots=0,
   ):
     if protocol is None:
-      protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
+      protocol = _pywrap_utils_exp.TF_DATA_DefaultProtocol()
     job_gc_check_interval_ms = _get_time_or_placeholder(
         job_gc_check_interval_ms)
     job_gc_timeout_ms = _get_time_or_placeholder(job_gc_timeout_ms)
@@ -143,7 +143,7 @@ class DispatchServer:
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
   ...     processing_mode="parallel_epochs", service=dispatcher.target))
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data dispatch process, use join() to block
@@ -175,8 +175,8 @@ class DispatchServer:
 
     Args:
       config: (Optional.) A `tf.data.experimental.service.DispatcherConfig`
-        configration. If `None`, the dispatcher will use default
-        configuration values.
+        configuration. If `None`, the dispatcher will use default configuration
+        values.
       start: (Optional.) Boolean, indicating whether to start the server after
         creating it. Defaults to True.
     """
@@ -332,9 +332,9 @@ class WorkerConfig(
     if worker_address is None:
       worker_address = "localhost:%port%"
     if protocol is None:
-      protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
+      protocol = _pywrap_utils_exp.TF_DATA_DefaultProtocol()
     if data_transfer_address is None:
-      data_transfer_address = "localhost:%port%"
+      data_transfer_address = "localhost:%dts_port%"
     heartbeat_interval_ms = _get_time_or_placeholder(heartbeat_interval_ms)
     dispatcher_timeout_ms = _get_time_or_placeholder(dispatcher_timeout_ms)
 
@@ -362,7 +362,7 @@ class WorkerServer:
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
   ...     processing_mode="parallel_epochs", service=dispatcher.target))
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data worker process, use join() to block
@@ -382,7 +382,7 @@ class WorkerServer:
     """Creates a new worker server.
 
     Args:
-      config: A `tf.data.experimental.service.WorkerConfig` configration.
+      config: A `tf.data.experimental.service.WorkerConfig` configuration.
       start: (Optional.) Boolean, indicating whether to start the server after
         creating it. Defaults to True.
     """

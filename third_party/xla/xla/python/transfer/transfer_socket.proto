@@ -1,0 +1,73 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+syntax = "proto3";
+
+package aux;
+
+// Pull request for a list of buffers.
+message SocketTransferPullRequest {
+  // Rendevous id.
+  uint64 uuid = 1;
+  // List of buffers to pull.
+  repeated uint64 buffer_ids = 2;
+  // Req ids are assigned sequentially for each pull request.
+  uint64 req_id = 3;
+}
+
+// Packet headers represent a read request
+// from a particular bulk_transport connection.
+message SocketTransferPacketHeader {
+  // Req ids are assigned sequentially for each pull request.
+  uint64 req_id = 1;
+  // Bulk transports may be multiplexed, this is the multiplex id.
+  uint64 bulk_transport_id = 2;
+  // Offset into the destination.
+  uint64 offset = 3;
+  // Actual send size (must recv this much from the bulk_transport).
+  uint64 size = 4;
+  // Is this the largest offset we will see?
+  bool is_largest = 5;
+}
+
+// Always the first message.
+message SocketTransferEstablishBulkTransport {
+  // Actual data is sent over a bulk-transport connection.
+  enum ImplKind {
+    INVALID = 0;
+    LOCAL = 1;
+    SOCKET = 2;
+  }
+  // Which bulk_transport implementation to use.
+  ImplKind bulk_transport_impl_kind = 1;
+  // Address (for socket based bulk_transports).
+  repeated bytes bulk_transport_address = 2;
+  // UUID for looking up bulk_transports in a table.
+  repeated uint64 bulk_transport_uuid = 3;
+}
+
+message SocketTransferHalfClose {}
+
+message SocketTransferRequest {
+  oneof msg {
+    // Request pulling a list of buffers.
+    SocketTransferPullRequest pull = 1;
+    // A header for a packet (sent along a bulk_transport connection).
+    SocketTransferPacketHeader packet = 2;
+    // Establishing header to setup the bulk transport.
+    SocketTransferEstablishBulkTransport bulk_transport = 3;
+    // Half close.
+    SocketTransferHalfClose half_close = 4;
+  }
+}

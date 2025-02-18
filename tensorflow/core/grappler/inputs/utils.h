@@ -19,26 +19,29 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 namespace grappler {
 
 bool FilesExist(const std::vector<string>& files,
-                std::vector<Status>* status = nullptr);
+                std::vector<absl::Status>* status = nullptr);
 bool FilesExist(const std::set<string>& files);
 
-bool FileExists(const string& file, Status* status);
+bool FileExists(const string& file, absl::Status* status);
 
 // Reads GraphDef from file in either text or raw serialized format.
-Status ReadGraphDefFromFile(const string& graph_def_path, GraphDef* result);
+absl::Status ReadGraphDefFromFile(const string& graph_def_path,
+                                  GraphDef* result);
 
 // Reads MetaGraphDef from file in either text or raw serialized format.
-Status ReadMetaGraphDefFromFile(const string& meta_graph_def_path,
-                                MetaGraphDef* result);
+absl::Status ReadMetaGraphDefFromFile(const string& meta_graph_def_path,
+                                      MetaGraphDef* result);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

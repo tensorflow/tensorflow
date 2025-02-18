@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "FixedLengthRecordDataset"
   input_arg {
     name: "filenames"

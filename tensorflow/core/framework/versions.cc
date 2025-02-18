@@ -20,8 +20,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status CheckVersions(const VersionDef& versions, int consumer, int min_producer,
-                     const char* upper_name, const char* lower_name) {
+absl::Status CheckVersions(const VersionDef& versions, int consumer,
+                           int min_producer, const char* upper_name,
+                           const char* lower_name) {
   // Guard against the caller misordering the arguments
   if (consumer < min_producer) {
     return errors::Internal(upper_name, " version check has consumer ",
@@ -50,7 +51,7 @@ Status CheckVersions(const VersionDef& versions, int consumer, int min_producer,
   }
 
   // All good!
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,19 +24,21 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/shape_partition.h"
-#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
@@ -95,8 +97,8 @@ class DefaultCostModel : public ParallelCostModel {
       // TODO(b/29630486) Develop system bandwidth model.
       max_parallelism = std::min<int64_t>(
           max_parallelism_, std::ceil(std::sqrt(tsl::port::MaxParallelism())));
-      // Use shape size instruction cost and L2 cache size min per-thread cost.
-      instruction_cost = shape_size_(instruction->shape());
+      // Use bytes accessed cost and L2 cache size min per-thread cost.
+      instruction_cost = bytes_accessed;
       min_cost_per_thread = 256LL << 10;  // 256KB L2 Cache size.
     } else {
       // Use max parallelism for compute bound instructions.
@@ -133,7 +135,8 @@ ParallelTaskAssignment::ParallelTaskAssignment(
   // Run cost analysis on 'module'.
   auto cost_analysis = std::make_unique<HloCostAnalysis>(shape_size);
   HloComputation* computation = module->entry_computation();
-  Status status = computation->root_instruction()->Accept(cost_analysis.get());
+  absl::Status status =
+      computation->root_instruction()->Accept(cost_analysis.get());
   if (status.ok()) {
     // Set default cost model based on 'cost_analysis'.
     cost_model_ = std::make_unique<DefaultCostModel>(
@@ -167,6 +170,13 @@ int64_t ParallelTaskAssignment::GetTargetParallelTaskCount(
     return 1;
   }
 
+  // Skip custom fusions.
+  if (opcode == HloOpcode::kFusion) {
+    const HloFusionInstruction* fusion =
+        Cast<HloFusionInstruction>(instruction);
+    if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) return 1;
+  }
+
   // Only allow instructions that can be trivially parallelized (where all
   // outputs can be computed independently of each other).
   if (instruction->IsElementwise() || instruction->IsLoopFusion() ||
@@ -188,7 +198,7 @@ int64_t ParallelTaskAssignment::GetTargetParallelTaskCount(
   return 1;
 }
 
-StatusOr<bool> ParallelTaskAssigner::Run(
+absl::StatusOr<bool> ParallelTaskAssigner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "ParallelTaskAssigner ENTRY");

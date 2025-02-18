@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@ limitations under the License.
 #include <array>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/array4d.h"
 #include "xla/client/local_client.h"
-#include "xla/client/padding.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/reference_util.h"
-#include "xla/statusor.h"
-#include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
@@ -31,7 +31,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
+absl::StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
     int64_t input_batch, int64_t input_feature, int64_t input_first_spatial,
     int64_t input_second_spatial, int64_t output_batch, int64_t output_feature,
     int64_t output_first_spatial, int64_t output_second_spatial,

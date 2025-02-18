@@ -329,14 +329,14 @@ class MklFusedInstanceNormOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("_MklFusedInstanceNorm").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    MklFusedInstanceNormOp<CPUDevice, float>);
+#define REGISTER_FUSED_INSTANCE_NORM_CPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("_MklFusedInstanceNorm").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      MklFusedInstanceNormOp<CPUDevice, T>);
+TF_CALL_float(REGISTER_FUSED_INSTANCE_NORM_CPU)
+    TF_CALL_bfloat16(REGISTER_FUSED_INSTANCE_NORM_CPU)
+        TF_CALL_half(REGISTER_FUSED_INSTANCE_NORM_CPU)
 
-REGISTER_KERNEL_BUILDER(Name("_MklFusedInstanceNorm")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<bfloat16>("T"),
-                        MklFusedInstanceNormOp<CPUDevice, bfloat16>);
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

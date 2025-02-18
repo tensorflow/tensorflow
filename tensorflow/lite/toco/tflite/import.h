@@ -15,10 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TFLITE_IMPORT_H_
 #define TENSORFLOW_LITE_TOCO_TFLITE_IMPORT_H_
 
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/model_flags.pb.h"
 
 namespace toco {
 

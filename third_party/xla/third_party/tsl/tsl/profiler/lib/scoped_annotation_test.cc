@@ -18,10 +18,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/profiler/backends/cpu/annotation_stack.h"
-#include "tsl/profiler/lib/scoped_annotation_stack.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 
 namespace tsl {
 namespace profiler {
@@ -50,11 +49,11 @@ TEST(ScopedAnnotation, Simple) {
 
   {
     AnnotationStack::Enable(true);
-    int64_t id0 = ScopedAnnotationStack::ActivityStart("foo");
-    int64_t id1 = ScopedAnnotationStack::ActivityStart("bar");
+    PushAnnotation("foo");
+    PushAnnotation("bar");
     EXPECT_EQ(AnnotationStack::Get(), "foo::bar");  // enabled
-    ScopedAnnotationStack::ActivityEnd(id1);
-    ScopedAnnotationStack::ActivityEnd(id0);
+    PopAnnotation();
+    PopAnnotation();
     AnnotationStack::Enable(false);
   }
 

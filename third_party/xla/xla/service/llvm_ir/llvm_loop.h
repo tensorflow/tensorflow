@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,21 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_IR_LLVM_LOOP_H_
 #define XLA_SERVICE_LLVM_IR_LLVM_LOOP_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -80,7 +85,7 @@ class ForLoop {
   //  loop.
   static std::unique_ptr<ForLoop> EmitForLoop(
       absl::string_view prefix, llvm::Value* start_index,
-      llvm::Value* end_index, llvm::Value* step, llvm::IRBuilder<>* b,
+      llvm::Value* end_index, llvm::Value* step, llvm::IRBuilderBase* b,
       UnrollMode unroll_mode = llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
 
@@ -139,9 +144,10 @@ class ForLoop {
           UnrollMode unroll_mode, bool prevent_vectorization);
 
   // Emit the loop at the insert point of the builder.
-  void Emit(llvm::IRBuilder<>* b);
+  void Emit(llvm::IRBuilderBase* b);
 
-  llvm::BasicBlock* CreateLoopBB(absl::string_view name, llvm::IRBuilder<>* b);
+  llvm::BasicBlock* CreateLoopBB(absl::string_view name,
+                                 llvm::IRBuilderBase* b);
 
   // Creates a name for an LLVM construct, appending prefix_ and suffix_, if
   // they are set.
@@ -149,7 +155,7 @@ class ForLoop {
 
   // Return a list of metadata nodes that should be associated with the
   // llvm::Loop for this `ForLoop`.
-  std::vector<llvm::Metadata*> GetLoopMetadata(llvm::IRBuilder<>* b);
+  std::vector<llvm::Metadata*> GetLoopMetadata(llvm::IRBuilderBase* b);
 
   std::string prefix_;
   std::string suffix_;
@@ -175,7 +181,7 @@ class ForLoop {
 // A simple class for constructing nested for-loops.
 class ForLoopNest {
  public:
-  ForLoopNest(absl::string_view name, llvm::IRBuilder<>* b,
+  ForLoopNest(absl::string_view name, llvm::IRBuilderBase* b,
               llvm::Type* index_ty = nullptr)
       : name_(name),
         outer_loop_preheader_bb_(nullptr),
@@ -282,7 +288,7 @@ class ForLoopNest {
   // has been added yet.
   llvm::BasicBlock* inner_loop_body_bb_;
 
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
 
   llvm::Type* index_type_;
 };

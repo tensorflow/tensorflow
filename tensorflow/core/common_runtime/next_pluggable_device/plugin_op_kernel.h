@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -65,19 +66,22 @@ class PluginOpKernelConstruction {
   PluginOpKernelConstruction() = default;
   virtual ~PluginOpKernelConstruction() = default;
 
-  virtual Status GetBoolAttr(std::string_view attr_name, bool* value) const = 0;
-  virtual Status GetInt32Attr(std::string_view attr_name, int* value) const = 0;
-  virtual Status GetInt32AttrList(std::string_view attr_name,
-                                  std::vector<int32_t>* value) const = 0;
-  virtual Status GetInt64Attr(std::string_view attr_name,
-                              int64_t* value) const = 0;
-  virtual Status GetStringAttr(std::string_view attr_name,
-                               std::string* value) const = 0;
-  virtual Status GetFunctionAttr(std::string_view attr_name,
-                                 NameAttrList* function) const = 0;
+  virtual absl::Status GetBoolAttr(std::string_view attr_name,
+                                   bool* value) const = 0;
+  virtual absl::Status GetInt32Attr(std::string_view attr_name,
+                                    int* value) const = 0;
+  virtual absl::Status GetInt32AttrList(std::string_view attr_name,
+                                        std::vector<int32_t>* value) const = 0;
+  virtual absl::Status GetInt64Attr(std::string_view attr_name,
+                                    int64_t* value) const = 0;
+  virtual absl::Status GetStringAttr(std::string_view attr_name,
+                                     std::string* value) const = 0;
+  virtual absl::Status GetFunctionAttr(std::string_view attr_name,
+                                       NameAttrList* function) const = 0;
 
-  virtual void CtxFailure(const Status& status) = 0;
-  virtual void CtxFailure(const char* file, int line, const Status& status) = 0;
+  virtual void CtxFailure(const absl::Status& status) = 0;
+  virtual void CtxFailure(const char* file, int line,
+                          const absl::Status& status) = 0;
 
   virtual void* GetContext() const = 0;
 };
@@ -89,33 +93,31 @@ class PluginOpKernelContext {
 
   virtual std::string_view GetResourceMgrDefaultContainerName() = 0;
 
-  virtual Status LookupOrCreateResource(std::string_view container_name,
-                                        std::string_view plugin_resource_name,
-                                        void** result_plugin_resource,
-                                        void* (*create_func)(void*),
-                                        void* create_func_args,
-                                        void (*delete_func)(void*)) = 0;
+  virtual absl::Status LookupOrCreateResource(
+      std::string_view container_name, std::string_view plugin_resource_name,
+      void** result_plugin_resource, void* (*create_func)(void*),
+      void* create_func_args, void (*delete_func)(void*)) = 0;
 
-  virtual PluginCoordinationServiceAgent* GetPluginCoordinationServiceAgent()
-      const = 0;
+  virtual std::unique_ptr<PluginCoordinationServiceAgent>
+  GetPluginCoordinationServiceAgent() const = 0;
 
   // This method will allocate a new `PluginVariable`. Caller is responsible
   // for managing it's lifetime.
-  virtual Status CreatePluginVariable(int index,
-                                      PluginVariable** variable) const = 0;
+  virtual absl::Status CreatePluginVariable(
+      int index, PluginVariable** variable) const = 0;
 
-  virtual Status AllocateTempForPluginVariable(PluginVariable* variable) = 0;
+  virtual absl::Status AllocateTempForPluginVariable(
+      PluginVariable* variable) = 0;
 
   virtual int NumInputs() const = 0;
 
-  virtual Status GetInput(int index, Tensor* tensor) const = 0;
+  virtual absl::Status GetInput(int index, const Tensor** tensor) const = 0;
 
-  // This method is not marked const because CPluginOpKernel need to do some
-  // extra bookkeeping work.
-  virtual Status GetInput(const char* name, const Tensor** tensor) = 0;
+  virtual absl::Status GetInput(const char* name,
+                                const Tensor** tensor) const = 0;
 
-  virtual Status GetInputRange(std::string_view name,
-                               std::pair<int, int>* range) const = 0;
+  virtual absl::Status GetInputRange(std::string_view name,
+                                     std::pair<int, int>* range) const = 0;
 
   virtual DataType GetInputDataType(int index) const = 0;
 
@@ -131,34 +133,38 @@ class PluginOpKernelContext {
 
   virtual int GetDeviceId() const = 0;
 
+  virtual std::string_view GetDeviceName() const = 0;
+
   virtual std::string GetSessionName() const = 0;
 
-  virtual Status GetConfigProto(const ConfigProto** config_proto) const = 0;
+  virtual absl::Status GetConfigProto(
+      const ConfigProto** config_proto) const = 0;
 
   virtual void MaybeDeleteConfigProto(
       const ConfigProto* config_proto) const = 0;
 
-  virtual Status GetFunctionLibraryDefinition(
+  virtual absl::Status GetFunctionLibraryDefinition(
       const FunctionLibraryDefinition** flib_def) const = 0;
 
   virtual void MaybeDeleteFunctionLibraryDefinition(
       const FunctionLibraryDefinition* flib_def) const = 0;
 
-  virtual Status GetResourceHandle(int index,
-                                   const ResourceHandle** handle) const = 0;
+  virtual absl::Status GetResourceHandle(
+      int index, const ResourceHandle** handle) const = 0;
 
   virtual void MaybeDeleteResourceHandle(
       const ResourceHandle* handle) const = 0;
 
   virtual int GetGraphDefVersion() const = 0;
 
-  virtual Status AllocateOutput(int index, const TensorShape& shape,
-                                Tensor** out) = 0;
+  virtual absl::Status AllocateOutput(int index, const TensorShape& shape,
+                                      Tensor** out) = 0;
 
-  virtual Status SetOutput(int index, const Tensor& tensor) = 0;
+  virtual absl::Status SetOutput(int index, const Tensor& tensor) = 0;
 
-  virtual void CtxFailure(const Status& status) = 0;
-  virtual void CtxFailure(const char* file, int line, const Status& status) = 0;
+  virtual void CtxFailure(const absl::Status& status) = 0;
+  virtual void CtxFailure(const char* file, int line,
+                          const absl::Status& status) = 0;
 
   virtual void* GetContext() const = 0;
 };

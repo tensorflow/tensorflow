@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrappers for Iterators."""
+
 import abc
 import threading
 import warnings
@@ -34,12 +35,14 @@ from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_utils
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saver import BaseSaverBuilder
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
@@ -765,7 +768,7 @@ class OwnedIterator(IteratorBase):
             self._iterator_resource,
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
-      return structure.from_compatible_tensor_list(self._element_spec, ret)
+        return structure.from_compatible_tensor_list(self._element_spec, ret)
 
     # TODO(b/77291417): This runs in sync mode as iterators use an error status
     # to communicate that there is no more data to iterate over.
@@ -793,10 +796,23 @@ class OwnedIterator(IteratorBase):
     state_variant = gen_dataset_ops.serialize_iterator(
         self._iterator_resource, external_state_policy
     )
-    return parsing_ops.serialize_tensor(state_variant)
+    # Serialize each slice of the state_variant separately, to avoid hitting the
+    # 2GB proto serialization limit.
+    state = array_ops_stack.unstack(state_variant)
+    state = [parsing_ops.serialize_tensor(x) for x in state]
+    state = array_ops_stack.stack(state)
+
+    state = string_ops.encode_base64(state)
+    state = string_ops.string_join(state, separator=",")
+    return state
 
   def _restore(self, state):
-    state_variant = parsing_ops.parse_tensor(state, dtypes.variant)
+    state = ragged_string_ops.string_split_v2(state, sep=",")
+    state = string_ops.decode_base64(state)
+
+    state = array_ops_stack.unstack(state)
+    state = [parsing_ops.parse_tensor(x, dtypes.variant) for x in state]
+    state_variant = array_ops_stack.stack(state)
     return gen_dataset_ops.deserialize_iterator(
         self._iterator_resource, state_variant
     )
@@ -1013,5 +1029,4 @@ def get_next_as_optional(iterator):
   return iterator.get_next_as_optional()
 
 
-_pywrap_utils.RegisterType("OwnedIterator", OwnedIterator)
 iterator_autograph.register_overrides()

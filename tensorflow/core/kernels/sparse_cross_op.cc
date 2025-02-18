@@ -161,14 +161,14 @@ tstring KeyedSparseTensorColumn<tstring>::Feature(int64_t batch, int64_t n,
 }
 
 template <>
-StringPiece SparseTensorColumn<StringPiece>::Feature(int64_t batch, int64_t n,
-                                                     bool strong_hash) const {
+absl::string_view SparseTensorColumn<absl::string_view>::Feature(
+    int64_t batch, int64_t n, bool strong_hash) const {
   const int64_t start = feature_start_indices_[batch];
   return values_.vec<tstring>().data()[start + n];
 }
 
 template <>
-StringPiece KeyedSparseTensorColumn<StringPiece>::Feature(
+absl::string_view KeyedSparseTensorColumn<absl::string_view>::Feature(
     int64_t batch, int64_t n, bool strong_hash) const {
   const int64_t start = feature_start_indices_[batch];
   return values_.vec<tstring>().data()[start + n];
@@ -259,13 +259,13 @@ tstring KeyedDenseTensorColumn<tstring>::Feature(int64_t batch, int64_t n,
 }
 
 template <>
-StringPiece DenseTensorColumn<StringPiece>::Feature(int64_t batch, int64_t n,
-                                                    bool strong_hash) const {
+absl::string_view DenseTensorColumn<absl::string_view>::Feature(
+    int64_t batch, int64_t n, bool strong_hash) const {
   return tensor_.matrix<tstring>()(batch, n);
 }
 
 template <>
-StringPiece KeyedDenseTensorColumn<StringPiece>::Feature(
+absl::string_view KeyedDenseTensorColumn<absl::string_view>::Feature(
     int64_t batch, int64_t n, bool strong_hash) const {
   return tensor_.matrix<tstring>()(batch, n);
 }
@@ -475,11 +475,11 @@ int64_t CalculateBatchSize(const OpInputList& shapes_list_in,
 }
 
 // Validates input tensors.
-Status ValidateInput(const OpInputList& indices_list_in,
-                     const OpInputList& values_list_in,
-                     const OpInputList& shapes_list_in,
-                     const OpInputList& dense_list_in,
-                     const DataType& internal_type) {
+absl::Status ValidateInput(const OpInputList& indices_list_in,
+                           const OpInputList& values_list_in,
+                           const OpInputList& shapes_list_in,
+                           const OpInputList& dense_list_in,
+                           const DataType& internal_type) {
   const auto size = indices_list_in.size();
   // Only perform internal_type check for SparseCrossOp.
   // Check if the internal_type is not invalid before doing so.
@@ -591,7 +591,7 @@ Status ValidateInput(const OpInputList& indices_list_in,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Extracts data about the features and populates feature data.
@@ -599,7 +599,7 @@ void ExtractFeatureData(
     const OpInputList& indices_list_in, int64_t batch_size,
     std::vector<std::vector<int64_t>>* feature_counts,
     std::vector<std::vector<int64_t>>* feature_start_indices) {
-  gtl::InlinedVector<int64_t, 8> current_row(indices_list_in.size(), 0);
+  absl::InlinedVector<int64_t, 8UL> current_row(indices_list_in.size(), 0);
   for (int b = 0; b < batch_size; b++) {
     for (int i = 0; i < indices_list_in.size(); i++) {
       const auto indices = indices_list_in[i].matrix<int64_t>();
@@ -705,7 +705,7 @@ GenerateKeyedColumnsFromInput(const OpInputList& indices_list_in,
 // It also output_start_indices which contains the start indices for each
 // input in the output SparseTensor.
 template <typename InternalType>
-Status CreateOutputTensors(
+absl::Status CreateOutputTensors(
     const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>& columns,
     int64_t batch_size, OpKernelContext* context, Tensor** indices_out,
     Tensor** values_out, Tensor** shape_out,
@@ -733,7 +733,7 @@ Status CreateOutputTensors(
   shape_vec(0) = batch_size;
   shape_vec(1) = max_cross_count;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <bool HASHED_OUTPUT, typename InternalType>
@@ -911,7 +911,7 @@ class SparseCrossHashedOp : public OpKernel {
     const auto salt = salt_t->flat<int64_t>();
     OP_REQUIRES_OK(
         context, salt.size() == 2
-                     ? Status()
+                     ? absl::Status()
                      : errors::InvalidArgument(
                            "Input \"salt\" must have length 2 but has length ",
                            salt.size()));
@@ -961,7 +961,7 @@ REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<tstring>("out_type")
                             .TypeConstraint<tstring>("internal_type"),
-                        SparseCrossOp<false, StringPiece>);
+                        SparseCrossOp<false, absl::string_view>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)

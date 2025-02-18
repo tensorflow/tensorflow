@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_PREPARE_HLO_FOR_IR_EMITTING_PIPELINE_H_
 #define XLA_SERVICE_GPU_PREPARE_HLO_FOR_IR_EMITTING_PIPELINE_H_
 
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_pass_pipeline.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -27,8 +28,8 @@ namespace gpu {
 // pipeline. This pipeline must be run right before IR emission to ensure
 // correctness of the input module.
 HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
-    HloModule& hlo_module,
-    HloDataflowAnalysis::CanShareBuffer can_share_buffer);
+    HloModule& hlo_module, HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+    const se::DeviceDescription& device_description);
 
 }  // namespace gpu
 }  // namespace xla

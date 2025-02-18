@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "pybind11/pytypes.h"  // from @pybind11
-#include "tsl/platform/macros.h"
-#include "tsl/platform/types.h"
+#include "pybind11/pytypes.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -57,8 +57,6 @@ class TraceMeWrapper {
   }
 
   void Stop() { traceme_.Stop(); }
-
-  static bool IsEnabled() { return tsl::profiler::TraceMe::Active(); }
 
  private:
   // Converts kwargs to strings and appends them to name encoded as TraceMe

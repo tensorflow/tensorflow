@@ -60,11 +60,11 @@ bool RecentRequestIds::Insert(int64_t request_id) {
   return true;
 }
 
-Status RecentRequestIds::TrackUnique(int64_t request_id,
-                                     const string& method_name,
-                                     const protobuf::Message& request) {
+absl::Status RecentRequestIds::TrackUnique(int64_t request_id,
+                                           const string& method_name,
+                                           const protobuf::Message& request) {
   if (Insert(request_id)) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::Aborted("The same ", method_name,
                            " request was received twice. ",

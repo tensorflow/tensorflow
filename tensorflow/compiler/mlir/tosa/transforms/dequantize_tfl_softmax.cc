@@ -16,9 +16,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -52,8 +53,8 @@ LogicalResult TosaDequantizeTFLSoftmaxPattern::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   TFL::SoftmaxOp tfl_softmax_op = cast<TFL::SoftmaxOp>(op);
   RankedTensorType input_type =
-      tfl_softmax_op.getInput().getType().cast<RankedTensorType>();
-  if (!input_type.getElementType().isa<mlir::quant::QuantizedType>()) {
+      mlir::cast<RankedTensorType>(tfl_softmax_op.getInput().getType());
+  if (!mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType())) {
     return failure();
   }
   Location loc = tfl_softmax_op.getLoc();
@@ -73,8 +74,7 @@ LogicalResult TosaDequantizeTFLSoftmaxPattern::matchAndRewrite(
 void TosaDequantizeTFLSoftmax::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   patterns.add<TosaDequantizeTFLSoftmaxPattern>(&getContext());
-  if (failed(
-          applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     signalPassFailure();
   }
 }

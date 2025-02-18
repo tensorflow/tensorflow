@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/test.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace testing {
@@ -237,6 +238,20 @@ class HloSourceTargetPairsMatcher
   std::vector<std::pair<int64_t, int64_t>> source_target_pairs_;
 };
 
+class HloMetadataMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloMetadataMatcher(OpMetadata metadata)
+      : metadata_(std::move(metadata)) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  OpMetadata metadata_;
+};
+
 // HloInstruction* matchers for opcode and operands. Example:
 //   namespace op = xla::opcode_matchers;
 //   EXPECT_THAT(instruction,
@@ -269,7 +284,9 @@ HLO_MATCHER(BitcastConvert);
 HLO_MATCHER(Broadcast);
 HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
+HLO_MATCHER(Cholesky);
 HLO_MATCHER(Clamp);
+HLO_MATCHER(CollectiveBroadcast);
 HLO_MATCHER(CollectivePermute);
 HLO_MATCHER(CollectivePermuteStart);
 HLO_MATCHER(CollectivePermuteDone);
@@ -285,6 +302,7 @@ HLO_MATCHER(Divide);
 HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
+HLO_MATCHER(Erf);
 HLO_MATCHER(Exp);
 HLO_MATCHER(Fft);
 HLO_MATCHER(Floor);
@@ -306,6 +324,7 @@ HLO_MATCHER(Outfeed);
 HLO_MATCHER(Pad);
 HLO_MATCHER(PartitionId);
 HLO_MATCHER(Power);
+HLO_MATCHER(RaggedAllToAll);
 HLO_MATCHER(Recv);
 HLO_MATCHER(RecvDone);
 HLO_MATCHER(Reduce);
@@ -335,6 +354,7 @@ HLO_MATCHER(Subtract);
 HLO_MATCHER(Tan);
 HLO_MATCHER(Tanh);
 HLO_MATCHER(Transpose);
+HLO_MATCHER(TriangularSolve);
 HLO_MATCHER(Tuple);
 HLO_MATCHER(While);
 HLO_MATCHER(Xor);
@@ -550,6 +570,12 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> SourceTargetPairs(
     std::vector<std::pair<int64_t, int64_t>> source_target_pairs) {
   return ::testing::MakeMatcher(new ::xla::testing::HloSourceTargetPairsMatcher(
       std::move(source_target_pairs)));
+}
+
+inline ::testing::Matcher<const ::xla::HloInstruction*> Metadata(
+    OpMetadata metadata) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMetadataMatcher(std::move(metadata)));
 }
 
 #undef HLO_MATCHER

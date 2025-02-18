@@ -56,7 +56,7 @@ public class HelloTFLite : MonoBehaviour {
     for (int i = 0; i < inputCount; i++) {
       Debug.LogFormat("Input {0}: {1}", i, interpreter.GetInputTensorInfo(i));
     }
-    for (int i = 0; i < inputCount; i++) {
+    for (int i = 0; i < outputCount; i++) {
       Debug.LogFormat("Output {0}: {1}", i, interpreter.GetOutputTensorInfo(i));
     }
   }

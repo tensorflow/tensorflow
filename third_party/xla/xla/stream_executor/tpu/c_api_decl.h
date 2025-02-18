@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,9 +41,7 @@ typedef enum TpuVersionEnum {
   kTpuV2,
   kTpuV3,
   kTpuV4,
-  // BEGIN-INTERNAL
-  // reserved for internal use
-  // END-INTERNAL
+  kTpuV5,
 } TpuVersionEnum;
 
 typedef struct TpuRuntimeVersion {
@@ -66,8 +64,6 @@ typedef struct TpuSerializedProto {
 typedef struct SE_PlatformId {
   void* id;  // aka stream_executor::Platform::Id
 } SE_PlatformId;
-typedef struct SE_StreamExecutorConfig SE_StreamExecutorConfig;
-typedef struct SE_DeviceOptions SE_DeviceOptions;
 typedef TF_Status* (*SE_StatusCallback)(void*);
 
 typedef struct SE_DeviceMemoryBase {
@@ -246,6 +242,7 @@ typedef struct XLA_Layout {
   int64_t element_size_in_bits;
   int64_t memory_space;
   int64_t dynamic_shape_metadata_prefix_bytes;
+  int64_t tail_padding_alignment_in_elements;
 } XLA_Layout;
 
 // Represents an XLA shape tree.
@@ -321,6 +318,7 @@ typedef struct XLA_HloModuleConfig {
   TpuSerializedProto static_device_assignment;
   bool has_entry_computation_layout;
   XLA_ComputationLayout entry_computation_layout;
+  BoolList allow_spmd_sharding_propagation_to_parameters;
   BoolList allow_spmd_sharding_propagation_to_output;
 } XLA_HloModuleConfig;
 

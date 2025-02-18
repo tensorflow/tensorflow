@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/single_threaded_cpu_device.h"
 
+#include <memory>
+
 #define EIGEN_USE_THREADS
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -47,26 +49,26 @@ class SingleThreadedCpuDevice : public Device {
                                                   DeviceLocality())) {
     eigen_worker_threads_.num_threads = kNumThreads;
     eigen_worker_threads_.workers = GraphRunnerThreadPool();
-    eigen_device_.reset(new Eigen::ThreadPoolDevice(
+    eigen_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
         eigen_worker_threads_.workers->AsEigenThreadPool(),
-        eigen_worker_threads_.num_threads));
+        eigen_worker_threads_.num_threads);
     set_tensorflow_cpu_worker_threads(&eigen_worker_threads_);
     set_eigen_cpu_device(eigen_device_.get());
   }
 
   ~SingleThreadedCpuDevice() override { eigen_device_.reset(); }
 
-  Status Sync() override { return OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
 
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override {
+  absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                   const AllocatorAttributes alloc_attrs,
+                                   Tensor* tensor) override {
     Tensor parsed(tensor_proto.dtype());
     if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
       return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
     }
     *tensor = parsed;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
@@ -79,7 +81,7 @@ class SingleThreadedCpuDevice : public Device {
       return;
     }
     tensor::DeepCopy(*input_tensor, output_tensor);
-    done(OkStatus());
+    done(absl::OkStatus());
   }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {

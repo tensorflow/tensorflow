@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,92 +15,143 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_executable.h"
 
+#define EIGEN_USE_THREADS
+
 #include <stdint.h>
 
 #include <algorithm>
-#include <functional>
+#include <cstring>
+#include <memory>
 #include <optional>
-#include <set>
 #include <string>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/cleanup/cleanup.h"
+#include "absl/base/dynamic_annotations.h"
+#include "absl/base/optimization.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "unsupported/Eigen/CXX11/Tensor"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/IR/Mangler.h"
+#include "llvm/Support/Error.h"
+#include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/function_library.h"
+#include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
+#include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/thunk_executor.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/mlir/runtime/transforms/compiler.h"
+#include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/computation_layout.h"
-#include "xla/service/logical_buffer.h"
+#include "xla/service/cpu/cpu_runtime.h"
+#include "xla/service/custom_call_status.h"
+#include "xla/service/custom_call_status_internal.h"
+#include "xla/service/executable.h"
+#include "xla/service/hlo_execution_profile.h"
+#include "xla/service/hlo_profile_printer_data.pb.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_stream.h"
-#include "xla/types.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {
 
-namespace runtime = ::xla::runtime;
+using ConstantAllocation = CpuExecutable::ConstantAllocation;
 
-StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
-    std::unique_ptr<SimpleOrcJIT> jit,
+se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
+  if (auto* empty = std::get_if<std::monostate>(&data)) {
+    return se::DeviceMemoryBase();
+  }
+
+  if (auto* owned = std::get_if<std::unique_ptr<Literal>>(&data)) {
+    return se::DeviceMemoryBase((*owned)->untyped_data(),
+                                (*owned)->size_bytes());
+  }
+
+  auto* view = std::get_if<absl::Span<const uint8_t>>(&data);
+  return se::DeviceMemoryBase(
+      const_cast<void*>(reinterpret_cast<const void*>(view->data())),
+      view->size());
+}
+
+absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
+    std::unique_ptr<FunctionLibrary> function_library,
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module,
     const std::string& entry_function_name,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
+  VLOG(2) << "Create CpuExecutable from a jit compiled function: "
+          << entry_function_name << ", module=" << hlo_module->name();
+
   std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment)));
-  executable->jit_ = std::move(jit);
+  executable->function_library_ = std::move(function_library);
   executable->module_name_ = entry_function_name;
 
-  // Resolve symbols in the constructor rather than at execution time to avoid
-  // races because FindSymbol is not thread safe.
-  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
-      executable->jit_->FindCompiledSymbol(entry_function_name);
-  // We expect to find the symbol provided with entry_function_name; otherwise
-  // this is an internal error.
-  if (!sym) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Symbol ", entry_function_name, " not found."));
-  }
-  // getAddress can do work under the hood in the jit, so it needs to be
-  // guarded by the mutex.
-  executable->compute_function_ =
-      reinterpret_cast<ComputeFunctionType>(sym->getAddress().getValue());
+  TF_ASSIGN_OR_RETURN(
+      executable->compute_function_,
+      executable->function_library_
+          ->ResolveFunction<std::remove_pointer_t<ComputeFunctionType>>(
+              entry_function_name));
+
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(executable->compute_function_);
-  executable->jit_->DoneCompiling();
+
   return executable;
 }
 
-StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
+    std::unique_ptr<FunctionLibrary> function_library,
     std::unique_ptr<const BufferAssignment> assignment,
-    std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable) {
+    std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
+    std::vector<ConstantAllocation> constants,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
+  VLOG(2) << "Create CpuExecutable from a thunk sequence; module="
+          << hlo_module->name() << ", constants=" << constants.size();
+
   std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment)));
-  executable->xla_runtime_executable_ = std::move(xla_runtime_executable);
+  executable->function_library_ = std::move(function_library);
+
+  TF_ASSIGN_OR_RETURN(executable->thunks_,
+                      ThunkExecutor::Create(std::move(thunks)));
+
+  // Re-index constants by their allocation index to allow efficient lookup.
+  for (auto& constant : constants) {
+    if (executable->constants_.size() <= constant.index) {
+      executable->constants_.resize(constant.index + 1);
+    }
+    executable->constants_[constant.index] = std::move(constant);
+  }
+
   return executable;
 }
 
@@ -112,13 +163,9 @@ CpuExecutable::CpuExecutable(
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       assignment_(std::move(assignment)) {
-  if (assignment_) {
-    buffer_assignment_ =
-        std::make_shared<BufferAssignmentProto>(assignment_->ToProto());
-  }
-  if (has_module()) {
+  if (assignment_ && has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               buffer_assignment_);
+                                               assignment_->ToProto());
   }
 }
 
@@ -128,9 +175,10 @@ CpuExecutable::~CpuExecutable() {
   }
 }
 
-static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
+static absl::StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
     const BufferAllocation& allocation,
-    absl::Span<ExecutionInput const> arguments,
+    absl::Span<const ExecutionInput> arguments,
+    absl::Span<const ConstantAllocation> constants,
     se::DeviceMemoryAllocator* memory_allocator, int device_ordinal) {
   VLOG(3) << allocation.ToString();
   if (allocation.is_entry_computation_parameter()) {
@@ -144,6 +192,10 @@ static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
     return MaybeOwningDeviceMemory{out};
   } else if (allocation.is_constant()) {
     VLOG(3) << "allocation is a constant";
+    if (allocation.index() < constants.size()) {
+      return MaybeOwningDeviceMemory(
+          constants[allocation.index()].AsDeviceMemoryBase());
+    }
     return MaybeOwningDeviceMemory{se::DeviceMemoryBase{}};
   } else if (allocation.is_thread_local()) {
     VLOG(3) << "buffer is thread-local";
@@ -157,16 +209,17 @@ static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
           << "]";
 
   // Since the output buffer and all the temporary buffers were written into
-  // by the JITed code, msan has no way of knowing their memory was
-  // initialized. Mark them initialized so that msan doesn't flag loads from
-  // these buffers.
+  // by the JITed code, memory sanitizer has no way of knowing their memory was
+  // initialized. Mark them initialized so that memory sanitizer doesn't flag
+  // loads from these buffers.
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(out->opaque(), buffer_size);
   return MaybeOwningDeviceMemory{std::move(out)};
 }
 
-StatusOr<std::vector<MaybeOwningDeviceMemory>> CpuExecutable::CreateBufferTable(
-    se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-    absl::Span<ExecutionInput const> arguments) {
+absl::StatusOr<std::vector<MaybeOwningDeviceMemory>>
+CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
+                                 int device_ordinal,
+                                 absl::Span<ExecutionInput const> arguments) {
   std::vector<MaybeOwningDeviceMemory> buffers(
       assignment_->Allocations().size());
   VLOG(3) << "Allocating " << assignment_->Allocations().size()
@@ -174,9 +227,9 @@ StatusOr<std::vector<MaybeOwningDeviceMemory>> CpuExecutable::CreateBufferTable(
   for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
        ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
-    TF_ASSIGN_OR_RETURN(
-        buffers[i], MemoryForAllocation(allocation, arguments, memory_allocator,
-                                        device_ordinal));
+    TF_ASSIGN_OR_RETURN(buffers[i],
+                        MemoryForAllocation(allocation, arguments, constants_,
+                                            memory_allocator, device_ordinal));
   }
 
   if (VLOG_IS_ON(3)) {
@@ -187,19 +240,13 @@ StatusOr<std::vector<MaybeOwningDeviceMemory>> CpuExecutable::CreateBufferTable(
   return std::move(buffers);
 }
 
-Status CpuExecutable::ExecuteComputeFunction(
+absl::Status CpuExecutable::ExecuteComputeFunction(
     const ExecutableRunOptions* run_options,
-    absl::Span<MaybeOwningDeviceMemory const> buffers,
-    HloExecutionProfile* hlo_execution_profile) {
+    absl::Span<MaybeOwningDeviceMemory const> buffers) {
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
-  size_t profile_counters_size =
-      hlo_execution_profile ? hlo_execution_profile->profile_counters().size()
-                            : 0;
-  int64_t* profile_counters =
-      hlo_execution_profile
-          ? hlo_execution_profile->mutable_profile_counters()->data()
-          : nullptr;
+  size_t profile_counters_size = 0;
+  int64_t* profile_counters = nullptr;
 
   // Call the computation function following the calling convention. See the
   // definition of 'ComputeFunctionType' for the details of the calling
@@ -228,119 +275,85 @@ Status CpuExecutable::ExecuteComputeFunction(
       const double nanoseconds = (end_micros - start_micros) * 1000.0;
       run_options->execution_profile()->set_compute_time_ns(
           std::max(nanoseconds, 1.0));
-      // If hlo profiling was disabled then the cycle count is left empty.
-      if (hlo_execution_profile) {
-        run_options->execution_profile()->set_compute_cycle_count(
-            hlo_execution_profile->total_cycles_executed(
-                *module().entry_computation()));
-      }
     }
   };
 
-  if (IsXlaRuntime()) {
-    std::vector<BufferDesc> descriptor_table;
-    descriptor_table.reserve(buffers.size());
-    for (const auto& buffer : buffers) {
-      const tensorflow::se::DeviceMemoryBase& base =
-          buffer.AsDeviceMemoryBase();
-      BufferDesc desc(const_cast<void*>(base.opaque()), base.size());
-      descriptor_table.push_back(std::move(desc));
-    }
-    Status status = ExecuteXlaRuntime(descriptor_table, run_options);
-    record_profile();
-    if (!status.ok()) {
-      return status;
-    }
-  } else {
-    XlaCustomCallStatus status;
-    // For the entry computation (like all global computations), all inputs and
-    // outputs are in the buffer table, and both the result pointer and args
-    // array pointers are unused (so we set them to 'nullptr').
-    compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
-                      &status, profile_counters);
-    record_profile();
-    std::optional<absl::string_view> error_message =
-        CustomCallStatusGetMessage(&status);
-    if (error_message) {
-      return InternalError("CustomCall failed: %s", *error_message);
-    }
+  XlaCustomCallStatus status;
+  // For the entry computation (like all global computations), all inputs and
+  // outputs are in the buffer table, and both the result pointer and args
+  // array pointers are unused (so we set them to 'nullptr').
+  compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
+                    &status, profile_counters);
+  record_profile();
+  std::optional<absl::string_view> error_message =
+      CustomCallStatusGetMessage(&status);
+  if (error_message) {
+    return Internal("CustomCall failed: %s", *error_message);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
-    std::unique_ptr<HloModule> hlo_module, absl::string_view obj_file,
-    absl::string_view mlir_module,
-    std::unique_ptr<BufferAssignment> buffer_assignment,
-    XlaFrameworkMapping xla_framework_mapping,
-    runtime::JitExecutable::Options opts) {
-  VLOG(1) << "Load serialized Cpu executable from object file: module="
-          << hlo_module->name();
+absl::Status CpuExecutable::ExecuteThunks(
+    const ExecutableRunOptions* run_options,
+    absl::Span<MaybeOwningDeviceMemory const> buffers) {
+  uint64_t start_ns = tsl::Env::Default()->NowNanos();
 
-  runtime::DialectRegistry dialects;
-  opts.compiler.register_dialects(dialects);
-  auto threading = mlir::MLIRContext::Threading::DISABLED;
-  auto ctx = std::make_unique<mlir::MLIRContext>(*dialects, threading);
-  ctx->loadAllAvailableDialects();
+  size_t profile_counters_size = 0;
+  int64_t* profile_counters = nullptr;
 
-  // Load MLIR module behind the compiled object file.
-  auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, ctx.get());
-  if (!module) return InternalError("Failed to parse AOT compiled module");
+  BufferAllocations allocations(buffers);
 
-  llvm::StringRef data(obj_file.data(), obj_file.size());
-  auto buffer = llvm::MemoryBuffer::getMemBuffer(data, hlo_module->name());
+  VLOG(3) << "Executing XLA:CPU thunks:";
+  VLOG(3) << absl::StrFormat("  Number of buffer allocations: %u",
+                             buffers.size());
+  auto mem_printer = [](std::string* out, const MaybeOwningDeviceMemory& mem) {
+    absl::StrAppend(out,
+                    absl::StrFormat("%p", mem.AsDeviceMemoryBase().opaque()));
+  };
+  VLOG(3) << absl::StrFormat("  Buffer allocations: [%s]",
+                             absl::StrJoin(buffers, ", ", mem_printer));
+  VLOG(3) << absl::StrFormat("  Number of profile counters: %u",
+                             profile_counters_size);
+  VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
 
-  // Recover function signatures using calling convention and type converter.
-  auto func = mlir::cast<mlir::func::FuncOp>(module->lookupSymbol("main"));
-  mlir::FunctionType func_type = func.getFunctionType();
-  absl::StatusOr<runtime::FunctionType> sig =
-      opts.compiler.type_converter.Convert(func_type);
-  if (!sig.ok())
-    return InternalError("Type converter failed to convert function type");
+  // Prepare for executing XLA program collectively.
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_execute_params,
+                      Thunk::CollectiveExecuteParams::Create(run_options));
 
-  mlir::FunctionType runtime_type = opts.compiler.calling_convention(func_type);
-  if (!runtime_type)
-    return InternalError("Calling convention failed to convert function type");
+  // Prepare for executing XLA custom calls.
+  TF_ASSIGN_OR_RETURN(Thunk::CustomCallExecuteParams custom_call_execute_params,
+                      Thunk::CustomCallExecuteParams::Create(run_options));
 
-  absl::StatusOr<runtime::FunctionType> runtime_sig =
-      opts.compiler.type_converter.Convert(runtime_type);
-  if (!runtime_sig.ok())
-    return InternalError(
-        "Type converter failed to convert runtime function type");
+  // Use the intra-op thread pool to offload thunk executor tasks.
+  auto* intra_op_thread_pool = run_options->intra_op_thread_pool();
+  ThreadPoolTaskRunner task_runner(
+      intra_op_thread_pool ? intra_op_thread_pool->getPool() : nullptr);
 
-  // Cpu executable has a single exported function.
-  std::vector<runtime::Executable::LoadFunction> functions;
-  functions.push_back({"main", std::move(*sig), std::move(*runtime_sig)});
+  Thunk::ExecuteParams execute_params = {
+      &*function_library_,
+      &allocations,
+      runtime::GetXfeedManager(runtime::GetDeviceOrdinal(run_options)),
+      intra_op_thread_pool,
+      &task_runner,
+      &collective_execute_params,
+      &custom_call_execute_params};
 
-  // Load XLA Runtime executable from an object file.
-  auto executable = runtime::Executable::LoadFromObjFile(
-      hlo_module->name(), std::move(buffer), std::move(functions),
-      opts.compiler.symbols_binding);
+  auto executed_event = thunks_->Execute(execute_params);
+  tsl::BlockUntilReady(executed_event);
 
-  if (!executable.ok())
-    return InternalError("Failed to load XLA Runtime executable: %s",
-                         executable.status().message());
+  if (run_options->execution_profile()) {
+    uint64_t end_ns = tsl::Env::Default()->NowNanos();
+    run_options->execution_profile()->set_compute_time_ns(
+        std::max<int64_t>(end_ns - start_ns, 1));
+  }
 
-  // Instantiate state for all registered FFI modules.
-  auto ffi_modules_state = runtime::ffi::FfiModulesState::Instantiate();
-  if (!ffi_modules_state.ok())
-    return InternalError("Failed to instantiate FFI modules state: %s",
-                         ffi_modules_state.status().message());
-
-  // Move runtime::Executable ownership to the XlaRuntimeCpuExecutable.
-  auto executable_ptr =
-      std::make_unique<runtime::Executable>(std::move(executable.value()));
-  auto xla_runtime_executable = std::make_unique<XlaRuntimeCpuExecutable>(
-      std::move(executable_ptr), xla_framework_mapping,
-      std::move(*ffi_modules_state));
-
-  return CpuExecutable::Create(std::move(hlo_module), nullptr, nullptr,
-                               std::move(buffer_assignment),
-                               std::move(xla_runtime_executable));
+  return ABSL_PREDICT_FALSE(executed_event.IsError())
+             ? executed_event.GetError()
+             : absl::OkStatus();
 }
 
-StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
+absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<MaybeOwningDeviceMemory> buffers,
     absl::Span<ExecutionInput> arguments) {
@@ -440,171 +453,9 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
   return std::move(result);
 }
 
-// Converts a BufferDesc to a MemrefDesc according to the given 'operand_type',
-// which should point to a runtime::MemrefType.
-// Note: 'descriptor_index' and 'operand_index' are just used for error
-// reporting.
-static StatusOr<runtime::MemrefDesc> BufferToMemref(
-    const BufferDesc& descriptor, const runtime::Type& operand_type,
-    size_t descriptor_index, size_t operand_index) {
-  auto* memref = llvm::dyn_cast<runtime::MemrefType>(&operand_type);
-  if (!memref) {
-    return InternalError(
-        "Cannot convert descriptor %zu (operand_index %zu): "
-        "the corresponding type in the signature is a %s, "
-        "not a MemrefType.",
-        descriptor_index, operand_index, operand_type.ToString());
-  }
-
-  absl::Span<const int64_t> dims = memref->sizes();
-
-  // Verify that the provided descriptor size matches that of the memref.
-  size_t n_elem = absl::c_accumulate(dims, size_t{1}, std::multiplies<>());
-  size_t expected_size =
-      primitive_util::ByteWidth(memref->element_type()) * n_elem;
-  if (LLVM_UNLIKELY(expected_size != descriptor.size())) {
-    return InvalidArgument(
-        "Cannot convert descriptor %zu (operand_index %zu): "
-        "buffer size is not equal to that expected from the element type: "
-        "got %zu vs expected %zu.",
-        descriptor_index, operand_index, descriptor.size(), expected_size);
-  }
-
-  auto fill_sizes_and_strides = [&](auto sizes, auto strides) {
-    size_t multiplier = 1;
-    for (int i = static_cast<int>(dims.size()) - 1; i >= 0; --i) {
-      size_t size = dims[i];
-      sizes[i] = size;
-      strides[i] = multiplier;
-      multiplier *= size;
-    }
-  };
-  return runtime::MemrefDesc(memref->rank(), memref->element_type(),
-                             descriptor.data(), /*offset=*/0,
-                             fill_sizes_and_strides);
-}
-
-// Executes from an XLA Runtime CPU executable, given a buffer descriptor table.
-// Relevant elements of the descriptor table (i.e. arguments and results) are
-// converted to MemrefDesc's according to the corresponding operands in the
-// runtime signature.
-Status XlaRuntimeCpuExecutable::Execute(
-    const std::vector<BufferDesc>& descriptor_table,
-    const ExecutableRunOptions* run_options) {
-  const runtime::FunctionType& signature = GetExecutable().runtime_signature();
-
-  size_t num_arguments = xla_framework_mapping_.inputs.size();
-  if (xla_framework_mapping_.output_is_tuple) {
-    num_arguments += xla_framework_mapping_.flattened_outputs.size();
-  } else if (xla_framework_mapping_.result != -1) {
-    num_arguments += 1;
-  }
-
-  // Verify that the number of arguments in the mapping matches the signature.
-  // Add one to num_arguments to account for the signature's execution context.
-  if (num_arguments + 1 != signature.num_operands()) {
-    return InternalError(
-        "Wrong number of arguments: got %zu via XLA FrameworkMapping, expected "
-        "%d.",
-        num_arguments, static_cast<int>(signature.num_operands()) - 1);
-  }
-
-  std::vector<runtime::MemrefDesc> arguments;
-  arguments.reserve(num_arguments);
-
-  auto append_converted_buffer = [&](size_t descriptor_index) -> Status {
-    const BufferDesc& descriptor = descriptor_table[descriptor_index];
-
-    // Use 1-based index to account for the execution context.
-    size_t operand_index = arguments.size() + 1;
-    const runtime::Type* operand_type = signature.operand(operand_index);
-
-    StatusOr<runtime::MemrefDesc> memref = BufferToMemref(
-        descriptor, *operand_type, descriptor_index, operand_index);
-    if (!memref.ok()) {
-      return memref.status();
-    }
-    arguments.push_back(std::move(*memref));
-    return OkStatus();
-  };
-
-  // Inputs come first; results come last.
-  for (int64_t index : xla_framework_mapping_.inputs) {
-    TF_RETURN_IF_ERROR(append_converted_buffer(index));
-  }
-
-  int64_t result_index = xla_framework_mapping_.result;
-  if (xla_framework_mapping_.output_is_tuple) {
-    size_t num_outputs = xla_framework_mapping_.flattened_outputs.size();
-    for (size_t i = 0; i < num_outputs; ++i) {
-      int64_t output_index = xla_framework_mapping_.flattened_outputs[i];
-
-      TF_RETURN_IF_ERROR(append_converted_buffer(output_index));
-
-      // Populate the output tuple with a pointer to this result.
-      // TODO(b/249078472): make this work with nested tuples, if needed.
-      assert(result_index != -1);
-      void** results =
-          static_cast<void**>(descriptor_table[result_index].data());
-      results[i] = descriptor_table[output_index].data();
-    }
-  } else if (result_index != -1) {
-    TF_RETURN_IF_ERROR(append_converted_buffer(result_index));
-  }
-
-  runtime::Executable::CallFrame call_frame;
-  // Skip verification. The MemrefDesc's we created above come from the runtime
-  // signature; verifying them against the same signature would be redundant.
-  if (auto status =
-          GetExecutable().InitializeCallFrame(arguments, &call_frame,
-                                              /*verify_arguments=*/false);
-      !status.ok()) {
-    return InternalError("Failed to initialize call frame: %s.",
-                         status.message());
-  }
-
-  // No results to return; they are returned via out params.
-  runtime::NoResultConverter converter;
-
-  // Collect all emitted diagnostic messages.
-  std::string diagnostic;
-  runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
-    absl::StrAppend(&diagnostic, d.status().message());
-    return runtime::success();
-  });
-
-  // Initialize state required for running functions exported from FFI modules.
-  absl::StatusOr<runtime::ffi::FfiStateVector> ffi_state =
-      ffi_modules_state_.state_vector();
-  if (!ffi_state.ok()) return ffi_state.status();
-
-  runtime::CustomCall::UserData user_data(run_options, &ffi_state.value());
-
-  runtime::Executable::ExecuteOpts opts;
-  opts.custom_call_data = &user_data;
-  opts.diagnostic_engine = &diagnostic_engine;
-  opts.custom_call_registry = &dynamic_custom_calls_;
-
-  // We don't expect to see any async tasks in the XLA Runtime executable.
-  opts.async_task_runner =
-      reinterpret_cast<runtime::AsyncTaskRunner*>(0xdeadbeef);
-
-  // Execute with the prepared call frame.
-  GetExecutable().Execute(call_frame, opts);
-  if (auto status = GetExecutable().ReturnResults(converter, &call_frame);
-      !status.ok()) {
-    return InternalError("Failed to execute XLA Runtime executable: %s%s%s.",
-                         status.message(), diagnostic.empty() ? "" : ": ",
-                         diagnostic);
-  }
-  return OkStatus();
-}
-
-StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
+absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    std::vector<ExecutionInput> arguments) {
   if (GetRootValueSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
@@ -625,8 +476,8 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     }
   }
 
-  auto* host_stream = dynamic_cast<se::host::HostStream*>(
-      run_options->stream()->implementation());
+  auto* host_stream =
+      dynamic_cast<se::host::HostStream*>(run_options->stream());
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   TF_ASSIGN_OR_RETURN(
@@ -652,18 +503,23 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     CpuExecutable* executable;
     ServiceExecutableRunOptions run_options;
     std::shared_ptr<std::vector<MaybeOwningDeviceMemory>> task_buffers;
-    HloExecutionProfile* hlo_execution_profile;
 
-    Status operator()() {
-      return executable->ExecuteComputeFunction(
-          &run_options.run_options(), *task_buffers, hlo_execution_profile);
+    absl::Status operator()() {
+      if (executable->has_compute_function()) {
+        return executable->ExecuteComputeFunction(&run_options.run_options(),
+                                                  *task_buffers);
+      } else if (executable->has_thunks()) {
+        return executable->ExecuteThunks(&run_options.run_options(),
+                                         *task_buffers);
+      } else {
+        return Internal("No compute function or thunks found.");
+      }
     }
   };
   host_stream->EnqueueTaskWithStatus(
       AsyncRunTask{this, *run_options,
                    std::make_shared<std::vector<MaybeOwningDeviceMemory>>(
-                       std::move(buffers)),
-                   hlo_execution_profile});
+                       std::move(buffers))});
 
   MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);
@@ -688,10 +544,8 @@ const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
 }
 
 int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
-  // TODO(b/233850967): support profiling in XLA:CPU-Next, instead of
-  // punting on it as we are doing here.
-  if (IsXlaRuntime()) return 0;
-  return jit_->SizeOfGeneratedCodeInBytes();
+  // TODO(ezhulenev): Delete this function, it's not really used anywhere.
+  return 0;
 }
 
 }  // namespace cpu

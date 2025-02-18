@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tracing {
-Status MaybeSetOpName(AbstractOperation*, const char* op_name);
+absl::Status MaybeSetOpName(AbstractOperation*, const char* op_name);
 }  // namespace tracing
 }  // namespace tensorflow
 

@@ -16,10 +16,10 @@ limitations under the License.
 #include "tsl/platform/unbounded_work_queue.h"
 
 #include "absl/memory/memory.h"
-#include "tsl/platform/random.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/blocking_counter.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
+#include "tsl/platform/random.h"
 
 namespace tsl {
 namespace {

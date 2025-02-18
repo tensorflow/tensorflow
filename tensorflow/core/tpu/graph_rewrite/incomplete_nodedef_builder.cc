@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -51,8 +52,8 @@ IncompleteNodeDefBuilder& IncompleteNodeDefBuilder::Device(
   return *this;
 }
 
-Status IncompleteNodeDefBuilder::Build(Graph* graph, Node** n) {
-  Status status;
+absl::Status IncompleteNodeDefBuilder::Build(Graph* graph, Node** n) {
+  absl::Status status;
   *n = graph->AddNode(nodedef_, &status);
   return status;
 }

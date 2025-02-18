@@ -76,18 +76,18 @@ AnonymousMemoryCacheHandleOp::AnonymousMemoryCacheHandleOp(
 
 string AnonymousMemoryCacheHandleOp::name() { return kMemoryCache; }
 
-Status AnonymousMemoryCacheHandleOp::CreateResource(
+absl::Status AnonymousMemoryCacheHandleOp::CreateResource(
     OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
     FunctionLibraryRuntime* lib, MemoryCacheManager** manager) {
   *manager = new MemoryCacheManager();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DeleteMemoryCacheOp::Compute(OpKernelContext* ctx) {
   const ResourceHandle& handle = ctx->input(0).flat<ResourceHandle>()(0);
   // The resource might have been already deleted by the dataset.
-  Status s = ctx->resource_manager()->Delete(handle);
+  absl::Status s = ctx->resource_manager()->Delete(handle);
   if (!errors::IsNotFound(s)) {
     OP_REQUIRES_OK(ctx, s);
   }

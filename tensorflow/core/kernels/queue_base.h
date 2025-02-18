@@ -53,8 +53,8 @@ class QueueBase : public QueueInterface {
     return component_dtypes_;
   }
 
-  Status ValidateTuple(const Tuple& tuple) override;
-  Status ValidateManyTuple(const Tuple& tuple) override;
+  absl::Status ValidateTuple(const Tuple& tuple) override;
+  absl::Status ValidateManyTuple(const Tuple& tuple) override;
 
   void Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
              DoneCallback callback) override;
@@ -72,8 +72,8 @@ class QueueBase : public QueueInterface {
   }
 
   // Copies the index^th slice (in the first dimension) of parent into element.
-  static Status CopySliceToElement(const Tensor& parent, Tensor* element,
-                                   int64_t index);
+  static absl::Status CopySliceToElement(const Tensor& parent, Tensor* element,
+                                         int64_t index);
 
   // Copies element into the index^th slice (in the first dimension) of parent.
   // NOTE(mrry): This method is deprecated. Use
@@ -82,8 +82,8 @@ class QueueBase : public QueueInterface {
   ABSL_DEPRECATED(
       "Use `tensorflow::batch_util::CopySliceToElement()` defined in "
       "\"./batch_util.h\" instead.")
-  static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
-                                   int64_t index);
+  static absl::Status CopyElementToSlice(const Tensor& element, Tensor* parent,
+                                         int64_t index);
 
  protected:
   enum Action { kEnqueue, kDequeue };
@@ -110,7 +110,7 @@ class QueueBase : public QueueInterface {
   bool specified_shapes() const { return component_shapes_.size() > 0; }
 
   // Code common to Validate*Tuple().
-  Status ValidateTupleCommon(const Tuple& tuple) const;
+  absl::Status ValidateTupleCommon(const Tuple& tuple) const;
 
   TensorShape ManyOutShape(int i, int64_t batch_size) {
     TensorShape shape({batch_size});
@@ -135,12 +135,13 @@ class QueueBase : public QueueInterface {
   ~QueueBase() override;
 
   // Helpers for implementing MatchesNodeDef().
-  static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
-  Status MatchesNodeDefOp(const NodeDef& node_def, const string& op) const;
-  Status MatchesNodeDefCapacity(const NodeDef& node_def,
-                                int32_t capacity) const;
-  Status MatchesNodeDefTypes(const NodeDef& node_def) const;
-  Status MatchesNodeDefShapes(const NodeDef& node_def) const;
+  static string ShapeListString(const absl::Span<const TensorShape>& shapes);
+  absl::Status MatchesNodeDefOp(const NodeDef& node_def,
+                                const string& op) const;
+  absl::Status MatchesNodeDefCapacity(const NodeDef& node_def,
+                                      int32_t capacity) const;
+  absl::Status MatchesNodeDefTypes(const NodeDef& node_def) const;
+  absl::Status MatchesNodeDefShapes(const NodeDef& node_def) const;
 
  protected:
   const int32 capacity_;
@@ -178,7 +179,8 @@ class QueueBase : public QueueInterface {
   std::deque<Attempt> enqueue_attempts_ TF_GUARDED_BY(mu_);
   std::deque<Attempt> dequeue_attempts_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(QueueBase);
+  QueueBase(const QueueBase&) = delete;
+  void operator=(const QueueBase&) = delete;
 };
 
 }  // namespace tensorflow

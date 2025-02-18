@@ -1,5 +1,8 @@
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "tf_py_benchmark_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,8 +14,6 @@ py_strict_binary(
     name = "autotune_benchmark_binary",
     srcs = ["autotune_benchmark.py"],
     main = "autotune_benchmark.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -22,7 +23,7 @@ py_strict_binary(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "autotune_benchmark",
     srcs = ["autotune_benchmark.py"],
     deps = [
@@ -34,7 +35,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "parameter_value_benchmark",
     srcs = ["parameter_value_benchmark.py"],
     deps = [
@@ -47,7 +48,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "csv_dataset_benchmark",
     srcs = ["csv_dataset_benchmark.py"],
     tags = ["no_pip"],
@@ -61,7 +62,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "map_and_batch_benchmark",
     srcs = ["map_and_batch_benchmark.py"],
     deps = [
@@ -77,7 +78,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "map_defun_benchmark",
     srcs = ["map_defun_benchmark.py"],
     deps = [
@@ -92,7 +93,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "matching_files_benchmark",
     size = "small",
     srcs = ["matching_files_benchmark.py"],
@@ -102,7 +103,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "optimize_benchmark",
     srcs = ["optimize_benchmark.py"],
     deps = [
@@ -113,7 +114,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "rejection_resample_benchmark",
     srcs = ["rejection_resample_benchmark.py"],
     tags = ["no_pip"],
@@ -126,7 +127,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "snapshot_dataset_benchmark",
     srcs = ["snapshot_dataset_benchmark.py"],
     deps = [
@@ -138,7 +139,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "unbatch_benchmark",
     srcs = ["unbatch_benchmark.py"],
     deps = [

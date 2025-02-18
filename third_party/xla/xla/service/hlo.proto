@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@ syntax = "proto3";
 
 package xla;
 
+import "google/protobuf/any.proto";
+import "xla/service/metrics.proto";
 import "xla/xla_data.proto";
 
 option cc_enable_arenas = true;
@@ -111,7 +113,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 83
+// Next ID: 92
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -222,6 +224,9 @@ message HloInstructionProto {
   // Describes the dimension numbers used for a dot operation
   xla.DotDimensionNumbers dot_dimension_numbers = 30;
 
+  // Describes the dimension numbers used for a ragged dot operation
+  xla.RaggedDotDimensionNumbers ragged_dot_dimension_numbers = 90;
+
   // FFT type (FFT, IFFT, etc).
   xla.FftType fft_type = 31;
 
@@ -251,8 +256,10 @@ message HloInstructionProto {
   // Backend configuration for the instruction. Has backend-specific meaning.
   bytes backend_config = 43;
 
-  // Cross replica op fields.
-  repeated ReplicaGroup replica_groups = 49;
+  // Deprecated, but keeping for backward compatibility.
+  // Use collective_device_list. Cross replica op fields.
+  repeated ReplicaGroup replica_groups = 49 [deprecated = true];
+
   // Deprecated, but keeping it for backward compatibility. Use channel_id.
   // Non-positive all_reduce_id is equivalent to no all_reduce_id.
   int64 all_reduce_id = 45 [deprecated = true];
@@ -351,10 +358,8 @@ message HloInstructionProto {
   // status-returning API.
   CustomCallApiVersion custom_call_api_version = 77;
 
-  // Represents a unique identifier for an async group which consists of an
-  // async start, async done, and zero or more async update operations.
-  // Negative async_group_id is equivalent to no async group id.
-  int64 async_group_id = 78;
+  // Used to be async_group_id.
+  reserved 78;
 
   // Represents a unique execution thread name for one or more async groups.
   // Each HLO module may contain a main thread and one or more parallel threads.
@@ -364,9 +369,32 @@ message HloInstructionProto {
   // Represents the K value for top-k.
   int64 k = 81;
 
+  // Represents the largest flag for top-k.
+  bool largest = 85;
+
   // Represents the information for tracking propagation of values within HLO
   // graph.
   xla.StatisticsViz statistics_viz = 82;
+
+  // Used to be operation_queue_id.
+  reserved 83;
+  // Used to be wait_on_operation_queues.
+  reserved 84;
+
+  // Sparsity descriptor for dot operation.
+  repeated xla.SparsityDescriptor dot_sparsity = 86;
+
+  // Represents the list of devices that participate in a collective operation.
+  xla.CollectiveDeviceListProto collective_device_list = 87;
+
+  // For HLO value tracking.
+  xla.OriginalValueProto original_value = 88;
+
+  // Specifies if a call instruction is a composite.
+  bool is_composite = 89;
+
+  // Accuracy for unary functions with multiple implementations.
+  xla.ResultAccuracy result_accuracy = 91;
 }
 
 // Serialization of HloComputation.
@@ -561,8 +589,16 @@ message HloModuleProto {
     FUSION = 2;
     LAYOUT = 3;
     DOT = 4;
+    FLAGNET = 5;
+    SHARDING = 6;
   }
-
+  // The type of profile generation strategy used to generate the profile.
+  enum ProfileGenerationStrategy {
+    PROFILE_GENERATION_STRATEGY_UNKNOWN = 0;
+    PROFILE_GENERATION_STRATEGY_GA = 1;
+    PROFILE_GENERATION_STRATEGY_FANTA = 2;
+    PROFILE_GENERATION_STRATEGY_CFO = 3;
+  }
   // Information about the optimization profile that this module contains.
   message ProfileInfo {
     // The optimization profiles that this module contains.
@@ -573,6 +609,11 @@ message HloModuleProto {
     xla.ProfileSource profile_source = 3;
     // The compilation event that triggered the use of the profile.
     xla.CompilationEvent compilation_event = 4;
+    // The fingerprint of this profile. `fingerprint` should match a key
+    // in the profile table.
+    string fingerprint = 5;
+    // The type of profile generation strategy used to generate the profile.
+    ProfileGenerationStrategy profile_generation_strategy = 6;
   }
 
   // Profile information for the HLO module.
@@ -720,6 +761,30 @@ message HloSnapshot {
   string execution_platform = 4;
 }
 
+message HloInputs {
+  // Stores the information required to decode the literal.
+  message LiteralDescriptor {
+    int32 version = 1;
+    uint64 argument_size_bytes = 2;
+  }
+
+  // Only one of the following two fields is expected to be set. `arguments`
+  // stores the literals, when `arguments_descriptors` stores only the
+  // information required to decode the literals. This was introduced to bypass
+  // the 2GiB limitation on proto size.
+  repeated LiteralProto arguments = 1;
+  repeated LiteralDescriptor arguments_descriptors = 2;
+}
+
+message HloUnoptimizedSnapshot {
+  // The unoptimized hlo graph.
+  HloModuleProto hlo_module = 1;
+
+  repeated HloInputs partitions = 2;
+
+  int32 version = 3;
+}
+
 // Metadata for an HLO module. Dumped after HLO passes and before LLO lowering
 // with filename module_####.metadata.textproto, where #### is
 // canonical_module_id.
@@ -782,57 +847,10 @@ message HloPassMetadata {
   // Timestamp before and after the pass is run. Note they may be equal.
   int64 start_timestamp_usec = 8;
   int64 end_timestamp_usec = 9;
-}
 
-// Encodes attributes for an entry function.
-message EntryFunctionAttributes {
-  // Acts as the underlying container for an xla::ShapeIndex.
-  message ShapeIndex {
-    repeated int64 indices = 1;
-  }
+  // Custom metadata for the pass.
+  google.protobuf.Any custom_metadata = 10;
 
-  // Encodes attributes for a single buffer parameter.
-  message BufferParameterAttributes {
-    // Represents an lmhlo.params function argument attribute.
-    int64 lmhlo_params = 1;
-    // TODO(hanbinyoon): Deprecate when optional fields are available in proto3
-    // (Protocol Buffers v3.15.0).
-    bool lmhlo_params_present = 6;
-
-    // Represents an lmhlo.param_shape_index function argument attribute.
-    ShapeIndex lmhlo_param_shape_index = 2;
-
-    // Represents an lmhlo.constant_name function argument attribute.
-    string lmhlo_constant_name = 3;
-
-    // Represents an lmhlo.must_alias function argument attribute.
-    bool lmhlo_must_alias = 4;
-
-    // Represents an lmhlo.params function argument attribute.
-    ShapeIndex lmhlo_output_index = 5;
-  }
-
-  repeated BufferParameterAttributes buffers = 1;
-
-  // xla::Shape in string format.
-  string result_xla_shape = 2;
-}
-
-// Encodes the underlying Xla runtime executable compiled from the XLA module.
-message XlaRuntimeExecutableProto {
-  HloModuleProto hlo_module_proto = 1;
-
-  // TODO(b/232263665)): We need to know the TargetMachine this executable was
-  // compiled for, otherwise we can accidentally use illegal instrauctions (e.g.
-  // use AVX512 when it's not available).
-
-  // TODO(b/232263665)): Serialized executable has to know what APIs it has to
-  // be linked with, including the version. For example Gpu executable must be
-  // linked with a runtime layer that abstracts over CUDA.
-
-  // Serialized object file compiled from the XLA module.
-  bytes obj_file = 3;
-
-  // Serialized MLIR module corresponding to compiled object file.
-  string mlir_module = 4;
+  // Used to log any number of key, value pair stats per pass.
+  repeated KeyValueMetric kv_metrics = 11;
 }

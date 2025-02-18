@@ -3,13 +3,17 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/autotuning.proto";
+import "xla/tsl/protobuf/dnn.proto";
 import "xla/xla_data.proto";
-import "tsl/protobuf/dnn.proto";
 
 // Backend configs for XLA:GPU.
 //
 // These are metadata that the GPU backend attaches to HloInstructions and later
 // uses during e.g. codegen.
+//
+// GpuBackendConfig serves as a parent config for all backend configs so
+// configs won't overwrite each other. Any new backend config proto
+// should be added to and used in GpuBackendConfig.
 //
 // Remember that proto3 doesn't give clients a way to tell the difference
 // between a field not being present and a field having the default value.
@@ -94,6 +98,13 @@ message GemmBackendConfig {
   }
 
   Epilogue epilogue = 13;
+
+  optional int64 lhs_stride = 14;
+  optional int64 rhs_stride = 15;
+
+  optional bool grad_x = 16;
+  optional bool grad_y = 17;
+  bool damax_output = 18;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.
@@ -105,13 +116,70 @@ message BitcastBackendConfig {
 // Backend config for async collective operations. Note that for is_sync will
 // be false by default, so even if a backend config is not explicitly attached
 // to the HLOInstruction, getting the backend_config will yield a default valued
-// proto which will have is_sync = false.
+// proto which will have is_sync = false. Attribute no_parallel_custom_call
+// asserts that an asynchronous collective operation does not execute in
+// parallel with custom-calls, which can trigger device synchronization . This
+// attribute will also be false by default and should lead to conversative
+// runtime behavior.
 message CollectiveBackendConfig {
   bool is_sync = 1;
+  bool no_parallel_custom_call = 2;
+  // Determines whether the collective op of interested has been pipelined
+  // within a loop.
+  bool is_pipelined = 3;
+  // Cost model prediction.
+  ReificationCost reification_cost = 4;
 }
 
+// Backend config for cost model estimates.
 message ReificationCost {
-  double end_to_end_cycles = 1;  // Total execution time of the reified op.
+  // Total execution time of the reified op.
+  double end_to_end_cycles = 1;
+
+  // Estimated overall kernel execution in microseconds.
+  //
+  // GPU Cost Model estimates compute and memory access time separately. Exec
+  // time is a combined metric of the two.
+  double exec_time_us = 2;
+
+  // Estimate for compute time in microseconds.
+  double compute_time_us = 3;
+
+  // Estimate for memory access (read+write) time in microseconds.
+  double memory_access_time_us = 4;
+}
+
+// Backend config for a custom fusion (pre-compiled device kernel implementing a
+// fusion computation).
+message CustomFusionConfig {
+  string name = 1;
+
+  // When a custom fusion has multiple kernels, this field specifies which
+  // kernel to use. Default value is to select the first kernel, i.e.
+  // kernel_index = 0.
+  int32 kernel_index = 2;
+}
+
+message CuDnnFusionConfig {
+  int64 plan_id = 1;
+}
+
+// Output tile sizes for a fusion root.
+message Tile {
+  // The output tile sizes of the associated fusion root. The length of this
+  // field is expected to be the rank of the root shape.
+  repeated int64 sizes = 1;
+}
+
+// Block-level parameters for a fusion.
+message BlockLevelFusionConfig {
+  reserved 1;  // Was output_tile_sizes
+
+  // The output tile sizes for each fusion root.
+  repeated Tile output_tiles = 3;
+
+  // The number of warps to use for the kernel.
+  int64 num_warps = 2;
 }
 
 message FusionBackendConfig {
@@ -130,8 +198,34 @@ message FusionBackendConfig {
   // present, we use the default Triton config.
   AutotuneResult.TritonGemmKey triton_gemm_config = 2;
 
+  // Only valid when kind == "__triton" for now. Code generation of such
+  // fusions will fail if this field is not set.
+  BlockLevelFusionConfig block_level_fusion_config = 6;
+
+  // Only valid when kind == "__custom_fusion".
+  CustomFusionConfig custom_fusion_config = 4;
+
   // Cost model prediction.
   ReificationCost reification_cost = 3;
+
+  CuDnnFusionConfig cudnn_fusion_config = 5;
+}
+
+// Backed config for norm executed by cuDNN.
+message CudnnNormBackendConfig {
+  // Epsilon parameter.
+  double epsilon = 1;
+
+  // Opaque algorithm number.
+  stream_executor.dnn.AlgorithmProto algorithm = 2;
+
+  // Norm type.
+  enum Kind {
+    LAYER_FWD_INFER = 0;
+    LAYER_FWD_TRAIN = 1;
+    LAYER_BWD = 2;
+  }
+  Kind kind = 3;
 }
 
 // Backend config for a fused Multi-Headed Attention (fMHA) that runs through
@@ -161,4 +255,89 @@ message CudnnfMHABackendConfig {
 
   // Random seed used by dropout
   int64 seed = 15;
+
+  // Is flash attention
+  bool is_flash_attention = 20;
+
+  // Is causal mask
+  bool is_causal_mask = 21;
+
+  // mask type
+  enum MaskType {
+    NO_MASK = 0;
+    PADDING = 1;
+    CAUSAL = 2;
+    PADDING_CAUSAL = 3;
+    ALIBI = 4;
+  }
+  MaskType mask_type = 22;
+
+  // Whether force deterministic for bwd
+  bool force_deterministic = 23;
+
+  // Sliding window length
+  // ignored if the value <= 0
+  int32 sliding_window_length = 24;
+
+  // The maximum number of segments in each batch
+  // Only used with packed layout
+  // ignored if the valued <= 1
+  int32 max_seg_per_batch = 25;
+}
+
+// Backend config for a general custom call instruction, e.g. XLA FFI.
+message CustomCallBackendConfig {
+  // Generic configurations that can be parsed by XLA.
+  oneof raw_backend_config_oneof {
+    // An opaque ASCII string could be parsed by the compiler.
+    string opaque = 1;
+    // Attributes parsed by XLA FFI.
+    string attributes = 2;
+  }
+}
+
+// Generic backend config for XLA:GPU
+// Next-Id: 12
+message GpuBackendConfig {
+  // Specifies which operation queue the current instruction will run on.
+  // A backend may have multiple operation queues to run instructions
+  // concurrently, use this to signal the backend which queue to dispatch to.
+  // The backend should keep a mapping of
+  // operation_queue_id->actual_hardware_queue_id if runtime will create
+  // different IDs.
+  int64 operation_queue_id = 1;
+
+  // Specifies which operation queues to await for data when running with
+  // multiple operation queues.
+  repeated int64 wait_on_operation_queues = 2;
+
+  oneof backend_config {
+    CudnnConvBackendConfig cudnn_conv_backend_config = 3;
+
+    GemmBackendConfig gemm_backend_config = 4;
+
+    BitcastBackendConfig bitcast_backend_config = 5;
+
+    CollectiveBackendConfig collective_backend_config = 6;
+
+    FusionBackendConfig fusion_backend_config = 7;
+
+    CudnnNormBackendConfig cudnn_norm_backend_config = 8;
+
+    CudnnfMHABackendConfig cudnn_fmha_backend_config = 9;
+
+    CustomCallBackendConfig custom_call_backend_config = 11;
+  }
+
+  // This attribute instructs the latency-hiding scheduler to
+  // schedule this particular instruction to the earliest position.
+  // Note that setting this to true will make this instruction scheduled
+  // at the very beginning of the parent computation before
+  // every other nodes.
+  // An example use case would be deciding to schedule between collective
+  // or an async compute. LHS might put either one at the first place
+  // depending on the cost, but it'd be more beneficial if the collective
+  // is always scheduled first as it's not SM-heavy.
+  // In this case we can use this flag to enforce the ordering.
+  bool force_earliest_schedule = 10;
 }

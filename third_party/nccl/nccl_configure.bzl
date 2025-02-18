@@ -1,5 +1,7 @@
 """Repository rule for NCCL configuration.
 
+NB: DEPRECATED! Use `hermetic/nccl_configure` rule instead.
+
 `nccl_configure` depends on the following environment variables:
 
   * `TF_NCCL_VERSION`: Installed NCCL version or empty to build from source.
@@ -8,7 +10,6 @@
     files.
   * `TF_CUDA_PATHS`: The base paths to look for CUDA and cuDNN. Default is
     `/usr/local/cuda,usr/`.
-  * `TF_CUDA_CLANG`: "1" if using Clang, "0" if using NVCC.
   * `TF_NCCL_USE_STUB`: "1" if a NCCL stub that loads NCCL dynamically should
     be used, "0" if NCCL should be linked in statically.
 
@@ -33,7 +34,6 @@ _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 _TF_NCCL_VERSION = "TF_NCCL_VERSION"
 _TF_NEED_CUDA = "TF_NEED_CUDA"
 _TF_CUDA_PATHS = "TF_CUDA_PATHS"
-_TF_CUDA_CLANG = "TF_CUDA_CLANG"
 _TF_NCCL_USE_STUB = "TF_NCCL_USE_STUB"
 
 _DEFINE_NCCL_MAJOR = "#define NCCL_MAJOR"
@@ -50,6 +50,13 @@ cc_library(
   name = "nccl",
   visibility = ["//visibility:public"],
 )
+
+cc_library(
+  name = "nccl_config",
+  hdrs = ["nccl_config.h"],
+  include_prefix = "third_party/nccl",
+  visibility = ["//visibility:public"],
+)
 """
 
 _NCCL_ARCHIVE_BUILD_CONTENT = """
@@ -62,6 +69,12 @@ filegroup(
 alias(
   name = "nccl",
   actual = "@nccl_archive//:nccl",
+  visibility = ["//visibility:public"],
+)
+
+alias(
+  name = "nccl_config",
+  actual = "@nccl_archive//:nccl_config",
   visibility = ["//visibility:public"],
 )
 """
@@ -84,6 +97,12 @@ alias(
   actual = "@nccl_archive//:nccl_headers",
   visibility = ["//visibility:public"],
 )
+
+alias(
+  name = "nccl_config",
+  actual = "@nccl_archive//:nccl_config",
+  visibility = ["//visibility:public"],
+)
 """
 
 def _label(file):
@@ -104,12 +123,17 @@ def _create_local_nccl_repository(repository_ctx):
         else:
             repository_ctx.file("BUILD", _NCCL_ARCHIVE_STUB_BUILD_CONTENT)
 
+        repository_ctx.template("generated_names.bzl", _label("generated_names.bzl.tpl"), {})
         repository_ctx.template(
             "build_defs.bzl",
             _label("build_defs.bzl.tpl"),
             {
                 "%{cuda_version}": "(%s, %s)" % tuple(cuda_version),
-                "%{cuda_clang}": repr(get_host_environ(repository_ctx, _TF_CUDA_CLANG)),
+                "%{nvlink_label}": "@local_config_cuda//cuda:cuda/bin/nvlink",
+                "%{fatbinary_label}": "@local_config_cuda//cuda:cuda/bin/fatbinary",
+                "%{bin2c_label}": "@local_config_cuda//cuda:cuda/bin/bin2c",
+                "%{link_stub_label}": "@local_config_cuda//cuda:cuda/bin/crt/link.stub",
+                "%{nvprune_label}": "@local_config_cuda//cuda:cuda/bin/nvprune",
             },
         )
     else:
@@ -121,6 +145,7 @@ def _create_local_nccl_repository(repository_ctx):
             "%{nccl_library_dir}": config["nccl_library_dir"],
         }
         repository_ctx.template("BUILD", _label("system.BUILD.tpl"), config_wrap)
+        repository_ctx.template("generated_names.bzl", _label("generated_names.bzl.tpl"), {})
 
 def _create_remote_nccl_repository(repository_ctx, remote_config_repo):
     repository_ctx.template(
@@ -128,9 +153,13 @@ def _create_remote_nccl_repository(repository_ctx, remote_config_repo):
         config_repo_label(remote_config_repo, ":BUILD"),
         {},
     )
-
     nccl_version = get_host_environ(repository_ctx, _TF_NCCL_VERSION, "")
     if nccl_version == "":
+        repository_ctx.template(
+            "generated_names.bzl",
+            config_repo_label(remote_config_repo, ":generated_names.bzl"),
+            {},
+        )
         repository_ctx.template(
             "build_defs.bzl",
             config_repo_label(remote_config_repo, ":build_defs.bzl"),
@@ -142,6 +171,7 @@ def _nccl_autoconf_impl(repository_ctx):
         get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
         # Add a dummy build file to make bazel query happy.
         repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
+        repository_ctx.file("nccl_config.h", "#define TF_NCCL_VERSION \"\"")
     elif get_host_environ(repository_ctx, "TF_NCCL_CONFIG_REPO") != None:
         _create_remote_nccl_repository(repository_ctx, get_host_environ(repository_ctx, "TF_NCCL_CONFIG_REPO"))
     else:
@@ -155,7 +185,6 @@ _ENVIRONS = [
     _TF_CUDA_COMPUTE_CAPABILITIES,
     _TF_NEED_CUDA,
     _TF_CUDA_PATHS,
-    _TF_CUDA_CLANG,
 ]
 
 remote_nccl_configure = repository_rule(
@@ -165,7 +194,7 @@ remote_nccl_configure = repository_rule(
     attrs = {
         "environ": attr.string_dict(),
         "_find_cuda_config": attr.label(
-            default = Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+            default = Label("@local_tsl//third_party/gpus:find_cuda_config.py"),
         ),
     },
 )
@@ -175,7 +204,7 @@ nccl_configure = repository_rule(
     environ = _ENVIRONS,
     attrs = {
         "_find_cuda_config": attr.label(
-            default = Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+            default = Label("@local_tsl//third_party/gpus:find_cuda_config.py"),
         ),
     },
 )

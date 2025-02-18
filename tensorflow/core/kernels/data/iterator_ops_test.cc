@@ -43,7 +43,7 @@ using ::tensorflow::monitoring::testing::Histogram;
 
 class IteratorOpsTest : public DatasetOpsTestBase {
  public:
-  StatusOr<core::RefCountPtr<IteratorResource>> GetIteratorResource() {
+  absl::StatusOr<core::RefCountPtr<IteratorResource>> GetIteratorResource() {
     FunctionLibraryRuntime* flr = nullptr;
     std::unique_ptr<DeviceMgr> device_mgr;
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
@@ -60,7 +60,7 @@ class IteratorOpsTest : public DatasetOpsTestBase {
     return iter_resource;
   }
 
-  StatusOr<std::vector<std::vector<Tensor>>> GetIteratorOutput(
+  absl::StatusOr<std::vector<std::vector<Tensor>>> GetIteratorOutput(
       IteratorResource& iterator) {
     std::vector<std::vector<Tensor>> output;
     for (bool end_of_sequence = false; !end_of_sequence;) {

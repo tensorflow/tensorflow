@@ -15,6 +15,22 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/control_flow_spmd_expander.h"
 
+#include <cassert>
+
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
+#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
+#include "tensorflow/dtensor/mlir/layout_parsing.h"
+#include "tensorflow/dtensor/mlir/value_utils.h"
+
 namespace tensorflow {
 namespace dtensor {
 
@@ -79,7 +95,7 @@ StatusOr<mlir::Operation*> IfRegionSPMDExpander::ExpandOp(mlir::Operation* op) {
 
       result.setType(mlir::RankedTensorType::get(
           layout.LocalShapeFromGlobalShape(*global_shape),
-          result.getType().cast<mlir::TensorType>().getElementType()));
+          mlir::cast<mlir::TensorType>(result.getType()).getElementType()));
     }
   }
   return op;

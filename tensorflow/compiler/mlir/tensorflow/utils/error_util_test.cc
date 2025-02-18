@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
@@ -34,8 +34,8 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
 
   // Test OK without diagnostic gets passed through.
   {
-    TF_ASSERT_OK(StatusScopedDiagnosticHandler(&context).Combine(
-        ::tensorflow::OkStatus()));
+    TF_ASSERT_OK(
+        StatusScopedDiagnosticHandler(&context).Combine(absl::OkStatus()));
   }
 
   // Verify diagnostics are captured as Unknown status.

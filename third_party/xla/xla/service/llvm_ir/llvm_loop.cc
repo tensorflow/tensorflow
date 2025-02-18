@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,19 +15,28 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/llvm_loop.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
-#include "llvm/IR/Constants.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Metadata.h"
+#include "xla/layout_util.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/shape_util.h"
-#include "xla/types.h"
-#include "tsl/platform/logging.h"
+#include "xla/shape.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -47,7 +56,7 @@ ForLoop::ForLoop(absl::string_view prefix, absl::string_view suffix,
 
 /* static */ std::unique_ptr<ForLoop> ForLoop::EmitForLoop(
     absl::string_view prefix, llvm::Value* start_index, llvm::Value* end_index,
-    llvm::Value* step, llvm::IRBuilder<>* b, UnrollMode unroll_mode,
+    llvm::Value* step, llvm::IRBuilderBase* b, UnrollMode unroll_mode,
     bool prevent_vectorization) {
   std::unique_ptr<ForLoop> loop(new ForLoop(prefix, /*suffix=*/"", start_index,
                                             end_index, step, unroll_mode,
@@ -56,7 +65,7 @@ ForLoop::ForLoop(absl::string_view prefix, absl::string_view suffix,
   return loop;
 }
 
-void ForLoop::Emit(llvm::IRBuilder<>* b) {
+void ForLoop::Emit(llvm::IRBuilderBase* b) {
   // The preheader block is the block the builder is currently emitting
   // code into.
   preheader_bb_ = b->GetInsertBlock();
@@ -142,7 +151,7 @@ void ForLoop::Emit(llvm::IRBuilder<>* b) {
   b->SetInsertPoint(exit_bb_);
 }
 
-std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilder<>* b) {
+std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilderBase* b) {
   const char* const kLlvmLoopUnrollDisableMDName = "llvm.loop.unroll.disable";
   const char* const kLlvmLoopUnrollFullMDName = "llvm.loop.unroll.full";
   const char* const kLlvmLoopVectorizeMDName = "llvm.loop.vectorize.enable";
@@ -172,7 +181,7 @@ std::string ForLoop::GetQualifiedName(absl::string_view name) {
 }
 
 llvm::BasicBlock* ForLoop::CreateLoopBB(absl::string_view name,
-                                        llvm::IRBuilder<>* b) {
+                                        llvm::IRBuilderBase* b) {
   return CreateBasicBlock(insert_before_bb_, GetQualifiedName(name), b);
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,16 +19,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/array4d.h"
-#include "xla/client/global_data.h"
-#include "xla/client/lib/arithmetic.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
@@ -321,10 +319,9 @@ XLA_TEST_F(VecOpsSimpleTest, ClampFloatEdgeCases) {
   auto low = ConstantR1<float>(&builder, {NAN, 1, 1});
   auto high = ConstantR1<float>(&builder, {3, NAN, 3});
   auto x = ConstantR1<float>(&builder, {2, 2, NAN});
-  Clamp(low, x, high);
-
-  std::vector<float> expected = {NAN, NAN, NAN};
-  ComputeAndCompareR1<float>(&builder, expected, {});
+  auto clamp = Clamp(low, x, high);
+  Eq(clamp, clamp);  // Check for NaN.
+  ComputeAndCompareR1<bool>(&builder, {false, false, false}, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, ClampValuesConstantS64) {

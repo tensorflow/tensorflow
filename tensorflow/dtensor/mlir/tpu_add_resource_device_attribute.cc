@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -92,10 +93,10 @@ struct DTensorTpuAddResourceDeviceAttribute
     mlir::WalkResult walk_result =
         module.walk([](mlir::TF::TPUExecuteOp tpu_execute) {
           for (mlir::Value tpu_input : tpu_execute.getOperands()) {
-            if (tpu_input.isa<mlir::BlockArgument>() &&
+            if (mlir::isa<mlir::BlockArgument>(tpu_input) &&
                 IsResourceType(tpu_input))
               AddPlaceholderDeviceAttributeToResource(
-                  tpu_input.cast<mlir::BlockArgument>(), tpu_execute);
+                  mlir::cast<mlir::BlockArgument>(tpu_input), tpu_execute);
 
             mlir::Operation* input_op = tpu_input.getDefiningOp();
             auto read_variable_op =
@@ -103,7 +104,7 @@ struct DTensorTpuAddResourceDeviceAttribute
             if (!read_variable_op) continue;
 
             AddPlaceholderDeviceAttributeToResource(
-                read_variable_op.getResource().cast<mlir::BlockArgument>(),
+                mlir::cast<mlir::BlockArgument>(read_variable_op.getResource()),
                 tpu_execute);
           }
 
@@ -113,9 +114,9 @@ struct DTensorTpuAddResourceDeviceAttribute
             if (assign_variable == nullptr) continue;
 
             AddPlaceholderDeviceAttributeToResource(
-                llvm::cast<mlir::TF::AssignVariableOp>(assign_variable)
-                    .getResource()
-                    .cast<mlir::BlockArgument>(),
+                mlir::cast<mlir::BlockArgument>(
+                    llvm::cast<mlir::TF::AssignVariableOp>(assign_variable)
+                        .getResource()),
                 tpu_execute);
           }
 

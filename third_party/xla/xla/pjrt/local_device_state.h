@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,12 +23,13 @@ limitations under the License.
 #include <stack>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/worker_thread.h"
-#include "xla/status.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -97,8 +98,13 @@ class LocalDeviceState {
     int num_device_to_device_streams = 1;
   };
 
-  // If asynchronous is false, the host will synchronize to the device after
-  // each execution or transfer. This is intended for debugging only.
+  // `device_ordinal` is the logical local device ordinal (returned by
+  // `local_device_id()`), and it's used to look up an addressable device local
+  // to a given client. If it is not set (-1 by default), the device's logical
+  // device ordinal will be the same as its physical device ordinal (returned by
+  // `local_hardware_id()`). In general, different PJRT devices have different
+  // logical device ordinals, and several PJRT devices can have the same
+  // physical device ordinal if they share the same physical device.
   LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
                    AllocationModel allocation_model,
                    int max_inflight_computations, bool allow_event_reuse,
@@ -108,7 +114,8 @@ class LocalDeviceState {
 
   se::StreamExecutor* executor() const { return executor_; }
 
-  int device_ordinal() const { return device_ordinal_; }
+  PjRtLocalDeviceId local_device_id() { return local_device_id_; }
+  PjRtLocalHardwareId local_hardware_id() { return local_hardware_id_; }
 
   LocalClient* client() const { return client_; }
 
@@ -129,6 +136,11 @@ class LocalDeviceState {
   // fashion amongst the available streams.
   se::Stream* GetDeviceToDeviceStream();
 
+  // Returns a usage stream. Allocates streams in a round-robin fashion amongst
+  // the available streams. When the overhead from BorrowStreamFromPool is too
+  // large for a use case, consider using this API instead.
+  se::Stream* GetFixedSizePoolUsageStream();
+
   // Return a stream that should be used to track when an externally-managed
   // buffer is ready. This is intended to support dlpack on GPU. Allocates
   // streams in a round-robin fashion amongst the available streams.
@@ -139,12 +151,12 @@ class LocalDeviceState {
   // returned by GetExternalReadyEventStream.
   // TODO(skyewm): this function could map other raw streams if needed. It's
   // currently only used with external ready event streams.
-  StatusOr<se::Stream*> GetStreamFromExternalStream(std::intptr_t stream);
+  absl::StatusOr<se::Stream*> GetStreamFromExternalStream(std::intptr_t stream);
 
   // Returns a vector of device to device streams.
   std::vector<se::Stream*> GetDeviceToDeviceStreams();
 
-  // Returns a stream from a pool. The stream is guaranteed not to have any
+  // Borrows a stream from a pool. The stream is guaranteed not to have any
   // currently outstanding work at its tail.
   std::unique_ptr<se::Stream> BorrowStreamFromPool();
   // Returns a stream to the pool. The caller must ensure the stream does not
@@ -152,12 +164,13 @@ class LocalDeviceState {
   void ReturnStreamToPool(std::unique_ptr<se::Stream> stream);
 
   // Enqueues a copy of `src_buffer` to `dst_buffer` onto `transfer_stream`.
-  virtual Status ThenMemcpyDeviceToDevice(se::Stream* transfer_stream,
-                                          se::Stream* dst_stream,
-                                          se::DeviceMemoryBase src_buffer,
-                                          se::DeviceMemoryBase dst_buffer);
+  virtual absl::Status ThenMemcpyDeviceToDevice(
+      se::Stream* transfer_stream, se::Stream* dst_stream,
+      se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer);
 
   WorkerThread* execute_thread() const { return execute_thread_.get(); }
+
+  WorkerThread* cleanup_thread() const { return cleanup_thread_.get(); }
 
   // Enqueues a host callback on 'stream'. `stream` may, but need not, wait for
   // `callback` to complete. It is safe to call runtime methods from the
@@ -168,7 +181,8 @@ class LocalDeviceState {
   //    runtime and cannot perform GPU operations itself. On GPU, callbacks
   //    execute in a separate thread.
   // b) ThenDoHostCallback waits for the callback to complete.
-  void ThenExecuteCallback(se::Stream* stream, std::function<void()> callback);
+  absl::Status ThenExecuteCallback(se::Stream* stream,
+                                   std::function<void()> callback);
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
@@ -177,8 +191,8 @@ class LocalDeviceState {
   // device callback, so it is safe if the destructor frees device resource
   // (e.g., GPU objects).
   template <typename T>
-  void ThenRelease(se::Stream* stream, T&& object) {
-    ThenExecuteCallback(
+  absl::Status ThenRelease(se::Stream* stream, T&& object) {
+    return ThenExecuteCallback(
         stream, [object = std::forward<T>(object)]() { /* releases object */ });
   }
 
@@ -187,8 +201,14 @@ class LocalDeviceState {
   // Returns a fresh, PRNG-generated random seed for an XLA computation.
   int GetNewPrngSeed();
 
+  // Whether to allow deleting a buffer before the operation fulfilling the
+  // buffer is scheduled by the host.
+  bool allow_delete_before_fulfill() const {
+    return allow_delete_before_fulfill_;
+  }
+
  private:
-  Status SynchronizeAllActivity();
+  absl::Status SynchronizeAllActivity();
 
   AllocationModel allocation_model_;
 
@@ -198,33 +218,40 @@ class LocalDeviceState {
   // stream by the host ahead of the device.
   Semaphore compute_semaphore_;
 
-  int device_ordinal_;
+  PjRtLocalDeviceId local_device_id_;
+  PjRtLocalHardwareId local_hardware_id_;
   se::StreamExecutor* const executor_;
   LocalClient* const client_;
   std::unique_ptr<se::Stream> compute_stream_;
   std::unique_ptr<se::Stream> host_to_device_stream_;
   std::vector<std::unique_ptr<se::Stream>> device_to_host_streams_;
   std::vector<std::unique_ptr<se::Stream>> device_to_device_streams_;
+  std::vector<std::unique_ptr<se::Stream>> fixed_size_pool_usage_streams_;
   std::vector<std::unique_ptr<se::Stream>> external_ready_event_streams_;
 
   static constexpr int kNumDeviceToHostStreams = 4;
   static constexpr int kNumDeviceToDeviceStreams = 4;
+  static constexpr int kNumFixedSizePoolUsageStreams = 4;
   static constexpr int kNumExternalReadyEventStreams = 4;
 
   absl::Mutex mu_;
   int next_device_to_host_stream_ ABSL_GUARDED_BY(mu_) = 0;
   int next_device_to_device_stream_ ABSL_GUARDED_BY(mu_) = 0;
+  int next_fixed_size_pool_usage_stream_ ABSL_GUARDED_BY(mu_) = 0;
   int next_external_ready_event_stream_ ABSL_GUARDED_BY(mu_) = 0;
-  std::stack<std::unique_ptr<se::Stream>> usage_stream_pool_
-      ABSL_GUARDED_BY(mu_);
 
   std::random_device prng_seed_device_ ABSL_GUARDED_BY(mu_);
   std::mt19937 prng_seed_generator_ ABSL_GUARDED_BY(mu_);
   std::uniform_int_distribution<> prng_seed_distribution_ ABSL_GUARDED_BY(mu_);
 
+  absl::Mutex stream_pool_mu_;
+  std::stack<std::unique_ptr<se::Stream>> usage_stream_pool_
+      ABSL_GUARDED_BY(stream_pool_mu_);
+
   // Callback map pairs callback stream with a device stream and is used for
   // running short host-side callbacks after device side events, without
   // preventing the device-side stream from doing useful work.
+  absl::Mutex callback_stream_map_mu_;
   std::optional<absl::flat_hash_map<se::Stream*, std::unique_ptr<se::Stream>>>
       callback_stream_map_;
 
@@ -236,6 +263,12 @@ class LocalDeviceState {
   // semaphore during calls to Execute but release it from a callback and if
   // they are the same thread we might deadlock.
   std::unique_ptr<WorkerThread> callback_thread_;
+
+  // One thread dedicated to cleaning up buffers. Scheduled work on this thread
+  // may wait for other threads to schedule writes to buffers.
+  std::unique_ptr<WorkerThread> cleanup_thread_;
+
+  bool allow_delete_before_fulfill_ = true;
 };
 
 }  // namespace xla

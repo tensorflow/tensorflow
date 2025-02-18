@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_test_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
-
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -147,7 +146,7 @@ TEST(ChangeDefault, ParallelMap) {
             {{"value", 1}, {"dtype", DT_INT32}}),
        graph_tests_utils::MakeParallelMapV2Node(
            "map", "range", "num_parallel_calls", "XTimesTwo",
-           /*deterministic=*/"default")},
+           /*deterministic=*/"default", /*use_unbounded_threadpool=*/false)},
       // FunctionLib
       {
           test::function::XTimesTwo(),

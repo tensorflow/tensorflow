@@ -1,41 +1,42 @@
 # Build file for OpenMP library that is part of llvm
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "if_linux_x86_64",
-    "if_macos",
-    "if_windows",
-)
-load(
-    "@local_xla//third_party/llvm_openmp:cmake_vars.bzl",
+    "@local_tsl//third_party/llvm_openmp:cmake_vars.bzl",
     "cmake_var_string",
     "expand_cmake_vars",
 )
 load(
-    "@local_xla//third_party/llvm_openmp:openmp.bzl",
+    "@local_tsl//third_party/llvm_openmp:openmp.bzl",
     "dict_add",
     "libiomp5_cc_binary",
 )
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load(
+    "@local_xla//xla/tsl:tsl.bzl",
+    "if_linux_x86_64",
+    "if_macos",
+    "if_windows",
+)
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//visibility:public",
+    ],
 )
 
-exports_files(
-    ["LICENSE.txt"],
-    visibility = ["//visibility:public"],
-)
+exports_files(["LICENSE.txt"])
 
 py_binary(
     name = "expand_cmake_vars",
     srcs = ["expand_cmake_vars.py"],
     srcs_version = "PY3",
-    visibility = ["//visibility:public"],
+    visibility = [
+        "@llvm_openmp//:__subpackages__",
+    ],
 )
 
 kmp_i18n_os_type = select({
-    "@local_tsl//tsl:windows": "win",
+    "@local_xla//xla/tsl:windows": "win",
     "//conditions:default": "lin",
 })
 
@@ -113,7 +114,7 @@ omp_vars_win = {
 }
 
 omp_all_cmake_vars = select({
-    "@local_tsl//tsl:windows": cmake_var_string(
+    "@local_xla//xla/tsl:windows": cmake_var_string(
         dict_add(
             omp_vars,
             omp_vars_win,
@@ -239,5 +240,4 @@ if_windows(a = libiomp5_cc_binary(
 bzl_library(
     name = "openmp_bzl",
     srcs = ["openmp.bzl"],
-    visibility = ["//visibility:public"],
 )

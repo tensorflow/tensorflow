@@ -51,15 +51,15 @@ namespace tensorflow {
 //
 // The single-threaded executor is primarily suitable for executing simple
 // TensorFlow functions, such as one might find in a `tf.data` pipeline.
-Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
-                                 const Graph& graph, Executor** executor);
+absl::Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
+                                       const Graph& graph, Executor** executor);
 
 // Returns OkStatus() for ops which are compatible with synchronous execution,
 // and otherwise returns an error message appropriate for propagation if needed.
 // If `allow_control_flow_sync_execution` is set to `true` control
 // nodes are marked as safe for execution on the SingleThreadedExecutor.
-Status ValidateOpIsSafeForSyncExecution(const Node& n,
-                                        bool allow_control_flow_sync_execution);
+absl::Status ValidateOpIsSafeForSyncExecution(
+    const Node& n, bool allow_control_flow_sync_execution);
 
 }  // namespace tensorflow
 

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RandomUniform"
   input_arg {
     name: "shape"

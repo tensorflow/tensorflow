@@ -86,7 +86,7 @@ class Var : public ResourceBase {
     is_initialized = false;
   }
 
-  Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override;
+  absl::Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override;
 
   std::string DebugString() const override {
     return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
@@ -116,7 +116,8 @@ class Var : public ResourceBase {
   std::string debug_name_;
 
   ~Var() override {}
-  TF_DISALLOW_COPY_AND_ASSIGN(Var);
+  Var(const Var&) = delete;
+  void operator=(const Var&) = delete;
 };
 
 // Does unlock and unref automatically when going out of scope, and also

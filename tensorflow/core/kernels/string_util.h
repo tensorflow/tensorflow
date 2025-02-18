@@ -33,10 +33,10 @@ enum class CharUnit { BYTE, UTF8_CHAR };
 inline bool IsTrailByte(char x) { return static_cast<signed char>(x) < -0x40; }
 
 // Sets `encoding` based on `str`.
-Status ParseUnicodeEncoding(const string& str, UnicodeEncoding* encoding);
+absl::Status ParseUnicodeEncoding(const string& str, UnicodeEncoding* encoding);
 
 // Sets `unit` value based on `str`.
-Status ParseCharUnit(const string& str, CharUnit* unit);
+absl::Status ParseCharUnit(const string& str, CharUnit* unit);
 
 // Returns the number of Unicode characters in a UTF-8 string.
 // Result may be incorrect if the input string is not valid UTF-8.
@@ -48,7 +48,7 @@ int32 UTF8StrLen(const string& str);
 // the end of the string is reached before the requested characters, then the
 // position will point to the end of string and this function will return false.
 template <typename T>
-bool ForwardNUTF8CharPositions(const StringPiece in,
+bool ForwardNUTF8CharPositions(const absl::string_view in,
                                const T num_utf8_chars_to_shift, T* pos) {
   const size_t size = in.size();
   T utf8_chars_counted = 0;
@@ -69,7 +69,7 @@ bool ForwardNUTF8CharPositions(const StringPiece in,
 // the string is reached before the requested character, then the position will
 // point to the beginning of the string and this function will return false.
 template <typename T>
-bool BackNUTF8CharPositions(const StringPiece in,
+bool BackNUTF8CharPositions(const absl::string_view in,
                             const T num_utf8_chars_to_shift, T* pos) {
   const size_t start = 0;
   T utf8_chars_counted = 0;

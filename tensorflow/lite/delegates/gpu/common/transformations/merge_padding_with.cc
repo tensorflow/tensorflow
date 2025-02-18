@@ -17,13 +17,12 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/any.h"
+#include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
@@ -153,11 +152,11 @@ class MergePaddingWithAddOperation : public NodeTransformation {
     ElementwiseAttributes add_attr =
         absl::any_cast<ElementwiseAttributes>(add_node->operation.attributes);
     const bool is_add_hwc =
-        absl::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(add_attr.param);
+        std::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(add_attr.param);
     const bool is_add_linear =
-        absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+        std::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
             add_attr.param);
-    const bool is_add_scalar = absl::holds_alternative<float>(add_attr.param);
+    const bool is_add_scalar = std::holds_alternative<float>(add_attr.param);
     if (is_add_hwc || is_add_linear || is_add_scalar) {
       return {TransformStatus::SKIPPED,
               "Cannot remove padding when ADD has constant argument."};

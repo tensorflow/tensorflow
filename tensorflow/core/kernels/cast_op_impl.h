@@ -22,10 +22,10 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "absl/status/status.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/cast_op.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 

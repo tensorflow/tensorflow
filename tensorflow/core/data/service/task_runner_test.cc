@@ -61,23 +61,22 @@ class RangeIterator : public TaskIterator {
   explicit RangeIterator(const int64_t range, const bool repeat)
       : range_(range), repeat_(repeat) {}
 
-  Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
+  absl::Status GetNext(std::vector<Tensor>& element,
+                       bool& end_of_sequence) override {
     end_of_sequence = (next_ >= range_);
     if (end_of_sequence) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     element = {Tensor{next_++}};
     if (repeat_) {
       next_ = next_ % range_;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t Cardinality() const override {
     return repeat_ ? kInfiniteCardinality : range_;
   }
-
-  std::optional<double> GetProcessingTimeNsec() const override { return 1.0e7; }
 
  private:
   const int64_t range_;
@@ -89,14 +88,13 @@ class InfiniteRangeIterator : public TaskIterator {
  public:
   InfiniteRangeIterator() = default;
 
-  Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
+  absl::Status GetNext(std::vector<Tensor>& element,
+                       bool& end_of_sequence) override {
     element = {Tensor{next_++}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t Cardinality() const override { return kInfiniteCardinality; }
-
-  std::optional<double> GetProcessingTimeNsec() const override { return 1.0e7; }
 
  private:
   int64_t next_ = 0;
@@ -108,20 +106,19 @@ class ElementOrErrorIterator : public TaskIterator {
   explicit ElementOrErrorIterator(const std::vector<StatusOr<T>>& elements)
       : elements_(elements) {}
 
-  Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
+  absl::Status GetNext(std::vector<Tensor>& element,
+                       bool& end_of_sequence) override {
     end_of_sequence = (next_ >= elements_.size());
     if (end_of_sequence) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     const StatusOr<T>& next_element = elements_[next_++];
     TF_RETURN_IF_ERROR(next_element.status());
     element = {Tensor{*next_element}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t Cardinality() const override { return elements_.size(); }
-
-  std::optional<double> GetProcessingTimeNsec() const override { return 1.0e7; }
 
  private:
   const std::vector<StatusOr<T>> elements_;
@@ -182,9 +179,9 @@ std::vector<int64_t> GetRange(const size_t range) {
 }
 
 // Reads from the task runner, storing results in `*output`.
-Status RunConsumer(int64_t consumer_index, int64_t start_index,
-                   int64_t end_index, TaskRunner& task_runner,
-                   std::vector<int64_t>& output) {
+absl::Status RunConsumer(int64_t consumer_index, int64_t start_index,
+                         int64_t end_index, TaskRunner& task_runner,
+                         std::vector<int64_t>& output) {
   for (int64_t next_index = start_index; next_index < end_index; ++next_index) {
     GetElementRequest request;
     request.set_round_index(next_index);
@@ -199,7 +196,7 @@ Status RunConsumer(int64_t consumer_index, int64_t start_index,
       }
     } while (result.skip);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -295,7 +292,7 @@ TEST(FirstComeFirstServedTaskRunnerTest, GetNextAndCancel) {
 TEST(FirstComeFirstServedTaskRunnerTest, Error) {
   FirstComeFirstServedTaskRunner runner(
       std::make_unique<ElementOrErrorIterator<tstring>>(
-          std::vector<StatusOr<tstring>>{
+          std::vector<absl::StatusOr<tstring>>{
               tstring("First element"),
               errors::InvalidArgument("Invalid argument"),
               tstring("Second element"), errors::Aborted("Aborted")}));
@@ -424,7 +421,7 @@ TEST(CachingTaskRunnerTest, CancelConcurrentReaders) {
             GetElementRequest request;
             request.set_trainer_id(absl::StrCat("Trainer_", (j % 100)));
             GetElementResult result;
-            Status status = runner.GetNext(request, result);
+            absl::Status status = runner.GetNext(request, result);
             if (!status.ok()) {
               return;
             }
@@ -451,7 +448,7 @@ TEST(CachingTaskRunnerTest, Errors) {
   size_t num_readers = 10;
   CachingTaskRunner runner(
       std::make_unique<ElementOrErrorIterator<tstring>>(
-          std::vector<StatusOr<tstring>>{
+          std::vector<absl::StatusOr<tstring>>{
               tstring("First element"),
               errors::Cancelled("Cancelled"),
               tstring("Second element"),
@@ -473,7 +470,7 @@ TEST(CachingTaskRunnerTest, Errors) {
           GetElementRequest request;
           request.set_trainer_id(absl::StrCat("Trainer_", i));
           while (true) {
-            StatusOr<tstring> element =
+            absl::StatusOr<tstring> element =
                 GetNextFromTaskRunner<tstring>(runner, request);
             if (element.ok()) {
               result.push_back(*element);
@@ -516,15 +513,16 @@ TEST_P(ConsumeParallelTest, ConsumeParallel) {
   std::vector<std::vector<int64_t>> per_consumer_results;
   std::vector<std::unique_ptr<Thread>> consumers;
   mutex mu;
-  Status error;
+  absl::Status error;
   for (int consumer = 0; consumer < num_consumers; ++consumer) {
     mutex_lock l(mu);
     per_consumer_results.emplace_back();
     consumers.push_back(absl::WrapUnique(Env::Default()->StartThread(
         {}, absl::StrCat("consumer_", consumer), [&, consumer] {
           std::vector<int64_t> results;
-          Status s = RunConsumer(consumer, /*start_index=*/0,
-                                 /*end_index=*/num_elements, runner, results);
+          absl::Status s =
+              RunConsumer(consumer, /*start_index=*/0,
+                          /*end_index=*/num_elements, runner, results);
           mutex_lock l(mu);
           if (!s.ok()) {
             error = s;
@@ -564,15 +562,15 @@ TEST(RoundRobinTaskRunner, ConsumeParallelPartialRound) {
   std::vector<std::vector<int64_t>> per_consumer_results;
   std::vector<std::unique_ptr<Thread>> consumers;
   mutex mu;
-  Status error;
+  absl::Status error;
   for (int consumer = 0; consumer < num_consumers; ++consumer) {
     mutex_lock l(mu);
     per_consumer_results.emplace_back();
     consumers.push_back(absl::WrapUnique(Env::Default()->StartThread(
         {}, absl::StrCat("consumer_", consumer), [&, consumer] {
           std::vector<int64_t> results;
-          Status s = RunConsumer(consumer, starting_rounds[consumer], end_index,
-                                 runner, results);
+          absl::Status s = RunConsumer(consumer, starting_rounds[consumer],
+                                       end_index, runner, results);
           mutex_lock l(mu);
           if (!s.ok()) {
             error = s;

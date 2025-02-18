@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,15 +19,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/layout.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
@@ -435,8 +435,9 @@ TEST_F(LayoutUtilTest, ValidateLayout_InvalidArrayLayout) {
 TEST_F(LayoutUtilTest, ValidateLayout_InvalidDimLevelTypes) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
-  *shape.mutable_layout()->mutable_dim_level_types() = {DIM_DENSE, DIM_DENSE,
-                                                        DIM_DENSE};
+  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
+  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
+  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
   auto status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
   EXPECT_FALSE(status.ok());
@@ -590,6 +591,28 @@ TEST_F(LayoutUtilTest, HasCustomElementSizeInBits) {
       ->mutable_layout()
       ->set_element_size_in_bits(32);
   EXPECT_TRUE(LayoutUtil::HasCustomElementSizeInBits(shape));
+}
+
+TEST_F(LayoutUtilTest, MaxSplitSize) {
+  Shape shape = ShapeUtil::MakeShape(F32, {150, 200, 100});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2})
+                                .add_split_configs(SplitConfig(0, {30}))
+                                .add_split_configs(SplitConfig(1, {40, 130}));
+
+  EXPECT_EQ(LayoutUtil::MaxSplitSize(shape, 0), 150);
+  EXPECT_EQ(LayoutUtil::MaxSplitSize(shape, 1), 90);
+  EXPECT_EQ(LayoutUtil::MaxSplitSize(shape, 2), 70);
+}
+
+TEST_F(LayoutUtilTest, MaxElementsInPerSplit) {
+  Shape shape = ShapeUtil::MakeShape(F32, {150, 200, 100});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2});
+  EXPECT_EQ(LayoutUtil::MaxElementsInPerSplit(shape), 150 * 200 * 100);
+
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2})
+                                .add_split_configs(SplitConfig(0, {30}))
+                                .add_split_configs(SplitConfig(1, {40, 130}));
+  EXPECT_EQ(LayoutUtil::MaxElementsInPerSplit(shape), 150 * 90 * 70);
 }
 
 }  // namespace

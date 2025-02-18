@@ -180,6 +180,7 @@ enum CompilerOptions : byte {
   CL_OPT_DISABLE = 3,
   CL_2_0 = 4,
   CL_3_0 = 5,
+  CL_REGISTER_ALLOCATION_64 = 6,
 }
 
 table OperationDef {

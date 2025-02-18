@@ -23,13 +23,13 @@ namespace grpc_util {
 
 TEST(GrpcUtil, WrapInvalidArgument) {
   grpc::Status s(grpc::StatusCode::INVALID_ARGUMENT, "test message");
-  Status wrapped = WrapError("wrapping message", s);
+  absl::Status wrapped = WrapError("wrapping message", s);
   ASSERT_EQ(wrapped, errors::InvalidArgument("wrapping message: test message"));
 }
 
 TEST(GrpcUtil, WrapOk) {
   grpc::Status s;
-  Status wrapped = WrapError("wrapping message", s);
+  absl::Status wrapped = WrapError("wrapping message", s);
   ASSERT_EQ(wrapped, errors::Internal("Expected a non-ok grpc status. Wrapping "
                                       "message: wrapping message"));
 }

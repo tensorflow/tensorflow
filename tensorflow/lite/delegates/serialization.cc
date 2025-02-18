@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/serialization.h"
 
+#include "tensorflow/lite/logger.h"
+
 #if defined(_WIN32)
 #include <fstream>
 #include <iostream>
@@ -21,6 +23,7 @@ limitations under the License.
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <cstring>
@@ -94,7 +97,7 @@ TfLiteStatus SerializationEntry::SetData(TfLiteContext* context,
                             std::to_string(time(nullptr))));
 
 #if defined(_WIN32)
-  std::ofstream out_file(temp_filepath.c_str());
+  std::ofstream out_file(temp_filepath.c_str(), std::ios_base::binary);
   if (!out_file) {
     TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Could not create file: %s",
                     temp_filepath.c_str());
@@ -193,22 +196,31 @@ TfLiteStatus SerializationEntry::GetData(TfLiteContext* context,
                        std::strerror(errno));
     return kTfLiteDelegateDataReadError;
   }
-  char buffer[512];
-  while (true) {
-    int bytes_read = read(fd, buffer, 512);
-    if (bytes_read == 0) {
-      // EOF
-      close(fd);
-      return kTfLiteOk;
-    } else if (bytes_read < 0) {
+
+  struct stat file_stat;
+  if (fstat(fd, &file_stat) < 0) {
+    close(fd);
+    TF_LITE_KERNEL_LOG(context, "Could not fstat %s: %s", filepath.c_str(),
+                       std::strerror(errno));
+    return kTfLiteDelegateDataReadError;
+  }
+  data->resize(file_stat.st_size);
+
+  size_t total_read = 0;
+  while (total_read < data->size()) {
+    ssize_t bytes_read =
+        read(fd, data->data() + total_read, data->size() - total_read);
+    total_read += bytes_read;
+
+    if (bytes_read < 0) {
       close(fd);
       TF_LITE_KERNEL_LOG(context, "Error reading %s: %s", filepath.c_str(),
                          std::strerror(errno));
       return kTfLiteDelegateDataReadError;
-    } else {
-      data->append(buffer, bytes_read);
     }
   }
+
+  close(fd);
 #endif  // defined(_WIN32)
 
   TFLITE_LOG_PROD(TFLITE_LOG_INFO,
@@ -226,14 +238,14 @@ TfLiteStatus SerializationEntry::GetData(TfLiteContext* context,
   }
 }
 
-SerializationEntry Serialization::GetEntryImpl(
-    const std::string& custom_key, TfLiteContext* context,
-    const TfLiteDelegateParams* delegate_params) {
+uint64_t Serialization::GetFingerprint(
+    const std::string& model_token, const std::string& custom_key,
+    TfLiteContext* context, const TfLiteDelegateParams* delegate_params) {
   // First incorporate model_token.
   // We use Fingerprint64 instead of std::hash, since the latter isn't
   // guaranteed to be stable across runs. See b/172237993.
   uint64_t fingerprint =
-      ::util::Fingerprint64(model_token_.c_str(), model_token_.size());
+      ::util::Fingerprint64(model_token.c_str(), model_token.size());
 
   // Incorporate custom_key.
   const uint64_t custom_str_fingerprint =
@@ -285,6 +297,14 @@ SerializationEntry Serialization::GetEntryImpl(
                                 partition_data.size() * sizeof(int32_t));
     fingerprint = CombineFingerprints(fingerprint, partition_fingerprint);
   }
+  return fingerprint;
+}
+
+SerializationEntry Serialization::GetEntryImpl(
+    const std::string& custom_key, TfLiteContext* context,
+    const TfLiteDelegateParams* delegate_params) {
+  uint64_t fingerprint =
+      GetFingerprint(model_token_, custom_key, context, delegate_params);
 
   // Get a fingerprint-specific lock that is passed to the SerializationKey, to
   // ensure noone else gets access to an equivalent SerializationKey.

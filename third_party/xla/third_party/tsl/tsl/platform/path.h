@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <string>
 
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace io {
 namespace internal {
-std::string JoinPathImpl(std::initializer_list<tsl::StringPiece> paths);
+std::string JoinPathImpl(std::initializer_list<absl::string_view> paths);
 }
 
 // Utility routines for processing filenames
@@ -51,24 +51,24 @@ std::string JoinPath(const T&... args) {
 #endif /* SWIG */
 
 // Return true if path is absolute.
-bool IsAbsolutePath(tsl::StringPiece path);
+bool IsAbsolutePath(absl::string_view path);
 
 // Returns the part of the path before the final "/".  If there is a single
 // leading "/" in the path, the result will be the leading "/".  If there is
 // no "/" in the path, the result is the empty prefix of the input.
-tsl::StringPiece Dirname(tsl::StringPiece path);
+absl::string_view Dirname(absl::string_view path);
 
 // Returns the part of the path after the final "/".  If there is no
 // "/" in the path, the result is the same as the input.
-tsl::StringPiece Basename(tsl::StringPiece path);
+absl::string_view Basename(absl::string_view path);
 
 // Returns the part of the basename of path after the final ".".  If
 // there is no "." in the basename, the result is empty.
-tsl::StringPiece Extension(tsl::StringPiece path);
+absl::string_view Extension(absl::string_view path);
 
 // Returns the part of the basename of path before the final ".".  If
 // there is no "." in the basename, the result is empty.
-tsl::StringPiece BasenamePrefix(tsl::StringPiece path);
+absl::string_view BasenamePrefix(absl::string_view path);
 
 // Returns the largest common subpath of `paths`.
 //
@@ -86,7 +86,7 @@ std::string CommonPathPrefix(absl::Span<std::string const> paths);
 // invoke any system calls (getcwd(2)) in order to resolve relative
 // paths with respect to the actual working directory.  That is, this is purely
 // string manipulation, completely independent of process state.
-std::string CleanPath(tsl::StringPiece path);
+std::string CleanPath(absl::string_view path);
 
 // Populates the scheme, host, and path from a URI. scheme, host, and path are
 // guaranteed by this function to point into the contents of uri, even if
@@ -96,25 +96,38 @@ std::string CleanPath(tsl::StringPiece path);
 // - If the URI is invalid, scheme and host are set to empty strings and the
 //   passed string is assumed to be a path
 // - If the URI omits the path (e.g. file://host), then the path is left empty.
-void ParseURI(tsl::StringPiece uri, tsl::StringPiece* scheme,
-              tsl::StringPiece* host, tsl::StringPiece* path);
+void ParseURI(absl::string_view uri, absl::string_view* scheme,
+              absl::string_view* host, absl::string_view* path);
 
 // Creates a URI from a scheme, host, and path. If the scheme is empty, we just
 // return the path.
-std::string CreateURI(tsl::StringPiece scheme, tsl::StringPiece host,
-                      tsl::StringPiece path);
+std::string CreateURI(absl::string_view scheme, absl::string_view host,
+                      absl::string_view path);
 
 // Creates a temporary file name with an extension.
 std::string GetTempFilename(const std::string& extension);
 
-// Reads the TEST_UNDECLARED_OUTPUTS_DIR environment variable, and if set
-// assigns `dir` to the value. `dir` is not modified if the environment variable
-// is unset. Returns true if the environment variable is set, otherwise false.
-// Passing `dir` as nullptr, will just probe for the environment variable.
+// Returns whether the test workspace directory is known. If it's known and dir
+// != nullptr then sets *dir to that.
 //
-// Note: This function obviates the need to deal with Bazel's odd path decisions
-// on Windows, and should be preferred over a simple `getenv`.
+// The test workspace directory is known to be TEST_SRCDIR/TEST_WORKSPACE if
+// both the TEST_SRCDIR and TEST_WORKSPACE environment variables are set.
+bool GetTestWorkspaceDir(std::string* dir);
+
+// Returns whether the TEST_UNDECLARED_OUTPUTS_DIR environment variable is set.
+// If it's set and dir != nullptr then sets *dir to that.
 bool GetTestUndeclaredOutputsDir(std::string* dir);
+
+// Resolves paths to help tests find files in their workspace or output
+// directory. Returns whether the path can be resolved. If it can be then sets
+// resolved_path to that.
+//
+// Currently the TEST_WORKSPACE and the TEST_UNDECLARED_OUTPUTS_DIR prefixes can
+// be resolved.
+bool ResolveTestPrefixes(absl::string_view path, std::string& resolved_path);
+
+// Appends `.exe` if `PLATFORM_WINDOWS` is defined.
+[[maybe_unused]] std::string& AppendDotExeIfWindows(std::string& path);
 
 }  // namespace io
 }  // namespace tsl

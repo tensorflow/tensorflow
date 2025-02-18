@@ -13,15 +13,8 @@ package(
         "//tensorflow/core/lib/gtl:__pkg__",
         # tensorflow/core/lib/io/table_builder.cc uses crc functionality
         "//tensorflow/core/lib/io:__pkg__",
-        # tensorflow/core/lib/strings/proto_serialization.cc hashes proto bytes
-        "//tensorflow/core/lib/strings:__pkg__",
-        # tensorflow/core/platform:tracing depends on hash
-        "//tensorflow/core/platform:__subpackages__",
-        "@local_tsl//tsl/platform:__subpackages__",
         # tensorflow/core/framework:tensor depends on hash
         "//tensorflow/core/framework:__pkg__",
-        # For dependency on hash
-        "//tensorflow/cc/experimental/tf2:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -33,7 +26,7 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/hash:crc32c",
+        "@local_xla//xla/tsl/lib/hash:crc32c",
     ],
 )
 
@@ -58,7 +51,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "crc32c.h",
-        "@local_tsl//tsl/lib/hash:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/lib/hash:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -68,7 +61,7 @@ filegroup(
     srcs = [
         "crc32c.h",
         "hash.h",
-        "@local_tsl//tsl/lib/hash:legacy_lib_hash_all_headers",
+        "@local_xla//xla/tsl/lib/hash:legacy_lib_hash_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

@@ -53,8 +53,8 @@ class ConvertTFBatchMatMulToEinsumOp
     Value input_rhs = op.getY();
 
     // LHS and RHS must be a ranked tensor type
-    auto lhs_type = input_lhs.getType().dyn_cast<RankedTensorType>();
-    auto rhs_type = input_rhs.getType().dyn_cast<RankedTensorType>();
+    auto lhs_type = mlir::dyn_cast<RankedTensorType>(input_lhs.getType());
+    auto rhs_type = mlir::dyn_cast<RankedTensorType>(input_rhs.getType());
 
     if (!lhs_type || !rhs_type) return failure();
 
@@ -97,7 +97,7 @@ void BatchMatMulToEinsumPass::runOnOperation() {
   patterns.add<ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulOp>,
                ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulV2Op>>(
       &getContext());
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace

@@ -31,10 +31,17 @@ namespace v2 {
 // Tensorflow GraphDef. This API will add control dependencies and verify that
 // the conversion was successful.
 //
+// This also converts the Tensorflow Dialect MLIR into the Tensorflow Executor
+// dialect that is suitable to be exported to GraphDef. Graph -> MLIR -> Graph
+// is not perfectly round trippable, so this API will attempt to make the module
+// exportable and verify some properties of the Tensorflow Executor MLIR that
+// are required by Graph Export. It will return an error if it cannot.
+//
 // Input: A MLIR Module in the Tensorflow Dialect with no
 // `tf_device.cluster_func` ops.
 // Output: A MLIR module in the Tensorflow Executor Dialect.
-tensorflow::Status ExportFromTensorflowDialectToExecutor(
+ABSL_DEPRECATED("Use tensorflow::tf2xla::v2::ConvertGraphToTfExecutor instead.")
+absl::Status ExportFromTensorflowDialectToExecutor(
     mlir::ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
 
 }  // namespace v2

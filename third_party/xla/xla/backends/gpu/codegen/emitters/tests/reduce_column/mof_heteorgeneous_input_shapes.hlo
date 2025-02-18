@@ -1,0 +1,19 @@
+// RUN: test_correctness %s --bijection_inputs=reduce.1:0 --bijection_inputs=reduce.2:0 --bijection_outputs=reduce.1 --bijection_outputs=reduce.2
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fusion {
+  %param_0 = f32[64,128] parameter(0)
+  %constant_0 = f32[] constant(0)
+  %reduce.1 = f32[128] reduce(param_0, constant_0), dimensions={0},
+    to_apply=%add
+  %neg = f32[64,128] negate(param_0)
+  %bitcast = f32[8,8,128] bitcast(neg)
+  %reduce.2 = f32[128] reduce(bitcast, constant_0), dimensions={0,1},
+    to_apply=%add
+  ROOT %tuple = (f32[128], f32[128]) tuple(reduce.1, reduce.2)
+}

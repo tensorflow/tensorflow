@@ -34,8 +34,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void WriteCheckpoint(const string& prefix, gtl::ArraySlice<string> names,
-                     gtl::ArraySlice<Tensor> tensors) {
+void WriteCheckpoint(const string& prefix, absl::Span<const string> names,
+                     absl::Span<const Tensor> tensors) {
   BundleWriter writer(Env::Default(), prefix);
   ASSERT_TRUE(names.size() == tensors.size());
   for (size_t i = 0; i < names.size(); ++i) {

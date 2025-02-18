@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,13 +24,6 @@ def UnaryToBinaryEinsumEq : NativeCodeCall<
 
 def GetI64DenseElementsAttr : NativeCodeCall<
   "$0.mapValues($_builder.getI64Type(), [](llvm::APInt x) { return x.sext(64); })">;
-
-// Convert UnaryEinsumOp to EinsumOp with two operands with redundant first
-// operand.
-def UnaryEinsumToEinsum : Pat<
-  (MHLO_UnaryEinsumOp $operand, $equation),
-  (MHLO_EinsumOp (MHLO_ConstantOp (GetScalarOfType<1> $operand)),
-                $operand, (UnaryToBinaryEinsumEq $equation))>;
 
 // A dynamic reshape of a dynamic reshape is a dynamic reshape.
 def RemoveRedundantDynamicReshape : Pat<

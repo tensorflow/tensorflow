@@ -17,8 +17,10 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_OPERATION_SELECTOR_H_
 
 #include <memory>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"

@@ -17,38 +17,39 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status ConvertTrivialPackToReshape::Run(Model* model,
-                                                      std::size_t op_index,
-                                                      bool* modified) {
+absl::Status ConvertTrivialPackToReshape::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
   *modified = false;
   auto pack_it = model->operators.begin() + op_index;
   if (pack_it->get()->type != OperatorType::kPack) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   auto* pack_op = static_cast<PackOperator*>(pack_it->get());
   if (pack_op->inputs.size() > 1) {
     // Not trivial.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   CHECK_EQ(pack_op->outputs.size(), 1);
 
   const auto& input_array = model->GetArray(pack_op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until input dims have been resolved.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (input_array.shape().dimensions_count() == 0) {
     // Input array cannot be 0-D.
     // (Unsure if this is TF behavior, but was required to get a test to pass.)
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   AddMessageF("Converting trivial %s to a reshape", LogName(*pack_op));
@@ -81,7 +82,7 @@ namespace toco {
   DeleteOpAndArrays(model, pack_op);
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

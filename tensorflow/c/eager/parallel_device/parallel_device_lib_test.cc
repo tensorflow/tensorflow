@@ -15,15 +15,29 @@ limitations under the License.
 
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 
-#include "tensorflow/c/c_api.h"
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_testlib.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/tf_buffer.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -126,7 +140,7 @@ TEST(PARALLEL_DEVICE_LIB, TestExplicitOutputShape) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   const std::vector<std::unique_ptr<ParallelTensor>>& handles = *outputs;
   const std::vector<int64_t>* shape;
-  Status s = handles[0]->Shape(&shape);
+  absl::Status s = handles[0]->Shape(&shape);
   ASSERT_TRUE(s.ok());
   EXPECT_EQ(0, shape->size());
 }

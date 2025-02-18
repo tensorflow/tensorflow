@@ -20,7 +20,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/math:math_util",
+        "@local_xla//xla/tsl/lib/math:math_util",
     ],
 )
 

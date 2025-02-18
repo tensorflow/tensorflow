@@ -37,7 +37,7 @@ class BoundedExecutor : public thread::ThreadPoolInterface {
     int num_threads = -1;
   };
 
-  static StatusOr<std::unique_ptr<BoundedExecutor>> Create(
+  static absl::StatusOr<std::unique_ptr<BoundedExecutor>> Create(
       const Options& options);
 
   // Destructor. All threads will be joined.
@@ -70,7 +70,8 @@ class BoundedExecutor : public thread::ThreadPoolInterface {
 
   // A fixed number of threads.
   std::vector<std::unique_ptr<Thread>> threads_;
-  TF_DISALLOW_COPY_AND_ASSIGN(BoundedExecutor);
+  BoundedExecutor(const BoundedExecutor&) = delete;
+  void operator=(const BoundedExecutor&) = delete;
 };
 
 }  // namespace serving

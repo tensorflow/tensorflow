@@ -63,7 +63,7 @@ namespace impl {
 /// }
 ///
 /// // Get the list of signatures and check it.
-/// auto signature_defs = interpreter->signature_def_names();
+/// auto signature_defs = interpreter->signature_keys();
 /// if (signature_defs.empty()) {
 ///   // Return error.
 /// }
@@ -130,9 +130,12 @@ class SignatureRunner {
                                  const std::vector<int>& new_size);
 
   /// Change the dimensionality of a given tensor. This is only acceptable for
-  /// tensor indices that are inputs or variables. Only unknown dimensions can
-  /// be resized with this function. Unknown dimensions are indicated as `-1` in
-  /// the `dims_signature` attribute of a TfLiteTensor.
+  /// tensor indices that are inputs or variables.
+  ///
+  /// Difference from ResizeInputTensor: Only unknown dimensions can be resized
+  /// with this function. Unknown dimensions are indicated as `-1` in the
+  /// `dims_signature` attribute of a TfLiteTensor.
+  ///
   /// Returns status of failure or success. Note that this doesn't actually
   /// resize any existing buffers. A call to AllocateTensors() is required to
   /// change the tensor input buffer.
@@ -215,6 +218,25 @@ class SignatureRunner {
   void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
   }
+
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Set the delegate buffer handle to a input tensor.
+  /// TfLiteDelegate should be aware of how to handle the buffer handle.
+  /// `release_existing_buffer_handle`: If true, the existing buffer handle
+  // will be released by TfLiteDelegate::FreeBufferHandle.
+  TfLiteStatus SetInputBufferHandle(const char* input_name,
+                                    TfLiteBufferHandle buffer_handle,
+                                    TfLiteDelegate* delegate,
+                                    bool release_existing_buffer_handle = true);
+
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Set the delegate buffer handle to a output tensor.
+  /// TfLiteDelegate should be aware of how to handle the buffer handle.
+  /// `release_existing_buffer_handle`: If true, the existing buffer handle
+  /// will be released by TfLiteDelegate::FreeBufferHandle.
+  TfLiteStatus SetOutputBufferHandle(
+      const char* output_name, TfLiteBufferHandle buffer_handle,
+      TfLiteDelegate* delegate, bool release_existing_buffer_handle = true);
 
  private:
   // The life cycle of SignatureRunner depends on the life cycle of Subgraph,

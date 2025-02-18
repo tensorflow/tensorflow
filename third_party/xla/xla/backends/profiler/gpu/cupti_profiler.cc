@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -64,7 +64,7 @@ void CuptiProfiler::Enable(const CuptiProfilerOptions &option) {}
 
 void CuptiProfiler::Disable() {}
 
-/*static*/ tsl::uint64 CuptiProfiler::GetTimestamp() {
+/*static*/ uint64_t CuptiProfiler::GetTimestamp() {
   uint64_t tsc;
   CuptiInterface *cupti_interface = GetCuptiInterface();
   if (cupti_interface && cupti_interface->GetTimestamp(&tsc) == CUPTI_SUCCESS) {

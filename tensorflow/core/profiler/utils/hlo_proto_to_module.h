@@ -24,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-xla::StatusOr<std::unique_ptr<xla::HloModule>> ConvertHloProtoToModule(
+absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertHloProtoToModule(
     const xla::HloProto& hlo_proto);
 
 std::unique_ptr<xla::HloModule> ConvertHloProtoToModuleIgnoringErrors(

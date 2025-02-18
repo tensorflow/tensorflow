@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "MapPeek"
   input_arg {
     name: "key"

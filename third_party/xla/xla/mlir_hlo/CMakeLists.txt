@@ -1,5 +1,5 @@
 #
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -133,6 +133,7 @@ add_definitions(${LLVM_DEFINITIONS})
 # StableHLO configuration
 #-------------------------------------------------------------------------------
 
+set(STABLEHLO_ENABLE_BINDINGS_PYTHON ${MHLO_ENABLE_BINDINGS_PYTHON})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/stablehlo)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/stablehlo)
 set(LLVM_TABLEGEN_FLAGS -I ${MLIR_HLO_SOURCE_DIR}/stablehlo)
@@ -158,16 +159,12 @@ set(MLIR_HLO_TOOLS_DIR ${MLIR_HLO_BINARY_DIR}/bin)
 set(MLIR_HLO_LIB_DIR ${MLIR_HLO_BINARY_DIR}/lib)
 add_custom_target(check-mlir-hlo)
 
-add_subdirectory(analysis)
 add_subdirectory(bindings)
 add_subdirectory(deallocation)
-add_subdirectory(gml_st)
-add_subdirectory(lhlo)
-add_subdirectory(lhlo_gpu)
 add_subdirectory(mhlo)
 add_subdirectory(stablehlo)
+add_subdirectory(stablehlo_ext)
 add_subdirectory(tests)
-add_subdirectory(thlo)
 add_subdirectory(tools)
 add_subdirectory(transforms)
 add_subdirectory(utils)

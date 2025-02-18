@@ -1,6 +1,10 @@
 # Tests of TensorFlow image kernels written using the Python API.
 
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "tf_py_benchmark_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -64,7 +68,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "decode_jpeg_op_test",
     srcs = ["decode_jpeg_op_test.py"],
     data = ["//tensorflow/core:image_testdata"],

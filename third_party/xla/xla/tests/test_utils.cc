@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,13 +21,15 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <random>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/xla_data.pb.h"
@@ -35,257 +37,6 @@ limitations under the License.
 namespace xla {
 
 namespace {
-
-template <typename FloatT, typename GeneratorT>
-void PopulateWithRandomFloatingPointData(Literal* literal,
-                                         std::minstd_rand0* engine) {
-  std::uniform_real_distribution<GeneratorT> generator(-0.1f, 0.2f);
-  for (FloatT& value : literal->data<FloatT>()) {
-    value = static_cast<FloatT>(generator(*engine));
-  }
-}
-
-// Populates a floating point literal with random floating points sampled from a
-// uniform-log distribution spanning approximately the entire range of the
-// representable floating point.
-template <typename FloatT>
-void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
-                                                  std::minstd_rand0* engine) {
-  constexpr float kSpecialValueProbability = 1e-6;
-  constexpr float kSpecialValues[] = {+0.F,
-                                      -0.F,
-                                      1.F,
-                                      -1.F,
-                                      std::numeric_limits<float>::infinity(),
-                                      -std::numeric_limits<float>::infinity()};
-  constexpr int kNumSpecialValues = sizeof(kSpecialValues) / sizeof(float);
-  std::uniform_real_distribution<float> special_value_gen(0, 1);
-
-  // Generates floating points with a log-uniform distribution. This causes the
-  // exponent of the floating point to have a uniform distribution.
-  const int min_exp = std::numeric_limits<FloatT>::min_exponent;
-  const int max_exp = std::numeric_limits<FloatT>::max_exponent;
-  std::uniform_real_distribution<double> generator(min_exp - 1, max_exp - 1);
-
-  for (FloatT& value : literal->data<FloatT>()) {
-    // Each special value has a kSpecialValueProbability chance to be generated
-    // instead of sampling using the normal distributions.
-    if (special_value_gen(*engine) <
-        kSpecialValueProbability * kNumSpecialValues) {
-      value =
-          static_cast<FloatT>(kSpecialValues[(*engine)() % kNumSpecialValues]);
-    } else {
-      float sign = ((*engine)() % 2 == 0) ? 1 : -1;
-      value = static_cast<FloatT>(pow(2, generator(*engine)) * sign);
-    }
-  }
-}
-
-template <typename FloatT>
-void PopulateWithIntNext(Literal* literal) {
-  using BitRepT = UnsignedIntegerTypeForSizeType<sizeof(FloatT)>;
-  // Duplicates may be generated if we don't have enough bits.
-  // Skip bfloat16 and float32 subnormals.
-  const FloatT kFirstValue =
-      std::is_same_v<FloatT, bfloat16> || sizeof(FloatT) >= sizeof(float)
-          ? std::numeric_limits<FloatT>::min()
-          : std::numeric_limits<FloatT>::denorm_min();
-  // `current` keeps track of the next value we need to populate.
-  auto current = literal->data<FloatT>().begin();
-  auto end = literal->data<FloatT>().end();
-  // `sign` keeps track of the sign of the next value.
-  bool sign = false;
-  while (current != end) {
-    // We start populating values at zero and increase magnitude from there.
-    *current = sign ? static_cast<FloatT>(-0.0f) : static_cast<FloatT>(0.0f);
-    current++;
-    // The next value is either the smallest denormal or normal.
-    auto value = sign ? -kFirstValue : kFirstValue;
-    // Fill the array with values of increasing magnitude until we hit a
-    // non-finite value.
-    while (current != end && Eigen::numext::isfinite(value)) {
-      // Populate the value.
-      *current = value;
-      // Generate the next value by lexicographically increasing the bit
-      // representation.
-      const BitRepT next_value = Eigen::numext::bit_cast<BitRepT>(value) + 1;
-      value = Eigen::numext::bit_cast<FloatT>(next_value);
-      current++;
-    }
-    // We ran out of finite values, flip the sign and begin again.
-    sign = !sign;
-  }
-}
-
-template <typename FloatT>
-void PopulateWithNoDuplicateData(Literal* literal, std::minstd_rand0* engine) {
-  PopulateWithIntNext<FloatT>(literal);
-  std::shuffle(literal->data<FloatT>().begin(), literal->data<FloatT>().end(),
-               *engine);
-}
-
-template <typename FloatT>
-void PopulateWithFloatingPointData(Literal* literal, std::minstd_rand0* engine,
-                                   bool no_duplicates, bool use_large_range) {
-  using ComputeT =
-      std::conditional_t<sizeof(FloatT) < sizeof(float), float, FloatT>;
-  CHECK(engine != nullptr);
-  CHECK_EQ(literal->shape().element_type(),
-           primitive_util::NativeToPrimitiveType<FloatT>());
-  if (no_duplicates) {
-    PopulateWithNoDuplicateData<FloatT>(literal, engine);
-  } else if (use_large_range) {
-    PopulateWithRandomFullRangeFloatingPointData<FloatT>(literal, engine);
-  } else {
-    PopulateWithRandomFloatingPointData<FloatT, ComputeT>(literal, engine);
-  }
-}
-
-template <typename ComplexT>
-void PopulateWithComplexData(Literal* result, std::minstd_rand0* engine,
-                             bool no_duplicates, bool use_large_range) {
-  using InnerFloatT = typename ComplexT::value_type;
-  CHECK(engine != nullptr);
-  CHECK_EQ(result->shape().element_type(),
-           primitive_util::NativeToPrimitiveType<ComplexT>());
-  Shape floating_point_shape = ShapeUtil::ChangeElementType(
-      result->shape(), primitive_util::NativeToPrimitiveType<InnerFloatT>());
-  Literal real_lit(floating_point_shape);
-  Literal imaginary_lit(floating_point_shape);
-
-  PopulateWithFloatingPointData<InnerFloatT>(&real_lit, engine, no_duplicates,
-                                             use_large_range);
-  PopulateWithFloatingPointData<InnerFloatT>(&imaginary_lit, engine,
-                                             no_duplicates, use_large_range);
-
-  absl::Span<const InnerFloatT> real_data = real_lit.data<InnerFloatT>();
-  absl::Span<const InnerFloatT> imaginary_data =
-      imaginary_lit.data<InnerFloatT>();
-  absl::Span<ComplexT> result_data = result->data<ComplexT>();
-  for (int i = 0; i < real_lit.data<InnerFloatT>().size(); i++) {
-    result_data[i] = ComplexT(real_data[i], imaginary_data[i]);
-  }
-}
-
-// uniform_int_distribution is not defined for 8-bit integers.
-// Use 'short' for those types.
-template <typename IntT>
-using RngT = std::conditional_t<
-    sizeof(IntT) < sizeof(uint16_t),
-    std::conditional_t<std::numeric_limits<IntT>::is_signed, int16_t, uint16_t>,
-    IntT>;
-
-template <typename IntT>
-void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
-                                              std::minstd_rand0* engine,
-                                              bool no_duplicates, IntT min,
-                                              IntT max) {
-  CHECK(engine != nullptr);
-  CHECK_EQ(literal->shape().element_type(),
-           primitive_util::NativeToPrimitiveType<IntT>());
-  if (no_duplicates &&
-      ShapeUtil::ElementsIn(literal->shape()) < static_cast<int64_t>(max)) {
-    std::iota(literal->data<IntT>().begin(), literal->data<IntT>().end(),
-              static_cast<IntT>(0));
-    std::shuffle(literal->data<IntT>().begin(), literal->data<IntT>().end(),
-                 *engine);
-  } else {
-    std::uniform_int_distribution<RngT<IntT>> generator(
-        static_cast<RngT<IntT>>(min), static_cast<RngT<IntT>>(max));
-    for (IntT& value : literal->data<IntT>()) {
-      value = static_cast<IntT>(generator(*engine));
-    }
-  }
-}
-
-// Similar to MakeFakeLiteral but takes a random number generator engine to
-// enable reusing the engine across randomly generated literals.
-// 'limit' is a optional pair that contains the min and the max values to be
-// sample for integers (integer format only).
-// 'is_sorted' sorts the sample data for integers (integer format only).
-// 'no_duplicates' indicates that there should be no duplicate values in each
-// generated array. This is uniqueness is best-effort only. Some types
-// (half and bfloat16) are not supported and uniqueness cannot be guaranteed if
-// the number of elements exceeds the number of different values supported by
-// the type. (floating point format only)
-// 'use_large_range' indicates the sampled data is from the full range of the
-// floating point format. (floating point format only)
-StatusOr<Literal> MakeFakeLiteralInternal(
-    const Shape& shape, std::minstd_rand0* engine,
-    std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
-    bool no_duplicates, bool use_large_range) {
-  if (shape.IsTuple()) {
-    std::vector<Literal> elements;
-    const auto& shape_tuple_shapes = shape.tuple_shapes();
-    elements.reserve(shape_tuple_shapes.size());
-    for (const Shape& element_shape : shape_tuple_shapes) {
-      TF_ASSIGN_OR_RETURN(
-          Literal element,
-          MakeFakeLiteralInternal(element_shape, engine, limit, is_sorted,
-                                  no_duplicates, use_large_range));
-      elements.push_back(std::move(element));
-    }
-    return LiteralUtil::MakeTupleOwned(std::move(elements));
-  }
-  if (engine == nullptr) {
-    return Literal::CreateFromShape(shape);
-  }
-  // Clear tiles/element size in shape's layout before using it for creating
-  // literal.
-  Shape new_shape = shape;
-  new_shape.mutable_layout()->clear_tiles();
-  new_shape.mutable_layout()->set_element_size_in_bits(0);
-  Literal literal(new_shape);
-
-  TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          if constexpr (primitive_util::IsFloatingPointType(
-                            primitive_type_constant)) {
-            PopulateWithFloatingPointData<NativeT>(
-                &literal, engine, no_duplicates, use_large_range);
-            return OkStatus();
-          }
-          if constexpr (primitive_type_constant == PRED) {
-            std::uniform_int_distribution<int> generator(0, 1);
-            TF_CHECK_OK(literal.Populate<bool>(
-                [&](absl::Span<const int64_t> /*indices*/) {
-                  return generator(*engine);
-                }));
-            return OkStatus();
-          }
-          if constexpr (primitive_util::IsIntegralType(
-                            primitive_type_constant)) {
-            NativeT max = std::numeric_limits<NativeT>::max();
-            NativeT min = std::numeric_limits<NativeT>::lowest();
-            if (limit.has_value()) {
-              max = static_cast<NativeT>(limit->second);
-              min = static_cast<NativeT>(limit->first);
-            }
-            PopulateWithRandomIntegralDataWithBounds<NativeT>(
-                &literal, engine, /*no_duplicate*/ no_duplicates, min, max);
-            if (is_sorted) {
-              std::sort(literal.data<NativeT>().begin(),
-                        literal.data<NativeT>().end());
-            }
-            return OkStatus();
-          }
-          if constexpr (primitive_util::IsComplexType(
-                            primitive_type_constant)) {
-            PopulateWithComplexData<NativeT>(&literal, engine, no_duplicates,
-                                             use_large_range);
-            return OkStatus();
-          }
-        }
-        return Unimplemented(
-            "Unsupported type for fake random literal generation with bounds: "
-            "%s",
-            ShapeUtil::HumanString(shape));
-      },
-      shape.element_type()));
-  return std::move(literal);
-}
 
 enum class ConstantType { kUnknown, kZero, kOne };
 
@@ -436,10 +187,11 @@ std::vector<HloInstruction*> FindConstrainedUses(
 // no constrained uses in the dataflow graph.  If such constraints exist,
 // generate a constrained literal (either bounded in the case of indices, or
 // zero in the case of init_values for reductions).
-StatusOr<Literal> CreateLiteralForConstrainedUses(
+absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
-    std::minstd_rand0* engine, bool use_large_range) {
+    std::minstd_rand0* engine, bool use_large_range,
+    std::optional<int64_t> max_bits_of_precision) {
   int64_t index_bound = INT64_MAX;
   bool no_duplicates = false;
   bool needs_constant = false;
@@ -516,9 +268,10 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     return Unimplemented("Conflicting operand generation constraints.");
   }
   if (index_bound != INT64_MAX) {
-    return MakeFakeLiteralInternal(
-        param_shape, engine, std::pair<int64_t, int64_t>(0, index_bound),
-        needs_sorted_indices, no_duplicates, use_large_range);
+    return MakeFakeLiteral(param_shape, engine,
+                           std::pair<int64_t, int64_t>(0, index_bound),
+                           needs_sorted_indices, no_duplicates, use_large_range,
+                           max_bits_of_precision);
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:
@@ -529,53 +282,58 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
         // We want the identity element for the computation, but we don't
         // really know what it is - so any value we generate will be just as
         // wrong.
-        return MakeFakeLiteralInternal(
-            param_shape, engine, /*limit=*/std::nullopt,
-            /*is_sorted=*/needs_sorted_indices,
-            /*no_duplicates=*/false, use_large_range);
+        return MakeFakeLiteral(param_shape, engine, /*limit=*/std::nullopt,
+                               /*is_sorted=*/needs_sorted_indices,
+                               /*no_duplicates=*/false, use_large_range,
+                               max_bits_of_precision);
     }
   } else {
-    return MakeFakeLiteralInternal(param_shape, engine, /*limit=*/std::nullopt,
-                                   /*is_sorted=*/needs_sorted_indices,
-                                   no_duplicates, use_large_range);
+    return MakeFakeLiteral(param_shape, engine, /*limit=*/std::nullopt,
+                           /*is_sorted=*/needs_sorted_indices, no_duplicates,
+                           use_large_range, max_bits_of_precision);
   }
 }
 
 // Given a module entry parameter, use the dataflow analysis to see if a
 // special case literal must be created, or if we can generate fake data.
-StatusOr<Literal> MakeConstrainedArgument(const HloDataflowAnalysis& dataflow,
-                                          const HloInstruction& param,
-                                          const Shape& param_shape,
-                                          std::minstd_rand0* engine,
-                                          bool use_large_range,
-                                          bool treat_gte_as_data_formatting) {
+absl::StatusOr<Literal> MakeConstrainedArgument(
+    const HloDataflowAnalysis& dataflow, const HloInstruction& param,
+    const Shape& param_shape, std::minstd_rand0* engine, bool use_large_range,
+    bool treat_gte_as_data_formatting,
+    std::optional<int64_t> max_bits_of_precision) {
   const auto constrained_uses =
       FindConstrainedUses(dataflow, param, treat_gte_as_data_formatting);
   return CreateLiteralForConstrainedUses(constrained_uses, param, param_shape,
-                                         engine, use_large_range);
+                                         engine, use_large_range,
+                                         max_bits_of_precision);
 }
 
 }  // namespace
 
-StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
-                                  bool use_large_range) {
-  auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
-  return MakeFakeLiteralInternal(shape, engine.get(), /*limit=*/std::nullopt,
-                                 /*is_sorted=*/false,
-                                 /*no_duplicates=*/false, use_large_range);
-}
-
-StatusOr<std::vector<Literal>> MakeFakeArguments(
+absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random, bool use_large_range,
-    bool treat_gte_as_data_formatting) {
-  auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
-  return MakeFakeArguments(module, engine.get(), use_large_range,
-                           treat_gte_as_data_formatting);
+    bool treat_gte_as_data_formatting,
+    std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine) {
+  if (!pseudo_random) {
+    return MakeFakeArguments(module, nullptr, use_large_range,
+                             treat_gte_as_data_formatting,
+                             max_bits_of_precision);
+  }
+  if (engine == nullptr) {
+    auto new_engine =
+        pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
+    return MakeFakeArguments(module, new_engine.get(), use_large_range,
+                             treat_gte_as_data_formatting,
+                             max_bits_of_precision);
+  }
+  return MakeFakeArguments(module, engine, use_large_range,
+                           treat_gte_as_data_formatting, max_bits_of_precision);
 }
 
-StatusOr<std::vector<Literal>> MakeFakeArguments(
+absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
-    bool treat_gte_as_data_formatting) {
+    bool treat_gte_as_data_formatting,
+    std::optional<int64_t> max_bits_of_precision) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
@@ -594,13 +352,14 @@ StatusOr<std::vector<Literal>> MakeFakeArguments(
     TF_ASSIGN_OR_RETURN(
         arguments[i],
         MakeConstrainedArgument(*dataflow, *params[i], param_shape, engine,
-                                use_large_range, treat_gte_as_data_formatting));
+                                use_large_range, treat_gte_as_data_formatting,
+                                max_bits_of_precision));
   }
   return std::move(arguments);
 }
 
-Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
-                       bool allow_mixed_precision) {
+absl::Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
+                             bool allow_mixed_precision) {
   return HloVerifier(/*layout_sensitive=*/layout_sensitive,
                      /*allow_mixed_precision=*/allow_mixed_precision)
       .Run(module)
@@ -621,15 +380,6 @@ std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
   dot_dimension_numbers.add_rhs_contracting_dimensions(0);
   return std::make_unique<HloDotInstruction>(
       shape, lhs, rhs, dot_dimension_numbers, precision_config);
-}
-
-bool IsMlirLoweringEnabled() {
-  char* xla_flags = getenv("XLA_FLAGS");
-  if (!xla_flags) {
-    return false;
-  }
-  return !absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime=false") &&
-         (absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime"));
 }
 
 }  // namespace xla

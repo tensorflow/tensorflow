@@ -8,10 +8,10 @@ func.func @QuantizeReadVariable() -> (tensor<1x2x1x3x!quant.uniform<i8:f32, 1.0>
   %3 = "tfl.quantize"(%2) {qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.0>>, volatile} : (tensor<1x2x1x3xf32>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.0>>
   func.return %3 : tensor<1x2x1x3x!quant.uniform<i8:f32, 1.0>>
 
-// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() {container = "", shared_name = ""} : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
+// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() <{container = "", shared_name = ""}> : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
 // CHECK-NEXT:  %[[rv:.*]] = "tfl.read_variable"(%[[vh]]) : (tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  %[[dq:.*]] = "tfl.dequantize"(%[[rv]]) : (tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x2x1x3xf32>
-// CHECK-NEXT:  %[[q:.*]] = "tfl.quantize"(%[[dq]]) {qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>, volatile} : (tensor<1x2x1x3xf32>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK-NEXT:  %[[q:.*]] = "tfl.quantize"(%[[dq]]) <{qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>}> {volatile} : (tensor<1x2x1x3xf32>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  return %[[q]] : tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 }
 
@@ -22,7 +22,7 @@ func.func @QuantizeAssignVariableWithDequantAndEqualType(%arg0 : tensor<1x2x1x3x
   "tfl.assign_variable"(%0, %1) : (tensor<!tf_type.resource>, tensor<1x2x1x3xf32>) -> ()
   func.return %arg0 : tensor<1x2x1x3x!quant.uniform<i8:f32, 1.0>>
 
-// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() {container = "", shared_name = ""} : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
+// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() <{container = "", shared_name = ""}> : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
 // CHECK-NEXT:  "tfl.assign_variable"(%[[vh]], %arg0) : (tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>, tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> ()
 // CHECK-NEXT:  return %arg0 : tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 }
@@ -36,11 +36,11 @@ func.func @QuantizeAssignVariableWithDequantAndNotEqualType(%arg0 : tensor<1x2x1
   "tfl.assign_variable"(%1, %5) : (tensor<!tf_type.resource>, tensor<1x2x1x3xf32>) -> ()
   func.return %arg0 : tensor<1x2x1x3x!quant.uniform<i8:f64, 1.0>>
 
-// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() {container = "", shared_name = ""} : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
+// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() <{container = "", shared_name = ""}> : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
 // CHECK-NEXT:  %[[rv:.*]] = "tfl.read_variable"(%[[vh]]) : (tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  %[[dq:.*]] = "tfl.dequantize"(%[[rv]]) : (tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x2x1x3xf32>
-// CHECK-NEXT:  %[[q1:.*]] = "tfl.quantize"(%[[dq]]) {qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>, volatile} : (tensor<1x2x1x3xf32>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
-// CHECK-NEXT:  %[[q2:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>} : (tensor<1x2x1x3x!quant.uniform<i8:f64, 1.000000e+00>>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK-NEXT:  %[[q1:.*]] = "tfl.quantize"(%[[dq]]) <{qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>}> {volatile} : (tensor<1x2x1x3xf32>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK-NEXT:  %[[q2:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>}> : (tensor<1x2x1x3x!quant.uniform<i8:f64, 1.000000e+00>>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  "tfl.assign_variable"(%[[vh]], %[[q2]]) : (tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>, tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> ()
 // CHECK-NEXT:  return %arg0 : tensor<1x2x1x3x!quant.uniform<i8:f64, 1.000000e+00>>
 }
@@ -54,10 +54,10 @@ func.func @QuantizeAssignVariableWithoutDequant(%arg0 : tensor<1x2x1x3xf32>) -> 
   "tfl.assign_variable"(%0, %3) : (tensor<!tf_type.resource>, tensor<1x2x1x3xf32>) -> ()
   func.return %arg0 : tensor<1x2x1x3xf32>
 
-// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() {container = "", shared_name = ""} : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
+// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() <{container = "", shared_name = ""}> : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
 // CHECK-NEXT:  %[[rv:.*]] = "tfl.read_variable"(%[[vh]]) : (tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  %[[dq:.*]] = "tfl.dequantize"(%[[rv]]) : (tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x2x1x3xf32>
-// CHECK-NEXT:  %[[q:.*]] = "tfl.quantize"(%[[dq]]) {qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>, volatile} : (tensor<1x2x1x3xf32>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK-NEXT:  %[[q:.*]] = "tfl.quantize"(%[[dq]]) <{qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>}> {volatile} : (tensor<1x2x1x3xf32>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  "tfl.assign_variable"(%[[vh]], %[[q]]) : (tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>, tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> ()
 // CHECK-NEXT:  return %arg0 : tensor<1x2x1x3xf32>
 }
@@ -67,7 +67,7 @@ func.func @VarHandleCase(%arg0 : tensor<1x2x1x3xf32>) -> tensor<1x2x1x3xf32> {
   %0 = "tfl.var_handle"() : () -> tensor<!tf_type.resource>
   func.return %arg0 : tensor<1x2x1x3xf32>
 
-// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() {container = "", shared_name = ""} : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
+// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() <{container = "", shared_name = ""}> : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
 // CHECK-NEXT:  return %arg0 : tensor<1x2x1x3xf32>
 }
 
@@ -89,19 +89,19 @@ func.func @QuantizeReadAssign(%arg0: tensor<1x32x1x3xf32>) -> (tensor<1x34x1x3xf
   "tfl.assign_variable"(%2, %9) : (tensor<!tf_type.resource>, tensor<1x2x1x3xf32>) -> ()
   func.return %6 : tensor<1x34x1x3xf32>
 
-// CHECK-NEXT:  %[[q1:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<1x32x1x3x!quant.uniform<i8:f32, 1.000000e+00>>, volatile} : (tensor<1x32x1x3xf32>) -> tensor<1x32x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK-NEXT:  %[[q1:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<1x32x1x3x!quant.uniform<i8:f32, 1.000000e+00>>}> {volatile} : (tensor<1x32x1x3xf32>) -> tensor<1x32x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  %[[dq1:.*]] = "tfl.dequantize"(%[[q1]]) : (tensor<1x32x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x32x1x3xf32>
 // CHECK-NEXT:  %[[cst:.*]] = arith.constant dense<1> : tensor<4xi32>
 // CHECK-NEXT:  %[[cst_0:.*]] = arith.constant dense<[0, 0, 0, 3]> : tensor<4xi32>
 // CHECK-NEXT:  %[[cst_1:.*]] = arith.constant dense<[0, -2, 0, 0]> : tensor<4xi32>
-// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() {container = "", shared_name = "read_assign2/states"} : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
+// CHECK-NEXT:  %[[vh:.*]] = "tfl.var_handle"() <{container = "", shared_name = "read_assign2/states"}> : () -> tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>
 // CHECK-NEXT:  %[[rv:.*]] = "tfl.read_variable"(%[[vh]]) : (tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  %[[dq2:.*]] = "tfl.dequantize"(%[[rv]]) : (tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x2x1x3xf32>
-// CHECK-NEXT:  %[[cc:.*]] = "tfl.concatenation"(%[[dq2]], %[[dq1]]) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<1x2x1x3xf32>, tensor<1x32x1x3xf32>) -> tensor<1x34x1x3xf32>
-// CHECK-NEXT:  %[[q2:.*]] = "tfl.quantize"(%[[cc]]) {qtype = tensor<1x34x1x3x!quant.uniform<i8:f32, 1.000000e+00>>, volatile} : (tensor<1x34x1x3xf32>) -> tensor<1x34x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK-NEXT:  %[[cc:.*]] = "tfl.concatenation"(%[[dq2]], %[[dq1]]) <{axis = 1 : i32, fused_activation_function = "NONE"}> : (tensor<1x2x1x3xf32>, tensor<1x32x1x3xf32>) -> tensor<1x34x1x3xf32>
+// CHECK-NEXT:  %[[q2:.*]] = "tfl.quantize"(%[[cc]]) <{qtype = tensor<1x34x1x3x!quant.uniform<i8:f32, 1.000000e+00>>}> {volatile} : (tensor<1x34x1x3xf32>) -> tensor<1x34x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  %[[dq3:.*]] = "tfl.dequantize"(%[[q2]]) : (tensor<1x34x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x34x1x3xf32>
-// CHECK-NEXT:  %[[ss:.*]] = "tfl.strided_slice"(%[[dq3]], %[[cst_1]], %[[cst_0]], %[[cst]]) {begin_mask = 13 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<1x34x1x3xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x1x3xf32>
-// CHECK-NEXT:  %[[q3:.*]] = "tfl.quantize"(%[[ss]]) {qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>, volatile} : (tensor<1x2x1x3xf32>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK-NEXT:  %[[ss:.*]] = "tfl.strided_slice"(%[[dq3]], %[[cst_1]], %[[cst_0]], %[[cst]]) <{begin_mask = 13 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32}> : (tensor<1x34x1x3xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x1x3xf32>
+// CHECK-NEXT:  %[[q3:.*]] = "tfl.quantize"(%[[ss]]) <{qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>}> {volatile} : (tensor<1x2x1x3xf32>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  "tfl.assign_variable"(%[[vh]], %[[q3]]) : (tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>, tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> ()
 // CHECK-NEXT:  return %[[dq3]] : tensor<1x34x1x3xf32>
 }
@@ -133,11 +133,11 @@ func.func @QuantizeConvVariable(%arg0: tensor<1x3x1x1xf32>) -> (tensor<1x3x1x1xf
   "tfl.assign_variable"(%6, %16) : (tensor<!tf_type.resource>, tensor<1x3x1x1xf32>) -> ()
   func.return %10 : tensor<1x3x1x1xf32>
 
-// WHOLE-PASSES:  %[[vh:.*]] = "tfl.var_handle"() {container = "", shared_name = "conv_variable/state"} : () -> tensor<*x!tf_type.resource<tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>>>
+// WHOLE-PASSES:  %[[vh:.*]] = "tfl.var_handle"() <{container = "", shared_name = "conv_variable/state"}> : () -> tensor<*x!tf_type.resource<tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>>>
 // WHOLE-PASSES-NEXT:  %[[rv:.*]] = "tfl.read_variable"(%[[vh]]) : (tensor<*x!tf_type.resource<tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>>>) -> tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>
-// WHOLE-PASSES-DAG:  %[[cv:.*]] = "tfl.conv_2d"(%arg0, {{.*}}) {{{.*}}} : (tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>, tensor<1x3x1x1x!quant.uniform<i8<-127:127>:f32:0, {{.*}}>>, tensor<1x!quant.uniform<i32:f32, {{.*}}>>) -> tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>
-// WHOLE-PASSES-NEXT:  %[[cc:.*]] = "tfl.concatenation"(%[[rv]], %[[cv]]) {{{.*}}} : (tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>, tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>) -> tensor<1x6x1x1x!quant.uniform<i8:f32, {{.*}}>>
-// WHOLE-PASSES-NEXT:  %[[ss:.*]] = "tfl.strided_slice"(%[[cc]], {{.*}}) {{{.*}}} : (tensor<1x6x1x1x!quant.uniform<i8:f32, {{.*}}>>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>
+// WHOLE-PASSES-DAG:  %[[cv:.*]] = "tfl.conv_2d"(%arg0, {{.*}}) <{{{.*}}}> : (tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>, tensor<1x3x1x1x!quant.uniform<i8<-127:127>:f32:0, {{.*}}>>, tensor<1x!quant.uniform<i32:f32, {{.*}}>>) -> tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>
+// WHOLE-PASSES-NEXT:  %[[cc:.*]] = "tfl.concatenation"(%[[rv]], %[[cv]]) <{{{.*}}}> : (tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>, tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>) -> tensor<1x6x1x1x!quant.uniform<i8:f32, {{.*}}>>
+// WHOLE-PASSES-NEXT:  %[[ss:.*]] = "tfl.strided_slice"(%[[cc]], {{.*}}) <{{{.*}}}> : (tensor<1x6x1x1x!quant.uniform<i8:f32, {{.*}}>>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>
 // WHOLE-PASSES-NEXT:  "tfl.assign_variable"(%[[vh]], %[[ss]]) : (tensor<*x!tf_type.resource<tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>>>, tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>) -> ()
 // WHOLE-PASSES-NEXT:  return %[[cv]] : tensor<1x3x1x1x!quant.uniform<i8:f32, {{.*}}>>
 }
@@ -171,19 +171,19 @@ func.func @QuantizeTwoVariable(%arg0: tensor<1x2x3xf32>) -> (tensor<1x2x3xf32>) 
 
   func.return %0 : tensor<1x2x3xf32>
 
-// WHOLE-PASSES:  %[[q1:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>} : (tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>) -> tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>
-// WHOLE-PASSES-DAG:  %[[vh1:.*]] = "tfl.var_handle"() {container = "", shared_name = "read_assign/states0"} : () -> tensor<*x!tf_type.resource<tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>>>
-// WHOLE-PASSES-DAG:  %[[vh2:.*]] = "tfl.var_handle"() {container = "", shared_name = "read_assign/states1"} : () -> tensor<*x!tf_type.resource<tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>>>
+// WHOLE-PASSES:  %[[q1:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>}> : (tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>) -> tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>
+// WHOLE-PASSES-DAG:  %[[vh1:.*]] = "tfl.var_handle"() <{container = "", shared_name = "read_assign/states0"}> : () -> tensor<*x!tf_type.resource<tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>>>
+// WHOLE-PASSES-DAG:  %[[vh2:.*]] = "tfl.var_handle"() <{container = "", shared_name = "read_assign/states1"}> : () -> tensor<*x!tf_type.resource<tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>>>
 
 // WHOLE-PASSES-DAG:  %[[rv1:.*]] = "tfl.read_variable"({{.*}}) : (tensor<*x!tf_type.resource<tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>>>) -> tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>
 // WHOLE-PASSES-NEXT:  %[[cc1:.*]] = "tfl.concatenation"(%[[rv1]], {{.*}}) {{.*}} : (tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>, tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>) -> tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>
-// WHOLE-PASSES-NEXT:  %[[q2:.*]] = "tfl.quantize"(%[[cc1]]) {qtype = tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>} : (tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>) -> tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>
-// WHOLE-PASSES-NEXT:  %[[ss1:.*]] = "tfl.strided_slice"(%[[q2]], {{.*}}) {{{.*}}} : (tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>
+// WHOLE-PASSES-NEXT:  %[[q2:.*]] = "tfl.quantize"(%[[cc1]]) <{qtype = tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>}> : (tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>) -> tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>
+// WHOLE-PASSES-NEXT:  %[[ss1:.*]] = "tfl.strided_slice"(%[[q2]], {{.*}}) <{{{.*}}}> : (tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>
 // WHOLE-PASSES-NEXT:  "tfl.assign_variable"(%[[vh1]], %[[ss1]]) : (tensor<*x!tf_type.resource<tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>>>, tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>) -> ()
 
 // WHOLE-PASSES-DAG:  %[[rv2:.*]] = "tfl.read_variable"({{.*}}) : (tensor<*x!tf_type.resource<tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>>>) -> tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>
 // WHOLE-PASSES-NEXT:  %[[cc2:.*]] = "tfl.concatenation"(%[[rv2]], {{.*}}) {{.*}} : (tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>, tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>) -> tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>
-// WHOLE-PASSES-NEXT:  %[[ss2:.*]] = "tfl.strided_slice"(%[[cc2]], {{.*}}) {{{.*}}} : (tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>
+// WHOLE-PASSES-NEXT:  %[[ss2:.*]] = "tfl.strided_slice"(%[[cc2]], {{.*}}) <{{{.*}}}> : (tensor<1x4x3x!quant.uniform<u8:f32, {{.*}}>>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>
 // WHOLE-PASSES-NEXT:  "tfl.assign_variable"(%[[vh2]], %[[ss2]]) : (tensor<*x!tf_type.resource<tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>>>, tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>) -> ()
 
 // WHOLE-PASSES-NEXT:  return %arg0 : tensor<1x2x3x!quant.uniform<u8:f32, {{.*}}>>

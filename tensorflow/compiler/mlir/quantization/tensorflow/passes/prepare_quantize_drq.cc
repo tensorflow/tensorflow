@@ -24,16 +24,16 @@ limitations under the License.
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 //===----------------------------------------------------------------------===//
@@ -46,13 +46,14 @@ namespace {
 
 using QuantizationUnit = std::pair<Operation*, int>;
 using QuantizationUnits = llvm::SetVector<QuantizationUnit>;
+using ::tensorflow::quantization::OpSet;
 
 // Applies prepare quantization on the model in TF dialect for dynamic range
 // quantization case.
 class PrepareQuantizeDRQPass
     : public PassWrapper<PrepareQuantizeDRQPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect, ::mlir::quant::QuantizationDialect,
+    registry.insert<TF::TensorFlowDialect, ::mlir::quant::QuantDialect,
                     ::mlir::quantfork::QuantizationForkDialect>();
   }
 
@@ -127,7 +128,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
       return failure();
     }
 
-    // 2. Quantize collected ops. It is immediatly quantized by inserting Q-DQ
+    // 2. Quantize collected ops. It is immediately quantized by inserting Q-DQ
     // pair for int8.
     if (!(quantizeOps(rewriter, op, quantizable_ops))) {
       return failure();
@@ -142,7 +143,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
   bool getQuantizableOps(arith::ConstantOp op,
                          QuantizationUnits& quantizable_ops) const {
     // Non-float tensors do not need quantization.
-    auto type = op.getType().dyn_cast<ShapedType>();
+    auto type = mlir::dyn_cast<ShapedType>(op.getType());
     if (!type || !type.getElementType().isF32()) return false;
 
     Value value = op.getResult();
@@ -183,23 +184,23 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
     if (attr.size() < quant_specs_.minimum_elements_for_weights) {
       op->emitRemark("Quantization is skipped for ")
           << quantized_op->getName().getStringRef().str() << " because it has "
-          << attr.dyn_cast<DenseFPElementsAttr>().size()
+          << mlir::dyn_cast<DenseFPElementsAttr>(attr).size()
           << " elements which is fewer than the threshold("
           << quant_specs_.minimum_elements_for_weights << " elements).";
       return false;
     }
 
     if (is_per_channel_quantization) {
-      quant_type = quant::GetUniformQuantizedPerAxisTypeForWeight(
-                       attr, quant_dim,
-                       /*symmetric=*/true, bit_width, is_signed,
-                       is_narrow_range, is_legacy_float)
-                       .template dyn_cast<quant::QuantizedType>();
+      quant_type = mlir::dyn_cast<quant::QuantizedType>(
+          quant::GetUniformQuantizedPerAxisTypeForWeight(
+              attr, quant_dim,
+              /*symmetric=*/true, bit_width, is_signed, is_narrow_range,
+              is_legacy_float));
     } else {
-      quant_type = quant::GetUniformQuantizedTypeForWeight(
-                       attr, is_narrow_range && is_signed, bit_width, is_signed,
-                       is_narrow_range, is_legacy_float)
-                       .template dyn_cast<quant::QuantizedType>();
+      quant_type = mlir::dyn_cast<quant::QuantizedType>(
+          quant::GetUniformQuantizedTypeForWeight(
+              attr, is_narrow_range && is_signed, bit_width, is_signed,
+              is_narrow_range, is_legacy_float));
     }
     return insertQDQ(rewriter, op, quant_type, quant_op);
   }
@@ -277,7 +278,7 @@ void PrepareQuantizeDRQPass::runOnOperation() {
 
   for (auto func : module_op.getOps<func::FuncOp>()) {
     removeAllStatsOp(func);
-    if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+    if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-prepare-quantize-drq failed.";
       signalPassFailure();
     }

@@ -17,17 +17,18 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status FuseActivationFunctions::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status FuseActivationFunctions::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   const auto ac_it = model->operators.begin() + op_index;
   const auto* ac_op = ac_it->get();
@@ -35,20 +36,20 @@ namespace toco {
   if (ac_op->type != OperatorType::kRelu6 &&
       ac_op->type != OperatorType::kRelu1 &&
       ac_op->type != OperatorType::kRelu) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Find the op producing the array passed to this activation function
   Operator* op = GetOpWithOutput(*model, ac_op->inputs[0]);
 
-  if (!op) return ::tensorflow::OkStatus();
+  if (!op) return absl::OkStatus();
 
   if (CountTrueOutputs(*model, *op) > 1) {
     AddMessageF(
         "Not fusing activation function %s into %s because it has more than "
         "one  consumed output",
         LogName(*ac_op), LogName(*op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   CHECK_EQ(op->outputs[0], ac_op->inputs[0]);
@@ -60,7 +61,7 @@ namespace toco {
         "Not fusing activation function into %s because it is consumed by more "
         "than 1 other operator",
         LogName(*ac_op), LogName(*op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!IsDiscardableArray(*model, op->outputs[0])) {
@@ -68,7 +69,7 @@ namespace toco {
         "Not fusing activation function %s into %s because output %s it is not "
         "discardable",
         LogName(*ac_op), LogName(*op), op->outputs[0]);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (op->fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -76,7 +77,7 @@ namespace toco {
         "Not fusing activation function %s into %s because it already has a "
         "fused activation function",
         LogName(*ac_op), LogName(*op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!OperatorSupportsFusedActivation(op->type)) {
@@ -84,7 +85,7 @@ namespace toco {
         "Not fusing activation function %s because the %s op doesn't support "
         "it",
         LogName(*ac_op), LogName(*op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   AddMessageF("Fusing activation function %s into the preceding %s",
@@ -101,7 +102,7 @@ namespace toco {
   op->outputs[0] = ac_op->outputs[0];
   DeleteOpAndArrays(model, ac_op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

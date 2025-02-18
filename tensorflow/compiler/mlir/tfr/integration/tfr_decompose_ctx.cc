@@ -17,47 +17,63 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 #include "tensorflow/compiler/mlir/tfr/passes/passes.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfr {
 
 const char* const kTFRLibEnv = "TF_MLIR_TFR_LIB_DIR";
 
-StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
+absl::StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
     mlir::MLIRContext* mlir_ctx) {
   Env* env = Env::Default();
   std::string tfr_lib_dir;
@@ -89,7 +105,7 @@ StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
 }
 
 std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
-    StringPiece tfr_raw_text, mlir::MLIRContext* mlir_ctx) {
+    absl::string_view tfr_raw_text, mlir::MLIRContext* mlir_ctx) {
   mlir_ctx->allowUnregisteredDialects(/*allow=*/true);
   // Load dialects involved in the conversion
   mlir::DialectRegistry registry;
@@ -121,8 +137,8 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
   return std::make_unique<TFRDecomposeContext>(module_op);
 }
 
-StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
-                                                      StringPiece func_name) {
+absl::StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(
+    const NodeDef& node_def, absl::string_view func_name) {
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
   DataTypeVector input_dtys, output_dtys;
@@ -176,17 +192,18 @@ StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
   // Export the result as a FunctionDef.
   FunctionDef func_def;
   TF_RETURN_IF_ERROR(
-      ConvertMlirFunctionToFunctionLibraryDef(func, export_confs_, &func_def));
+      tensorflow::tf2xla::v2::ConvertMlirFunctionToFunctionLibraryDef(
+          func, export_confs_, &func_def));
   module.erase();
   return func_def;
 }
 
-Status TFRDecomposeContext::DecomposeGraph(mlir::ModuleOp user_module) {
+absl::Status TFRDecomposeContext::DecomposeGraph(mlir::ModuleOp user_module) {
   // Call the decompose passes by using the external symbol table.
   if (failed(pm_.run(user_module))) {
     return errors::Internal("Failed to run the decompose passes.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Constructor of the decompose context.
@@ -209,14 +226,14 @@ TFRDecomposeContext::TFRDecomposeContext(mlir::ModuleOp tfr_module)
 
 void TFRDecomposeContext::Destroy() { tfr_module_.erase(); }
 
-StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
-                                 StringPiece func_name) {
+absl::StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
+                                       absl::string_view func_name) {
   mlir::MLIRContext mlir_ctx;
   TF_ASSIGN_OR_RETURN(auto ctx, TFRDecomposeContext::Get(&mlir_ctx));
   return ctx->ExpandNode(node_def, func_name);
 }
 
-Status DecomposeGraph(mlir::ModuleOp user_module) {
+absl::Status DecomposeGraph(mlir::ModuleOp user_module) {
   mlir::MLIRContext* mlir_ctx = user_module.getContext();
   TF_ASSIGN_OR_RETURN(auto ctx, TFRDecomposeContext::Get(mlir_ctx));
   return ctx->DecomposeGraph(user_module);

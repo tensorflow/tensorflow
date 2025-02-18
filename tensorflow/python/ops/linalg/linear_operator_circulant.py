@@ -1012,6 +1012,32 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         is_square=True,
         input_output_dtype=self.dtype)
 
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorCirculant",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    if not isinstance(
+        right_operator, LinearOperatorCirculant
+    ) or not isinstance(left_operator, type(right_operator)):
+      return super()._linop_matmul(left_operator, right_operator)
+
+    return LinearOperatorCirculant(
+        spectrum=left_operator.spectrum * right_operator.spectrum,
+        is_non_singular=property_hint_util.combined_non_singular_hint(
+            left_operator, right_operator
+        ),
+        is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
+            left_operator, right_operator
+        ),
+        is_positive_definite=(
+            property_hint_util.combined_commuting_positive_definite_hint(
+                left_operator, right_operator
+            )
+        ),
+        is_square=True,
+    )
+
   def _linop_solve(
       self,
       left_operator: "LinearOperatorCirculant",
@@ -1241,6 +1267,32 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
         is_square=True,
         input_output_dtype=self.dtype)
 
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorCirculant2D",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    if not isinstance(
+        right_operator, LinearOperatorCirculant2D
+    ) or not isinstance(left_operator, type(right_operator)):
+      return super()._linop_matmul(left_operator, right_operator)
+
+    return LinearOperatorCirculant2D(
+        spectrum=left_operator.spectrum * right_operator.spectrum,
+        is_non_singular=property_hint_util.combined_non_singular_hint(
+            left_operator, right_operator
+        ),
+        is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
+            left_operator, right_operator
+        ),
+        is_positive_definite=(
+            property_hint_util.combined_commuting_positive_definite_hint(
+                left_operator, right_operator
+            )
+        ),
+        is_square=True,
+    )
+
   def _linop_solve(
       self,
       left_operator: "LinearOperatorCirculant2D",
@@ -1442,6 +1494,32 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
         is_positive_definite=self.is_positive_definite,
         is_square=True,
         input_output_dtype=self.dtype)
+
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorCirculant3D",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    if not isinstance(
+        right_operator, LinearOperatorCirculant3D
+    ) or not isinstance(left_operator, type(right_operator)):
+      return super()._linop_matmul(left_operator, right_operator)
+
+    return LinearOperatorCirculant3D(
+        spectrum=left_operator.spectrum * right_operator.spectrum,
+        is_non_singular=property_hint_util.combined_non_singular_hint(
+            left_operator, right_operator
+        ),
+        is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
+            left_operator, right_operator
+        ),
+        is_positive_definite=(
+            property_hint_util.combined_commuting_positive_definite_hint(
+                left_operator, right_operator
+            )
+        ),
+        is_square=True,
+    )
 
   def _linop_solve(
       self,

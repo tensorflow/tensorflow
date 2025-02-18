@@ -103,7 +103,3 @@ pip2 install keras-nightly --no-deps
 pip3 install keras-nightly --no-deps
 pip2 install --upgrade h5py==2.8.0
 pip3 install --upgrade h5py==3.1.0
-
-# Estimator
-pip2 install tf-estimator-nightly --no-deps
-pip3 install tf-estimator-nightly --no-deps

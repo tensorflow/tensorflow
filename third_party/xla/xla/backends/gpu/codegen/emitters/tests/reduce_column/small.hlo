@@ -1,0 +1,13 @@
+// RUN: test_correctness %s --bijection_inputs=reduce:0 --bijection_outputs=reduce
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+fusion {
+  param_0 = f32[3,128,4] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[3,4] reduce(param_0, c0), dimensions={1}, to_apply=add
+}

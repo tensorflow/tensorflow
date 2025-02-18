@@ -15,17 +15,29 @@ limitations under the License.
 
 #include "tensorflow/examples/speech_commands/accuracy_utils.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <fstream>
 #include <iomanip>
+#include <ios>
+#include <limits>
+#include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
-#include "tensorflow/core/lib/io/path.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-Status ReadGroundTruthFile(const string& file_name,
-                           std::vector<std::pair<string, int64_t>>* result) {
+absl::Status ReadGroundTruthFile(
+    const string& file_name, std::vector<std::pair<string, int64_t>>* result) {
   std::ifstream file(file_name);
   if (!file) {
     return tensorflow::errors::NotFound("Ground truth file '", file_name,
@@ -39,7 +51,7 @@ Status ReadGroundTruthFile(const string& file_name,
       continue;
     }
     float timestamp;
-    if (!tensorflow::strings::safe_strtof(pieces[1], &timestamp)) {
+    if (!absl::SimpleAtof(pieces[1], &timestamp)) {
       return tensorflow::errors::InvalidArgument(
           "Wrong number format at line: ", line);
     }
@@ -52,7 +64,7 @@ Status ReadGroundTruthFile(const string& file_name,
                const std::pair<string, int64>& right) {
               return left.second < right.second;
             });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void CalculateAccuracyStats(

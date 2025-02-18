@@ -42,7 +42,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
-Status RingGatherer::InitializeCollectiveParams(CollectiveParams* col_params) {
+absl::Status RingGatherer::InitializeCollectiveParams(
+    CollectiveParams* col_params) {
   DCHECK_EQ(col_params->instance.type, GATHER_COLLECTIVE);
   DCHECK_EQ(col_params->instance.impl_details.collective_name, "RingGather");
   // TODO(tucker): Maybe add subdiv support.  It's only useful with
@@ -99,16 +100,17 @@ void RingGatherer::Run(StatusCallback done) {
   // We are running in a blockable thread and the callback can't block so
   // just wait here on the copy.
   {
-    profiler::TraceMe activity("MemCpyAsync", profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("MemCpyAsync",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     Notification note;
-    Status status;
+    absl::Status status;
     Tensor alias_chunk(ca_->ChunkAlias(col_params_->subdiv_rank[0]));
     CollectiveRemoteAccessLocal::MemCpyAsync(
         col_ctx_->op_ctx->op_device_context(),
         col_ctx_->op_ctx->op_device_context(), col_ctx_->device,
         col_ctx_->device, col_ctx_->op_ctx->input_alloc_attr(0),
         col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input, &alias_chunk,
-        0 /*dev_to_dev_stream_index*/, [&note, &status](const Status& s) {
+        0 /*dev_to_dev_stream_index*/, [&note, &status](const absl::Status& s) {
           status.Update(s);
           note.Notify();
         });
@@ -144,10 +146,10 @@ bool RingGatherer::RunAsyncParts() {
     // complete before proceeding.  The previous InitRingField calls allocated
     // temp memory buffers that are not guaranteed to be valid (e.g. for RDMA
     // write) unless we do.
-    profiler::TraceMe activity("WaitForQueuedEvents",
-                               profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("WaitForQueuedEvents",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     Notification note;
-    Status s = gpu_info->default_context->ThenExecute(
+    absl::Status s = gpu_info->default_context->ThenExecute(
         col_ctx_->device, gpu_info->stream, [&note]() { note.Notify(); });
     if (s.ok()) {
       note.WaitForNotification();
@@ -166,7 +168,7 @@ bool RingGatherer::RunAsyncParts() {
 
   // Loop until all RingFields have advanced to completion.
   {
-    profiler::TraceMe activity("Loop", profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("Loop", tsl::profiler::TraceMeLevel::kInfo);
     while (field_done_count < rfv_.size()) {
       VLOG(4) << FieldState();
       // Wait for a RingField to appear in the ready_queue.
@@ -185,7 +187,8 @@ bool RingGatherer::RunAsyncParts() {
           case RF_INIT:
             if (rf->do_recv) {
               rf->action = RF_RECV;
-              auto requeue = [this, rf, &ready_queue, &aborted](Status s) {
+              auto requeue = [this, rf, &ready_queue,
+                              &aborted](absl::Status s) {
                 if (!s.ok()) {
                   aborted = true;
                   StartAbort(s);
@@ -214,7 +217,7 @@ bool RingGatherer::RunAsyncParts() {
             if (rf->do_send) {
               rf->action = RF_SEND;
               auto send_complete = [this, rf, &ready_queue,
-                                    &aborted](Status s) {
+                                    &aborted](absl::Status s) {
                 if (!s.ok()) {
                   aborted = true;
                   StartAbort(s);

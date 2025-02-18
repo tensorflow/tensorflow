@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_STRINGS_PROTO_SERIALIZATION_H_
 #define TENSORFLOW_CORE_LIB_STRINGS_PROTO_SERIALIZATION_H_
 
-#include "tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

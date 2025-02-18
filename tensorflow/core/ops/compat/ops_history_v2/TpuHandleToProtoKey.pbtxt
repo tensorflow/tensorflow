@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TpuHandleToProtoKey"
   input_arg {
     name: "uid"

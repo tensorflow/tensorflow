@@ -120,7 +120,8 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
 
   Padding padding_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExtractImagePatchesOp);
+  ExtractImagePatchesOp(const ExtractImagePatchesOp&) = delete;
+  void operator=(const ExtractImagePatchesOp&) = delete;
 };
 
 // Registration of the CPU implementations.

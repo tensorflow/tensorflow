@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -70,7 +71,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   TF_LITE_ENSURE_TYPES_EQ(context, operand->type, update->type);
-  TF_LITE_ENSURE_TYPES_EQ(context, start_indices->type, kTfLiteInt32);
+  TF_LITE_ENSURE(context, start_indices->type == kTfLiteInt32 ||
+                              start_indices->type == kTfLiteInt64);
 
   output->type = operand->type;
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(operand->dims);
@@ -92,28 +94,52 @@ int TensorIndexToFlat(const int* index, const int dims,
 
 // A helper function to compute the clamped start indices to ensure they are
 // not out of bounds.
-std::vector<int> ClampStartIndices(int input_dims, const int32_t* indices_data,
+std::vector<int> ClampStartIndices(int input_dims, const int64_t* indices_data,
                                    const RuntimeShape& input_shape,
                                    const RuntimeShape& update_shape) {
   std::vector<int> clamped_start_indices(input_dims, 0);
   for (int i = 0; i < input_dims; i++) {
-    clamped_start_indices[i] =
-        std::min(std::max(0, indices_data[i]),
-                 input_shape.Dims(i) - update_shape.Dims(i));
+    clamped_start_indices[i] = static_cast<int32_t>(
+        std::min<int64_t>(std::max<int64_t>(0, indices_data[i]),
+                          input_shape.Dims(i) - update_shape.Dims(i)));
   }
   return clamped_start_indices;
 }
 
 template <typename T>
+void update_slice(int current_dim, int max_dim, const int32_t* output_stride,
+                  const int32_t* update_stride, const int32_t* update_shape,
+                  const T* update, const int32_t* indices_data, T* output) {
+  if (current_dim == max_dim) return;
+  if (current_dim == max_dim - 1) {
+    output += indices_data[current_dim] * output_stride[current_dim];
+    memcpy(output, update, update_shape[max_dim - 1] * sizeof(T));
+  } else {
+    output += indices_data[current_dim] * output_stride[current_dim];
+    for (int i = 0; i < update_shape[current_dim]; ++i) {
+      update_slice(current_dim + 1, max_dim, output_stride, update_stride,
+                   update_shape, update, indices_data, output);
+      output += output_stride[current_dim];
+      update += update_stride[current_dim];
+    }
+  }
+}
+
+template <typename T>
 void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
-                        const TfLiteTensor* indice, TfLiteTensor* output) {
+                        const int64_t* indices_data, TfLiteTensor* output) {
   const auto& input_shape = GetTensorShape(input);
   const auto& update_shape = GetTensorShape(update);
   const T* update_data = GetTensorData<T>(update);
-  const int32_t* indices_data = GetTensorData<int32_t>(indice);
   T* output_data = GetTensorData<T>(output);
 
   const int input_dims = input_shape.DimensionsCount();
+  // If the update is the entirety of the output, then simply copy it and
+  // return.
+  if (input_shape.FlatSize() == update_shape.FlatSize()) {
+    memcpy(output_data, update_data, input_shape.FlatSize() * sizeof(T));
+    return;
+  }
   // Computes the effective slice indices.
   // The clamped indices are gauranteed to >= 0 since update is less than or
   // equal to the operand size for each dimension.
@@ -130,18 +156,19 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
     return;
   }
 
-  std::vector<int> current_dim(input_dims, 0);
-  // Overwrites update to output.
-  do {
-    int flat_update_index =
-        TensorIndexToFlat(current_dim.data(), input_dims, update_shape);
-    int flat_input_index =
-        TensorIndexToFlat(current_dim.data(), input_dims, input_shape,
-                          clamped_start_indices.data());
-    output_data[flat_input_index] = update_data[flat_update_index];
-  } while (NextIndex(input_dims,
-                     reinterpret_cast<const int*>(update_shape.DimsData()),
-                     current_dim.data()));
+  std::vector<int> output_stride(input_dims);
+  std::vector<int> update_stride(input_dims);
+  output_stride[input_dims - 1] = 1;
+  update_stride[input_dims - 1] = 1;
+  const int32_t* input_shape_data = input_shape.DimsData();
+  const int32_t* update_shape_data = update_shape.DimsData();
+  for (int i = input_dims - 2; i >= 0; --i) {
+    output_stride[i] = output_stride[i + 1] * input_shape_data[i + 1];
+    update_stride[i] = update_stride[i + 1] * update_shape_data[i + 1];
+  }
+  update_slice(0, input_dims, output_stride.data(), update_stride.data(),
+               update_shape.DimsData(), update_data,
+               clamped_start_indices.data(), output_data);
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -158,21 +185,47 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
+  const auto& input_shape = GetTensorShape(operand);
+  const int input_dims = input_shape.DimensionsCount();
+  std::vector<int64_t> indices_data_i64;
+  if (indice->type == kTfLiteInt32) {
+    for (int i = 0; i < input_dims; i++)
+      indices_data_i64.push_back(static_cast<int64_t>(indice->data.i32[i]));
+  } else if (indice->type == kTfLiteInt64) {
+    for (int i = 0; i < input_dims; i++)
+      indices_data_i64.push_back(indice->data.i64[i]);
+  } else {
+    TF_LITE_KERNEL_LOG(context,
+                       "DynamicUpdateSlice only currently supports "
+                       "int32 or int64 indices type, got %d.",
+                       indice->type);
+    return kTfLiteError;
+  }
+
   switch (operand->type) {
+    case kTfLiteFloat16:
+      DynamicUpdateSlice<Eigen::half>(operand, update, indices_data_i64.data(),
+                                      output);
+      break;
     case kTfLiteFloat32:
-      DynamicUpdateSlice<float>(operand, update, indice, output);
+      DynamicUpdateSlice<float>(operand, update, indices_data_i64.data(),
+                                output);
       break;
     case kTfLiteBool:
-      DynamicUpdateSlice<bool>(operand, update, indice, output);
+      DynamicUpdateSlice<bool>(operand, update, indices_data_i64.data(),
+                               output);
       break;
     case kTfLiteInt8:
-      DynamicUpdateSlice<int8_t>(operand, update, indice, output);
+      DynamicUpdateSlice<int8_t>(operand, update, indices_data_i64.data(),
+                                 output);
       break;
     case kTfLiteInt32:
-      DynamicUpdateSlice<int32_t>(operand, update, indice, output);
+      DynamicUpdateSlice<int32_t>(operand, update, indices_data_i64.data(),
+                                  output);
       break;
     case kTfLiteInt64:
-      DynamicUpdateSlice<int64_t>(operand, update, indice, output);
+      DynamicUpdateSlice<int64_t>(operand, update, indices_data_i64.data(),
+                                  output);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,

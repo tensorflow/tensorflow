@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
+
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
@@ -22,12 +26,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 #include "tensorflow/core/framework/resource_var.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace mlir {
@@ -37,7 +43,7 @@ namespace {
 void InitializeVariable(TF::VarHandleOp var_handle_op,
                         tensorflow::Tensor* tensor,
                         func::FuncOp session_init_func, OpBuilder builder) {
-  tensorflow::StatusOr<ElementsAttr> tensor_attr_or =
+  absl::StatusOr<ElementsAttr> tensor_attr_or =
       tensorflow::ConvertTensor(*tensor, &builder);
   assert(tensor_attr_or.ok() && "Expect valid tensor");
   ElementsAttr tensor_attr = tensor_attr_or.value();
@@ -99,8 +105,7 @@ func::FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
     // tf_saved_model.initializer_type attribute was introduced.
     SymbolTable symbol_table(module);
     return symbol_table.lookup<func::FuncOp>(
-        session_init_op.getInitializers()[0]
-            .cast<FlatSymbolRefAttr>()
+        mlir::cast<FlatSymbolRefAttr>(session_init_op.getInitializers()[0])
             .getValue());
   } else {
     return CreateSessionInitFunc(module);

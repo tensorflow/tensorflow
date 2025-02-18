@@ -32,7 +32,7 @@ public final class TensorFlowLite {
   // will discard those, and avoid logging messages with parameters (call String.format instead),
   // since the default Java log handler on Android only logs the raw message string and doesn't
   // apply the parameters.
-  private static final Logger logger = Logger.getLogger(InterpreterApi.class.getName());
+  private static final Logger logger = Logger.getLogger(TensorFlowLite.class.getName());
 
   private static final String[][] TFLITE_RUNTIME_LIBNAMES =
       new String[][] {

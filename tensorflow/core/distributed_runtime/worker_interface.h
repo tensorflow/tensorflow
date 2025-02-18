@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Status callback.
-typedef std::function<void(const Status&)> StatusCallback;
+typedef std::function<void(const absl::Status&)> StatusCallback;
 
 // Custom decoder for a response to RecvTensorAsync.
 class TensorResponse;
@@ -68,7 +68,7 @@ class WorkerInterface {
         new NonOwnedProtoRunGraphResponse(response);
     RunGraphAsync(opts, wrapped_request, wrapped_response,
                   [wrapped_request, wrapped_response,
-                   done = std::move(done)](const Status& s) {
+                   done = std::move(done)](const absl::Status& s) {
                     done(s);
                     delete wrapped_request;
                     delete wrapped_response;
@@ -129,12 +129,12 @@ class WorkerInterface {
                                     GetStepSequenceResponse* response,
                                     StatusCallback done) = 0;
 
-  Status GetStatus(const GetStatusRequest* request,
-                   GetStatusResponse* response) {
-    Status ret;
+  absl::Status GetStatus(const GetStatusRequest* request,
+                         GetStatusResponse* response) {
+    absl::Status ret;
     Notification n;
     GetStatusAsync(/*opts=*/nullptr, request, response, /*fail_fast=*/true,
-                   [&ret, &n](const Status& s) {
+                   [&ret, &n](const absl::Status& s) {
                      ret = s;
                      n.Notify();
                    });
@@ -142,47 +142,49 @@ class WorkerInterface {
     return ret;
   }
 
-  Status CreateWorkerSession(const CreateWorkerSessionRequest* request,
-                             CreateWorkerSessionResponse* response) {
+  absl::Status CreateWorkerSession(const CreateWorkerSessionRequest* request,
+                                   CreateWorkerSessionResponse* response) {
     return CallAndWait(&ME::CreateWorkerSessionAsync, request, response);
   }
 
-  Status DeleteWorkerSession(const DeleteWorkerSessionRequest* request,
-                             DeleteWorkerSessionResponse* response) {
+  absl::Status DeleteWorkerSession(const DeleteWorkerSessionRequest* request,
+                                   DeleteWorkerSessionResponse* response) {
     return CallAndWaitWithOptions(&ME::DeleteWorkerSessionAsync, request,
                                   response);
   }
 
-  Status RegisterGraph(const RegisterGraphRequest* request,
-                       RegisterGraphResponse* response) {
+  absl::Status RegisterGraph(const RegisterGraphRequest* request,
+                             RegisterGraphResponse* response) {
     return CallAndWait(&ME::RegisterGraphAsync, request, response);
   }
 
-  Status DeregisterGraph(const DeregisterGraphRequest* request,
-                         DeregisterGraphResponse* response) {
+  absl::Status DeregisterGraph(const DeregisterGraphRequest* request,
+                               DeregisterGraphResponse* response) {
     return CallAndWait(&ME::DeregisterGraphAsync, request, response);
   }
 
-  Status CleanupGraph(const CleanupGraphRequest* request,
-                      CleanupGraphResponse* response) {
+  absl::Status CleanupGraph(const CleanupGraphRequest* request,
+                            CleanupGraphResponse* response) {
     return CallAndWait(&ME::CleanupGraphAsync, request, response);
   }
 
-  Status CleanupAll(const CleanupAllRequest* request,
-                    CleanupAllResponse* response) {
+  absl::Status CleanupAll(const CleanupAllRequest* request,
+                          CleanupAllResponse* response) {
     return CallAndWait(&ME::CleanupAllAsync, request, response);
   }
 
-  Status Logging(const LoggingRequest* request, LoggingResponse* response) {
+  absl::Status Logging(const LoggingRequest* request,
+                       LoggingResponse* response) {
     return CallAndWait(&ME::LoggingAsync, request, response);
   }
 
-  Status Tracing(const TracingRequest* request, TracingResponse* response) {
+  absl::Status Tracing(const TracingRequest* request,
+                       TracingResponse* response) {
     return CallAndWait(&ME::TracingAsync, request, response);
   }
 
-  Status GetStepSequence(const GetStepSequenceRequest* request,
-                         GetStepSequenceResponse* response) {
+  absl::Status GetStepSequence(const GetStepSequenceRequest* request,
+                               GetStepSequenceResponse* response) {
     return CallAndWait(&ME::GetStepSequenceAsync, request, response);
   }
 
@@ -204,10 +206,10 @@ class WorkerInterface {
   typedef WorkerInterface ME;
 
   template <typename Method, typename Req, typename Resp>
-  Status CallAndWait(Method func, const Req* req, Resp* resp) {
-    Status ret;
+  absl::Status CallAndWait(Method func, const Req* req, Resp* resp) {
+    absl::Status ret;
     Notification n;
-    (this->*func)(req, resp, [&ret, &n](const Status& s) {
+    (this->*func)(req, resp, [&ret, &n](const absl::Status& s) {
       ret = s;
       n.Notify();
     });
@@ -216,11 +218,11 @@ class WorkerInterface {
   }
 
   template <typename Method, typename Req, typename Resp>
-  Status CallAndWaitWithOptions(Method func, const Req* req, Resp* resp) {
+  absl::Status CallAndWaitWithOptions(Method func, const Req* req, Resp* resp) {
     CallOptions call_opts;
-    Status ret;
+    absl::Status ret;
     Notification n;
-    (this->*func)(&call_opts, req, resp, [&ret, &n](const Status& s) {
+    (this->*func)(&call_opts, req, resp, [&ret, &n](const absl::Status& s) {
       ret = s;
       n.Notify();
     });

@@ -23,8 +23,8 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -33,15 +33,13 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_driver.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -63,7 +61,7 @@ using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 class PrepareQuantizePass
     : public PassWrapper<PrepareQuantizePass, OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect, ::mlir::quant::QuantizationDialect,
+    registry.insert<TF::TensorFlowDialect, ::mlir::quant::QuantDialect,
                     ::mlir::quantfork::QuantizationForkDialect>();
   }
 
@@ -174,8 +172,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
 
   bool need_to_set_input_nodes_quantization_params = false;
   for (const BlockArgument arg : func.getArguments()) {
-    auto shaped = arg.getType().dyn_cast<ShapedType>();
-    if (shaped && shaped.getElementType().isa<FloatType>() &&
+    auto shaped = mlir::dyn_cast<ShapedType>(arg.getType());
+    if (shaped && mlir::isa<FloatType>(shaped.getElementType()) &&
         !has_quantize_op(arg)) {
       need_to_set_input_nodes_quantization_params = true;
       break;
@@ -200,8 +198,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
   auto add_quantize_op = [&](Location loc, Type input_type, Block* block,
                              Block::iterator insertion_point, Value arg,
                              int i) {
-    if (auto shaped = input_type.dyn_cast<ShapedType>()) {
-      if (shaped.getElementType().isa<FloatType>()) {
+    if (auto shaped = mlir::dyn_cast<ShapedType>(input_type)) {
+      if (mlir::isa<FloatType>(shaped.getElementType())) {
         // If there are existing quantize ops, they are from training and we
         // should respect them.
         if (has_quantize_op(arg)) {
@@ -404,7 +402,7 @@ void PrepareQuantizePass::runOnOperation() {
   // Currently, only activation stats are imported, so narrow_range = false.
   patterns.add<PrepareQuantStats>(bit_width, false, true,
                                   /*legacy_float_scale=*/false, ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }
 
@@ -415,11 +413,11 @@ void PrepareQuantizePass::runOnOperation() {
   ApplyQuantizationParamsPropagation(
       func, is_signed, /*bit_width=*/8, !enable_per_channel_quantization_,
       GetTFOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
-      quant_specs_.legacy_float_scale);
+      quant_specs_.legacy_float_scale, /*is_qdq_conversion=*/false);
 
   RewritePatternSet patterns2(ctx);
   patterns2.add<MergeConsecutiveQuantizeCast>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns2)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns2)))) {
     signalPassFailure();
   }
 }

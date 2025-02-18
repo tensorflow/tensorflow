@@ -366,7 +366,7 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
           TensorShapeUtils::MakeShape(std::vector<int32>{6}, &shapes[0]));
       EXPECT_EQ(1, resource->profiles_.GetProfileNumber(shapes));
     } else {
-      // Check if shape values are restored corretly.
+      // Check if shape values are restored correctly.
       std::vector<TensorShape> shapes(2);
       // We create a shape vector that matches only profile 2.
       TF_CHECK_OK(

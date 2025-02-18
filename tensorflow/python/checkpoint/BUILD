@@ -2,11 +2,12 @@
 #   Utilities for reading and writing object-based checkpoints.
 
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
+    "tf_py_benchmark_test",
     "tf_py_logged_benchmark",
 )
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -34,9 +35,18 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "checkpoint_adapter",
+    srcs = ["checkpoint_adapter.py"],
+    deps = [
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/trackable:base",
+        "@absl_py//absl/logging",
+    ],
+)
+
+py_strict_library(
     name = "async_checkpoint_helper",
     srcs = ["async_checkpoint_helper.py"],
-    srcs_version = "PY3",
     deps = [
         ":checkpoint_context",
         ":trackable_view",
@@ -56,7 +66,6 @@ py_strict_library(
 py_strict_library(
     name = "checkpoint",
     srcs = ["checkpoint.py"],
-    srcs_version = "PY3",
     deps = [
         ":async_checkpoint_helper",
         ":checkpoint_context",
@@ -79,7 +88,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:io_ops_gen",
@@ -99,8 +108,9 @@ py_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:object_identity",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -128,7 +138,6 @@ tf_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:init_ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:template",
         "//tensorflow/python/ops:variable_scope",
@@ -139,6 +148,7 @@ tf_py_strict_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/training:adam",
         "//tensorflow/python/training:checkpoint_utils",
         "//tensorflow/python/training:saver",
         "@absl_py//absl/testing:parameterized",
@@ -150,7 +160,6 @@ py_strict_library(
     srcs = [
         "checkpoint_context.py",
     ],
-    srcs_version = "PY3",
 )
 
 tf_py_strict_test(
@@ -158,6 +167,7 @@ tf_py_strict_test(
     srcs = ["checkpoint_with_v1_optimizers_test.py"],
     deps = [
         ":checkpoint",
+        ":checkpoint_options",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
@@ -170,6 +180,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:adam",
+        "//tensorflow/python/training:checkpoint_utils",
     ],
 )
 
@@ -189,7 +200,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "checkpoint_view",
     srcs = ["checkpoint_view.py"],
-    srcs_version = "PY3",
     tags = ["no_pip"],
     deps = [
         ":trackable_view",
@@ -218,7 +228,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "graph_view",
     srcs = ["graph_view.py"],
-    srcs_version = "PY3",
     deps = [
         ":save_util_v1",
         ":trackable_view",
@@ -230,7 +239,6 @@ py_strict_library(
 py_strict_library(
     name = "save_util",
     srcs = ["save_util.py"],
-    srcs_version = "PY3",
     deps = [
         ":graph_view",
         ":save_util_v1",
@@ -254,7 +262,6 @@ py_strict_library(
 py_strict_library(
     name = "save_util_v1",
     srcs = ["save_util_v1.py"],
-    srcs_version = "PY3",
     deps = [
         ":saveable_compat",
         ":util",
@@ -289,7 +296,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "trackable_view",
     srcs = ["trackable_view.py"],
-    srcs_version = "PY3",
     tags = ["no_pip"],
     deps = [
         "//tensorflow/python/trackable:base",
@@ -312,7 +318,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "util",
     srcs = ["util.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/ops:resource_variable_ops",
@@ -325,14 +330,15 @@ py_strict_library(
 py_strict_library(
     name = "restore",
     srcs = ["restore.py"],
-    srcs_version = "PY3",
     deps = [
+        ":checkpoint_adapter",
         ":checkpoint_view",
         ":functional_saver",
         ":save_util_v1",
         ":saveable_compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:io_ops_gen",
@@ -363,7 +369,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     deps = [
@@ -387,8 +393,8 @@ tf_py_logged_benchmark(
 py_strict_library(
     name = "checkpoint_options",
     srcs = ["checkpoint_options.py"],
-    srcs_version = "PY3",
     deps = [
+        "//tensorflow/python/checkpoint/sharding:sharding_util",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -397,27 +403,34 @@ py_strict_library(
 py_strict_library(
     name = "functional_saver",
     srcs = ["functional_saver.py"],
-    srcs_version = "PY3",
     deps = [
         ":checkpoint_options",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/checkpoint/sharding:sharding_policies",
+        "//tensorflow/python/checkpoint/sharding:sharding_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:io_ops_gen",
         "//tensorflow/python/ops:string_ops",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/saved_model/registration",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:object_identity",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -428,8 +441,10 @@ cuda_py_strict_test(
         "functional_saver_test.py",
     ],
     deps = [
+        ":checkpoint",
         ":checkpoint_options",
         ":functional_saver",
+        ":graph_view",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
@@ -438,6 +453,8 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/module",
+        "//tensorflow/python/ops:io_ops_gen",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/training:server_lib",
@@ -448,7 +465,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "tensor_callable",
     srcs = ["tensor_callable.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/training/saving:saveable_object",
     ],
@@ -470,14 +486,13 @@ tf_py_strict_test(
 py_strict_library(
     name = "checkpoint_management",
     srcs = ["checkpoint_management.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:checkpoint_state_py",
@@ -494,7 +509,6 @@ cuda_py_strict_test(
     srcs = [
         "checkpoint_management_test.py",
     ],
-    python_version = "PY3",
     deps = [
         ":checkpoint",
         ":checkpoint_management",
@@ -503,7 +517,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
@@ -546,8 +560,6 @@ tf_py_strict_test(
 py_strict_binary(
     name = "generate_checkpoint",
     srcs = ["testdata/generate_checkpoint.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat:v2_compat",
@@ -562,7 +574,6 @@ py_strict_binary(
 py_strict_library(
     name = "generate_checkpoint_lib",
     srcs = ["testdata/generate_checkpoint.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat:v2_compat",

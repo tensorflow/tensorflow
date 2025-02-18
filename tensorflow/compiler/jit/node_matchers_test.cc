@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/node_matchers.h"
 
+#include <string>
+
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -117,12 +119,26 @@ TEST(NodeMatchers, CheckControlDependence) {
   EXPECT_THAT(placeholder_d.node(),
               NodeWith(Name("placeholder_d"), CtrlDeps()));
 
-  EXPECT_EQ(
-      Explain(placeholder_c.node(), NodeWith(CtrlDeps())),
-      "ctrl_deps, which has 2 elements, does not match expected: is empty");
-  EXPECT_EQ(Explain(placeholder_d.node(), NodeWith(CtrlDeps(NodeWith()))),
-            "ctrl_deps does not match expected: has 1 element and that element "
-            "is any node");
+  // TODO(griffithjames): Exactly match these explanations.
+  //
+  // When the OSS build has been updated to include the new error messages, the
+  // Explain() expectations can be exact strings again.
+  {
+    const std::string explanation =
+        Explain(placeholder_c.node(), NodeWith(CtrlDeps()));
+    EXPECT_NE(explanation.find("ctrl_deps, which has 2 elements"),
+              std::string::npos);
+    EXPECT_NE(explanation.find("does not match expected: is empty"),
+              std::string::npos);
+  }
+  {
+    const std::string explanation =
+        Explain(placeholder_d.node(), NodeWith(CtrlDeps(NodeWith())));
+    EXPECT_NE(explanation.find("ctrl_deps"), std::string::npos);
+    EXPECT_NE(explanation.find("does not match expected: has 1 element and "
+                               "that element is any node"),
+              std::string::npos);
+  }
 }
 
 TEST(NodeMatchers, ConstValue) {

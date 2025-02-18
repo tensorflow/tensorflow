@@ -3,7 +3,7 @@
 
 func.func @main(tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>):
-  // CHECK:      [[CONST:%.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<4xf32>} : () -> tensor<4xf32>
+  // CHECK:      [[CONST:%.*]] = "tfl.pseudo_const"() <{value = dense<1.000000e+00> : tensor<4xf32>}> : () -> tensor<4xf32>
   // CHECK-NEXT: [[SQDIFF:%.*]] = tfl.squared_difference %arg0, [[CONST]] : tensor<4xf32>
   // CHECK-NEXT: %{{.*}} = tfl.mul %arg0, [[SQDIFF]] {fused_activation_function = "NONE"} : tensor<4xf32>
   %0 = "tfl.pseudo_const" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32> loc("Const")

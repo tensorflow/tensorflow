@@ -18,9 +18,13 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/conversion_function.h"
 
+#include <cassert>
+#include <cstddef>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
@@ -42,7 +46,7 @@ tfrt::Expected<tfrt::DenseHostTensor>
 ConvertRuntimeFallbackTensorToDenseHostTensor(
     const RuntimeFallbackTensor &tensor, const tfrt::CpuDevice &src,
     const tfrt::CpuDevice &dst, const tfrt::ExecutionContext &exec_ctx) {
-  tensorflow::Status status;
+  absl::Status status;
   // Resolve ensures Tensor is on host CPU.
   OwnedAbstractTensorInterface tensor_interface{
       tensor.GetTensorHandle()->Resolve(&status)};
@@ -68,7 +72,7 @@ ConvertRuntimeFallbackTensorToStringHostTensor(
     const RuntimeFallbackTensor &tensor, const tfrt::Device &src,
     const tfrt::CpuDevice &dst, const tfrt::ExecutionContext &exec_ctx) {
   auto *host_ctx = exec_ctx.host();
-  tensorflow::Status status;
+  absl::Status status;
   // Resolve ensures Tensor is on host CPU.
   OwnedAbstractTensorInterface tensor_interface{
       tensor.GetTensorHandle()->Resolve(&status)};
@@ -151,7 +155,8 @@ TransferRuntimeFallbackToAnotherDevice(const RuntimeFallbackTensor &tensor,
 
   auto *th = tensor.GetTensorHandle();
   Device *tf_device;
-  Status s = eager_context->FindDeviceFromName(dst.name().data(), &tf_device);
+  absl::Status s =
+      eager_context->FindDeviceFromName(dst.name().data(), &tf_device);
   if (!s.ok()) return tfrt::MakeStringError(s.message());
 
   auto *host = exec_ctx.host();

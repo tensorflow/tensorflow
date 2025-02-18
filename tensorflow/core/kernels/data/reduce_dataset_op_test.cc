@@ -54,7 +54,7 @@ class ReduceDatasetParams : public DatasetParams {
     return input_tensors;
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back("input_dataset");
     for (int i = 0; i < initial_state_.size(); ++i) {
@@ -63,10 +63,10 @@ class ReduceDatasetParams : public DatasetParams {
     for (int i = 0; i < other_arguments_.size(); ++i) {
       input_names->emplace_back(strings::StrCat("other_arguments_", i));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
     *attr_vector = {{"f", func_},
                     {"Tstate", type_state_},
@@ -75,7 +75,7 @@ class ReduceDatasetParams : public DatasetParams {
                     {"output_shapes", output_shapes_},
                     {"use_inter_op_parallelism", use_inter_op_parallelism_},
                     {"metadata", ""}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return "Reduce"; }

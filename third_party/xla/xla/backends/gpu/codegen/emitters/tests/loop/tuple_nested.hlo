@@ -1,0 +1,35 @@
+// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: test_correctness %s
+
+add {
+  scalar_lhs.0 = f32[] parameter(0)
+  scalar_lhs.1 = f32[] parameter(1)
+  scalar_rhs.0 = f32[] parameter(2)
+  scalar_rhs.1 = f32[] parameter(3)
+  add = f32[] add(scalar_lhs.0, scalar_rhs.0)
+  mul = f32[] multiply(scalar_lhs.1, scalar_rhs.1)
+  ROOT t = (f32[], f32[]) tuple(add, mul)
+}
+
+fusion {
+  param_0 = f32[3,4,5]{2,1,0} parameter(0)
+  param_1 = f32[3,4,5]{2,1,0} parameter(1)
+  param_2 = f32[] parameter(2)
+  param_3 = f32[4] parameter(3)
+  reduce = (f32[4], f32[4]) reduce(f32[3,4,5]{2,1,0} param_0,
+      f32[3,4,5]{2,1,0} %param_1, f32[] param_2, f32[] param_2),
+      dimensions={0,2}, to_apply=add
+  log = f32[4] log(param_3)
+  ROOT tuple = ((f32[4], f32[4]), f32[4]) tuple(reduce, log)
+}
+
+// CHECK: @main
+// CHECK:     %[[R0:.*]], %[[R1:.*]], %[[R2:.*]] = xla.pure_call @fusion_tuple
+// CHECK-DAG: tensor.insert %[[R0]]
+// CHECK-DAG: tensor.insert %[[R1]]
+// CHECK-DAG: tensor.insert %[[R2]]
+
+// CHECK: @fusion_tuple
+// CHECK:   %[[REDUCTION:.*]]:2 = scf.for
+// CHECK:   %[[LOG:.*]] = math.log
+// CHECK:   return %[[REDUCTION]]#0, %[[REDUCTION]]#1, %[[LOG]]

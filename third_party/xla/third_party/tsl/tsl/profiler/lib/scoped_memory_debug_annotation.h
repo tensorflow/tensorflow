@@ -23,6 +23,8 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
+std::string DefaultPendingShapeFunc();
+
 // Annotations for memory profiling and debugging purpose.
 // ScopedMemoryDebugAnnotation will cache the annotations in thread-local
 // memory, and some allocators will try to tag allocations with the annotations.
@@ -34,7 +36,7 @@ struct MemoryDebugAnnotation {
   // A lambda function, when invoked, it will generate the string that describe
   // the shape of the pending tensor. By default, the TensorShape string is an
   // empty string.
-  std::function<std::string()> pending_shape_func = []() { return ""; };
+  std::function<std::string()> pending_shape_func = DefaultPendingShapeFunc;
 };
 
 // Wrapper class of MemoryDebugAnnotation for RAII.

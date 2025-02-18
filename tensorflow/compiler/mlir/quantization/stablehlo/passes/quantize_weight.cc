@@ -46,10 +46,13 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 
 namespace mlir::quant::stablehlo {
-namespace {
 
+// Put the definitions inside the ::mlir::quant::stablehlo namespace, to match
+// the declarations in passes.h.
 #define GEN_PASS_DEF_QUANTIZEWEIGHTPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
+
+namespace {
 
 using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 using mlir::stablehlo::ConstantOp;
@@ -63,21 +66,9 @@ constexpr float kMinFloat16Value = -65504.f;
 class QuantizeWeightPass
     : public impl::QuantizeWeightPassBase<QuantizeWeightPass> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizeWeightPass)
-
   explicit QuantizeWeightPass(
       QuantizationComponentSpec quantization_component_spec)
       : quantization_component_spec_(quantization_component_spec) {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "stablehlo-quantize-weight";
-  }
-
-  StringRef getDescription() const final {
-    return "Apply the specified quantization methods to weights.";
-  }
 
  private:
   void runOnOperation() override;
@@ -120,14 +111,14 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
   QuantizationUnits GetQuantizableOps(ConstantOp op) const {
     // Non-float tensors do not need quantization.
     QuantizationUnits quantizable_ops;
-    ShapedType type = op.getType().dyn_cast<ShapedType>();
+    const ShapedType type = mlir::dyn_cast<ShapedType>(op.getType());
     if (!type || !type.getElementType().isF32()) return quantizable_ops;
 
-    Value value = op.getResult();
+    const Value value = op.getResult();
 
     for (OpOperand& use : value.getUses()) {
       Operation* user = use.getOwner();
-      int operand_num = use.getOperandNumber();
+      const int operand_num = use.getOperandNumber();
       quantizable_ops.insert({user, operand_num});
     }
     return quantizable_ops;
@@ -140,7 +131,8 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
       // For f16 quantization, quantize all constant ops as float16.
       QuantizeOpAsFloat16(rewriter, op, quant_op);
     }
-    // TODO(b/264218457): Return a value that accurately captures result status.
+    // TODO: b/264218457 - Return a value that accurately captures result
+    // status.
     return true;
   }
 
@@ -151,20 +143,20 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
   // conversion.
   void QuantizeOpAsFloat16(PatternRewriter& rewriter, ConstantOp op,
                            const std::pair<Operation*, int> quant_op) const {
-    auto [quantizable_op, quantize_operand_num] = quant_op;
+    const auto [quantizable_op, quantize_operand_num] = quant_op;
     // If the constant is an output tensor, do nothing.
     if (isa<func::ReturnOp>(quantizable_op)) {
       return;
     }
 
     TensorType old_result_type =
-        op.getResult().getType().dyn_cast<TensorType>();
-    FloatType quantized_type = FloatType::getF16(op.getContext());
-    ShapedType new_result_type = old_result_type.clone(quantized_type);
+        mlir::dyn_cast<TensorType>(op.getResult().getType());
+    const FloatType quantized_type = Float16Type::get(op.getContext());
+    const ShapedType new_result_type = old_result_type.clone(quantized_type);
 
     // Insert ConvertOp if it does not exist yet. Otherwise, just rewire without
     // creating a ConvertOp.
-    for (OpOperand& connected_op : op.getResult().getUses()) {
+    for (const OpOperand& connected_op : op.getResult().getUses()) {
       ConvertOp convert_op =
           dyn_cast_or_null<ConvertOp>(connected_op.getOwner());
       // ConvertOp already exists. Rewire the existing convert op into f16.
@@ -190,23 +182,24 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
       if (!convert_op || convert_op.getResult().use_empty()) continue;
 
       // Get types.
-      Type old_result_type = op.getResult().getType();
-      ShapedType new_result_type = convert_op.getType().dyn_cast<ShapedType>();
+      const Type old_result_type = op.getResult().getType();
+      const ShapedType new_result_type =
+          mlir::dyn_cast<ShapedType>(convert_op.getType());
 
       // Proceeds only if the converting is to float16.
       if (!new_result_type.getElementType().isF16()) continue;
 
       // Convert values.
       std::vector<Eigen::half> new_values;
-      DenseFPElementsAttr value_attr =
-          op.getValue().cast<DenseFPElementsAttr>();
+      const DenseFPElementsAttr value_attr =
+          mlir::cast<DenseFPElementsAttr>(op.getValue());
       new_values.reserve(value_attr.getNumElements());
 
-      for (float value : value_attr.getValues<float>()) {
+      for (const float value : value_attr.getValues<float>()) {
         new_values.push_back(Eigen::half(
             std::min(std::max(value, kMinFloat16Value), kMaxFloat16Value)));
       }
-      DenseElementsAttr new_value_attr = DenseFPElementsAttr::get(
+      const DenseElementsAttr new_value_attr = DenseFPElementsAttr::get(
           new_result_type, ArrayRef<Eigen::half>(new_values));
       // Create new ConstantOp-ConvertOp-Operation sequences. At this moment,
       // old ConstantOp is guaranteed to have one F32->F16 convert op regardless
@@ -227,7 +220,7 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
   }
 };
 
-// TODO(b/264218457): Refactors the current file to parse preset quantization
+// TODO: b/264218457 - Refactors the current file to parse preset quantization
 // options and allow modular control of quantization specs.
 void QuantizeWeightPass::runOnOperation() {
   func::FuncOp func = getOperation();
@@ -238,7 +231,7 @@ void QuantizeWeightPass::runOnOperation() {
 
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 
-  if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+  if (failed(applyPatternsGreedily(func, frozen_patterns))) {
     signalPassFailure();
   }
 }
@@ -247,7 +240,8 @@ void QuantizeWeightPass::runOnOperation() {
 
 // Creates an instance of the StableHLO dialect Quantize Weight pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
-    QuantizationComponentSpec quantization_component_spec) {
+    const QuantizationComponentSpec& quantization_component_spec) {
   return std::make_unique<QuantizeWeightPass>(quantization_component_spec);
 }
+
 }  // namespace mlir::quant::stablehlo

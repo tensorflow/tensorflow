@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/operation_selector.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,9 +24,12 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/any.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/flops_util.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/convolution_transposed_selector.h"
@@ -33,14 +37,18 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/dw_convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/simple_selectors.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
-#include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 
 namespace tflite {
@@ -310,7 +318,7 @@ absl::Status CreateElementwiseTwoInputWithOneConstant(
     const GpuInfo& gpu_info, const OperationDef& op_def, OperationType op_type,
     const Node& node, const Value* input, const Value* output,
     std::unique_ptr<GPUOperation>* gpu_op) {
-  auto attr = std::any_cast<ElementwiseAttributesBase<DataTypeT, T>>(
+  auto attr = absl::any_cast<ElementwiseAttributesBase<DataTypeT, T>>(
       node.operation.attributes);
   GPUOperation operation;
   if (input->tensor.shape != output->tensor.shape) {

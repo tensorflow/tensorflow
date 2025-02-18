@@ -19,7 +19,10 @@ cc_test(
     deps = [
         ":gpu_delegate_compatibility_checker",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/lite:model_builder",
         "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/delegates/compatibility/protos:compatibility_result_cc",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
@@ -32,6 +35,7 @@ cc_library(
         "gpu_delegate_compatibility_checker.h",
     ],
     deps = [
+        "//tensorflow/lite:model_builder",
         "//tensorflow/lite/tools/delegates/compatibility/common:delegate_compatibility_checker_base",
         "//tensorflow/lite/tools/delegates/compatibility/protos:compatibility_result_cc",
         "//tensorflow/lite/tools/versioning:gpu_compatibility",

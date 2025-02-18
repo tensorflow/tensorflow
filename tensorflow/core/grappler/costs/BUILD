@@ -1,17 +1,17 @@
 # Placeholder: load py_proto_library
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cuda_library",
 )
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
     "tf_protos_grappler",
     "tf_pyclif_proto_library",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -27,7 +27,6 @@ alias(
 tf_proto_library(
     name = "op_performance_data",
     srcs = ["op_performance_data.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/framework:attr_value_proto",
@@ -228,6 +227,7 @@ tf_cc_test(
         ":cost_estimator",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -417,7 +417,6 @@ tf_cc_test(
 # py_proto_library(
 #     name = "op_performance_data_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":op_performance_data"],
 # )

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -25,14 +26,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/time/time.h"
+#include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_color.h"
 #include "tensorflow/core/profiler/lib/context_types.h"
@@ -40,7 +45,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/profiler/utils/timespan.h"
+#include "tsl/profiler/lib/context_types.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -64,6 +69,8 @@ struct JsonTraceOptions {
   TraceEventsColorerInterface* colorer = nullptr;
 
   bool generate_stack_frames = true;
+  bool use_new_backend = false;
+  std::string code_link;
 };
 
 // Counts generated JSON events by type.
@@ -179,15 +186,17 @@ class JsonEventWriter {
       if (event_type == JsonEventCounter::kCompleteEventWithFlow) {
         output_->Append(R"(,"bind_id":)", event.flow_id());
         if (event.has_flow_category()) {
-          ContextType type = GetSafeContextType(event.flow_category());
-          if (type != ContextType::kGeneric && type != ContextType::kLegacy) {
-            const char* category = GetContextTypeString(type);
+          tsl::profiler::ContextType type =
+              tsl::profiler::GetSafeContextType(event.flow_category());
+          if (type != tsl::profiler::ContextType::kGeneric &&
+              type != tsl::profiler::ContextType::kLegacy) {
+            const char* category = tsl::profiler::GetContextTypeString(type);
             output_->Append(R"(,"cat":")", category, R"(")");
           }
         }
         switch (event.flow_entry_type()) {
           case TraceEvent::FLOW_NONE:
-            // The caller prevents this case from happenning.
+            // The caller prevents this case from happening.
             break;
           case TraceEvent::FLOW_START:
             output_->Append(R"(,"flow_out":true)");
@@ -209,13 +218,14 @@ class JsonEventWriter {
       } else {  // async events
         output_->Append(R"(,"id":)", event.flow_id());
         if (event.has_flow_category()) {
-          ContextType type = GetSafeContextType(event.flow_category());
-          const char* category = GetContextTypeString(type);
+          tsl::profiler::ContextType type =
+              tsl::profiler::GetSafeContextType(event.flow_category());
+          const char* category = tsl::profiler::GetContextTypeString(type);
           output_->Append(R"(,"cat":")", category, R"(")");
         }
         switch (event.flow_entry_type()) {
           case TraceEvent::FLOW_NONE:
-            // The caller prevents this case from happenning.
+            // The caller prevents this case from happening.
             break;
           case TraceEvent::FLOW_START:
             output_->Append(R"(,"ph":"b")");
@@ -507,8 +517,11 @@ void TraceEventsToJson(const JsonTraceOptions& options,
   // uses higher-precision when manipulating event times. Note that the
   // timestamps of trace events are always given in microseconds.
   output->Append(
-      R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)");
+      R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true}, "codeLink":")",
+      options.code_link, R"(",)");
 
+  output->Append(absl::StrFormat(R"("useNewBackend": %s,)",
+                                 options.use_new_backend ? "true" : "false"));
   WriteDetails(options.details, output);
   WriteSelectedDeviceIds(options.selected_device_ids, output);
   WriteReturnedEventsSize(events.NumEvents(), output);
@@ -534,7 +547,7 @@ void TraceEventsToJson(const JsonTraceOptions& options,
       separator.Add();
       output->Append(R"({"args":{"name":)", JsonEscape(device.name()),
                      R"(},"name":"process_name","ph":"M","pid":)", device_id,
-                     "}");
+                     R"(,"thread_count":)", device.resources_size(), "}");
     }
     separator.Add();
     output->Append(R"({"args":{"sort_index":)", device_id,

@@ -13,28 +13,41 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdlib>
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/ir/importexport/savedmodel_export.h"
 #include "tensorflow/core/ir/importexport/savedmodel_import.h"
-#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/transforms/pass_registration.h"
 #include "tensorflow/tools/tfg_graph_transforms/utils.h"
 
@@ -120,7 +133,7 @@ void RegisterDialects(mlir::DialectRegistry& registry) {
       });
 }
 
-tensorflow::Status RunOptimizationPasses(
+absl::Status RunOptimizationPasses(
     const mlir::PassPipelineCLParser& passPipeline, mlir::ModuleOp module,
     mlir::MLIRContext* context) {
   mlir::PassManager pm(context);
@@ -149,7 +162,7 @@ tensorflow::Status RunOptimizationPasses(
 }
 
 // Import model to the TFG MLIR module.
-tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportModel(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportModel(
     DataFormat data_format, const std::string& input_file,
     bool experimental_image_format, mlir::MLIRContext* mlir_context) {
   tensorflow::GraphDebugInfo debug_info;
@@ -179,12 +192,11 @@ tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportModel(
   }
 }
 
-tensorflow::Status ExportTFGModule(mlir::ModuleOp module_op,
-                                   DataFormat data_format,
-                                   const std::string& input_file,
-                                   const std::string& output_file,
-                                   bool experimental_image_format,
-                                   int experimental_image_format_max_size) {
+absl::Status ExportTFGModule(mlir::ModuleOp module_op, DataFormat data_format,
+                             const std::string& input_file,
+                             const std::string& output_file,
+                             bool experimental_image_format,
+                             int experimental_image_format_max_size) {
   switch (data_format) {
     case DataFormat::SavedModel: {
       tensorflow::SavedModel original_saved_model;
@@ -264,14 +276,14 @@ int main(int argc, char** argv) {
 
   // Parse the optimization pipeline configuration and run requested graph
   // optimizations.
-  tensorflow::Status pass_pipeline_status =
+  absl::Status pass_pipeline_status =
       RunOptimizationPasses(pass_pipeline, *module_ref, &context);
   if (!pass_pipeline_status.ok()) {
     LOG(QFATAL) << pass_pipeline_status << "\n";
   }
 
   // Export MLIR TFG module to the resulting model proto.
-  tensorflow::Status export_status = ExportTFGModule(
+  absl::Status export_status = ExportTFGModule(
       *module_ref, data_format, input_file, output_file,
       experimental_image_format, experimental_image_format_max_proto_size);
 

@@ -40,6 +40,6 @@ limitations under the License.
 #endif
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "tsl/framework/convolution/eigen_spatial_convolutions-inl.h"
+#include "xla/tsl/framework/convolution/eigen_spatial_convolutions-inl.h"
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_EIGEN_SPATIAL_CONVOLUTIONS_H_

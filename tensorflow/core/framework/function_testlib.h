@@ -56,20 +56,27 @@ class Attrs {
 
 // Helper to construct a NodeDef.
 NodeDef NDef(
-    StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
-    gtl::ArraySlice<std::pair<string, FunctionDefHelper::AttrValueWrapper>>
+    absl::string_view name, absl::string_view op,
+    absl::Span<const string> inputs,
+    absl::Span<const std::pair<string, FunctionDefHelper::AttrValueWrapper>>
         attrs = {},
     const string& device = "");
 
 // Helper to construct a GraphDef proto.
-GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
-              gtl::ArraySlice<FunctionDef> funcs = {});
+GraphDef GDef(absl::Span<const NodeDef> nodes,
+              absl::Span<const FunctionDef> funcs = {});
 
 // For testing convenience, we provide a few simple functions that can
 // be easily executed and tested.
 
 // x: T -> x * 2.
 FunctionDef XTimesTwo();
+// Same as `XTimesTwo` above, but with the `x` input as a control dependency.
+FunctionDef XTimesTwoWithControlInput();
+// Same as `XTimesTwo` above, but with a `dummy` control output node.
+FunctionDef XTimesTwoWithControlOutput();
+// Same as `XTimesTwo` above, but with a dangling `FloorDiv` node.
+FunctionDef XTimesTwoWithDanglingFloorDivNode();
 
 // x: T -> cpu(x * 2) + cpu(x * 3).
 FunctionDef TwoDeviceTimesFive();

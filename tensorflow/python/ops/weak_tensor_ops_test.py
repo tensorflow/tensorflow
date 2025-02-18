@@ -815,11 +815,11 @@ class WeakTensorBinaryOpsTest(
     run_test_div_no_nan(a=2, b=6)
 
     # Test div_no_nan(x, 0) = 0 even if x is NaN or Inf.
-    x = np.NaN
+    x = np.nan
     y = 0
     self.match_expected(math_ops.div_no_nan(x, y), 0, (dtypes.float32, True))
 
-    x = np.Inf
+    x = np.inf
     self.match_expected(math_ops.div_no_nan(x, y), 0, (dtypes.float32, True))
 
   def test_weak_tensor_multiply_no_nan(self, a_dtype, b_dtype, expected_dtype):
@@ -847,13 +847,13 @@ class WeakTensorBinaryOpsTest(
     run_test_multiply_no_nan(a=2, b=6)
 
     # Test multiply_no_nan(x, 0) = 0 even if x is NaN or Inf.
-    x = np.NaN
+    x = np.nan
     y = 0
     self.match_expected(
         math_ops.multiply_no_nan(x, y), 0, (dtypes.float32, True)
     )
 
-    x = np.Inf
+    x = np.inf
     self.match_expected(
         math_ops.multiply_no_nan(x, y), 0, (dtypes.float32, True)
     )

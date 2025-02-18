@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -71,7 +74,7 @@ inline void Gather(const Array& input_array, const Array& coords_array,
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
   if (base_op->type != OperatorType::kGather) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto* op = static_cast<const GatherOperator*>(base_op);
 
@@ -80,28 +83,28 @@ inline void Gather(const Array& input_array, const Array& coords_array,
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (!output_array.has_shape()) {
     // Yield until the output shape has been set by PropagateFixedShapes.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!op->axis) {
     // Yield until axis has been set by ResolveGatherAttributes.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (op->axis.value() != 0) {
     // Only handling axis=0 for now.
     AddMessageF("%s has axis %d; only axis=0 is supported", LogName(*op),
                 op->axis.value());
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // We require constant inputs.
   if (!IsConstantParameterArray(*model, op->inputs[0]) ||
       !IsConstantParameterArray(*model, op->inputs[1])) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const Array& input_array = model->GetArray(op->inputs[0]);
   const Array& coords_array = model->GetArray(op->inputs[1]);
@@ -144,7 +147,7 @@ inline void Gather(const Array& input_array, const Array& coords_array,
 
   DeleteOpAndArrays(model, op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

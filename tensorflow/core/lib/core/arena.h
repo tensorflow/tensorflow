@@ -101,7 +101,8 @@ class Arena {
 
   void FreeBlocks();  // Frees all except first block
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Arena);
+  Arena(const Arena&) = delete;
+  void operator=(const Arena&) = delete;
 };
 
 }  // namespace core

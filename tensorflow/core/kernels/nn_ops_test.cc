@@ -542,7 +542,6 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
                                   DEPTHWISE_CONV_OP op, int num_threads,
                                   int stride, Padding padding, bool use_gpu,
                                   const string& label) {
-  return;
   if (!IsGoogleCudaEnabled() && use_gpu) {
     state.SkipWithError(
         strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
@@ -800,7 +799,7 @@ static void BM_LRNFloat(::testing::benchmark::State& state, int depth, int cols,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape({batch_size, rows, cols, depth});
 
   Tensor input(DT_FLOAT, shape);
@@ -817,7 +816,7 @@ static void BM_LRNFloat(::testing::benchmark::State& state, int depth, int cols,
                   .Attr("beta", 0.5)
                   .Finalize(&lrn_node_def));
 
-  Status status;
+  absl::Status status;
   std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                               cpu_allocator(), lrn_node_def,
                                               TF_GRAPH_DEF_VERSION, &status));
@@ -881,7 +880,7 @@ static void BM_AvgPool(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   test::FillIota<float>(&input1, 1.0);
@@ -890,12 +889,13 @@ static void BM_AvgPool(::testing::benchmark::State& state, int batch_size,
   // AvgPooling op.
   NodeDef avgpool_node_def;
   CHECK_EQ(kernel_rows, kernel_cols);
-  Status status = NodeDefBuilder("avgpool_op", "AvgPool")
-                      .Input(FakeInput(DT_FLOAT))
-                      .Attr("ksize", {1, kernel_rows, kernel_cols, 1})
-                      .Attr("strides", {1, stride, stride, 1})
-                      .Attr("padding", padding == VALID ? "VALID" : "SAME")
-                      .Finalize(&avgpool_node_def);
+  absl::Status status =
+      NodeDefBuilder("avgpool_op", "AvgPool")
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("ksize", {1, kernel_rows, kernel_cols, 1})
+          .Attr("strides", {1, stride, stride, 1})
+          .Attr("padding", padding == VALID ? "VALID" : "SAME")
+          .Finalize(&avgpool_node_def);
   TF_CHECK_OK(status);
 
   std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
@@ -971,7 +971,7 @@ static void BM_AvgPoolBk(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
 
   int64_t out_height, out_width, pad_rows, pad_cols;
   TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, /*dilation_rate=*/1,
@@ -993,13 +993,14 @@ static void BM_AvgPoolBk(::testing::benchmark::State& state, int batch_size,
 
   // AvgPoolGrad op.
   NodeDef avgpool_grad_node_def;
-  Status status = NodeDefBuilder("avgpool_grad_op", "AvgPoolGrad")
-                      .Input(FakeInput())
-                      .Input(FakeInput(DT_FLOAT))
-                      .Attr("ksize", {1, kernel_rows, kernel_cols, 1})
-                      .Attr("strides", {1, stride, stride, 1})
-                      .Attr("padding", padding == VALID ? "VALID" : "SAME")
-                      .Finalize(&avgpool_grad_node_def);
+  absl::Status status =
+      NodeDefBuilder("avgpool_grad_op", "AvgPoolGrad")
+          .Input(FakeInput())
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("ksize", {1, kernel_rows, kernel_cols, 1})
+          .Attr("strides", {1, stride, stride, 1})
+          .Attr("padding", padding == VALID ? "VALID" : "SAME")
+          .Finalize(&avgpool_grad_node_def);
   TF_CHECK_OK(status);
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, nullptr, cpu_allocator(),
@@ -1076,7 +1077,7 @@ static void BM_MaxPool(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   test::FillIota<float>(&input1, 1.0);
@@ -1085,12 +1086,13 @@ static void BM_MaxPool(::testing::benchmark::State& state, int batch_size,
   // MaxPooling op.
   NodeDef maxpool_node_def;
   CHECK_EQ(kernel_rows, kernel_cols);
-  Status status = NodeDefBuilder("maxpool_op", "MaxPool")
-                      .Input(FakeInput())
-                      .Attr("ksize", {1, kernel_rows, kernel_cols, 1})
-                      .Attr("strides", {1, stride, stride, 1})
-                      .Attr("padding", padding == VALID ? "VALID" : "SAME")
-                      .Finalize(&maxpool_node_def);
+  absl::Status status =
+      NodeDefBuilder("maxpool_op", "MaxPool")
+          .Input(FakeInput())
+          .Attr("ksize", {1, kernel_rows, kernel_cols, 1})
+          .Attr("strides", {1, stride, stride, 1})
+          .Attr("padding", padding == VALID ? "VALID" : "SAME")
+          .Finalize(&maxpool_node_def);
   TF_CHECK_OK(status);
   std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                               cpu_allocator(), maxpool_node_def,
@@ -1186,10 +1188,10 @@ static void BM_MaxPoolBk(::testing::benchmark::State& state, int batch_size,
   output_diff.flat<float>().setRandom();
 
   CHECK_EQ(kernel_rows, kernel_cols);
-  ops::internal::MaxPoolGrad(root, input_data, output_data, output_diff,
-                             {1, kernel_rows, kernel_cols, 1} /* ksize */,
-                             {1, stride, stride, 1} /* stride */,
-                             padding == VALID ? "VALID" : "SAME");
+  ops::internal::MaxPoolGrad give_me_a_name(
+      root, input_data, output_data, output_diff,
+      {1, kernel_rows, kernel_cols, 1} /* ksize */,
+      {1, stride, stride, 1} /* stride */, padding == VALID ? "VALID" : "SAME");
   TF_CHECK_OK(root.status());
   Graph* g = new Graph(OpRegistry::Global());
   TF_CHECK_OK(root.ToGraph(g));
@@ -1262,7 +1264,7 @@ static void BM_ReluFloat(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   test::FillIota<float>(&input1, 1.0);
@@ -1270,9 +1272,9 @@ static void BM_ReluFloat(::testing::benchmark::State& state, int batch_size,
 
   // Reluing op.
   NodeDef relu_node_def;
-  Status status = NodeDefBuilder("relu_op", "Relu")
-                      .Input(FakeInput(DT_FLOAT))
-                      .Finalize(&relu_node_def);
+  absl::Status status = NodeDefBuilder("relu_op", "Relu")
+                            .Input(FakeInput(DT_FLOAT))
+                            .Finalize(&relu_node_def);
   TF_CHECK_OK(status);
   std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                               cpu_allocator(), relu_node_def,
@@ -1333,7 +1335,7 @@ static void BM_SoftplusFloat(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   input1.flat<float>().setRandom();
@@ -1341,9 +1343,9 @@ static void BM_SoftplusFloat(::testing::benchmark::State& state, int batch_size,
 
   // Softplusing op.
   NodeDef softplus_node_def;
-  Status status = NodeDefBuilder("softplus_op", "Softplus")
-                      .Input(FakeInput(DT_FLOAT))
-                      .Finalize(&softplus_node_def);
+  absl::Status status = NodeDefBuilder("softplus_op", "Softplus")
+                            .Input(FakeInput(DT_FLOAT))
+                            .Finalize(&softplus_node_def);
   TF_CHECK_OK(status);
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, device.get(), cpu_allocator(),

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_BEST_FIT_REPACKER_H_
 
 #include <cstdint>
+#include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/allocation_block.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/memory_space_assignment/repacking.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -45,17 +47,28 @@ class MemorySpaceAssignmentBestFitRepacker
     BufferIntervalCompare buffer_interval_compare = nullptr;
   };
 
-  MemorySpaceAssignmentBestFitRepacker(int64_t max_size, int64_t alignment)
+  MemorySpaceAssignmentBestFitRepacker(
+      int64_t max_size, int64_t alignment,
+      SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type)
       : MemorySpaceAssignmentRepacker(max_size, alignment),
-        options_(BestFitRepackOptions()) {}
-  MemorySpaceAssignmentBestFitRepacker(int64_t max_size, int64_t alignment,
-                                       BestFitRepackOptions options)
-      : MemorySpaceAssignmentRepacker(max_size, alignment), options_(options) {}
+        options_(BestFitRepackOptions()),
+        slice_time_permutation_iterator_type_(
+            slice_time_permutation_iterator_type) {}
+  MemorySpaceAssignmentBestFitRepacker(
+      int64_t max_size, int64_t alignment,
+      SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type,
+      BestFitRepackOptions options)
+      : MemorySpaceAssignmentRepacker(max_size, alignment),
+        options_(std::move(options)),
+        slice_time_permutation_iterator_type_(
+            slice_time_permutation_iterator_type) {}
 
-  StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override;
+  absl::StatusOr<bool> Repack(
+      absl::Span<AllocationBlock*> allocations) override;
 
  private:
   BestFitRepackOptions options_;
+  SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type_;
 };
 
 }  // namespace memory_space_assignment

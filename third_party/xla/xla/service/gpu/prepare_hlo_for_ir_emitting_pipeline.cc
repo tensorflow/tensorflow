@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,28 +17,30 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/service/gpu/alias_passthrough_params.h"
-#include "xla/service/gpu/copy_fusion.h"
-#include "xla/service/gpu/gpu_sanitize_constant_names.h"
-#include "xla/service/gpu/gpu_shape_verifier.h"
-#include "xla/service/gpu/horizontal_loop_fusion.h"
-#include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_pass_pipeline.h"
+#include "xla/service/cpu_gpu_shape_verifier.h"
+#include "xla/service/gpu/transforms/alias_passthrough_params.h"
+#include "xla/service/gpu/transforms/copy_fusion.h"
+#include "xla/service/gpu/transforms/horizontal_loop_fusion.h"
+#include "xla/service/gpu/transforms/sanitize_constant_names.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/loop_schedule_linearizer.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 
 HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
-    HloModule& hlo_module,
-    HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
+    HloModule& hlo_module, HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+    const se::DeviceDescription& device_description) {
   const DebugOptions& debug_options = hlo_module.config().debug_options();
 
   // In some cases, we have to place the result of an instruction in a temporary
@@ -47,12 +49,12 @@ HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
+  HloVerifierOpts opts =
+      HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
+          LayoutAssignment::InstructionCanChangeLayout);
+  opts.verify_unique_channel_ids = !debug_options.xla_ignore_channel_id();
   std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
-      std::make_unique<GpuVerifierMetadata>(
-          HloVerifierOpts{}
-              .MakeLayoutSensitive()
-              .WithInstructionCanChangeLayout(
-                  LayoutAssignment::InstructionCanChangeLayout));
+      std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
   pipeline.AddInvariantCheckerDebug<HloVerifier>(std::move(verifier_metadata),
                                                  "hlo verifier (debug)");
 
@@ -77,14 +79,17 @@ HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
   }
 
   // We are using a sub-pipeline here, so that the verifier only runs after both
-  // GpuHorizontalLoopFusion and HloDCE.
+  // HorizontalLoopFusion and HloDCE.
   auto& sub_pipeline =
       pipeline.AddPass<HloPassPipeline>("horizontal-loop-fusion-for-copy");
   // To fuse the copy.
-  sub_pipeline.AddPass<CopyFusion>();
-  sub_pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
+  sub_pipeline.AddPass<CopyFusion>(device_description);
+  // Make sure to run HorizontalLoopFusion only inside the entry computation.
+  // Fusing copies outside of the entry computation can break buffer assignment!
+  sub_pipeline.AddPass<HorizontalLoopFusion>(device_description, "copy_",
+                                             /*only_entry_computation=*/true);
   sub_pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<GpuSanitizeConstantNames>();
+  pipeline.AddPass<SanitizeConstantNames>();
   return pipeline;
 }
 

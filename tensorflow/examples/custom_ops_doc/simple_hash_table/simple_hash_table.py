@@ -187,10 +187,10 @@ class SimpleHashTable(tf.saved_model.experimental.TrackableResource):
       key = tf.convert_to_tensor(key, self._key_dtype, name="key")
 
       # For remove, just the key is used by the kernel; no value is used.
-      # But the kernel is specifc to key_dtype and value_dtype
+      # But the kernel is specific to key_dtype and value_dtype
       # (i.e. it uses a <key_dtype, value_dtype> template).
       # So value_dtype is passed in explicitly. (While
-      # key_dtype is specificed implicitly by the dtype of key.)
+      # key_dtype is specified implicitly by the dtype of key.)
 
       # pylint: disable=protected-access
       op = gen_simple_hash_table_op.examples_simple_hash_table_remove(

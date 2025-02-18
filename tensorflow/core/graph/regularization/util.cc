@@ -19,11 +19,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow::graph_regularization {
 
@@ -33,11 +39,11 @@ uint64 ComputeHash(const GraphDef& graph_def) {
   return tensorflow::Fingerprint64(graph_def_string);
 }
 
-StatusOr<int64_t> GetSuffixUID(absl::string_view function_name) {
+absl::StatusOr<int64_t> GetSuffixUID(absl::string_view function_name) {
   std::vector<absl::string_view> v = absl::StrSplit(function_name, '_');
 
   int64_t uid;
-  if (!strings::safe_strto64(v.back(), &uid)) {
+  if (!absl::SimpleAtoi(v.back(), &uid)) {
     return errors::InvalidArgument(absl::StrCat(
         "Function name: `", function_name, "` does not end in an integer."));
   }

@@ -3,7 +3,7 @@
 
 namespace {
 
-tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
+absl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
   // Constant cast so that we can initialize the functions. The functions are
   // mutable here because this is the only place where they are initialized.
   auto* ops_api_fn =
@@ -34,7 +34,6 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngineState_GetState);
 
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CompileAndBuild);
-  TFTPU_SET_FN(ops_api_fn, TpuCompile_XrtCompileAndBuild);
 
   TFTPU_SET_FN(ops_api_fn, TpuExecutable_LoadProgramAndEnqueueToStream);
 
@@ -75,6 +74,7 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_CompactionSupported);
 
   TFTPU_SET_FN(ops_api_fn, TpuTopology_AvailableCoreCount);
+  TFTPU_SET_FN(ops_api_fn, TpuTopology_AvailableCoresPerChip);
   TFTPU_SET_FN(ops_api_fn, TpuNetUtil_RecycleUnusedPort);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_IsTpuCompilationEnabled);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
@@ -109,18 +109,19 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
                TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation);
   TFTPU_SET_FN(ops_api_fn,
                TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_DedupDataSizeComputation);
   TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_DedupDataTupleMaskComputation);
 
   TFTPU_SET_FN(ops_api_fn, SparseCore_GetMaxIdsAndUniques);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status InitializeTpuStructFns(  // TENSORFLOW_STATUS_OK
+absl::Status InitializeTpuStructFns(  // TENSORFLOW_STATUS_OK
     void* library_handle) {
   TF_RETURN_IF_ERROR(SetTpuOpsStructFns(library_handle));
   TF_RETURN_IF_ERROR(SetExecutorStructFn(library_handle));
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

@@ -107,7 +107,8 @@ class MatrixBandPartOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixBandPartOp);
+  MatrixBandPartOp(const MatrixBandPartOp&) = delete;
+  void operator=(const MatrixBandPartOp&) = delete;
 };
 
 #define REGISTER_MATRIX_BAND_PART(type)                                    \

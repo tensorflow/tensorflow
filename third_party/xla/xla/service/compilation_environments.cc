@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -29,15 +28,16 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -57,7 +57,7 @@ class GlobalCompEnvStats {
     return *singleton;
   }
 
-  void DefaultEnvCreatedByCompilationEnvironments(std::string_view env_type)
+  void DefaultEnvCreatedByCompilationEnvironments(absl::string_view env_type)
       ABSL_LOCKS_EXCLUDED(mu_) {
     {
       absl::MutexLock l(&mu_);
@@ -67,7 +67,7 @@ class GlobalCompEnvStats {
     VLOG(1) << "New GlobalCompEnvStats value: " << ToString();
   }
 
-  void EnvAdded(std::string_view env_type) ABSL_LOCKS_EXCLUDED(mu_) {
+  void EnvAdded(absl::string_view env_type) ABSL_LOCKS_EXCLUDED(mu_) {
     {
       absl::MutexLock l(&mu_);
       ++stats_[std::string(env_type)].env_added;
@@ -123,7 +123,7 @@ CompilationEnvironments& CompilationEnvironments::operator=(
   return *this;
 }
 
-StatusOr<std::unique_ptr<CompilationEnvironments>>
+absl::StatusOr<std::unique_ptr<CompilationEnvironments>>
 CompilationEnvironments::CreateFromProto(
     const CompilationEnvironmentsProto& proto) {
   auto envs = std::make_unique<CompilationEnvironments>();
@@ -184,7 +184,7 @@ void CompilationEnvironments::RegisterProcessNewEnvFn(
                   << descriptor->full_name() << "' has already been registered";
 }
 
-Status CompilationEnvironments::AddEnv(
+absl::Status CompilationEnvironments::AddEnv(
     std::unique_ptr<tsl::protobuf::Message> env) {
   if (!env) {
     return tsl::errors::InvalidArgument(
@@ -229,16 +229,16 @@ CompilationEnvironments::GetProcessNewEnvFn(
 }
 
 void CompilationEnvironments::DefaultEnvCreatedByCompilationEnvironments(
-    std::string_view env_type) {
+    absl::string_view env_type) {
   GlobalCompEnvStats::GetSingleton().DefaultEnvCreatedByCompilationEnvironments(
       env_type);
 }
 
-void CompilationEnvironments::EnvAdded(std::string_view env_type) {
+void CompilationEnvironments::EnvAdded(absl::string_view env_type) {
   GlobalCompEnvStats::GetSingleton().EnvAdded(env_type);
 }
 
-Status CompilationEnvironments::AddEnvImpl(
+absl::Status CompilationEnvironments::AddEnvImpl(
     const tsl::protobuf::Descriptor& descriptor,
     std::unique_ptr<tsl::protobuf::Message> env) {
   // Check if we already have an environment of env's type
@@ -253,8 +253,8 @@ Status CompilationEnvironments::AddEnvImpl(
     return tsl::errors::InvalidArgument(
         "Unknown compilation environment type: %s", descriptor.full_name());
   }
-  std::unique_ptr<tsl::protobuf::Message> processed_env =
-      process_new_env(std::move(env));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<tsl::protobuf::Message> processed_env,
+                      process_new_env(std::move(env)));
 
   // Check for unknown fields
   const tsl::protobuf::UnknownFieldSet& unknown_fields =
@@ -274,7 +274,7 @@ Status CompilationEnvironments::AddEnvImpl(
   // Actually add the env
   environments_.insert({&descriptor, std::move(processed_env)});
   EnvAdded(descriptor.full_name());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

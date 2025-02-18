@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,12 +21,41 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/stream_executor/dnn.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 
 /* static */ absl::Mutex Compiler::platform_compiler_mutex_(absl::kConstInit);
+
+Compiler::TargetConfig::TargetConfig(se::StreamExecutor* s)
+    : device_description(s->GetDeviceDescription()),
+      platform_name(s->GetPlatform()->Name()),
+      device_description_str(s->GetDeviceDescription().name()) {
+  se::dnn::DnnSupport* dnn = s->AsDnn();
+  if (dnn != nullptr) {
+    absl::StatusOr<se::dnn::VersionInfo> dnn_version = dnn->GetVersion();
+    if (dnn_version.ok()) {
+      dnn_version_info = *dnn_version;
+    }
+  }
+}
+
+Compiler::TargetConfig::TargetConfig(const se::GpuTargetConfigProto& proto)
+    : device_description({proto.gpu_device_info()}),
+      platform_name(proto.platform_name()),
+      dnn_version_info(proto.dnn_version_info()),
+      device_description_str(proto.device_description_str()) {}
+
+se::GpuTargetConfigProto Compiler::TargetConfig::ToProto() const {
+  stream_executor::GpuTargetConfigProto proto;
+  *proto.mutable_gpu_device_info() = device_description.ToGpuProto();
+  proto.set_platform_name(platform_name);
+  *proto.mutable_dnn_version_info() = dnn_version_info.ToProto();
+  proto.set_device_description_str(device_description_str);
+  return proto;
+}
 
 std::vector<std::unique_ptr<tsl::protobuf::Message>>
 Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
@@ -42,7 +71,7 @@ std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
 }
 
 // Define a default version where metadata is not used.
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 Compiler::CompileAheadOfTime(
     std::unique_ptr<HloModuleGroup> module_group,
     const AotCompilationOptions& options,
@@ -79,7 +108,7 @@ Compiler::GetPlatformCompilers() {
   (*factories)[platform_id] = std::move(compiler_factory);
 }
 
-/* static */ StatusOr<Compiler*> Compiler::GetForPlatform(
+/* static */ absl::StatusOr<Compiler*> Compiler::GetForPlatform(
     const se::Platform* platform) {
   absl::MutexLock lock(&platform_compiler_mutex_);
 

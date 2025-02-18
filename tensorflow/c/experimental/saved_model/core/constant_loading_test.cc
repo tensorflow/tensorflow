@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <tuple>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"
@@ -76,7 +79,7 @@ TEST_P(ConstantTest, CreateConstantSuccessful) {
   // The revived tensorhandle should have the exact same dtype, shape, +
   // approx equivalent data to the original.
   ImmediateExecutionTensorHandle* handle = revived->handle();
-  Status status;
+  absl::Status status;
   AbstractTensorPtr revived_tensor(handle->Resolve(&status));
   TF_EXPECT_OK(status) << "Failed to convert tensorhandle to tensor";
   EXPECT_EQ(revived_tensor->Type(), expected.dtype());

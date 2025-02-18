@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,33 +21,44 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "re2/re2.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/tools/run_hlo_module.pb.h"
+#include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/regexp.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-Status OverrideConfig(const hlo_module_loader_details::Config& ovr_config,
-                      HloModuleConfig* config) {
+absl::Status OverrideConfig(const hlo_module_loader_details::Config& ovr_config,
+                            HloModuleConfig* config) {
   config->set_replica_count(ovr_config.num_replicas);
   config->set_num_partitions(ovr_config.num_partitions);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-std::string StripLogHeaders(const std::string& hlo_string) {
+std::string StripLogHeaders(absl::string_view hlo_string) {
   // I0521 12:04:45.883483    1509 service.cc:186] ...
   static RE2* matcher = new RE2(
       "[IWEF]\\d{4} "
@@ -65,11 +76,11 @@ std::string StripLogHeaders(const std::string& hlo_string) {
                        });
 }
 
-StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
-    const std::string& data, const std::string& format,
-    hlo_module_loader_details::Config ovr_config,
+absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
+    const std::string& data, absl::string_view format,
+    const hlo_module_loader_details::Config& ovr_config,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
-    BufferAssignmentProto* buffer_assignment_proto) {
+    BufferAssignmentProto* buffer_assignment_proto, bool fill_missing_layouts) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   std::unique_ptr<HloModule> module;
   if (format == "hlo" || format == "txt") {
@@ -80,8 +91,10 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     if (config_modifier_hook) {
       config_modifier_hook(&config);
     }
-    TF_ASSIGN_OR_RETURN(module,
-                        ParseAndReturnUnverifiedModule(hlo_string, config));
+    HloParserOptions options;
+    options.set_fill_missing_layouts(fill_missing_layouts);
+    TF_ASSIGN_OR_RETURN(
+        module, ParseAndReturnUnverifiedModule(hlo_string, config, options));
   } else {
     HloSnapshot proto;
     if (format == "pb") {
@@ -125,22 +138,22 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
   return std::move(module);
 }
 
-StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
-    const std::string& path, hlo_module_loader_details::Config ovr_config,
-    std::string format,
+absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
+    const std::string& path, std::string format,
+    const hlo_module_loader_details::Config& ovr_config,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
-    BufferAssignmentProto* buffer_assignment_proto) {
+    BufferAssignmentProto* buffer_assignment_proto, bool fill_missing_layouts) {
   std::string data;
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
   }
   TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadModuleFromData(data, format, ovr_config, config_modifier_hook,
-                            buffer_assignment_proto);
+                            buffer_assignment_proto, fill_missing_layouts);
 }
 
-StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromData(
-    const std::string& data, absl::string_view format) {
+absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
+LoadInputFromData(const std::string& data, absl::string_view format) {
   HloSnapshot proto;
   if (format == "pb") {
     if (!proto.ParseFromString(data) &&
@@ -171,8 +184,8 @@ StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromData(
   return std::move(iteration_literals_proto);
 }
 
-StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromFile(
-    const std::string& path, std::string format) {
+absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
+LoadInputFromFile(const std::string& path, std::string format) {
   std::string data;
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));

@@ -36,9 +36,8 @@ v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute
 Tutorials](https://www.tensorflow.org/tutorials/distribute/)
 
   The tutorials cover how to use `tf.distribute.Strategy` to do distributed
-  training with native Keras APIs, custom training loops,
-  and Estimator APIs. They also cover how to save/load model when using
-  `tf.distribute.Strategy`.
+  training with native Keras APIs, and custom training loops.
+  They also cover how to save/load model when using `tf.distribute.Strategy`.
 
 *Glossary*
 
@@ -1100,10 +1099,6 @@ class StrategyBase(object):
   * To use it with Keras `compile`/`fit`,
     [please
     read](https://www.tensorflow.org/guide/distributed_training#using_tfdistributestrategy_with_keras).
-  * You may pass descendant of `tf.distribute.Strategy` to
-    `tf.estimator.RunConfig` to specify how a `tf.estimator.Estimator`
-    should distribute its computation. See
-    [guide](https://www.tensorflow.org/guide/distributed_training#using_tfdistributestrategy_with_estimator_limited_support).
   * Otherwise, use `tf.distribute.Strategy.scope` to specify that a
     strategy should be used when building an executing your model.
     (This puts you in the "cross-replica context" for this strategy, which
@@ -1181,9 +1176,6 @@ class StrategyBase(object):
   def __init__(self, extended):
     self._extended = extended
 
-    # Flag that is used to indicate whether distribution strategy is used with
-    # Estimator. This is required for backward compatibility of loss scaling
-    # when using v1 optimizer with estimator.
     self._scale_loss_for_estimator = False
 
     if not hasattr(extended, "_retrace_functions_for_each_device"):
@@ -2862,7 +2854,7 @@ class StrategyExtendedV2(object):
         `tf.distribute.Strategy` takes one in the constructor.
 
     Returns:
-      A tensor or a nested strucutre of tensors with the reduced values. The
+      A tensor or a nested structure of tensors with the reduced values. The
       structure is the same as `value`.
     """
     if options is None:
@@ -2999,7 +2991,7 @@ class StrategyExtendedV2(object):
       where each list has an element per replica, and the caller is responsible
       for ensuring all elements are executed.
     """
-    # TODO(b/178944108): Update the documentation to relfect the fact that
+    # TODO(b/178944108): Update the documentation to reflect the fact that
     # `update` can be called in a replica context.
     if kwargs is None:
       kwargs = {}

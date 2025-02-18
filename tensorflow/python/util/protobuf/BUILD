@@ -34,7 +34,6 @@ tf_proto_library(
     name = "compare_test_proto",
     testonly = 1,
     srcs = ["compare_test.proto"],
-    cc_api_version = 2,
 )
 
 tf_py_strict_test(
@@ -42,13 +41,11 @@ tf_py_strict_test(
     size = "small",
     srcs = ["compare_test.py"],
     main = "compare_test.py",
-    python_version = "PY3",
     tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
     deps = [
         ":compare_test_proto_py",
         ":protobuf",
         "//tensorflow/python/platform:test",
-        "@six_archive//:six",
     ],
 )
 
@@ -62,7 +59,6 @@ filegroup(
 #     name = "compare_test_py_pb2",
 #     testonly = 1,
 #     has_services = 0,
-#     api_version = 2,
 #     deps = [":compare_test_proto"],
 # )
 # copybara:uncomment_end
@@ -74,7 +70,6 @@ py_strict_library(
         exclude = ["*_test.py"],
     ),
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
@@ -88,7 +83,6 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         "@com_google_protobuf//:protobuf_python",
-        "@six_archive//:six",
         "//tensorflow/python/util:compat",
     ],
 )

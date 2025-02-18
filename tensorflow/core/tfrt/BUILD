@@ -9,3 +9,13 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "ifrt_program_ops_op_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/tfrt/kernels:ifrt_program_ops",
+        "//tensorflow/core/tfrt/ops:ifrt_program_ops_op_lib",
+    ],
+    alwayslink = 1,
+)

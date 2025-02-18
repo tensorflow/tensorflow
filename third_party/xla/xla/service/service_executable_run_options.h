@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/stream_pool.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -35,15 +36,16 @@ class ServiceExecutableRunOptions {
   // with the first argument being the device ordinal, the second
   // argument being the number of streams to borrow, and the third
   // argument being the priority of the streams.
-  using StreamBorrower = std::function<StatusOr<std::vector<StreamPool::Ptr>>(
-      int, int, se::StreamPriority)>;
+  using StreamBorrower =
+      std::function<absl::StatusOr<std::vector<StreamPool::Ptr>>(
+          int, int, se::StreamPriority)>;
 
   ServiceExecutableRunOptions()
       : ServiceExecutableRunOptions(ExecutableRunOptions()) {}
 
-  explicit ServiceExecutableRunOptions(ExecutableRunOptions run_options,
+  explicit ServiceExecutableRunOptions(const ExecutableRunOptions& run_options,
                                        StreamBorrower stream_borrower = nullptr)
-      : run_options_(std::move(run_options)),
+      : run_options_(run_options),
         stream_borrower_(std::move(stream_borrower)) {}
 
   // Returns reference or pointer to `ExecutableRunOptions` member.
@@ -57,13 +59,15 @@ class ServiceExecutableRunOptions {
   }
   int device_ordinal() const { return run_options_.device_ordinal(); }
 
+  int local_device_count() const { return run_options_.local_device_count(); };
   // Borrows a stream and returns a smart pointer which returns the stream on
   // destruction.
-  StatusOr<StreamPool::Ptr> BorrowStream(
+  absl::StatusOr<StreamPool::Ptr> BorrowStream(
       int device_ordinal,
       se::StreamPriority priority = se::StreamPriority::Default) const {
     if (!stream_borrower_) {
-      return Status(absl::StatusCode::kUnimplemented, "No stream borrower");
+      return absl::Status(absl::StatusCode::kUnimplemented,
+                          "No stream borrower");
     }
 
     TF_ASSIGN_OR_RETURN(
@@ -73,13 +77,16 @@ class ServiceExecutableRunOptions {
     return stream;
   }
 
-  StatusOr<std::vector<StreamPool::Ptr>> BorrowStreams(
+  absl::StatusOr<std::vector<StreamPool::Ptr>> BorrowStreams(
       int device_ordinal, int num_streams,
       se::StreamPriority priority = se::StreamPriority::Default) const {
     return stream_borrower_
                ? stream_borrower_(device_ordinal, num_streams, priority)
-               : Status(absl::StatusCode::kUnimplemented, "No stream borrower");
+               : absl::Status(absl::StatusCode::kUnimplemented,
+                              "No stream borrower");
   }
+
+  bool HasStreamBorrower() const { return stream_borrower_ != nullptr; }
 
  private:
   ExecutableRunOptions run_options_;

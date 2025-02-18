@@ -13,6 +13,4 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any
-
-def Convert(*args, **kwargs) -> Any: ...
+def Convert(*args, **kwargs): ...

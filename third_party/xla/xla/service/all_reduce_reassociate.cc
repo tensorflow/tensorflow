@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -26,11 +32,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/all_reduce_key.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/hlo_domain_map.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -72,9 +80,20 @@ bool AreCompatible(const HloAllReduceInstruction* ar0,
 
 // Look-through some formatting operations that might be in front of the
 // all-reduces we want to reassociate. Making sure the chain only has 1 user
-// throughout.
-HloAllReduceInstruction* LookThroughForAllReduce(
-    HloInstruction* instr, const Literal& reduction_identity) {
+// throughout. Also check for possible reduce-scatter patterns (all-reduce +
+// dynamic-slice).
+HloInstruction* LookThroughForAllReduce(HloInstruction* instr,
+                                        const Literal& reduction_identity) {
+  // Match reduce-scatter pattern. Support only the non-formatted case at the
+  // moment.
+  if (instr->opcode() == HloOpcode::kDynamicSlice) {
+    // Dynamic-slice to be matched needs to be immediately using an AllReduce.
+    if (instr->operand(0)->opcode() != HloOpcode::kAllReduce ||
+        instr->operand(0)->user_count() != 1 || instr->user_count() != 1) {
+      return nullptr;
+    }
+    return instr;
+  }
   while (instr->opcode() != HloOpcode::kAllReduce) {
     if (instr->user_count() != 1) {
       return nullptr;
@@ -98,7 +117,7 @@ HloAllReduceInstruction* LookThroughForAllReduce(
   if (instr->user_count() != 1) {
     return nullptr;
   }
-  return Cast<HloAllReduceInstruction>(instr);
+  return instr;
 }
 
 // Because we can look through pads its possible that reassociating the
@@ -160,7 +179,7 @@ bool MatchOperandsToAllReduceWithOptionalConvert(HloInstruction* inst,
 }
 }  // namespace
 
-StatusOr<bool> AllReduceReassociate::Run(
+absl::StatusOr<bool> AllReduceReassociate::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {
@@ -189,23 +208,48 @@ StatusOr<bool> AllReduceReassociate::Run(
         continue;
       }
       // Find LHS all-reduce.
-      HloAllReduceInstruction* ar0 = LookThroughForAllReduce(
-          inst->mutable_operand(0), *reduction_identity);
-      if (ar0 == nullptr) {
+      HloInstruction* lhs = LookThroughForAllReduce(inst->mutable_operand(0),
+                                                    *reduction_identity);
+      if (lhs == nullptr) {
         continue;
       }
       // Find RHS all-reduce.
-      HloAllReduceInstruction* ar1 = LookThroughForAllReduce(
-          inst->mutable_operand(1), *reduction_identity);
-      if (ar1 == nullptr) {
+      HloInstruction* rhs = LookThroughForAllReduce(inst->mutable_operand(1),
+                                                    *reduction_identity);
+      if (rhs == nullptr) {
         continue;
       }
       if (!inst->shape().IsArray()) {
         continue;
       }
+      if (lhs->opcode() != rhs->opcode() ||
+          (lhs->opcode() == HloOpcode::kDynamicSlice &&
+           !ShapeUtil::Compatible(lhs->operand(0)->shape(),
+                                  rhs->operand(0)->shape()))) {
+        continue;
+      }
+      HloAllReduceInstruction* ar0 = nullptr;
+      HloAllReduceInstruction* ar1 = nullptr;
+      bool reduce_scatter_pattern_match = false;
+      // Check Dynamic-slice pattern is identical
+      if (lhs->opcode() == HloOpcode::kDynamicSlice) {
+        HloInstruction* original_rhs_operand = rhs->mutable_operand(0);
+        TF_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, lhs->mutable_operand(0)));
+        if (!lhs->Identical(*rhs)) {
+          TF_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, original_rhs_operand));
+          continue;
+        }
+        TF_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, original_rhs_operand));
+        ar0 = Cast<HloAllReduceInstruction>(lhs->mutable_operand(0));
+        ar1 = Cast<HloAllReduceInstruction>(rhs->mutable_operand(0));
+        reduce_scatter_pattern_match = true;
+      } else {
+        ar0 = Cast<HloAllReduceInstruction>(lhs);
+        ar1 = Cast<HloAllReduceInstruction>(rhs);
+      }
       // Because we look through pads it might not be profitable to actually
       // reassociate if reassociating makes us all-reduce more values.
-      if (!ReassociateAllReduceIsProfitable(ar0, ar1, inst)) {
+      if (!ReassociateAllReduceIsProfitable(lhs, rhs, inst)) {
         continue;
       }
 
@@ -245,8 +289,8 @@ StatusOr<bool> AllReduceReassociate::Run(
         continue;
       }
       VLOG(2) << "Reassociated:";
-      VLOG(2) << "\tAR0: " << ar0->opcode();
-      VLOG(2) << "\tAR1: " << ar1->opcode();
+      VLOG(2) << "\tAR0: " << ar0->ToString();
+      VLOG(2) << "\tAR1: " << ar1->ToString();
 
       auto op_users = inst->users();
       // Found pattern op(ar(x), ar(y)). Transform it into ar(op(x,y)).
@@ -263,16 +307,22 @@ StatusOr<bool> AllReduceReassociate::Run(
         new_op_operand1 = convert1;
       }
 
-      HloInstruction* new_op =
-          should_promote_ar
-              ? computation->AddInstruction(inst->CloneWithNewOperands(
-                    inst->shape(), {new_op_operand0, new_op_operand1}))
-              : inst;
+      HloInstruction* new_op = inst;
+      if (should_promote_ar) {
+        new_op = computation->AddInstruction(inst->CloneWithNewOperands(
+            inst->shape(), {new_op_operand0, new_op_operand1}));
+      } else if (reduce_scatter_pattern_match) {
+        new_op = computation->AddInstruction(inst->CloneWithNewOperands(
+            ar0->shape(), {new_op_operand0, new_op_operand1}));
+      }
 
       Shape new_ar_out_shape = inst->shape();
+      CHECK(!should_promote_ar || !reduce_scatter_pattern_match);
       if (should_promote_ar) {
         new_ar_out_shape.set_element_type(
             new_op_operand0->shape().element_type());
+      } else if (reduce_scatter_pattern_match) {
+        new_ar_out_shape = ar0->shape();
       } else {
         TF_RETURN_IF_ERROR(ar0->ReplaceAllUsesWith(ar0->mutable_operand(0)));
         TF_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(ar1->mutable_operand(0)));
@@ -302,6 +352,12 @@ StatusOr<bool> AllReduceReassociate::Run(
             inst->GetModule()->AddEmbeddedComputation(promoted.Build());
         new_ar->set_to_apply(to_apply_promoted);
         TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_ar));
+      } else if (reduce_scatter_pattern_match) {
+        auto dyn_slice_operands = lhs->mutable_operands();
+        dyn_slice_operands[0] = new_ar;
+        HloInstruction* new_dyn_slice = inst->parent()->AddInstruction(
+            lhs->CloneWithNewOperands(inst->shape(), dyn_slice_operands));
+        TF_RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_dyn_slice));
       } else {
         TF_RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_ar));
       }
@@ -309,8 +365,14 @@ StatusOr<bool> AllReduceReassociate::Run(
       // Note that RemoveInstructionAndUnusedOperands may not remove the 2
       // all-reduce operands of `inst` if they are not safe to remove otherwise,
       // so manually these instructions.
-      if (should_promote_ar) {
+      if (should_promote_ar || reduce_scatter_pattern_match) {
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(inst));
+      }
+      if (reduce_scatter_pattern_match) {
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(lhs));
+        if (lhs != rhs) {
+          TF_RETURN_IF_ERROR(computation->RemoveInstruction(rhs));
+        }
       }
       TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
       if (ar0 != ar1) {

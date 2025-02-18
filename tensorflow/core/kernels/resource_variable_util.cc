@@ -19,15 +19,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ValidateAssignUpdateVariableOpShapes(const TensorShape& variable_shape,
-                                            const TensorShape& value_shape) {
+absl::Status ValidateAssignUpdateVariableOpShapes(
+    const TensorShape& variable_shape, const TensorShape& value_shape) {
   if (!variable_shape.IsSameSize(value_shape)) {
     return errors::InvalidArgument(
         "Cannot update variable with shape ", variable_shape.DebugString(),
         " using a Tensor with shape ", value_shape.DebugString(),
         ", shapes must be equal.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

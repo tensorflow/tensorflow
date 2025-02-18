@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,27 +15,24 @@ limitations under the License.
 
 #include "xla/service/gpu/buffer_allocations.h"
 
-#include <memory>
-#include <utility>
+#include <cstdint>
+#include <set>
 
-#include "xla/map_util.h"
-#include "xla/service/gpu/gpu_constants.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
-#include "xla/util.h"
-#include "tsl/lib/gtl/map_util.h"
-#include "tsl/platform/errors.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/device_memory.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
 
-Status BufferAllocations::TearDown(
+absl::Status BufferAllocations::TearDown(
     const std::set<se::DeviceMemoryBase>& live_addresses,
     absl::Span<const BufferAllocation> allocations) {
   // Deallocate temporary buffers, taking care to try to deallocate all of them
   // even if one of the deallocations fails.
-  Status status;
+  absl::Status status;
   const int64_t num_buffers = allocations.size();
   for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = allocations[i];
@@ -71,12 +68,20 @@ se::DeviceMemoryBase& BufferAllocations::GetMutableDeviceAddress(
 
 se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
     const BufferAllocation::Slice& buffer_slice) const {
-  se::DeviceMemoryBase base = GetDeviceAddress(buffer_slice.index());
-  CHECK_LE(buffer_slice.offset(), base.size());
-  CHECK_LE(buffer_slice.offset() + buffer_slice.size(), base.size());
-  return se::DeviceMemoryBase(
-      static_cast<char*>(base.opaque()) + buffer_slice.offset(),
-      buffer_slice.size());
+  int64_t index = buffer_slice.index();
+  se::DeviceMemoryBase base = GetDeviceAddress(index);
+
+  int64_t offset = buffer_slice.offset();
+  CHECK_LE(buffer_slice.offset(), base.size())
+      << "slice offset " << offset << " must be smaller than buffer #" << index
+      << " size " << base.size();
+
+  int64_t extent = offset + buffer_slice.size();
+  CHECK_LE(extent, base.size())
+      << "slice extent " << extent << " must be smaller than buffer #" << index
+      << " size " << base.size();
+
+  return base.GetByteSlice(buffer_slice.offset(), buffer_slice.size());
 }
 
 }  // namespace gpu

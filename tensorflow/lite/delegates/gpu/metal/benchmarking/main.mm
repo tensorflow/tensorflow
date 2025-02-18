@@ -7,7 +7,7 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the Licensgoe is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -224,14 +224,13 @@ absl::Status GPUBenchmark(GraphFloat32* graph, int num_tests, int iterations,
             << (const_mem_bytes + runtime_mem_bytes) / 1024.0 / 1024.0 << " MB" << std::endl;
   const std::string precision_str = use_fp16 ? "FP16" : "FP32";
   std::cout << "Measuring started: (" << num_tests << " tests, " << iterations
-      << " iterations every test, " << precision_str << " precision)" << std::endl;
+            << " iterations every test, " << precision_str << " precision)" << std::endl;
   for (int j = 0; j < num_tests; ++j) {
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < iterations; ++i) {
       @autoreleasepool {
         id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
-        id<MTLComputeCommandEncoder> encoder =
-            [command_buffer computeCommandEncoder];
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
         inference_context.EncodeWithEncoder(encoder);
         [encoder endEncoding];
         [command_buffer commit];
@@ -241,9 +240,7 @@ absl::Status GPUBenchmark(GraphFloat32* graph, int num_tests, int iterations,
       }
     }
     auto end = std::chrono::high_resolution_clock::now();
-    double t0 = double(std::chrono::duration_cast<std::chrono::milliseconds>(
-                           end - start)
-                           .count()) /
+    double t0 = double(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) /
                 iterations;
     std::cout << "  Test: #" << j << " - " << t0 << "ms" << std::endl;
   }
@@ -362,12 +359,9 @@ absl::Status GPUBenchmarkSerialized(GraphFloat32* graph, bool use_fp16 = true) {
 
 class DelegateContext {
  public:
-  bool Init(TfLiteContext* context,
-            const TfLiteDelegateParams* delegate_params) {
-    auto denormalized_graph =
-        reinterpret_cast<GraphFloat32*>(delegate_params->delegate->data_);
-    absl::Status status =
-        BuildModel(context, delegate_params, denormalized_graph);
+  bool Init(TfLiteContext* context, const TfLiteDelegateParams* delegate_params) {
+    auto denormalized_graph = reinterpret_cast<GraphFloat32*>(delegate_params->delegate->data_);
+    absl::Status status = BuildModel(context, delegate_params, denormalized_graph);
     if (!status.ok()) {
       TF_LITE_KERNEL_LOG(context, std::string(status.message()).c_str());
     }
@@ -379,9 +373,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   const TfLiteRegistration kRegistration = {
       .init = [](TfLiteContext* context, const char* buffer, size_t) -> void* {
         auto* delegate_context = new DelegateContext();
-        if (!delegate_context->Init(
-                context,
-                reinterpret_cast<const TfLiteDelegateParams*>(buffer))) {
+        if (!delegate_context->Init(context,
+                                    reinterpret_cast<const TfLiteDelegateParams*>(buffer))) {
           delete delegate_context;
           return nullptr;
         }
@@ -397,15 +390,14 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   };
 
   TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
-  const auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, kRegistration, ops_to_replace, delegate);
+  const auto status = context->ReplaceNodeSubsetsWithDelegateKernels(context, kRegistration,
+                                                                     ops_to_replace, delegate);
   TfLiteIntArrayFree(ops_to_replace);
   return status;
 }
 
-absl::Status FlatBufferToGPUGraph(
-    const std::unique_ptr<tflite::FlatBufferModel>& flatbuffer,
-    GraphFloat32* graph) {
+absl::Status FlatBufferToGPUGraph(const std::unique_ptr<tflite::FlatBufferModel>& flatbuffer,
+                                  GraphFloat32* graph) {
   ops::builtin::BuiltinOpResolver op_resolver;
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder interpreter_builder(*flatbuffer, op_resolver);
@@ -439,10 +431,10 @@ absl::Status FlatBufferToGPUGraph(
 
 int main(int argc, char** argv) {
   @autoreleasepool {
-    NSBundle *main = [NSBundle mainBundle];
+    NSBundle* main = [NSBundle mainBundle];
     NSArray<NSString*>* model_paths = [main pathsForResourcesOfType:@"tflite" inDirectory:nil];
     for (id model_path in model_paths) {
-      NSString *model_name = [[model_path lastPathComponent] stringByDeletingPathExtension];
+      NSString* model_name = [[model_path lastPathComponent] stringByDeletingPathExtension];
       std::string m_name = std::string([model_name UTF8String]);
       std::string path = std::string([model_path UTF8String]);
       std::cout << m_name << std::endl;

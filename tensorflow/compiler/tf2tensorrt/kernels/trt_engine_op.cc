@@ -617,24 +617,20 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   opts.runner = ctx->runner();
   native_inputs.reserve(ctx->num_inputs());
   int n_copies = 0;
-  const cudaStream_t* stream = CHECK_NOTNULL(
-      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
-                                                ->stream()
-                                                ->implementation()
-                                                ->GpuStreamMemberHack()));
+  cudaStream_t stream = reinterpret_cast<cudaStream_t>(CHECK_NOTNULL(
+      ctx->op_device_context()->stream()->platform_specific_handle().stream));
   for (int i = 0; i < ctx->num_inputs(); i++) {
     if (ctx->input_dtype(i) != DT_INT32) {
       native_inputs.push_back(ctx->input(i));
     } else {
-      OP_REQUIRES_OK_ASYNC(ctx,
-                           CopyToHostAsync(ctx, &native_inputs, i, *stream),
+      OP_REQUIRES_OK_ASYNC(ctx, CopyToHostAsync(ctx, &native_inputs, i, stream),
                            dummy_async_helper);
       n_copies++;
     }
   }
   if (n_copies > 0) {
     // If we have any int32 tensors, then wait until data is copied to host.
-    cudaStreamSynchronize(*stream);
+    cudaStreamSynchronize(stream);
   }
   VLOG(1) << "Executing native segment: " << name();
   // Increment the reference count of the async_helper by 1. When the native
@@ -653,7 +649,7 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
         for (size_t t = 0; t < native_outputs->size(); ++t) {
           if (native_outputs->at(t).dtype() == DT_INT32) {
             OP_REQUIRES_OK_ASYNC(
-                ctx, CopyToDeviceAsync(ctx, native_outputs->at(t), t, *stream),
+                ctx, CopyToDeviceAsync(ctx, native_outputs->at(t), t, stream),
                 dummy_async_helper);
             n_copies++;
           } else {
@@ -661,7 +657,7 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
           }
         }
         if (n_copies > 0) {
-          cudaStreamSynchronize(*stream);
+          cudaStreamSynchronize(stream);
         }
       });
 }
@@ -703,11 +699,8 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
     VLOG(2) << "Filled map for sending";
     // Copied from gpu_kernel_helper.h as the header can only be used in *.cu.cc
     // files.
-    const cudaStream_t* stream = CHECK_NOTNULL(
-        reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
-                                                  ->stream()
-                                                  ->implementation()
-                                                  ->GpuStreamMemberHack()));
+    cudaStream_t stream = reinterpret_cast<cudaStream_t>(CHECK_NOTNULL(
+        ctx->op_device_context()->stream()->platform_specific_handle().stream));
     // TRTInt8Calibrator::setBatch will wait until TRTInt8Calibrator::getBatch
     // is called before proceeding with feeding the calibration data to the
     // calibrator. It returns true if the calibration data is accepted and
@@ -721,7 +714,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
     //
     // In both of the above cases, setBatch here returns a boolean value to
     // indicate the result of the calibration process.
-    if (!calib_ctx->calibrator_->setBatch(input_data, *stream)) {
+    if (!calib_ctx->calibrator_->setBatch(input_data, stream)) {
       VLOG(2) << "Failed to feed calibration data";
     } else {
       VLOG(2) << "Passed calibration data";
@@ -1047,11 +1040,8 @@ Status TRTEngineOp::ExecuteTrtEngine(
 
   // Copied from gpu_kernel_helper.h as the header can only be used in *.cu.cc
   // files.
-  const cudaStream_t* stream = CHECK_NOTNULL(
-      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
-                                                ->stream()
-                                                ->implementation()
-                                                ->GpuStreamMemberHack()));
+  cudaStream_t stream = reinterpret_cast<cudaStream_t>(CHECK_NOTNULL(
+      ctx->op_device_context()->stream()->platform_specific_handle().stream));
 
   ContextDeviceMemory context_device_memory;
   if (!has_device_memory) {
@@ -1064,7 +1054,7 @@ Status TRTEngineOp::ExecuteTrtEngine(
         execution_context, allocator, engine_context->GetDeviceMemorySize()));
   }
   // Enqueue the TensorRT engine for execution.
-  return TrtEnqueue(execution_context, buffers, *stream, use_implicit_batch_,
+  return TrtEnqueue(execution_context, buffers, stream, use_implicit_batch_,
                     num_batch);
 }
 

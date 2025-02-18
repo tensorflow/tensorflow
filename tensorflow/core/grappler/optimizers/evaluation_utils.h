@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace Eigen {
@@ -37,23 +38,26 @@ class DeviceSimple : public DeviceBase {
   DeviceSimple();
   ~DeviceSimple();
 
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override;
+  absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                   const AllocatorAttributes alloc_attrs,
+                                   Tensor* tensor) override;
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     return cpu_allocator();
   }
 
+  const std::string& device_type() const override { return device_type_; }
+
  private:
   DeviceBase::CpuWorkerThreads eigen_worker_threads_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
+  const std::string device_type_ = DEVICE_CPU;
 };
 
-Status EvaluateNode(const NodeDef& node,
-                    const gtl::InlinedVector<TensorValue, 4>& inputs,
-                    DeviceBase* cpu_device, ResourceMgr* resource_mgr,
-                    gtl::InlinedVector<TensorValue, 4>* output);
+absl::Status EvaluateNode(const NodeDef& node,
+                          const absl::InlinedVector<TensorValue, 4UL>& inputs,
+                          DeviceBase* cpu_device, ResourceMgr* resource_mgr,
+                          absl::InlinedVector<TensorValue, 4UL>* output);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

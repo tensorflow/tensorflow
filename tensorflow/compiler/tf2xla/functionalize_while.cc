@@ -56,10 +56,10 @@ namespace {
 // taking from the Switch node was not necessarily the first output, but _Arg
 // nodes only have one output. By adding the Switch node to `squash_src_outputs`
 // we rewrite the src_output of the corresponding edge to be 0.
-Status CopySubgraph(const Graph& graph, const WhileLoopFrame* frame,
-                    std::vector<Node*> stack,
-                    const std::vector<bool>& squash_src_outputs,
-                    std::vector<Node*>* node_map, Graph* output) {
+absl::Status CopySubgraph(const Graph& graph, const WhileLoopFrame* frame,
+                          std::vector<Node*> stack,
+                          const std::vector<bool>& squash_src_outputs,
+                          std::vector<Node*>* node_map, Graph* output) {
   VLOG(3) << "Stack: " << NodesToString(stack);
   std::vector<bool> visited(graph.num_node_ids(), false);
   while (!stack.empty()) {
@@ -79,7 +79,8 @@ Status CopySubgraph(const Graph& graph, const WhileLoopFrame* frame,
               [](const Edge* a, const Edge* b) {
                 int a_src_output = a->src_output(),
                     b_src_output = b->src_output();
-                StringPiece a_name(a->src()->name()), b_name(b->src()->name());
+                absl::string_view a_name(a->src()->name()),
+                    b_name(b->src()->name());
                 return std::tie(a_src_output, a_name) <
                        std::tie(b_src_output, b_name);
               });
@@ -103,10 +104,10 @@ Status CopySubgraph(const Graph& graph, const WhileLoopFrame* frame,
       output->AddEdge(src_copy, src_output, dst_copy, e->dst_input());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
+absl::StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
   const char* const kArgOp = "_Arg";
   NodeDef arg_def;
   NodeDefBuilder builder(absl::StrCat(kArgOp, index), kArgOp);
@@ -117,8 +118,8 @@ StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
 }
 
 // Builds a graph for the loop condition.
-Status BuildLoopCondition(const Graph& graph, WhileLoopFrame* frame,
-                          std::unique_ptr<Graph>* cond_output) {
+absl::Status BuildLoopCondition(const Graph& graph, WhileLoopFrame* frame,
+                                std::unique_ptr<Graph>* cond_output) {
   VLOG(2) << "Building loop condition for " << frame->name;
   *cond_output = std::make_unique<Graph>(graph.op_registry());
   Graph* output = cond_output->get();
@@ -153,9 +154,9 @@ Status BuildLoopCondition(const Graph& graph, WhileLoopFrame* frame,
 }
 
 // Builds a graph for the loop body.
-Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
-                     DataTypeVector* arg_types,
-                     std::unique_ptr<Graph>* body_output) {
+absl::Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
+                           DataTypeVector* arg_types,
+                           std::unique_ptr<Graph>* body_output) {
   VLOG(2) << "Building loop body for " << frame->name;
   *body_output = std::make_unique<Graph>(graph.op_registry());
   Graph* output = body_output->get();
@@ -206,17 +207,17 @@ Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
   TF_RETURN_IF_ERROR(CopySubgraph(graph, frame, std::move(next_iterations),
                                   squash_src_outputs, &node_map, output));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
-                         FunctionLibraryDefinition* library,
-                         const NodeFilter& node_filter) {
+absl::Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
+                               FunctionLibraryDefinition* library,
+                               const NodeFilter& node_filter) {
   if (node_filter && !frame->should_be_functionalized) {
     VLOG(2) << "Skipping functionalization for frame " << frame->name
             << " because it has control flow nodes that are filtered out by "
                "the specified node filter.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(2) << "Frame " << frame->name << " before: "
           << DumpGraphToFile("functionalize_before", *graph, library);
@@ -501,12 +502,13 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   VLOG(2) << "Frame " << frame->name << " after: "
           << DumpGraphToFile("functionalize_after", *graph, library);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
-Status FunctionalizeWhileLoop(Graph* graph, FunctionLibraryDefinition* library,
-                              const NodeFilter& node_filter) {
+absl::Status FunctionalizeWhileLoop(Graph* graph,
+                                    FunctionLibraryDefinition* library,
+                                    const NodeFilter& node_filter) {
   // Note: BuildControlFlowInfo() requires that the graph's source node is
   // connected to all source nodes in the graph. Many graphs violate this
   // invariant.
@@ -565,7 +567,7 @@ Status FunctionalizeWhileLoop(Graph* graph, FunctionLibraryDefinition* library,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

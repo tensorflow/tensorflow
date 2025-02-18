@@ -42,25 +42,26 @@ class SaveDatasetOp : public HybridAsyncOpKernel {
 
   explicit SaveDatasetOp(OpKernelConstruction* ctx);
 
-  Status DoCompute(OpKernelContext* ctx) override;
+  absl::Status DoCompute(OpKernelContext* ctx) override;
 
  private:
   static constexpr const int kFileFormatVersion = 2;
 
-  Status ConsumeElement();
+  absl::Status ConsumeElement();
 
-  Status GetShardIndex(IteratorContext* ctx,
-                       InstantiatedCapturedFunction* function,
-                       const std::vector<Tensor>& element,
-                       int64_t* shard_index);
+  absl::Status GetShardIndex(IteratorContext* ctx,
+                             InstantiatedCapturedFunction* function,
+                             const std::vector<Tensor>& element,
+                             int64_t* shard_index);
 
-  Status WriteData(OpKernelContext* ctx, DatasetBase* dataset,
-                   std::unique_ptr<CapturedFunction> captured_func,
-                   const std::string& run_dir, uint64* num_elements);
+  absl::Status WriteData(OpKernelContext* ctx, DatasetBase* dataset,
+                         std::unique_ptr<CapturedFunction> captured_func,
+                         const std::string& run_dir, uint64* num_elements);
 
-  Status WriteMetadataFile(Env* env, const std::string& path, uint64 run_id,
-                           const DataTypeVector& output_dtypes,
-                           uint64 num_elements, bool finalized);
+  absl::Status WriteMetadataFile(Env* env, const std::string& path,
+                                 uint64 run_id,
+                                 const DataTypeVector& output_dtypes,
+                                 uint64 num_elements, bool finalized);
 
   bool use_shard_func_;
   std::string compression_;

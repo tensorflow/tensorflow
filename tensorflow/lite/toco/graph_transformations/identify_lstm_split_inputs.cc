@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iostream>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
@@ -27,22 +27,21 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status SplitLstmCellInputs::Run(Model* model,
-                                              std::size_t op_index,
-                                              bool* modified) {
+absl::Status SplitLstmCellInputs::Run(Model* model, std::size_t op_index,
+                                      bool* modified) {
   *modified = false;
   // Find lstm cell.
   auto op_it = model->operators.begin() + op_index;
   auto curr_op = op_it->get();
   if (curr_op->type != OperatorType::kLstmCell) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const auto* curr_lstm_op = static_cast<LstmCellOperator*>(curr_op);
   // Already an extended LstmCell. Do not need to split cell inputs.
   if (curr_lstm_op->kernel_type != LstmCellOperator::KERNEL_BASIC ||
       curr_lstm_op->inputs.size() != LstmCellOperator::NUM_INPUTS) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Make sure the WEIGHTS_INPUT and BIASES_INPUT are constant arrays,
@@ -51,13 +50,13 @@ namespace toco {
           *model, curr_op->inputs[LstmCellOperator::WEIGHTS_INPUT]) ||
       !IsConstantParameterArray(
           *model, curr_op->inputs[LstmCellOperator::BIASES_INPUT])) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Make sure propagate_fixed_sizes has defined the size of the output.
   if (!model->GetArray(curr_op->outputs[LstmCellOperator::ACTIV_OUTPUT])
            .has_shape()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Emplace a new LstmCell operator with extended inputs (kernel/lstm.cc).
@@ -168,7 +167,7 @@ namespace toco {
   DeleteOpAndArrays(model, curr_op);
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

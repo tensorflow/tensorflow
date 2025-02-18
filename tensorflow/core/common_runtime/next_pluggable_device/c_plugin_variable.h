@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_VARIABLE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_VARIABLE_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_variable.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,16 +30,16 @@ class CPluginVariable : public PluginVariable {
   ~CPluginVariable() override;
   explicit CPluginVariable(TF_VariableInfo* var_info) : var_info_(var_info) {}
 
-  tsl::Status GetTensor(const Tensor** result_tensor) override;
+  absl::Status GetTensor(const Tensor** result_tensor) override;
 
-  tsl::Status GetMutableTensor(Tensor** result_tensor) override;
+  absl::Status GetMutableTensor(Tensor** result_tensor) override;
 
   TF_VariableInfo* GetVariableInfo() { return var_info_; }
 
   friend class CPluginOpKernelContext;
 
  private:
-  tsl::Status GetTensorInternal();
+  absl::Status GetTensorInternal();
 
   TF_VariableInfo* var_info_;  // Owned. Cleared by destructor.
   bool tensor_obtained_ = false;

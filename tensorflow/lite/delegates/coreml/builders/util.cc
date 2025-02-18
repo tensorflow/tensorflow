@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "fp16.h"  // from @FP16
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/delegates/coreml/builders/op_validator.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 

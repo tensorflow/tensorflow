@@ -1,4 +1,5 @@
 // RUN: tf-opt --split-input-file --tf-tfl-to-tosa-pipeline  --verify-each %s | FileCheck %s
+// REQUIRES: tf_tosa
 
 // These tests focus on TensorFlow and TensorFlow Lite hybrid lowering and focus
 // on tfl.custom operations that are Flex ops.

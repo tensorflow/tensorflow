@@ -56,7 +56,7 @@ TENSOR_TYPE_ASSOC(double, TensorType_FLOAT64);
 static_assert(sizeof(double) == 8, "double type is expected to be 64 bit long");
 
 template <class Container>
-int32_t ssize(const Container& c) {
+int32_t intsize(const Container& c) {
   return static_cast<int32_t>(c.size());
 }
 
@@ -104,11 +104,11 @@ class DilateOpModel : public SingleOpModel {
     input_ = AddInput({kTensorType, input_shape_});
     init_value_ = AddConstInput(kTensorType, {init_value_data_}, {1});
     window_shape_ = AddConstInput(TensorType_INT64, window_shape_data_,
-                                  {ssize(window_shape_data_)});
+                                  {intsize(window_shape_data_)});
     window_strides_ = AddConstInput(TensorType_INT64, window_strides_data_,
-                                    {ssize(window_strides_data_)});
+                                    {intsize(window_strides_data_)});
     window_dilations_ = AddConstInput(TensorType_INT64, window_dilations_data_,
-                                      {ssize(window_dilations_data_)});
+                                      {intsize(window_dilations_data_)});
     output_ = AddOutput(kTensorType);
     SetBuiltinOp(
         BuiltinOperator_REDUCE_WINDOW, BuiltinOptions2_ReduceWindowOptions,
@@ -247,6 +247,18 @@ TYPED_TEST(ReduceWindowTest, WithDilationAndStrides) {
   EXPECT_EQ(this->model_.BuildAndInvoke(), kTfLiteOk);
   EXPECT_THAT(this->model_.GetOutputShape(), ElementsAre(2, 2));
   EXPECT_THAT(this->model_.GetOutputData(), ElementsAre(30, 38, 70, 78));
+}
+
+TYPED_TEST(ReduceWindowTest, OutputShapeRoundingIsCorrect) {
+  auto& model = this->model_;
+  model.SetInput(/*shape=*/{1, 64, 114, 114});
+  model.SetWindowShape({1, 1, 3, 3});
+  model.SetWindowStrides({1, 1, 2, 2});
+  model.SetWindowDilations({1, 1, 1, 1});
+  model.SetInitValue(2);
+
+  EXPECT_EQ(this->model_.BuildAndInvoke(), kTfLiteOk);
+  EXPECT_THAT(this->model_.GetOutputShape(), ElementsAre(1, 64, 56, 56));
 }
 
 }  // namespace

@@ -42,6 +42,9 @@ void CopyOpMetricsMetadata(const OpMetrics& src, OpMetrics* dst) {
   if (dst->long_name().empty()) {
     dst->set_long_name(src.long_name());
   }
+  if (dst->fingerprint() == 0) {
+    dst->set_fingerprint(src.fingerprint());
+  }
   if (dst->category().empty()) {
     dst->set_category(src.category());
   }
@@ -72,6 +75,7 @@ void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst,
   dst->set_time_ps(src.time_ps() + dst->time_ps());
   dst->set_self_time_ps(src.self_time_ps() + dst->self_time_ps());
   dst->set_flops(src.flops() + dst->flops());
+  dst->set_model_flops(src.model_flops() + dst->model_flops());
   dst->set_bytes_accessed(src.bytes_accessed() + dst->bytes_accessed());
   dst->set_autotuned(dst->autotuned() || src.autotuned());
   if (update_num_cores) {
@@ -121,6 +125,8 @@ void OpMetricsDbCombiner::Combine(const OpMetricsDb& src,
       dst->total_host_infeed_enq_start_timestamp_ps_diff());
   dst->set_total_time_ps(src.total_time_ps() + dst->total_time_ps());
   dst->set_total_op_time_ps(src.total_op_time_ps() + dst->total_op_time_ps());
+  dst->set_idle_time_ps(src.idle_time_ps() + dst->idle_time_ps());
+  dst->set_busy_time_ps(src.busy_time_ps() + dst->busy_time_ps());
   CombinePrecisionStats(src.precision_stats(), dst->mutable_precision_stats());
 
   for (const auto& src_metrics : src.metrics_db()) {

@@ -167,7 +167,8 @@ class ReverseSequenceOp : public OpKernel {
   int32 batch_dim_;
   int32 seq_dim_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ReverseSequenceOp);
+  ReverseSequenceOp(const ReverseSequenceOp&) = delete;
+  void operator=(const ReverseSequenceOp&) = delete;
 };
 
 #define REGISTER_REVERSE_SEQUENCE(type, len_type)                \

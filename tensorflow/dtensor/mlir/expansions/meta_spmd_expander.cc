@@ -15,33 +15,40 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/meta_spmd_expander.h"
 
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "absl/strings/str_join.h"
+#include "absl/status/status.h"
+#include "absl/types/optional.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
-#include "tensorflow/dtensor/mlir/spmd_expander.h"
+#include "tensorflow/dtensor/mlir/shape_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
@@ -241,11 +248,12 @@ StatusOr<llvm::DenseMap<int, Layout>> UnpackSPMDExpander::ComputeLayoutBackward(
 
 namespace {
 
-Status VerifyPaddedDimensionNotSharded(const Layout& layout,
-                                       mlir::Value pad_input,
-                                       mlir::Value pad_output) {
-  auto input_type = pad_input.getType().dyn_cast<mlir::RankedTensorType>();
-  auto output_type = pad_output.getType().dyn_cast<mlir::RankedTensorType>();
+absl::Status VerifyPaddedDimensionNotSharded(const Layout& layout,
+                                             mlir::Value pad_input,
+                                             mlir::Value pad_output) {
+  auto input_type = mlir::dyn_cast<mlir::RankedTensorType>(pad_input.getType());
+  auto output_type =
+      mlir::dyn_cast<mlir::RankedTensorType>(pad_output.getType());
   if (!input_type || !output_type)
     return errors::InvalidArgument(
         "pad op input/output should have statically known shape for SPMD.");
@@ -262,7 +270,7 @@ Status VerifyPaddedDimensionNotSharded(const Layout& layout,
           "Padding over sharded dimension is not allowed.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -342,8 +350,8 @@ StatusOr<llvm::DenseMap<int, Layout>> PadSPMDExpander::ComputeLayoutBackward(
 
 namespace {
 
-Status VerifyTileOperandLayout(const Layout& operand_layout,
-                               llvm::ArrayRef<int64_t> static_multiples) {
+absl::Status VerifyTileOperandLayout(const Layout& operand_layout,
+                                     llvm::ArrayRef<int64_t> static_multiples) {
   for (const auto& tensor_dim_and_multiple :
        llvm::enumerate(static_multiples)) {
     const auto& index = tensor_dim_and_multiple.index();
@@ -353,7 +361,7 @@ Status VerifyTileOperandLayout(const Layout& operand_layout,
           "tile op with input sharded at dimension where `multiple` > 1 is not "
           "supported.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -435,7 +443,7 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto multiples_const = IntConst(builder, location, local_tile_multiples);
 
   auto global_output_type =
-      tile_op.getResult().getType().cast<mlir::TensorType>();
+      mlir::cast<mlir::TensorType>(tile_op.getResult().getType());
   TF_ASSIGN_OR_RETURN(
       auto local_type,
       LocalTypeFromGlobalType(output_layout.value(), global_output_type));
@@ -458,7 +466,7 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutForward(
   auto tile_op = llvm::cast<mlir::TF::TileOp>(op);
 
   auto output_ranked_type =
-      tile_op.getOutput().getType().dyn_cast<mlir::RankedTensorType>();
+      mlir::dyn_cast<mlir::RankedTensorType>(tile_op.getOutput().getType());
   if (!output_ranked_type || !output_ranked_type.hasStaticShape()) {
     return errors::InvalidArgument(
         llvm::formatv(
@@ -503,7 +511,7 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutBackward(
 
   // Retrieve operand/output shapes of tile op.
   auto input_ranked_type =
-      tile_op.getInput().getType().dyn_cast<mlir::RankedTensorType>();
+      mlir::dyn_cast<mlir::RankedTensorType>(tile_op.getInput().getType());
   if (!input_ranked_type || !input_ranked_type.hasStaticShape()) {
     return errors::InvalidArgument(
         llvm::formatv(
@@ -516,11 +524,9 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutBackward(
   llvm::DenseMap<int, Layout> input_layouts(op->getNumOperands());
 
   // `multiples` operand is always set to have replicated layout.
-  input_layouts[1] =
-      Layout::ReplicatedOnMesh(mesh, tile_op.getMultiples()
-                                         .getType()
-                                         .cast<mlir::RankedTensorType>()
-                                         .getRank());
+  input_layouts[1] = Layout::ReplicatedOnMesh(
+      mesh, mlir::cast<mlir::RankedTensorType>(tile_op.getMultiples().getType())
+                .getRank());
 
   llvm::SmallVector<int64_t, 4> static_multiple;
   auto status =
@@ -956,9 +962,9 @@ TransposeSPMDExpander::ComputeLayoutBackward(
 
 namespace {
 
-Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
-                           const absl::optional<Layout>& output_layout,
-                           const int axis, mlir::TF::OneHotOp& one_hot) {
+absl::Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
+                                 const absl::optional<Layout>& output_layout,
+                                 const int axis, mlir::TF::OneHotOp& one_hot) {
   if (!input_layout || !output_layout)
     return errors::InvalidArgument(
         "layout for tf.OneHot operation inputs and outputs must be known before"
@@ -981,7 +987,7 @@ Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
 
   one_hot->setOperand(0, new_input);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -1043,9 +1049,9 @@ StatusOr<mlir::Operation*> OneHotSPMDExpander::ExpandOp(mlir::Operation* op) {
     mlir::TF::SliceOp selected_sharding_at_dimension = builder.create<
         mlir::TF::SliceOp>(
         one_hot_op.getLoc(),
-        mlir::RankedTensorType::get({1, 1}, mesh_coordinates.getType()
-                                                .cast<mlir::TensorType>()
-                                                .getElementType()),
+        mlir::RankedTensorType::get(
+            {1, 1}, mlir::cast<mlir::TensorType>(mesh_coordinates.getType())
+                        .getElementType()),
         /*input=*/mesh_coordinates,
         /*begin=*/IntConst(builder, one_hot_op.getLoc(), {0, mesh_dim_index}),
         /*size=*/IntConst(builder, one_hot_op.getLoc(), {1, 1}));

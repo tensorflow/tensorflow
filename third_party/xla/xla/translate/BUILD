@@ -1,34 +1,22 @@
-load("//xla:xla.bzl", "xla_cc_binary")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//learning/brain/mlir:tensorflow_friends",
+        "//learning/brain/mlir:xla_friends",
+    ]),
     licenses = ["notice"],
 )
 
-build_test(
-    name = "xla-translate_build_test",
-    targets = [
-        ":xla-translate",
-    ],
+alias(
+    name = "xla-translate",
+    actual = "//xla/hlo/translate:xla-translate",
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/translate:xla-translate instead.",
 )
 
-xla_cc_binary(
-    name = "xla-translate",
-    testonly = True,
-    srcs = ["xla_translate_main.cc"],
-    deps = [
-        "//xla/service/cpu:cpu_compiler",
-        "//xla/service/cpu:cpu_transfer_manager",
-        "//xla/stream_executor/host:host_platform",
-        "//xla/stream_executor/platform",
-        "//xla/translate/hlo_to_mhlo:translate_registration",
-        "//xla/translate/mhlo_to_hlo:translate_registration",
-        "//xla/translate/mhlo_to_lhlo_with_xla:translate_registration",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TranslateLib",
-        "@local_tsl//tsl/platform:platform_port",
-    ],
+alias(
+    name = "xla-translate-opt",
+    actual = "//xla/hlo/translate:xla-translate-opt",
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/translate:xla-translate-opt instead.",
 )

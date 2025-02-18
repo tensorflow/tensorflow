@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -26,19 +27,26 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/lib/io/table.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_filter_interface.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_visibility.h"
 #include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/protobuf/task.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
 #include "tsl/platform/status.h"
-#include "tsl/profiler/utils/timespan.h"
+#include "tsl/profiler/lib/context_types.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -50,21 +58,31 @@ using TraceEventTrack = std::vector<TraceEvent*>;
 std::vector<TraceEvent*> MergeEventTracks(
     const std::vector<const TraceEventTrack*>& event_tracks);
 
-tsl::Status DoStoreAsLevelDbTable(
-    const std::string& filename, const Trace& trace,
+absl::Status DoStoreAsLevelDbTable(
+    std::unique_ptr<tsl::WritableFile>& file, const Trace& trace,
     const std::vector<std::vector<const TraceEvent*>>& events_by_level);
 
-tsl::Status DoLoadFromLevelDbTable(
+absl::Status DoLoadFromLevelDbTable(
     const std::string& filename,
     std::unique_ptr<TraceEventsFilterInterface> filter,
-    std::unique_ptr<TraceVisibilityFilter> visibility,
+    std::unique_ptr<TraceVisibilityFilter> visibility_filter,
     int64_t filter_by_visibility_threshold, Trace& trace,
     bool& filter_by_visibility,
     const std::function<TraceEvent*(const TraceEvent&)>& copy_event_to_arena,
     const std::function<void(TraceEvent*)>& add_arena_event);
 
+// Reads the trace metadata from a file with given path
+absl::Status ReadFileTraceMetadata(std::string& filepath, Trace* trace);
+
 std::vector<std::vector<const TraceEvent*>> GetEventsByLevel(
     const Trace& trace, std::vector<TraceEvent*>& events);
+
+// Return the minimum duration an event can have in `level`.
+uint64_t LayerResolutionPs(unsigned level);
+
+// Returns <lower, upper> bounds (in picoseconds) for the level that an event
+// with `duration_ps` would go into. (upper >= duration_ps > lower)
+std::pair<uint64_t, uint64_t> GetLevelBoundsForDuration(uint64_t duration_ps);
 
 struct EventFactory {
   TraceEvent* Create() {
@@ -98,7 +116,8 @@ class TraceEventsContainerBase {
   void AddCompleteEvent(absl::string_view name, uint32_t resource_id,
                         uint32_t device_id, tsl::profiler::Timespan timespan,
                         RawData* raw_data = nullptr,
-                        std::optional<int64_t> group_id = std::nullopt) {
+                        std::optional<int64_t> group_id = std::nullopt,
+                        std::optional<int64_t> serial = std::nullopt) {
     TraceEvent* event = CreateArenaEvent();
     MaybeInternEventName(event, name);
     event->set_resource_id(resource_id);
@@ -115,6 +134,9 @@ class TraceEventsContainerBase {
     if (group_id) {
       event->set_group_id(*group_id);
     }
+    if (serial && *serial > 0) {
+      event->set_serial(static_cast<uint32_t>(*serial));
+    }
     AddArenaEvent(event);
   }
 
@@ -123,9 +145,11 @@ class TraceEventsContainerBase {
   void AddFlowEvent(absl::string_view name, uint32_t resource_id,
                     uint32_t device_id, tsl::profiler::Timespan timespan,
                     uint64_t flow_id, TraceEvent::FlowEntryType flow_entry_type,
-                    ContextType flow_category = ContextType::kGeneric,
+                    tsl::profiler::ContextType flow_category =
+                        tsl::profiler::ContextType::kGeneric,
                     RawData* raw_data = nullptr,
-                    std::optional<int64_t> group_id = std::nullopt) {
+                    std::optional<int64_t> group_id = std::nullopt,
+                    std::optional<int64_t> serial = std::nullopt) {
     TraceEvent* event = CreateArenaEvent();
     MaybeInternEventName(event, name);
     event->set_resource_id(resource_id);
@@ -144,6 +168,9 @@ class TraceEventsContainerBase {
     }
     if (group_id) {
       event->set_group_id(*group_id);
+    }
+    if (serial && *serial > 0) {
+      event->set_serial(static_cast<uint32_t>(*serial));
     }
     AddArenaEvent(event);
   }
@@ -155,9 +182,11 @@ class TraceEventsContainerBase {
   void AddAsyncEvent(absl::string_view name, uint32_t device_id,
                      tsl::profiler::Timespan timespan, uint64_t flow_id,
                      TraceEvent::FlowEntryType flow_entry_type,
-                     ContextType flow_category = ContextType::kGeneric,
+                     tsl::profiler::ContextType flow_category =
+                         tsl::profiler::ContextType::kGeneric,
                      RawData* raw_data = nullptr,
-                     std::optional<int64_t> group_id = std::nullopt) {
+                     std::optional<int64_t> group_id = std::nullopt,
+                     std::optional<int64_t> serial = std::nullopt) {
     TraceEvent* event = CreateArenaEvent();
     MaybeInternEventName(event, name);
     event->set_device_id(device_id);
@@ -176,6 +205,9 @@ class TraceEventsContainerBase {
     if (group_id) {
       event->set_group_id(*group_id);
     }
+    if (serial && *serial > 0) {
+      event->set_serial(static_cast<int32_t>(*serial));
+    }
     AddArenaEvent(event);
   }
 
@@ -183,7 +215,8 @@ class TraceEventsContainerBase {
   // and value in RawData.args. Counter events are per device, so no resource_id
   // is passed.
   void AddCounterEvent(absl::string_view name, uint32_t device_id,
-                       uint64_t timestamp_ps, const RawData& raw_data) {
+                       uint64_t timestamp_ps, const RawData& raw_data,
+                       std::optional<int64_t> serial = std::nullopt) {
     TraceEvent* event = CreateArenaEvent();
     event->set_name(name.data(), name.size());
     event->set_device_id(device_id);
@@ -193,6 +226,9 @@ class TraceEventsContainerBase {
     DCHECK_EQ(raw_data.args().arg_size(), 1);
     DCHECK(raw_data.args().arg(0).has_uint_value());
     raw_data.SerializePartialToString(event->mutable_raw_data());
+    if (serial && *serial > 0) {
+      event->set_serial(static_cast<uint32_t>(*serial));
+    }
     AddArenaEvent(event);
   }
 
@@ -237,17 +273,22 @@ class TraceEventsContainerBase {
   }
 
   // Stores the contents of this container in a level-db sstable file.
-  tsl::Status StoreAsLevelDbTable(const std::string& filename) const {
+  absl::Status StoreAsLevelDbTable(
+      std::unique_ptr<tsl::WritableFile> file) const {
     Trace trace = trace_;
     trace.set_num_events(NumEvents());
     auto events_by_level = EventsByLevel();
-    return DoStoreAsLevelDbTable(filename, trace, events_by_level);
+    return DoStoreAsLevelDbTable(file, trace, events_by_level);
+  }
+
+  std::vector<std::vector<const TraceEvent*>> GetTraceEventsByLevel() const {
+    return EventsByLevel();
   }
 
   // Loads the contents of this container from a level-db sstable file.
   // In order to be efficient, requires resolution__ to be set.
   // If span_ is not set, it is initialized from the loaded trace_.
-  tsl::Status LoadFromLevelDbTable(
+  absl::Status LoadFromLevelDbTable(
       const std::string& filename,
       std::unique_ptr<TraceEventsFilterInterface> filter = nullptr,
       std::unique_ptr<TraceVisibilityFilter> visibility = nullptr,

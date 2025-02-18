@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Selu"
   input_arg {
     name: "features"

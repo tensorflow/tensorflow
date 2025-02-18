@@ -26,7 +26,7 @@ already familiar with the
 [TensorFlow Lite APIs](https://www.tensorflow.org/api_docs/python/tf/lite),
 download the starter video classification model and the supporting files. You
 can also build your own custom inference pipeline using the
-[TensorFlow Lite Support Library](../../inference_with_metadata/lite_support).
+[TensorFlow Lite Support Library](../../inference_with_metadata/lite_support.md).
 
 <a class="button button-primary" href="https://tfhub.dev/tensorflow/lite-model/movinet/a0/stream/kinetics-600/classification/tflite/int8/1">Download
 starter model with metadata</a>

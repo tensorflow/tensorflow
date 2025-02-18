@@ -5,7 +5,6 @@ load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -15,19 +14,17 @@ generate_backend_suites()
 py_strict_library(
     name = "types",
     srcs = ["types_.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//third_party/py/numpy",
         "//xla:xla_data_proto_py",
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
     ],
 )
 
 py_strict_library(
     name = "xla_shape",
     srcs = ["xla_shape.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":types",
@@ -39,7 +36,6 @@ py_strict_library(
 py_strict_library(
     name = "xla_literal",
     srcs = ["xla_literal.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":types",
@@ -52,8 +48,6 @@ py_strict_library(
 py_strict_test(
     name = "xla_shape_test",
     srcs = ["xla_shape_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "optonly",
     ],
@@ -68,8 +62,6 @@ py_strict_test(
 py_strict_test(
     name = "xla_literal_test",
     srcs = ["xla_literal_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "optonly",
     ],

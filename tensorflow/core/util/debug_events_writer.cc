@@ -44,11 +44,11 @@ SingleDebugEventFileWriter::SingleDebugEventFileWriter(const string& file_path)
       num_outstanding_events_(0),
       writer_mu_() {}
 
-Status SingleDebugEventFileWriter::Init() {
+absl::Status SingleDebugEventFileWriter::Init() {
   if (record_writer_ != nullptr) {
     // TODO(cais): We currently don't check for file deletion. When the need
     // arises, check and fix it.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Reset recordio_writer (which has a reference to writable_file_) so final
@@ -65,11 +65,11 @@ Status SingleDebugEventFileWriter::Init() {
   }
   num_outstanding_events_.store(0);
   VLOG(1) << "Successfully opened debug events file: " << file_path_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void SingleDebugEventFileWriter::WriteSerializedDebugEvent(
-    StringPiece debug_event_str) {
+    absl::string_view debug_event_str) {
   if (record_writer_ == nullptr) {
     if (!Init().ok()) {
       LOG(ERROR) << "Write failed because file could not be opened.";
@@ -83,10 +83,10 @@ void SingleDebugEventFileWriter::WriteSerializedDebugEvent(
   }
 }
 
-Status SingleDebugEventFileWriter::Flush() {
+absl::Status SingleDebugEventFileWriter::Flush() {
   const int num_outstanding = num_outstanding_events_.load();
   if (num_outstanding == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (writable_file_ == nullptr) {
     return errors::Unknown("Unexpected NULL file for path: ", file_path_);
@@ -103,13 +103,13 @@ Status SingleDebugEventFileWriter::Flush() {
                                   num_outstanding, " debug events to ",
                                   file_path_);
   num_outstanding_events_.store(0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SingleDebugEventFileWriter::Close() {
-  Status status = Flush();
+absl::Status SingleDebugEventFileWriter::Close() {
+  absl::Status status = Flush();
   if (writable_file_ != nullptr) {
-    Status close_status = writable_file_->Close();
+    absl::Status close_status = writable_file_->Close();
     if (!close_status.ok()) {
       status = close_status;
     }
@@ -142,7 +142,7 @@ DebugEventsWriter* DebugEventsWriter::GetDebugEventsWriter(
 }
 
 // static
-Status DebugEventsWriter::LookUpDebugEventsWriter(
+absl::Status DebugEventsWriter::LookUpDebugEventsWriter(
     const string& dump_root, DebugEventsWriter** debug_events_writer) {
   mutex_lock l(DebugEventsWriter::factory_mu_);
   std::unordered_map<string, std::unique_ptr<DebugEventsWriter>>* writer_pool =
@@ -152,16 +152,16 @@ Status DebugEventsWriter::LookUpDebugEventsWriter(
         "No DebugEventsWriter has been created at dump root ", dump_root);
   }
   *debug_events_writer = (*writer_pool)[dump_root].get();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DebugEventsWriter::Init() {
+absl::Status DebugEventsWriter::Init() {
   mutex_lock l(initialization_mu_);
 
   // TODO(cais): We currently don't check for file deletion. When the need
   // arises, check and fix file deletion.
   if (is_initialized_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (!env_->IsDirectory(dump_root_).ok()) {
@@ -202,36 +202,37 @@ Status DebugEventsWriter::Init() {
   TF_RETURN_IF_ERROR(InitNonMetadataFile(EXECUTION));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(GRAPH_EXECUTION_TRACES));
   is_initialized_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DebugEventsWriter::WriteSourceFile(SourceFile* source_file) {
+absl::Status DebugEventsWriter::WriteSourceFile(SourceFile* source_file) {
   DebugEvent debug_event;
   debug_event.set_allocated_source_file(source_file);
   return SerializeAndWriteDebugEvent(&debug_event, SOURCE_FILES);
 }
 
-Status DebugEventsWriter::WriteStackFrameWithId(
+absl::Status DebugEventsWriter::WriteStackFrameWithId(
     StackFrameWithId* stack_frame_with_id) {
   DebugEvent debug_event;
   debug_event.set_allocated_stack_frame_with_id(stack_frame_with_id);
   return SerializeAndWriteDebugEvent(&debug_event, STACK_FRAMES);
 }
 
-Status DebugEventsWriter::WriteGraphOpCreation(
+absl::Status DebugEventsWriter::WriteGraphOpCreation(
     GraphOpCreation* graph_op_creation) {
   DebugEvent debug_event;
   debug_event.set_allocated_graph_op_creation(graph_op_creation);
   return SerializeAndWriteDebugEvent(&debug_event, GRAPHS);
 }
 
-Status DebugEventsWriter::WriteDebuggedGraph(DebuggedGraph* debugged_graph) {
+absl::Status DebugEventsWriter::WriteDebuggedGraph(
+    DebuggedGraph* debugged_graph) {
   DebugEvent debug_event;
   debug_event.set_allocated_debugged_graph(debugged_graph);
   return SerializeAndWriteDebugEvent(&debug_event, GRAPHS);
 }
 
-Status DebugEventsWriter::WriteExecution(Execution* execution) {
+absl::Status DebugEventsWriter::WriteExecution(Execution* execution) {
   if (circular_buffer_size_ <= 0) {
     // No cyclic-buffer behavior.
     DebugEvent debug_event;
@@ -250,11 +251,11 @@ Status DebugEventsWriter::WriteExecution(Execution* execution) {
     if (execution_buffer_.size() > circular_buffer_size_) {
       execution_buffer_.pop_front();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
-Status DebugEventsWriter::WriteGraphExecutionTrace(
+absl::Status DebugEventsWriter::WriteGraphExecutionTrace(
     GraphExecutionTrace* graph_execution_trace) {
   TF_RETURN_IF_ERROR(Init());
   if (circular_buffer_size_ <= 0) {
@@ -275,11 +276,11 @@ Status DebugEventsWriter::WriteGraphExecutionTrace(
     if (graph_execution_trace_buffer_.size() > circular_buffer_size_) {
       graph_execution_trace_buffer_.pop_front();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
-Status DebugEventsWriter::WriteGraphExecutionTrace(
+absl::Status DebugEventsWriter::WriteGraphExecutionTrace(
     const string& tfdbg_context_id, const string& device_name,
     const string& op_name, int32_t output_slot, int32_t tensor_debug_mode,
     const Tensor& tensor_value) {
@@ -356,7 +357,7 @@ int DebugEventsWriter::RegisterDeviceAndGetId(const string& device_name) {
   return device_id;
 }
 
-Status DebugEventsWriter::FlushNonExecutionFiles() {
+absl::Status DebugEventsWriter::FlushNonExecutionFiles() {
   TF_RETURN_IF_ERROR(Init());
   if (source_files_writer_ != nullptr) {
     TF_RETURN_IF_ERROR(source_files_writer_->Flush());
@@ -367,10 +368,10 @@ Status DebugEventsWriter::FlushNonExecutionFiles() {
   if (graphs_writer_ != nullptr) {
     TF_RETURN_IF_ERROR(graphs_writer_->Flush());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DebugEventsWriter::FlushExecutionFiles() {
+absl::Status DebugEventsWriter::FlushExecutionFiles() {
   TF_RETURN_IF_ERROR(Init());
 
   if (execution_writer_ != nullptr) {
@@ -399,7 +400,7 @@ Status DebugEventsWriter::FlushExecutionFiles() {
     TF_RETURN_IF_ERROR(graph_execution_traces_writer_->Flush());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string DebugEventsWriter::FileName(DebugEventFileType type) {
@@ -409,11 +410,11 @@ string DebugEventsWriter::FileName(DebugEventFileType type) {
   return GetFileNameInternal(type);
 }
 
-Status DebugEventsWriter::Close() {
+absl::Status DebugEventsWriter::Close() {
   {
     mutex_lock l(initialization_mu_);
     if (!is_initialized_) {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -462,7 +463,7 @@ Status DebugEventsWriter::Close() {
   }
 
   if (failed_to_close_files.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::FailedPrecondition(
         "Failed to close %d debug-events files associated with tfdbg",
@@ -495,7 +496,7 @@ DebugEventsWriter::DebugEventsWriter(const string& dump_root,
       device_name_to_id_(),
       device_mu_() {}
 
-Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
+absl::Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
   std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;
   SelectWriter(type, &writer);
   const string filename = GetFileNameInternal(type);
@@ -510,11 +511,11 @@ Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
       (*writer)->Init(), "Initializing debug event writer at path ", filename);
   VLOG(1) << "Successfully opened debug event file: " << filename;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DebugEventsWriter::SerializeAndWriteDebugEvent(DebugEvent* debug_event,
-                                                      DebugEventFileType type) {
+absl::Status DebugEventsWriter::SerializeAndWriteDebugEvent(
+    DebugEvent* debug_event, DebugEventFileType type) {
   std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;
   SelectWriter(type, &writer);
   if (writer != nullptr) {
@@ -523,7 +524,7 @@ Status DebugEventsWriter::SerializeAndWriteDebugEvent(DebugEvent* debug_event,
     string str;
     debug_event->AppendToString(&str);
     (*writer)->WriteSerializedDebugEvent(str);
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::Internal(
         "Unable to find debug events file writer for DebugEventsFileType ",
