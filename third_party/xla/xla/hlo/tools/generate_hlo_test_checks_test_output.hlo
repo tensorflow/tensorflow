@@ -27,11 +27,11 @@ ENTRY no_op {
 // CHECK-LABEL: ENTRY %test_case
 // CHECK-NEXT:  %[[foo:[^ ]+]] = u8[] parameter(0)
 // CHECK-NEXT:  %[[bar:[^ ]+]] = u8[] parameter(1)
-// CHECK-NEXT:  %[[foobar:[^ ]+]] = u8[] add(u8[] %[[foo]], u8[] %[[bar]])
+// CHECK-NEXT:  %[[foobar:[^ ]+]] = u8[] add(%[[foo]], %[[bar]])
 // CHECK-NEXT:  %[[baz:[^ ]+]] = u8[] parameter(2)
 // CHECK-NEXT:  %[[qux:[^ ]+]] = u8[] parameter(3)
-// CHECK-NEXT:  %[[bazqux:[^ ]+]] = u8[] add(u8[] %[[baz]], u8[] %[[qux]])
-// CHECK-NEXT:  ROOT %[[foobarbazqux:[^ ]+]] = u8[] add(u8[] %[[foobar]], u8[] %[[bazqux]])
+// CHECK-NEXT:  %[[bazqux:[^ ]+]] = u8[] add(%[[baz]], %[[qux]])
+// CHECK-NEXT:  ROOT %[[foobarbazqux:[^ ]+]] = u8[] add(%[[foobar]], %[[bazqux]])
 
 HloModule TestBasicFunctionality
 
@@ -51,18 +51,18 @@ ENTRY test_case {
 
 // CHECK-LABEL: ENTRY %test_case
 // CHECK-NEXT:  %[[constant:[^ ]+]] = f32[] constant(1)
-// CHECK-NEXT:  %[[broadcast:[^ ]+]] = f32[8,7]{1,0} broadcast(f32[] %[[constant]]), dimensions={}
+// CHECK-NEXT:  %[[broadcast:[^ ]+]] = f32[8,7]{1,0} broadcast(%[[constant]]), dimensions={}
 // CHECK-NEXT:  %[[parameter_anon:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} parameter(0)
-// CHECK-NEXT:  %[[reshape0:[^ ]+]] = f32[8,7]{1,0} reshape(f32[1,8,1,7]{3,2,1,0} %[[parameter_anon]])
-// CHECK-NEXT:  %[[reshape:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} reshape(f32[8,7]{1,0} %[[reshape0]])
-// CHECK-NEXT:  %[[negate_1:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} negate(f32[1,8,1,7]{3,2,1,0} %[[reshape]])
-// CHECK-NEXT:  %[[reshape_1:[^ ]+]] = f32[8,7]{1,0} reshape(f32[1,8,1,7]{3,2,1,0} %[[negate_1]])
-// CHECK-NEXT:  %[[exponential:[^ ]+]] = f32[8,7]{1,0} exponential(f32[8,7]{1,0} %[[reshape_1]])
-// CHECK-NEXT:  %[[add_1:[^ ]+]] = f32[8,7]{1,0} add(f32[8,7]{1,0} %[[broadcast]], f32[8,7]{1,0} %[[exponential]])
-// CHECK-NEXT:  %[[divide:[^ ]+]] = f32[8,7]{1,0} divide(f32[8,7]{1,0} %[[broadcast]], f32[8,7]{1,0} %[[add_1]])
+// CHECK-NEXT:  %[[reshape0:[^ ]+]] = f32[8,7]{1,0} reshape(%[[parameter_anon]])
+// CHECK-NEXT:  %[[reshape:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} reshape(%[[reshape0]])
+// CHECK-NEXT:  %[[negate_1:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} negate(%[[reshape]])
+// CHECK-NEXT:  %[[reshape_1:[^ ]+]] = f32[8,7]{1,0} reshape(%[[negate_1]])
+// CHECK-NEXT:  %[[exponential:[^ ]+]] = f32[8,7]{1,0} exponential(%[[reshape_1]])
+// CHECK-NEXT:  %[[add_1:[^ ]+]] = f32[8,7]{1,0} add(%[[broadcast]], %[[exponential]])
+// CHECK-NEXT:  %[[divide:[^ ]+]] = f32[8,7]{1,0} divide(%[[broadcast]], %[[add_1]])
 // CHECK-NEXT:  %[[parameter_anon_1:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} parameter(1)
-// CHECK-NEXT:  %[[reshape1:[^ ]+]] = f32[8,7]{1,0} reshape(f32[1,8,1,7]{3,2,1,0} %[[parameter_anon_1]])
-// CHECK-NEXT:  ROOT %[[add:[^ ]+]] = f32[8,7]{1,0} add(f32[8,7]{1,0} %[[divide]], f32[8,7]{1,0} %[[reshape1]])
+// CHECK-NEXT:  %[[reshape1:[^ ]+]] = f32[8,7]{1,0} reshape(%[[parameter_anon_1]])
+// CHECK-NEXT:  ROOT %[[add:[^ ]+]] = f32[8,7]{1,0} add(%[[divide]], %[[reshape1]])
 
 HloModule TestWithRelevantOptimizationPasses
 
@@ -93,21 +93,21 @@ ENTRY no_op {
 // CHECK:       %[[$foo_bar_baz_0:[^ ]+]]
 // CHECK-NEXT:  %[[foo_bar_baz_0_1:[^ ]+]] = f32[] parameter(0)
 // CHECK-NEXT:  %[[foo_bar_baz_0_2:[^ ]+]] = f32[] parameter(1)
-// CHECK-NEXT:  %[[foo_bar_baz_0_3:[^ ]+]] = f32[] multiply(f32[] %[[foo_bar_baz_0_1]], f32[] %[[foo_bar_baz_0_2]])
-// CHECK-NEXT:  ROOT %[[foobarbaz:[^ ]+]] = f32[] add(f32[] %[[foo_bar_baz_0_1]], f32[] %[[foo_bar_baz_0_3]])
+// CHECK-NEXT:  %[[foo_bar_baz_0_3:[^ ]+]] = f32[] multiply(%[[foo_bar_baz_0_1]], %[[foo_bar_baz_0_2]])
+// CHECK-NEXT:  ROOT %[[foobarbaz:[^ ]+]] = f32[] add(%[[foo_bar_baz_0_1]], %[[foo_bar_baz_0_3]])
 
 // CHECK-LABEL: %foo.bar.baz_0
 // CHECK-NEXT:  %[[foo_bar_baz_0_4:[^ ]+]] = f32[] parameter(0)
 // CHECK-NEXT:  %[[foo_bar_baz_0_5:[^ ]+]] = f32[] parameter(1)
-// CHECK-NEXT:  %[[foo_bar_baz_0_6:[^ ]+]] = f32[] add(f32[] %[[foo_bar_baz_0_4]], f32[] %[[foo_bar_baz_0_5]])
-// CHECK-NEXT:  ROOT %[[foobarbaz_1:[^ ]+]] = f32[] multiply(f32[] %[[foo_bar_baz_0_4]], f32[] %[[foo_bar_baz_0_6]])
+// CHECK-NEXT:  %[[foo_bar_baz_0_6:[^ ]+]] = f32[] add(%[[foo_bar_baz_0_4]], %[[foo_bar_baz_0_5]])
+// CHECK-NEXT:  ROOT %[[foobarbaz_1:[^ ]+]] = f32[] multiply(%[[foo_bar_baz_0_4]], %[[foo_bar_baz_0_6]])
 
 // CHECK-LABEL: ENTRY %foobarbaz
 // CHECK-NEXT:  %[[constant_0:[^ ]+]] = f32[4]{0} constant({8.7, 6.5, 4.3, 2.1})
 // CHECK-NEXT:  %[[constant_0_1:[^ ]+]] = f32[4]{0} constant({1.2, 3.4, 5.6, 7.8})
-// CHECK-NEXT:  %[[call_foo_bar_baz_0:[^ ]+]] = f32[] call(f32[4]{0} %[[constant_0]], f32[4]{0} %[[constant_0_1]]), to_apply=%foo.bar.baz_0
-// CHECK-NEXT:  %[[call_foo_bar_baz_0_1:[^ ]+]] = f32[] call(f32[4]{0} %[[constant_0_1]], f32[4]{0} %[[constant_0]]), to_apply=%[[$foo_bar_baz_0]]
-// CHECK-NEXT:  ROOT %[[sum:[^ ]+]] = f32[] add(f32[] %[[call_foo_bar_baz_0_1]], f32[] %[[call_foo_bar_baz_0_1]])
+// CHECK-NEXT:  %[[call_foo_bar_baz_0:[^ ]+]] = f32[] call(%[[constant_0]], %[[constant_0_1]]), to_apply=%foo.bar.baz_0
+// CHECK-NEXT:  %[[call_foo_bar_baz_0_1:[^ ]+]] = f32[] call(%[[constant_0_1]], %[[constant_0]]), to_apply=%[[$foo_bar_baz_0]]
+// CHECK-NEXT:  ROOT %[[sum:[^ ]+]] = f32[] add(%[[call_foo_bar_baz_0_1]], %[[call_foo_bar_baz_0_1]])
 
 // Test the tool's ability to disambiguate symbols with extremely similar names.
 HloModule TestSymbolNameDisambiguation
