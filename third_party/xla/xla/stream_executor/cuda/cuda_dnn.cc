@@ -8653,27 +8653,27 @@ absl::Status CudnnGraph::Execute(Stream& stream,
 }  // namespace gpu
 
 void initialize_cudnn() {
-	bool cuDnnAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
-		cuda::kCudaPlatformId, PluginKind::kDnn);
+  bool cuDnnAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
+    cuda::kCudaPlatformId, PluginKind::kDnn);
 
-	if (!cuDnnAlreadyRegistered) {
-		absl::Status status =
-			PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
-				cuda::kCudaPlatformId, "cuDNN",
-				[](StreamExecutor* parent) -> dnn::DnnSupport* {
-					gpu::CudnnSupport* dnn = new gpu::CudnnSupport(parent);
-					if (!dnn->Init().ok()) {
-						// Note: Init() will log a more specific error.
-						delete dnn;
-						return nullptr;
-					}
-					return dnn;
-				});
+  if (!cuDnnAlreadyRegistered) {
+    absl::Status status =
+      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
+        cuda::kCudaPlatformId, "cuDNN",
+        [](StreamExecutor* parent) -> dnn::DnnSupport* {
+          gpu::CudnnSupport* dnn = new gpu::CudnnSupport(parent);
+          if (!dnn->Init().ok()) {
+            // Note: Init() will log a more specific error.
+            delete dnn;
+            return nullptr;
+          }
+          return dnn;
+        });
 
-		if (!status.ok()) {
-			LOG(ERROR) << "Unable to register cuDNN factory: " << status.message();
-		}
-	}
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to register cuDNN factory: " << status.message();
+    }
+  }
 }
 
 }  // namespace stream_executor
