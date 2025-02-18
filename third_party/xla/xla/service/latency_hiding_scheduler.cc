@@ -1409,6 +1409,24 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     }
   }
   if (ready_chosen.node == nullptr) {
+    if (!sched_state.ready_annotations.empty()) {
+      std::string error_message = absl::StrCat(
+          "There is a scheduling group which exceeds the overlap limits. "
+          "Annotation id: ",
+          sched_state.ready_annotations.front(), ". ");
+      absl::flat_hash_map<int64_t, int64_t> num_resources_needed =
+          GetNumResourcesNeededForAnnotation(
+              sched_state, sched_state.ready_annotations.front());
+      for (const auto& [resource, num_needed] : num_resources_needed) {
+        int64_t limit = sched_state.max_concurrent_resource.at(resource);
+        if (num_needed > limit) {
+          absl::StrAppend(&error_message, "It needs ", num_needed, " ",
+                          sched_state.async_tracker->GetResourceName(resource),
+                          " resources, but the limit is ", limit, ". ");
+        }
+      }
+      return absl::InternalError(error_message);
+    }
     return absl::InternalError(absl::StrCat(
         "FindAndExtractBestNodeAvailable failed to find a node to "
         "schedule, skipped nodes: ",
@@ -2327,14 +2345,32 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
   return absl::OkStatus();
 }
 
-bool DefaultSchedulerCore::SchedulingAnnotationCrossesOverlapLimit(
+absl::flat_hash_map<int64_t, int64_t>
+DefaultSchedulerCore::GetNumResourcesNeededForAnnotation(
     const SchedulingState& sched_state, int64_t annotation) {
+  absl::flat_hash_map<int64_t, int64_t> num_resources_needed;
   const HloComputation* comp =
       sched_state.sched_graph.GetOriginalInstrList()[0]->parent();
   for (const HloInstruction* instr :
        annotation_tracker_->GetInstructions(comp, annotation)) {
-    if (scheduling_instruction_crosses_overlap_limit_(
-            sched_state, &sched_state.sched_graph.GetNode(instr))) {
+    absl::Span<const ResourcePair> rv =
+        sched_state.async_tracker->GetResourcesFromInstruction(*instr);
+    for (const auto& [resource, usage] : rv) {
+      if (usage == ResourceUsageType::kResourceOccupy) {
+        num_resources_needed[resource]++;
+      }
+    }
+  }
+  return num_resources_needed;
+}
+
+bool DefaultSchedulerCore::SchedulingAnnotationCrossesOverlapLimit(
+    const SchedulingState& sched_state, int64_t annotation) {
+  absl::flat_hash_map<int64_t, int64_t> num_resources_needed =
+      GetNumResourcesNeededForAnnotation(sched_state, annotation);
+  for (const auto& [resource, num_needed] : num_resources_needed) {
+    int64_t limit = sched_state.max_concurrent_resource.at(resource);
+    if (num_needed > limit) {
       return true;
     }
   }
