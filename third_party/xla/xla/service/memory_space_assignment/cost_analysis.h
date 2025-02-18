@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_COST_ANALYSIS_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_COST_ANALYSIS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -31,8 +32,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -70,6 +71,51 @@ struct CostAnalysisOptions {
       [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); };
 };
 
+// An interface for getting basic HLO costs.
+class BaseCosts {
+ public:
+  virtual ~BaseCosts() = default;
+
+  // The number of operand and output bytes accessed by instruction.
+  virtual float BytesAccessed(const HloInstruction& instruction) = 0;
+
+  // The number of bytes accessed by instruction, for operand operand_num, at
+  // shape_index.
+  virtual float OperandBytesAccessed(const HloInstruction& instruction,
+                                     int64_t operand_num,
+                                     const ShapeIndex& shape_index) = 0;
+
+  // The number of bytes accessed by instruction, in its output, at shape_index.
+  virtual float OutputBytesAccessed(const HloInstruction& instruction,
+                                    const ShapeIndex& shape_index) = 0;
+
+  // The compute cost of instruction. The compute cost assumes 0 memory transfer
+  // is required.
+  virtual float ComputeSeconds(const HloInstruction& instruction) = 0;
+
+ protected:
+  BaseCosts() = default;
+};
+
+// An implementation of BaseCosts based on HloCostAnalysis.
+class HloCostAnalysisCosts : public BaseCosts {
+ public:
+  explicit HloCostAnalysisCosts(const HloCostAnalysis& hlo_cost_analysis);
+
+  ~HloCostAnalysisCosts() override = default;
+
+  float BytesAccessed(const HloInstruction& instruction) override;
+  float OperandBytesAccessed(const HloInstruction& instruction,
+                             int64_t operand_num,
+                             const ShapeIndex& shape_index) override;
+  float OutputBytesAccessed(const HloInstruction& instruction,
+                            const ShapeIndex& shape_index) override;
+  float ComputeSeconds(const HloInstruction& instruction) override;
+
+ private:
+  const HloCostAnalysis& hlo_cost_analysis_;
+};
+
 // A wrapper class around BaseCosts with additional knowledge about the
 // bandwidths of different memory spaces.
 class CostAnalysis {
@@ -94,17 +140,12 @@ class CostAnalysis {
   virtual ~CostAnalysis() = default;
 
   static absl::StatusOr<std::unique_ptr<CostAnalysis>> Create(
-      OpCostManager& op_cost_manager, const CostAnalysisOptions& options,
+      BaseCosts& base_costs, const CostAnalysisOptions& options,
       const HloModule& module);
 
+  BaseCosts& base_costs() const { return base_costs_; }
+
   int64_t GetShapeSizeBytes(const Shape& shape) const;
-
-  float OperandBytesAccessed(const HloInstruction& instruction,
-                             int64_t operand_num,
-                             const ShapeIndex& shape_index) const;
-
-  float OutputBytesAccessed(const HloInstruction& instruction,
-                            const ShapeIndex& shape_index) const;
 
   double DefaultMemBandwidthBytesPerSecond(
       bool use_scaling_factor = false) const;
@@ -237,20 +278,18 @@ class CostAnalysis {
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
  protected:
-  CostAnalysis(OpCostManager& op_cost_manager,
-               const CostAnalysisOptions& options,
+  CostAnalysis(BaseCosts& base_costs, const CostAnalysisOptions& options,
                std::unique_ptr<HloAliasAnalysis> alias_analysis,
                std::unique_ptr<HloLiveRange> hlo_live_range,
                std::unique_ptr<CallGraph> call_graph)
-      : op_cost_manager_(op_cost_manager),
+      : base_costs_(base_costs),
         options_(options),
         alias_analysis_(std::move(alias_analysis)),
         hlo_live_range_(std::move(hlo_live_range)),
         call_graph_(std::move(call_graph)) {}
 
  private:
-  // A manager responsible for return basic cost metrics.
-  OpCostManager& op_cost_manager_;
+  BaseCosts& base_costs_;
   const CostAnalysisOptions options_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
   std::unique_ptr<HloLiveRange> hlo_live_range_;
