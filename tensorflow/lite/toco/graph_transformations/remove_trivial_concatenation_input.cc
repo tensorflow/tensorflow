@@ -26,9 +26,9 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status RemoveTrivialConcatenationInput::Run(Model* model,
-                                                          std::size_t op_index,
-                                                          bool* modified) {
+absl::Status RemoveTrivialConcatenationInput::Run(Model* model,
+                                                  std::size_t op_index,
+                                                  bool* modified) {
   *modified = false;
   // TensorFlow allows Concatenation nodes to have 0-D inputs,
   // and they are then treated as empty i.e. omitted from concatenation,
