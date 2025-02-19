@@ -737,7 +737,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<int32>()(0);
             } else {
               int32_t value;
-              if (!strings::safe_strto32(field, &value)) {
+              if (!absl::SimpleAtoi(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid int32: ", field);
@@ -752,7 +752,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<int64_t>()(0);
             } else {
               int64_t value;
-              if (!strings::safe_strto64(field, &value)) {
+              if (!absl::SimpleAtoi(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid int64: ", field);
@@ -767,7 +767,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<float>()(0);
             } else {
               float value;
-              if (!strings::safe_strtof(field, &value)) {
+              if (!absl::SimpleAtof(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid float: ", field);
@@ -782,7 +782,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<double>()(0);
             } else {
               double value;
-              if (!strings::safe_strtod(field, &value)) {
+              if (!absl::SimpleAtod(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid double: ", field);
