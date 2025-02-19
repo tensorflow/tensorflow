@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "tensorflow/c/c_test_util.h"
 
+#include <gtest/gtest.h>
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
+#include "tensorflow/c/tf_buffer.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/public/session_options.h"
 
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
