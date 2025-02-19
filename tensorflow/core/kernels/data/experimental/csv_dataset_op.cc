@@ -752,7 +752,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<int64_t>()(0);
             } else {
               int64_t value;
-              if (!strings::safe_strto64(field, &value)) {
+              if (!absl::SimpleAtoi(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid int64: ", field);
