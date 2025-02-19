@@ -306,6 +306,7 @@ cc_library(
     visibility = [
         "//tensorflow/lite:__pkg__",
         "//tensorflow/lite/core:__subpackages__",
+        "//third_party/odml/infra:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite/c:common",
