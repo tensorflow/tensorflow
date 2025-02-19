@@ -97,8 +97,9 @@ bool IsTrivialFusedActivationFunc(
 // Attempts to remove both fused and unfused activation functions if the
 // quantization params indicate that the representable values fall inside the
 // activation range.
-::tensorflow::Status RemoveTrivialQuantizedActivationFunc::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status RemoveTrivialQuantizedActivationFunc::Run(Model* model,
+                                                       std::size_t op_index,
+                                                       bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* op = it->get();
