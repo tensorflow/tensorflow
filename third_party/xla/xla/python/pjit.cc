@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
@@ -52,12 +53,12 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
-#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/config.h"
 #include "xla/python/guard_lib.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/jax_jit.h"
@@ -744,14 +745,17 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
     return fallback_to_cache_miss();
   }
 
+  xla::ifrt::ExecuteOptions execute_options =
+      cache_entry->executable->options();
+  execute_options.launch_id = cache_entry->executable->GetNextLaunchId();
+
   // A vector of [num_outputs].
   std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
   {
     nb::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(auto result,
                         cache_entry->executable->ifrt_executable()->Execute(
-                            absl::MakeSpan(*num_args_arrays),
-                            cache_entry->executable->options(),
+                            absl::MakeSpan(*num_args_arrays), execute_options,
                             /*devices=*/std::nullopt));
     output_arrays = std::move(result.outputs);
   }

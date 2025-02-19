@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -85,10 +87,11 @@ PyLoadedExecutable::PyLoadedExecutable(
     : client_(std::move(client)),
       ifrt_loaded_executable_(std::move(ifrt_loaded_executable)),
       traceback_(std::move(traceback)),
-      fingerprint_(std::move(fingerprint)) {
+      fingerprint_(std::move(fingerprint)),
+      next_launch_id_(
+          fingerprint_.has_value() ? tsl::Fingerprint32(*fingerprint_) : 1) {
   CHECK(PyGILState_Check());
   if (fingerprint_) {
-    options_.launch_id = tsl::Fingerprint32(*fingerprint_);
     VLOG(1) << "Fingerprint for executable " << ifrt_loaded_executable_->name()
             << ": " << *fingerprint_;
   }
@@ -368,6 +371,7 @@ absl::StatusOr<std::vector<std::vector<PyArray>>>
 PyLoadedExecutable::ExecuteShardedOnLocalDevices(
     absl::Span<const ExecuteShardedArg> args) {
   xla::ifrt::ExecuteOptions options = options_;
+  options.launch_id = GetNextLaunchId();
   options.fill_status = false;
   std::optional<std::vector<PjRtFuture<>>> returned_futures;
   TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
@@ -381,6 +385,7 @@ absl::StatusOr<std::pair<std::vector<std::vector<PyArray>>, PyShardedToken>>
 PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
     absl::Span<const ExecuteShardedArg> args) {
   xla::ifrt::ExecuteOptions options = options_;
+  options.launch_id = GetNextLaunchId();
   options.fill_status = true;
   std::optional<std::vector<PjRtFuture<>>> returned_futures;
   returned_futures.emplace();
@@ -395,6 +400,7 @@ PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
 absl::StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
     std::vector<ExecuteShardedArg> args, bool with_tokens) {
   xla::ifrt::ExecuteOptions options = options_;
+  options.launch_id = GetNextLaunchId();
   options.fill_status = with_tokens;
   std::optional<std::vector<PjRtFuture<>>> returned_futures;
   if (with_tokens) {
@@ -440,6 +446,10 @@ std::optional<std::vector<OpSharding>> PyLoadedExecutable::GetOutputShardings()
     const {
   nb::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetOutputShardings();
+}
+
+int64_t PyLoadedExecutable::GetNextLaunchId() {
+  return next_launch_id_.fetch_add(1, std::memory_order_relaxed);
 }
 
 void PyLoadedExecutable::KeepAlive(nb::object obj) {

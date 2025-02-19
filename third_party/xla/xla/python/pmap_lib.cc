@@ -25,7 +25,6 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -51,6 +50,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -667,6 +667,9 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
     }
   }
 
+  xla::ifrt::ExecuteOptions execute_options = cache_entry.executable->options();
+  execute_options.launch_id = cache_entry.executable->GetNextLaunchId();
+
   // A vector of [num_outputs].
   std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
   {
@@ -674,7 +677,7 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
     auto ifrt_executable = cache_entry.executable->ifrt_executable();
     TF_ASSIGN_OR_RETURN(
         auto result, ifrt_executable->Execute(absl::MakeSpan(num_args_arrays),
-                                              cache_entry.executable->options(),
+                                              execute_options,
                                               /*devices=*/std::nullopt));
     output_arrays = std::move(result.outputs);
   }

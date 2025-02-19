@@ -847,7 +847,6 @@ cc_library(
         "//xla:util",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:lru_cache",
-        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
