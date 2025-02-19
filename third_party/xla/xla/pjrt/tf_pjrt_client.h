@@ -105,14 +105,6 @@ class TfPjRtBuffer : public PjRtBuffer {
     wrapped_->CopyToRemoteDevice(std::move(serialized_descriptor),
                                  std::move(on_done));
   }
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) override {
-    return wrapped_->CopyToRemoteDeviceScattered(
-        std::move(serialized_descriptors), std::move(callbacks),
-        scatter_details);
-  }
   PjRtFuture<> GetReadyFuture() override { return wrapped_->GetReadyFuture(); }
   bool IsOnCpu() const override { return wrapped_->IsOnCpu(); }
 

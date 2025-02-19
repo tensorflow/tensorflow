@@ -1232,32 +1232,6 @@ class PjRtBuffer {
       std::function<void(absl::Status status, bool sends_were_enqueued)>;
   virtual void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
                                   RemoteSendCallback on_done) = 0;
-  struct ScatterDetails {
-    // The dimensions of the corresponding buffer that the scatter slices
-    // across. These dimensions must be the major dimensions in the on-device
-    // layout of the buffer, and must all be untiled. The scatter acts as if
-    // the buffer were transposed/reshaped so that all of these dimensions were
-    // combined into a single dimension whose size is the product of the
-    // dimensions, and the slice indices correspond to indices in that single
-    // combined dimension.
-    //
-    // For example, if the shape is [3, 4, 128, 128] with [3, 4] as the major
-    // dimensions in the layout, and dimensions = {0, 1}, then the buffer is
-    // treated as if it were shape [12, 128, 128] and the indices in slices
-    // range in [0, 12].
-    absl::InlinedVector<int, 3> dimensions;
-    // The start and end indices of the slices.
-    std::vector<std::pair<int64_t, int64_t>> slices;
-  };
-  // Each entry in `callbacks` will be called exactly once. As above, in error
-  // situations, this may happen before the corresponding entry in
-  // `serialaized_descriptors` is fulfilled. This method requires that both
-  // `calbacks.size()` and (if Ok) `serialized_descriptors.size()` match the
-  // product of the major dimensions specified in `scatter_details`.
-  virtual void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) = 0;
 
   // Donates 'this' and returns a new buffer that is ready only when both 'this'
   // and 'dependency' are ready.

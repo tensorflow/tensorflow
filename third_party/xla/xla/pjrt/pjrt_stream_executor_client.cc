@@ -1953,22 +1953,6 @@ void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
   }
 }
 
-void PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered(
-    PjRtFuture<std::vector<std::string>> serialized_descriptors,
-    std::vector<RemoteSendCallback> callbacks,
-    const ScatterDetails& scatter_details) {
-  VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered";
-  auto res = serialized_descriptors.Await();
-  if (res.ok()) {
-    client_->CopyToRemoteDeviceScattered(this, *std::move(res),
-                                         std::move(callbacks), scatter_details);
-  } else {
-    for (const auto& cb : callbacks) {
-      cb(res.status(), /*sends_enqueued=*/false);
-    }
-  }
-}
-
 PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
   std::shared_ptr<TrackedDeviceBuffer> device_buffer;
   PjRtFuture<>::Promise definition_promise;

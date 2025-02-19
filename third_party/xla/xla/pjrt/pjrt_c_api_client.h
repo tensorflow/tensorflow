@@ -496,16 +496,6 @@ class PjRtCApiBuffer : public PjRtBuffer {
                   "you need this feature.";
   }
 
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) override {
-    LOG(ERROR)
-        << "PJRT C API does not support CopyToRemoteDeviceScattered. Please "
-           "report an issue at https://github.com/google/jax/issues if you "
-           "need this feature.";
-  }
-
   PjRtFuture<> GetReadyFuture() override;
 
   bool IsOnCpu() const override;

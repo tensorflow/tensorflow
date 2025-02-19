@@ -408,16 +408,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
             /*sends_were_enqueued=*/false);
   }
 
-  virtual void CopyToRemoteDeviceScattered(
-      PjRtBuffer* buffer, std::vector<std::string> serialized_descriptors,
-      std::vector<PjRtBuffer::RemoteSendCallback> callbacks,
-      const PjRtBuffer::ScatterDetails& scatter_details) const {
-    for (const auto& cb : callbacks) {
-      cb(Unimplemented("Scattered cross host sends not implemented."),
-         /*sends_were_enqueued=*/false);
-    }
-  }
-
   virtual PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer,
                                               PjRtFuture<void*> dst,
                                               int64_t offset,
@@ -749,11 +739,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override;
-
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) override;
 
   PjRtFuture<> GetReadyFuture() override;
 

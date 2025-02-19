@@ -271,15 +271,6 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
                   "called but is not implemented.";
   }
 
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) override {
-    LOG(ERROR)
-        << "InterpreterLiteralWrapperBuffer::CopyToRemoteDeviceScattered "
-           "was called but is not implemented.";
-  }
-
   PjRtFuture<> GetReadyFuture() override {
     return PjRtFuture<>(absl::OkStatus());
   }
