@@ -31,26 +31,23 @@ namespace mlir::TFL {
 LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
                                   SmallVector<double, 4>& scales,
                                   SmallVector<int64_t, 4>& zero_points,
-                                  int& num_bits, bool& is_signed,
-                                  bool& is_narrow_range);
-
-LogicalResult GetStorageParams(unsigned num_bits, bool narrow_range,
-                               bool is_signed, MLIRContext* ctx,
-                               Type& storage_type, int64_t& qmin,
-                               int64_t& qmax);
+                                  int32_t& quantized_dimension, int& num_bits,
+                                  bool& is_signed, int64_t& storage_type_min,
+                                  int64_t& storage_type_max);
 
 Type GetPerTensorQuantizedTensorType(Builder& builder, double scale,
                                      int64_t zero_point, Type expressed_type,
                                      int num_bits, Location loc,
-                                     bool narrow_range, bool is_signed);
+                                     int64_t storage_type_min,
+                                     int64_t storage_type_max, bool is_signed);
 
 Type GetPerAxisQuantizedTensorType(Builder& builder,
                                    SmallVector<double, 4> scales,
                                    SmallVector<int64_t, 4> zero_points,
                                    int32_t quantized_dimension,
                                    Type expressed_type, int num_bits,
-                                   Location loc, bool narrow_range,
-                                   bool is_signed);
+                                   Location loc, int64_t storage_type_min,
+                                   int64_t storage_type_max, bool is_signed);
 
 }  // namespace mlir::TFL
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_LOWER_QUANT_ANNOTATIONS_HELPER_H_

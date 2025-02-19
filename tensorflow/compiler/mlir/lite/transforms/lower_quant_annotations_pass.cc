@@ -68,10 +68,13 @@ class RewriteQuantizeCompositeOp
     SmallVector<int64_t, 4> zero_points;
     int num_bits;
     bool is_signed;
-    bool is_narrow_range;
+    int64_t storage_type_min;
+    int64_t storage_type_max;
+    int32_t quantized_dimension;
 
-    if (failed(FillCompositeParams(op, scales, zero_points, num_bits, is_signed,
-                                   is_narrow_range))) {
+    if (failed(FillCompositeParams(op, scales, zero_points, quantized_dimension,
+                                   num_bits, is_signed, storage_type_min,
+                                   storage_type_max))) {
       return op.emitError(
           "quantize composite does not contain the required attributes.");
     }
@@ -84,7 +87,7 @@ class RewriteQuantizeCompositeOp
       quantized_element_type = GetPerTensorQuantizedTensorType(
           rewriter, scales[0], zero_points[0],
           /*expressed_type=*/input_element_type, num_bits, op->getLoc(),
-          is_narrow_range, is_signed);
+          storage_type_min, storage_type_max, is_signed);
     } else {
       int32_t quantized_dimension;
       if (auto quantized_dimension_attr = llvm::dyn_cast_or_null<IntegerAttr>(
@@ -98,7 +101,7 @@ class RewriteQuantizeCompositeOp
       quantized_element_type = GetPerAxisQuantizedTensorType(
           rewriter, scales, zero_points, quantized_dimension,
           /*expressed_type=*/input_element_type, num_bits, op->getLoc(),
-          is_narrow_range, is_signed);
+          storage_type_min, storage_type_max, is_signed);
     }
 
     RankedTensorType output_type = RankedTensorType::get(
@@ -145,10 +148,13 @@ class RewriteDequantizeCompositeOp
     SmallVector<int64_t, 4> zero_points;
     int num_bits;
     bool is_signed;
-    bool is_narrow_range;
+    int64_t storage_type_min;
+    int64_t storage_type_max;
+    int32_t quantized_dimension;
 
-    if (failed(FillCompositeParams(composite_op, scales, zero_points, num_bits,
-                                   is_signed, is_narrow_range))) {
+    if (failed(FillCompositeParams(composite_op, scales, zero_points,
+                                   quantized_dimension, num_bits, is_signed,
+                                   storage_type_min, storage_type_max))) {
       return failure();
     }
 
@@ -158,25 +164,18 @@ class RewriteDequantizeCompositeOp
     Type output_element_type = output_shaped_type.getElementType();
 
     Type quantized_element_type;
-    if (scales.size() == 1) {
+    if (quantized_dimension == -1) {
       quantized_element_type = GetPerTensorQuantizedTensorType(
           rewriter, scales[0], zero_points[0],
           /*expressed_type=*/output_element_type, num_bits,
-          composite_op->getLoc(), is_narrow_range, is_signed);
+          composite_op->getLoc(), storage_type_min, storage_type_max,
+          is_signed);
     } else {
-      int32_t quantized_dimension;
-      if (auto quantized_dimension_attr = llvm::dyn_cast_or_null<IntegerAttr>(
-              composite_op.getCompositeAttributes().get(
-                  "quantization_dimension"))) {
-        quantized_dimension =
-            quantized_dimension_attr.getValue().getSExtValue();
-      } else {
-        return failure();
-      }
       quantized_element_type = GetPerAxisQuantizedTensorType(
           rewriter, scales, zero_points, quantized_dimension,
           /*expressed_type=*/output_element_type, num_bits,
-          composite_op->getLoc(), is_narrow_range, is_signed);
+          composite_op->getLoc(), storage_type_min, storage_type_max,
+          is_signed);
     }
 
     ShapedType input_shaped_type =
@@ -268,34 +267,29 @@ class RewriteFakeQuantCompositeOp
     SmallVector<int64_t, 4> zero_points;
     int num_bits;
     bool is_signed;
-    bool is_narrow_range;
+    int64_t storage_type_min;
+    int64_t storage_type_max;
+    int32_t quantized_dimension;
 
-    if (failed(FillCompositeParams(op, scales, zero_points, num_bits, is_signed,
-                                   is_narrow_range))) {
+    if (failed(FillCompositeParams(op, scales, zero_points, quantized_dimension,
+                                   num_bits, is_signed, storage_type_min,
+                                   storage_type_max))) {
       return failure();
     }
 
     ShapedType input_shaped_type = cast<ShapedType>(op.getOperand(0).getType());
     Type input_element_type = input_shaped_type.getElementType();
     Type quantized_element_type;
-    if (scales.size() == 1) {
+    if (quantized_dimension == -1) {
       quantized_element_type = GetPerTensorQuantizedTensorType(
           rewriter, scales[0], zero_points[0],
           /*expressed_type=*/input_element_type, num_bits, op->getLoc(),
-          is_narrow_range, is_signed);
+          storage_type_min, storage_type_max, is_signed);
     } else {
-      int32_t quantized_dimension;
-      if (auto quantized_dimension_attr = llvm::dyn_cast_or_null<IntegerAttr>(
-              op.getCompositeAttributes().get("quantization_dimension"))) {
-        quantized_dimension =
-            quantized_dimension_attr.getValue().getSExtValue();
-      } else {
-        return failure();
-      }
       quantized_element_type = GetPerAxisQuantizedTensorType(
           rewriter, scales, zero_points, quantized_dimension,
           /*expressed_type=*/input_element_type, num_bits, op->getLoc(),
-          is_narrow_range, is_signed);
+          storage_type_min, storage_type_max, is_signed);
     }
     RankedTensorType intermediate_type = RankedTensorType::get(
         input_shaped_type.getShape(), quantized_element_type);
