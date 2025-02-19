@@ -171,9 +171,6 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
 
   void Delete() override { return wrapped_->Delete(); }
   bool IsDeleted() override { return wrapped_->IsDeleted(); }
-  bool IsReturnedFutureSupported() const override {
-    return wrapped_->IsReturnedFutureSupported();
-  }
 
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return wrapped_->SerializeExecutable();

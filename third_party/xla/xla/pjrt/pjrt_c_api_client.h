@@ -688,10 +688,6 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
     return loaded_executable_.get();
   }
 
-  // True if the `returned_futures` output parameter is supported in the
-  // Execute*() methods.
-  bool IsReturnedFutureSupported() const override { return true; }
-
   // std::function version of PJRT_SendCallback
   using SendCallbackFunction = std::function<PJRT_Error*(
       PJRT_Chunk*, PJRT_CallbackError*, size_t, bool)>;

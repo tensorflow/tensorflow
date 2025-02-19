@@ -414,8 +414,6 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
 
   absl::StatusOr<std::string> SerializeExecutable() const override;
 
-  bool IsReturnedFutureSupported() const override { return true; }
-
   std::shared_ptr<Executable> cpu_executable() const { return cpu_executable_; }
 
   absl::StatusOr<std::optional<std::string>> Fingerprint() const {

@@ -946,8 +946,6 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     return client_->SerializeExecutable(*this);
   }
 
-  bool IsReturnedFutureSupported() const override { return true; }
-
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
   }
