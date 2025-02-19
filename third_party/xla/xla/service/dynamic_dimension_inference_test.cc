@@ -1349,8 +1349,9 @@ ENTRY computation {
             /*opaque=*/std::string{}, API_VERSION_STATUS_RETURNING));
       }));
 
-  absl::StatusOr<bool> filecheck_result = RunFileCheck(module_->ToString({}),
-                                                       R"(
+  absl::StatusOr<bool> filecheck_result = RunFileCheck(
+      module_->ToString(HloPrintOptions().set_print_operand_shape(true)),
+      R"(
 // CHECK: compare = pred[] compare(s32[] %a_size_1, s32[] %b_size_1), direction=EQ
 // CHECK: compare.5 = pred[] compare(s32[] %a_size_2, s32[] %b_size_2), direction=EQ
 // CHECK: and.2 = pred[] and(pred[] %compare, pred[] %compare.5)
