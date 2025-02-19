@@ -777,7 +777,7 @@ void DatasetBase::Initialize(const Metadata& metadata) {
     LOG_EVERY_N_SEC(ERROR, 10) << s;
   }
   metadata_ = metadata;
-  if (metadata_.name() == "") {
+  if (metadata_.name().empty()) {
     static std::atomic<int64_t> id_counter(0);
     *metadata_.mutable_name() =
         strings::StrCat(type_string(), ":", id_counter.fetch_add(1));

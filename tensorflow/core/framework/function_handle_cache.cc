@@ -28,7 +28,7 @@ FunctionHandleCache::FunctionHandleCache(FunctionLibraryRuntime* lib)
 FunctionHandleCache::~FunctionHandleCache() {
   absl::Status s = Clear();
   if (!s.ok()) {
-    LOG(ERROR) << "Failed to clear function handle cache: " << s.ToString();
+    LOG(ERROR) << "Failed to clear function handle cache: " << s;
   }
 }
 
