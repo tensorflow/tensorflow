@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 
 #include "xla/tsl/util/env_var.h"

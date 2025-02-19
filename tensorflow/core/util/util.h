@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_UTIL_H_
 #define TENSORFLOW_CORE_UTIL_UTIL_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
