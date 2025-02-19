@@ -15,10 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/state_ops.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace grappler {
