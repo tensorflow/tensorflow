@@ -1,5 +1,7 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
 # Import third party config rules.
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
@@ -507,8 +509,8 @@ def _tf_repositories():
     # https://github.com/bazelbuild/apple_support/releases
     tf_http_archive(
         name = "build_bazel_apple_support",
-        sha256 = "c4bb2b7367c484382300aee75be598b92f847896fb31bbd22f3a2346adf66a80",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/releases/download/1.15.1/apple_support.1.15.1.tar.gz"),
+        sha256 = "b6148de2d7bbdf9e5819b4e2265f6508321a8e1f0a15990eb048f822cd41550d",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/releases/download/1.18.0/apple_support.1.18.0.tar.gz"),
     )
 
     # https://github.com/apple/swift-protobuf/releases
@@ -602,6 +604,8 @@ def workspace():
     # don't already exist (at least if the external repository macros were
     # written according to common practice to query native.existing_rule()).
     _tf_repositories()
+
+    bazel_features_deps()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.
