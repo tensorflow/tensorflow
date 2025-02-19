@@ -1824,8 +1824,9 @@ LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
   llvm::SmallVector<mlir::Value> implicit_false_operands =
       implicit_false_operand_set.takeVector();
 
+  std::optional<xla::OpSharding> op_sharding = ctx.builder->sharding();
   llvm::SmallVector<std::optional<xla::OpSharding>> ret_shardings =
-      GetResultShardings(ctx.builder->sharding(), op->getNumResults());
+      GetResultShardings(op_sharding, op->getNumResults());
 
   llvm::SmallVector<xla::XlaOp> true_args;
   if (failed(GetXlaOps(op, implicit_true_operands, ctx, true_args)))
@@ -1837,9 +1838,10 @@ LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
 
   llvm::SmallVector<std::optional<xla::OpSharding>> true_arg_shardings,
       false_arg_shardings;
-  if (!ret_shardings.empty()) {
-    // We only add arg shardings if there are result shardings, otherwise it
-    // means sharding propagation hasn't been done yet.
+  if (op_sharding.has_value()) {
+    // We only add arg shardings if the op has a sharding, otherwise it means
+    // sharding propagation hasn't been done yet. Note that the op can have zero
+    // results, so we check the op sharding instead of `ret_shardings`.
     true_arg_shardings = GetXlaOpShardings(true_args);
     false_arg_shardings = GetXlaOpShardings(false_args);
   }
@@ -1892,6 +1894,10 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
   std::vector<xla::XlaComputation> computations(branches.size());
   std::vector<xla::XlaComputation*> computations_p(branches.size());
 
+  std::optional<xla::OpSharding> op_sharding = ctx.builder->sharding();
+  llvm::SmallVector<std::optional<xla::OpSharding>> ret_shardings =
+      GetResultShardings(op_sharding, op->getNumResults());
+
   // mhlo.CaseOp does not have any operands or blocks arguments. The computation
   // inside the region-blocks use implicit captures of values defined above.
   // In order to create the xla parameters for functions corresponding to
@@ -1909,17 +1915,15 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
     llvm::SmallVector<mlir::Value> implicit_operands =
         implicit_operand_set.takeVector();
 
-    llvm::SmallVector<std::optional<xla::OpSharding>> ret_shardings =
-        GetResultShardings(ctx.builder->sharding(), op->getNumResults());
-
     // Create the branches[i]'s Xla argument.
     llvm::SmallVector<xla::XlaOp> args;
     if (failed(GetXlaOps(op, implicit_operands, ctx, args))) return failure();
 
     llvm::SmallVector<std::optional<xla::OpSharding>> arg_shardings;
-    if (!ret_shardings.empty()) {
-      // We only add arg shardings if there are result shardings, otherwise it
-      // means sharding propagation hasn't been done yet.
+    if (op_sharding.has_value()) {
+      // We only add arg shardings if the op has a sharding, otherwise it means
+      // sharding propagation hasn't been done yet. Note that the op can have
+      // zero results, so we check the op sharding instead of `ret_shardings`.
       arg_shardings = GetXlaOpShardings(args);
     }
 
@@ -2988,8 +2992,9 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
 
   // If the results of the while op have a sharding, we use those shardings for
   // the corresponding arguments and return shardings in the body and condition.
+  std::optional<xla::OpSharding> old_sharding = ctx.builder->sharding();
   llvm::SmallVector<std::optional<xla::OpSharding>> res_shardings =
-      GetResultShardings(ctx.builder->sharding(), op->getNumResults());
+      GetResultShardings(old_sharding, op->getNumResults());
 
   // mhlo.WhileOp has operands and corresponding blocks arguments, but the
   // computation inside its region-blocks can also use implicit captures of
@@ -3013,9 +3018,11 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   // shardings, since the HLO While will have those implcit values as additional
   // operands and results.
   llvm::SmallVector<std::optional<xla::OpSharding>> implicit_shardings;
-  if (!implicit_args.empty() && !res_shardings.empty()) {
-    // We only add implicit arg shardings if there are result shardings,
-    // otherwise it means sharding propagation hasn't been done yet.
+  if (!implicit_args.empty() && old_sharding.has_value()) {
+    // We only add implicit arg shardings if the op already has a sharding,
+    // otherwise it means sharding propagation hasn't been done yet. Note that
+    // the op can have zero results, so we check the op sharding instead of
+    // `res_shardings`.
     implicit_shardings = GetXlaOpShardings(implicit_args);
 
     res_shardings.append(implicit_shardings.begin(), implicit_shardings.end());
