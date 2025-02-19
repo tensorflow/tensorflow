@@ -1067,7 +1067,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "explicitly write to stdout, set this to \"-\". The values \"sponge\" "
       "and \"test_undeclared_outputs_dir\" have a special meaning: They cause "
       "us to dump into the directory specified by the environment variable "
-      "TEST_UNDECLARED_OUTPUTS_DIR."));
+      "TEST_UNDECLARED_OUTPUTS_DIR. One or more --xla_dump_hlo_as_* flags can "
+      "be set to specify the formats of the dumps. For example, if both "
+      "--xla_dump_hlo_as_text and --xla_dump_hlo_as_proto are set, then the "
+      "HLO modules will be dumped as text and as protos."));
   flag_list->push_back(tsl::Flag(
       "xla_flags_reset", bool_setter_for(&DebugOptions::set_xla_flags_reset),
       debug_options->xla_flags_reset(),
