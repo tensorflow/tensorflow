@@ -54,6 +54,7 @@ do_external_licenses_check(){
 @platforms//os
 @ml_dtypes_py//ml_dtypes
 @ruy//
+@rules_java_builtin//toolchains
 @rules_python//
 @stablehlo//stablehlo/experimental
 EOF
@@ -65,9 +66,10 @@ EOF
 @absl_py//
 @bazel_tools//src
 @bazel_tools//platforms
-@bazel_tools//tools/
+@bazel_tools//tools
 @org_tensorflow//tensorflow
 @com_google_absl//
+@internal_platforms_do_not_use//host
 @pybind11_abseil//pybind11_abseil
 //external
 @local
