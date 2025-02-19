@@ -15,17 +15,17 @@ limitations under the License.
 
 #include <stdio.h>
 
-#include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/ops/compat/op_compatibility_lib.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
