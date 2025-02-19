@@ -41,5 +41,28 @@ TEST(WritableFileCopyingOutputStreamTest, Write) {
   EXPECT_EQ(contents, "hello\n");
 }
 
+TEST(RandomAccessFileCopyingInputStreamTest, Read) {
+  Env* env = Env::Default();
+  std::unique_ptr<WritableFile> file;
+  std::string filename = ::testing::TempDir() + "/read_using_stream.txt";
+
+  TF_ASSERT_OK(env->NewWritableFile(filename, &file));
+  TF_ASSERT_OK(file->Append("hello\n"));
+  TF_ASSERT_OK(file->Close());
+
+  std::unique_ptr<RandomAccessFile> random_file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(filename, &random_file));
+
+  RandomAccessFileCopyingInputStream input(random_file.get());
+  char buffer[10];
+  EXPECT_EQ(input.Read(buffer, 1), 1);
+  EXPECT_EQ(absl::string_view(buffer, 1), "h");
+
+  EXPECT_EQ(input.Read(buffer, 8), 5);
+  EXPECT_EQ(absl::string_view(buffer, 5), "ello\n");
+
+  EXPECT_EQ(input.Read(buffer, 1), 0);
+}
+
 }  // namespace
 }  // namespace tsl
