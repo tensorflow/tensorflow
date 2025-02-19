@@ -943,7 +943,8 @@ class PjRtClient {
                          platform_name());
   }
 
-  // Experimental: Unmaps memory for fast transfers.
+  // Experimental: Unmaps memory for fast transfers. Caller is responsible to
+  // ensure that all data transfers are complete before calling DmaUnmap.
   virtual absl::Status DmaUnmap(void* data) {
     return Unimplemented("DmaUnmap not supported on platform %s",
                          platform_name());

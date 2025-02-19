@@ -365,6 +365,14 @@ class PjRtStreamExecutorClient : public PjRtClient {
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
 
+  // Caller is responsible to ensure that `data` has allocated enough memory
+  // for `buffer_size` to do DMA mapping.
+  absl::Status DmaMap(void* data, size_t buffer_size) override;
+
+  absl::Status DmaUnmap(void* data) override;
+
+  bool IsDmaMapped(const void* data_start, int64_t transfer_size);
+
   // TODO(zhangqiaorjc): Experimental. Will be removed.
   absl::Status Defragment() override {
     return Unimplemented("Defragment not implemented");
@@ -477,6 +485,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   absl::Mutex transpose_mu_;
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
+
+  absl::Mutex dma_maps_mutex_;
+  // Maps dma mapped start pointers to their sizes.
+  absl::flat_hash_map<void*, size_t> dma_maps_ ABSL_GUARDED_BY(dma_maps_mutex_);
 };
 
 // Converts a 2D set of Device objects indexed by [replica][partition] into an

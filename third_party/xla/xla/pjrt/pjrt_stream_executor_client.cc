@@ -891,8 +891,9 @@ PjRtStreamExecutorClient::BufferFromHostBufferInternal(
   // Allocating multigigabyte pinned buffers can be very slow. In that case,
   // using a staging buffer is probably worse than not using one.
   // TODO(phawkins): add chunking for transfers.
-  if (must_use_staging_buffer || (should_stage_host_to_device_transfers() &&
-                                  packed_size < (int64_t{1} << 30))) {
+  if (!IsDmaMapped(data, packed_size) &&
+      (must_use_staging_buffer || (should_stage_host_to_device_transfers() &&
+                                   packed_size < (int64_t{1} << 30)))) {
     void* ptr = host_memory_allocator()->AllocateRaw(
         tsl::Allocator::kAllocatorAlignment, transpose ? size : packed_size);
     staging_buffer = std::shared_ptr<void>(
@@ -1231,6 +1232,40 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtStreamExecutorBuffer>(
       shape, std::move(device_buffer), this, device,
       device->default_memory_space().value_or(nullptr)));
+}
+
+absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
+  tsl::profiler::TraceMe trace_me("PjRtStreamExecutorClient::DmaMap");
+  TF_ASSIGN_OR_RETURN(
+      LocalDeviceState * local_device,
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(devices_[0])
+          ->GetLocalDeviceState());
+  bool success = local_device->compute_stream()->parent()->HostMemoryRegister(
+      data, buffer_size);
+  if (!success) {
+    return absl::InternalError(absl::StrFormat(
+        "Failed to register host memory at address: %ps", data));
+  }
+  absl::MutexLock lock(&dma_maps_mutex_);
+  dma_maps_.insert({data, buffer_size});
+  return absl::OkStatus();
+}
+
+absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
+  tsl::profiler::TraceMe trace_me("PjRtStreamExecutorClient::DmaUnmap");
+  TF_ASSIGN_OR_RETURN(
+      LocalDeviceState * local_device,
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(devices_[0])
+          ->GetLocalDeviceState());
+  bool success =
+      local_device->compute_stream()->parent()->HostMemoryUnregister(data);
+  if (!success) {
+    return absl::InternalError(absl::StrFormat(
+        "Failed to unregister host memory at address: %ps", data));
+  }
+  absl::MutexLock lock(&dma_maps_mutex_);
+  dma_maps_.erase(data);
+  return absl::OkStatus();
 }
 
 // Transfer the given literal to the infeed queue of the given local device.
@@ -3674,6 +3709,21 @@ PjRtStreamExecutorClient::LoadSerializedExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options,
     const LoadOptions& load_options) {
   return DeserializeExecutable(serialized, options);
+}
+
+bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,
+                                           int64_t transfer_size) {
+  absl::MutexLock lock(&dma_maps_mutex_);
+  if (!dma_maps_.empty()) {
+    void* data_end = (char*)data_start + transfer_size;
+    for (const auto& [map_start, map_size] : dma_maps_) {
+      void* map_end = (char*)map_start + map_size;
+      if (data_start >= map_start && data_end <= map_end) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace xla

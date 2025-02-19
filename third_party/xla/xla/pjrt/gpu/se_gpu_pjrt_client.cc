@@ -337,7 +337,9 @@ class AsyncHostToDeviceTransferManager
     auto* client =
         tensorflow::down_cast<PjRtStreamExecutorClient*>(device_->client());
     bool should_stage_host_to_device_transfers =
-        client->should_stage_host_to_device_transfers();
+        client->should_stage_host_to_device_transfers() &&
+        (!client->IsDmaMapped(data, transfer_size));
+
     std::shared_ptr<void> staging_buffer;
     if (should_stage_host_to_device_transfers) {
       auto* host_memory_allocator = client->host_memory_allocator();
@@ -697,11 +699,12 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
     WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
 
     if (transfer_size != 0) {
-      if (should_stage_host_to_device_transfers()) {
+      if (should_stage_host_to_device_transfers() &&
+          !IsDmaMapped(dst.value(), transfer_size)) {
         if (host_memory_allocator() == nullptr) {
-          promise.Set(InvalidArgument(
-              "host_memory_allocator should be initialized for staging buffer "
-              "transfer."));
+          promise.Set(
+              InvalidArgument("host_memory_allocator should be initialized for "
+                              "staging buffer transfer."));
           return;
         }
         void* ptr = host_memory_allocator()->AllocateRaw(

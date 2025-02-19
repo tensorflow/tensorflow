@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_GPU_SE_GPU_PJRT_CLIENT_H_
 #define XLA_PJRT_GPU_SE_GPU_PJRT_CLIENT_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
