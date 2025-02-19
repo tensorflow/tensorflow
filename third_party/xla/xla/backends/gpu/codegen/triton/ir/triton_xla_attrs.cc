@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <optional>
 
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
