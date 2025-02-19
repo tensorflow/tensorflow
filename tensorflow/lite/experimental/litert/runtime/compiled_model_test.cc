@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -37,6 +38,7 @@
 #include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
 
 namespace litert {
@@ -133,7 +135,7 @@ Expected<std::vector<LiteRtTensorBuffer>> CreateOutputBuffers(
 }
 
 TEST(CompiledModelTest, Basic) {
-  auto path = testing::GetTestFilePath(kModelFileName);
+  std::string path = testing::GetTestFilePath(kModelFileName);
 
   LiteRtModel model;
   ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
@@ -145,43 +147,41 @@ TEST(CompiledModelTest, Basic) {
                 compilation_options, kLiteRtHwAcceleratorCpu),
             kLiteRtStatusOk);
 
-  auto env = LiteRtEnvironmentT::CreateWithOptions({});
-  ASSERT_TRUE(env);
-  auto env_ptr = env->release();
+  LITERT_ASSERT_OK_AND_ASSIGN(LiteRtEnvironmentT::Ptr env,
+                              LiteRtEnvironmentT::CreateWithOptions({}));
+  LiteRtEnvironmentT* env_ptr = env.release();
 
-  auto res_compiled_model = LiteRtCompiledModelT::Create(
-      env_ptr, model, LiteRtCompiledModelT::OptionsPtr(compilation_options));
-  ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel: "
-                                  << res_compiled_model.Error().Message();
-  auto& compiled_model = **res_compiled_model;
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtCompiledModelT::Ptr compiled_model,
+      LiteRtCompiledModelT::Create(
+          env_ptr, model,
+          LiteRtCompiledModelT::OptionsPtr(compilation_options)));
 
-  auto signatures = model->Signatures();
+  absl::Span<LiteRtSignature> signatures = model->Signatures();
   ASSERT_EQ(signatures.size(), 1);
-  auto signature_key = signatures[0]->Key();
+  absl::string_view signature_key = signatures[0]->Key();
   EXPECT_EQ(signature_key, LiteRtSignatureT::kDefaultSignatureKey);
 
-  auto input_buffers_res =
-      CreateInputBuffers(model, compiled_model, signature_key);
-  EXPECT_TRUE(input_buffers_res);
-  auto input_buffers = std::move(*input_buffers_res);
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      std::vector<LiteRtTensorBuffer> input_buffers,
+      CreateInputBuffers(model, *compiled_model, signature_key));
 
-  auto output_buffers_res =
-      CreateOutputBuffers(model, compiled_model, signature_key);
-  EXPECT_TRUE(output_buffers_res);
-  auto output_buffers = std::move(*output_buffers_res);
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      std::vector<LiteRtTensorBuffer> output_buffers,
+      CreateOutputBuffers(model, *compiled_model, signature_key));
 
   // Fill model inputs.
-  auto& input_names = signatures[0]->InputNames();
+  const std::vector<std::string>& input_names = signatures[0]->InputNames();
   EXPECT_EQ(input_names.size(), 2);
   EXPECT_EQ(input_names.at(0), "arg0");
   EXPECT_EQ(input_names.at(1), "arg1");
-  auto& input_0_buffer = input_buffers[0];
+  LiteRtTensorBuffer& input_0_buffer = input_buffers[0];
   {
     TensorBuffer cpu_buffer(input_0_buffer, /*owned=*/false);
     cpu_buffer.Write<float>(
         absl::MakeConstSpan(kTestInput0Tensor, kTestInput0Size));
   }
-  auto& input_1_buffer = input_buffers[1];
+  LiteRtTensorBuffer& input_1_buffer = input_buffers[1];
   {
     TensorBuffer cpu_buffer(input_1_buffer, /*owned=*/false);
     cpu_buffer.Write<float>(
@@ -190,18 +190,18 @@ TEST(CompiledModelTest, Basic) {
 
   // Execute model.
   bool async = false;
-  compiled_model.Run(signature_key, input_buffers, output_buffers, async);
+  compiled_model->Run(signature_key, input_buffers, output_buffers, async);
 
   // Check model output.
-  auto output_names = signatures[0]->OutputNames();
+  const std::vector<std::string>& output_names = signatures[0]->OutputNames();
   EXPECT_EQ(output_names.size(), 1);
   EXPECT_EQ(output_names.at(0), "tfl.add");
   {
     void* host_mem_addr;
     ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr),
               kLiteRtStatusOk);
-    auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
-                                 kTestOutputSize);
+    absl::Span<const float> output = absl::MakeSpan(
+        static_cast<const float*>(host_mem_addr), kTestOutputSize);
     for (auto i = 0; i < kTestOutputSize; ++i) {
       ABSL_LOG(INFO) << output[i] << "\t" << kTestOutputTensor[i];
     }
@@ -225,10 +225,11 @@ TEST(CompiledModelTest, UseAhwbBuffer) {
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices";
 #endif
-  auto env = LiteRtEnvironmentT::CreateWithOptions({});
-  ASSERT_TRUE(env);
-  auto env_ptr = env->release();
-  auto path = testing::GetTestFilePath(kModelFileName);
+  LITERT_ASSERT_OK_AND_ASSIGN(LiteRtEnvironmentT::Ptr env,
+                              LiteRtEnvironmentT::CreateWithOptions({}));
+  LiteRtEnvironmentT* env_ptr = env.release();
+
+  std::string path = testing::GetTestFilePath(kModelFileName);
   LiteRtModel model;
   ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
 
@@ -239,41 +240,40 @@ TEST(CompiledModelTest, UseAhwbBuffer) {
                 compilation_options, kLiteRtHwAcceleratorCpu),
             kLiteRtStatusOk);
 
-  auto res_compiled_model = LiteRtCompiledModelT::Create(
-      env_ptr, model, LiteRtCompiledModelT::OptionsPtr(compilation_options));
-  ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
-  auto& compiled_model = **res_compiled_model;
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtCompiledModelT::Ptr compiled_model,
+      LiteRtCompiledModelT::Create(
+          env_ptr, model,
+          LiteRtCompiledModelT::OptionsPtr(compilation_options)));
 
-  auto signatures = model->Signatures();
+  absl::Span<LiteRtSignature> signatures = model->Signatures();
   ASSERT_EQ(signatures.size(), 1);
-  auto signature_key = signatures[0]->Key();
+  absl::string_view signature_key = signatures[0]->Key();
   EXPECT_EQ(signature_key, LiteRtSignatureT::kDefaultSignatureKey);
 
-  auto input_buffers_res =
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      std::vector<LiteRtTensorBuffer> input_buffers,
       CreateInputBuffers(model, signature_key, kLiteRtTensorBufferTypeAhwb,
-                         sizeof(float) * kTestInput0Size);
-  EXPECT_TRUE(input_buffers_res);
-  auto input_buffers = std::move(*input_buffers_res);
+                         sizeof(float) * kTestInput0Size));
 
-  auto output_buffers_res =
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      std::vector<LiteRtTensorBuffer> output_buffers,
       CreateOutputBuffers(model, signature_key, kLiteRtTensorBufferTypeAhwb,
-                          sizeof(float) * kTestOutputSize);
-  EXPECT_TRUE(output_buffers_res);
-  auto output_buffers = std::move(*output_buffers_res);
+                          sizeof(float) * kTestOutputSize));
 
   // Fill model inputs.
-  auto input_names = signatures[0]->InputNames();
+  const std::vector<std::string>& input_names = signatures[0]->InputNames();
   EXPECT_EQ(input_names.size(), 2);
   EXPECT_EQ(input_names.at(0), "arg0");
   EXPECT_EQ(input_names.at(1), "arg1");
-  auto& input_0_buffer = input_buffers[0];
+  LiteRtTensorBuffer& input_0_buffer = input_buffers[0];
   EXPECT_EQ(input_0_buffer->buffer_type(), kLiteRtTensorBufferTypeAhwb);
   {
     TensorBuffer ahwb_buffer(input_0_buffer, /*owned=*/false);
     ahwb_buffer.Write<float>(
         absl::MakeConstSpan(kTestInput0Tensor, kTestInput0Size));
   }
-  auto& input_1_buffer = input_buffers[1];
+  LiteRtTensorBuffer& input_1_buffer = input_buffers[1];
   {
     TensorBuffer ahwb_buffer(input_1_buffer, /*owned=*/false);
     ahwb_buffer.Write<float>(
@@ -282,18 +282,18 @@ TEST(CompiledModelTest, UseAhwbBuffer) {
 
   // Execute model.
   bool async = false;
-  compiled_model.Run(signature_key, input_buffers, output_buffers, async);
+  compiled_model->Run(signature_key, input_buffers, output_buffers, async);
 
   // Check model output.
-  auto output_names = signatures[0]->OutputNames();
+  const std::vector<std::string>& output_names = signatures[0]->OutputNames();
   EXPECT_EQ(output_names.size(), 1);
   EXPECT_EQ(output_names.at(0), "tfl.add");
   {
     void* host_mem_addr;
     ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr),
               kLiteRtStatusOk);
-    auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
-                                 kTestOutputSize);
+    absl::Span<const float> output = absl::MakeSpan(
+        static_cast<const float*>(host_mem_addr), kTestOutputSize);
     for (auto i = 0; i < kTestOutputSize; ++i) {
       ABSL_LOG(INFO) << output[i] << "\t" << kTestOutputTensor[i];
     }
@@ -323,46 +323,45 @@ TEST(CompiledModelTest, UseOpenCLBuffer) {
     GTEST_SKIP() << "OpenCL buffers are not supported on this platform; "
                     "skipping the test";
   }
-  auto path = testing::GetTestFilePath(kModelFileName);
+  std::string path = testing::GetTestFilePath(kModelFileName);
   LiteRtModel model;
   ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
-  auto env = LiteRtEnvironmentT::CreateWithOptions({});
-  ASSERT_TRUE(env);
-  auto env_ptr = env->release();
-  auto res_compiled_model = LiteRtCompiledModelT::Create(env_ptr, model);
-  ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
-  auto& compiled_model = **res_compiled_model;
 
-  auto signatures = model->Signatures();
+  LITERT_ASSERT_OK_AND_ASSIGN(LiteRtEnvironmentT::Ptr env,
+                              LiteRtEnvironmentT::CreateWithOptions({}));
+  LiteRtEnvironmentT* env_ptr = env.release();
+
+  LITERT_ASSERT_OK_AND_ASSIGN(LiteRtCompiledModelT::Ptr compiled_model,
+                              LiteRtCompiledModelT::Create(env_ptr, model));
+
+  absl::Span<LiteRtSignature> signatures = model->Signatures();
   ASSERT_EQ(signatures.size(), 1);
-  auto signature_key = signatures[0]->Key();
+  absl::string_view signature_key = signatures[0]->Key();
   EXPECT_EQ(signature_key, LiteRtSignatureT::kDefaultSignatureKey);
 
-  auto input_buffers_res =
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      std::vector<LiteRtTensorBuffer> input_buffers,
       CreateInputBuffers(model, signature_key, kLiteRtTensorBufferTypeOpenCl,
-                         sizeof(float) * kTestInput0Size);
-  EXPECT_TRUE(input_buffers_res);
-  auto input_buffers = std::move(*input_buffers_res);
+                         sizeof(float) * kTestInput0Size));
 
-  auto output_buffers_res =
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      std::vector<LiteRtTensorBuffer> output_buffers,
       CreateOutputBuffers(model, signature_key, kLiteRtTensorBufferTypeOpenCl,
-                          sizeof(float) * kTestOutputSize);
-  EXPECT_TRUE(output_buffers_res);
-  auto output_buffers = std::move(*output_buffers_res);
+                          sizeof(float) * kTestOutputSize));
 
   // Fill model inputs.
-  auto input_names = signatures[0]->InputNames();
+  const std::vector<std::string>& input_names = signatures[0]->InputNames();
   EXPECT_EQ(input_names.size(), 2);
   EXPECT_EQ(input_names.at(0), "arg0");
   EXPECT_EQ(input_names.at(1), "arg1");
-  auto& input_0_buffer = input_buffers[0];
+  LiteRtTensorBuffer& input_0_buffer = input_buffers[0];
   EXPECT_EQ(input_0_buffer->buffer_type(), kLiteRtTensorBufferTypeOpenCl);
   {
     TensorBuffer opencl_buffer(input_0_buffer, /*owned=*/false);
     opencl_buffer.Write<float>(
         absl::MakeConstSpan(kTestInput0Tensor, kTestInput0Size));
   }
-  auto& input_1_buffer = input_buffers[1];
+  LiteRtTensorBuffer& input_1_buffer = input_buffers[1];
   {
     TensorBuffer opencl_buffer(input_1_buffer, /*owned=*/false);
     opencl_buffer.Write<float>(
@@ -371,18 +370,18 @@ TEST(CompiledModelTest, UseOpenCLBuffer) {
 
   // Execute model.
   bool async = false;
-  compiled_model.Run(signature_key, input_buffers, output_buffers, async);
+  compiled_model->Run(signature_key, input_buffers, output_buffers, async);
 
   // Check model output.
-  auto output_names = signatures[0]->OutputNames();
+  const std::vector<std::string>& output_names = signatures[0]->OutputNames();
   EXPECT_EQ(output_names.size(), 1);
   EXPECT_EQ(output_names.at(0), "tfl.add");
   {
     void* host_mem_addr;
     ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr),
               kLiteRtStatusOk);
-    auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
-                                 kTestOutputSize);
+    absl::Span<const float> output = absl::MakeSpan(
+        static_cast<const float*>(host_mem_addr), kTestOutputSize);
     for (auto i = 0; i < kTestOutputSize; ++i) {
       ABSL_LOG(INFO) << output[i] << "\t" << kTestOutputTensor[i];
     }
