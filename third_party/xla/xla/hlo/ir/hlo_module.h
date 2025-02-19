@@ -405,9 +405,9 @@ class HloModule {
 
   // Return a string representation of the module.
   //
-  // (We express the default options using an overload rather than a default
-  // param because gdb ignores default params, but does resolve overloads.)
-  std::string ToString() const { return ToString(HloPrintOptions::Default()); }
+  // By default, we take the default print options but adjust them based on
+  // debug options flags.
+  std::string ToString() const;
   std::string ToString(const HloPrintOptions& options) const;
 
   // Returns a Cord representation of the module.
