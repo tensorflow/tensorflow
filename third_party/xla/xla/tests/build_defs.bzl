@@ -191,7 +191,7 @@ def xla_test(
         backend_tags = {},
         backend_args = {},
         backend_kwargs = {},
-        linkstatic = False,
+        linkstatic = True,
         **kwargs):
     """Generates cc_test targets for the given XLA backends.
 
@@ -371,7 +371,7 @@ def xla_test(
     if test_names:
         native.test_suite(name = name, tags = tags + ["manual"], tests = test_names)
     else:
-        native.cc_test(name = name, deps = ["@com_google_googletest//:gtest_main"])
+        native.cc_test(name = name, deps = ["@com_google_googletest//:gtest_main"], linkstatic = linkstatic)
 
 def xla_test_library(
         name,
