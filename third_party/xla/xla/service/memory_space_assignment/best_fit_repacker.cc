@@ -136,8 +136,8 @@ Step 5: Update AllocationBlocks with the repacking placements
 #include "xla/comparison_util.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 
 namespace xla {
 namespace {
