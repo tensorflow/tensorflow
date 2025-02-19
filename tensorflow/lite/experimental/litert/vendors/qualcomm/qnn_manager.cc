@@ -265,18 +265,19 @@ LiteRtStatus QnnManager::ValidateOp(const Qnn_OpConfig_t& op_config) {
 LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
                               std::optional<std::string> shared_library_dir,
                               std::optional<QnnHtpDevice_Arch_t> soc_model) {
-  // We must change the variable environment used to load DSP libraries.
-  std::string new_adsp_library_path;
-  if (auto* adsp_library_path = getenv("ADSP_LIBRARY_PATH");
-      adsp_library_path != nullptr) {
-    new_adsp_library_path =
-        absl::StrFormat("%s:%s", shared_library_dir->data(), adsp_library_path);
-  } else {
-    new_adsp_library_path = shared_library_dir->data();
+  if (shared_library_dir.has_value()) {
+    std::string new_adsp_library_path;
+    if (auto* adsp_library_path = getenv("ADSP_LIBRARY_PATH");
+        adsp_library_path != nullptr) {
+      new_adsp_library_path = absl::StrFormat(
+          "%s:%s", shared_library_dir->data(), adsp_library_path);
+    } else {
+      new_adsp_library_path = shared_library_dir->data();
+    }
+    LITERT_LOG(LITERT_INFO, "Setting ADSP_LIBRARY_PATH to %s",
+               new_adsp_library_path.data());
+    setenv("ADSP_LIBRARY_PATH", new_adsp_library_path.data(), /*overwrite=*/1);
   }
-  LITERT_LOG(LITERT_INFO, "Setting ADSP_LIBRARY_PATH to %s",
-             new_adsp_library_path.data());
-  setenv("ADSP_LIBRARY_PATH", new_adsp_library_path.data(), /*overwrite=*/1);
 
   auto lib_qnn_htp_so_path = kLibQnnHtpSo;
   // If shared_library_dir is provided, we will try to find the libQnnHtp.so
