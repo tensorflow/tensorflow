@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_propagation.h"
 
+#include <initializer_list>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops.h"

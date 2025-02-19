@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
