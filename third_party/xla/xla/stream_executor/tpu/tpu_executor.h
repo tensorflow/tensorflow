@@ -43,9 +43,9 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_platform.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/types.h"
 
 namespace stream_executor {
 namespace tpu {
