@@ -27,6 +27,7 @@ cc_library(
     ],
     deps = [
         ":tfrt_fallback_opdefs_inc_gen",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
@@ -56,13 +57,10 @@ cc_library(
         "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:compiler_tfrt_op_interfaces",
         "@tf_runtime//:compiler_tfrt_traits",
         "@tf_runtime//:core_runtime_opdefs",
-        "@tf_runtime//:core_runtime_sync_opdefs",
     ],
 )
 
@@ -77,13 +75,12 @@ cc_library(
         "//tensorflow/core/runtime_fallback:internal",
     ],
     deps = [
-        ":tfrt_fallback_common",
         ":tfrt_fallback_opdefs",
         ":tfrt_fallback_sync_opdefs_inc_gen",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
         "@tf_runtime//:tensor_opdefs",
@@ -110,6 +107,7 @@ cc_library(
     visibility = ["//tensorflow/compiler/mlir/tfrt:__subpackages__"],
     deps = [
         ":tfrt_fallback_async_opdefs",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
