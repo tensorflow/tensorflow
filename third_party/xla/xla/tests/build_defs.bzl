@@ -191,7 +191,7 @@ def xla_test(
         backend_tags = {},
         backend_args = {},
         backend_kwargs = {},
-        linkstatic = True,
+        linkstatic = False,
         **kwargs):
     """Generates cc_test targets for the given XLA backends.
 
