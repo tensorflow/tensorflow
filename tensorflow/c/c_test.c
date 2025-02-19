@@ -20,6 +20,10 @@ limitations under the License.
 #include <time.h>
 #include <unistd.h>
 
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
+
 #ifdef _WIN32
 #include <process.h>
 #endif
