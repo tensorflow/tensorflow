@@ -515,7 +515,9 @@ cc_library(
         "@local_xla//xla:shape_util",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_cost_analysis",
+        "@local_xla//xla/service/gpu:cublas_cudnn",
         "@local_xla//xla/service/gpu/model:gpu_hlo_cost_analysis",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 

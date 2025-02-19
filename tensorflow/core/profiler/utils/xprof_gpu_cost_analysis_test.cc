@@ -134,5 +134,56 @@ ENTRY e {
   EXPECT_EQ(analysis_.GetDeviceFlopsAdjustment(*s8gemm), gold_flops / 2);
 }
 
+// test special handling logic when fp32 parameter is also used
+TEST_F(XprofGpuHloCostAnalysisTest, Fp8GemmWithFp32ParameterAdjustment) {
+  absl::string_view hlo_string = R"(
+HloModule r
+
+ENTRY e {
+  arg0 = f8e4m3fn[2048,5120]{1,0} parameter(0)
+  arg1 = f8e4m3fn[5120,5120]{0,1} parameter(1)
+  arg2 = f32[] parameter(2)
+  arg3 = f32[] parameter(3)
+  gemm = (bf16[2048,5120]{1,0}, s8[33554432]{0})
+    custom-call(arg0, arg1, arg2, arg3),
+    custom_call_target="__cublas$lt$matmul$f8",
+    backend_config="{
+        \"gemm_backend_config\": {
+            \"alpha_real\":1,
+            \"beta\":0,
+            \"dot_dimension_numbers\":{
+                \"lhs_contracting_dimensions\":[\"1\"],
+                \"rhs_contracting_dimensions\":[\"0\"],
+                \"lhs_batch_dimensions\":[],
+                \"rhs_batch_dimensions\":[]
+            },
+            \"alpha_imag\":0,
+            \"precision_config\":{
+                \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+            },
+            \"epilogue\":\"DEFAULT\",
+            \"lhs_stride\":\"10485760\",
+            \"rhs_stride\":\"26214400\",
+            \"grad_x\":false,
+            \"grad_y\":false,
+            \"damax_output\":false
+        }
+    }"
+  ROOT get-tuple-element = bf16[2048,5120]{1,0}
+    get-tuple-element((bf16[2048,5120]{1,0}, s8[33554432]{0}) gemm), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  xla::HloComputation* comp = module->entry_computation();
+  const xla::HloInstruction* fp8_gemm = comp->GetInstructionWithName("gemm");
+  int64_t gold_flops = 2048LL * 5120 * 5120 * 2;
+  EXPECT_EQ(analysis_.flop_count(*fp8_gemm), gold_flops);
+  // Matmul of int8 * int8 -> int32, normalized it to equivalent fp16 flops by
+  // dividing by 2 as all inputs are 8 bits
+  EXPECT_EQ(analysis_.GetDeviceFlopsAdjustment(*fp8_gemm), gold_flops / 2);
+}
+
 }  // namespace profiler
 }  // namespace tensorflow
