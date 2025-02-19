@@ -18,9 +18,10 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
+#include <limits>
 #include <memory>
-#include <numeric>
 #include <random>
 #include <vector>
 
