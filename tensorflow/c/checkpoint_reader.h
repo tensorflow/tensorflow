@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/tensor_shape.h"
