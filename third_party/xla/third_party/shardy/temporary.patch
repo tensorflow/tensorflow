@@ -1,101 +1,522 @@
+diff --git a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
+index f79789c..ca3e08e 100644
+--- a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
++++ b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
+@@ -504,137 +504,6 @@ class CollectiveInserter {
+     alignSubAxesByDecomposition(outAxesPerDim, splitAddedAxes, mesh);
+   }
+ 
+-  // For an future all-to-all from source dimension `d1` to target dimension
+-  // `d2`, Holds the range of out axes in that dimension to slice at `d1`.
+-  struct AxesToSliceForAllToAll {
+-    AxisList::iterator outAxisBeginIt;
+-    AxisList::iterator outAxisEndIt;
+-  };
+-
+-  // Return axes to slice at a given source dimension `srcDim` to perform an
+-  // all-to-all to a target dimension (`tgtDim`) with additional axes, if
+-  // certain conditions are met that indicate that a redundant
+-  // collective-permute can be avoided by slicing at `srcDim` rather than
+-  // `tgtDim`.
+-  //
+-  // All the following must hold:
+-  //
+-  // - `inAxesPerDim[srcDim]` isn't empty, otherwise an all-to-all isn't needed
+-  //   from that dimension.
+-  //
+-  // - `outAxesPerDim[srcDim]` is empty, otherwise it means the source dimension
+-  //   has misplaced axes that a collective-permute can replace.
+-  //
+-  // - `inAxesPerDim[tgtDim]` is empty, otherwise it means the target dimension
+-  //   has misplaced axes that a collective-permute can replace.
+-  //
+-  // - The first axis in `outAxesPerDim[tgtDim]` beyond
+-  //   `inAxesPerDim[srcDim].back()` isn't present in `inAxisSet` (i.e.,
+-  //   available to slice), otherwise there is no axis to slice at `srcDim`.
+-  //
+-  // - A suffix of `inAxesPerDim[srcDim]` is contained within
+-  //   `outAxesPerDim[tgtDim]` (in the same order) and other axes in
+-  //   `inAxesPerDim[srcDim]` don't appear in `outAxesPerDim[tgtDim]`, otherwise
+-  //   a collective-permute will be needed to reorder or replace axes.
+-  //
+-  // - `srcDim` can't accommodate all available axes in `outAxesPerDim[tgtDim]`
+-  //   beyond `inAxesPerDim[srcDim].back()`, i.e., slicing those axes at
+-  //   `srcDim` would require padding as the dimension size isn't divisible by
+-  //   the product of axis sizes (including `inAxesPerDim[srcDim]`).
+-  //
+-  // In which case, returns a range containing all axes in
+-  // `outAxesPerDim[tgtDim]` that are available to slice beyond
+-  // `inAxesPerDim[srcDim].back()`
+-  //
+-  // In addition, divides the capacity of `tgtDim` by the product of axis sizes
+-  // in `srcDim` that will be moved to `tgtDim` after slicing along the
+-  // returned axes, as we are effectively "borrowing" the capacity for `srcDim`.
+-  //
+-  // For example:
+-  //
+-  // Input: `srcDim = 1`
+-  //
+-  // Initial state:
+-  // - `mesh = {"x": 2, "y": 2, "z": 2, "w": 2}`
+-  // - `getTensorShape(result)` = [4, 8, 32]
+-  // - `inAxesPerDim = [["w"], ["x"], []]`
+-  // - `outAxesPerDim = [[], [], ["x", "y", "z", "w"]]`
+-  // - `capacityPerDim = [1, 1, 16]`
+-  //
+-  // Returns: `["y", "z"]` and updates `capacityPerDim = [1, 1, 2]`
+-  std::optional<AxesToSliceForAllToAll> getAxesToSliceForAllToAll(
+-      int64_t srcDim) {
+-    AxisList& srcInAxes = inAxesPerDim[srcDim];
+-    if (srcInAxes.empty() || !outAxesPerDim[srcDim].empty()) {
+-      // No axes at source dimension to move, or source dimension has other axes
+-      // in output sharding.
+-      return std::nullopt;
+-    }
+-    auto outAxisEntryIt = outAxisToDimAndIndex.find(srcInAxes.back());
+-    if (outAxisEntryIt == outAxisToDimAndIndex.end()) {
+-      // First in axis at source isn't present in `outAxesPerDim`.
+-      return std::nullopt;
+-    }
+-
+-    int64_t tgtDim = outAxisEntryIt->second.dim;
+-    if (!inAxesPerDim[tgtDim].empty()) {
+-      // The target dimension is currently sharded on a misplaced axis.
+-      return std::nullopt;
+-    }
+-
+-    AxisList& tgtOutAxes = outAxesPerDim[tgtDim];
+-    // Find the first out axis beyond `srcInAxes.back()`.
+-    auto startOutAxisIt = ++llvm::find(tgtOutAxes, srcInAxes.back());
+-    if (startOutAxisIt == tgtOutAxes.end() ||
+-        inAxisSet.contains(*startOutAxisIt)) {
+-      // `tgtOutAxes` doesn't have any axes beyond `srcInAxes.back()` or the
+-      // first of those axes isn't available to slice.
+-      return std::nullopt;
+-    }
+-
+-    // Advance `inAxisRevIt` beyond the suffix of `srcInAxes` that is contained
+-    // in `tgtOutAxes`.
+-    auto inAxisRevIt = srcInAxes.rbegin();
+-    auto outAxisRevIt = std::make_reverse_iterator(startOutAxisIt);
+-    int64_t allToAllSize = 1;
+-    while (inAxisRevIt != srcInAxes.rend() &&
+-           outAxisRevIt != tgtOutAxes.rend() && *inAxisRevIt == *outAxisRevIt) {
+-      allToAllSize *= inAxisRevIt->getSize(mesh);
+-      ++inAxisRevIt;
+-      ++outAxisRevIt;
+-    }
+-
+-    int64_t srcPrefixSize = 1;
+-    for (; inAxisRevIt != srcInAxes.rend(); ++inAxisRevIt) {
+-      if (outAxisEntryIt = outAxisToDimAndIndex.find(*inAxisRevIt);
+-          outAxisEntryIt != outAxisToDimAndIndex.end() &&
+-          outAxisEntryIt->second.dim == tgtDim) {
+-        // There is an out of order axis in `srcInAxes` that appears in
+-        // `tgtOutAxes`.
+-        return std::nullopt;
+-      }
+-      srcPrefixSize *= inAxisRevIt->getSize(mesh);
+-    }
+-
+-    auto curOutAxisIt = startOutAxisIt;
+-    while (curOutAxisIt != tgtOutAxes.end() &&
+-           !inAxisSet.contains(*curOutAxisIt)) {
+-      // Current out axis is available to slice.
+-      allToAllSize *= (curOutAxisIt++)->getSize(mesh);
+-    }
+-
+-    if (getTensorShape(result)[srcDim] % (srcPrefixSize * allToAllSize) != 0) {
+-      // `srcDim` can't accommodate all output axes within range
+-      // [startOutAxisIt, curOutAxisIt).
+-      return std::nullopt;
+-    }
+-
+-    // Divide the capacity of `tgtDim` by the new sharded size of `srcDim`.
+-    capacityPerDim[tgtDim] /= allToAllSize;
+-
+-    return AxesToSliceForAllToAll{startOutAxisIt, curOutAxisIt};
+-  }
+-
+   // If an all-slice can be performed, returns the axes to slice for each
+   // dimension, otherwise returns std::nullopt.
+   //
+@@ -646,26 +515,19 @@ class CollectiveInserter {
+   //
+   // Constraint: we can only slice dimension d along axes whose product of
+   // sizes doesn't exceed the capacity for that dimension, otherwise we will
+-  // incur a redundant all-to-all. Under certain conditions (see
+-  // `getAxesToSliceForAllToAll`), we would use the capacity in one dimension to
+-  // slice in another dimension.
++  // incur a redundant all-to-all.
+   //
+   // Let `capacityPerDim[d]` be the capacity for dimension d. We update this
+   // value as we pick slicing axes, i.e., if we slice dimension d along an axis
+   // of size n, we divide `capacityPerDim[d]` by n.
+   //
+-  // We pick the slicing axes across all dimensions in three stages:
+-  //
+-  // 1. For each dimension `d1`, if certain conditions are met for another
+-  //    dimension `d2`, slice axes from `outAxesPerDim[d2]` at dimension `d1`,
+-  //    for a future all-to-all from `d1` to `d2` (see
+-  //   `getAxesToSliceForAllToAll`).
++  // We pick the slicing axes across all dimensions in two stages:
+   //
+-  // 2. For each dimension `d`, each axis A in `outAxesPerDim[d]` that isn't
++  // 1. For each dimension d, each axis A in `outAxesPerDim[d]` that isn't
+   //    present in `inAxisSet` (i.e., available to slice) is sliced on dimension
+   //    d as long as `capacityPerDim[d] > 1`.
+   //
+-  // 3. Then, we iterate over all remaining axes in `outAxesPerDim` that aren't
++  // 2. Then, we iterate over all remaining axes in `outAxesPerDim` that aren't
+   //    present in `inAxisSet` (i.e., available to slice), and slice each on the
+   //    first dimension d such that `capacityPerDim[d] > 1`.
+   //
+@@ -715,59 +577,21 @@ class CollectiveInserter {
+   // - `inAxesPerDim = [["y"], ["z"], []]`
+   // - `outAxesPerDim = [["x"], [], []]`
+   // - `currentAxesPerDim = [["y"], ["z"], ["w"]]`
+-  //
+-  // Example 3 (`getAxesToSliceForAllToAll`):
+-  //
+-  // Initial state:
+-  // - `mesh = {"x": 2, "y": 2, "z": 2, "w": 2}`
+-  // - `getTensorShape(result)` = [4, 8, 32]
+-  // - `inAxesPerDim = [["w"], ["x"], []]`
+-  // - `outAxesPerDim = [[], [], ["x", "y", "z", "w"]]`
+-  // - `capacityPerDim = [1, 1, 16]`
+-  //
+-  // Returns: `[[], ["y", "z"], []]`, and updates:
+-  // - `inAxesPerDim = [["w"], ["x", "y" "z"], []]`
+-  // - `outAxesPerDim = [[], [], ["x", "y", "z", "w"]]`
+-  // - `currentAxesPerDim = [["w"], ["x", "y", "z"], []]`
+   std::optional<AxesPerDim> getSlicingAxesPerDim() {
+     AxesPerDim slicingAxesPerDim(currentAxesPerDim.size());
+-    bool hasSlicingAxes = false;
++    AxisList availableOutAxes;
+ 
+-    // Initialize capacity per dimension.
+-    for (auto [inAxes, outAxes, dimCapacity] :
+-         llvm::zip_equal(inAxesPerDim, outAxesPerDim, capacityPerDim)) {
++    // 1. Slice axes in the dimension they appear in `outAxesPerDim`, i.e. the
++    // desired dimension, as long as the per-dim capacity allows.
++    bool hasSlicingAxes = false;
++    for (auto [inAxes, outAxes, currentAxes, slicingAxes, dimCapacity] :
++         llvm::zip_equal(inAxesPerDim, outAxesPerDim, currentAxesPerDim,
++                         slicingAxesPerDim, capacityPerDim)) {
+       int64_t inShardedSize = getShardedSize(inAxes, mesh);
+       int64_t outShardedSize = getShardedSize(outAxes, mesh);
+       dimCapacity = outShardedSize % inShardedSize == 0
+                         ? outShardedSize / inShardedSize
+                         : 1;
+-    }
+-
+-    // 1. For a future all-to-all from a source dimension `d1` to a target
+-    // dimension `d2`, slice axes from `outAxesPerDim[d2]` at the source
+-    // dimension `d1`.
+-    for (int64_t srcDim = 0; srcDim < getRank(); ++srcDim) {
+-      std::optional<AxesToSliceForAllToAll> axesToSlice =
+-          getAxesToSliceForAllToAll(srcDim);
+-      if (!axesToSlice) {
+-        continue;
+-      }
+-      hasSlicingAxes = true;
+-      std::for_each(axesToSlice->outAxisBeginIt, axesToSlice->outAxisEndIt,
+-                    [&](AxisRefAttr outAxis) {
+-                      inAxesPerDim[srcDim].push_back(outAxis);
+-                      inAxisSet.insert(outAxis);
+-                      addAxisOrMerge(slicingAxesPerDim[srcDim], outAxis, mesh);
+-                      addAxisOrMerge(currentAxesPerDim[srcDim], outAxis, mesh);
+-                    });
+-    }
+-
+-    // 2. Slice axes in the dimension they appear in `outAxesPerDim`, i.e. the
+-    // desired dimension, as long as the per-dim capacity allows.
+-    AxisList availableOutAxes;
+-    for (auto [inAxes, outAxes, currentAxes, slicingAxes, dimCapacity] :
+-         llvm::zip_equal(inAxesPerDim, outAxesPerDim, currentAxesPerDim,
+-                         slicingAxesPerDim, capacityPerDim)) {
+       auto outIt = outAxes.begin();
+       while (outIt != outAxes.end()) {
+         AxisRefAttr outAxis = *outIt;
+@@ -808,7 +632,7 @@ class CollectiveInserter {
+       }
+     }
+ 
+-    // 3. Slice axes in the first dimension that has enough capacity.
++    // 2. Slice axes in the first dimension that has enough capacity.
+     distributeInAxesWithinCapacity(
+         availableOutAxes, /*addToFront=*/false,
+         /*consumeAxisToAdd=*/[&](AxisRefAttr axisToAdd, int64_t dim) {
+@@ -837,7 +661,7 @@ class CollectiveInserter {
+ 
+   // We should insert a collective permute if one of the following holds:
+   //
+-  // 1. Both `inAxesPerDim[d]` and `outAxesPerDim[d]` aren't empty for a certain
++  // 1. Both `inAxesPerDim[d]` and `outAxesPerDim[d]` aren;t empty for a certain
+   //    dimension d. This means we can replace a prefix of `inAxesPerDim[d]`
+   //    with a prefix of `outAxesPerDim[d]`, such that the prefixes sharded size
+   //    is the minimum of the two sharded sizes. The in and out prefixes might
+diff --git a/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir b/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
+index d523489..a9ad433 100644
+--- a/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
+@@ -151,169 +151,29 @@ func.func @all_to_all_subaxis_and_full_axis_then_all_gather(%arg0 : tensor<16x8x
+   return %0 : tensor<16x8x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @slice_on_src_dim_then_all_to_all
+-func.func @slice_on_src_dim_then_all_to_all(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh4d_w4, [{}, {"w":(1)2}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"w":(2)2}] %arg0 out_sharding=<@mesh4d_w4, [{}, {"w"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w"} 1->0 %[[ALL_SLICE]] out_sharding=<@mesh4d_w4, [{"w"}, {}]>
++// TODO(b/394758885): All-slice at source dimension of all-to-all if it can
++// avoid a redundant collective permute
++
++// CHECK-LABEL: func @slice_on_src_dim_then_all_to_all_subaxis
++func.func @slice_on_src_dim_then_all_to_all_subaxis(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh4d_w4, [{}, {"w":(1)2}, {}]>}) -> tensor<16x8x8xf32> {
++  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"w":(2)2}, {}, {}] %arg0 out_sharding=<@mesh4d_w4, [{"w":(2)2}, {"w":(1)2}, {}]>
++  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh4d_w4, [{"w":(1)2}, {"w":(2)2}, {}]>
++  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w":(2)2} 1->0 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh4d_w4, [{"w"}, {}, {}]>
+   // CHECK-NEXT: return %[[ALL_TO_ALL]]
+-  %0 = sdy.reshard %arg0 <@mesh4d_w4, [{"w"}, {}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_on_src_dim_then_all_to_all_multiple_axes
+-func.func @slice_on_src_dim_then_all_to_all_multiple_axes(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{}, {"x"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"y", "z"}, {}] %arg0 out_sharding=<@mesh3d, [{}, {"x", "y", "z"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"x", "y", "z"} 1->2 %[[ALL_SLICE]] out_sharding=<@mesh3d, [{}, {}, {"x", "y", "z"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL]]
+-  %0 = sdy.reshard %arg0 <@mesh3d, [{}, {}, {"x", "y", "z"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_on_src_dim_then_two_all_to_alls
+-func.func @slice_on_src_dim_then_two_all_to_alls(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{"z"}, {"x"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"y"}, {}] %arg0 out_sharding=<@mesh3d, [{"z"}, {"x", "y"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"x", "y"} 1->2 %[[ALL_SLICE]] out_sharding=<@mesh3d, [{"z"}, {}, {"x", "y"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"z"} 0->2 %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d, [{}, {}, {"x", "y", "z"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL_1]]
+-  %0 = sdy.reshard %arg0 <@mesh3d, [{}, {}, {"x", "y", "z"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_on_src_dim_then_two_all_to_alls_2
+-func.func @slice_on_src_dim_then_two_all_to_alls_2(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{"y"}, {"x"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"z"}, {}, {}] %arg0 out_sharding=<@mesh3d, [{"y", "z"}, {"x"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"x"} 1->2 %[[ALL_SLICE]] out_sharding=<@mesh3d, [{"y", "z"}, {}, {"x"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"y", "z"} 0->2 %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d, [{}, {}, {"x", "y", "z"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL_1]]
+-  %0 = sdy.reshard %arg0 <@mesh3d, [{}, {}, {"x", "y", "z"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_on_src_dim_then_two_all_to_alls_diff_tgts
+-func.func @slice_on_src_dim_then_two_all_to_alls_diff_tgts(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{}, {"x", "y"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"z"}, {}] %arg0 out_sharding=<@mesh3d, [{}, {"x", "y", "z"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"y", "z"} 1->2 %[[ALL_SLICE]] out_sharding=<@mesh3d, [{}, {"x"}, {"y", "z"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"x"} 1->0 %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d, [{"x"}, {}, {"y", "z"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL_1]]
+-  %0 = sdy.reshard %arg0 <@mesh3d, [{"x"}, {}, {"y", "z"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_on_src_dim_then_all_to_all_and_all_gather
+-func.func @slice_on_src_dim_then_all_to_all_and_all_gather(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w4, [{"y", "z", "w":(1)2}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"w":(2)2}, {"x"}] %arg0 out_sharding=<@mesh4d_w4, [{"y", "z", "w"}, {"x"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w"} 0->1 %[[ALL_SLICE]] out_sharding=<@mesh4d_w4, [{"y", "z"}, {"x", "w"}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"z"}, {}] %[[ALL_TO_ALL]] out_sharding=<@mesh4d_w4, [{"y"}, {"x", "w"}]>
+-  // CHECK-NEXT: return %[[ALL_GATHER]]
+-  %0 = sdy.reshard %arg0 <@mesh4d_w4, [{"y"}, {"x", "w"}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_on_multiple_src_dims
+-func.func @slice_on_multiple_src_dims(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh4d, [{"z"}, {"x"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"w"}, {"y"}, {}] %arg0 out_sharding=<@mesh4d, [{"z", "w"}, {"x", "y"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"x", "y"} 1->2 %[[ALL_SLICE]] out_sharding=<@mesh4d, [{"z", "w"}, {}, {"x", "y"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"z", "w"} 0->2 %[[ALL_TO_ALL_0]] out_sharding=<@mesh4d, [{}, {}, {"x", "y", "z", "w"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL_1]]
+-  %0 = sdy.reshard %arg0 <@mesh4d, [{}, {}, {"x", "y", "z", "w"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_on_one_src_dim_but_not_other
+-func.func @slice_on_one_src_dim_but_not_other(%arg0 : tensor<2x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh4d, [{"z"}, {"x"}, {}]>}) -> tensor<2x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"y"}, {"w"}] %arg0 out_sharding=<@mesh4d, [{"z"}, {"x", "y"}, {"w"}]>
+-  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh4d, [{"y"}, {"z", "w"}, {"x"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"y"} 0->2 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh4d, [{}, {"z", "w"}, {"x", "y"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"z", "w"} 1->2 %[[ALL_TO_ALL_0]] out_sharding=<@mesh4d, [{}, {}, {"x", "y", "z", "w"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL_1]]
+-  %0 = sdy.reshard %arg0 <@mesh4d, [{}, {}, {"x", "y", "z", "w"}]> : tensor<2x8x8xf32>
+-  return %0 : tensor<2x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_on_src_dim_and_replace_axis_in_another_dim
+-func.func @slice_on_src_dim_and_replace_axis_in_another_dim(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh4d, [{"z"}, {"x"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"y"}, {}] %arg0 out_sharding=<@mesh4d, [{"z"}, {"x", "y"}, {}]>
+-  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh4d, [{"w"}, {"x", "y"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"x", "y"} 1->2 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh4d, [{"w"}, {}, {"x", "y"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL]]
+-  %0 = sdy.reshard %arg0 <@mesh4d, [{"w"}, {}, {"x", "y"}]> : tensor<16x8x8xf32>
++  %0 = sdy.reshard %arg0 <@mesh4d_w4, [{"w"}, {}, {}]> : tensor<16x8x8xf32>
+   return %0 : tensor<16x8x8xf32>
+ }
+ 
+-
+-// CHECK-LABEL: func @cannot_slice_on_src_dim_output_sharded
+-func.func @cannot_slice_on_src_dim_output_sharded(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{}, {"x"}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"y", "z"}, {}] %arg0 out_sharding=<@mesh3d, [{"y", "z"}, {"x"}]>
+-  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh3d, [{"x", "y"}, {"z"}]>
+-  // CHECK-NEXT: return %[[COLLECTIVE_PERMUTE]]
+-  %0 = sdy.reshard %arg0 <@mesh3d, [{"x", "y"}, {"z"}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @cannot_slice_on_src_dim_tgt_dim_sharded
+-func.func @cannot_slice_on_src_dim_tgt_dim_sharded(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{}, {"x"}, {"z"}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {}, {"y"}] %arg0 out_sharding=<@mesh3d, [{}, {"x"}, {"z", "y"}]>
+-  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh3d, [{}, {"z"}, {"x", "y"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"z"} 1->2 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh3d, [{}, {}, {"x", "y", "z"}]>
++// CHECK-LABEL: func @slice_on_src_dim_then_all_to_all_multiple_axes
++func.func @slice_on_src_dim_then_all_to_all_multiple_axes(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh4d_w4, [{}, {"x"}, {}]>}) -> tensor<16x8x8xf32> {
++  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {}, {"y", "z"}] %arg0 out_sharding=<@mesh4d_w4, [{}, {"x"}, {"y", "z"}]>
++  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh4d_w4, [{}, {"z"}, {"x", "y"}]>
++  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"z"} 1->2 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh4d_w4, [{}, {}, {"x", "y", "z"}]>
+   // CHECK-NEXT: return %[[ALL_TO_ALL]]
+-  %0 = sdy.reshard %arg0 <@mesh3d, [{}, {}, {"x", "y", "z"}]> : tensor<16x8x8xf32>
++  %0 = sdy.reshard %arg0 <@mesh4d_w4, [{}, {}, {"x", "y", "z"}]> : tensor<16x8x8xf32>
+   return %0 : tensor<16x8x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @cannot_slice_on_src_dim_axes_out_of_order
+-func.func @cannot_slice_on_src_dim_axes_out_of_order(%arg0 : tensor<4x10xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{}, {"x", "z"}]>}) -> tensor<4x10xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"y"}, {}] %arg0 out_sharding=<@mesh3d, [{"y"}, {"x", "z"}]>
+-  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh3d, [{"x"}, {"y", "z"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"y", "z"} 1->0 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh3d, [{"x", "y", "z"}, {}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL]]
+-  %0 = sdy.reshard %arg0 <@mesh3d, [{"x", "y", "z"}, {}]> : tensor<4x10xf32>
+-  return %0 : tensor<4x10xf32>
+-}
+-
+-// CHECK-LABEL: func @cannot_slice_on_src_dim_axes_non_contiguous
+-func.func @cannot_slice_on_src_dim_axes_non_contiguous(%arg0 : tensor<4x10xf32> {sdy.sharding=#sdy.sharding<@mesh4d, [{}, {"z", "w", "y"}]>}) -> tensor<4x10xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x"}, {}] %arg0 out_sharding=<@mesh4d, [{"x"}, {"z", "w", "y"}]>
+-  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh4d, [{"x"}, {"w", "y", "z"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"y", "z"} 1->0 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh4d, [{"x", "y", "z"}, {"w"}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{}, {"w"}] %[[ALL_TO_ALL]] out_sharding=<@mesh4d, [{"x", "y", "z"}, {}]>
+-  // CHECK-NEXT: return %[[ALL_GATHER]]
+-  %0 = sdy.reshard %arg0 <@mesh4d, [{"x", "y", "z"}, {}]> : tensor<4x10xf32>
+-  return %0 : tensor<4x10xf32>
+-}
+-
+-// CHECK-LABEL: func @cannot_slice_on_src_dim_size_too_small
+-func.func @cannot_slice_on_src_dim_size_too_small(%arg0 : tensor<16x4xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{}, {"x"}]>}) -> tensor<16x4xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"y", "z"}, {}] %arg0 out_sharding=<@mesh3d, [{"y", "z"}, {"x"}]>
+-  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh3d, [{"x", "y"}, {"z"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"z"} 1->0 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh3d, [{"x", "y", "z"}, {}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL]]
+-  %0 = sdy.reshard %arg0 <@mesh3d, [{"x", "y", "z"}, {}]> : tensor<16x4xf32>
+-  return %0 : tensor<16x4xf32>
+-}
+-
+-// TODO(tomnatan): this can be optimized by slicing "z" on dimension 0.
+-// CHECK-LABEL: func @cannot_slice_on_src_dim_size_too_small_2
+-func.func @cannot_slice_on_src_dim_size_too_small_2(%arg0 : tensor<16x4x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{}, {"x", "y"}, {}]>}) -> tensor<16x4x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {}, {"z"}] %arg0 out_sharding=<@mesh3d, [{}, {"x", "y"}, {"z"}]>
+-  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh3d, [{}, {"x", "z"}, {"y"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"z"} 1->2 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh3d, [{}, {"x"}, {"y", "z"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"x"} 1->0 %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d, [{"x"}, {}, {"y", "z"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL_1]]
+-  %0 = sdy.reshard %arg0 <@mesh3d, [{"x"}, {}, {"y", "z"}]> : tensor<16x4x8xf32>
+-  return %0 : tensor<16x4x8xf32>
+-}
+-
+-
+-// CHECK-LABEL: func @cannot_slice_on_src_dim_size_non_divisible
+-func.func @cannot_slice_on_src_dim_size_non_divisible(%arg0 : tensor<4x10xf32> {sdy.sharding=#sdy.sharding<@mesh2d, [{}, {"x"}]>}) -> tensor<4x10xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"y"}, {}] %arg0 out_sharding=<@mesh2d, [{"y"}, {"x"}]>
+-  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh2d, [{"x"}, {"y"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"y"} 1->0 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh2d, [{"x", "y"}, {}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL]]
+-  %0 = sdy.reshard %arg0 <@mesh2d, [{"x", "y"}, {}]> : tensor<4x10xf32>
+-  return %0 : tensor<4x10xf32>
+-}
+-
+ // CHECK-LABEL: func @replace_same_size_axes_same_dim
+ func.func @replace_same_size_axes_same_dim(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{"z"}, {"y"}]>}) -> tensor<16x8xf32> {
+   // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %arg0 out_sharding=<@mesh3d, [{"z"}, {"x"}]>
+@@ -573,7 +433,18 @@ func.func @replace_sub_axes(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.shardin
+ }
+ 
+ // CHECK-LABEL: func @replace_sub_axes_2
+-func.func @replace_sub_axes_2(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {}]>}) -> tensor<16x8xf32> {
++func.func @replace_sub_axes_2(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w4, [{"y", "z", "w":(1)2}, {}]>}) -> tensor<16x8xf32> {
++  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"x", "w":(2)2}] %arg0 out_sharding=<@mesh4d_w4, [{"y", "z", "w":(1)2}, {"x", "w":(2)2}]>
++  // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh4d_w4, [{"y", "z", "w":(2)2}, {"x", "w":(1)2}]>
++  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w":(2)2} 0->1 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh4d_w4, [{"y", "z"}, {"x", "w"}]>
++  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"z"}, {}] %[[ALL_TO_ALL]] out_sharding=<@mesh4d_w4, [{"y"}, {"x", "w"}]>
++  // CHECK-NEXT: return %[[ALL_GATHER]]
++  %0 = sdy.reshard %arg0 <@mesh4d_w4, [{"y"}, {"x", "w"}]> : tensor<16x8xf32>
++  return %0 : tensor<16x8xf32>
++}
++
++// CHECK-LABEL: func @replace_sub_axes_3
++func.func @replace_sub_axes_3(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {}]>}) -> tensor<16x8xf32> {
+   // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"x", "w":(2)2, "w":(8)2}] %arg0 out_sharding=<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {"x", "w":(2)2, "w":(8)2}]>
+   // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh4d_w16, [{"y", "z", "w":(1)2, "w":(8)2}, {"x", "w":(2)4}]>
+   // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w":(8)2} 0->1 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh4d_w16, [{"y", "z", "w":(1)2}, {"x", "w":(2)8}]>
+@@ -583,8 +454,8 @@ func.func @replace_sub_axes_2(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.shard
+   return %0 : tensor<16x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @replace_sub_axes_3
+-func.func @replace_sub_axes_3(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {}]>}) -> tensor<16x8xf32> {
++// CHECK-LABEL: func @replace_sub_axes_4
++func.func @replace_sub_axes_4(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {}]>}) -> tensor<16x8xf32> {
+   // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"x", "w":(2)2, "w":(8)2}] %arg0 out_sharding=<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {"x", "w":(2)2, "w":(8)2}]>
+   // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %[[ALL_SLICE]] out_sharding=<@mesh4d_w16, [{"y", "z", "w":(4)4}, {"x", "w":(1)4}]>
+   // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w":(4)4} 0->1 %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh4d_w16, [{"y", "z"}, {"x", "w"}]>
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 3447d7f..63bd1d1 100644
+index 63bd1d1..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,61 +1,24 @@
+@@ -1,24 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/libcxx/src/iostream.cpp b/libcxx/src/iostream.cpp
----- a/libcxx/src/iostream.cpp
--+++ b/libcxx/src/iostream.cpp
--@@ -18,8 +18,8 @@
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
-+--- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
-++++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
-+@@ -47,6 +47,7 @@
-  
-- template <class StreamT, class BufferT>
-- union stream_data {
---  stream_data() {}
---  ~stream_data() {}
--+  constexpr stream_data() {}
--+  constexpr ~stream_data() {}
--   struct {
--     // The stream has to be the first element, since that's referenced by the stream declarations in <iostream>
--     StreamT stream;
--@@ -38,13 +38,19 @@
-- #define CHAR_MANGLING_wchar_t "_W"
-- #define CHAR_MANGLING(CharT) CHAR_MANGLING_##CharT
-+ linux_defines = posix_defines + [
-+     "_GNU_SOURCE",
-++    "HAVE_GETAUXVAL=1",
-+     "HAVE_MALLINFO=1",
-+     "HAVE_SBRK=1",
-+     "HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC=1",
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h b/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
-+--- a/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
-++++ b/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
-+@@ -296,7 +296,7 @@
-  
--+#ifdef _LIBCPP_COMPILER_CLANG_BASED
--+#  define STRING_DATA_CONSTINIT constinit
--+#else
--+#  define STRING_DATA_CONSTINIT
--+#endif
--+
-- #ifdef _LIBCPP_ABI_MICROSOFT
-- #  define STREAM(StreamT, BufferT, CharT, var)                                                                         \
---    stream_data<StreamT<CharT>, BufferT<CharT>> var __asm__(                                                           \
--+    STRING_DATA_CONSTINIT stream_data<StreamT<CharT>, BufferT<CharT>> var __asm__(                                     \
--         "?" #var "@" ABI_NAMESPACE_STR "@std@@3V?$" #StreamT                                                           \
--         "@" CHAR_MANGLING(CharT) "U?$char_traits@" CHAR_MANGLING(CharT) "@" ABI_NAMESPACE_STR "@std@@@12@A")
-- #else
---#  define STREAM(StreamT, BufferT, CharT, var) stream_data<StreamT<CharT>, BufferT<CharT>> var
--+#  define STREAM(StreamT, BufferT, CharT, var) STRING_DATA_CONSTINIT stream_data<StreamT<CharT>, BufferT<CharT>> var
-- #endif
-+ /* HAVE_PROC_PID_RUSAGE defined in Bazel */
-  
-- // These definitions and the declarations in <iostream> technically cause ODR violations, since they have different
--diff -ruN --strip-trailing-cr a/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp b/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
----- a/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
--+++ b/libcxx/test/std/input.output/iostreams.base/ios.base/ios.types/ios_Init/ios_Init.global.pass.cpp
--@@ -0,0 +1,20 @@
--+//===----------------------------------------------------------------------===//
--+//
--+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
--+// See https://llvm.org/LICENSE.txt for license information.
--+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--+//
--+//===----------------------------------------------------------------------===//
--+
--+#include <iostream>
--+
--+// FIXME: Remove after issue https://github.com/llvm/llvm-project/issues/127348 resolved.
--+extern "C" const char* __asan_default_options() { return "check_initialization_order=true:strict_init_order=true"; }
--+
--+// Test that ios used from globals constructors doesn't trigger Asan initialization-order-fiasco.
--+
--+struct Global {
--+  Global() { std::cout << "Hello!"; }
--+} global;
--+
--+int main(int, char**) { return 0; }
-+-#define HAVE_GETAUXVAL 1
-++/* HAVE_GETAUXVAL defined in Bazel */
-+ 
-+ /* Directly provide definitions here behind platform preprocessor definitions.
-+  * The preprocessor conditions are sufficient to handle all of the configuration
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+---- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
+-+++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+-@@ -47,6 +47,7 @@
+- 
+- linux_defines = posix_defines + [
+-     "_GNU_SOURCE",
+-+    "HAVE_GETAUXVAL=1",
+-     "HAVE_MALLINFO=1",
+-     "HAVE_SBRK=1",
+-     "HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC=1",
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h b/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
+---- a/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
+-+++ b/utils/bazel/llvm-project-overlay/llvm/include/llvm/Config/config.h
+-@@ -296,7 +296,7 @@
+- 
+- /* HAVE_PROC_PID_RUSAGE defined in Bazel */
+- 
+--#define HAVE_GETAUXVAL 1
+-+/* HAVE_GETAUXVAL defined in Bazel */
+- 
+- /* Directly provide definitions here behind platform preprocessor definitions.
+-  * The preprocessor conditions are sufficient to handle all of the configuration
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index d9df9e1..4e47ed6 100644
+index 4e47ed6..8434091 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "34cf04b59b8d94c8eeb9929ec2cd3d63631af86f"
--    LLVM_SHA256 = "9d4aa8733f70a3d34cac99afa1272d4b8db40dddeef78a25113cd247fbf41ff4"
-+    LLVM_COMMIT = "9d24f943794420e512512eb9329341355e9289f8"
-+    LLVM_SHA256 = "cb4978fabca599647b7f728f236c9e8f3cbe762284ddc653a9bf0ed9ff203448"
+-    LLVM_COMMIT = "9d24f943794420e512512eb9329341355e9289f8"
+-    LLVM_SHA256 = "cb4978fabca599647b7f728f236c9e8f3cbe762284ddc653a9bf0ed9ff203448"
++    LLVM_COMMIT = "0afe2bd21b06bed4d48eb88a99d13a768426359c"
++    LLVM_SHA256 = "971b5e4c01d47ff18774e2d6511dc51654421bce925c6c773bd7985eebc9ca61"
  
      tf_http_archive(
          name = name,
