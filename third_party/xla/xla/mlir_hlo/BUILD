@@ -328,6 +328,7 @@ cc_library(
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
