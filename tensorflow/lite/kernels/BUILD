@@ -169,7 +169,7 @@ cc_library(
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@flatbuffers",
-        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:logging",
     ],
 )
 
