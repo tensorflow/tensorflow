@@ -514,7 +514,7 @@ Expected<ApplyPluginsResult> ApplyPlugins(
     LiteRtHwAcceleratorSet selected_hw_accelerators) {
   std::string compiler_plugin_lib_path = ".";
   auto option =
-      environment->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryPath);
+      environment->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryDir);
   if (option.has_value() && option->type == kLiteRtAnyTypeString) {
     compiler_plugin_lib_path = option->str_value;
   }
