@@ -12,7 +12,7 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_utils.h"
 
 #include <gtest/gtest.h>
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::gpu::nvptx {
 namespace {
