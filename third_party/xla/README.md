@@ -12,6 +12,8 @@ The XLA compiler takes models from popular ML frameworks such as PyTorch,
 TensorFlow, and JAX, and optimizes them for high-performance execution across
 different hardware platforms including GPUs, CPUs, and ML accelerators.
 
+[openxla.org](https://openxla.org/) is the project's website.
+
 ## Get started
 
 If you want to use XLA to compile your ML project, refer to the corresponding
