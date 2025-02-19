@@ -52,8 +52,6 @@ TFTPU_CAPI_EXPORT void TfTpu_Initialize(bool init_library, int num_args,
 }
 #endif
 
-struct TfTpu_BaseFn {
-  TFTPU_ADD_FN_IN_STRUCT(TfTpu_Initialize);
-};
+struct TfTpu_BaseFn {};
 
 #endif  // XLA_STREAM_EXECUTOR_TPU_LIBTFTPU_H_
