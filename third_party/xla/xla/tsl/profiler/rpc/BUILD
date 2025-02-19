@@ -26,7 +26,7 @@ cc_library(
         "//tensorflow/python:__pkg__",
         "//xla/tsl/profiler/rpc/client:__pkg__",
         "//tensorflow_serving/model_servers:__pkg__",
-        "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
     ]),
     deps = [
         "//xla/tsl/platform:env",
@@ -66,7 +66,7 @@ cc_library(
         "//xla:__subpackages__",
         "//tensorflow/core/profiler/rpc:__pkg__",
         "//tensorflow/python:__pkg__",
-        "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler/rpc/client:__pkg__",
     ]),

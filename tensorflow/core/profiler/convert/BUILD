@@ -1,10 +1,16 @@
+load(
+    "@local_xla//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
 load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_alias", "tf_profiler_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/core/profiler:internal"],
+    default_visibility = internal_visibility([
+        "//tensorflow/core/profiler:internal",
+    ]),
     licenses = ["notice"],
 )
 

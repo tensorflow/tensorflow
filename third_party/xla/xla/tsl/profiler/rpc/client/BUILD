@@ -29,6 +29,7 @@ cc_library(
         "//xla/python:__pkg__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
     ]),
     deps = [
         ":profiler_client_for_pybind",
@@ -84,7 +85,7 @@ tf_profiler_pybind_cc_library_wrapper(
     actual = ":profiler_client",
     visibility = internal_visibility([
         "//tensorflow/core/profiler/rpc/client:__pkg__",
-        "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
     ]),
 )
 
@@ -94,7 +95,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla:__subpackages__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
-        "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
     ]),
     deps = [
         ":profiler_client_impl",
@@ -118,7 +119,7 @@ cc_library(
         "//xla/python:__pkg__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python:__pkg__",
-        "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
     ]),
     deps = [
         "//xla/tsl/platform:errors",
