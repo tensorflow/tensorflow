@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
-#include <memory>
 
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/c/c_api_types.h"
