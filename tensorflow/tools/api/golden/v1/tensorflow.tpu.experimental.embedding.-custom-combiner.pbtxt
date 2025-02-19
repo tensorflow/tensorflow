@@ -1,0 +1,10 @@
+path: "tensorflow.tpu.experimental.embedding.CustomCombiner"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils.CustomCombiner\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils._WithSlotVariables\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'combiner_computation\', \'max_valency\', \'num_weights\', \'initializer\', \'combiner_weights_learning_rate\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'0.01\'], "
+  }
+}
