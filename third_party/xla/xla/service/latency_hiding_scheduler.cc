@@ -491,6 +491,9 @@ absl::string_view AsyncTracker::GetResourceUsageName(
 
 ResourceHazardType AsyncTracker::GetResourceHazardType(
     int64_t resource_type) const {
+  if (resource_type == ResourceTypeToIndex(ResourceType::kCopy)) {
+    return ResourceHazardType::kShareable;
+  }
   return ResourceHazardType::kUnshareable;
 }
 
@@ -1553,6 +1556,21 @@ bool DefaultSchedulerCore::AddOccupierToResource(
         accumulated_delay < new_edge.OriginalLatency() + 0.0001);
   for (; it != occupiers.end(); it++) {
     it->second += accumulated_delay;
+  }
+
+  // Update the ready time of the occupiers.
+  for (auto it = occupiers.begin(); it != occupiers.end(); it++) {
+    HloGraphNode* done_node = it->first->TargetPtr();
+    if (done_node == nullptr) {
+      continue;
+    }
+    if (done_node->GetReadyTime() < it->second) {
+      for (HloEdge& start_edge : done_node->GetPredecessors()) {
+        if (start_edge.Target().GetReadyTime() < it->second) {
+          start_edge.Target().SetReadyTime(it->second);
+        }
+      }
+    }
   }
   return true;
 }
