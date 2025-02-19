@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 
 #include <memory>
+#include <optional>
+#include <set>
 
-#include "absl/memory/memory.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
@@ -26,7 +29,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
