@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <optional>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
@@ -81,6 +83,41 @@ SmallVector<unsigned> SparseDotMetaEncodingAttr::getRepOrder() const {
   if (auto parent = mlir::dyn_cast<gpu::DistributedEncodingTrait>(getParent()))
     return parent.getRepOrder();
   llvm::report_fatal_error("Unimplemented usage of getRepOrder");
+}
+
+namespace {
+mlir::ParseResult parseI64ArrayAttr(mlir::AsmParser& parser,
+                                    mlir::DenseI64ArrayAttr& array) {
+  array = mlir::dyn_cast_or_null<mlir::DenseI64ArrayAttr>(
+      mlir::DenseI64ArrayAttr::parse(parser, mlir::Type{}));
+  if (!array) return mlir::failure();
+  return mlir::success();
+}
+}  // namespace
+
+Attribute TmaDescriptorAttr::parse(mlir::AsmParser& parser, mlir::Type) {
+  int element_byte_size;
+  DenseI64ArrayAttr global_shape, block_shape;
+
+  if (parser.parseLess() || parser.parseKeyword("global_shape") ||
+      parser.parseEqual() || parseI64ArrayAttr(parser, global_shape) ||
+      parser.parseComma() || parser.parseKeyword("block_shape") ||
+      parser.parseEqual() || parseI64ArrayAttr(parser, block_shape) ||
+      parser.parseComma() || parser.parseKeyword("element_byte_size") ||
+      parser.parseEqual() || parser.parseInteger(element_byte_size) ||
+      parser.parseGreater()) {
+    return {};
+  }
+  return TmaDescriptorAttr::get(parser.getContext(), global_shape.asArrayRef(),
+                                block_shape.asArrayRef(), element_byte_size);
+}
+
+void TmaDescriptorAttr::print(mlir::AsmPrinter& printer) const {
+  printer << "<global_shape = [";
+  llvm::interleaveComma(getGlobalShape(), printer);
+  printer << "], block_shape = [";
+  llvm::interleaveComma(getBlockShape(), printer);
+  printer << "], element_byte_size = " << getElementByteSize() << ">";
 }
 
 }  // namespace mlir::triton::xla

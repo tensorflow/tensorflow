@@ -32,5 +32,19 @@ def TTXLA_SparseDotMetaEncodingAttr : DistributedEncoding<"SparseDotMetaEncoding
   }];
 }
 
+class TTXLA_Attr<string name, list<Trait> traits = []> :
+      AttrDef<XlaTritonDialect, name, traits> {
+}
+
+def XLA_TmaDescriptorAttr : TTXLA_Attr<"TmaDescriptor"> {
+  let summary = "Contains the necessary data to generate TMA descriptors.";
+  let mnemonic = "tma_descriptor";
+  let parameters = (ins
+    ArrayRefParameter<"int64_t", "">:$global_shape,
+    ArrayRefParameter<"int64_t", "">:$block_shape,
+    "int":$element_byte_size
+  );
+  let hasCustomAssemblyFormat = 1;
+}
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_ATTRS_TD_
