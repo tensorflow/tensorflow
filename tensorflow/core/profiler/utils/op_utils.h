@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_OP_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_OP_UTILS_H_
 
+#include <cstdint>
+
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
