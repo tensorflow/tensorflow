@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_SIZE_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_SIZE_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_SHAPE_AND_SIZE_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_SHAPE_AND_SIZE_UTILS_H_
 
 #include <cstdint>
+
+#include "mlir/Support/LLVM.h"
+#include "absl/status/statusor.h"
 
 namespace mlir {
 namespace TFL {
@@ -26,7 +29,16 @@ namespace TFL {
 // TFLite-specific value.
 int32_t ConvertToTfliteSize(int64_t size);
 
+// Returns the quantization dimension after a reshape operation.
+//
+// TFL Reshape Op can fold multiple dimensions into one, or split one
+// dimension into multiple dimensions. This function will return an error if the
+// input quantization dimension is part of the folded/split dimensions.
+absl::StatusOr<int32_t> GetQuantDimensionAfterReshape(
+    mlir::ArrayRef<int64_t> input_shape, mlir::ArrayRef<int64_t> output_shape,
+    int32_t input_quant_dim);
+
 }  // namespace TFL
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_UTILS_SIZE_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_UTILS_SHAPE_AND_SIZE_UTILS_H_

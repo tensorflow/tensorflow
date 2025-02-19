@@ -71,7 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
-#include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"

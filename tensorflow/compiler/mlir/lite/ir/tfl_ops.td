@@ -3030,6 +3030,8 @@ def TFL_ReshapeOp: TFL_Op<"reshape", [
 
   let extraClassDeclaration = [{
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+    // Quantized axes are verified in the Verify function.
+    bool RequiredSameQuantizedAxes() { return false; }
   }];
 }
 

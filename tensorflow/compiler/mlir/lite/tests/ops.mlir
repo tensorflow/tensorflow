@@ -2776,6 +2776,24 @@ func.func @if_then(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
 
 // -----
 
+func.func @test_reshape_with_per_axis_quant_dim(%arg0: tensor<1x2x3x4x5x!quant.uniform<i4:f32:4, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>) -> tensor<24x5x!quant.uniform<i4:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>> {
+  %cst = arith.constant dense<[24, 5]> : tensor<2xi32>
+  // CHECK: "tfl.reshape"(%arg0, %cst)
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x2x3x4x5x!quant.uniform<i4:f32:4, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>, tensor<2xi32>) -> tensor<24x5x!quant.uniform<i4:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>
+  func.return %0 : tensor<24x5x!quant.uniform<i4:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>
+}
+
+// -----
+
+func.func @test_reshape_with_per_axis_quant_dim_1(%arg0: tensor<1x2x3x4x5x!quant.uniform<i4<-7:7>:f32:4, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>) -> tensor<24x5x!quant.uniform<i4<-7:7>:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>> {
+  %cst = arith.constant dense<[24, 5]> : tensor<2xi32>
+  // CHECK: "tfl.reshape"(%arg0, %cst)
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x2x3x4x5x!quant.uniform<i4<-7:7>:f32:4, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>, tensor<2xi32>) -> tensor<24x5x!quant.uniform<i4<-7:7>:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>
+  func.return %0 : tensor<24x5x!quant.uniform<i4<-7:7>:f32:1, {0.2345, 0.2345, 0.2345, 0.2345, 0.2345}>>
+}
+
+// -----
+
 // CHECK-LABEL: valid_unranked_inputs_on_reshape
 func.func @valid_unranked_inputs_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<*xi32>) -> tensor<3x4xi32> {
   // CHECK: "tfl.reshape"(%arg0, %arg1)
