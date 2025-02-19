@@ -2563,7 +2563,8 @@ TfLiteStatus Subgraph::SetCustomAllocationForTensor(
   TF_LITE_ENSURE(context(),
                  (tensor->allocation_type == kTfLiteArenaRw ||
                   tensor->allocation_type == kTfLiteArenaRwPersistent ||
-                  tensor->allocation_type == kTfLiteCustom));
+                  tensor->allocation_type == kTfLiteCustom ||
+                  tensor->allocation_type == kTfLiteNonCpu));
   // Don't check allocation.bytes here, we do that after all ops are prepared
   // to allow tensor shape propagation.
   TF_LITE_ENSURE(context(), allocation.data != nullptr);

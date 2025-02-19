@@ -33,6 +33,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
@@ -49,6 +50,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
+#include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
@@ -211,14 +213,40 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
 
   compiled_model->RegisterDelegate(std::move(dispatch_delegate));
 
+  compiled_model->CheckCpuTensors();
   return compiled_model;
+}
+
+void LiteRtCompiledModelT::CheckCpuTensors() {
+  cpu_tensors_.clear();
+  for (int subgraph_no = 0; subgraph_no < interp_->subgraphs_size();
+       ++subgraph_no) {
+    auto* subgraph = interp_->subgraph(subgraph_no);
+    for (auto& node_and_registration : subgraph->nodes_and_registration()) {
+      auto& node = node_and_registration.first;
+      auto& registration = node_and_registration.second;
+      if (registration.builtin_code == kTfLiteBuiltinCustom &&
+          litert::internal::kLiteRtDispatchOpCustomCode ==
+              registration.custom_name)
+        continue;
+      for (int i = 0; i < node.inputs->size; ++i) {
+        int input_tensor_index = node.inputs->data[i];
+        if (input_tensor_index == kTfLiteOptionalTensor) continue;
+        cpu_tensors_.insert(subgraph->tensor(input_tensor_index));
+      }
+    }
+  }
 }
 
 litert::Expected<LiteRtTensorBufferRequirements>
 LiteRtCompiledModelT::GetTensorBufferRequirements(const TfLiteTensor* tensor) {
-  auto requirements = buffer_context_->GetBufferRequirement(tensor);
-  if (requirements) {
-    return (*requirements)->Get();
+  // Use the buffer context to get the buffer requirements only if the tensor
+  // is not a CPU tensor.
+  if (cpu_tensors_.find(tensor) == cpu_tensors_.end()) {
+    auto requirements = buffer_context_->GetBufferRequirement(tensor);
+    if (requirements) {
+      return (*requirements)->Get();
+    }
   }
   LiteRtTensorBufferRequirements litert_cpu_buffer_requirements;
   LiteRtTensorBufferType cpu_buffer_type[] = {
@@ -369,6 +397,26 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
       }
       return {};
     }
+  }
+
+  // If the tensor is shared with CPU, register tensor buffer as is and let
+  // accelerator handle the conversion.
+  if (cpu_tensors_.find(tensor) != cpu_tensors_.end()) {
+    void* host_mem_addr;
+    if (auto status = LiteRtLockTensorBuffer(buffer, &host_mem_addr);
+        status != kLiteRtStatusOk) {
+      return Unexpected(status, "Failed to lock the tensor buffer");
+    }
+    locked_buffers.push_back(buffer);
+    TfLiteCustomAllocation custom_allocation{host_mem_addr, tensor->bytes};
+    if (is_input) {
+      runner->SetCustomAllocationForInputTensor(tensor_name, custom_allocation,
+                                                /*flags=*/0);
+    } else {
+      runner->SetCustomAllocationForOutputTensor(tensor_name, custom_allocation,
+                                                 /*flags=*/0);
+    }
+    return {};
   }
   // TODO: b/382330322 - Add buffer conversion logic instead of returning error.
   return Unexpected(kLiteRtStatusErrorRuntimeFailure,
