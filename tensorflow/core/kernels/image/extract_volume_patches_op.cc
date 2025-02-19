@@ -21,24 +21,24 @@ Rates are not supported as of now, but the comments hint how to edit the code
 when rates are to be added.
 */
 
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/ops_util.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/util/padding.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/image/extract_volume_patches_op.h"
-
 #include <vector>
 
-#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/image/extract_volume_patches_op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
