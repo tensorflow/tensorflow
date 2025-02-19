@@ -16,6 +16,9 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <cstdint>
+#include <cstdlib>
+
 #define FIXED_POINT 16
 #include "kiss_fft.h"
 #include "kiss_fftr.h"
