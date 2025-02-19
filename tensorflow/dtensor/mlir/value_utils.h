@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_VALUE_UTILS_H_
 #define TENSORFLOW_DTENSOR_MLIR_VALUE_UTILS_H_
 
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
