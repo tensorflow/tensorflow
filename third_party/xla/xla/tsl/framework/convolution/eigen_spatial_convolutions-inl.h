@@ -1604,8 +1604,8 @@ SpatialConvolution(const Input& input, const Kernel& kernel,
                    Index padding_left = 0, Index padding_right = 0) {
   typedef typename internal::traits<Input>::Index TensorIndex;
   typedef typename internal::traits<Input>::Scalar InputScalar;
-  TensorRef<Tensor<InputScalar, internal::traits<Input>::NumDimensions,
-                   internal::traits<Input>::Layout, TensorIndex> >
+  TensorRef<const Tensor<InputScalar, internal::traits<Input>::NumDimensions,
+                         internal::traits<Input>::Layout, TensorIndex> >
       in(input);
   TensorRef<Tensor<typename internal::traits<Kernel>::Scalar,
                    internal::traits<Kernel>::NumDimensions,
