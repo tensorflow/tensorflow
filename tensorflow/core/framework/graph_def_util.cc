@@ -258,7 +258,7 @@ absl::Status StrippedOpListForGraph(const GraphDef& graph_def,
     const OpDef* op_def;
     TF_RETURN_IF_ERROR(op_registry.LookUpOpDef(op_name, &op_def));
     OpDef* stripped_op = stripped_op_list->add_op();
-    stripped_op->CopyFrom(*op_def);
+    *stripped_op = *op_def;
     RemoveDescriptionsFromOpDef(stripped_op);
   }
   return absl::OkStatus();
