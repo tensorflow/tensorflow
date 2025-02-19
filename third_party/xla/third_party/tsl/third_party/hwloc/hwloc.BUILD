@@ -272,6 +272,10 @@ cc_library(
             "hwloc/topology-linux.c",
             "include/hwloc/linux.h",
         ],
+        "@local_xla//xla/tsl:linux_s390x": [
+            "hwloc/topology-linux.c",
+            "include/hwloc/linux.h",
+        ],
         "@local_xla//xla/tsl:freebsd": [
             "hwloc/topology-freebsd.c",
             "hwloc/topology-x86.c",
