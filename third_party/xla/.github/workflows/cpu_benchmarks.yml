@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-name: Benchmarks
-
+name: CPU Benchmarks
+permissions:
+  contents: read
 on:
   workflow_dispatch:  # Allows manual triggering
   schedule:
@@ -71,13 +72,11 @@ jobs:
           fi
 
       - name: Checkout OpenXLA
-        uses: actions/checkout@v3
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
-          repository: openxla/xla
-          path: openxla
+          path: "openxla/xla"
 
       - name: Create results directory
-        working-directory: openxla
         run:
           mkdir results
 
@@ -89,7 +88,6 @@ jobs:
           uname -a # Kernel information
 
       - name: Run E2E benchmarks flax_2b
-        working-directory: openxla
         timeout-minutes: 60
         run: |
           cd xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
@@ -97,16 +95,13 @@ jobs:
           bash run.sh | tee -a ../../../../../../../results/flax_2b.log
 
       - name: Configure CPU backend
-        working-directory: openxla
         run: |
           ./configure.py --backend=CPU
 
       - name: Build run_hlo_module
-        working-directory: openxla
         run: bazel build -c opt --dynamic_mode=off xla/tools:run_hlo_module
 
       - name: Run HLO Module Benchmarks
-        working-directory: openxla
         continue-on-error: true
         run: |
           for file in xla/tests/fuzz/*.hlo; do
@@ -121,11 +116,9 @@ jobs:
           done
 
       - name: Build CPU Benchmarks
-        working-directory: openxla
         run: bazel build -c opt --dynamic_mode=off //xla/backends/cpu/benchmarks:*
 
       - name: Run CPU benchmarks
-        working-directory: openxla
         continue-on-error: true
         run: |
           find ./bazel-bin/xla/backends/cpu/benchmarks/ -maxdepth 1 -type f -executable -name "*_test" -print0 | while IFS= read -r -d $'\0' benchmark; do
@@ -145,7 +138,7 @@ jobs:
           done
 
       - name: Upload Results ${{ matrix.build_target }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           name: cpu-xla-benchmarks-${{ matrix.job_info.os }}
           path: xla/results
