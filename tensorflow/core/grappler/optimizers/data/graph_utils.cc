@@ -15,11 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
-#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/dataset_metadata.pb.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/strcat.h"
