@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -178,7 +180,8 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
                              pass_name, hlo->name(), UniqueId(*hlo));
     }};
     VLOG(1) << "  HLO pass " << pass_name;
-    VLOG(2) << "  Module hash " << absl::HashOf(*hlo);
+    size_t hash_before = absl::HashOf(*hlo);
+    VLOG(2) << "  Module hash " << hash_before;
     tsl::profiler::TraceMe traceme(pass->name());
     if (!pass->IsPassPipeline()) {
       compilation_stats_->StartPass(pass_name);
@@ -190,6 +193,27 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
           pass_name, absl::StatusCodeToString(status.code()));
     }
     TF_ASSIGN_OR_RETURN(bool pass_changed, status_or_changed);
+    if (debug_options.xla_unsupported_crash_on_hlo_pass_silent_hlo_change() ||
+        debug_options.xla_unsupported_crash_on_hlo_pass_noop_change()) {
+      // Fail if pass changed HLO but has reported that it didn't.
+      size_t hash_after = absl::HashOf(*hlo);
+      if (!pass_changed && (hash_after != hash_before) &&
+          debug_options.xla_unsupported_crash_on_hlo_pass_silent_hlo_change()) {
+        LOG(FATAL) << absl::StrFormat(
+            "Pass '%s' in pipeline '%s' reported that it did not change the "
+            "HLO but the hash of HLO was changed from %d to %d. HLO text "
+            "after:\n%s",
+            pass_name, pipeline_name, hash_before, hash_after, hlo->ToString());
+      }
+      // Fail if pass did not change HLO but has reported that it did.
+      if (pass_changed && (hash_after == hash_before) &&
+          debug_options.xla_unsupported_crash_on_hlo_pass_noop_change()) {
+        LOG(FATAL) << absl::StrFormat(
+            "Pass '%s' in pipeline '%s' reported that it changed the HLO but "
+            "the hash of HLO. HLO text after:\n%s",
+            pass_name, pipeline_name, hlo->ToString());
+      }
+    }
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,
                                    /*after_pass_name=*/pass_name,
