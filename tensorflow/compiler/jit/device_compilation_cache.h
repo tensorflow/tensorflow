@@ -22,12 +22,16 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/local_client.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -99,6 +103,31 @@ class DeviceCompilationCache {
              std::optional<std::unique_ptr<ExecutableType>> executable);
 
   std::string DebugString() const;
+
+  // Returns all references to `xla::XlaComputation` in this cache.
+  //
+  // This is to be called after all compilation from HLO to `ExecutableType` is
+  // complete in the program's lifetime. The referenced `xla::XlaComputation`
+  // are returned instead of deleted so that their destruction can be deferred
+  // until after releasing locks on the data structure(s) that own this cache.
+  void Finalize() {
+    const mutex_lock lock(compile_cache_mu_);
+    absl::erase_if(
+        cache_,
+        [&](std::pair<const Key, absl::Nullable<std::unique_ptr<Entry>>>& kv) {
+          const absl::Nullable<Entry*> entry = kv.second.get();
+          if (entry == nullptr) {
+            return true;
+          }
+
+          const mutex_lock entry_lock(entry->mu);
+          if (entry->compilation_result != nullptr) {
+            entry->compilation_result->computation = nullptr;
+          }
+
+          return false;
+        });
+  };
 
  private:
   // The value associated with a cache entry.

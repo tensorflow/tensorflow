@@ -26,6 +26,7 @@ load(
     "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
     "tf_cc_fuzz_test",
 )
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 default_visibility = [
     "//tensorflow/core:__subpackages__",
@@ -42,6 +43,7 @@ default_visibility = [
     # copybara:uncomment "//third_party/odml/experimental:__subpackages__",
     #internal nexus library,
     #internal nexus library tests,
+    "//tensorflow/compiler/jit:__subpackages__",
 ]
 
 package(
@@ -736,8 +738,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
-        "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -1449,6 +1451,41 @@ cc_library(
     tags = ["avoid_dep"],
     textual_hdrs = ["op_gen_lib.h"],
     visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "resource_mgr",
+    srcs = ["resource_mgr.cc"],
+    hdrs = ["resource_mgr.h"],
+    deps = [
+        ":common_shape_fns",
+        ":device_attributes_proto_cc",
+        ":node_def_proto_cc",
+        ":node_def_util",
+        ":resource_base",
+        ":resource_handle",
+        ":tensor",
+        ":tensor_shape",
+        ":tensor_types",
+        ":type_index",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/gtl:map_util",
+        "//tensorflow/core/lib/hash",
+        "//tensorflow/core/lib/strings:scanner",
+        "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/lib/strings:stringprintf",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/core/platform:thread_annotations",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:variant",
+    ],
 )
 
 # All framework protos are self-contained, i.e. they only import other

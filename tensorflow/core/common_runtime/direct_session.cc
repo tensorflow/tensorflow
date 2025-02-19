@@ -20,7 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
@@ -48,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/run_handler.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -2050,6 +2053,27 @@ absl::Status DirectSession::Finalize() {
   }
   execution_state_.reset();
   flib_def_.reset();
+
+  absl::flat_hash_set<absl::Nonnull<ResourceMgr*>> resource_managers;
+  for (Device* const this_device : devices_) {
+    if (this_device == nullptr) {
+      continue;
+    }
+
+    const absl::Nullable<ResourceMgr*> this_resource_manager =
+        this_device->resource_manager();
+    if (this_resource_manager == nullptr) {
+      continue;
+    }
+
+    resource_managers.insert(this_resource_manager);
+  }
+
+  for (const absl::Nonnull<ResourceMgr*> this_resource_manager :
+       resource_managers) {
+    this_resource_manager->Finalize();
+  }
+
   finalized_ = true;
   return absl::OkStatus();
 }
