@@ -48,6 +48,12 @@ struct PluginCompileOptions
   PluginCompileOptions() = default;
   ~PluginCompileOptions() override = default;
 
+  enum class InputFormat {
+    kJson = 0,
+    kBinaryProto = 1,
+  };
+  InputFormat input_format;
+
   static char ID;  // NOLINT
 };
 
