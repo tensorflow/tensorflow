@@ -451,4 +451,14 @@ cc_test(
 # )
 # copybara:uncomment_end
 
+cc_library(
+    name = "litert_tensor_buffer_utils",
+    srcs = ["litert_tensor_buffer_utils.cc"],
+    hdrs = ["litert_tensor_buffer_utils.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+    ],
+)
+
 exports_files(srcs = glob(["litert_*.h"]))

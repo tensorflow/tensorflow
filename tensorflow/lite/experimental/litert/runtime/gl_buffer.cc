@@ -16,6 +16,8 @@
 
 #if LITERT_HAS_OPENGL_SUPPORT
 
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include <GLES3/gl31.h>
 #include <GLES3/gl32.h>
 
@@ -48,7 +50,9 @@ Expected<GlBuffer> GlBuffer::Alloc(size_t bytes_size) {
 }
 
 template Expected<float*> GlBuffer::Lock<float>();
+template Expected<char*> GlBuffer::Lock<char>();
 template Expected<void> GlBuffer::Unlock<float>();
+template Expected<void> GlBuffer::Unlock<char>();
 
 template <typename T>
 Expected<T*> GlBuffer::Lock() {
