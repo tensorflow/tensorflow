@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/java/src/main/native/saved_model_bundle_jni.h"
+
+#include <cstddef>
 #include <limits>
 #include <memory>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
-#include "tensorflow/java/src/main/native/saved_model_bundle_jni.h"
 
 JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(
     JNIEnv* env, jclass clazz, jstring export_dir, jobjectArray tags,
