@@ -21,7 +21,7 @@ limitations under the License.
 /// named computations in a single model, each with its own inputs/outputs.
 ///
 /// Do NOT include this file directly,
-/// instead include third_party/tensorflow/lite/signature_riunner.h
+/// instead include third_party/tensorflow/lite/signature_runner.h
 /// See third_party/tensorflow/lite/c/common.h for the API for defining
 /// operations (TfLiteRegistration).
 
