@@ -16,6 +16,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_HELPERS_H_
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 
