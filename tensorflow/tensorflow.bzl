@@ -1383,6 +1383,7 @@ def _generate_op_reg_offsets_impl(ctx):
         tools = [ctx.executable._offset_counter],
         executable = ctx.executable._offset_counter,
         arguments = [args],
+        use_default_shell_env = True,
     )
 
 generate_op_reg_offsets = rule(
