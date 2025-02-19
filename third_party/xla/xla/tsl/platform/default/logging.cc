@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
@@ -511,22 +513,19 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
 #else   // PLATFORM_POSIX_ANDROID
   static const internal::VlogFileMgr vlog_file;
   static bool log_thread_id = internal::EmitThreadIdFromEnv();
-  uint64_t now_micros = EnvTime::NowMicros();
-  time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
-  int32_t micros_remainder = static_cast<int32_t>(now_micros % 1000000);
-  const size_t time_buffer_size = 30;
-  char time_buffer[time_buffer_size];
-  struct tm* tp;
-#if defined(__linux__) || defined(__APPLE__)
-  struct tm now_tm;
-  tp = localtime_r(&now_seconds, &now_tm);
-#else
-  tp = localtime(&now_seconds);  // NOLINT(runtime/threadsafe_fn)
-#endif
-  strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S", tp);
+  constexpr size_t kTimeBufferSize = sizeof("YYYY-MM-DD HH:MM:SS.000000");
+  char time_buffer[kTimeBufferSize];
+  absl::Time now = absl::Now();
+  static const absl::TimeZone* tz = new absl::TimeZone{absl::LocalTimeZone()};
+  absl::TimeZone::CivilInfo ci = tz->At(now);
+  const int64_t usecs = absl::ToInt64Microseconds(ci.subsecond);
+  absl::SNPrintF(time_buffer, kTimeBufferSize,
+                 "%04d-%02d-%02d %02d:%02d:%02d.%06d", ci.cs.year(),
+                 ci.cs.month(), ci.cs.day(), ci.cs.hour(), ci.cs.minute(),
+                 ci.cs.second(), usecs);
   uint64_t tid = absl::base_internal::GetTID();
-  constexpr size_t kTidBufferSize =
-      (1 + std::numeric_limits<uint64_t>::digits10 + 1);
+  constexpr size_t kMaxTidDigits = 1 + std::numeric_limits<uint64_t>::digits10;
+  constexpr size_t kTidBufferSize = 1 + kMaxTidDigits + 1;
   char tid_buffer[kTidBufferSize] = "";
   if (log_thread_id) {
     absl::SNPrintF(tid_buffer, sizeof(tid_buffer), " %7u", tid);
@@ -556,9 +555,9 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
       break;
   }
 
-  absl::FPrintF(vlog_file.FilePtr(), "%s.%06d: %c%s %s:%d] %s\n", time_buffer,
-                micros_remainder, sev, tid_buffer, entry.FName().c_str(),
-                entry.Line(), entry.ToString().c_str());
+  absl::FPrintF(vlog_file.FilePtr(), "%s: %c%s %s:%d] %s\n", time_buffer, sev,
+                tid_buffer, entry.FName().c_str(), entry.Line(),
+                entry.ToString().c_str());
   fflush(vlog_file.FilePtr());  // Ensure logs are written immediately.
 #endif  // PLATFORM_POSIX_ANDROID
 }
