@@ -21,11 +21,13 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -242,6 +244,43 @@ TEST(DumpHloIfEnabled, DumpsBuildClNumber) {
   EXPECT_EQ(paths.size(), 1);
 
   EXPECT_TRUE(absl::StrContains(paths[0], ".cl_"));
+}
+
+TEST(DumpTest, DumpHloUnoptimizedSnapshotProtoBinary) {
+  HloUnoptimizedSnapshot hlo_snapshot;
+  HloModuleProto module;
+  module.set_name("hello");
+  *hlo_snapshot.mutable_hlo_module() = module;
+  *hlo_snapshot.add_partitions() = HloInputs();
+
+  HloModuleConfig config;
+  DebugOptions options = config.debug_options();
+
+  auto env = tsl::Env::Default();
+  std::string dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+  options.set_xla_dump_to(dump_dir);
+  options.set_xla_dump_hlo_as_proto(true);
+  options.set_xla_gpu_dump_hlo_unoptimized_snapshots(true);
+  config.set_debug_options(options);
+
+  DumpHloUnoptimizedSnapshotIfEnabled(hlo_snapshot, options);
+
+  std::vector<std::string> matches;
+  std::string pattern_filename =
+      tsl::io::JoinPath(dump_dir, "*hlo_unoptimized_snapshot*");
+  TF_ASSERT_OK(
+      tsl::Env::Default()->GetMatchingPaths(pattern_filename, &matches));
+  EXPECT_THAT(matches, Not(IsEmpty()));
+
+  std::string file_contents;
+  TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), matches.front(),
+                                     &file_contents));
+  tsl::protobuf::io::ArrayInputStream input_stream(file_contents.data(),
+                                                   file_contents.size());
+  TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot hlo_snapshot_loaded,
+                          DeserializeHloUnoptimizedSnapshot(&input_stream));
+  EXPECT_EQ(hlo_snapshot_loaded.hlo_module().name(), module.name());
 }
 
 }  // namespace

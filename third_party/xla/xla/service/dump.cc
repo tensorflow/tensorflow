@@ -46,15 +46,20 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/file_system_helper.h"
 #include "xla/util.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -944,7 +949,37 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
       hlo_snapshot.hlo_module().id(), hlo_snapshot.hlo_module().name(), "",
       absl::StrFormat("execution_%04d.hlo_unoptimized_snapshot",
                       execution_count));
-  DumpProtobufToFile(hlo_snapshot, opts, filename, nullptr);
+  // We use a custom proto binary serialization for HloUnoptimizedSnapshot to
+  // bypass the 2GiB proto size limitation.
+  if (canonical_opts.dump_as_proto && !canonical_opts.dump_as_text) {
+    tsl::Env* env = tsl::Env::Default();
+    const std::string& dir = canonical_opts.dump_to;
+    if (dir.empty()) {
+      return;
+    }
+    if (!CreateDirIfNeeded(dir, env).ok()) {
+      return;
+    }
+    const std::string path = tsl::io::JoinPath(dir, filename);
+
+    std::unique_ptr<tsl::WritableFile> file;
+    absl::Status s = env->NewWritableFile(absl::StrCat(path, ".pb"), &file);
+    if (!s.ok()) {
+      LOG(ERROR) << "Could not create file " << filename << ": " << s;
+      return;
+    }
+    tsl::WritableFileCopyingOutputStream output_stream(file.get());
+    tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output_stream);
+    if (!SerializeHloUnoptimizedSnapshot(hlo_snapshot, &adaptor).ok()) {
+      LOG(ERROR) << "Failed to serialize HLO unoptimized snapshot proto";
+    }
+    adaptor.Flush();
+    if (!file->Close().ok()) {
+      LOG(ERROR) << "Failed to close HLO unoptimized snapshot proto file";
+    }
+  } else {
+    DumpProtobufToFile(hlo_snapshot, opts, filename, nullptr);
+  }
 }
 
 void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {
