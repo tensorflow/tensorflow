@@ -1031,6 +1031,7 @@ xla_cc_test(
         ":thunk_testlib",
         "//xla:literal_util",
         "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
