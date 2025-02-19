@@ -1,3 +1,4 @@
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
@@ -1625,7 +1626,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "gradients_util",
     srcs = [
         "gradients_util.py",
@@ -3281,14 +3282,13 @@ cuda_py_strict_test(
         ":gradient_checker_v2",
         ":gradients",
         ":gradients_impl",
+        ":gradients_util",
         ":init_ops",
         ":list_ops",
         ":math_grad",
         ":math_ops",
         ":nn_grad",
         ":nn_ops",
-        ":ref_variable",
-        ":resource_variable_ops",
         ":state_grad",
         ":state_ops",
         ":tensor_array_grad",
