@@ -2809,9 +2809,12 @@ class HloParameterizedParserTest
     : public ::testing::Test,
       public ::testing::WithParamInterface<TestData> {
  protected:
-  // Expects "ToString(ParseHloModule(std::string)) == string", that is, parses
-  // the string, asserts that it succeeded, stringifies the parsed module, and
-  // checks that it equals the original string.
+  // Expects "ToString(ParseHloModule(ToString(ParseHloModule(std::string)))) ==
+  // string", that is, parses the string, asserts that it succeeded, stringifies
+  // the parsed module, parses this string to ensure that the default ToString()
+  // version is parsable, then stringifies the newly parsed module with
+  // appropriate options for original tests, and checks that it equals the
+  // original string.
   void ExpectEqual() {
     VLOG(3) << "Running HloParameterizedParserTest with short_form = "
             << short_form << ", proto_round_trip = " << proto_round_trip;
@@ -2827,9 +2830,20 @@ class HloParameterizedParserTest
           ShapeUtil::ByteSizeOfElements);
       TF_ASSERT_OK(verified_module->ParseHloStringAndVerifyModule(original));
       module = std::move(verified_module);
+      verified_module = std::make_unique<VerifiedHloModule>(
+          GetParam().test_name, config,
+          /*verifier_layout_sensitive=*/false,
+          /*allow_mixed_precision_in_hlo_verifier=*/true,
+          ShapeUtil::ByteSizeOfElements);
+      TF_ASSERT_OK(
+          verified_module->ParseHloStringAndVerifyModule(module->ToString()));
+      module = std::move(verified_module);
     } else {
       TF_ASSERT_OK_AND_ASSIGN(module,
                               ParseAndReturnUnverifiedModule(original, config));
+      TF_ASSERT_OK_AND_ASSIGN(
+          module,
+          ParseAndReturnUnverifiedModule(module->ToString(), module->config()));
     }
     if (proto_round_trip) {
       TF_ASSERT_OK_AND_ASSIGN(module, HloModule::CreateFromProto(
@@ -2838,9 +2852,9 @@ class HloParameterizedParserTest
     if (short_form) {
       EXPECT_EQ(original, module->ToString(HloPrintOptions::ShortParsable()));
     } else {
-      EXPECT_EQ(
-          original,
-          module->ToString(HloPrintOptions().set_print_large_constants(true)));
+      EXPECT_EQ(original, module->ToString(HloPrintOptions()
+                                               .set_print_large_constants(true)
+                                               .set_print_operand_shape(true)));
     }
     for (HloComputation* computation : module->computations()) {
       for (HloInstruction* instr : computation->instructions()) {
@@ -3276,7 +3290,9 @@ ENTRY %ShortConstant.v4 () -> f32[67,89] {
 )";
   auto result = ParseAndReturnVerifiedModule(original);
   TF_EXPECT_OK(result.status());
-  EXPECT_EQ(result.value()->ToString(HloPrintOptions()), original);
+  EXPECT_EQ(result.value()->ToString(
+                HloPrintOptions().set_print_large_constants(false)),
+            original);
 }
 
 TEST_F(HloParserTest, NegativeNan) {
