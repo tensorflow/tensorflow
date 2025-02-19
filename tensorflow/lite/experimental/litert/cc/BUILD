@@ -240,6 +240,8 @@ cc_library(
         ":litert_detail",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

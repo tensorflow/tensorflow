@@ -77,28 +77,16 @@ class IsOkMatcher {
     template <class T>
     bool MatchAndExplainImpl(const ::litert::Expected<T>& value,
                              testing::MatchResultListener* listener) const {
-      if (!value.HasValue()) {
-        if (listener) {
-          *listener << "error is " << value.Error();
-        }
-        return false;
-      }
-      return true;
+      return value.HasValue();
     }
 
     bool MatchAndExplainImpl(const ::litert::Unexpected& unexpected,
                              testing::MatchResultListener* listener) const {
-      if (listener) {
-        *listener << "error is " << unexpected.Error();
-      }
       return false;
     }
 
     bool MatchAndExplainImpl(const ::litert::Error& e,
                              testing::MatchResultListener* listener) const {
-      if (listener) {
-        *listener << "error is " << e;
-      }
       return false;
     }
 
@@ -195,7 +183,7 @@ class IsErrorMatcher {
       if (status == kLiteRtStatusOk ||
           (status_.has_value() && status != status_.value())) {
         if (listener) {
-          *listener << "status is " << LiteRtGetStatusString(status);
+          *listener << "status doesn't match";
         }
         return false;
       }
@@ -212,7 +200,7 @@ class IsErrorMatcher {
     bool MatchAndExplainImpl(const ::litert::Expected<T>& value,
                              testing::MatchResultListener* listener) const {
       if (value.HasValue()) {
-        *listener << "expected holds a value";
+        *listener << "expected holds a value (but should hold an error)";
         return false;
       }
       return MatchAndExplainImpl(value.Error(), listener);
@@ -337,5 +325,32 @@ inline IsErrorMatcher IsError(LiteRtStatus status, std::string msg) {
 }
 
 }  // namespace testing::litert
+
+// GTest doesn't use `AbslStringify` if `GTEST_USE_ABSL` is not defined. This
+// provides a fallback implementation.
+//
+// This is defined here instead of with `litert::Expected` because those
+// functions should only be used for testing.
+#if defined(LITERT_DEFINE_GTEST_STATUS_PRINTER) && !defined(GTEST_USE_ABSL)
+#include "absl/strings/str_format.h"
+
+namespace litert {
+
+inline void PrintTo(const Error& error, std::ostream* os) {
+  *os << absl::StrFormat("%v", error);
+}
+
+inline void PrintTo(const Unexpected& unexpected, std::ostream* os) {
+  *os << absl::StrFormat("%v", unexpected);
+}
+
+template <class T>
+void PrintTo(const Expected<T>& expected, std::ostream* os) {
+  *os << absl::StrFormat("%v", expected);
+}
+
+}  // namespace litert
+
+#endif
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TEST_MATCHERS_H_

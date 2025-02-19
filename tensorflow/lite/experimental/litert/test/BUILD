@@ -169,10 +169,12 @@ cc_library(
     name = "matchers_oss",
     testonly = True,
     hdrs = ["matchers.h"],
+    defines = ["LITERT_DEFINE_GTEST_STATUS_PRINTER"],
     tags = ["avoid_dep"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
