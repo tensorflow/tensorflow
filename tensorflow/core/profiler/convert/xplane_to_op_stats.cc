@@ -309,30 +309,26 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   DutyCycleCombiner duty_cycle_combiner;
   // TODO(b/161942993) parallelize XPlane processing per thread.
   for (const XPlane* device_trace : device_planes) {
-    XPlane aggregated_xplane;
-    bool use_aggregated_xplane = false;
     if (options.generate_op_metrics_db) {
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
-      HloModuleMap hlo_module_map;
-      ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
       if (!is_tpu) {
         OpMetricsDb device_op_metrics_db =
             ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
       } else {
-        AggregateXPlane(*device_trace, aggregated_xplane);
-        use_aggregated_xplane = true;
         OpMetricsDb device_op_metrics_db =
-            ConvertTpuDeviceTraceXPlaneToOpMetricsDb(aggregated_xplane);
+            ConvertTpuDeviceTraceXPlaneToOpMetricsDb(*device_trace);
+        HloModuleMap hlo_module_map;
+        ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
         UpdateOpMetricsDbFromHloModuleMap(device_op_metrics_db, hlo_module_map);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
       }
     }
     if (options.generate_step_db) {
-      StepEvents device_step_events = ConvertDeviceTraceXPlaneToStepEvents(
-          use_aggregated_xplane ? aggregated_xplane : *device_trace);
+      StepEvents device_step_events =
+          ConvertDeviceTraceXPlaneToStepEvents(*device_trace);
       if (is_tpu) {
         // In TPU, we take the intersection of step events across cores as well
         // as hosts.see b/158249775 and cl/331842545.

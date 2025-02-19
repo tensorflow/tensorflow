@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/tsl/profiler/utils/group_events.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -102,6 +105,85 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   EXPECT_EQ(host_step_events[0].Markers().size(), 1);
   // FunctionRun shouldn't be added.
   EXPECT_EQ(host_step_events[0].Events().size(), 2);
+}
+
+TEST(ConvertXPlaneToStepEvents, TpuDevicePlaneToStepEvents) {
+  XPlane raw_plane;
+  XPlaneBuilder plane(&raw_plane);
+  int64_t device_id = 1;
+  plane.SetId(device_id);
+  plane.SetName("/device:TPU:0");
+  XLineBuilder op_line = plane.GetOrCreateLine(0);
+  op_line.SetName(tsl::profiler::kXlaOpLineName);
+  const XStatMetadata& program_id_stat =
+      *plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kProgramId));
+  const XStatMetadata& symbol_id_stat =
+      *plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kSymbolId));
+  const XStatMetadata& group_id_stat =
+      *plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId));
+  {
+    XEventMetadata* event_metadata =
+        plane.GetOrCreateEventMetadata("op_long_name");
+    event_metadata->set_display_name("op_name");
+    XStatsBuilder<XEventMetadata> stats(event_metadata, &plane);
+    stats.AddStatValue(program_id_stat, 1);
+    stats.AddStatValue(symbol_id_stat, 1);
+    {
+      XEventBuilder event = op_line.AddEvent(*event_metadata);
+      event.SetOffsetPs(0);
+      event.SetDurationPs(50);
+      event.AddStatValue(group_id_stat, 1);
+    }
+    {
+      XEventBuilder event = op_line.AddEvent(*event_metadata);
+      event.SetOffsetPs(100);
+      event.SetDurationPs(50);
+      event.AddStatValue(group_id_stat, 2);
+    }
+  }
+  {
+    XEventMetadata* event_metadata =
+        plane.GetOrCreateEventMetadata("op_long_name2");
+    event_metadata->set_display_name("op_name2");
+    XStatsBuilder<XEventMetadata> stats(event_metadata, &plane);
+    stats.AddStatValue(program_id_stat, 1);
+    stats.AddStatValue(symbol_id_stat, 2);
+    XEventBuilder event = op_line.AddEvent(*event_metadata);
+    event.SetOffsetPs(50);
+    event.SetDurationPs(50);
+    event.AddStatValue(group_id_stat, 1);
+  }
+  XLineBuilder step_line = plane.GetOrCreateLine(1);
+  step_line.SetName(tsl::profiler::kStepLineName);
+  {
+    XEventMetadata* event_metadata = plane.CreateEventMetadata();
+    XStatsBuilder<XEventMetadata> stats(event_metadata, &plane);
+    {
+      XEventBuilder event = step_line.AddEvent(*event_metadata);
+      event.SetOffsetPs(0);
+      event.SetDurationPs(100);
+      event.AddStatValue(group_id_stat, 1);
+    }
+    {
+      XEventBuilder event = step_line.AddEvent(*event_metadata);
+      event.SetOffsetPs(100);
+      event.SetDurationPs(100);
+      event.AddStatValue(group_id_stat, 2);
+    }
+  }
+
+  StepEvents step_events = ConvertDeviceTraceXPlaneToStepEvents(raw_plane);
+  EXPECT_EQ(step_events.size(), 2);
+  EXPECT_TRUE(step_events.contains(1));
+  StepDetails step_1 = step_events[/*group_id=*/1];
+  ASSERT_TRUE(step_1.PerCoreOpMetricsDb().contains(device_id));
+  EXPECT_EQ(step_1.PerCoreOpMetricsDb().at(device_id).metrics_db_size(), 2);
+  EXPECT_EQ(step_1.Markers().size(), 1);
+  EXPECT_TRUE(step_events.contains(2));
+  StepDetails step_2 = step_events[/*group_id=*/2];
+  ASSERT_TRUE(step_2.PerCoreOpMetricsDb().contains(device_id));
+  EXPECT_EQ(step_2.PerCoreOpMetricsDb().at(device_id).metrics_db_size(), 1);
+  EXPECT_EQ(step_2.Markers().size(), 1);
 }
 
 }  // namespace
