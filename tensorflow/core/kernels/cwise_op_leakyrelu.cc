@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/src/Core/util/Macros.h"  // from @eigen_archive
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -25,9 +31,6 @@ limitations under the License.
 #include <type_traits>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/framework/tensor_types.h"
 
 // Keeping all new leakyrelu changes in 1 file.
 // This is similar to changes in cwise_ops.h
