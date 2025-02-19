@@ -91,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tools/file_tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"

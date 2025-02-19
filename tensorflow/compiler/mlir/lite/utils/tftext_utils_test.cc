@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/platform/status.h"
 
 namespace mlir {
 namespace TFL {
