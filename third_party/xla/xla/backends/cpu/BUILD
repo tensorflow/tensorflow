@@ -1,4 +1,3 @@
-load("//xla/backends/cpu:package_groups.bzl", "xla_cpu_backend_access")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//xla/tsl/mkl:graph.bzl", "onednn_graph_cc_library")
@@ -9,8 +8,6 @@ package(
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
-
-xla_cpu_backend_access()
 
 package_group(
     name = "friends",
