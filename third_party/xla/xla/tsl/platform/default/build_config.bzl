@@ -815,6 +815,7 @@ def strict_cc_test(
         linkstatic = True,
         shuffle_tests = True,
         args = None,
+        fail_if_no_test_linked = True,
         **kwargs):
     """A drop-in replacement for cc_test that enforces some good practices by default.
 
@@ -825,8 +826,13 @@ def strict_cc_test(
       linkstatic: Whether to link statically.
       shuffle_tests: Whether to shuffle the test cases.
       args: The arguments to pass to the test.
+      fail_if_no_test_linked: Whether to fail if no tests are linked. Unimplemented in OSS as
+          --gtest_fail_if_no_test_linked is not available in the OSS build as of 2025-02-27.
       **kwargs: Other arguments to pass to the test.
     """
+
+    _ = fail_if_no_test_linked  # buildifier: disable=unused-variable
+
     if args == None:
         args = []
 
