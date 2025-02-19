@@ -18,7 +18,6 @@ limitations under the License.
 #include <stdio.h>
 
 #include <algorithm>
-#include <memory>
 #include <string>
 
 #include "absl/status/statusor.h"
