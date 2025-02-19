@@ -250,6 +250,10 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   shape->set_element_type(element_type);
   const int ndims = dimensions.size();
   auto layout = shape->mutable_layout();
+  if (primitive_util::IsSubByteNonPredType(element_type)) {
+    const int num_bits = primitive_util::BitWidth(element_type);
+    layout->set_element_size_in_bits(num_bits);
+  }
   auto* minor_to_major = layout->mutable_minor_to_major();
   int64_t static_extent_product = dense_shape_size;
   bool any_overflows = false;
