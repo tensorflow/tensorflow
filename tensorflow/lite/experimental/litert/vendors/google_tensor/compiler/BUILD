@@ -27,6 +27,11 @@ litert_dynamic_lib(
     linkstatic = 1,
     shared_lib_name = "google_tensor_compiler_plugin_so",
     so_name = "libLiteRtCompilerPlugin_google_tensor.so",
+    tags = [
+        # Don't build/test in OS until google tensor is available.
+        "nobuilder",
+        "no_oss",
+    ],
     visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
@@ -39,6 +44,7 @@ litert_dynamic_lib(
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/vendors/google_tensor:adapter",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
