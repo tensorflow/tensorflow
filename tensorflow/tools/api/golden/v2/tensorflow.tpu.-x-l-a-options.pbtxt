@@ -5,11 +5,11 @@ tf_class {
   is_instance: "<type \'tuple\'>"
   member {
     name: "enable_xla_dynamic_padder"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "use_spmd_for_xla_partitioning"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
     name: "__init__"
