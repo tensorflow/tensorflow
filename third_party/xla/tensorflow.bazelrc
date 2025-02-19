@@ -82,7 +82,7 @@ build --spawn_strategy=standalone
 build -c opt
 
 # Make Bazel print out all options from rc files.
-build --announce_rc
+common --announce_rc
 
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --define=grpc_no_ares=true
@@ -116,16 +116,16 @@ build --config=v2
 
 # TF now has `cc_shared_library` targets, so it needs the experimental flag
 # TODO(rostam): Remove when `cc_shared_library` is enabled by default
-build --experimental_cc_shared_library
+common --experimental_cc_shared_library
 
 # cc_shared_library ensures no library is linked statically more than once.
-build --experimental_link_static_libraries_once=false
+common --experimental_link_static_libraries_once=false
 
 # Prevent regressions on those two incompatible changes
 # TODO: remove those flags when they are flipped in the default Bazel version TF uses.
-build --incompatible_enforce_config_setting_visibility
+common --incompatible_enforce_config_setting_visibility
 # TODO: also enable this flag after fixing the visibility violations
-# build --incompatible_config_setting_private_default_visibility
+# common --incompatible_config_setting_private_default_visibility
 
 # Print a stacktrace when a test is killed
 test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
