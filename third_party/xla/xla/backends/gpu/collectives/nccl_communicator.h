@@ -50,6 +50,12 @@ class NcclCommunicator : public Communicator {
   explicit NcclCommunicator(ncclComm_t comm);
   ~NcclCommunicator() override;
 
+  // NcclCommunicator is not copyable or movable.
+  NcclCommunicator(const NcclCommunicator&) = delete;
+  NcclCommunicator(NcclCommunicator&&) = delete;
+  NcclCommunicator& operator=(const NcclCommunicator&) = delete;
+  NcclCommunicator& operator=(NcclCommunicator&&) = delete;
+
   absl::Status Abort() final;
   absl::Status HealthCheck() const final;
   absl::StatusOr<size_t> NumRanks() const final;
@@ -103,6 +109,7 @@ class NcclCommunicator : public Communicator {
   static absl::StatusOr<se::Stream*> ToStream(const Executor& executor);
 
   ncclComm_t comm_;
+  bool aborted_ = false;  // Has Abort() been called?
 };
 
 }  // namespace xla::gpu
