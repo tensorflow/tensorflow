@@ -26,9 +26,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolveBatchNormalization::Run(Model* model,
-                                                    std::size_t op_index,
-                                                    bool* modified) {
+absl::Status ResolveBatchNormalization::Run(Model* model, std::size_t op_index,
+                                            bool* modified) {
   *modified = false;
   auto bn_it = model->operators.begin() + op_index;
   if (bn_it->get()->type != OperatorType::kBatchNormalization) {
