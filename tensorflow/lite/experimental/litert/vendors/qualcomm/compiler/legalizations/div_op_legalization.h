@@ -32,12 +32,12 @@ namespace litert::qnn {
 class DivOpLegalization : public Legalization {
  public:
   DivOpLegalization() = default;
-  ~DivOpLegalization() = default;
+  ~DivOpLegalization() override = default;
   using Ptr = std::unique_ptr<DivOpLegalization>;
   static Ptr Create() { return std::make_unique<DivOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const litert::Op& src, Qnn_OpConfig_t& dest,
-                          GraphMapper& graph_mapper);
+                          GraphMapper& graph_mapper) override;
 
  private:
   // Counter to ensure unique op names.

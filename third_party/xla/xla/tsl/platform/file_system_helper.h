@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -59,6 +60,27 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
 absl::StatusOr<bool> FileExists(Env* env, const string& fname);
 
 }  // namespace internal
+
+//  A CopyingOutputStream wrapper over tsl::WritableFile. It adapts the
+//  CopyingOutputStream interface to the WritableFile's Append method. This
+//  allows using a WritableFile with systems expecting a CopyingOutputStream and
+//  convert it to a ZeroCopyOutputStream easily using
+//  CopyingOutputStreamAdaptor.
+class WritableFileCopyingOutputStream
+    : public tsl::protobuf::io::CopyingOutputStream {
+ public:
+  explicit WritableFileCopyingOutputStream(WritableFile* file)
+      : tsl::protobuf::io::CopyingOutputStream(), file_(file) {}
+
+  bool Write(const void* buffer, int size) override {
+    return file_
+        ->Append(absl::string_view(static_cast<const char*>(buffer), size))
+        .ok();
+  }
+
+ private:
+  WritableFile* file_;
+};
 }  // namespace tsl
 
 #endif  // XLA_TSL_PLATFORM_FILE_SYSTEM_HELPER_H_

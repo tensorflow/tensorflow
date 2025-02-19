@@ -32,12 +32,12 @@ namespace litert::qnn {
 class BatchMatmulOpLegalization : public Legalization {
  public:
   BatchMatmulOpLegalization() = default;
-  ~BatchMatmulOpLegalization() = default;
+  ~BatchMatmulOpLegalization() override = default;
   using Ptr = std::unique_ptr<BatchMatmulOpLegalization>;
   static Ptr Create() { return std::make_unique<BatchMatmulOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const litert::Op& src, Qnn_OpConfig_t& dest,
-                          GraphMapper& graph_mapper);
+                          GraphMapper& graph_mapper) override;
 
  private:
   // Counter to ensure unique op names.
