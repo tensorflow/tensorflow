@@ -592,8 +592,9 @@ class PropagateTransposedPerAxisQuantDim
     if (!q_op) return failure();
     auto qtype =
         mlir::cast<TensorType>(dq_op.getArg().getType()).getElementType();
-    auto aqtype = dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(qtype);
-    if (!aqtype) return failure();
+    auto per_axis_quant =
+        dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(qtype);
+    if (!per_axis_quant) return failure();
 
     // Return if the result of TransposeOp is already quantized
     if (!transpose_op.getResult().hasOneUse()) return failure();
@@ -633,7 +634,7 @@ class PropagateTransposedPerAxisQuantDim
     // Find what the quantized dimension has been transposed to
     int new_out_quant_dim = -1;
     for (int i = 0; i < axes.size(); ++i) {
-      if (axes[i] == aqtype.getQuantizedDimension()) {
+      if (axes[i] == per_axis_quant.getQuantizedDimension()) {
         new_out_quant_dim = i;
         break;
       }
@@ -644,11 +645,18 @@ class PropagateTransposedPerAxisQuantDim
     }
 
     // Insert a QDQ pair with the new quantized dimension after TransposeOp
-    auto new_qtype = quant::CreateI8F32UniformQuantizedPerAxisType(
-        transpose_op.getLoc(), *rewriter.getContext(), aqtype.getScales(),
-        aqtype.getZeroPoints(), new_out_quant_dim, /*narrow_range=*/true);
+    auto new_element_type =
+        mlir::quant::UniformQuantizedPerAxisType::getChecked(
+            transpose_op.getLoc(), per_axis_quant.getFlags(),
+            per_axis_quant.getStorageType(), per_axis_quant.getExpressedType(),
+            per_axis_quant.getScales(), per_axis_quant.getZeroPoints(),
+            new_out_quant_dim, per_axis_quant.getStorageTypeMin(),
+            per_axis_quant.getStorageTypeMax());
+
     auto new_tensor_type = RankedTensorType::getChecked(
-        transpose_op.getLoc(), transpose_op.getType().getShape(), new_qtype);
+        transpose_op.getLoc(), transpose_op.getType().getShape(),
+        new_element_type);
+
     rewriter.setInsertionPointAfter(transpose_op);
     auto new_q_op = rewriter.create<quantfork::QuantizeCastOp>(
         transpose_op.getLoc(), new_tensor_type, q_op.getArg());
