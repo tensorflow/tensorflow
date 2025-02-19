@@ -131,7 +131,7 @@ bool IsZeroVector(const int8_t* vector, int v_size);
 // (i.e. linear quantization without an offset) to 8-bit signed integers.
 // It also outputs the range (min, max) of the floating point buffer, and the
 // scaling factor used to quantize the values.
-void SymmetricQuantizeFloats(const float* values, const int size,
+void SymmetricQuantizeFloats(const float* values, int size,
                              int8_t* quantized_values, float* min_value,
                              float* max_value, float* scaling_factor);
 
@@ -139,11 +139,11 @@ void SymmetricQuantizeFloats(const float* values, const int size,
 // (i.e. linear quantization without an offset) to 8-bit signed integers.
 // It uses the range (min, max) provided to the function to calculate the
 // appropriate scaling factor to quantize the values.
-void SymmetricQuantizeFloats(const float* values, const int size,
+void SymmetricQuantizeFloats(const float* values, int size,
                              int8_t* quantized_values, float min_value,
                              float max_value, float* scaling_factor);
 
-void AsymmetricQuantizeFloats(const float* values, const int size,
+void AsymmetricQuantizeFloats(const float* values, int size,
                               int8_t* quantized_values, float* scaling_factor,
                               int32_t* offset);
 
@@ -216,7 +216,7 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
 // by the vector's scaling factor, one per batch (i.e. this allows quantizing
 // each batch in the batch-vector matrix independently).
 void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ matrix, int m_rows, int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
     float* __restrict__ result);
@@ -225,7 +225,7 @@ void MatrixBatchVectorMultiplyAccumulate(
 // are quantized with asymmetric quantization per-batch and the matrix
 // is quantized per row.
 void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ matrix, int m_rows, int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
     float* __restrict__ result, const float* __restrict__ per_channel_scale,
@@ -240,10 +240,10 @@ void SparseMatrixBatchVectorMultiplyAccumulate1x16(
     const int8_t* __restrict__ matrix, const int32_t* __restrict__ segments,
     const int32_t* __restrict__ indices, int m_rows, int m_cols,
     const int8_t* __restrict__ vector, const int32_t* __restrict__ bias_vector,
-    int n_batch, const int32_t input_offset, const int32_t output_multiplier,
+    int n_batch, int32_t input_offset, int32_t output_multiplier,
     int32_t output_shift, const int32_t* per_channel_scale,
     const int32_t* per_channel_shift, int32_t output_offset,
-    const int32_t output_activation_min, const int32_t output_activation_max,
+    int32_t output_activation_min, int32_t output_activation_max,
     int8_t* __restrict__ result);
 
 // Same as the function above, but the matrix is stored in block compressed
@@ -258,7 +258,7 @@ void SparseMatrixBatchVectorMultiplyAccumulate1x16(
 //   2. m_cols < 254 * 16 so that block index can be represented by uint8.
 void SparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
-    const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
+    int m_rows, int m_cols, const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
     float* __restrict__ result, const float* per_channel_scale = nullptr);
 
@@ -396,11 +396,9 @@ void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
 //     - vector:         vector of size v_size.
 //     - v_size:         the size of the vector.
 //     - clipping_value: the value used for clipping.
-void CwiseClipping(float* vector, const int v_size, const float clipping_value);
-void CwiseClipping(int16_t* vector, const int v_size,
-                   const int16_t clipping_value);
-void CwiseClipping(int8_t* vector, const int v_size,
-                   const int8_t clipping_value);
+void CwiseClipping(float* vector, int v_size, float clipping_value);
+void CwiseClipping(int16_t* vector, int v_size, int16_t clipping_value);
+void CwiseClipping(int8_t* vector, int v_size, int8_t clipping_value);
 
 // Dot product of two vectors.
 float VectorVectorDotProduct(const float* vector1, const float* vector2,
@@ -487,7 +485,7 @@ void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
 // int8 x int8 -> int32 and a CpuBackendContext for the accumulator
 // computation.
 void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ matrix, int m_rows, int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
     int32_t* __restrict__ scratch, float* __restrict__ result,
@@ -495,7 +493,7 @@ void MatrixBatchVectorMultiplyAccumulate(
 
 // Same as the function above except that can make use of cached row sums.
 void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ matrix, int m_rows, int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
