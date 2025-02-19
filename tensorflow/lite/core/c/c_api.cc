@@ -17,6 +17,7 @@ limitations under the License.
 #include <stddef.h>
 #include <string.h>
 
+#include <cstdarg>
 #include <cstdint>
 #include <memory>
 #include <mutex>  // NOLINT
