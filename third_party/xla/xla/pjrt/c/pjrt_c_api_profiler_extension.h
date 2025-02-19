@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_PROFILER_EXTENSION_H_
 #define XLA_PJRT_C_PJRT_C_API_PROFILER_EXTENSION_H_
 
-#include <cstddef>
-#include <cstdint>
+#include <stddef.h>
+#include <stdint.h>
 
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
