@@ -42,7 +42,7 @@ typedef Eigen::TensorMap<
     Eigen::Tensor<float, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned>
     EigenMatrix;
 typedef Eigen::TensorMap<
-    Eigen::Tensor<const float, 2, Eigen::RowMajor, Eigen::DenseIndex>,
+    const Eigen::Tensor<float, 2, Eigen::RowMajor, Eigen::DenseIndex>,
     Eigen::Aligned>
     ConstEigenMatrix;
 
@@ -50,7 +50,7 @@ typedef Eigen::TensorMap<
     Eigen::Tensor<float, 4, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned>
     EigenTensor;
 typedef Eigen::TensorMap<
-    Eigen::Tensor<const float, 4, Eigen::RowMajor, Eigen::DenseIndex>,
+    const Eigen::Tensor<float, 4, Eigen::RowMajor, Eigen::DenseIndex>,
     Eigen::Aligned>
     ConstEigenTensor;
 
