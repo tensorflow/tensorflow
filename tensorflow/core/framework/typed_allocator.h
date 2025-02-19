@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_TYPED_ALLOCATOR_H_
 #define TENSORFLOW_CORE_FRAMEWORK_TYPED_ALLOCATOR_H_
 
+#include <cstddef>
 #include <limits>
 
 #include "tensorflow/core/framework/allocator.h"

@@ -19,10 +19,12 @@ limitations under the License.
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"

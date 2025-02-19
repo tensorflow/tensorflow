@@ -17,8 +17,17 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_UTIL_H_
 
 #include <algorithm>
+#include <complex>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
