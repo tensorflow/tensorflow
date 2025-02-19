@@ -290,7 +290,8 @@ REGISTER_OP("SqrtGrad").UNARY_GRADIENT_COMPLEX();
 
 REGISTER_OP("Rsqrt").UNARY_COMPLEX();
 
-REGISTER_OP("Round").UNARY();
+REGISTER_OP("Round").UNARY()
+.Attr("T: {float, double, int32, int64}");
 
 REGISTER_OP("RsqrtGrad").UNARY_GRADIENT_COMPLEX();
 
