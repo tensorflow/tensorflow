@@ -36,7 +36,7 @@ cc_library(
     name = "cudart",
     %{comment}deps = select({
         %{comment}"@cuda_driver//:forward_compatibility": ["@cuda_driver//:nvidia_driver"],
-        %{comment}"//conditions:default": [":cuda_driver"],
+        %{comment}"//conditions:default": [],
     %{comment}}) + [
         %{comment}":cudart_shared_library",
     %{comment}],
