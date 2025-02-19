@@ -26,6 +26,7 @@ package_group(
         "//learning/brain/mlir/...",
         "//third_party/iree/...",
         "//third_party/odml/infra/...",
+        "//third_party/odml/litert/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/...",
         "//waymo/accelerator/alpine/tools/...",
