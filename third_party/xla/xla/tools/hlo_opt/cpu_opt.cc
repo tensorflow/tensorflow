@@ -105,7 +105,9 @@ class CpuOptProvider : public CompiledOptProvider {
     return GetRegisteredPassNamesHelper(pass_registry_);
   }
 
-  // Register only CPU specific passes here.
+  //////////////////////////////////////////////////////////////////////////////
+  // Registration of CPU-specific HLO Passes                                  //
+  //////////////////////////////////////////////////////////////////////////////
   void RegisterProviderPasses(HloModule& module) override {
     // initialize all needed to extract configs for pass registration
     // and pass it to the register function

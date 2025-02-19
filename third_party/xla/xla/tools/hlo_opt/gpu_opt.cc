@@ -115,7 +115,9 @@ class GpuOptProvider : public CompiledOptProvider {
     return GetRegisteredPassNamesHelper(pass_registry_);
   }
 
-  // Register only GPU specific passes here.
+  //////////////////////////////////////////////////////////////////////////////
+  // Registration of GPU-specific HLO Passes                                  //
+  //////////////////////////////////////////////////////////////////////////////
   void RegisterProviderPasses(HloModule& module) override {
     auto device_description = GetDeviceDescription(&module);
     se::GpuComputeCapability gpu_compute_capability;

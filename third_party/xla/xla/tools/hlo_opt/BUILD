@@ -27,6 +27,7 @@ package(
 
 cc_library(
     name = "compiled_opt_lib",
+    testonly = True,
     srcs = ["compiled_opt_lib.cc"],
     hdrs = ["compiled_opt_lib.h"],
     deps = [

@@ -24,6 +24,7 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             "algebraic_simplifier.hlo",
+            "validate_registered_passes_runs.hlo",
             "hlo_opt_expect_failure.hlo",
             "run_multiple_passes.hlo",
             "run_single_pass.hlo",

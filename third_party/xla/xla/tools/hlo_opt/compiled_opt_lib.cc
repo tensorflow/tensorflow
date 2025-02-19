@@ -144,6 +144,9 @@ std::set<std::string> CompiledOptProvider::SupportedStages() {
   return {"hlo", "html", "hlo-backend"};
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Registration of Hardware-specific HLO Passes Common to GPU, CPU.           //
+////////////////////////////////////////////////////////////////////////////////
 void CompiledOptProvider::RegisterSharedHardwareSpecificPasses() {
   // go/keep-sorted start
   RegisterPass<AllGatherDynamicSliceSimplifier>();
