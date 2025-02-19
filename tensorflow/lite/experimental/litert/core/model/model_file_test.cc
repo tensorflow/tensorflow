@@ -22,11 +22,17 @@
 #include <utility>
 #include <vector>
 
+// schema/mutable/schema_generated.h and schema/schema_generated.h (included
+// through flatbuffer_tools.h via model.h) have the same #ifdef, thus this line
+// need to be put at the top to ensure we get the "mutable" version.
+#if 1
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#endif
+
 #include <gmock/gmock.h>  // IWYU pragma: keep
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
