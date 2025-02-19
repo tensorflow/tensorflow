@@ -15,22 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/experimental/save_dataset_op.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
