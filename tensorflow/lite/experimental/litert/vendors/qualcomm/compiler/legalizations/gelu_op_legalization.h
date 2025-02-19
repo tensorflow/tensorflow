@@ -32,12 +32,12 @@ namespace litert::qnn {
 class GeluOpLegalization : public Legalization {
  public:
   GeluOpLegalization() = default;
-  ~GeluOpLegalization() = default;
+  ~GeluOpLegalization() override = default;
   using Ptr = std::unique_ptr<GeluOpLegalization>;
   static Ptr Create() { return std::make_unique<GeluOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
-                          GraphMapper& graph_mapper);
+                          GraphMapper& graph_mapper) override;
 
  private:
   // Counter to ensure unique op names.

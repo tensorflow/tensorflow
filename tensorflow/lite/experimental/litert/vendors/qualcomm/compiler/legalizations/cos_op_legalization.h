@@ -32,12 +32,12 @@ namespace litert::qnn {
 class CosOpLegalization : public Legalization {
  public:
   CosOpLegalization() = default;
-  ~CosOpLegalization() = default;
+  ~CosOpLegalization() override = default;
   using UniquePtr = std::unique_ptr<CosOpLegalization>;
   static UniquePtr Create() { return std::make_unique<CosOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
-                          GraphMapper& graph_mapper);
+                          GraphMapper& graph_mapper) override;
 
  private:
   // Counter to ensure unique op names.

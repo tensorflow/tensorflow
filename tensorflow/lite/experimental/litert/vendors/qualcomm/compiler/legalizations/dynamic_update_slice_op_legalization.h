@@ -29,14 +29,14 @@ namespace litert::qnn {
 class DynamicUpdateSliceOpLegalization : public Legalization {
  public:
   DynamicUpdateSliceOpLegalization() = default;
-  ~DynamicUpdateSliceOpLegalization() = default;
+  ~DynamicUpdateSliceOpLegalization() override = default;
   using Ptr = std::unique_ptr<DynamicUpdateSliceOpLegalization>;
   static Ptr Create() {
     return std::make_unique<DynamicUpdateSliceOpLegalization>();
   }
 
   LiteRtStatus LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
-                          GraphMapper& graph_mapper);
+                          GraphMapper& graph_mapper) override;
 
  private:
   uint32_t op_counter_ = 0;

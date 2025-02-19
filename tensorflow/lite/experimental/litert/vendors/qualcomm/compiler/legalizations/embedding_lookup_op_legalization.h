@@ -32,14 +32,14 @@ namespace litert::qnn {
 class EmbeddingLookupOpLegalization : public Legalization {
  public:
   EmbeddingLookupOpLegalization() = default;
-  ~EmbeddingLookupOpLegalization() = default;
+  ~EmbeddingLookupOpLegalization() override = default;
   using Ptr = std::unique_ptr<EmbeddingLookupOpLegalization>;
   static Ptr Create() {
     return std::make_unique<EmbeddingLookupOpLegalization>();
   }
 
   LiteRtStatus LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
-                          GraphMapper& graph_mapper);
+                          GraphMapper& graph_mapper) override;
 
  private:
   // Counter to ensure unique op names.

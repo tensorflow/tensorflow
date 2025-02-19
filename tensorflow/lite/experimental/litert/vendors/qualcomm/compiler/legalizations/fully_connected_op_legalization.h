@@ -32,14 +32,14 @@ namespace litert::qnn {
 class FullyConnectedOpLegalization : public Legalization {
  public:
   FullyConnectedOpLegalization() = default;
-  ~FullyConnectedOpLegalization() = default;
+  ~FullyConnectedOpLegalization() override = default;
   using Ptr = std::unique_ptr<FullyConnectedOpLegalization>;
   static Ptr Create() {
     return std::make_unique<FullyConnectedOpLegalization>();
   }
 
   LiteRtStatus LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
-                          GraphMapper& graph_mapper);
+                          GraphMapper& graph_mapper) override;
 
  private:
   // Counter to ensure unique op names.

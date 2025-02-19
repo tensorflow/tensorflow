@@ -32,14 +32,14 @@ namespace litert::qnn {
 class ConcatenationOpLegalization : public Legalization {
  public:
   ConcatenationOpLegalization() = default;
-  ~ConcatenationOpLegalization() = default;
+  ~ConcatenationOpLegalization() override = default;
   using Ptr = std::unique_ptr<ConcatenationOpLegalization>;
   static Ptr Create() {
     return std::make_unique<ConcatenationOpLegalization>();
   }
 
   LiteRtStatus LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
-                          GraphMapper& graph_mapper);
+                          GraphMapper& graph_mapper) override;
 
  private:
   // Counter to ensure unique op names.
