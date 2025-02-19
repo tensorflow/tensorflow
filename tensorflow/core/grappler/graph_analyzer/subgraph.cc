@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <functional>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/grappler/graph_analyzer/gen_node.h"
 #include "tensorflow/core/grappler/graph_analyzer/hash_tools.h"
+#include "tensorflow/core/grappler/graph_analyzer/sig_node.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {

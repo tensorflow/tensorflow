@@ -13,14 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/grappler/graph_analyzer/graph_analyzer.h"
+
 #include <deque>
 #include <iostream>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/graph_analyzer/gen_node.h"
-#include "tensorflow/core/grappler/graph_analyzer/graph_analyzer.h"
 #include "tensorflow/core/grappler/graph_analyzer/sig_node.h"
+#include "tensorflow/core/grappler/graph_analyzer/subgraph.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
