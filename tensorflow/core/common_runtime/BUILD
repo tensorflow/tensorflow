@@ -3345,6 +3345,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/public:release_version",
         "@com_google_googletest//:gtest",
     ],
 )
