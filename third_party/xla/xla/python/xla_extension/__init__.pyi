@@ -854,6 +854,7 @@ class DistributedRuntimeClient:
   def wait_at_barrier(
       self, barrier_id: str, timeout_in_ms: int, process_ids: Optional[List[int]]
   ) -> _Status: ...
+  def get_live_nodes(self, process_ids: List[int]) -> _Status: ...
 
 def get_distributed_runtime_service(
     address: str,

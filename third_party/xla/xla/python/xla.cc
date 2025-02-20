@@ -701,6 +701,14 @@ NB_MODULE(xla_extension, m) {
           },
           nb::arg("barrier_id"), nb::arg("timeout_in_ms"),
           nb::arg("process_ids") = std::nullopt)
+      .def(
+          "get_live_nodes",
+          [](DistributedRuntimeClient& client,
+             std::vector<int32_t> process_ids) {
+            nb::gil_scoped_release gil_release;
+            return xla::ValueOrThrow(client.GetLiveNodes(process_ids));
+          },
+          nb::arg("process_ids"))
       // The key must be a string, but the value can either be a Python string
       // or bytes object.
       // With Python string values, use `key_value_set()` and
