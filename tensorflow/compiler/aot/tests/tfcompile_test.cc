@@ -677,13 +677,13 @@ TEST(TFCompileTest, HloProfiling) {
 
   auto header = HasSubstr("Execution profile for");
   auto total_cycles_profile_line = HasSubstr("[total]");
-  auto dot_profile_line = HasSubstr(
-      "%dot = f32[2,2]{1,0} dot(f32[2,2]{1,0} %arg0, f32[2,2]{1,0} %arg1)");
-  auto add_profile_line = HasSubstr(
-      "%add = f32[2,2]{1,0} add(f32[2,2]{1,0} %arg0, f32[2,2]{1,0} %arg1)");
+  auto dot_profile_line =
+      HasSubstr("%dot = f32[2,2]{1,0} dot({{.*}}%arg0, {{.*}}%arg1)");
+  auto add_profile_line =
+      HasSubstr("%add = f32[2,2]{1,0} add({{.*}}%arg0, {{.*}}%arg1)");
   auto tuple_profile_line = HasSubstr(
-      "%tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(f32[2,2]{1,0} %dot, "
-      "f32[2,2]{1,0} %add)");
+      "%tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple({{.*}}%dot, "
+      "{{.*}}%add)");
   auto arg0_profile_line = HasSubstr("%arg0 = f32[2,2]{1,0} parameter(0)");
   auto arg1_profile_line = HasSubstr("%arg1 = f32[2,2]{1,0} parameter(1)");
 
