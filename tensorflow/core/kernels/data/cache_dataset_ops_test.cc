@@ -85,12 +85,12 @@ class CacheDatasetOpTest : public DatasetOpsTestBase {
           strings::StrCat(cache_filename_, "*"), &cache_files);
       if (!s.ok()) {
         LOG(WARNING) << "Failed to get matching files on " << cache_filename_
-                     << "* : " << s.ToString();
+                     << "* : " << s;
       }
       for (const string& path : cache_files) {
         s = device_->env()->DeleteFile(path);
         if (!s.ok()) {
-          LOG(WARNING) << "Failed to delete " << path << " : " << s.ToString();
+          LOG(WARNING) << "Failed to delete " << path << " : " << s;
         }
       }
     }
