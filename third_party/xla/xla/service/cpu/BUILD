@@ -1437,6 +1437,7 @@ cc_library(
     srcs = ["cpu_instruction_fusion.cc"],
     hdrs = ["cpu_instruction_fusion.h"],
     deps = [
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:fusion_node_indexing_evaluation",
         "//xla/service:instruction_fusion",
