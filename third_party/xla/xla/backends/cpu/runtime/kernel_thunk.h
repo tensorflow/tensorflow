@@ -63,6 +63,8 @@ class KernelThunkBase : public Thunk {
       const = 0;
 
   virtual absl::Span<const BufferAllocation::Slice> results_buffers() const = 0;
+
+  virtual const absl::flat_hash_set<int64_t>& invariant_arguments() const = 0;
 };
 
 namespace internal {
@@ -93,6 +95,10 @@ class KernelThunk : public KernelThunkBase {
 
   absl::Span<const BufferAllocation::Slice> results_buffers() const final {
     return absl::MakeSpan(results_buffers_);
+  }
+
+  const absl::flat_hash_set<int64_t>& invariant_arguments() const final {
+    return invariant_arguments_;
   }
 
  protected:
@@ -129,7 +135,7 @@ class KernelThunk : public KernelThunkBase {
   KernelThunk(Info info,
               absl::Span<const BufferAllocation::Slice> arguments_buffers,
               absl::Span<const BufferAllocation::Slice> results_buffers,
-              std::optional<absl::flat_hash_set<int64_t>> invariant_arguments,
+              absl::flat_hash_set<int64_t> invariant_arguments,
               std::string kernel_name, se::ThreadDim thread_dim,
               std::optional<uint64_t> min_alignment);
 
@@ -139,7 +145,7 @@ class KernelThunk : public KernelThunkBase {
   ResultsBuffers results_buffers_;
 
   // A set of invariant arguments (their indices).
-  std::optional<absl::flat_hash_set<int64_t>> invariant_arguments_;
+  absl::flat_hash_set<int64_t> invariant_arguments_;
 
   size_t num_kernel_args_;
 
@@ -189,7 +195,7 @@ class KernelThunk final : public internal::KernelThunk<> {
       absl::Span<const BufferAllocation::Slice> arguments_buffers,
       absl::Span<const BufferAllocation::Slice> results_buffers,
       std::string kernel_name, se::ThreadDim thread_dim,
-      std::optional<absl::flat_hash_set<int64_t>> invariant_arguments,
+      absl::flat_hash_set<int64_t> invariant_arguments,
       std::optional<uint64_t> min_alignment = std::nullopt);
 
   static absl::StatusOr<std::unique_ptr<Thunk>> Create(

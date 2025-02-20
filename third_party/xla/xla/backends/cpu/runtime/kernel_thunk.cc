@@ -115,9 +115,8 @@ template <int64_t num_arguments, int64_t num_results>
 KernelThunk<num_arguments, num_results>::KernelThunk(
     Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
-    std::optional<absl::flat_hash_set<int64_t>> invariant_arguments,
-    std::string kernel_name, se::ThreadDim thread_dim,
-    std::optional<uint64_t> min_alignment)
+    absl::flat_hash_set<int64_t> invariant_arguments, std::string kernel_name,
+    se::ThreadDim thread_dim, std::optional<uint64_t> min_alignment)
     : KernelThunkBase(Kind::kKernel, std::move(info)),
       invariant_arguments_(std::move(invariant_arguments)),
       num_kernel_args_(arguments_buffers.size() + results_buffers.size()),
@@ -205,9 +204,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
     // TODO(abanas): Check also for overlapping buffers.
     TF_RETURN_IF_ERROR(
         CheckBufferAlignment(info(), min_alignment_.value_or(0), kernel_args));
-    if (invariant_arguments_.has_value()) {
-      TF_RETURN_IF_ERROR(CheckInvariantBuffersMemory(kernel_args));
-    }
+    TF_RETURN_IF_ERROR(CheckInvariantBuffersMemory(kernel_args));
   }
 
   // TODO(ezhulenev): Kernel ptr should be loaded as a part of Thunk
@@ -260,10 +257,9 @@ template <int64_t num_arguments, int64_t num_results>
 absl::Status
 KernelThunk<num_arguments, num_results>::CheckInvariantBuffersMemory(
     const KernelArgs& kernel_args) const {
-  CHECK(invariant_arguments_.has_value());  // Crash OK
   if (ABSL_PREDICT_FALSE(VLOG_IS_ON(10))) {
     VLOG(10) << "Verify invariant buffers: ";
-    for (auto index : *invariant_arguments_) {
+    for (auto index : invariant_arguments_) {
       VLOG(10) << absl::StreamFormat("  invariant arg id: %d", index);
     }
   }
@@ -276,7 +272,7 @@ KernelThunk<num_arguments, num_results>::CheckInvariantBuffersMemory(
   // Verify all argument buffers.
   for (int64_t i = 0; i < arguments.size(); ++i) {
     const XLA_CPU_KernelArg& argument = arguments[i];
-    if (invariant_arguments_->contains(i)) {
+    if (invariant_arguments_.contains(i)) {
       // This argument should be read only, i.e. not one of the results.
       if (Contains(results, argument)) {
         return Internal("Argument marked as invariant aliases with a result");
@@ -319,7 +315,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
     std::string kernel_name, se::ThreadDim thread_dim,
-    std::optional<absl::flat_hash_set<int64_t>> invariant_arguments,
+    absl::flat_hash_set<int64_t> invariant_arguments,
     std::optional<uint64_t> min_alignment) {
   if (min_alignment.has_value() && !absl::has_single_bit(*min_alignment)) {
     return Internal("Host kernel %s minimum alignment %d is not a power of 2",
@@ -366,7 +362,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     std::optional<uint64_t> min_alignment) {
   return Create(std::move(info), kernel_spec.argument_buffers(),
                 kernel_spec.result_buffers(), kernel_spec.name(),
-                kernel_spec.thread_dim(), std::nullopt, min_alignment);
+                kernel_spec.thread_dim(), kernel_spec.invariant_arguments(),
+                min_alignment);
 }
 
 }  // namespace xla::cpu

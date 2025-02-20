@@ -17,9 +17,11 @@ limitations under the License.
 #define XLA_CODEGEN_KERNEL_SPEC_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/buffer_assignment.h"
@@ -37,11 +39,13 @@ class KernelSpec {
 
   KernelSpec(absl::string_view name, se::ThreadDim thread_dim,
              Buffers argument_buffers, Buffers result_buffers,
+             absl::flat_hash_set<int64_t> invariant_arguments,
              std::optional<size_t> scratch_bytes = std::nullopt);
 
   KernelSpec(absl::string_view name, se::ClusterDim cluster_dim,
              se::BlockDim block_dim, se::ThreadDim thread_dim,
              Buffers argument_buffers, Buffers result_buffers,
+             absl::flat_hash_set<int64_t> invariant_arguments,
              std::optional<size_t> scratch_bytes = std::nullopt);
 
   // Get the backend specific name of the kernel.
@@ -72,6 +76,12 @@ class KernelSpec {
   // Result buffers written to by the kernel.
   const Buffers& result_buffers() const { return result_buffers_; }
 
+  // Returns a set of invariant arguments (corresponding to the indices in the
+  // argument buffers list).
+  const absl::flat_hash_set<int64_t>& invariant_arguments() const {
+    return invariant_arguments_;
+  }
+
  private:
   std::string name_;
   se::ClusterDim cluster_dim_;
@@ -80,6 +90,8 @@ class KernelSpec {
 
   Buffers argument_buffers_;
   Buffers result_buffers_;
+
+  absl::flat_hash_set<int64_t> invariant_arguments_;
 
   std::optional<size_t> scratch_bytes_;
 };

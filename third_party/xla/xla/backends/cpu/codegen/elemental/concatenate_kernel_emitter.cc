@@ -113,7 +113,8 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
                                                      std::move(llvm_module));
   KernelSpec spec(kernel_prototype.function->getName(), se::ThreadDim(),
                   std::move(kernel_prototype.argument_buffers),
-                  std::move(kernel_prototype.result_buffers));
+                  std::move(kernel_prototype.result_buffers),
+                  std::move(kernel_prototype.invariant_arguments));
 
   return KernelDefinition(std::move(spec), std::move(source));
 }

@@ -628,7 +628,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
             buffer_allocations_[buffer_allocations_.size() - 1])},
         /*kernel_name=*/"test",
         /*thread_dim=*/se::ThreadDim(1),
-        /*invariant_arguments=*/{{0}},
+        /*invariant_arguments=*/{0},
         /*min_alignment=*/8);
   }
 

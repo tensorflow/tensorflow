@@ -73,6 +73,7 @@ cc_library(
     deps = [
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:launch_dim",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",
     ],

@@ -84,7 +84,7 @@ absl::StatusOr<KernelDefinition> LlvmIrKernelEmitter::EmitKernelDefinition() {
   }
 
   KernelSpec kernel_spec(kernel_name_, thread_dim_, std::move(argument_buffers),
-                         std::move(result_buffers));
+                         std::move(result_buffers), /*invariant_arguments=*/{});
   return KernelDefinition(std::move(kernel_spec), std::move(source));
 }
 
