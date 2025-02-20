@@ -433,6 +433,41 @@ std::optional<Range> IdentifyRangeAsFunctionOfInductionVar(
   return instr_range;
 }
 
+// Finds the indices of the dynamic dimensions in the given slice instruction.
+// Any index that is not a constant is considered dynamic. The slice shape must
+// match the input shape on all non-dynamic dimensions. Returns nullopt if the
+// non-dynamic dimensions do not match the input shape.
+std::optional<std::vector<int64_t>> FindDynamicIndices(
+    const HloInstruction* instr, int64_t start_indices_offset,
+    const Shape& slice_shape, const Shape& input_shape) {
+  const int64_t num_indices = slice_shape.dimensions_size();
+  CHECK_EQ(num_indices, input_shape.dimensions_size());
+  std::vector<int64_t> dynamic_indices;
+  for (int64_t index = 0; index < num_indices; ++index) {
+    int64_t start_index_offset = start_indices_offset + index;
+    const HloInstruction* start_index = instr->operand(start_index_offset);
+
+    if (!Match(start_index, match::ConstantScalar())) {
+      dynamic_indices.push_back(index);
+      continue;
+    }
+    // This is a non-dynamic index. It must start at zero and have a slice
+    // size matching the input size.
+    if (!Match(start_index, match::ConstantScalar(0))) {
+      VLOG(3) << "Non-dynamic-index dimensions must start at zero; "
+                 "nonzero at index "
+              << index;
+      return std::nullopt;
+    }
+    if (slice_shape.dimensions(index) != input_shape.dimensions(index)) {
+      VLOG(3) << "The slice sizes must match the input shape on "
+                 "non-dynamic-index dimensions; mismatch at index "
+              << index;
+      return std::nullopt;
+    }
+  }
+  return dynamic_indices;
+}
 };  // namespace
 
 // Recursively checks if the given instruction is effectively static by checking
@@ -603,7 +638,7 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
 // one.
 // Compared to the MatchShapeCoveringDynamicInstruction() method above, this
 // implementation determines whether the (single) dynamic dimension is fully
-// coverd by simulating the loop and noting which indices have been covered at
+// covered by simulating the loop and noting which indices have been covered at
 // any point.
 std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
     const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
@@ -637,44 +672,21 @@ std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
   CHECK_EQ(num_indices, input_shape.rank());
   CHECK_EQ(num_indices, instr->operand_count() - start_indices_offset);
 
-  std::vector<int64_t> dynamic_indices;
-  for (int64_t index = 0; index < num_indices; ++index) {
-    int64_t start_index_offset = start_indices_offset + index;
-    const HloInstruction* start_index = instr->operand(start_index_offset);
-
-    if (!Match(start_index, match::ConstantScalar())) {
-      dynamic_indices.push_back(index);
-      continue;
-    }
-    // This is a non-dynamic index. It must start at zero and have a slice
-    // size matching the input size.
-    if (!Match(start_index, match::ConstantScalar(0))) {
-      VLOG(3) << "Non-dynamic-index dimensions must start at zero; "
-                 "nonzero at index "
-              << index;
-      return std::nullopt;
-    }
-    if (slice_shape->dimensions(index) != input_shape.dimensions(index)) {
-      VLOG(3) << "The slice sizes must match the input shape on "
-                 "non-dynamic-index dimensions; mismatch at index "
-              << index;
-      return std::nullopt;
-    }
-  }
-
-  if (dynamic_indices.empty()) {
+  std::optional<std::vector<int64_t>> dynamic_indices = FindDynamicIndices(
+      instr, start_indices_offset, *slice_shape, input_shape);
+  if (dynamic_indices == std::nullopt || dynamic_indices->empty()) {
     VLOG(3) << "No dynamic index found.";
     return std::nullopt;
   }
-  if (dynamic_indices.size() >= 2) {
-    VLOG(3) << "Too many dynamic indices; found " << dynamic_indices.size();
+  if (dynamic_indices->size() >= 2) {
+    VLOG(3) << "Too many dynamic indices; found " << dynamic_indices->size();
     return std::nullopt;
   }
 
-  std::optional<int64_t> dynamic_index = dynamic_indices[0];
+  int64_t dynamic_index = (*dynamic_indices)[0];
   std::optional<Range> dynamic_index_range =
       IdentifyRangeAsFunctionOfInductionVar(
-          instr->operand(start_indices_offset + dynamic_indices[0]), config);
+          instr->operand(start_indices_offset + dynamic_index), config);
   if (dynamic_index_range == std::nullopt ||
       !dynamic_index_range->IsBounded() ||
       !dynamic_index_range->IsStepKnown()) {
@@ -682,11 +694,11 @@ std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
     return std::nullopt;
   }
 
-  const int64_t dimension_size = input_shape.dimensions(dynamic_index.value());
+  const int64_t dimension_size = input_shape.dimensions(dynamic_index);
   // We keep a boolean per possible index of the dynamic dimension, initially
   // false.
   std::vector<bool> indices_covered(dimension_size);
-  const int64_t slice_size = slice_shape->dimensions(dynamic_index.value());
+  const int64_t slice_size = slice_shape->dimensions(dynamic_index);
 
   // Here, we simulate the loop based on the xla::Range that we have computed
   // to represent the input to the DS/DUS.
