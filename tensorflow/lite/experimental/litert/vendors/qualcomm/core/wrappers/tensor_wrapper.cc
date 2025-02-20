@@ -1,5 +1,5 @@
-// Copyright (c) Qualcomm Innovation Center, Inc.
-// All Rights Reserved.
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
@@ -7,6 +7,8 @@
 #include <cstring>
 #include <iostream>
 #include <numeric>
+
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
 
 namespace qnn {
 
@@ -142,18 +144,15 @@ void TensorWrapper::SetDataType(Qnn_DataType_t data_type) {
 
 void TensorWrapper::SetTensorData(std::uint32_t bytes, const void* data) {
   if (!IsSubgraphInput() && !IsTensorStatic()) {
-    // TODO: error log
-    // LITERT_LOG(LITERT_ERROR,
-    //            "Cannot set tensor data of tensor type other than "
-    //            "QNN_TENSOR_TYPE_APP_WRITE or QNN_TENSOR_TYPE_STATIC.");
+    QNN_LOG_ERROR(
+        "Cannot set tensor data of tensor type other than "
+        "QNN_TENSOR_TYPE_APP_WRITE or QNN_TENSOR_TYPE_STATIC.");
     return;
   }
 
   if (bytes != GetTensorSize()) {
-    // TODO: error log
-    std::cout << "ERROR bytes: " << bytes
-              << " != TensorSize(): " << GetTensorSize()
-              << ", use TensorSize() instead." << std::endl;
+    QNN_LOG_WARNING("Bytes: %u != TensorSize(): %lu, use TensorSize() instead.",
+                    bytes, GetTensorSize());
     bytes = GetTensorSize();
   }
 
