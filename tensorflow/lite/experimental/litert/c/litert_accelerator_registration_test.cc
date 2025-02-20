@@ -18,6 +18,7 @@
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/core/accelerator.h"
@@ -54,8 +55,9 @@ class DummyAccelerator {
     return kLiteRtStatusOk;
   }
 
-  static LiteRtStatus CreateDelegate(LiteRtAccelerator accelerator,
-                                     void** delegate) {
+  static LiteRtStatus CreateDelegate(
+      LiteRtAccelerator accelerator,
+      LiteRtAcceleratorCompilationOptions options, void** delegate) {
     return kLiteRtStatusOk;
   }
 

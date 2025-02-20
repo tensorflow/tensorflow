@@ -87,6 +87,16 @@ std::string GetTestFilePath(absl::string_view filename) {
   }
 }
 
+std::string GetTfliteFilePath(absl::string_view filename) {
+  static constexpr absl::string_view kTestDataDir = "tensorflow/lite/";
+
+  if constexpr (!tsl::kIsOpenSource) {
+    return internal::Join({"third_party", kTestDataDir, filename});
+  } else {
+    return internal::Join({kTestDataDir, filename});
+  }
+}
+
 Model LoadTestFileModel(absl::string_view filename) {
   return *Model::CreateFromFile(GetTestFilePath(filename));
 }

@@ -364,6 +364,9 @@ Expected<LiteRtModelT::Ptr> UnpackModel(FlatbufferWrapper&& flatbuffer) {
       tfl_signatures.push_back(TflSignaturePtr(tfl_signature->UnPack()));
     }
     LITERT_RETURN_IF_ERROR(UnpackSignatures(tfl_signatures, *litert_model));
+  } else {
+    litert_model->EmplaceSignature(
+        MakeDefaultSignature(litert_model->MainSubgraph()));
   }
 
   if (packed_model->metadata()) {

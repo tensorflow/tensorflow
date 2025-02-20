@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
@@ -98,6 +99,7 @@ LiteRtStatus LiteRtSetAcceleratorGetHardwareSupport(
 LiteRtStatus LiteRtSetDelegateFunction(
     LiteRtAccelerator accelerator,
     LiteRtStatus (*CreateDelegate)(LiteRtAccelerator accelerator,
+                                   LiteRtAcceleratorCompilationOptions options,
                                    void** delegate),
     void (*DestroyDelegate)(void* delegate)) {
   if (!accelerator) {
