@@ -44,28 +44,6 @@ T* Cast(HloInstruction* instr) {
   return tsl::down_cast<T*>(instr);
 }
 
-// Downcasts a const HloInstruction pointer or returns nullptr if argument is
-// nullptr. Dies if TargetClass::ClassOf() does not match.
-template <typename T>
-const T* CastOrNull(const HloInstruction* i) {
-  if (i == nullptr) {
-    return nullptr;
-  }
-  CHECK(T::ClassOf(i));
-  return tsl::down_cast<const T*>(i);
-}
-
-// Downcasts a const HloInstruction pointer or returns nullptr if argument is
-// nullptr. Dies if TargetClass::ClassOf() does not match.
-template <typename T>
-T* CastOrNull(HloInstruction* i) {
-  if (i == nullptr) {
-    return nullptr;
-  }
-  CHECK(T::ClassOf(i));
-  return tsl::down_cast<T*>(i);
-}
-
 // Downcasts a const HloInstruction pointer or returns nullptr if
 // TargetClass::ClassOf() does not match. Dies if argument is nullptr. Similar
 // to LLVM's dyn_cast.
@@ -82,28 +60,6 @@ template <typename T>
 T* DynCast(HloInstruction* i) {
   CHECK(i != nullptr);
   return !T::ClassOf(i) ? nullptr : tsl::down_cast<T*>(i);
-}
-
-// Downcasts a const HloInstruction pointer. Return nullptr if argument is
-// nullptr orTargetClass::ClassOf() does not match. Similar to LLVM's
-// dyn_cast_or_null.
-template <typename T>
-const T* DynCastOrNull(const HloInstruction* instruction) {
-  if (instruction == nullptr || !T::ClassOf(instruction)) {
-    return nullptr;
-  }
-  return tsl::down_cast<const T*>(instruction);
-}
-
-// Downcasts a non-const HloInstruction pointer. Return nullptr if argument is
-// nullptr orTargetClass::ClassOf() does not match. Similar to LLVM's
-// dyn_cast_or_null.
-template <typename T>
-T* DynCastOrNull(HloInstruction* instruction) {
-  if (instruction == nullptr || !T::ClassOf(instruction)) {
-    return nullptr;
-  }
-  return tsl::down_cast<T*>(instruction);
 }
 
 }  // namespace xla

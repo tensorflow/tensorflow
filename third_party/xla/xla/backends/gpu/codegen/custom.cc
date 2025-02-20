@@ -289,6 +289,12 @@ std::unique_ptr<HloModule> ExtractWhileInitModule(
   return init_module;
 }
 
+bool IsDynamicSliceOrDynamicUpdateSlice(const HloInstruction* instr) {
+  return instr != nullptr &&
+         (instr->opcode() == HloOpcode::kDynamicSlice ||
+          instr->opcode() == HloOpcode::kDynamicUpdateSlice);
+}
+
 absl::Status CollectSliceInfo(
     const BufferAssignment& buffer_assignment,
     const HloInstruction& fusion_instr,
@@ -300,11 +306,11 @@ absl::Status CollectSliceInfo(
     std::vector<std::unique_ptr<HloModule>>& extracted_offset_modules,
     unsigned arg_idx, bool can_compute_indvar_on_host,
     std::optional<const HloInstruction*> while_op) {
-  auto* arg_slice_instr =
-      DynCastOrNull<HloDynamicIndexInstruction>(slice_instrs[arg_idx]);
-  if (arg_slice_instr == nullptr) {
+  if (!IsDynamicSliceOrDynamicUpdateSlice(slice_instrs[arg_idx])) {
     return absl::OkStatus();
   }
+  auto* arg_slice_instr =
+      Cast<HloDynamicIndexInstruction>(slice_instrs[arg_idx]);
   std::optional<HloInstruction*> async_caller = std::nullopt;
   if (fusion_instr.parent()->IsAsyncComputation()) {
     async_caller = fusion_instr.parent()->AsyncStart();
@@ -632,10 +638,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   std::unique_ptr<Thunk> thunk;
   auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
 
-  if (absl::c_any_of(slice_instrs, [&](auto slice_instr) {
-        return DynCastOrNull<HloDynamicIndexInstruction>(slice_instr) !=
-               nullptr;
-      })) {
+  if (absl::c_any_of(slice_instrs, IsDynamicSliceOrDynamicUpdateSlice)) {
     // Creating embedded GEMM thunk.
     unsigned fake_arg_idx = 0;
     int64_t lhs_byte_size =
@@ -906,10 +909,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   };
 
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(num_args);
-  if (absl::c_any_of(slice_instrs, [&](auto slice_instr) {
-        return DynCastOrNull<HloDynamicIndexInstruction>(slice_instr) !=
-               nullptr;
-      })) {
+  if (absl::c_any_of(slice_instrs, IsDynamicSliceOrDynamicUpdateSlice)) {
     // Creating embedded custom call thunk.
     unsigned fake_arg_idx = 0;
 
@@ -1076,10 +1076,7 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
     return absl::InternalError("Expected atleast one slicing operation");
   }
   bool isDynamic =
-      absl::c_any_of(slice_instrs, [&](const HloInstruction* slice_instr) {
-        return DynCastOrNull<HloDynamicIndexInstruction>(slice_instr) !=
-               nullptr;
-      });
+      absl::c_any_of(slice_instrs, IsDynamicSliceOrDynamicUpdateSlice);
   TF_ASSIGN_OR_RETURN(
       auto backend_config,
       fusion_instr.backend_config<xla::gpu::GpuBackendConfig>());
