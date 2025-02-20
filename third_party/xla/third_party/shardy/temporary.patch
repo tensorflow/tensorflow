@@ -1,33 +1,541 @@
+diff --git a/shardy/dialect/sdy/transforms/propagation/BUILD b/shardy/dialect/sdy/transforms/propagation/BUILD
+index 1015f14..d36d4c2 100644
+--- a/shardy/dialect/sdy/transforms/propagation/BUILD
++++ b/shardy/dialect/sdy/transforms/propagation/BUILD
+@@ -260,7 +260,6 @@ cc_library(
+         ":utils",
+         "//shardy/dialect/sdy/ir:dialect",
+         "//shardy/dialect/sdy/transforms/common:macros",
+-        "//shardy/dialect/sdy/transforms/common:op_properties",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:Support",
+diff --git a/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.cc b/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.cc
+index b4dfc4d..aaded5f 100644
+--- a/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.cc
+@@ -25,7 +25,6 @@ limitations under the License.
+ #include "mlir/IR/Value.h"
+ #include "mlir/Support/LLVM.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+-#include "shardy/dialect/sdy/transforms/common/op_properties.h"
+ #include "shardy/dialect/sdy/transforms/propagation/factor_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_projection.h"
+ 
+@@ -83,65 +82,8 @@ SmallVector<TensorIndexSize> getFactorToSourceTensor(
+   return factorToSourceTensor;
+ }
+ 
+-// Returns if `factorSharding` has a factor at `factorIndex` which is the
+-// strict prefix of `shardingAxes`.
+-bool isStrictPrefixOfFactorSharding(
+-    const TensorFactorShardings& factorSharding, int64_t factorIndex,
+-    ArrayRef<AxisRefAttr> shardingAxes) {
+-  if (auto it = factorSharding.factorIndexToSharding.find(factorIndex);
+-      it != factorSharding.factorIndexToSharding.end()) {
+-    return isAxisListPrefixOf(it->getSecond().axisRefs, shardingAxes) ==
+-        PrefixStatus::STRICT_PREFIX;
+-  }
+-  return false;
+-}
+-
+ }  // namespace
+ 
+-SmallVector<AxisRefAttr>
+-AggressiveFactorPropagation::getPropagatedFactorSharding(
+-    int64_t factorIndex, const TensorFactorShardings& tensorFactorShardings,
+-    const FactorIndexToSharding& factorIndexToSharding,
+-    AxesPerFactorRef axesPerFactor, MeshAttr mesh, bool conservativePropagation,
+-    ArrayRef<int64_t> factorSizes) const {
+-  auto factorShardingIt = factorIndexToSharding.find(factorIndex);
+-  if (factorShardingIt == factorIndexToSharding.end()) {
+-    return {};
+-  }
+-  const FactorSharding& factorSharding = factorShardingIt->second;
+-  SmallVector<AxisRefAttr> newAxes = axesPerFactor[factorIndex];
+-
+-  // Resolve conflicts within a factor.
+-  truncateAxesByRemovingConflicts(
+-      newAxes,
+-      [&, factorIndex = factorIndex,
+-       &tensorFactorShardings = tensorFactorShardings](
+-          AxisRefAttr axisRef, int64_t prevShardedSize) {
+-        return compatiblePrefixNoConflictsWithinFactor(
+-            axisRef, tensorFactorShardings.replicatedAxes, factorSharding,
+-            prevShardedSize, factorSizes[factorIndex], mesh);
+-      },
+-      mesh, conservativePropagation);
+-  if (!isStrictPrefix(factorSharding.axisRefs, newAxes)) {
+-    return {};
+-  }
+-
+-  // Resolve conflicts (overlapping sharding axes) between factors.
+-  //
+-  // Note that we pass `factorIndexToSharding`, which might have been
+-  // updated for a previous factor (previous iteration), thus we are
+-  // checking for conflicts w.r.t. the updated state of this tensor.
+-  truncateAxesByRemovingConflicts(
+-      newAxes,
+-      [&, factorIndex = factorIndex](AxisRefAttr axisRef, int64_t) {
+-        return compatiblePrefixNoConflictsAcrossFactors(
+-            axisRef, factorIndexToSharding, factorIndex);
+-      },
+-      mesh, conservativePropagation);
+-
+-  return newAxes;
+-}
+-
+ UpdateTensorShardings AggressiveFactorPropagation::propagateFactorShardings(
+     ShardingProjection& projection,
+     PropagationDirectionAlongFactor directionAlongFactor,
+@@ -182,8 +124,12 @@ UpdateTensorShardings AggressiveFactorPropagation::propagateFactorShardings(
+                                  factorToSourceTensor[j].index, j);
+   });
+ 
++  // The propagation on each tensor is independent. This strategy can propagate
++  // different shardings to different tensors along the same factor. Examples
++  // are provided in the docstring of this class.
+   for (const auto& [tensorIndex, tensorFactorShardings] :
+-       llvm::enumerate(projection.getResults())) {
++       llvm::enumerate(llvm::concat<const TensorFactorShardings>(
++           projection.getOperands(), projection.getResults()))) {
+     const FactorIndexToSharding& factorIndexToSharding =
+         tensorFactorShardings.factorIndexToSharding;
+ 
+@@ -191,63 +137,52 @@ UpdateTensorShardings AggressiveFactorPropagation::propagateFactorShardings(
+     // following the order of preference in  `sortedFactorIndices`.
+     bool tensorUpdated = false;
+     for (int64_t factorIndex : sortedFactorIndices) {
+-      SmallVector<AxisRefAttr> newAxes = getPropagatedFactorSharding(
+-          factorIndex, tensorFactorShardings, factorIndexToSharding,
+-          axesPerFactor, mesh, conservativePropagation, factorSizes);
+-      if (newAxes.empty()) {
++      auto factorShardingIt = factorIndexToSharding.find(factorIndex);
++      if (factorShardingIt == factorIndexToSharding.end()) {
+         continue;
+       }
+-      tensorUpdated |= expandTensorSharding(
+-          projection, tensorIndex + projection.getNumOperands(), factorIndex,
+-          newAxes);
+-    }
+-    result.updateResults[tensorIndex] = tensorUpdated;
+-  }
+-
+-  for (const auto& [tensorIndex, tensorFactorShardings] :
+-       llvm::enumerate(projection.getOperands())) {
+-    const FactorIndexToSharding& factorIndexToSharding =
+-        tensorFactorShardings.factorIndexToSharding;
+-
+-    // Propagate the axes got in Step 1, resolving conflicts between factors by
+-    // following the order of preference in  `sortedFactorIndices`.
+-    bool tensorUpdated = false;
+-    for (int64_t factorIndex : sortedFactorIndices) {
+-      SmallVector<AxisRefAttr> newAxes = getPropagatedFactorSharding(
+-          factorIndex, tensorFactorShardings, factorIndexToSharding,
+-          axesPerFactor, mesh, conservativePropagation, factorSizes);
+-      if (newAxes.empty()) {
++      const FactorSharding& factorSharding = factorShardingIt->second;
++      SmallVector<AxisRefAttr> newAxes = axesPerFactor[factorIndex];
++
++      // Resolve conflicts within a factor.
++      truncateAxesByRemovingConflicts(
++          newAxes,
++          [&, factorIndex = factorIndex,
++           &tensorFactorShardings = tensorFactorShardings](
++              AxisRefAttr axisRef, int64_t prevShardedSize) {
++            return compatiblePrefixNoConflictsWithinFactor(
++                axisRef, tensorFactorShardings.replicatedAxes, factorSharding,
++                prevShardedSize, factorSizes[factorIndex], mesh);
++          },
++          mesh, conservativePropagation);
++      if (!isStrictPrefix(factorSharding.axisRefs, newAxes)) {
+         continue;
+       }
+ 
+-      // Only propagate sideways through operands the factors that are also
+-      // used in at least one result We want to avoid the following situation
+-      // which can happen when a `sharding_constraint` is added onto the operand
+-      // during Shardy import:
+-      // ```
+-      // %arg0: [{"a", ?}]
+-      // %arg1: [{?}]
+-      // %0 = add %arg0, %arg1 : [{}]
+-      // ```
+-      // We don't want to do an all-gather on both %arg0 and %arg1 due to "a"
+-      // propagating sideways. Instead with the code below, since "a" can't
+-      // propagate to `%0`, we will only do an all-gather on %arg0.
++      // Resolve conflicts (overlapping sharding axes) between factors.
+       //
+-      // TODO(b/396642774): Long term we should undo this and allow sideways
+-      // propagation, but have our explicit reshard pass make sure the result is
+-      // all-gathered instead of both operands.
+-      if (op && isElementwise(op)) {
+-        for (const TensorFactorShardings& result : projection.getResults()) {
+-          if (isStrictPrefixOfFactorSharding(result, factorIndex, newAxes)) {
+-            newAxes = result.factorIndexToSharding.at(factorIndex).axisRefs;
+-          }
+-        }
+-      }
++      // Note that we pass `factorIndexToSharding`, which might have been
++      // updated for a previous factor (previous iteration), thus we are
++      // checking for conflicts w.r.t. the updated state of this tensor.
++      truncateAxesByRemovingConflicts(
++          newAxes,
++          [&, factorIndex = factorIndex](AxisRefAttr axisRef, int64_t) {
++            return compatiblePrefixNoConflictsAcrossFactors(
++                axisRef, factorIndexToSharding, factorIndex);
++          },
++          mesh, conservativePropagation);
+       tensorUpdated |=
+           expandTensorSharding(projection, tensorIndex, factorIndex, newAxes);
+     }
+-    result.updateOperands[tensorIndex] = tensorUpdated;
++
++    if (tensorIndex < projection.getNumOperands()) {
++      result.updateOperands[tensorIndex] = tensorUpdated;
++    } else {
++      result.updateResults[tensorIndex - projection.getNumOperands()] =
++          tensorUpdated;
++    }
+   }
++
+   return result;
+ }
+ 
+diff --git a/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.h b/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.h
+index c089fe7..cf44b14 100644
+--- a/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.h
++++ b/shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.h
+@@ -81,15 +81,6 @@ class AggressiveFactorPropagation : public BasicFactorPropagation {
+       PropagationDirectionAlongFactor directionAlongFactor,
+       ArrayRef<int64_t> factorSizes, MeshAttr mesh, Operation* op,
+       bool conservativePropagation) const override;
+-
+- private:
+-  // Returns the axes to propagate to an individual factor in the given
+-  // `tensorFactorShardings` of a tensor.
+-  SmallVector<AxisRefAttr> getPropagatedFactorSharding(
+-      int64_t factorIndex, const TensorFactorShardings& tensorFactorShardings,
+-      const FactorIndexToSharding& factorIndexToSharding,
+-      AxesPerFactorRef axesPerFactor, MeshAttr mesh,
+-      bool conservativePropagation, ArrayRef<int64_t> factorSizes) const;
+ };
+ 
+ }  // namespace sdy
+diff --git a/shardy/dialect/sdy/transforms/propagation/test/aggressive_propagation.mlir b/shardy/dialect/sdy/transforms/propagation/test/aggressive_propagation.mlir
+index c0f54c3..fc7a805 100644
+--- a/shardy/dialect/sdy/transforms/propagation/test/aggressive_propagation.mlir
++++ b/shardy/dialect/sdy/transforms/propagation/test/aggressive_propagation.mlir
+@@ -1,7 +1,6 @@
+ // RUN: sdy_opt %s -sdy-aggressive-propagate="propagation-strategy=aggressive" -verify-diagnostics 2>&1 | FileCheck %s
+ 
+ sdy.mesh @empty_mesh = <[]>
+-sdy.mesh @mesh_a_4 = <["a"=4]>
+ sdy.mesh @mesh_a_2_b_2 = <["a"=2, "b"=2]>
+ sdy.mesh @mesh_a_2_b_2_c_2 = <["a"=2, "b"=2, "c"=2]>
+ sdy.mesh @mesh_a_2_b_2_c_2_d_2 = <["a"=2, "b"=2, "c"=2, "d"=2]>
+@@ -151,82 +150,3 @@ func.func @multiple_conflicts_across_factors(
+     (tensor<2x8x4xf32>, tensor<2x4x16xf32>) -> tensor<2x8x16xf32>
+   return %0 : tensor<2x8x16xf32>
+ }
+-
+-
+-// CHECK-LABEL: func @avoid_sideways_propagation_if_result_is_closed_empty(
+-// CHECK-SAME:      %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}]>},
+-// CHECK-SAME:      %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{?}]>})
+-// CHECK-SAME:  -> tensor<8xf32>
+-func.func @avoid_sideways_propagation_if_result_is_closed_empty(
+-    %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}]>},
+-    %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{?}]>})
+-    -> tensor<8xf32> {
+-  // CHECK-NEXT: stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{}]>]>}
+-  %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{}]>]>} : tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func @allow_sideways_propagation_if_result_is_open_empty(
+-// CHECK-SAME:      %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", "b"}]>},
+-// CHECK-SAME:      %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", "b", ?}]>})
+-// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", "b", ?}]>})
+-func.func @allow_sideways_propagation_if_result_is_open_empty(
+-    %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", "b"}]>},
+-    %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{?}]>})
+-    -> tensor<8xf32> {
+-  // CHECK-NEXT: stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", "b", ?}]>]>}
+-  %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{?}]>]>} : tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func @avoid_sideways_propagation_if_result_is_closed_sub_axis(
+-// CHECK-SAME:      %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_4, [{"a"}]>},
+-// CHECK-SAME:      %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_4, [{"a":(1)2, ?}]>})
+-// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_4, [{"a":(1)2, ?}]>})
+-func.func @avoid_sideways_propagation_if_result_is_closed_sub_axis(
+-    %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_4, [{"a"}]>},
+-    %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_4, [{?}]>})
+-    -> tensor<8xf32> {
+-  // CHECK-NEXT: stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_4, [{"a":(1)2}]>]>}
+-  %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_4, [{"a":(1)2}]>]>} : tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func @allow_partial_sideways_propagation_if_conflicting_with_result(
+-// CHECK-SAME:      %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", "b"}]>},
+-// CHECK-SAME:      %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}]>})
+-// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}]>})
+-func.func @allow_partial_sideways_propagation_if_conflicting_with_result(
+-    %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", "b"}]>},
+-    %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{?}]>})
+-    -> tensor<8xf32> {
+-  // CHECK-NEXT: stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a"}]>]>}
+-  %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a"}]>]>} : tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func @allow_sideways_propagation_if_result_fully_matches(
+-// CHECK-SAME:      %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", "b"}]>},
+-// CHECK-SAME:      %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", "b", ?}]>})
+-// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", "b", ?}]>})
+-func.func @allow_sideways_propagation_if_result_fully_matches(
+-    %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", "b"}]>},
+-    %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{?}]>})
+-    -> tensor<8xf32> {
+-  // CHECK-NEXT: stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", "b"}]>]>}
+-  %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", "b"}]>]>} : tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func @allow_sideways_propagation_if_no_conflicting_with_one_of_multiple_results(
+-// CHECK-SAME:      %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}]>},
+-// CHECK-SAME:      %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}]>})
+-// CHECK-SAME:   -> (tensor<8xf32>, tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}]>})
+-func.func @allow_sideways_propagation_if_no_conflicting_with_one_of_multiple_results(
+-    %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}]>},
+-    %arg1: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{?}]>})
+-    -> (tensor<8xf32>, tensor<8xf32>) {
+-  // CHECK-NEXT: stablehlo.custom_call @foo(%arg0, %arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{}]>, <@mesh_a_2_b_2, [{"a", ?}]>]>
+-  %0:2 = stablehlo.custom_call @foo(%arg0, %arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{}]>, <@mesh_a_2_b_2, [{?}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i], [i])->([i], [i]) {i=8}, custom>} : (tensor<8xf32>, tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>)
+-  return %0#0, %0#1 : tensor<8xf32>, tensor<8xf32>
+-}
+diff --git a/shardy/dialect/sdy/transforms/propagation/test/user_priority_propagation.mlir b/shardy/dialect/sdy/transforms/propagation/test/user_priority_propagation.mlir
+index 4b42104..a18d99b 100644
+--- a/shardy/dialect/sdy/transforms/propagation/test/user_priority_propagation.mlir
++++ b/shardy/dialect/sdy/transforms/propagation/test/user_priority_propagation.mlir
+@@ -53,7 +53,7 @@ func.func @arg_lower_priority_than_return_value(
+ // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {"b"}]>},
+ // CHECK-SAME:      %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c", ?}, {"b", ?}]>},
+ // CHECK-SAME:      %arg2: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c", ?}, {"b", ?}]>},
+-// CHECK-SAME:      %arg3: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c", ?}, {?}]>})
++// CHECK-SAME:      %arg3: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c", ?}, {"b", ?}]>})
+ // CHECK-SAME:  -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c", ?}, {?}]>}) {
+ func.func @arg_lower_priority_than_return_value_with_replicated(
+       %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}p1, {"b"}p1]>},
+@@ -72,7 +72,7 @@ func.func @arg_lower_priority_than_return_value_with_replicated(
+ // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b", ?}]>},
+ // CHECK-SAME:      %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {"b"}]>},
+ // CHECK-SAME:      %arg2: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b", ?}]>},
+-// CHECK-SAME:      %arg3: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {"b", ?}]>})
++// CHECK-SAME:      %arg3: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b", ?}]>})
+ // CHECK-SAME:  -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c", ?}, {"b", ?}]>}) {
+ func.func @arg_higher_priority_than_return_value(
+       %arg0: tensor<8x8xf32>, %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}p0, {"b"}p0]>},
+@@ -146,7 +146,7 @@ func.func @dim_with_lower_priority_gets_further_sharded_by_higher(
+ // CHECK-LABEL: func @different_priorities_with_closed_empty_dim(
+ // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {"b"}]>},
+ // CHECK-SAME:      %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b", ?}]>},
+-// CHECK-SAME:      %arg2: tensor<8x8xf32>,
++// CHECK-SAME:      %arg2: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b", ?}]>},
+ // CHECK-SAME:      %arg3: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c", ?}, {?}]>})
+ // CHECK-SAME:  -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c", ?}, {?}]>}) {
+ func.func @different_priorities_with_closed_empty_dim(
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 8d59083..509398d 100644
+index 509398d..eb1c8a4 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,13 +1 @@
+@@ -1 +1,171 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/clang/test/CIR/emit-actions.cpp b/clang/test/CIR/emit-actions.cpp
----- a/clang/test/CIR/emit-actions.cpp
--+++ b/clang/test/CIR/emit-actions.cpp
--@@ -11,7 +11,7 @@
-- 
-- int x = 1;
-- 
---// BC: @x = dso_local global i32 1
--+// BC: @x = {{(dso_local )?}}global i32 1
-- 
-- // ASM: x:
-- // ASM: .long   1
++diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGBuiltin.cpp b/clang/lib/CodeGen/CGBuiltin.cpp
++--- a/clang/lib/CodeGen/CGBuiltin.cpp
+++++ b/clang/lib/CodeGen/CGBuiltin.cpp
++@@ -859,24 +859,6 @@
++   StoreCos->setMetadata(LLVMContext::MD_noalias, AliasScopeList);
++ }
++ 
++-static llvm::Value *emitModfBuiltin(CodeGenFunction &CGF, const CallExpr *E,
++-                                    llvm::Intrinsic::ID IntrinsicID) {
++-  llvm::Value *Val = CGF.EmitScalarExpr(E->getArg(0));
++-  llvm::Value *IntPartDest = CGF.EmitScalarExpr(E->getArg(1));
++-
++-  llvm::Value *Call =
++-      CGF.Builder.CreateIntrinsic(IntrinsicID, {Val->getType()}, Val);
++-
++-  llvm::Value *FractionalResult = CGF.Builder.CreateExtractValue(Call, 0);
++-  llvm::Value *IntegralResult = CGF.Builder.CreateExtractValue(Call, 1);
++-
++-  QualType DestPtrType = E->getArg(1)->getType()->getPointeeType();
++-  LValue IntegralLV = CGF.MakeNaturalAlignAddrLValue(IntPartDest, DestPtrType);
++-  CGF.EmitStoreOfScalar(IntegralResult, IntegralLV);
++-
++-  return FractionalResult;
++-}
++-
++ /// EmitFAbs - Emit a call to @llvm.fabs().
++ static Value *EmitFAbs(CodeGenFunction &CGF, Value *V) {
++   Function *F = CGF.CGM.getIntrinsic(Intrinsic::fabs, V->getType());
++@@ -4130,15 +4112,6 @@
++   case Builtin::BI__builtin_frexpf128:
++   case Builtin::BI__builtin_frexpf16:
++     return RValue::get(emitFrexpBuiltin(*this, E, Intrinsic::frexp));
++-  case Builtin::BImodf:
++-  case Builtin::BImodff:
++-  case Builtin::BImodfl:
++-  case Builtin::BI__builtin_modf:
++-  case Builtin::BI__builtin_modff:
++-  case Builtin::BI__builtin_modfl:
++-    if (Builder.getIsFPConstrained())
++-      break; // TODO: Emit constrained modf intrinsic once one exists.
++-    return RValue::get(emitModfBuiltin(*this, E, Intrinsic::modf));
++   case Builtin::BI__builtin_isgreater:
++   case Builtin::BI__builtin_isgreaterequal:
++   case Builtin::BI__builtin_isless:
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/aix-builtin-mapping.c b/clang/test/CodeGen/aix-builtin-mapping.c
++--- a/clang/test/CodeGen/aix-builtin-mapping.c
+++++ b/clang/test/CodeGen/aix-builtin-mapping.c
++@@ -17,6 +17,6 @@
++   returnValue = __builtin_ldexpl(1.0L, 1);
++ }
++ 
++-// CHECK: %{{.+}} = call { double, double } @llvm.modf.f64(double 1.000000e+00)
+++// CHECK: %call = call double @modf(double noundef 1.000000e+00, ptr noundef %DummyLongDouble) #3
++ // CHECK: %{{.+}} = call { double, i32 } @llvm.frexp.f64.i32(double 0.000000e+00)
++ // CHECK: %{{.+}} = call double @llvm.ldexp.f64.i32(double 1.000000e+00, i32 1)
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/builtin-attributes.c b/clang/test/CodeGen/builtin-attributes.c
++--- a/clang/test/CodeGen/builtin-attributes.c
+++++ b/clang/test/CodeGen/builtin-attributes.c
++@@ -24,11 +24,6 @@
++   return __builtin_strstr(a, b);
++ }
++ 
++-// Note: Use asm label to disable intrinsic lowering of modf.
++-double modf(double x, double*) asm("modf");
++-float modff(float x, float*) asm("modff");
++-long double modfl(long double x, long double*) asm("modfl");
++-
++ // frexp is NOT readnone. It writes to its pointer argument.
++ //
++ // CHECK: f3
++@@ -60,9 +55,9 @@
++   frexp(x, &e);
++   frexpf(x, &e);
++   frexpl(x, &e);
++-  modf(x, &e);
++-  modff(x, &e);
++-  modfl(x, &e);
+++  __builtin_modf(x, &e);
+++  __builtin_modff(x, &e);
+++  __builtin_modfl(x, &e);
++   __builtin_remquo(x, x, &e);
++   __builtin_remquof(x, x, &e);
++   __builtin_remquol(x, x, &e);
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/math-builtins-long.c b/clang/test/CodeGen/math-builtins-long.c
++--- a/clang/test/CodeGen/math-builtins-long.c
+++++ b/clang/test/CodeGen/math-builtins-long.c
++@@ -58,9 +58,9 @@
++   // PPCF128: call fp128 @ldexpf128(fp128 noundef %{{.+}}, {{(signext)?.+}})
++   __builtin_ldexpl(f,f);
++ 
++-  // F80: call { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80 %{{.+}})
++-  // PPC: call { ppc_fp128, ppc_fp128 } @llvm.modf.ppcf128(ppc_fp128 %{{.+}})
++-  // X86F128: call { fp128, fp128 } @llvm.modf.f128(fp128 %{{.+}})
+++  // F80: call x86_fp80 @modfl(x86_fp80 noundef %{{.+}}, ptr noundef %{{.+}})
+++  // PPC: call ppc_fp128 @modfl(ppc_fp128 noundef %{{.+}}, ptr noundef %{{.+}})
+++  // X86F128: call fp128 @modfl(fp128 noundef %{{.+}}, ptr noundef %{{.+}})
++   // PPCF128: call fp128 @modff128(fp128 noundef %{{.+}}, ptr noundef %{{.+}})
++   __builtin_modfl(f,l);
++ 
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/math-libcalls.c b/clang/test/CodeGen/math-libcalls.c
++--- a/clang/test/CodeGen/math-libcalls.c
+++++ b/clang/test/CodeGen/math-libcalls.c
++@@ -83,12 +83,12 @@
++ 
++   modf(f,d);       modff(f,fp);      modfl(f,l);
++ 
++-  // NO__ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
++-  // NO__ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
++-  // NO__ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
++-  // HAS_ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
++-  // HAS_ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
++-  // HAS_ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
+++  // NO__ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
+++  // NO__ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
+++  // NO__ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
+++  // HAS_ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
+++  // HAS_ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
+++  // HAS_ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
++   // HAS_MAYTRAP: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
++   // HAS_MAYTRAP: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
++   // HAS_MAYTRAP: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/X86/math-builtins.c b/clang/test/CodeGen/X86/math-builtins.c
++--- a/clang/test/CodeGen/X86/math-builtins.c
+++++ b/clang/test/CodeGen/X86/math-builtins.c
++@@ -38,24 +38,6 @@
++ // NO__ERRNO-NEXT: [[FREXP_F128_0:%.+]] = extractvalue { fp128, i32 } [[FREXP_F128]], 0
++ 
++ 
++-// NO__ERRNO: [[MODF_F64:%.+]] = call { double, double } @llvm.modf.f64(double %{{.+}})
++-// NO__ERRNO-NEXT: [[MODF_F64_FP:%.+]] = extractvalue { double, double } [[MODF_F64]], 0
++-// NO__ERRNO-NEXT: [[MODF_F64_IP:%.+]] = extractvalue { double, double } [[MODF_F64]], 1
++-// NO__ERRNO-NEXT: store double [[MODF_F64_IP]], ptr %{{.+}}, align 8
++-
++-// NO__ERRNO: [[MODF_F32:%.+]] = call { float, float } @llvm.modf.f32(float %{{.+}})
++-// NO__ERRNO-NEXT: [[MODF_F32_FP:%.+]] = extractvalue { float, float } [[MODF_F32]], 0
++-// NO__ERRNO-NEXT: [[MODF_F32_IP:%.+]] = extractvalue { float, float } [[MODF_F32]], 1
++-// NO__ERRNO-NEXT: store float [[MODF_F32_IP]], ptr %{{.+}}, align 4
++-
++-// NO__ERRNO: [[MODF_F80:%.+]] = call { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80 %{{.+}})
++-// NO__ERRNO-NEXT: [[MODF_F80_FP:%.+]] = extractvalue { x86_fp80, x86_fp80 } [[MODF_F80]], 0
++-// NO__ERRNO-NEXT: [[MODF_F80_IP:%.+]] = extractvalue { x86_fp80, x86_fp80 } [[MODF_F80]], 1
++-// NO__ERRNO-NEXT: store x86_fp80 [[MODF_F80_IP]], ptr %{{.+}}, align 16
++-
++-// NO__ERRNO: call fp128 @modff128(fp128 noundef %{{.+}}, ptr noundef %{{.+}})
++-
++-
++ // NO__ERRNO: [[SINCOS_F64:%.+]] = call { double, double } @llvm.sincos.f64(double %{{.+}})
++ // NO__ERRNO-NEXT: [[SINCOS_F64_0:%.+]] = extractvalue { double, double } [[SINCOS_F64]], 0
++ // NO__ERRNO-NEXT: [[SINCOS_F64_1:%.+]] = extractvalue { double, double } [[SINCOS_F64]], 1
++@@ -157,13 +139,13 @@
++ 
++   __builtin_modf(f,d);       __builtin_modff(f,fp);      __builtin_modfl(f,l); __builtin_modff128(f,l);
++ 
++-// NO__ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
++-// NO__ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
++-// NO__ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
++-// NO__ERRNO: declare fp128 @modff128(fp128 noundef, ptr noundef) [[NOT_READNONE:#[0-9]+]]
++-// HAS_ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
++-// HAS_ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
++-// HAS_ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
+++// NO__ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE:#[0-9]+]]
+++// NO__ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
+++// NO__ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
+++// NO__ERRNO: declare fp128 @modff128(fp128 noundef, ptr noundef) [[NOT_READNONE]]
+++// HAS_ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
+++// HAS_ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
+++// HAS_ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
++ // HAS_ERRNO: declare fp128 @modff128(fp128 noundef, ptr noundef) [[NOT_READNONE]]
++ 
++   __builtin_nan(c);        __builtin_nanf(c);       __builtin_nanl(c); __builtin_nanf128(c);
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 3bd54d0..f8a8ffb 100644
+index f8a8ffb..1abfb98 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "dca73063653ca7d35afb3226ae66623495086204"
--    LLVM_SHA256 = "e9688256f2ace33836fb10f47481c1a934f632a9527f4f8d5b28fbd011528a75"
-+    LLVM_COMMIT = "f178e51747b47a181cd6be8dc4ad8943ea5728b3"
-+    LLVM_SHA256 = "16bd03e4bf67156477d5668b1759182a65bb437d62deb6516febc400057c449a"
+-    LLVM_COMMIT = "f178e51747b47a181cd6be8dc4ad8943ea5728b3"
+-    LLVM_SHA256 = "16bd03e4bf67156477d5668b1759182a65bb437d62deb6516febc400057c449a"
++    LLVM_COMMIT = "dc326d0b01f63e49f4f11c0c332369bf109721df"
++    LLVM_SHA256 = "6fa9fbb5dbae0146c5fa7e28c6c2bcbb175a983d3443eb37cdada979fdcb0b96"
  
      tf_http_archive(
          name = name,

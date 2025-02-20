@@ -1,1 +1,171 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGBuiltin.cpp b/clang/lib/CodeGen/CGBuiltin.cpp
+--- a/clang/lib/CodeGen/CGBuiltin.cpp
++++ b/clang/lib/CodeGen/CGBuiltin.cpp
+@@ -859,24 +859,6 @@
+   StoreCos->setMetadata(LLVMContext::MD_noalias, AliasScopeList);
+ }
+ 
+-static llvm::Value *emitModfBuiltin(CodeGenFunction &CGF, const CallExpr *E,
+-                                    llvm::Intrinsic::ID IntrinsicID) {
+-  llvm::Value *Val = CGF.EmitScalarExpr(E->getArg(0));
+-  llvm::Value *IntPartDest = CGF.EmitScalarExpr(E->getArg(1));
+-
+-  llvm::Value *Call =
+-      CGF.Builder.CreateIntrinsic(IntrinsicID, {Val->getType()}, Val);
+-
+-  llvm::Value *FractionalResult = CGF.Builder.CreateExtractValue(Call, 0);
+-  llvm::Value *IntegralResult = CGF.Builder.CreateExtractValue(Call, 1);
+-
+-  QualType DestPtrType = E->getArg(1)->getType()->getPointeeType();
+-  LValue IntegralLV = CGF.MakeNaturalAlignAddrLValue(IntPartDest, DestPtrType);
+-  CGF.EmitStoreOfScalar(IntegralResult, IntegralLV);
+-
+-  return FractionalResult;
+-}
+-
+ /// EmitFAbs - Emit a call to @llvm.fabs().
+ static Value *EmitFAbs(CodeGenFunction &CGF, Value *V) {
+   Function *F = CGF.CGM.getIntrinsic(Intrinsic::fabs, V->getType());
+@@ -4130,15 +4112,6 @@
+   case Builtin::BI__builtin_frexpf128:
+   case Builtin::BI__builtin_frexpf16:
+     return RValue::get(emitFrexpBuiltin(*this, E, Intrinsic::frexp));
+-  case Builtin::BImodf:
+-  case Builtin::BImodff:
+-  case Builtin::BImodfl:
+-  case Builtin::BI__builtin_modf:
+-  case Builtin::BI__builtin_modff:
+-  case Builtin::BI__builtin_modfl:
+-    if (Builder.getIsFPConstrained())
+-      break; // TODO: Emit constrained modf intrinsic once one exists.
+-    return RValue::get(emitModfBuiltin(*this, E, Intrinsic::modf));
+   case Builtin::BI__builtin_isgreater:
+   case Builtin::BI__builtin_isgreaterequal:
+   case Builtin::BI__builtin_isless:
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/aix-builtin-mapping.c b/clang/test/CodeGen/aix-builtin-mapping.c
+--- a/clang/test/CodeGen/aix-builtin-mapping.c
++++ b/clang/test/CodeGen/aix-builtin-mapping.c
+@@ -17,6 +17,6 @@
+   returnValue = __builtin_ldexpl(1.0L, 1);
+ }
+ 
+-// CHECK: %{{.+}} = call { double, double } @llvm.modf.f64(double 1.000000e+00)
++// CHECK: %call = call double @modf(double noundef 1.000000e+00, ptr noundef %DummyLongDouble) #3
+ // CHECK: %{{.+}} = call { double, i32 } @llvm.frexp.f64.i32(double 0.000000e+00)
+ // CHECK: %{{.+}} = call double @llvm.ldexp.f64.i32(double 1.000000e+00, i32 1)
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/builtin-attributes.c b/clang/test/CodeGen/builtin-attributes.c
+--- a/clang/test/CodeGen/builtin-attributes.c
++++ b/clang/test/CodeGen/builtin-attributes.c
+@@ -24,11 +24,6 @@
+   return __builtin_strstr(a, b);
+ }
+ 
+-// Note: Use asm label to disable intrinsic lowering of modf.
+-double modf(double x, double*) asm("modf");
+-float modff(float x, float*) asm("modff");
+-long double modfl(long double x, long double*) asm("modfl");
+-
+ // frexp is NOT readnone. It writes to its pointer argument.
+ //
+ // CHECK: f3
+@@ -60,9 +55,9 @@
+   frexp(x, &e);
+   frexpf(x, &e);
+   frexpl(x, &e);
+-  modf(x, &e);
+-  modff(x, &e);
+-  modfl(x, &e);
++  __builtin_modf(x, &e);
++  __builtin_modff(x, &e);
++  __builtin_modfl(x, &e);
+   __builtin_remquo(x, x, &e);
+   __builtin_remquof(x, x, &e);
+   __builtin_remquol(x, x, &e);
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/math-builtins-long.c b/clang/test/CodeGen/math-builtins-long.c
+--- a/clang/test/CodeGen/math-builtins-long.c
++++ b/clang/test/CodeGen/math-builtins-long.c
+@@ -58,9 +58,9 @@
+   // PPCF128: call fp128 @ldexpf128(fp128 noundef %{{.+}}, {{(signext)?.+}})
+   __builtin_ldexpl(f,f);
+ 
+-  // F80: call { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80 %{{.+}})
+-  // PPC: call { ppc_fp128, ppc_fp128 } @llvm.modf.ppcf128(ppc_fp128 %{{.+}})
+-  // X86F128: call { fp128, fp128 } @llvm.modf.f128(fp128 %{{.+}})
++  // F80: call x86_fp80 @modfl(x86_fp80 noundef %{{.+}}, ptr noundef %{{.+}})
++  // PPC: call ppc_fp128 @modfl(ppc_fp128 noundef %{{.+}}, ptr noundef %{{.+}})
++  // X86F128: call fp128 @modfl(fp128 noundef %{{.+}}, ptr noundef %{{.+}})
+   // PPCF128: call fp128 @modff128(fp128 noundef %{{.+}}, ptr noundef %{{.+}})
+   __builtin_modfl(f,l);
+ 
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/math-libcalls.c b/clang/test/CodeGen/math-libcalls.c
+--- a/clang/test/CodeGen/math-libcalls.c
++++ b/clang/test/CodeGen/math-libcalls.c
+@@ -83,12 +83,12 @@
+ 
+   modf(f,d);       modff(f,fp);      modfl(f,l);
+ 
+-  // NO__ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
+-  // NO__ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
+-  // NO__ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
+-  // HAS_ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
+-  // HAS_ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
+-  // HAS_ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
++  // NO__ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
++  // NO__ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
++  // NO__ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
++  // HAS_ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
++  // HAS_ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
++  // HAS_ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
+   // HAS_MAYTRAP: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
+   // HAS_MAYTRAP: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
+   // HAS_MAYTRAP: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/X86/math-builtins.c b/clang/test/CodeGen/X86/math-builtins.c
+--- a/clang/test/CodeGen/X86/math-builtins.c
++++ b/clang/test/CodeGen/X86/math-builtins.c
+@@ -38,24 +38,6 @@
+ // NO__ERRNO-NEXT: [[FREXP_F128_0:%.+]] = extractvalue { fp128, i32 } [[FREXP_F128]], 0
+ 
+ 
+-// NO__ERRNO: [[MODF_F64:%.+]] = call { double, double } @llvm.modf.f64(double %{{.+}})
+-// NO__ERRNO-NEXT: [[MODF_F64_FP:%.+]] = extractvalue { double, double } [[MODF_F64]], 0
+-// NO__ERRNO-NEXT: [[MODF_F64_IP:%.+]] = extractvalue { double, double } [[MODF_F64]], 1
+-// NO__ERRNO-NEXT: store double [[MODF_F64_IP]], ptr %{{.+}}, align 8
+-
+-// NO__ERRNO: [[MODF_F32:%.+]] = call { float, float } @llvm.modf.f32(float %{{.+}})
+-// NO__ERRNO-NEXT: [[MODF_F32_FP:%.+]] = extractvalue { float, float } [[MODF_F32]], 0
+-// NO__ERRNO-NEXT: [[MODF_F32_IP:%.+]] = extractvalue { float, float } [[MODF_F32]], 1
+-// NO__ERRNO-NEXT: store float [[MODF_F32_IP]], ptr %{{.+}}, align 4
+-
+-// NO__ERRNO: [[MODF_F80:%.+]] = call { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80 %{{.+}})
+-// NO__ERRNO-NEXT: [[MODF_F80_FP:%.+]] = extractvalue { x86_fp80, x86_fp80 } [[MODF_F80]], 0
+-// NO__ERRNO-NEXT: [[MODF_F80_IP:%.+]] = extractvalue { x86_fp80, x86_fp80 } [[MODF_F80]], 1
+-// NO__ERRNO-NEXT: store x86_fp80 [[MODF_F80_IP]], ptr %{{.+}}, align 16
+-
+-// NO__ERRNO: call fp128 @modff128(fp128 noundef %{{.+}}, ptr noundef %{{.+}})
+-
+-
+ // NO__ERRNO: [[SINCOS_F64:%.+]] = call { double, double } @llvm.sincos.f64(double %{{.+}})
+ // NO__ERRNO-NEXT: [[SINCOS_F64_0:%.+]] = extractvalue { double, double } [[SINCOS_F64]], 0
+ // NO__ERRNO-NEXT: [[SINCOS_F64_1:%.+]] = extractvalue { double, double } [[SINCOS_F64]], 1
+@@ -157,13 +139,13 @@
+ 
+   __builtin_modf(f,d);       __builtin_modff(f,fp);      __builtin_modfl(f,l); __builtin_modff128(f,l);
+ 
+-// NO__ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
+-// NO__ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
+-// NO__ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
+-// NO__ERRNO: declare fp128 @modff128(fp128 noundef, ptr noundef) [[NOT_READNONE:#[0-9]+]]
+-// HAS_ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
+-// HAS_ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
+-// HAS_ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
++// NO__ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE:#[0-9]+]]
++// NO__ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
++// NO__ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
++// NO__ERRNO: declare fp128 @modff128(fp128 noundef, ptr noundef) [[NOT_READNONE]]
++// HAS_ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
++// HAS_ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
++// HAS_ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
+ // HAS_ERRNO: declare fp128 @modff128(fp128 noundef, ptr noundef) [[NOT_READNONE]]
+ 
+   __builtin_nan(c);        __builtin_nanf(c);       __builtin_nanl(c); __builtin_nanf128(c);
