@@ -770,18 +770,14 @@ NB_MODULE(xla_extension, m) {
   m.def(
       "get_distributed_runtime_service",
       [](std::string address, int num_nodes,
-         std::optional<int> heartbeat_interval,
-         std::optional<int> max_missing_heartbeats,
+         std::optional<int> heartbeat_timeout_seconds,
          std::optional<int> cluster_register_timeout,
          std::optional<int> shutdown_timeout)
           -> std::unique_ptr<DistributedRuntimeService> {
         CoordinationServiceImpl::Options options;
         options.num_nodes = num_nodes;
-        if (heartbeat_interval.has_value()) {
-          options.heartbeat_interval = absl::Seconds(*heartbeat_interval);
-        }
-        if (max_missing_heartbeats.has_value()) {
-          options.max_missing_heartbeats = *max_missing_heartbeats;
+        if (heartbeat_timeout_seconds.has_value()) {
+          options.heartbeat_timeout = absl::Seconds(*heartbeat_timeout_seconds);
         }
         if (cluster_register_timeout.has_value()) {
           options.cluster_register_timeout =
@@ -795,8 +791,7 @@ NB_MODULE(xla_extension, m) {
         return service;
       },
       nb::arg("address"), nb::arg("num_nodes"),
-      nb::arg("heartbeat_interval").none() = std::nullopt,
-      nb::arg("max_missing_heartbeats").none() = std::nullopt,
+      nb::arg("heartbeat_timeout_seconds").none() = std::nullopt,
       nb::arg("cluster_register_timeout").none() = std::nullopt,
       nb::arg("shutdown_timeout").none() = std::nullopt);
 
@@ -804,8 +799,7 @@ NB_MODULE(xla_extension, m) {
       "get_distributed_runtime_client",
       [](std::string address, int node_id, std::optional<int> rpc_timeout,
          std::optional<int> init_timeout, std::optional<int> shutdown_timeout,
-         std::optional<int> heartbeat_interval,
-         std::optional<int> max_missing_heartbeats,
+         std::optional<int> heartbeat_timeout_seconds,
          std::optional<std::function<void(absl::Status)>>
              missed_heartbeat_callback,
          std::optional<bool> shutdown_on_destruction,
@@ -823,11 +817,8 @@ NB_MODULE(xla_extension, m) {
         if (shutdown_timeout.has_value()) {
           options.shutdown_timeout = absl::Seconds(*shutdown_timeout);
         }
-        if (heartbeat_interval.has_value()) {
-          options.heartbeat_interval = absl::Seconds(*heartbeat_interval);
-        }
-        if (max_missing_heartbeats.has_value()) {
-          options.max_missing_heartbeats = *max_missing_heartbeats;
+        if (heartbeat_timeout_seconds.has_value()) {
+          options.heartbeat_timeout = absl::Seconds(*heartbeat_timeout_seconds);
         }
         if (missed_heartbeat_callback.has_value()) {
           options.missed_heartbeat_callback =
@@ -842,8 +833,7 @@ NB_MODULE(xla_extension, m) {
       nb::arg("rpc_timeout").none() = std::nullopt,
       nb::arg("init_timeout").none() = std::nullopt,
       nb::arg("shutdown_timeout").none() = std::nullopt,
-      nb::arg("heartbeat_interval").none() = std::nullopt,
-      nb::arg("max_missing_heartbeats").none() = std::nullopt,
+      nb::arg("heartbeat_timeout_seconds").none() = std::nullopt,
       nb::arg("missed_heartbeat_callback").none() = std::nullopt,
       nb::arg("shutdown_on_destruction").none() = std::nullopt,
       nb::arg("use_compression").none() = std::nullopt);
