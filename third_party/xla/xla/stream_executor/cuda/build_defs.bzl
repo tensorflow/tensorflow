@@ -2,6 +2,13 @@
 This module contains custom build rules for CUDA assembly compiler tests.
 """
 
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
+
 def _stage_in_bin_subdirectory_impl(ctx):
     if len(ctx.files.data) != 1:
         fail("Expected exactly one data dependency.")

@@ -1,5 +1,6 @@
 """Provides an indirection layer to bazel cc_rules"""
 
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
 load(
     "//xla/tsl/platform/default:rules_cc.bzl",
     _cc_binary = "cc_binary",
@@ -8,6 +9,11 @@ load(
     _cc_shared_library = "cc_shared_library",
     _cc_test = "cc_test",
 )
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 cc_binary = _cc_binary
 cc_import = _cc_import

@@ -572,10 +572,20 @@ selects.config_setting_group(
 )
 
 bzl_library(
+    name = "tsl_core_bzl",
+    srcs = ["tsl_core.bzl"],
+    visibility = [
+        "//platforms/xla:__subpackages__",
+        "//xla:__subpackages__",
+    ],
+)
+
+bzl_library(
     name = "tsl_bzl",
     srcs = ["tsl.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        ":tsl_core_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//xla/tsl/mkl:build_defs_bzl",
         "//xla/tsl/platform:rules_cc_bzl",
@@ -593,6 +603,7 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tsl_bzl",
+        ":tsl_core_bzl",
         "//xla/tsl/platform:build_config_root_bzl",
     ] + tsl_google_bzl_deps(),
 )

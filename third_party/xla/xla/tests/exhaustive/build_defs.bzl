@@ -1,9 +1,15 @@
 """Build definitions for the XLA exhaustive tests."""
 
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
 
 def register_extension_info(**_kwargs):
     pass
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 def exhaustive_xla_test(name, srcs, partitions, tags, **kwargs):
     """Special exhasutive wrapper for xla_test macro.

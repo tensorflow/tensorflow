@@ -6,11 +6,17 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_c
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("//xla/tests:build_defs.bzl", "prepare_gpu_backend_data")
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
 
 # buildifier: disable=out-of-order-load
 # Internally this loads a macro, but in OSS this is a function
 def register_extension_info(**_kwargs):
     pass
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 def get_cub_sort_kernel_types(name = ""):
     """ List of supported types for CUB sort kernels.

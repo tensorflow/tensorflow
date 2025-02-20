@@ -2,6 +2,7 @@
 
 load(
     "//xla/tsl:tsl.bzl",
+    "xla_bzl_visibility",
     _filegroup = "filegroup",
     _get_compatible_with_libtpu_portable = "get_compatible_with_libtpu_portable",
     _get_compatible_with_portable = "get_compatible_with_portable",
@@ -13,6 +14,11 @@ load(
     _tsl_grpc_cc_dependencies = "tsl_grpc_cc_dependencies",
     _tsl_pybind_extension = "tsl_pybind_extension",
 )
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 get_compatible_with_portable = _get_compatible_with_portable
 get_compatible_with_libtpu_portable = _get_compatible_with_libtpu_portable

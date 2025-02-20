@@ -36,11 +36,17 @@ load(
     "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
     "use_pywrap_rules",
 )
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
 
 # Internally this loads a macro, but in OSS this is a function
 # buildifier: disable=out-of-order-load
 def register_extension_info(**_kwargs):
     pass
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 

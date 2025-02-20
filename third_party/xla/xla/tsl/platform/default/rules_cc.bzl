@@ -1,5 +1,12 @@
 """These are the same as Bazel's native cc_libraries."""
 
+load("//third_party/tensorflow/compiler/xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
+
 _cc_binary = native.cc_binary
 _cc_import = native.cc_import
 _cc_shared_library = native.cc_shared_library

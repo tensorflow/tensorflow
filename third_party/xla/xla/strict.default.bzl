@@ -1,5 +1,12 @@
 """Default (OSS) build versions of Python strict rules."""
 
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
+
 # Placeholder to use until bazel supports py_strict_binary.
 def py_strict_binary(name, **kwargs):
     native.py_binary(name = name, **kwargs)

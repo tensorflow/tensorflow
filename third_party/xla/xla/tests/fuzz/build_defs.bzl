@@ -1,6 +1,12 @@
 """Build rules for XLA generated regression testing."""
 
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 def hlo_test(name, hlo, **kwargs):
     """Wrapper around `xla_test` which runs an HLO through `hlo_test_lib`.

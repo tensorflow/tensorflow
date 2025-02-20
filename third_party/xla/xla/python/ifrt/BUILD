@@ -916,6 +916,7 @@ xla_cc_test(
 #     srcs = ["ifrt.bzl"],
 #     parse_tests = False,
 #     visibility = ["//visibility:private"],
+#     deps = ["//xla/tsl:tsl_core_bzl"],
 # )
 #
 # bzl_library(
@@ -923,5 +924,6 @@ xla_cc_test(
 #     srcs = ["ifrt.google.bzl"],
 #     parse_tests = False,
 #     visibility = ["//visibility:private"],
+#     deps = ["//xla/tsl:tsl_core_bzl"],
 # )
 # copybara:uncomment_end

@@ -5,6 +5,12 @@ load(
     _if_cuda_is_configured = "if_cuda_is_configured",
     _if_cuda_newer_than = "if_cuda_newer_than",
 )
+load("//third_party/tensorflow/compiler/xla/tsl:tsl_core.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+]))
 
 # We perform this indirection so that the copybara tool can distinguish this
 # macro from others provided by the same file.
@@ -12,7 +18,7 @@ def if_cuda_is_configured(x, no_cuda = []):
     return _if_cuda_is_configured(x, no_cuda)
 
 # Constructs rpath linker flags for use with nvidia wheel-packaged libs
-# avaialble from PyPI. Two paths are needed because symbols are used from
+# available from PyPI. Two paths are needed because symbols are used from
 # both the root of the TensorFlow installation directory as well as from
 # various pywrap libs within the 'python' subdir.
 def cuda_rpath_flags(relpath):
