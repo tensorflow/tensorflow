@@ -148,8 +148,11 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
 
   DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(static_dims);
   auto output_ty = tensorflow::GetTypeFromTFTensorShape(static_dims, e_ty);
+
+  auto shape_value = getTosaConstShape(rewriter, op->getLoc(), static_dims);
+
   return rewriter
-      .create<tosa::ReshapeOp>(op->getLoc(), output_ty, input_value, shape_attr)
+      .create<tosa::ReshapeOp>(op->getLoc(), output_ty, input_value, shape_value)
       .getResult();
 }
 

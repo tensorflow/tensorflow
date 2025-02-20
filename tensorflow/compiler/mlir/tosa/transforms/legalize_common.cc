@@ -128,11 +128,17 @@ static Value buildReshape(ImplicitLocOpBuilder& builder, Value value,
         runtimeShape);
   }
 
+  auto staticShapeType =
+      mlir::tosa::shapeType::get(builder.getContext(), staticShape.size());
+  auto staticShapeAttr =
+      builder.getIndexTensorAttr(tensorflow::ConvertMlirShapeToTF(staticShape));
+
+  auto staticShapeValue = builder.create<tosa::ConstShapeOp>(
+      builder.getLoc(), staticShapeType, staticShapeAttr);
+
   return CreateOpAndInfer<tosa::ReshapeOp>(
       builder, tensorflow::GetTypeFromTFTensorShape(staticShape, elementType),
-      value,
-      builder.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(staticShape)));
+      value, staticShapeValue);
 }
 
 namespace {
@@ -276,12 +282,14 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
     RankedTensorType reshape_rank1_size1_type =
         tensorflow::GetTypeFromTFTensorShape(reshape_rank1_size1_shape,
                                              result_type.getElementType());
-    DenseI64ArrayAttr shape_rank1_size1_attr = rewriter.getDenseI64ArrayAttr(
-        tensorflow::ConvertMlirShapeToTF(reshape_rank1_size1_shape));
+    auto shape_rank1_size1_value =
+        getTosaConstShape(rewriter, op->getLoc(),
+                      tensorflow::ConvertMlirShapeToTF(reshape_rank1_size1_shape));
+
     for (int i = 0; i < inputs.size(); i++) {
       auto a0_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
           rewriter, op->getLoc(), reshape_rank1_size1_type, inputs[i],
-          shape_rank1_size1_attr);
+          shape_rank1_size1_value);
       inputs[i] = a0_reshape_op.getResult();
     }
   }
@@ -344,8 +352,6 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
                                 output_shape_vals.end());
   }
   IntegerAttr concat_axis_attr = rewriter.getI32IntegerAttr(concat_axis);
-  DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(
-      tensorflow::ConvertMlirShapeToTF(reshape_output_shape));
 
   // Concat output shape will depend on concat_axis. E.g. [N * A, B, C]
   SmallVector<int64_t> concat_output_shape;
@@ -377,9 +383,12 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   RankedTensorType reshape_output_type = tensorflow::GetTypeFromTFTensorShape(
       reshape_output_shape, result_type.getElementType());
 
+  auto shape_value =
+    getTosaConstShape(rewriter, op->getLoc(),
+                  tensorflow::ConvertMlirShapeToTF(reshape_output_shape));
   auto a2_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(), reshape_output_type, a1_concat_op.getResult(),
-      shape_attr);
+      shape_value);
 
   // If axis is equal to input tensor rank, then we need extra transpose
   // [N, A, B, C] to [A, B, C, N]
@@ -482,13 +491,15 @@ std::optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
         getTosaConstShape(rewriter, op->getLoc(), begin_vals),
         getTosaConstShape(rewriter, op->getLoc(), size_vals));
 
+    auto shape_vals_value =
+        getTosaConstShape(rewriter, op->getLoc(),
+        tensorflow::ConvertMlirShapeToTF(shape_vals));
     auto a3_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(),
         tensorflow::GetTypeFromTFTensorShape(
             shape_vals, transposed_input_type.getElementType()),
         a2_slice_op.getResult(),
-        rewriter.getDenseI64ArrayAttr(
-            tensorflow::ConvertMlirShapeToTF(shape_vals)));
+        shape_vals_value);
 
     results_vec.push_back(a3_reshape_op.getResult());
   }
@@ -1009,12 +1020,15 @@ std::optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     a2_shape[1 + block_rank * 2 + i] = input_shape[1 + block_rank + i];
   }
 
+  auto a2_shape_reshape = a2_shape; // save 'kDynamicSize' value for ReshapeOp
+  auto a2_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+      tensorflow::ConvertMlirShapeToTF(a2_shape));
   auto a2_reshape_a1_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
-      RankedTensorType::get(a2_shape, result_type.getElementType()),
+      RankedTensorType::get(a2_shape_reshape, result_type.getElementType()),
       a1_pad_input_op.getResult(),
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF((a2_shape))));
+      a2_shape_value);
 
   // 3. Transpose dimensions to:
   //  block-shape +
@@ -1080,11 +1094,13 @@ std::optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     a4_reshape_shape[1 + block_rank + i] = input_shape[1 + block_rank + i];
   }
 
+  auto a4_reshape_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(a4_reshape_shape));
   return CreateOpAndInfer<tosa::ReshapeOp>(
              rewriter, op->getLoc(), result_type,
              a3_transpose_a2_op.getResult(),
-             rewriter.getDenseI64ArrayAttr(
-                 tensorflow::ConvertMlirShapeToTF(a4_reshape_shape)))
+             a4_reshape_shape_value)
       .getResult();
 }
 
@@ -1234,13 +1250,15 @@ std::optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
   for (int i = 0; i < input_rank - 1; i++)
     a1_shape[i + block_rank + 1] = input_shape[i + 1];
 
+  auto a1_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(a1_shape));
   auto a1_reshape_input_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a1_shape,
                                            result_type.getElementType()),
       input_value,
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(a1_shape)));
+      a1_shape_value);
 
   // 2. Permute to shape
   // [ batch / prod(block_shape) ],
@@ -1298,13 +1316,15 @@ std::optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
     a4_shape[1 + block_rank + i] = input_shape[block_rank + 1 + i];
   }
 
+  auto a4_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(a4_shape));
   auto a3_reshape_a2 = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a4_shape,
                                            result_type.getElementType()),
       a2_transpose_a1_op.getResult(),
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(a4_shape)));
+      a4_shape_value);
 
   // 4. Crop the start/end dimensions on 'spatial dimension' according to
   // crops
@@ -1397,11 +1417,11 @@ std::optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
     }
   }
 
-  DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(
-      tensorflow::ConvertMlirShapeToTF(reshape_dims));
-
+  auto shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(reshape_dims));
   return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), output_type,
-                                           input_value, shape_attr)
+                                           input_value, shape_value)
       .getResult();
 }
 
@@ -1461,11 +1481,12 @@ std::optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
     }
   }
 
-  DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(
-      tensorflow::ConvertMlirShapeToTF(reshape_dims));
+  auto shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(reshape_dims));
 
   return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), output_type,
-                                           input_value, shape_attr)
+                                           input_value, shape_value)
       .getResult();
 }
 
@@ -2087,10 +2108,13 @@ std::optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
 
   RankedTensorType a_reshape_output_type = tensorflow::GetTypeFromTFTensorShape(
       a_reshape_dims, output_type.getElementType());
+
+  auto a_reshape_dims_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(a_reshape_dims));
   auto a2_reshape_a_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(), a_reshape_output_type, input_value,
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(a_reshape_dims)));
+      a_reshape_dims_value);
 
   std::optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
       rewriter, op, /*vec=*/{0, 1, 3, 2, 4, 5}, /*shape=*/{6});
@@ -2110,11 +2134,15 @@ std::optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
   RankedTensorType a3_reshape_output_type =
       tensorflow::GetTypeFromTFTensorShape(a3_reshape_dims,
                                            output_type.getElementType());
+
+  auto a3_reshape_dims_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(a3_reshape_dims));
+
   return CreateOpAndInfer<tosa::ReshapeOp>(
              rewriter, op->getLoc(), a3_reshape_output_type,
              a3_transpose_a2_op.getResult(),
-             rewriter.getDenseI64ArrayAttr(
-                 tensorflow::ConvertMlirShapeToTF(a3_reshape_dims)))
+             a3_reshape_dims_value)
       .getResult();
 }
 
@@ -2177,10 +2205,13 @@ std::optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
 
   RankedTensorType a_reshape_output_type = tensorflow::GetTypeFromTFTensorShape(
       a_reshape_dims, output_type.getElementType());
+
+  auto a_reshape_dims_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(a_reshape_dims));
   auto a2_reshape_a_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(), a_reshape_output_type, input_value,
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(a_reshape_dims)));
+      a_reshape_dims_value);
 
   std::optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
       rewriter, op, /*vec=*/{0, 1, 3, 2, 4, 5}, /*shape=*/{6});
@@ -2200,11 +2231,15 @@ std::optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
   RankedTensorType a3_reshape_output_type =
       tensorflow::GetTypeFromTFTensorShape(a3_reshape_dims,
                                            output_type.getElementType());
+
+  auto a3_reshape_dims_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(a3_reshape_dims));
+
   return CreateOpAndInfer<tosa::ReshapeOp>(
              rewriter, op->getLoc(), a3_reshape_output_type,
              a3_transpose_a2_op.getResult(),
-             rewriter.getDenseI64ArrayAttr(
-                 tensorflow::ConvertMlirShapeToTF(a3_reshape_dims)))
+             a3_reshape_dims_value)
       .getResult();
 }
 
@@ -2249,11 +2284,14 @@ std::optional<SmallVector<Value>> convertSplitOp(
       new_shape.push_back(num_split);
       new_shape.push_back(-1);
     }
+
+    auto new_shape_value =
+        getTosaConstShape(rewriter, op->getLoc(),
+                      tensorflow::ConvertMlirShapeToTF(new_shape));
     slice_value = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(),
         tensorflow::GetTypeFromTFTensorShape(new_shape, etype), input_value,
-        rewriter.getDenseI64ArrayAttr(
-            tensorflow::ConvertMlirShapeToTF(new_shape)));
+        new_shape_value);
   }
 
   RankedTensorType slice_type =
@@ -2287,13 +2325,15 @@ std::optional<SmallVector<Value>> convertSplitOp(
       for (int i = 0, s = size_vals.size(); i < s; i++)
         if (i != axis) out_reshape_shape.push_back(size_vals[i]);
 
+      auto out_reshape_shape_value =
+          getTosaConstShape(rewriter, op->getLoc(),
+                        tensorflow::ConvertMlirShapeToTF(out_reshape_shape));
       result =
           CreateOpAndInfer<tosa::ReshapeOp>(
               rewriter, op->getLoc(),
               tensorflow::GetTypeFromTFTensorShape(out_reshape_shape, etype),
               result,
-              rewriter.getDenseI64ArrayAttr(
-                  tensorflow::ConvertMlirShapeToTF(out_reshape_shape)))
+              out_reshape_shape_value)
               .getResult();
     }
 
@@ -2608,10 +2648,13 @@ std::optional<Value> convertStridedSliceOp(
       }
     }
 
+    auto new_shape_value =
+        getTosaConstShape(rewriter, op->getLoc(),
+                      tensorflow::ConvertMlirShapeToTF(new_shape));
+
     return CreateOpAndInfer<tosa::ReshapeOp>(
                rewriter, op->getLoc(), result_type, reversed,
-               rewriter.getDenseI64ArrayAttr(
-                   tensorflow::ConvertMlirShapeToTF(new_shape)))
+               new_shape_value)
         .getResult();
   }
 
@@ -2626,12 +2669,14 @@ std::optional<Value> convertStridedSliceOp(
     }
   }
 
+  auto a2_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(a2_shape));
   auto a2_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a2_shape, element_type),
       a1_slice_op.getResult(),
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(a2_shape)));
+      a2_shape_value);
 
   // Step 3: take a slice along the strides
   SmallVector<int64_t> a3_begin, a3_size;
@@ -2670,11 +2715,13 @@ std::optional<Value> convertStridedSliceOp(
     }
   }
 
+  auto a4_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(a4_shape));
   auto a4_reshape_op =
       CreateOpAndInfer<tosa::ReshapeOp>(
           rewriter, op->getLoc(), result_type, a3_slice_op.getResult(),
-          rewriter.getDenseI64ArrayAttr(
-              tensorflow::ConvertMlirShapeToTF(a4_shape)))
+          a4_shape_value)
           .getResult();
 
   return reverseNegativeStride(rewriter, op, a4_reshape_op, strides);
@@ -2894,12 +2941,14 @@ static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
   auto transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, loc, UnrankedTensorType::get(input_etype), input, perms_value);
 
+  auto reshape_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(reshape_shape));
   auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, loc,
       tensorflow::GetTypeFromTFTensorShape(reshape_shape, input_etype),
       transpose_op,
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(reshape_shape)));
+      reshape_shape_value);
 
   return CreateOpAndInfer<T>(rewriter, loc,
                              UnrankedTensorType::get(reduce_etype), reshape_op,
@@ -2999,10 +3048,12 @@ std::optional<Value> convertReduceOpCommon(
   }
 
   // Squeeze out the reduced axes.
+  auto output_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(output_shape));
   auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(), output_type, val,
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(output_shape)));
+      output_shape_value);
   return reshape_op.getResult();
 }
 
@@ -4396,22 +4447,26 @@ std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
   SmallVector<int64_t, 2> indices_matrix_shape({W, ND});
   SmallVector<int64_t, 3> tosa_gather_result_shape({N, W, C});
 
+  auto tosa_values_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(tosa_values_shape));
   auto tosa_values_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(tosa_values_shape,
                                            params_type.getElementType()),
       params_value,
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(tosa_values_shape)));
+      tosa_values_shape_value);
 
   // Flatten the input indices tensor to an [W, ND] matrix.
+  auto indices_matrix_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(indices_matrix_shape));
   auto indices_matrix_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(indices_matrix_shape,
                                            indices_type.getElementType()),
       indices_value,
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(indices_matrix_shape)));
+      indices_matrix_shape_value);
 
   SmallVector<int32_t> flattened_coeff_vec;
   for (int i = 1; i < ND; i++) {
@@ -4445,13 +4500,15 @@ std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
       flattened_indices_mul_op.getResult(), rewriter.getI32IntegerAttr(1));
 
   // And reshape to [N, W]
+  auto tosa_indices_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(tosa_indices_shape));
   auto tosa_indices_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(tosa_indices_shape,
                                            indices_type.getElementType()),
       flattened_indices_reduce_op.getResult(),
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(tosa_indices_shape)));
+      tosa_indices_shape_value);
 
   // Now the gather op itself
   auto tosa_gather_op = CreateOpAndInfer<tosa::GatherOp>(
@@ -4462,10 +4519,13 @@ std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
 
   // Finally, reshape back to the original output shape of [Indices,
   // ParamChannels].
+  auto result_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(result_type.getShape()));
+
   return CreateOpAndInfer<tosa::ReshapeOp>(
              rewriter, op->getLoc(), result_type, tosa_gather_op.getResult(),
-             rewriter.getDenseI64ArrayAttr(
-                 tensorflow::ConvertMlirShapeToTF(result_type.getShape())))
+             result_shape_value)
       .getResult();
 }
 
@@ -4546,11 +4606,14 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
   }
 
   // Reshape on_value to [1, 1, 1]
+  auto shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF({ 1, 1, 1 }));
   auto op1_reshape_on_value = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape({1, 1, 1},
                                            on_value_type.getElementType()),
-      on_value, rewriter.getDenseI64ArrayAttr({1, 1, 1}));
+      on_value, shape_value);
 
   // And tile to [N, W, C]
   auto op2_tile_op1 = CreateOpAndInfer<tosa::TileOp>(
@@ -4565,7 +4628,7 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape({1, 1, 1},
                                            off_value_type.getElementType()),
-      off_value, rewriter.getDenseI64ArrayAttr({1, 1, 1}));
+      off_value, shape_value);
 
   // And tile to [N, K, C]
   auto op4_tile_op3 = CreateOpAndInfer<tosa::TileOp>(
@@ -4576,12 +4639,15 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
       getTosaConstShape(rewriter, op, {N, K, C}));
 
   // Reshape indices to [N, W]
+  shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF({ N, W }));
   auto op5_reshape_indices = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape({N, W},
                                            indices_type.getElementType()),
       indices_value,
-      rewriter.getDenseI64ArrayAttr(tensorflow::ConvertMlirShapeToTF({N, W})));
+      shape_value);
 
   // Scatter to [N, K, C]
   auto op6_scatter_op4_op5_op2 = CreateOpAndInfer<tosa::ScatterOp>(
@@ -4592,13 +4658,15 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
       op2_tile_op1.getResult());
 
   // Reshaped to [LeftDims, RightDims, K]. C being squeezed out since it's 1.
+  shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF({left_dim, right_dim, K}));
   auto op7_reshape_op6 = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape({left_dim, right_dim, K},
                                            result_type.getElementType()),
       op6_scatter_op4_op5_op2.getResult(),
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF({left_dim, right_dim, K})));
+      shape_value);
 
   // Transposed to [LeftDims, K, RightDims].
   std::optional<Value> perm_const =
@@ -4613,10 +4681,12 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
       op7_reshape_op6.getResult(), perm_const.value());
 
   // Reshaped to result.shape.
+  auto result_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                    tensorflow::ConvertMlirShapeToTF(result_type.getShape()));
   return CreateOpAndInfer<tosa::ReshapeOp>(
              rewriter, op->getLoc(), result_type, op8_transpose_op7.getResult(),
-             rewriter.getDenseI64ArrayAttr(
-                 tensorflow::ConvertMlirShapeToTF(result_type.getShape())))
+             result_shape_value)
       .getResult();
 }
 
@@ -4725,10 +4795,13 @@ std::optional<Value> convertBroadcastToOp(PatternRewriter& rewriter,
     }
     input_type =
         tensorflow::GetTypeFromTFTensorShape(reshaped_shape, element_type);
+
+    auto reshaped_shape_value =
+        getTosaConstShape(rewriter, op->getLoc(),
+                      tensorflow::ConvertMlirShapeToTF(reshaped_shape));
     input = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(), input_type, input,
-        rewriter.getDenseI64ArrayAttr(
-            tensorflow::ConvertMlirShapeToTF(reshaped_shape)));
+        reshaped_shape_value);
   }
 
   auto input_shape = input_type.getShape();
