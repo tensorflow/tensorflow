@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <cstdlib>
+#include <memory>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -56,7 +57,8 @@ namespace {
 
 LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
                                     LiteRtSubgraph subgraph,
-                                    LiteRtCompiledResultT& result) {
+                                    LiteRtCompiledResultT& result,
+                                    int byte_code_idx) {
   const litert::Subgraph sg(subgraph);
   int num_muls_in_partition = 0;
   for (const auto& op : sg.Ops()) {
@@ -73,7 +75,7 @@ LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
     (void)asprintf(&byte_code_append,
                    "Partition_%lu_with_%d_muls:", partition_index,
                    num_muls_in_partition);
-    result.byte_code.append(byte_code_append);
+    result.byte_code[byte_code_idx].append(byte_code_append);
     free(byte_code_append);
   }
 
@@ -92,16 +94,16 @@ LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
     LiteRtModel partitions, LiteRtCompiledResult* compiled_result) {
-  LiteRtCompiledResult result = new LiteRtCompiledResultT;
-
   auto model = litert::Model::CreateFromNonOwnedHandle(partitions);
   const auto num_partitions = model.NumSubgraphs();
+  auto result = std::make_unique<LiteRtCompiledResultT>();
+  result->byte_code.resize(num_partitions);
   for (auto i = 0; i < num_partitions; ++i) {
     LITERT_RETURN_IF_ERROR(
-        CompileSinglePartition(i, model.Subgraph(i)->Get(), *result));
+        CompileSinglePartition(i, model.Subgraph(i)->Get(), *result, i));
   }
 
-  *compiled_result = result;
+  *compiled_result = result.release();
 
   return kLiteRtStatusOk;
 }
