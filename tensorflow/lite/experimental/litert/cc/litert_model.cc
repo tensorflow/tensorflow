@@ -27,6 +27,11 @@ namespace litert {
 bool Tensor::IsSubgraphOutput() const { return Uses().empty(); }
 
 bool Tensor::IsSubgraphInput() const {
+  // A special case for zero-sized tensors.
+  if (RankedTensorType()->Layout().Rank() == 1 &&
+      RankedTensorType()->Layout().Dimensions()[0] == 0) {
+    return false;
+  }
   return !HasWeights() && !DefiningOp().has_value();
 }
 
