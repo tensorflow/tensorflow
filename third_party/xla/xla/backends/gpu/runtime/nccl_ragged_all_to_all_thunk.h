@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_NCCL_RAGGED_ALL_TO_ALL_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 
@@ -60,8 +62,6 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
 
   absl::Status Initialize(const InitializeParams& params) override;
 
-  absl::Status Cleanup(const CleanupParams& params) override;
-
   static const char* GetHloOpName() { return "ragged-all-to-all-start"; }
 
   static CollectiveOpGroupMode GetGroupMode(
@@ -78,16 +78,36 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
   AsyncStreamKind GetAsyncStreamKind() const override;
 
  private:
+  bool is_local() const;
+  bool should_use_memcpy() const { return p2p_memcpy_enabled_ && is_local(); }
+
   const NcclRaggedAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
+  int64_t device_count_ = -1;
+  const bool p2p_memcpy_enabled_;
 
   absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*,
                       std::vector<std::unique_ptr<se::MemoryAllocation>>>
       host_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
 
-  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryBase>
+  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryHandle>
       device_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
+
+  absl::Mutex pointers_mutex_;
+  // Maps from a device to a pointer to an uint64_t value. The pointer is
+  // written to and read from in each call to RunNcclCollective(), but is
+  // preallocated as CUDA host memory in the first call to Initialize(), since
+  // allocating CUDA host memory every call to RunNcclCollective() is expensive.
+  absl::flat_hash_map<se::StreamExecutor*,
+                      std::unique_ptr<se::MemoryAllocation>>
+      send_pointers_ ABSL_GUARDED_BY(pointers_mutex_);
+  // Maps from a device to a pointer to an uint64_t array whose size is the
+  // size of the replica_group the device is in. Like with send_pointers,
+  // this is used in RunNcclCollective() and allocated in Initialize().
+  absl::flat_hash_map<se::StreamExecutor*,
+                      std::unique_ptr<se::MemoryAllocation>>
+      receive_pointer_maps_ ABSL_GUARDED_BY(pointers_mutex_);
 };
 
 absl::Status RunRaggedAllToAll(
@@ -95,6 +115,12 @@ absl::Status RunRaggedAllToAll(
     const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator* comm, const std::vector<int64_t*>& ragged_metadata_allocs,
     const se::DeviceMemoryBase& output_offsets_device_buffer);
+
+absl::Status RunMemCpyRaggedAllToAll(
+    GpuCollectives* collectives, int64_t ragged_row_element_size,
+    const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+    Communicator* comm, const std::vector<int64_t*>& ragged_metadata_allocs,
+    uint64_t* send_pointer, uint64_t receive_pointer_map[]);
 
 }  // namespace gpu
 }  // namespace xla

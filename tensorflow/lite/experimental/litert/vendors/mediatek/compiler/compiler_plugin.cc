@@ -42,13 +42,8 @@
 
 using litert::Error;
 using litert::Expected;
-using litert::mediatek::NEURON_NO_ERROR;
-using litert::mediatek::NEURON_PREFER_SUSTAINED_SPEED;
-using litert::mediatek::NEURON_PRIORITY_HIGH;
 using litert::mediatek::NeuronAdapterApi;
-using litert::mediatek::NeuronCompilation;
 using litert::mediatek::NeuronCompilationPtr;
-using litert::mediatek::NeuronModel;
 using litert::mediatek::NeuronModelPtr;
 
 namespace {
@@ -288,8 +283,10 @@ Expected<std::vector<uint8_t>> CompilePartition(
 
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
-    LiteRtSubgraph* partitions, LiteRtParamIndex num_partitions,
-    LiteRtCompiledResult* compiled_result) {
+    LiteRtModel partitions, LiteRtCompiledResult* compiled_result) {
+  auto model = litert::Model::CreateFromNonOwnedHandle(partitions);
+  const auto num_partitions = model.NumSubgraphs();
+
   LITERT_LOG(LITERT_INFO,
              "Starting MediaTek Compilation for %d subgraphs, soc_model=%s",
              num_partitions, soc_model);
@@ -311,11 +308,11 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   }
 
   auto result = std::make_unique<LiteRtCompiledResultT>();
+
   for (auto i = 0; i < num_partitions; ++i) {
-    auto partition = litert::Subgraph(partitions[i]);
     auto graph_name = absl::StrFormat("Partition_%d", i);
     auto bytecode =
-        CompilePartition(**api, partition, graph_name, opt_soc_model);
+        CompilePartition(**api, *model.Subgraph(i), graph_name, opt_soc_model);
     if (!bytecode) {
       LITERT_LOG(LITERT_INFO, "%s", bytecode.Error().Message().c_str());
       return bytecode.Error().Status();

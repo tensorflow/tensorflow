@@ -46,7 +46,6 @@ tsl_pybind_extension(
 pytype_strict_library(
     name = "stablehlo",
     srcs = ["stablehlo.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":stablehlo_extension",
@@ -56,7 +55,6 @@ pytype_strict_library(
 py_strict_test(
     name = "stablehlo_test",
     srcs = ["stablehlo_test.py"],
-    python_version = "PY3",
     deps = [
         ":stablehlo",
         #internal proto upb dep

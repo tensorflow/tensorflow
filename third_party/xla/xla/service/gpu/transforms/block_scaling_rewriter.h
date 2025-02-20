@@ -64,7 +64,8 @@ namespace xla::gpu {
 //
 class BlockScalingRewriter : public OpExpanderPass {
  public:
-  BlockScalingRewriter() = default;
+  explicit BlockScalingRewriter(bool allow_cudnn)
+      : allow_cudnn_(allow_cudnn) {};
 
   absl::string_view name() const override { return "block-scaling-rewriter"; }
 
@@ -80,6 +81,12 @@ class BlockScalingRewriter : public OpExpanderPass {
       "__op$dequantize";
   static constexpr absl::string_view kBlockScaledDotCustomCallTarget =
       "__op$block_scaled_dot";
+
+  // Common block size constants.
+  static constexpr int kBlockSizeMXFP8 = 32;
+
+ private:
+  bool allow_cudnn_;
 };
 
 }  // namespace xla::gpu

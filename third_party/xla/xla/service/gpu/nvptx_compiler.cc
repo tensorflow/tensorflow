@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
+#include "xla/service/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/service/gpu/transforms/conv_padding_legalization.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/cublas_pad_for_gemms.h"
@@ -282,6 +283,9 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
   }
 
+  pre_pipeline.AddPass<BlockScalingRewriter>(
+      /*allow_cudnn=*/cuda_compute_capability.IsAtLeastBlackwell() &&
+      gpu_target_config.dnn_version_info >= se::dnn::VersionInfo(9, 7));
   pre_pipeline.AddPass<DotDimensionMerger>();
   pre_pipeline.AddPass<DotSparsityRewriter>();
 
@@ -539,7 +543,7 @@ NVPTXCompiler::CompileTargetBinary(
     const HloModuleConfig& module_config, llvm::Module* llvm_module,
     const stream_executor::DeviceDescription& device_description,
     bool relocatable, const HloModule* debug_module,
-    const CompileOptions& options) {
+    const CompileOptions& options, std::optional<int> shard_number) {
   std::unique_ptr<llvm::Module> loaded_module =
       MaybeLoadLLVMFromFile(debug_module, llvm_module);
   llvm::Module* selected_module = nullptr;
@@ -569,6 +573,22 @@ NVPTXCompiler::CompileTargetBinary(
     // This won't record values for calls that error out (because if they error
     // out we have no way of telling how far through the process we got).
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
+
+    if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
+                                   module_config.debug_options())) {
+      if (debug_module) {
+        DumpToFileInDirOrStdout(*debug_module, "",
+                                shard_number.has_value()
+                                    ? (std::to_string(*shard_number) + ".ptx")
+                                    : "ptx",
+                                ptx);
+      } else {
+        LOG(ERROR)
+            << "Dumping is not implemented since the file name cannot be "
+               "inferred. Please implement (potentially MLIR) module -> "
+               "filename heuristic.";
+      }
+    }
   }
 
   if (ptx.empty()) {

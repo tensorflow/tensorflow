@@ -58,7 +58,7 @@ absl::StatusOr<std::unique_ptr<ReduceScatterThunk>> ReduceScatterThunk::Create(
 ReduceScatterThunk::ReduceScatterThunk(Info info, ReductionKind reduction_kind,
                                        OpParams op_params, OpBuffers op_buffers,
                                        OpResources op_resources)
-    : CollectiveThunk(Kind::kReduceScatter, std::move(info),
+    : CollectiveThunk(CollectiveKind::kReduceScatter, std::move(info),
                       std::move(op_params), std::move(op_buffers),
                       std::move(op_resources)),
       reduction_kind_(reduction_kind) {}

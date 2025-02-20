@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/while_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_convolution_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
@@ -64,44 +65,47 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
 
 namespace xla::cpu {
 
-static Thunk::Kind ProtoThunkToThunkKind(const ThunkProto& proto) {
-  auto collective_proto_kind_to_kind =
-      [](const CollectiveThunkProto::ImplCase& proto_kind) {
-        switch (proto_kind) {
-          case CollectiveThunkProto::ImplCase::kAllGatherThunk:
-            return Thunk::Kind::kAllGather;
-          case CollectiveThunkProto::ImplCase::kAllReduceThunk:
-            return Thunk::Kind::kAllReduce;
-          case CollectiveThunkProto::ImplCase::kAllToAllThunk:
-            return Thunk::Kind::kAllToAll;
-          case CollectiveThunkProto::ImplCase::kCollectivePermuteThunk:
-            return Thunk::Kind::kCollectivePermute;
-          case CollectiveThunkProto::ImplCase::kReduceScatterThunk:
-            return Thunk::Kind::kReduceScatter;
-          default:
-            return Thunk::Kind::kUnknown;
-        }
-      };
+static absl::StatusOr<CollectiveThunk::CollectiveKind>
+ProtoCollectiveThunkToCollectiveThunkKind(const CollectiveThunkProto& proto) {
+  switch (proto.impl_case()) {
+    case CollectiveThunkProto::ImplCase::kAllGatherThunk:
+      return CollectiveThunk::CollectiveKind::kAllGather;
+    case CollectiveThunkProto::ImplCase::kAllReduceThunk:
+      return CollectiveThunk::CollectiveKind::kAllReduce;
+    case CollectiveThunkProto::ImplCase::kAllToAllThunk:
+      return CollectiveThunk::CollectiveKind::kAllToAll;
+    case CollectiveThunkProto::ImplCase::kCollectivePermuteThunk:
+      return CollectiveThunk::CollectiveKind::kCollectivePermute;
+    case CollectiveThunkProto::ImplCase::kReduceScatterThunk:
+      return CollectiveThunk::CollectiveKind::kReduceScatter;
+    case CollectiveThunkProto::ImplCase::IMPL_NOT_SET:
+      return Internal("Collective thunk kind not set.");
+  }
+}
 
-  auto xnn_fusion_proto_kind_to_kind =
-      [](const XnnFusionThunkProto::ImplCase& proto_kind) {
-        switch (proto_kind) {
-          case XnnFusionThunkProto::ImplCase::kXnnDotThunk:
-            return Thunk::Kind::kXnnFusion;
-          case XnnFusionThunkProto::ImplCase::kXnnConvolutionThunk:
-            return Thunk::Kind::kXnnFusion;
-          default:
-            return Thunk::Kind::kUnknown;
-        }
-      };
+static absl::StatusOr<XnnFusionThunk::XnnFusionKind>
+ProtoXnnFusionThunkToXnnFusionThunkKind(const XnnFusionThunkProto& proto) {
+  switch (proto.impl_case()) {
+    case XnnFusionThunkProto::ImplCase::kXnnFusionThunk:
+      return XnnFusionThunk::XnnFusionKind::kFusion;
+    case XnnFusionThunkProto::ImplCase::kXnnDotThunk:
+      return XnnFusionThunk::XnnFusionKind::kDot;
+    case XnnFusionThunkProto::ImplCase::kXnnConvolutionThunk:
+      return XnnFusionThunk::XnnFusionKind::kConvolution;
+    case XnnFusionThunkProto::ImplCase::IMPL_NOT_SET:
+      return Internal("XNN fusion thunk kind not set.");
+  }
+}
 
+static absl::StatusOr<Thunk::Kind> ProtoThunkToThunkKind(
+    const ThunkProto& proto) {
   switch (proto.impl_case()) {
     case ThunkProto::ImplCase::kCollectiveThunk:
-      return collective_proto_kind_to_kind(
-          proto.collective_thunk().impl_case());
+      return Thunk::Kind::kCollective;
     case ThunkProto::ImplCase::kCallThunk:
       return Thunk::Kind::kCall;
     case ThunkProto::ImplCase::kConditionalThunk:
@@ -131,14 +135,13 @@ static Thunk::Kind ProtoThunkToThunkKind(const ThunkProto& proto) {
     case ThunkProto::ImplCase::kWhileThunk:
       return Thunk::Kind::kWhile;
     case ThunkProto::ImplCase::kXnnFusionThunk:
-      return xnn_fusion_proto_kind_to_kind(
-          proto.xnn_fusion_thunk().impl_case());
+      return Thunk::Kind::kXnnFusion;
     case ThunkProto::ImplCase::kPartitionIdThunk:
       return Thunk::Kind::kPartitionId;
     case ThunkProto::ImplCase::kReplicaIdThunk:
       return Thunk::Kind::kReplicaId;
-    default:
-      return Thunk::Kind::kUnknown;
+    case ThunkProto::ImplCase::IMPL_NOT_SET:
+      return Internal("Thunk kind not set.");
   }
 }
 
@@ -426,30 +429,32 @@ static absl::Status ToProto(const CollectiveThunk& thunk, ThunkProto& proto) {
             ->add_destination_shapes_buffer_slices()));
   }
 
-  if (proto.kind() == Thunk::KindToString(Thunk::Kind::kAllGather)) {
-    TF_RETURN_IF_ERROR(
-        ToProto(static_cast<const AllGatherThunk&>(thunk),
-                *collective_thunk_proto->mutable_all_gather_thunk()));
-  } else if (proto.kind() == Thunk::KindToString(Thunk::Kind::kAllReduce)) {
-    TF_RETURN_IF_ERROR(
-        ToProto(static_cast<const AllReduceThunk&>(thunk),
-                *collective_thunk_proto->mutable_all_reduce_thunk()));
-  } else if (proto.kind() == Thunk::KindToString(Thunk::Kind::kAllToAll)) {
-    TF_RETURN_IF_ERROR(
-        ToProto(static_cast<const AllToAllThunk&>(thunk),
-                *collective_thunk_proto->mutable_all_to_all_thunk()));
-  } else if (proto.kind() == Thunk::KindToString(Thunk::Kind::kReduceScatter)) {
-    TF_RETURN_IF_ERROR(
-        ToProto(static_cast<const ReduceScatterThunk&>(thunk),
-                *collective_thunk_proto->mutable_reduce_scatter_thunk()));
-  } else if (proto.kind() ==
-             Thunk::KindToString(Thunk::Kind::kCollectivePermute)) {
-    TF_RETURN_IF_ERROR(
-        ToProto(static_cast<const CollectivePermuteThunk&>(thunk),
-                *collective_thunk_proto->mutable_collective_permute_thunk()));
-  } else {
-    return absl::UnimplementedError(
-        "SerializeAsStringCollectiveImpl not implemented");
+  switch (thunk.collective_kind()) {
+    case CollectiveThunk::CollectiveKind::kAllGather:
+      TF_RETURN_IF_ERROR(
+          ToProto(tsl::down_cast<const AllGatherThunk&>(thunk),
+                  *collective_thunk_proto->mutable_all_gather_thunk()));
+      break;
+    case CollectiveThunk::CollectiveKind::kAllReduce:
+      TF_RETURN_IF_ERROR(
+          ToProto(tsl::down_cast<const AllReduceThunk&>(thunk),
+                  *collective_thunk_proto->mutable_all_reduce_thunk()));
+      break;
+    case CollectiveThunk::CollectiveKind::kAllToAll:
+      TF_RETURN_IF_ERROR(
+          ToProto(tsl::down_cast<const AllToAllThunk&>(thunk),
+                  *collective_thunk_proto->mutable_all_to_all_thunk()));
+      break;
+    case CollectiveThunk::CollectiveKind::kReduceScatter:
+      TF_RETURN_IF_ERROR(
+          ToProto(tsl::down_cast<const ReduceScatterThunk&>(thunk),
+                  *collective_thunk_proto->mutable_reduce_scatter_thunk()));
+      break;
+    case CollectiveThunk::CollectiveKind::kCollectivePermute:
+      TF_RETURN_IF_ERROR(
+          ToProto(tsl::down_cast<const CollectivePermuteThunk&>(thunk),
+                  *collective_thunk_proto->mutable_collective_permute_thunk()));
+      break;
   }
 
   return absl::OkStatus();
@@ -685,6 +690,13 @@ static absl::Status ToProto(const WhileThunk& thunk, ThunkProto& proto) {
   return absl::OkStatus();
 }
 
+static absl::Status ToProto(const XnnFusionThunk& thunk, ThunkProto& proto) {
+  // TODO(basioli) XnnFusionThunk is not serializable because it contains
+  // a builder function that is not serializable.
+  // This would require a serialization of the XNNPACK subgraph.
+  return absl::UnimplementedError("XnnFusionThunk is not serializable.");
+}
+
 static absl::Status ToProto(const XnnDotThunk& thunk, ThunkProto& proto) {
   XnnDotThunkProto* xnn_dot_thunk_proto =
       proto.mutable_xnn_fusion_thunk()->mutable_xnn_dot_thunk();
@@ -840,88 +852,98 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
   proto.set_kind(kind_as_str);
   *proto.mutable_info() = ThunkInfoToProto(thunk.info());
   switch (thunk.kind()) {
-    // NOTE collective thunks
-    case Thunk::Kind::kAllGather:
-    case Thunk::Kind::kAllReduce:
-    case Thunk::Kind::kAllToAll:
-    case Thunk::Kind::kCollectivePermute:
-    case Thunk::Kind::kReduceScatter:
+    case Thunk::Kind::kCollective:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          static_cast<const CollectiveThunk&>(thunk), proto));
+          tsl::down_cast<const CollectiveThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kConditional:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          static_cast<const ConditionalThunk&>(thunk), proto));
+          tsl::down_cast<const ConditionalThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kFft:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(static_cast<const FftThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(tsl::down_cast<const FftThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kRngGetAndUpdateState:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          static_cast<const RngGetAndUpdateStateThunk&>(thunk), proto));
+          tsl::down_cast<const RngGetAndUpdateStateThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kKernel:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          static_cast<const KernelThunkBase&>(thunk), proto));
+          tsl::down_cast<const KernelThunkBase&>(thunk), proto));
       break;
     case Thunk::Kind::kCall:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(static_cast<const CallThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(tsl::down_cast<const CallThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kCopy:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(static_cast<const CopyThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(tsl::down_cast<const CopyThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kCustomCall:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          static_cast<const CustomCallThunk&>(thunk), proto));
+          tsl::down_cast<const CustomCallThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kConvolution:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          static_cast<const ConvolutionThunk&>(thunk), proto));
+          tsl::down_cast<const ConvolutionThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kDot:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(static_cast<const DotThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(tsl::down_cast<const DotThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kInfeed:
-      TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(static_cast<const InfeedThunk&>(thunk), proto));
+      TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
+          tsl::down_cast<const InfeedThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kOutfeed:
-      TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(static_cast<const OutfeedThunk&>(thunk), proto));
+      TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
+          tsl::down_cast<const OutfeedThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kSort:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(static_cast<const SortThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(tsl::down_cast<const SortThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kTopK:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(static_cast<const TopKThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(tsl::down_cast<const TopKThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kWhile:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(static_cast<const WhileThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(tsl::down_cast<const WhileThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kXnnFusion: {
-      if (auto* xnn_dot = dynamic_cast<const XnnDotThunk*>(&thunk)) {
-        TF_RETURN_IF_ERROR(::xla::cpu::ToProto(*xnn_dot, proto));
-      } else if (auto* xnn_convolution =
-                     dynamic_cast<const XnnConvolutionThunk*>(&thunk)) {
-        TF_RETURN_IF_ERROR(::xla::cpu::ToProto(*xnn_convolution, proto));
-      } else {
-        return Unimplemented("Unsupported XnnFusion thunk type");
+      const XnnFusionThunk& xnn_fusion_thunk =
+          tsl::down_cast<const XnnFusionThunk&>(thunk);
+      switch (xnn_fusion_thunk.xnn_fusion_kind()) {
+        case XnnFusionThunk::XnnFusionKind::kFusion:
+          TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
+              tsl::down_cast<const XnnFusionThunk&>(thunk), proto));
+          break;
+        case XnnFusionThunk::XnnFusionKind::kDot:
+          TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
+              tsl::down_cast<const XnnDotThunk&>(thunk), proto));
+          break;
+        case XnnFusionThunk::XnnFusionKind::kConvolution:
+          TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
+              tsl::down_cast<const XnnConvolutionThunk&>(thunk), proto));
+          break;
       }
-    } break;
+      break;
+    }
     case Thunk::Kind::kPartitionId:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          static_cast<const PartitionIdThunk&>(thunk), proto));
+          static_cast<const PartitionIdThunk&>(
+              tsl::down_cast<const internal::LogicalIdThunk<
+                  internal::LogicalIdKind::kPartitionId>&>(thunk)),
+          proto));
       break;
     case Thunk::Kind::kReplicaId:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          static_cast<const ReplicaIdThunk&>(thunk), proto));
+          static_cast<const ReplicaIdThunk&>(
+              tsl::down_cast<const internal::LogicalIdThunk<
+                  internal::LogicalIdKind::kReplicaId>&>(thunk)),
+          proto));
       break;
     default:
       return absl::UnimplementedError(
@@ -1440,6 +1462,12 @@ static absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunkFromProto(
                             std::move(*body_sequence), trip_count);
 }
 
+static absl::StatusOr<std::unique_ptr<XnnFusionThunk>> XnnFusionThunkFromProto(
+    const ThunkProto& proto,
+    const std::vector<BufferAllocation>& buffer_allocations) {
+  return absl::UnimplementedError("XnnFusionThunkFromProto is not implemented");
+}
+
 static absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunkFromProto(
     const ThunkProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations) {
@@ -1551,7 +1579,7 @@ static absl::StatusOr<std::unique_ptr<Thunk>> ReplicaIdThunkFromProto(
 
 absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
     const ThunkProto& proto) const {
-  Thunk::Kind kind = ProtoThunkToThunkKind(proto);
+  TF_ASSIGN_OR_RETURN(Thunk::Kind kind, ProtoThunkToThunkKind(proto));
   if (Thunk::KindToString(kind) != proto.kind()) {
     return absl::Status(
         absl::StatusCode::kInvalidArgument,
@@ -1561,16 +1589,23 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
   }
 
   switch (kind) {
-    case Thunk::Kind::kAllGather:
-      return AllGatherThunkFromProto(proto, *buffer_allocations_);
-    case Thunk::Kind::kAllReduce:
-      return AllReduceThunkFromProto(proto, *buffer_allocations_);
-    case Thunk::Kind::kAllToAll:
-      return AllToAllThunkFromProto(proto, *buffer_allocations_);
-    case Thunk::Kind::kCollectivePermute:
-      return CollectivePermuteThunkFromProto(proto, *buffer_allocations_);
-    case Thunk::Kind::kReduceScatter:
-      return ReduceScatterThunkFromProto(proto, *buffer_allocations_);
+    case Thunk::Kind::kCollective: {
+      TF_ASSIGN_OR_RETURN(
+          CollectiveThunk::CollectiveKind collective_kind,
+          ProtoCollectiveThunkToCollectiveThunkKind(proto.collective_thunk()));
+      switch (collective_kind) {
+        case CollectiveThunk::CollectiveKind::kAllGather:
+          return AllGatherThunkFromProto(proto, *buffer_allocations_);
+        case CollectiveThunk::CollectiveKind::kAllReduce:
+          return AllReduceThunkFromProto(proto, *buffer_allocations_);
+        case CollectiveThunk::CollectiveKind::kAllToAll:
+          return AllToAllThunkFromProto(proto, *buffer_allocations_);
+        case CollectiveThunk::CollectiveKind::kCollectivePermute:
+          return CollectivePermuteThunkFromProto(proto, *buffer_allocations_);
+        case CollectiveThunk::CollectiveKind::kReduceScatter:
+          return ReduceScatterThunkFromProto(proto, *buffer_allocations_);
+      }
+    }
     case Thunk::Kind::kCall:
       return CallThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kConditional:
@@ -1599,14 +1634,19 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
       return TopKThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kWhile:
       return WhileThunkFromProto(proto, *buffer_allocations_);
-    case Thunk::Kind::kXnnFusion:
-      if (proto.xnn_fusion_thunk().has_xnn_dot_thunk()) {
-        return XnnDotThunkFromProto(proto, *buffer_allocations_);
-      } else if (proto.xnn_fusion_thunk().has_xnn_convolution_thunk()) {
-        return XnnConvolutionThunkFromProto(proto, *buffer_allocations_);
-      } else {
-        return InvalidArgument("Unsupported XNN fusion thunk type.");
+    case Thunk::Kind::kXnnFusion: {
+      TF_ASSIGN_OR_RETURN(
+          auto xnn_fusion_kind,
+          ProtoXnnFusionThunkToXnnFusionThunkKind(proto.xnn_fusion_thunk()));
+      switch (xnn_fusion_kind) {
+        case XnnFusionThunk::XnnFusionKind::kFusion:
+          return XnnFusionThunkFromProto(proto, *buffer_allocations_);
+        case XnnFusionThunk::XnnFusionKind::kDot:
+          return XnnDotThunkFromProto(proto, *buffer_allocations_);
+        case XnnFusionThunk::XnnFusionKind::kConvolution:
+          return XnnConvolutionThunkFromProto(proto, *buffer_allocations_);
       }
+    }
     case Thunk::Kind::kPartitionId:
       return PartitionIdThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kReplicaId:

@@ -118,7 +118,6 @@ tf_cc_shared_test(
 # copybara:uncomment_begin(C++ Global registration not working in python, b/290988709)
 # py_strict_library(
 #     name = "tfrt_session_py",
-#     srcs_version = "PY3",
 #     visibility = ["//visibility:public"],
 #     deps = [
 #         "//tensorflow/core/tfrt/tfrt_session",
@@ -132,7 +131,6 @@ tf_cc_shared_test(
 #         "//tools/cpp:asan_build": {"cpp_link.mem": "16g"},
 #         "//conditions:default": None,
 #     }),
-#     python_version = "PY3",
 #     deps = [
 #         ":tfrt_session_py",
 #         "//tensorflow/core:protos_all_py",

@@ -21,6 +21,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
@@ -38,9 +40,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tsl/platform/blocking_counter.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {

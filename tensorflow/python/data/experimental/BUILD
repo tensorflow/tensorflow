@@ -9,7 +9,6 @@ package(
 py_strict_library(
     name = "experimental",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/data/experimental/ops:dataset_ops",
         "//tensorflow/python/data/experimental/ops:distributed_save_op",

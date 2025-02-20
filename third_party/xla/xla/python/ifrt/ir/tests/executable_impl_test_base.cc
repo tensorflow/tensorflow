@@ -163,7 +163,7 @@ IfrtIrExecutableImplTestBase::PickDevices(int count) {
   absl::Span<Device* const> devices = client_->devices();
   TF_RET_CHECK(count <= devices.size())
       << "Requested " << count << " devices. Only have " << devices.size();
-  return BasicDeviceList::Create(devices.first(count));
+  return client_->MakeDeviceList(devices.first(count));
 }
 
 }  // namespace test_util

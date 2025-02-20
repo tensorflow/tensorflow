@@ -21,12 +21,12 @@ limitations under the License.
 #include <stack>
 #include <string>
 
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/java/src/gen/cc/java_defs.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace java {

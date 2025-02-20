@@ -1,7 +1,7 @@
 # Operation semantics
 
 The following describes the semantics of operations defined in the
-[`XlaBuilder`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 interface. Typically, these operations map one-to-one to operations defined in
 the RPC interface in
 [`xla_data.proto`](https://github.com/openxla/xla/tree/main/xla/xla_data.proto).
@@ -16,7 +16,7 @@ and familiar names; for example a *vector* is a 1-dimensional array and a
 ## AfterAll
 
 See also
-[`XlaBuilder::AfterAll`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::AfterAll`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 AfterAll takes a variadic number of tokens and produces a single token. Tokens
 are primitive types which can be threaded between side-effecting operations to
@@ -32,7 +32,7 @@ Arguments  | Type    | Semantics
 ## AllGather
 
 See also
-[`XlaBuilder::AllGather`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::AllGather`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs concatenation across replicas.
 
@@ -71,7 +71,7 @@ output value from this op where `all_gather_dim` is `0` will be `[1.0, 2.5, 3.0,
 ## AllReduce
 
 See also
-[`XlaBuilder::AllReduce`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::AllReduce`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs a custom computation across replicas.
 
@@ -115,7 +115,7 @@ causes the while loop to iterate more times on one replica than another.
 ## AllToAll
 
 See also
-[`XlaBuilder::AllToAll`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::AllToAll`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 AllToAll is a collective operation that sends data from all cores to all cores.
 It has two phases:
@@ -188,7 +188,7 @@ each core has shape f32[16,4].
 ## BatchNormGrad
 
 See also
-[`XlaBuilder::BatchNormGrad`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder::BatchNormGrad`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 and [the original batch normalization paper](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
@@ -251,7 +251,7 @@ The output type is a tuple of three handles:
 ## BatchNormInference
 
 See also
-[`XlaBuilder::BatchNormInference`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder::BatchNormInference`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 and [the original batch normalization paper](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
@@ -286,7 +286,7 @@ The output is an n-dimensional, normalized array with the same shape as input
 ## BatchNormTraining
 
 See also
-[`XlaBuilder::BatchNormTraining`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder::BatchNormTraining`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 and [`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
@@ -339,7 +339,7 @@ spatial dimensions using the formulas above.
 ## BitcastConvertType
 
 See also
-[`XlaBuilder::BitcastConvertType`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::BitcastConvertType`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
 operation from a data shape to a target shape. The input and output size must
@@ -395,7 +395,7 @@ Note that conversions between different bitwidths are not elementwise.
 ## Broadcast
 
 See also
-[`XlaBuilder::Broadcast`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Broadcast`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Adds dimensions to an array by duplicating the data in the array.
 
@@ -423,7 +423,7 @@ For example, if `operand` is a scalar `f32` with value `2.0f`, and
 ## BroadcastInDim
 
 See also
-[`XlaBuilder::BroadcastInDim`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::BroadcastInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Expands the size and rank of an array by duplicating the data in the array.
 
@@ -451,7 +451,7 @@ the [broadcasting page](broadcasting.md).
 ## Call
 
 See also
-[`XlaBuilder::Call`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Call`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Invokes a computation with the given arguments.
 
@@ -468,7 +468,7 @@ The arity and types of the `args` must match the parameters of the
 ## CompositeCall
 
 See also
-[`XlaBuilder::CompositeCall`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::CompositeCall`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Encapsulates an operation made up (composed) of other StableHLO operations,
 taking inputs and composite_attributes and producing results. The semantics of
@@ -507,7 +507,7 @@ frontend_attributes = {
 ## Cholesky
 
 See also
-[`XlaBuilder::Cholesky`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Cholesky`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Computes the
 [Cholesky decomposition](https://en.wikipedia.org/wiki/Cholesky_decomposition)
@@ -538,7 +538,7 @@ implementation-defined.
 ## Clamp
 
 See also
-[`XlaBuilder::Clamp`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Clamp`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Clamps an operand to within the range between a minimum and maximum value.
 
@@ -571,7 +571,7 @@ Clamp(min, operand, max) = s32[3]{0, 5, 6};
 ## Collapse
 
 See also
-[`XlaBuilder::Collapse`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder::Collapse`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 and the `tf.reshape` operation.
 
 Collapses dimensions of an array into one dimension.
@@ -634,7 +634,7 @@ then v12 == f32[8x3] {{10, 11, 12},
 ## CollectivePermute
 
 See also
-[`XlaBuilder::CollectivePermute`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::CollectivePermute`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 CollectivePermute is a collective operation that sends and receives data cross
 replicas.
@@ -656,7 +656,7 @@ Note that there are the following restrictions on the `source_target_pair`:
 ## Concatenate
 
 See also
-[`XlaBuilder::ConcatInDim`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ConcatInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Concatenate composes an array from multiple array operands. The array is of the
 same rank as each of the input array operands (which must be of the same rank as
@@ -708,7 +708,7 @@ Diagram:
 ## Conditional
 
 See also
-[`XlaBuilder::Conditional`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Conditional`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b> `Conditional(pred, true_operand, true_computation, false_operand,
 false_computation)` </b>
@@ -763,7 +763,7 @@ the value of `branch_index`.
 ## Conv (convolution)
 
 See also
-[`XlaBuilder::Conv`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Conv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 As ConvWithGeneralPadding, but the padding is specified in a short-hand way as
 either SAME or VALID. SAME padding pads the input (`lhs`) with zeroes so that
@@ -773,7 +773,7 @@ account. VALID padding simply means no padding.
 ## ConvWithGeneralPadding (convolution)
 
 See also
-[`XlaBuilder::ConvWithGeneralPadding`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ConvWithGeneralPadding`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Computes a convolution of the kind used in neural networks. Here, a convolution
 can be thought of as a n-dimensional window moving across a n-dimensional base
@@ -919,7 +919,7 @@ for (b, oz, oy, ox) {  // output coordinates
 ## ConvertElementType
 
 See also
-[`XlaBuilder::ConvertElementType`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ConvertElementType`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Similar to an element-wise `static_cast` in C++, performs an element-wise
 conversion operation from a data shape to a target shape. The dimensions must
@@ -957,7 +957,7 @@ Performs `AllReduce` with a summation computation.
 ## CustomCall
 
 See also
-[`XlaBuilder::CustomCall`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::CustomCall`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Call a user-provided function within a computation.
 
@@ -1014,7 +1014,7 @@ idempotent.
 ## Dot
 
 See also
-[`XlaBuilder::Dot`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Dot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b> `Dot(lhs, rhs)` </b>
 
@@ -1040,7 +1040,7 @@ vectors, vector/matrix multiplications or matrix/matrix multiplications.
 ## DotGeneral
 
 See also
-[`XlaBuilder::DotGeneral`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::DotGeneral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b> `DotGeneral(lhs, rhs, dimension_numbers)` </b>
 
@@ -1127,7 +1127,7 @@ non-contracting/non-batch dimension.
 ## DynamicSlice
 
 See also
-[`XlaBuilder::DynamicSlice`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::DynamicSlice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 DynamicSlice extracts a sub-array from the input array at dynamic
 `start_indices`. The size of the slice in each dimension is passed in
@@ -1181,7 +1181,7 @@ DynamicSlice(b, s, {2, 2}) produces:
 ## DynamicUpdateSlice
 
 See also
-[`XlaBuilder::DynamicUpdateSlice`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::DynamicUpdateSlice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 DynamicUpdateSlice generates a result which is the value of the input array
 `operand`, with a slice `update` overwritten at `start_indices`.
@@ -1245,7 +1245,7 @@ DynamicUpdateSlice(b, u, s) produces:
 ## Element-wise binary arithmetic operations
 
 See also
-[`XlaBuilder::Add`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Add`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 A set of element-wise binary arithmetic operations is supported.
 
@@ -1298,7 +1298,7 @@ shapes of both operands. The semantics are described in detail on the
 ## Element-wise comparison operations
 
 See also
-[`XlaBuilder::Eq`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Eq`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 A set of standard element-wise binary comparison operations is supported. Note
 that standard IEEE 754 floating-point comparison semantics apply when comparing
@@ -1422,7 +1422,7 @@ real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
 supported.
 
 See also
-[`XlaBuilder::Fft`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Fft`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 | Arguments    | Type                | Semantics                |
 | ------------ | ------------------- | ------------------------ |
@@ -1458,7 +1458,7 @@ potentially different runtime offset) of an input array.
 ### General Semantics
 
 See also
-[`XlaBuilder::Gather`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Gather`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 For a more intuitive description, see the "Informal Description" section below.
 
 <b> `gather(operand, start_indices, offset_dims, collapsed_slice_dims, slice_sizes, start_index_map)` </b>
@@ -1644,7 +1644,7 @@ concatenation of all these rows.
 ## GetDimensionSize
 
 See also
-[`XlaBuilder::GetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::GetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Returns the size of the given dimension of the operand. The operand must be
 array shaped.
@@ -1659,7 +1659,7 @@ array shaped.
 ## SetDimensionSize
 
 See also
-[`XlaBuilder::SetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::SetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Sets the dynamic size of XlaOp's given dimension. The operand must be
 array shaped.
@@ -1700,7 +1700,7 @@ let sum:f32[] = reduce_sum(padded_v_six);
 ## GetTupleElement
 
 See also
-[`XlaBuilder::GetTupleElement`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::GetTupleElement`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Indexes into a tuple with a compile-time-constant value.
 
@@ -1721,7 +1721,7 @@ See also `tf.tuple`.
 ## Infeed
 
 See also
-[`XlaBuilder::Infeed`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Infeed`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b> `Infeed(shape)` </b>
 
@@ -1757,7 +1757,7 @@ Infeed of the device.
 ## Iota
 
 See also
-[`XlaBuilder::Iota`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Iota`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b> `Iota(shape, iota_dimension)` </b>
 
@@ -1793,7 +1793,7 @@ For example, `Iota(s32[4, 8], 0)` returns
 ## Map
 
 See also
-[`XlaBuilder::Map`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Map`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b> `Map(operands..., computation)` </b>
 
@@ -1826,7 +1826,7 @@ barrier's outputs.
 ## Pad
 
 See also
-[`XlaBuilder::Pad`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Pad`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b> `Pad(operand, padding_value, padding_config)` </b>
 
@@ -1865,7 +1865,7 @@ interior padding values are all 0. The figure below shows examples of different
 ## Recv
 
 See also
-[`XlaBuilder::Recv`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Recv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b> `Recv(shape, channel_handle)` </b>
 
@@ -1899,7 +1899,7 @@ complete and returns the received data.
 ## Reduce
 
 See also
-[`XlaBuilder::Reduce`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Reduce`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Applies a reduction function to one or more arrays in parallel.
 
@@ -2056,7 +2056,7 @@ containing the maximal value and the matching index.
 ## ReducePrecision
 
 See also
-[`XlaBuilder::ReducePrecision`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ReducePrecision`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Models the effect of converting floating-point values to a lower-precision
 format (such as IEEE-FP16) and back to the original format.  The number of
@@ -2087,7 +2087,7 @@ portion of the conversion is then simply a no-op.
 ## ReduceScatter
 
 See also
-[`XlaBuilder::ReduceScatter`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ReduceScatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 ReduceScatter is a collective operation that effectively does an AllReduce and
 then scatters the result by splitting it into `shard_count` blocks along the
@@ -2132,7 +2132,7 @@ replicas, then the output value from this op where `scatter_dim` is `0` will be
 ## ReduceWindow
 
 See also
-[`XlaBuilder::ReduceWindow`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ReduceWindow`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Applies a reduction function to all elements in each window of a sequence of N
 multi-dimensional arrays, producing a single or a tuple of N multi-dimensional
@@ -2222,7 +2222,7 @@ context of [`Reduce`](#reduce) for more details.
 ## ReplicaId
 
 See also
-[`XlaBuilder::ReplicaId`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::ReplicaId`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Returns the unique ID (U32 scalar) of the replica.
 
@@ -2236,7 +2236,7 @@ each replica.
 ## Reshape
 
 See also
-[`XlaBuilder::Reshape`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h)
+[`XlaBuilder::Reshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
 and the [`Collapse`](#collapse) operation.
 
 Reshapes the dimensions of an array into a new configuration.
@@ -2317,7 +2317,7 @@ Reshape(5, {}, {1,1}) == f32[1x1] {{5}};
 ## Rev (reverse)
 
 See also
-[`XlaBuilder::Rev`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Rev`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b>`Rev(operand, dimensions)`</b>
 
@@ -2339,7 +2339,7 @@ the two window dimensions during the gradient computation in neural networks.
 ## RngNormal
 
 See also
-[`XlaBuilder::RngNormal`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::RngNormal`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
 the $N(\mu, \sigma)$ normal distribution. The parameters $\mu$ and $\sigma$, and
@@ -2357,7 +2357,7 @@ furthermore have to be scalar valued.
 ## RngUniform
 
 See also
-[`XlaBuilder::RngUniform`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::RngUniform`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
 the uniform distribution over the interval $[a,b)$. The parameters and output
@@ -2417,7 +2417,7 @@ of the input array `operands`, with several slices (at indices specified by
 `update_computation`.
 
 See also
-[`XlaBuilder::Scatter`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Scatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b> `scatter(operands..., scatter_indices, updates..., update_computation,
 index_vector_dim, update_window_dims, inserted_window_dims,
@@ -2553,7 +2553,7 @@ For a detailed informal description and examples, refer to the
 ## Select
 
 See also
-[`XlaBuilder::Select`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Select`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Constructs an output array from elements of two input arrays, based on the
 values of a predicate array.
@@ -2603,7 +2603,7 @@ the same shape!) then `pred` has to be a scalar of type `PRED`.
 ## SelectAndScatter
 
 See also
-[`XlaBuilder::SelectAndScatter`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::SelectAndScatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 This operation can be considered as a composite operation that first computes
 `ReduceWindow` on the `operand` array to select an element from each window, and
@@ -2664,7 +2664,7 @@ context of [`Reduce`](#reduce) for more details.
 ## Send
 
 See also
-[`XlaBuilder::Send`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Send`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b> `Send(operand, channel_handle)` </b>
 
@@ -2715,7 +2715,7 @@ computations. For example, below schedules lead to deadlocks.
 ## Slice
 
 See also
-[`XlaBuilder::Slice`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Slice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Slicing extracts a sub-array from the input array. The sub-array is of the same
 rank as the input and contains the values inside a bounding box within the input
@@ -2757,7 +2757,7 @@ Slice(b, {2, 1}, {4, 3}) produces:
 ## Sort
 
 See also
-[`XlaBuilder::Sort`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Sort`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b>`Sort(operands, comparator, dimension, is_stable)`</b>
 
@@ -2834,7 +2834,7 @@ This is the same as Reshape(operand, permutation,
 ## TriangularSolve
 
 See also
-[`XlaBuilder::TriangularSolve`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::TriangularSolve`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Solves systems of linear equations with lower or upper triangular coefficient
 matrices by forward- or back-substitution. Broadcasting along leading
@@ -2865,7 +2865,7 @@ matrices, where all except the minor 2 dimensions are batch dimensions. `a` and
 ## Tuple
 
 See also
-[`XlaBuilder::Tuple`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::Tuple`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 A tuple containing a variable number of data handles, each of which has its own
 shape.
@@ -2884,7 +2884,7 @@ Tuples can be deconstructed (accessed) via the [`GetTupleElement`]
 ## While
 
 See also
-[`XlaBuilder::While`](https://github.com/openxla/xla/tree/main/xla/client/xla_builder.h).
+[`XlaBuilder::While`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 <b> `While(condition, body, init)` </b>
 

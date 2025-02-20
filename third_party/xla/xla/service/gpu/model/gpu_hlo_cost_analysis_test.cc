@@ -665,15 +665,17 @@ ENTRY entry_computation {
   const HloInstruction* all_reduce =
       module->entry_computation()->root_instruction()->operand(0);
   EXPECT_EQ(analysis_.BytesTransferred(*all_reduce), 4096 * 4);
+  EXPECT_EQ(analysis_.bytes_accessed(*all_reduce), 4096 * 4);
 }
 
 TEST_F(GpuHloCostAnalysisTest, AllGather) {
   absl::string_view hlo_string = R"(
-HloModule m
+HloModule m, num_partitions=4
 
 ENTRY entry_computation {
   p = f32[1024] parameter(0)
-  ROOT _ = f32[4096] all-gather(p), dimensions={0}
+  ROOT _ = f32[4096] all-gather(p), dimensions={0}, use_global_device_ids=true,
+    replica_groups={{0,1,2,3}}, channel_id=1
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -684,17 +686,21 @@ ENTRY entry_computation {
   const HloInstruction* all_gather =
       module->entry_computation()->root_instruction();
   EXPECT_EQ(analysis_.BytesTransferred(*all_gather), 4096 * 4);
+  // write = (3 + 4) * 1024 * 4 bytes
+  // read = 4 * 1024 * 4 bytes
+  EXPECT_EQ(analysis_.bytes_accessed(*all_gather), 45056);
 }
 
 TEST_F(GpuHloCostAnalysisTest, AsyncAllGather) {
   absl::string_view hlo_string = R"(
-HloModule m
+HloModule m, num_partitions=4
 
 ENTRY entry_computation {
   p.0 = f32[1024] parameter(0)
   p.1 = f32[512] parameter(1)
   ag-start = ((f32[1024],f32[512]), (f32[4096],f32[2048])) all-gather-start(p.0,p.1),
-    dimensions={0}
+    dimensions={0}, use_global_device_ids=true, replica_groups={{0,1,2,3}},
+    channel_id=1
   ROOT _ = (f32[4096],f32[2048]) all-gather-done(ag-start)
 }
 )";
@@ -707,11 +713,14 @@ ENTRY entry_computation {
       module->entry_computation()->root_instruction()->operand(0);
   // Output is (f32[4096], f32[2048]).
   EXPECT_EQ(analysis_.BytesTransferred(*all_gather), 4096 * 4 + 2048 * 4);
+  // write = (3 + 4) * (1024 + 512) * 4 bytes
+  // read = 4 * (1024 + 512) * 4 bytes
+  EXPECT_EQ(analysis_.bytes_accessed(*all_gather), 67584);
 }
 
 TEST_F(GpuHloCostAnalysisTest, ReduceScatter) {
   absl::string_view hlo_string = R"(
-HloModule m
+HloModule m, num_partitions=4
 
 add {
   param_0 = f32[] parameter(0)
@@ -721,7 +730,8 @@ add {
 
 ENTRY entry_computation {
   p = f32[4096] parameter(0)
-  ROOT _ = f32[1024] reduce-scatter(p), dimensions={0}, to_apply=add
+  ROOT _ = f32[1024] reduce-scatter(p), dimensions={0}, to_apply=add,
+      use_global_device_ids=true, replica_groups={{0,1,2,3}}, channel_id=1
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -732,11 +742,14 @@ ENTRY entry_computation {
   const HloInstruction* reduce_scatter =
       module->entry_computation()->root_instruction();
   EXPECT_EQ(analysis_.BytesTransferred(*reduce_scatter), 4096 * 4);
+  // read = (3 + 4) * 1024 * 4 bytes
+  // write = 4 * 1024 * 4 bytes
+  EXPECT_EQ(analysis_.bytes_accessed(*reduce_scatter), 45056);
 }
 
 TEST_F(GpuHloCostAnalysisTest, AsyncReduceScatter) {
   absl::string_view hlo_string = R"(
-HloModule m
+HloModule m, num_partitions=4
 
 add {
   param_0 = f32[] parameter(0)
@@ -748,14 +761,15 @@ async_computation {
   param_3 = f32[4096] parameter(0)
   param_4 = f32[2048] parameter(1)
   ROOT r = (f32[1024],f32[512]) reduce-scatter(param_3,param_4),
-    dimensions={0},
-    to_apply=add
+    dimensions={0}, to_apply=add, use_global_device_ids=true,
+    replica_groups={{0,1,2,3}}, channel_id=1
 }
 
 ENTRY entry_computation {
   p.0 = f32[4096] parameter(0)
   p.1 = f32[2048] parameter(1)
-  rs-start = ((f32[4096],f32[2048]),(f32[1024],f32[512])) async-start(p.0,p.1), calls=async_computation
+  rs-start = ((f32[4096],f32[2048]),(f32[1024],f32[512])) async-start(p.0,p.1),
+    calls=async_computation
   ROOT _ = (f32[1024],f32[512]) async-done(rs-start)
 }
 )";
@@ -768,6 +782,9 @@ ENTRY entry_computation {
       module->entry_computation()->root_instruction()->operand(0);
   // Output is (f32[1024],f32[512]).
   EXPECT_EQ(analysis_.BytesTransferred(*reduce_scatter), 4096 * 4 + 2048 * 4);
+  // read = (3 + 4) * (1024 + 512) * 4 bytes
+  // write = 4 * (1024 + 512) * 4 bytes
+  EXPECT_EQ(analysis_.bytes_accessed(*reduce_scatter), 67584);
 }
 
 TEST_F(GpuHloCostAnalysisTest, CustomOpProfileIsUsed) {

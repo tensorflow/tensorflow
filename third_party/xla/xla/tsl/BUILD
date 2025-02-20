@@ -1,3 +1,5 @@
+# Tensor Standard Libraries - common utilities for implementing XLA.
+
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
@@ -417,12 +419,6 @@ config_setting(
 )
 
 config_setting(
-    name = "with_numa_support",
-    define_values = {"with_numa_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "fuchsia",
     constraint_values = if_google(
         ["//third_party/bazel_platforms/os:fuchsia"],
@@ -489,6 +485,26 @@ selects.config_setting_group(
         ":linux_armhf",
     ] + tsl_extra_config_settings_targets(),
     visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "linux_any",
+    match_any = [
+        ":linux_aarch64",
+        ":linux_armhf",
+        ":linux_ppc64le",
+        ":linux_s390x",
+        ":linux_x86_64",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Enable NUMA on Linux platforms; hwloc does not work on Android
+selects.config_setting_group(
+    name = "with_numa_support",
+    match_any = [
+        ":linux_any",
+    ],
 )
 
 # TODO(jakeharmon): Remove equivalent from tensorflow/BUILD

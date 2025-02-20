@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tensorflow {
 

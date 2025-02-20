@@ -457,6 +457,8 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
 
     FlatSymbolRefAttr:$f,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$_disable_call_shape_inference
@@ -615,6 +617,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
 
     FlatSymbolRefAttr:$f,
     StrAttr:$config,
@@ -1068,6 +1072,8 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall",
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
     TF_Int32Tensor:$device_ordinal,
 
     SymbolRefAttr:$f,
@@ -2728,6 +2734,66 @@ def XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSizeOp : TF_Op<"XlaSparseDens
   );
 }
 
+def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [Pure]> {
+  let summary = "Perform dequantization on the quantized Tensor `input`.";
+
+  let description = [{
+Given quantized `input` which was quantized using `scales` and `zero_points`, performs dequantization using the formula:
+dequantized_data = (quantized_data - zero_point) * scale.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Qint32, TF_Qint8, TF_Quint8]>, [{Must be a Tensor of Tin.}]>:$input,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale(s) when quantizing original data that input represents.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point(s) when quantizing original data that input represents.
+Same shape condition as scales.}]>:$zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
+    I64Attr:$quantization_min_val,
+    I64Attr:$quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Float32Tensor, [{The output dequantized Tensor of Tout, whose shape is same as input.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
+}
+
+def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
+  let summary = "Perform quantization on Tensor `input`.";
+
+  let description = [{
+Given `input`, `scales` and `zero_points`, performs quantization using the formula:
+quantized_data = floor(input_data * (1.0f / scale) + 0.5f) + zero_point
+  }];
+
+  let arguments = (ins
+    Arg<TF_Float32Tensor, [{Must be a Tensor of Tin.}]>:$input,
+    Arg<TF_Float32Tensor, [{The float value(s) to use as scale(s) to quantize `input`.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) to use as zero_point(s) to quantize `input`.
+Same shape condition as scales.}]>:$zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
+    I64Attr:$quantization_min_val,
+    I64Attr:$quantization_max_val
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Qint32, TF_Qint8, TF_Quint8]>, [{The output quantized Tensor of Tout, whose shape is same as input.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
+}
+
 def TF_XlaSparseDenseMatmulGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithCsrInput", [AttrSizedOperandSegments, Pure]> {
   let summary = "A XLA op which performs the custom optimizer per-row update for the dense-sparse matrix multiplication.";
 
@@ -2751,5 +2817,54 @@ def TF_XlaSparseDenseMatmulGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradW
 
   TF_DerivedOperandSizeAttr M = TF_DerivedOperandSizeAttr<6>;
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<5>;
+}
+
+// b/394499589: move back to tf_generated_ops.td
+def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
+  let summary = [{
+returns `f(inputs)`, where `f`'s body is placed and partitioned.
+  }];
+
+  let description = [{
+Asynchronously executes a function, potentially across multiple devices but
+within a single process. The kernel places and partitions a given function's
+underlying graph, and executes each of the partitioned subgraphs as a function.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A list of input tensors.}]>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
+
+    SymbolRefAttr:$f,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config_proto,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$executor_type
+  );
+
+  let results = (outs
+    Res<Variadic<TF_Tensor>, [{A list of return values.}]>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable.
+    void setCalleeFromCallable(CallInterfaceCallable callee);
+
+    // returns the callee of this operation.
+    func::FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getF());
+    }
+  }];
 }
 #endif // TF_OPS

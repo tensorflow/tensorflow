@@ -762,7 +762,18 @@ message HloSnapshot {
 }
 
 message HloInputs {
+  // Stores the information required to decode the literal.
+  message LiteralDescriptor {
+    int32 version = 1;
+    uint64 argument_size_bytes = 2;
+  }
+
+  // Only one of the following two fields is expected to be set. `arguments`
+  // stores the literals, when `arguments_descriptors` stores only the
+  // information required to decode the literals. This was introduced to bypass
+  // the 2GiB limitation on proto size.
   repeated LiteralProto arguments = 1;
+  repeated LiteralDescriptor arguments_descriptors = 2;
 }
 
 message HloUnoptimizedSnapshot {
@@ -770,6 +781,8 @@ message HloUnoptimizedSnapshot {
   HloModuleProto hlo_module = 1;
 
   repeated HloInputs partitions = 2;
+
+  int32 version = 3;
 }
 
 // Metadata for an HLO module. Dumped after HLO passes and before LLO lowering

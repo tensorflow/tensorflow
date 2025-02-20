@@ -126,5 +126,35 @@ TEST(ArenaPlannerSubgraphTest, TestOffsetAddSharing) {
   subgraph_test_util::CheckIntTensor(subgraph_output, {3}, {10, 12, 11});
 }
 
+TEST(ArenaPlannerSubgraphTest, HWTensor) {
+  Interpreter interpreter;
+  subgraph_test_util::SubgraphBuilder builder;
+  builder.BuildInplaceOpSubgraph(&interpreter.primary_subgraph());
+  ASSERT_EQ(interpreter.ResizeInputTensor(interpreter.inputs()[0], {2}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.ResizeInputTensor(interpreter.inputs()[1], {2}),
+            kTfLiteOk);
+
+  TfLiteTensor* add_input0 = interpreter.tensor(interpreter.inputs()[0]);
+  const TfLiteTensor* add_input1 = interpreter.tensor(interpreter.inputs()[1]);
+  const int kIntermediateTensor0 = 2;
+  const int kIntermediateTensor1 = 3;
+  const TfLiteTensor* add_output = interpreter.tensor(kIntermediateTensor0);
+  const TfLiteTensor* reshape_output = interpreter.tensor(kIntermediateTensor1);
+  TfLiteTensor* subgraph_output = interpreter.tensor(interpreter.outputs()[0]);
+
+  add_input0->allocation_type = kTfLiteNonCpu;
+  subgraph_output->allocation_type = kTfLiteNonCpu;
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Non-CPU tensors shouldn't be allocated.
+  EXPECT_EQ(add_input0->data.data, nullptr);
+  EXPECT_EQ(subgraph_output->data.data, nullptr);
+  // CPU tensors should be allocated.
+  EXPECT_NE(add_input1->data.data, nullptr);
+  EXPECT_NE(add_output->data.data, nullptr);
+  EXPECT_NE(reshape_output->data.data, nullptr);
+}
+
 }  // namespace
 }  // namespace tflite

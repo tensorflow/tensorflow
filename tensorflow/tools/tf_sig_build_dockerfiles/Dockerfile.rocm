@@ -1,1 +1,65 @@
-Dockerfile.rocm.manylinux_2_28
+# Last hash that uses dt-9
+################################################################################
+FROM quay.io/pypa/manylinux2014_x86_64:2021-07-31-381f36f as builder
+################################################################################
+
+# Install dependencies
+COPY setup.packages.rocm.cs7.sh setup.packages.rocm.cs7.sh
+COPY builder.packages.rocm.cs7.txt builder.packages.rocm.cs7.txt
+RUN /setup.packages.rocm.cs7.sh /builder.packages.rocm.cs7.txt
+
+ARG GPU_DEVICE_TARGETS="gfx900 gfx906 gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030 gfx1100"
+ENV GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS}
+
+# Install ROCM
+ARG ROCM_VERSION
+ARG CUSTOM_INSTALL
+ARG ROCM_PATH=/opt/rocm-${ROCM_VERSION}
+ENV ROCM_PATH=${ROCM_PATH}
+COPY ${CUSTOM_INSTALL} /${CUSTOM_INSTALL}
+COPY setup.packages.rocm.cs7.sh /setup.packages.rocm.cs7.sh
+COPY setup.rocm.cs7.sh /setup.rocm.cs7.sh
+COPY devel.packages.rocm.cs7.txt /devel.packages.rocm.cs7.txt
+RUN /setup.rocm.cs7.sh $ROCM_VERSION
+
+# Install various tools.
+# - bats: bash unit testing framework
+# - bazelisk: always use the correct bazel version
+# - buildifier: clean bazel build deps
+# - buildozer: clean bazel build deps
+# - gcloud SDK: communicate with Google Cloud Platform (GCP) for RBE, CI
+RUN git clone --branch v1.7.0 https://github.com/bats-core/bats-core.git && bats-core/install.sh /usr/local && rm -rf bats-core
+RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-linux-amd64 -O /usr/local/bin/bazel && chmod +x /usr/local/bin/bazel
+RUN wget https://github.com/bazelbuild/buildtools/releases/download/3.5.0/buildifier -O /usr/local/bin/buildifier && chmod +x /usr/local/bin/buildifier
+RUN wget https://github.com/bazelbuild/buildtools/releases/download/3.5.0/buildozer -O /usr/local/bin/buildozer && chmod +x /usr/local/bin/buildozer
+RUN curl -sSL https://sdk.cloud.google.com >/tmp/gcloud && bash /tmp/gcloud --install-dir=~/usr/local/bin --disable-prompts
+
+# All lines past this point are reset when $CACHEBUSTER is set. We need this
+# for Python specifically because we install some nightly packages which are
+# likely to change daily.
+ARG CACHEBUSTER=0
+RUN echo $CACHEBUSTER
+
+# Setup Python environment. PYTHON_VERSION is e.g. "python3.8"
+ARG PYTHON_VERSION
+ENV PYTHON_LIB_PATH=/usr/local/lib/python${PYTHON_VERSION}/site-packages
+ENV PYTHON_BIN_PATH=/usr/local/bin/python${PYTHON_VERSION}
+COPY setup.build-python.sh /setup.build-python.sh
+COPY devel.requirements.txt /devel.requirements.txt
+RUN /setup.build-python.sh $PYTHON_VERSION /devel.requirements.txt
+RUN mkdir /tmp/llvm-project && wget -qO - https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-17.0.0.tar.gz  | tar -xz -C /tmp/llvm-project --strip-components 1 && \
+    mkdir /tmp/llvm-project/build && cd /tmp/llvm-project/build && cmake -DLLVM_ENABLE_PROJECTS='clang;lld' -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/lib/llvm-17/ ../llvm && \
+    make -j$(nproc) && make -j$(nproc) install && rm -rf /tmp/llvm-project
+
+
+# Setup build and environment
+COPY devel.usertools /usertools
+COPY devel.bashrc /root/.bashrc
+
+# Setup ENV variables for tensorflow pip build
+ENV TF_NEED_ROCM=1
+ENV TF_ROCM_GCC=1
+ENV ROCM_TOOLKIT_PATH=${ROCM_PATH}
+
+RUN touch /etc/sudoers.d/sudo-nopasswd
+RUN echo 'ALL ALL=NOPASSWD:ALL' | tee /etc/sudoers.d/sudo-nopasswd

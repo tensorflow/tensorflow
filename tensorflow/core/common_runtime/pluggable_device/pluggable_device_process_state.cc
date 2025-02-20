@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"

@@ -34,10 +34,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
@@ -457,6 +457,10 @@ constexpr bool IsUnsignedIntegralType(PrimitiveType type) {
 
 constexpr bool IsIntegralType(PrimitiveType type) {
   return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
+}
+
+constexpr bool Is8BitIntegralType(PrimitiveType type) {
+  return type == S8 || type == U8;
 }
 
 template <typename R, typename F>

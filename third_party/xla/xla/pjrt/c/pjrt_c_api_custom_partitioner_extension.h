@@ -25,7 +25,7 @@ limitations under the License.
 extern "C" {
 #endif
 
-#define PJRT_API_CUSTOM_PARTITIONER_EXTENSION_VERSION 0
+#define PJRT_API_CUSTOM_PARTITIONER_EXTENSION_VERSION 1
 
 struct JAX_CustomCallPartitioner_string {
   const char* data;
@@ -118,14 +118,26 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Register_Custom_Partitioner_Args, callbacks);
 typedef PJRT_Error* PJRT_Register_Custom_Partitioner(
     PJRT_Register_Custom_Partitioner_Args* args);
 
+// Registers a custom call as batch partitionable.
+struct PJRT_Register_Batch_Partitionable_Args {
+  size_t struct_size;
+  const char* name;
+  size_t name_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Register_Batch_Partitionable_Args, name_size);
+
+typedef PJRT_Error* PJRT_Register_Batch_Partitionable(
+    PJRT_Register_Batch_Partitionable_Args* args);
+
 typedef struct PJRT_Custom_Partitioner_Extension {
   size_t struct_size;
   PJRT_Extension_Type type;
   PJRT_Extension_Base* next;
   PJRT_Register_Custom_Partitioner* register_custom_partitioner;
+  PJRT_Register_Batch_Partitionable* register_batch_partitionable;
 } PJRT_Custom_Partitioner_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Custom_Partitioner_Extension,
-                          register_custom_partitioner);
+                          register_batch_partitionable);
 
 #ifdef __cplusplus
 }

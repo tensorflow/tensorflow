@@ -52,6 +52,7 @@ for the directory layout:
     *   tools/ (fuzzer, ir-reducer, interpreter/evaluator)
     *   transforms/ (generic / cross dialect transforms)
     *   utils/
+*   tsl/ (Tensor Standard Libraries - common utilities for implementing XLA)
 *   // below are dialects and transforms folders
     *   framework/ (moved from compiler/mlir/xla/ir/xla_framework_ops.td)
     *   gml_st

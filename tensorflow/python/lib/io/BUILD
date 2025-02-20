@@ -110,7 +110,6 @@ tf_py_strict_test(
     name = "file_io_test",
     size = "small",
     srcs = ["file_io_test.py"],
-    python_version = "PY3",
     tags = [
         "no_windows",
     ],
@@ -128,7 +127,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["tf_record_test.py"],
     main = "tf_record_test.py",
-    python_version = "PY3",
     tags = [
         # copybara:uncomment_begin(google-only)
         # "manual",

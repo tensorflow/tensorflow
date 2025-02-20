@@ -90,9 +90,17 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
       mt::gpu::createTritonGPUOptimizeDotOperands({cc.IsAtLeastAmpere()}));
   pm->addPass(mlir::createCSEPass());
 
-  // Even though we don't run on pre-Ampere architectures anymore, we keep this
-  // check for consistency with the upstream pipeline
-  if (cc.IsAtLeastAmpere()) {
+  if (cc.IsAtLeastBlackwell()) {
+    pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
+    pm->addPass(mt::gpu::createTritonGPULoopScheduling({num_stages}));
+    pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
+    pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
+    pm->addPass(mlir::createTritonNvidiaGPUPromoteLHSToTMemPass());
+    pm->addPass(mlir::createTritonNvidiaGPUKeepAccInTMemPass());
+    pm->addPass(mlir::createCanonicalizerPass());
+  } else if (cc.IsAtLeastAmpere()) {
+    // Even though we don't run on pre-Ampere architectures anymore, we keep
+    // this check for consistency with the upstream pipeline
     pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
     pm->addPass(mt::gpu::createTritonGPULoopScheduling({num_stages}));
@@ -117,19 +125,24 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
   // This pass reduces Hopper compile time extensively: b/344841434.
-  if (cc.IsAtLeastHopper()) {
+  if (cc.IsHopper()) {
     pm->addPass(mt_xla::CreatePreventMmaV3LoopUnrollingPass());
   }
+  pm->addPass(mlir::createTritonNvidiaGPUMMALoweringPass());
   pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
   pm->addPass(mlir::createConvertSCFToCFPass());
   pm->addPass(mlir::createConvertIndexToLLVMPass());
   pm->addPass(mt::gpu::createAllocateSharedMemoryPass());
   pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
   pm->addPass(mt_xla::CreateSparseLocalLoadToLLVMPass());
+  pm->addPass(mlir::createTensorMemoryAllocationPass());
+  pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
   pm->addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
   // The triton_xla.sparse_dot ops need to be rewritten after
   // ModuleAxisInfoAnalysis inside convert-triton-gpu-to-llvm.
   pm->addPass(mt_xla::CreateSparseDotOpToLLVMPass());
+  pm->addPass(mlir::createCanonicalizerPass());
+  pm->addPass(mlir::createCSEPass());
   pm->addPass(mt::createConvertNVGPUToLLVMPass());
   pm->addPass(mt_xla::CreateSparseWGMMAOpToLLVMPass());
   pm->addPass(mlir::createArithToLLVMConversionPass());

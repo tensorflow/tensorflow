@@ -95,6 +95,22 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
           .ToProto();
   StripDefaultAttributesInRegisterFunctionOp(register_function);
 
+  if (options.function_runs_at_most_once) {
+    const auto& fdef_attrs = register_function->function_def().attr();
+    auto iter =
+        fdef_attrs.find(FunctionLibraryDefinition::kFunctionRunsAtMostOnce);
+    if (iter == fdef_attrs.end()) {
+      done(errors::Internal("Missing function_runs_at_most_once attribute."));
+      return;
+    }
+    if (!iter->second.b()) {
+      done(
+          errors::Internal("Unexpected `false` value for "
+                           "function_runs_at_most_once attribute."));
+      return;
+    }
+  }
+
   const absl::optional<std::vector<int>>& ret_indices = options.ret_indices;
   eager_client->EnqueueAsync(
       /*call_opts=*/nullptr, request.get(), response.get(),

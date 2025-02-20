@@ -35,8 +35,8 @@ limitations under the License.
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/threadpool.h"
 
 namespace stream_executor {
 
@@ -139,6 +139,24 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_memory_fitting_effort(
       float memory_fitting_effort) {
     memory_fitting_effort_ = memory_fitting_effort;
+    return *this;
+  }
+
+  ExecutionOptions::EffortLevel optimization_level() const {
+    return optimization_level_;
+  }
+  ExecutableBuildOptions& set_optimization_level(
+      ExecutionOptions::EffortLevel optimization_level) {
+    optimization_level_ = optimization_level;
+    return *this;
+  }
+
+  ExecutionOptions::EffortLevel memory_fitting_level() const {
+    return memory_fitting_level_;
+  }
+  ExecutableBuildOptions& set_memory_fitting_level(
+      ExecutionOptions::EffortLevel memory_fitting_level) {
+    memory_fitting_level_ = memory_fitting_level;
     return *this;
   }
 
@@ -297,6 +315,10 @@ class ExecutableBuildOptions {
   std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
   float exec_time_optimization_effort_ = 0.0f;
   float memory_fitting_effort_ = 0.0f;
+  ExecutionOptions::EffortLevel optimization_level_ =
+      ExecutionOptions::EFFORT_UNKNOWN;
+  ExecutionOptions::EffortLevel memory_fitting_level_ =
+      ExecutionOptions::EFFORT_UNKNOWN;
   bool deduplicate_hlo_ = false;
   bool broadcast_replicated_params_ = false;
   std::optional<DeviceAssignment> device_assignment_;

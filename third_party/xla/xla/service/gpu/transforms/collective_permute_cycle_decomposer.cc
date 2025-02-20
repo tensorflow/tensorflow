@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
@@ -50,7 +51,7 @@ namespace xla {
 
 namespace {
 
-using CycleType = SourceTargetPairs::CycleType;
+using CycleType = collective_permute_cycle::CycleType;
 
 // Returns the cycle type and indices of the vertices that form cycles. If the
 // cycle type is kUnknown, the set of indices will be empty.
@@ -58,24 +59,24 @@ std::pair<CycleType, std::set<int>> GetCycleTypeAndIndicesArray(
     const HloCollectivePermuteInstruction& collective_permute,
     int64_t threshold_in_bytes) {
   if (collective_permute.operand_count() != 1) {
-    return std::make_pair(CycleType::kUnknown, std::set<int>{});
+    return std::make_pair(CycleType::kNone, std::set<int>{});
   }
 
   // Skip the transformation if there is any context data.
   const Shape& result_shape = collective_permute.shape();
   if (result_shape.IsTuple()) {
-    return std::make_pair(CycleType::kUnknown, std::set<int>{});
+    return std::make_pair(CycleType::kNone, std::set<int>{});
   }
 
   CHECK(result_shape.IsArray());
   if (ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
-    return std::make_pair(CycleType::kUnknown, std::set<int>{});
+    return std::make_pair(CycleType::kNone, std::set<int>{});
   }
 
   const std::vector<std::pair<int64_t, int64_t>>& pairs =
       collective_permute.source_target_pairs();
   if (pairs.size() == 1) {
-    return std::make_pair(CycleType::kUnknown, std::set<int>{});
+    return std::make_pair(CycleType::kNone, std::set<int>{});
   }
 
   return GetCycleTypeAndIndices(pairs);
@@ -100,7 +101,8 @@ DecomposeFrontendAttributes(const FrontendAttributes& orig,
   }
 
   // TODO: b/391377472 - this also need to be able to work with multiple cycles.
-  auto [cp1_bounds, cp2_bounds] = bounds.SplitEdges(cycle_type);
+  auto [cp1_bounds, cp2_bounds] =
+      collective_permute_cycle::SplitEdges(bounds, cycle_type);
   (*attr1.mutable_map())[kSendRecvValidationAttr] = cp1_bounds.ToString();
   (*attr2.mutable_map())[kSendRecvValidationAttr] = cp2_bounds.ToString();
   return std::make_pair(attr1, attr2);
@@ -226,7 +228,7 @@ absl::StatusOr<bool> CollectivePermuteCycleDecomposer::Run(
           GetCycleTypeAndIndicesArray(*collective_permute, threshold_in_bytes_);
       CycleType cycle_type = cycle_type_and_indices.first;
       std::set<int> indices_to_break_out = cycle_type_and_indices.second;
-      if (cycle_type != CycleType::kUnknown) {
+      if (cycle_type != CycleType::kNone) {
         if (changed == false) {
           next_channel_id = hlo_query::NextChannelId(*module);
           changed = true;

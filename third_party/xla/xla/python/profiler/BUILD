@@ -47,8 +47,6 @@ tsl_pybind_extension(
 py_strict_test(
     name = "profile_data_test",
     srcs = ["profile_data_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_oss",  # TODO(phawkins): This test passes, but requires --config=monolithic.
         "optonly",

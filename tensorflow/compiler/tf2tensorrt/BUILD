@@ -472,7 +472,6 @@ tf_gen_op_wrapper_py(
 
 tf_custom_op_py_strict_library(
     name = "trt_ops_loader",
-    srcs_version = "PY3",
     deps = [
         ":_pywrap_py_utils",
         ":trt_ops",
@@ -1085,7 +1084,7 @@ pybind_extension(
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
-        "@ml_dtypes//:__subpackages__",
+        "@ml_dtypes_py//ml_dtypes:__subpackages__",
         "@platforms//:__subpackages__",
         "@pybind11//:__subpackages__",
         "@snappy//:__subpackages__",

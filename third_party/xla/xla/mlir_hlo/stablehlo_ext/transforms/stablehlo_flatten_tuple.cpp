@@ -152,13 +152,7 @@ class StablehloFlattenTuplePass
   }
 };
 
-static PassRegistration<StablehloFlattenTuplePass> pass;
-
 }  // namespace
-
-std::unique_ptr<OperationPass<func::FuncOp>> createStablehloFlattenTuplePass() {
-  return std::make_unique<StablehloFlattenTuplePass>();
-}
 
 }  // namespace stablehlo_ext
 }  // namespace mlir

@@ -123,12 +123,9 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
   auto plugin = CreatePlugin();
   auto model = testing::LoadTestFileModel("one_mul.tflite");
 
-  const auto subgraph = model.MainSubgraph();
-  LiteRtSubgraph litert_subgraph = subgraph->Get();
-
   LiteRtCompiledResult compiled;
-  LITERT_ASSERT_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75",
-                                               &litert_subgraph, 1, &compiled));
+  LITERT_ASSERT_OK(
+      LiteRtCompilerPluginCompile(plugin.get(), "V75", model.Get(), &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
@@ -246,6 +243,27 @@ TEST(TestLegalization, QuantizeOpLegalizedToQuantizeOp) {
   EXPECT_EQ(qnn_op_name, kQnnOpName);
 }
 
+class QnnPluginOpValidationTest : public ::testing::TestWithParam<std::string> {
+};
+
+TEST_P(QnnPluginOpValidationTest, SupportedOpsTest) {
+  LITERT_LOG(LITERT_INFO, "Validating TFLite model: %s", GetParam().c_str());
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel(GetParam());
+
+  const auto subgraph = model.MainSubgraph();
+  LiteRtSubgraph litert_subgraph = subgraph->Get();
+
+  LiteRtOpListT selected_ops;
+  LITERT_ASSERT_OK(LiteRtCompilerPluginPartition(plugin.get(), litert_subgraph,
+                                                 &selected_ops));
+
+  EXPECT_EQ(selected_ops.Vec().size(), litert_subgraph->Ops().size());
+}
+
+INSTANTIATE_TEST_SUITE_P(SupportedOpsTest, QnnPluginOpValidationTest,
+                         kSupportedOps);
+
 class QnnPluginOpCompatibilityTest
     : public ::testing::TestWithParam<std::string> {};
 
@@ -254,12 +272,9 @@ TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
   auto plugin = CreatePlugin();
   auto model = testing::LoadTestFileModel(GetParam());
 
-  const auto subgraph = model.MainSubgraph();
-  LiteRtSubgraph litert_subgraph = subgraph->Get();
-
   LiteRtCompiledResult compiled;
-  LITERT_ASSERT_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75",
-                                               &litert_subgraph, 1, &compiled));
+  LITERT_ASSERT_OK(
+      LiteRtCompilerPluginCompile(plugin.get(), "V75", model.Get(), &compiled));
 
   const void* byte_code;
   size_t byte_code_size;

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
@@ -194,39 +196,199 @@ absl::StatusOr<HloInstruction*> ExpandDequantizeCustomCall(
   return ExpandInstructionUsingBuilder(builder, instruction);
 }
 
-// ----- Block scaled dot
+// ----- Block scaled dot (cuDNN)
 
-// Build HLO for scaled dot op.
-absl::StatusOr<XlaOp> BuildBlockScaledDot(XlaBuilder& builder,
-                                          const HloInstruction* lhs_input,
-                                          const HloInstruction* rhs_input,
-                                          const HloInstruction* lhs_scale,
-                                          const HloInstruction* rhs_scale,
+enum class CompositeType {
+  // Not a supported composite type.
+  CUSTOM_TYPE,
+  // Input: E4M3FN, scale: E8M0, block size: 32.
+  MXFP8_E4M3FN,
+  // Input: E5M2, scale: E8M0, block size: 32.
+  MXFP8_E5M2,
+};
+
+CompositeType GetCompositeType(const Shape& input_shape,
+                               const Shape& scale_shape) {
+  // Determine the block size from shapes.
+  int block_size = GetBlockSize(input_shape, scale_shape).value_or(0);
+
+  // MXFP8: the input could be either E4M3FN or E5M2.
+  if (input_shape.element_type() == PrimitiveType::F8E4M3FN &&
+      scale_shape.element_type() == PrimitiveType::F8E8M0FNU &&
+      block_size == BlockScalingRewriter::kBlockSizeMXFP8) {
+    return CompositeType::MXFP8_E4M3FN;
+  }
+  if (input_shape.element_type() == PrimitiveType::F8E5M2 &&
+      scale_shape.element_type() == PrimitiveType::F8E8M0FNU &&
+      block_size == BlockScalingRewriter::kBlockSizeMXFP8) {
+    return CompositeType::MXFP8_E5M2;
+  }
+
+  return CompositeType::CUSTOM_TYPE;
+}
+
+bool IsSupportedByCudnn(CompositeType lhs, CompositeType rhs) {
+  // cuDNN supports mixing input types for MXFP8, but the E5M2/E5M2 combination
+  // is not supported.
+  return (lhs == CompositeType::MXFP8_E4M3FN &&
+          rhs == CompositeType::MXFP8_E4M3FN) ||
+         (lhs == CompositeType::MXFP8_E4M3FN &&
+          rhs == CompositeType::MXFP8_E5M2) ||
+         (lhs == CompositeType::MXFP8_E5M2 &&
+          rhs == CompositeType::MXFP8_E4M3FN);
+}
+
+// Reshape inputs to shapes compatible with cuDNN.
+absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildScaledDotInputs(
+    XlaOp input_op, XlaOp scale_op) {
+  // Get shapes from the inputs.
+  XlaBuilder& builder = *input_op.builder();
+  TF_ASSIGN_OR_RETURN(Shape input_shape, builder.GetShape(input_op));
+  TF_ASSIGN_OR_RETURN(Shape scale_shape, builder.GetShape(scale_op));
+  TF_RET_CHECK(input_shape.rank() == 2 || input_shape.rank() == 3);
+
+  // Calculate output shape size.
+  int64_t batch_size = input_shape.rank() == 3 ? input_shape.dimensions(0) : 1;
+  int64_t size_contracting = input_shape.dimensions().back();
+  int64_t size_noncontracting = input_shape.dimensions(input_shape.rank() - 2);
+  int64_t scale_contracting = scale_shape.dimensions().back();
+
+  // Reshape inputs, if necessary.
+  if (input_shape.rank() != 3) {
+    input_op = Reshape(input_op, {1, size_noncontracting, size_contracting});
+    scale_op = Reshape(scale_op, {1, size_noncontracting, scale_contracting});
+  }
+
+  // cuDNN kernel imposes constraints on the input shape sizes.
+  const int64_t kInputNonContractingTileSize = 128;
+  const int64_t kScaleContractingTileSize = 4;
+
+  // Pad inputs, if necessary.
+  if (size_noncontracting % kInputNonContractingTileSize != 0 ||
+      scale_contracting % kScaleContractingTileSize != 0) {
+    // Calculate new output shape sizes.
+    int64_t padded_noncontracting =
+        RoundUpTo(size_noncontracting, kInputNonContractingTileSize);
+    int64_t padded_contracting =
+        RoundUpTo(scale_contracting, kScaleContractingTileSize);
+
+    // Build padding configs.
+    PaddingConfig input_padding_config = MakeNoPaddingConfig(/*rank=*/3);
+    if (size_noncontracting != padded_noncontracting) {
+      input_padding_config.mutable_dimensions(1)->set_edge_padding_high(
+          padded_noncontracting - size_noncontracting);
+    }
+    PaddingConfig scale_padding_config = input_padding_config;
+    if (scale_contracting != padded_contracting) {
+      scale_padding_config.mutable_dimensions(2)->set_edge_padding_high(
+          padded_contracting - scale_contracting);
+    }
+
+    // Build padding ops with zero neutral value.
+    if (size_noncontracting != padded_noncontracting) {
+      input_op = Pad(input_op, Zero(&builder, input_shape.element_type()),
+                     input_padding_config);
+    }
+    scale_op = Pad(scale_op, Zero(&builder, scale_shape.element_type()),
+                   scale_padding_config);
+  }
+
+  // Swizzle scales to match cuDNN kernel.
+  TF_ASSIGN_OR_RETURN(Shape scale_valid_shape, builder.GetShape(scale_op));
+  int64_t scale_rows = scale_valid_shape.dimensions(1);
+  int64_t scale_cols = scale_valid_shape.dimensions(2);
+  scale_op =
+      Reshape(scale_op, {batch_size, scale_rows / kInputNonContractingTileSize,
+                         4, 32, scale_cols / kScaleContractingTileSize,
+                         kScaleContractingTileSize});
+  scale_op = Transpose(scale_op, {0, 1, 4, 3, 2, 5});
+  scale_op = Reshape(scale_op, scale_valid_shape.dimensions());
+
+  return std::make_tuple(input_op, scale_op, size_noncontracting);
+}
+
+// Build HLO for cuDNN custom call op.
+absl::StatusOr<XlaOp> BuildCudnnScaledDot(XlaOp lhs_input, XlaOp rhs_input,
+                                          XlaOp lhs_scale, XlaOp rhs_scale,
                                           const DotDimensionNumbers& dnums,
                                           PrimitiveType result_type) {
+  // Get inputs from parameters.
+  TF_ASSIGN_OR_RETURN(auto lhs_ops_and_size,
+                      BuildScaledDotInputs(lhs_input, lhs_scale));
+  auto [lhs_input_op, lhs_scale_op, lhs_size] = lhs_ops_and_size;
+
+  TF_ASSIGN_OR_RETURN(auto rhs_ops_and_size,
+                      BuildScaledDotInputs(rhs_input, rhs_scale));
+  auto [rhs_input_op, rhs_scale_op, rhs_size] = rhs_ops_and_size;
+
+  // Calculate output shape.
+  XlaBuilder& builder = *lhs_input.builder();
+  TF_ASSIGN_OR_RETURN(Shape lhs_shape, builder.GetShape(lhs_input_op));
+  TF_ASSIGN_OR_RETURN(Shape rhs_shape, builder.GetShape(rhs_input_op));
+  Shape result_shape = ShapeUtil::MakeShape(
+      result_type, {lhs_shape.dimensions(0), lhs_shape.dimensions(1),
+                    rhs_shape.dimensions(1)});
+  Shape scratch_shape = ShapeUtil::MakeShape(PrimitiveType::U8, {0});
+  Shape output_shape = ShapeUtil::MakeTupleShape({result_shape, scratch_shape});
+
+  // Build custom call to cuDNN.
+  std::string custom_call_target{kCudnnBlockScaledDotCallTarget};
+  XlaOp custom_call = CustomCall(
+      &builder, custom_call_target,
+      {lhs_input_op, rhs_input_op, lhs_scale_op, rhs_scale_op}, output_shape);
+  XlaOp result = GetTupleElement(custom_call, 0);
+
+  // Slice the result, if necessary.
+  if (lhs_size != lhs_shape.dimensions(1) ||
+      rhs_size != rhs_shape.dimensions(1)) {
+    std::vector<int64_t> limit{lhs_shape.dimensions(0), lhs_size, rhs_size};
+    result = Slice(result, {0, 0, 0}, limit, {1, 1, 1});
+  }
+  return result;
+}
+
+// ----- Block scaled dot (general)
+
+// Build HLO for scaled dot op.
+absl::StatusOr<XlaOp> BuildBlockScaledDot(
+    XlaBuilder& builder, const HloInstruction* lhs_input,
+    const HloInstruction* rhs_input, const HloInstruction* lhs_scale,
+    const HloInstruction* rhs_scale, const DotDimensionNumbers& dnums,
+    PrimitiveType result_type, bool allow_cudnn) {
   // Get dot LHS parameter(s).
   XlaOp lhs_op = Parameter(&builder, 0, lhs_input->shape(), "lhs");
   XlaOp lhs_scale_op = Parameter(&builder, 2, lhs_scale->shape(), "lhs_scale");
-  TF_ASSIGN_OR_RETURN(lhs_op,
-                      BuildDequantize(lhs_op, lhs_scale_op, result_type));
 
   // Get dot RHS parameter(s).
   XlaOp rhs_op = Parameter(&builder, 1, rhs_input->shape(), "rhs");
   XlaOp rhs_scale_op;
   if (rhs_scale != nullptr) {
     rhs_scale_op = Parameter(&builder, 3, rhs_scale->shape(), "rhs_scale");
+  }
+
+  // Use cuDNN kernel, if possible.
+  if (allow_cudnn && rhs_scale_op.valid() &&
+      IsSupportedByCudnn(
+          GetCompositeType(lhs_input->shape(), lhs_scale->shape()),
+          GetCompositeType(rhs_input->shape(), rhs_scale->shape()))) {
+    return BuildCudnnScaledDot(lhs_op, rhs_op, lhs_scale_op, rhs_scale_op,
+                               dnums, result_type);
+  }
+
+  // Build general dot op.
+  TF_ASSIGN_OR_RETURN(lhs_op,
+                      BuildDequantize(lhs_op, lhs_scale_op, result_type));
+  if (rhs_scale_op.valid()) {
     TF_ASSIGN_OR_RETURN(rhs_op,
                         BuildDequantize(rhs_op, rhs_scale_op, result_type));
   }
-
-  // Build dot op.
   return DotGeneral(lhs_op, rhs_op, dnums, /*precision_config=*/nullptr,
                     /*preferred_element_type=*/result_type);
 }
 
 // Convert scaled dot custom call to HLO computation.
 absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
-    HloInstruction* instruction) {
+    HloInstruction* instruction, bool allow_cudnn) {
   PrimitiveType result_type = instruction->shape().element_type();
 
   // Check operand count.
@@ -257,10 +419,19 @@ absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
   XlaBuilder builder(std::string(instruction->name()));
   auto operands = absl::MakeSpan(instruction->operands());
   TF_ASSIGN_OR_RETURN(
-      [[maybe_unused]] XlaOp block_scaled_dot,
+      XlaOp block_scaled_dot,
       BuildBlockScaledDot(builder, operands[0], operands[1], operands[2],
                           operands.size() == 4 ? operands[3] : nullptr, dnums,
-                          result_type));
+                          result_type, allow_cudnn));
+
+  // Reshape to the expected output shape.
+  // This should only happen when a unit-sized dimension is added by the pass.
+  TF_ASSIGN_OR_RETURN(Shape result_shape, builder.GetShape(block_scaled_dot));
+  if (result_shape != instruction->shape()) {
+    CHECK_EQ(ShapeUtil::ElementsIn(instruction->shape()),
+             ShapeUtil::ElementsIn(result_shape));
+    Reshape(instruction->shape(), block_scaled_dot);
+  }
   return ExpandInstructionUsingBuilder(builder, instruction);
 }
 
@@ -283,7 +454,7 @@ absl::StatusOr<HloInstruction*> BlockScalingRewriter::ExpandInstruction(
     return ExpandDequantizeCustomCall(instruction);
   }
   if (instruction->custom_call_target() == kBlockScaledDotCustomCallTarget) {
-    return ExpandBlockScaledDotCustomCall(instruction);
+    return ExpandBlockScaledDotCustomCall(instruction, allow_cudnn_);
   }
   LOG(FATAL) << "Unexpected custom call target: "
              << instruction->custom_call_target();

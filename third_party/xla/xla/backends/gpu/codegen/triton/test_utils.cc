@@ -196,6 +196,11 @@ std::string TritonSupportTestTypeToString(
   return primitive_util::LowercasePrimitiveTypeName(data.param);
 }
 
+std::string TritonSupportTestDeviceToString(
+    const ::testing::TestParamInfo<se::GpuComputeCapability>& data) {
+  return ComputeCapabilityToString(data.param);
+}
+
 namespace {
 
 // This function does nothing if the input module already has an entry

@@ -704,6 +704,17 @@ absl::Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     // before the move in case `GraphToFunctionDef()` changes in future.
     AttrValueMap attrs(shard.attr());
 
+    // Propagate the `function_runs_at_most_once` attribute in the subgraphs.
+    // This ensures that remote instantiations of the component functions will
+    // also appropriately be run at most once.
+    if (options.function_runs_at_most_once) {
+      AttrValue function_runs_at_most_once;
+      function_runs_at_most_once.set_b(true);
+      (*shard.mutable_attr())
+          [FunctionLibraryDefinition::kFunctionRunsAtMostOnce] =
+              function_runs_at_most_once;
+    }
+
     s = data_lib_def.AddFunctionDef(std::move(shard));
     if (!s.ok()) {
       done(s);
@@ -719,6 +730,7 @@ absl::Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     opts.allow_small_function_optimizations = data->enable_sync_execution;
     opts.allow_control_flow_sync_execution =
         options.allow_control_flow_sync_execution;
+    opts.function_runs_at_most_once = options.function_runs_at_most_once;
     AttrValue ints_on_device_attr;
     ints_on_device_attr.set_b(options.int_args_and_retvals_on_device);
     attrs.insert(
@@ -1274,8 +1286,12 @@ absl::Status ProcessFunctionLibraryRuntime::ReleaseHandle(
   string target_device;
   {
     mutex_lock l(mu_);
-    CHECK_EQ(1, function_data_.count(handle)) << " handle: " << handle;
-    target_device = function_data_[handle]->target_device();
+
+    // Return if the handle has already been released. This is possible when a
+    // function is annotated with `function_runs_at_most_once`.
+    auto iter = function_data_.find(handle);
+    if (iter == function_data_.end()) return absl::OkStatus();
+    target_device = iter->second->target_device();
   }
   flr = GetFLR(target_device);
   if (flr != nullptr) {

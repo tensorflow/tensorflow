@@ -125,7 +125,7 @@ class HloTestBase
       "This is a temporary method to help migrate existing tests away from "
       "directly depending on HloRunner. Please do not introduce new uses.")]]
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithHloRunner(
-      Executable* executable,
+      OpaqueExecutable* executable,
       const HloRunnerInterface::ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment,
       ExecutionProfile* profile = nullptr) {

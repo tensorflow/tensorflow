@@ -1049,8 +1049,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                           MatchedFp8Param b) {
     GemmBackendConfig &gemm_backend_config =
         *gpu_backend_config.mutable_gemm_backend_config();
+    se::CudaComputeCapability cuda_compute_capability;
     if (IsCuda(gpu_version_)) {
-      TF_ASSIGN_OR_RETURN(auto cuda_compute_capability,
+      TF_ASSIGN_OR_RETURN(cuda_compute_capability,
                           GetCudaComputeCapability(gpu_version_));
       // FP8 GEMM kernels are only available on Ada, Hopper, and later
       // architectures.
@@ -1268,35 +1269,37 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     DotDimensionNumbers *dim_nums =
         gemm_backend_config.mutable_dot_dimension_numbers();
 
-    // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
-    // be row-major. If A is column-major, swap the contracting and
-    // non-contracting dimension and transpose the matrix to effectively make it
-    // column-major.
-    // TODO(philipphack): Remove once cuBLASLt supports A being column-major
-    if (gemm_config.lhs_layout.order == MatrixLayout::Order::kColumnMajor) {
-      CHECK(a_contracting_dims[0] == num_batch_dims ||
-            a_contracting_dims[0] == num_batch_dims + 1);
-      if (a_contracting_dims[0] == num_batch_dims) {
-        dim_nums->set_lhs_contracting_dimensions(0, num_batch_dims + 1);
-      } else {
-        dim_nums->set_lhs_contracting_dimensions(0, num_batch_dims);
+    // On non-Blackwell systems, cuBLASLt FP8 GEMM kernels require the first
+    // operand, i.e. A, to be row-major. If A is column-major, swap the
+    // contracting and non-contracting dimension and transpose the matrix to
+    // effectively make it column-major.
+    if (!cuda_compute_capability.IsBlackwell()) {
+      if (gemm_config.lhs_layout.order == MatrixLayout::Order::kColumnMajor) {
+        CHECK(a_contracting_dims[0] == num_batch_dims ||
+              a_contracting_dims[0] == num_batch_dims + 1);
+        if (a_contracting_dims[0] == num_batch_dims) {
+          dim_nums->set_lhs_contracting_dimensions(0, num_batch_dims + 1);
+        } else {
+          dim_nums->set_lhs_contracting_dimensions(0, num_batch_dims);
+        }
+        a.fp8_input =
+            TransposeMatrix(a.fp8_input, a_contracting_dims[0], a_batch_dims);
       }
-      a.fp8_input =
-          TransposeMatrix(a.fp8_input, a_contracting_dims[0], a_batch_dims);
-    }
 
-    // Similarly, cuBLASLt requires the second operand to be column-major, so
-    // make it column-major if it is currently row-major.
-    if (gemm_config.rhs_layout.order == MatrixLayout::Order::kRowMajor) {
-      CHECK(b_contracting_dims[0] == num_batch_dims ||
-            b_contracting_dims[0] == num_batch_dims + 1);
-      if (b_contracting_dims[0] == num_batch_dims) {
-        dim_nums->set_rhs_contracting_dimensions(0, num_batch_dims + 1);
-      } else {
-        dim_nums->set_rhs_contracting_dimensions(0, num_batch_dims);
+      // Similarly, cuBLASLt requires the second operand to be column-major on
+      // non-Blackwell systems, so make it column-major if it is currently
+      // row-major.
+      if (gemm_config.rhs_layout.order == MatrixLayout::Order::kRowMajor) {
+        CHECK(b_contracting_dims[0] == num_batch_dims ||
+              b_contracting_dims[0] == num_batch_dims + 1);
+        if (b_contracting_dims[0] == num_batch_dims) {
+          dim_nums->set_rhs_contracting_dimensions(0, num_batch_dims + 1);
+        } else {
+          dim_nums->set_rhs_contracting_dimensions(0, num_batch_dims);
+        }
+        b.fp8_input =
+            TransposeMatrix(b.fp8_input, b_contracting_dims[0], b_batch_dims);
       }
-      b.fp8_input =
-          TransposeMatrix(b.fp8_input, b_contracting_dims[0], b_batch_dims);
     }
 
     a.fp8_input = PadOperandToMultipleOf16(a_batch_dims, a.fp8_input);

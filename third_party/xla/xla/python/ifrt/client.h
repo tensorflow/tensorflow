@@ -229,6 +229,10 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<Device*> LookupAddressableDevice(
       int local_hardware_id) const = 0;
 
+  // Creates a device list from the given list of devices.
+  virtual tsl::RCReference<DeviceList> MakeDeviceList(
+      absl::Span<Device* const> devices) const = 0;
+
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
   // only ahead-of-time compilation.
   virtual Compiler* GetDefaultCompiler() = 0;

@@ -472,6 +472,9 @@ ENTRY e {
       /*run_hlo_passes=*/false, /*args_max_bits_of_precision=*/6));
 }
 
+bool HloOpcodeIsComparison(HloOpcode opcode) {
+  return opcode == HloOpcode::kCompare;
+}
 std::vector<HloOpcode> TestedBinaryElementwise(PrimitiveType element_type) {
   std::vector<HloOpcode> ret =
       legacy_triton::TritonSupportedBinaryElementwiseUpToFloatNormalization(

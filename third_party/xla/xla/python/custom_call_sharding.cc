@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
@@ -37,12 +38,13 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/custom_call_batch_partitioner.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/python/inspect_sharding.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -292,6 +294,50 @@ Args:
         return hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
             sharding, dims);
       });
+
+  m.def(
+      "register_custom_call_as_batch_partitionable",
+      [](std::string target_name, std::optional<nb::capsule> c_api) {
+        if (!c_api.has_value()) {
+          RegisterCustomCallPartitioner(
+              target_name, std::make_unique<xla::CustomCallBatchPartitioner>());
+          return;
+        }
+        if (absl::string_view(c_api->name()) != "pjrt_c_api") {
+          throw absl::InvalidArgumentError(
+              "Argument to register_custom_call_partitioner was not a "
+              "pjrt_c_api capsule.");
+        }
+        auto* c_api_value = static_cast<const PJRT_Api*>(c_api->data());
+        PJRT_Custom_Partitioner_Extension* extension =
+            pjrt::FindExtension<PJRT_Custom_Partitioner_Extension>(
+                c_api_value,
+                PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner);
+        if (extension == nullptr) {
+          return;
+        }
+        PJRT_Register_Batch_Partitionable_Args args;
+        args.struct_size = PJRT_Register_Batch_Partitionable_Args_STRUCT_SIZE;
+        args.name = target_name.c_str();
+        args.name_size = target_name.size();
+        PJRT_Error* error = extension->register_batch_partitionable(&args);
+        std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error_ptr(
+            error, pjrt::MakeErrorDeleter(c_api_value));
+        ThrowIfError(pjrt::PjrtErrorToStatus(error_ptr.get(), c_api_value));
+      },
+      R"(Registers a custom call as batch partitionable.
+
+If a custom call is "batch partitionable", it means that it can be trivially
+partitioned on some number of (leading) dimensions, with the same call being
+executed independently on each shard of data. If the data are sharded on
+non-batch dimensions, partitioning will re-shard the data to be replicated on
+the non-batch dimensions.
+
+Args:
+  target_name: the target name of the batch partitionable custom call.
+  c_api: optional `PJRT_Api*` to support registration via a PJRT plugin.
+)",
+      nb::arg("target_name"), nb::arg("c_api").none() = std::nullopt);
 }
 
 }  // namespace xla

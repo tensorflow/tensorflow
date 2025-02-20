@@ -57,7 +57,7 @@ class PercentileSampler {
     return &default_cell_;
   }
 
-  Status GetStatus() { return tsl::OkStatus(); }
+  Status GetStatus() { return absl::OkStatus(); }
 
  private:
   PercentileSamplerCell default_cell_;

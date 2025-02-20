@@ -111,7 +111,8 @@ class ReplaceTpuPartitionedCallOpWithPartitionedCallOp
     SmallVector<Value> args = call_op.getOperands().drop_back();
 
     rewriter.replaceOpWithNewOp<TF::PartitionedCallOp>(
-        call_op, float_func.getResultTypes(), args, f_attr);
+        call_op, float_func.getResultTypes(), args, call_op.getArgAttrsAttr(),
+        call_op.getResAttrsAttr(), f_attr);
     return success();
   }
 };

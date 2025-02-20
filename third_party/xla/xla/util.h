@@ -48,12 +48,12 @@ limitations under the License.
 #include "Eigen/Core"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/math/math_util.h"
+#include "xla/tsl/platform/errors.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/bfloat16.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"  // IWYU pragma: keep
-#include "tsl/platform/logging.h"
 #include "tsl/platform/ml_dtypes.h"
 
 namespace xla {

@@ -117,7 +117,7 @@ class StringSink : public WritableFile {
 
 class StringSource : public RandomAccessFile {
  public:
-  explicit StringSource(const absl::string_view& contents)
+  explicit StringSource(absl::string_view contents)
       : contents_(contents.data(), contents.size()), bytes_read_(0) {}
 
   ~StringSource() override {}
@@ -158,7 +158,7 @@ class Constructor {
   explicit Constructor() : data_(STLLessThan()) {}
   virtual ~Constructor() {}
 
-  void Add(const string& key, const absl::string_view& value) {
+  void Add(const string& key, absl::string_view value) {
     data_[key] = string(value);
   }
 
@@ -242,7 +242,7 @@ class TableConstructor : public Constructor {
 
   Iterator* NewIterator() const override { return table_->NewIterator(); }
 
-  uint64 ApproximateOffsetOf(const absl::string_view& key) const {
+  uint64 ApproximateOffsetOf(absl::string_view key) const {
     return table_->ApproximateOffsetOf(key);
   }
 

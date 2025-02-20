@@ -77,6 +77,8 @@ int GetNumGpus(const HloInstruction& instr) {
     HloCostAnalysis::ShapeSizeFunction shape_size_fn,
     const SolGPUCostModel::Config& sol_flags,
     const GpuHloCostAnalysis& analysis) {
+  // TODO(b/390095346): This is incorrect way of determining how many nodes
+  // participate in a collective.
   const int num_nodes = GetNumGpus(instr) / sol_flags.gpus_per_node;
   if (num_nodes == 1) {
     VLOG(8) << "Returning only kernel launch overhead for a single node.";
@@ -90,24 +92,29 @@ int GetNumGpus(const HloInstruction& instr) {
   SolGPUCostModel sol_model(sol_flags);
   const int64_t msg_size = analysis.BytesTransferred(instr);
 
+  absl::Duration result = absl::Seconds(1.0f * analysis.bytes_accessed(instr) /
+                                        gpu_device_info.memory_bandwidth());
   switch (instr.opcode()) {
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart: {
-      return sol_model.RingLatency(msg_size, num_nodes,
-                                   SolGPUCostModel::CollectiveType::kAllGather);
+      result += sol_model.RingLatency(
+          msg_size, num_nodes, SolGPUCostModel::CollectiveType::kAllGather);
+      break;
     }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart: {
-      return sol_model.RingLatency(msg_size, num_nodes,
-                                   SolGPUCostModel::CollectiveType::kAllReduce);
+      result += sol_model.RingLatency(
+          msg_size, num_nodes, SolGPUCostModel::CollectiveType::kAllReduce);
+      break;
     }
     case HloOpcode::kReduceScatter: {
-      return sol_model.RingLatency(
+      result += sol_model.RingLatency(
           msg_size, num_nodes, SolGPUCostModel::CollectiveType::kReduceScatter);
+      break;
     }
     case HloOpcode::kAsyncStart: {
       if (instr.async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-        return sol_model.RingLatency(
+        result = sol_model.RingLatency(
             msg_size, num_nodes,
             SolGPUCostModel::CollectiveType::kReduceScatter);
       }
@@ -115,18 +122,19 @@ int GetNumGpus(const HloInstruction& instr) {
     }
     case HloOpcode::kRecv:
     case HloOpcode::kSend: {
-      return sol_model.RingLatency(msg_size, num_nodes,
-                                   SolGPUCostModel::CollectiveType::kSendRecv);
+      result += sol_model.RingLatency(
+          msg_size, num_nodes, SolGPUCostModel::CollectiveType::kSendRecv);
+      break;
     }
     // note: AllToAll is not yet supported in XLA
     default: {
       LOG(WARNING)
           << "[SoL] Runtime estimate for " << instr.name()
           << " not implemented. Returning only the kernel launch time.";
-      return GpuPerformanceModelBase::kNcclKernelLaunchOverhead;
+      result += GpuPerformanceModelBase::kNcclKernelLaunchOverhead;
     }
   }
-  return GpuPerformanceModelBase::kNcclKernelLaunchOverhead;
+  return result;
 }
 
 LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(

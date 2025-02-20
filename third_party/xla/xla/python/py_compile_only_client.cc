@@ -72,12 +72,12 @@ limitations under the License.
 #include "xla/python/py_client.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace nb = nanobind;
 
@@ -325,6 +325,11 @@ class CompileOnlyIfRtClient final
       int local_hardware_id) const override {
     return Unimplemented(
         "LookupAddressableDevice not available with compile-only client.");
+  }
+
+  tsl::RCReference<ifrt::DeviceList> MakeDeviceList(
+      absl::Span<ifrt::Device* const> devices) const override {
+    return ifrt::BasicDeviceList::Create(devices);
   }
 
   ifrt::Compiler* GetDefaultCompiler() override { return &default_compiler_; }

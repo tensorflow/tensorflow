@@ -210,8 +210,8 @@ absl::Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
 }  // namespace
 }  // namespace xla
 
-// gpu_device_config_filename: Probably deserves it's own flag? Since in here it
-// will affect more top-level logic?
+// All XLA compiler flags are supported.
+// Use `--xla_gpu_target_config_filename` to specify the target config.
 int main(int argc, char** argv) {
   HloOptConfig opts;
   std::vector<tsl::Flag> flag_list = {

@@ -14,7 +14,6 @@ py_strict_library(
     srcs = [
         "failure_handling.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":check_preemption_py",
         ":failure_handling_util",
@@ -43,7 +42,6 @@ py_strict_library(
     srcs = [
         "failure_handling_util.py",
     ],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:tf_logging",
@@ -55,7 +53,6 @@ py_strict_library(
 py_strict_library(
     name = "preemption_watcher",
     srcs = ["preemption_watcher.py"],
-    srcs_version = "PY3",
     deps = [
         ":failure_handling_util",
         "//tensorflow/python/eager:context",
@@ -144,7 +141,6 @@ tf_custom_op_py_strict_library(
         "//tensorflow/core/distributed_runtime/preemption:check_preemption_op_kernel",
         "//tensorflow/core/distributed_runtime/preemption:check_preemption_op_op_lib",
     ],
-    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core/distributed_runtime/preemption:gen_check_preemption_op",
         "//tensorflow/python/framework:for_generated_wrappers",

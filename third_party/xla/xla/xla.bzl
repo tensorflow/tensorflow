@@ -51,7 +51,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     "@com_google_protobuf//:protobuf",
     "//xla/tsl/framework:allocator_registry_impl",
     "//xla/tsl/framework:allocator",
-    "@local_tsl//tsl/platform:env_impl",
+    "//xla/tsl/platform:env_impl",
     "//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
     "//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
     "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",

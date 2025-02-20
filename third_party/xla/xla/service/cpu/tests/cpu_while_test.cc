@@ -19,7 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "xla/tests/literal_test_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {

@@ -49,6 +49,8 @@ message DebugOptions {
     ALLTOALL = 5;
     COLLECTIVEPERMUTE = 6;
     RAGGEDALLTOALL = 7;
+    // Add more collectives before ALL
+    ALLCOLLECTIVES = 8;
   }
 
   // Commands are categorized into 5 types:
@@ -130,6 +132,14 @@ message DebugOptions {
   // clang-format off
   // go/keep-sorted start newline_separated=yes skip_lines=1 ignore_prefixes=["bool","int32","string"]
   // clang-format on
+  // Controls XnnGraphFusion HLO pass.
+  XnnGraphFusionMode xla_cpu_experimental_xnn_graph_fusion_mode = 365;
+
+  enum XnnGraphFusionMode {
+    XNN_GRAPH_FUSION_MODE_DISABLED = 0;
+    XNN_GRAPH_FUSION_MODE_GREEDY = 1;
+  }
+
   // Use region analysis in copy insertion pass.
   bool xla_cpu_copy_insertion_use_region_analysis = 337;
 
@@ -520,6 +530,16 @@ message DebugOptions {
   // Pre-existing block-level fusions are left unmodified.
   bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
 
+  // Enable fusion for the subchannel dequantisation sequences like
+  // [x,z]param -> [x,y,z]broadcast -> [x*y,z]bitcast -> multiply -> dot.
+  // Compilation can fail with Broadcast has a different size than the block
+  // size. Performance can be worse, because some block sizes / split-k > 1 is
+  // not considered for subchannel dequant fusions.
+  bool xla_gpu_experimental_enable_subchannel_dequantisation_fusion = 368;
+
+  // If true, enable synchronous collective combining.
+  bool xla_gpu_experimental_enable_sync_collective_combining = 366;
+
   // When enabled, the PriorityFusion pass will try to make Triton fusions first
   // and foremost where it is possible.
   //
@@ -726,6 +746,10 @@ message DebugOptions {
   // the code that emits a particular instruction.
   bool xla_gpu_unsupported_annotate_with_emitter_loc = 358;
 
+  // Enable experimental tiling for Triton GEMM fusions.
+  // TODO(b/393299275): remove the flag once the feature is stable.
+  bool xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms = 367;
+
   // Internal testing flag to switch RaggedAllToAllDecomposer on or off.
   bool xla_gpu_unsupported_enable_ragged_all_to_all_decomposer = 350;
 
@@ -906,6 +930,7 @@ message DebugOptions {
 
   // Directory to dump into.
   string xla_dump_to = 109;
+  bool xla_flags_reset = 364;
 
   // If specified, will only dump modules which match this regexp.
   string xla_dump_hlo_module_re = 110;
@@ -1121,13 +1146,13 @@ message DebugOptions {
 
   // Whether to ignore channel ids(including verifier channel id checks)
   // for collectives in the given HLO.
-  bool xla_experimental_ignore_channel_id = 330;
+  bool xla_ignore_channel_id = 330;
 
   bool xla_pjrt_allow_auto_layout_in_hlo = 344;
 
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
-  // Next id: 364
+  // Next id: 369
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1177,7 +1202,7 @@ message ShardableValueUpdatePairProto {
 // will have an effect on every platform.
 //
 // When adding new fields, keep in mind that boolean fields default to false.
-// Next id: 27.
+// Next id: 29.
 message ExecutionOptions {
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
@@ -1240,7 +1265,8 @@ message ExecutionOptions {
   // research use cases that prefer faster compilations to iterate more quickly.
   // Positive values, on the other hand, might enable costly optimizations that
   // are off by default.
-  float exec_time_optimization_effort = 25;
+  // DEPRECATED: Use optimization_level instead.
+  float exec_time_optimization_effort = 25 [deprecated = true];
 
   // The amount of effort to spend on making the program fit in memory (where
   // "fit in memory" here has a backend-dependent meaning), as a value in
@@ -1249,7 +1275,35 @@ message ExecutionOptions {
   // for use cases that wish to spend minimal effort here and fail as quickly as
   // possible instead. Positive values, on the other hand, might enable costly
   // algorithms to reduce memory usage that are off by default.
-  float memory_fitting_effort = 26;
+  // DEPRECATED: Use memory_fitting_level instead.
+  float memory_fitting_effort = 26 [deprecated = true];
+
+  enum EffortLevel {
+    EFFORT_UNKNOWN = 0;
+
+    // The values in this enum are intended to be comparable, such that higher
+    // values represent higher effort spent. The addition of new values must
+    // maintain this property.
+    EFFORT_O0 = 9;
+    EFFORT_O1 = 19;
+    EFFORT_O2 = 29;
+    EFFORT_O3 = 39;
+  }
+
+  // The amount of effort to spend on optimizing for minimizing program
+  // execution time. As a general guideline, O2 strongly prioritizes execution
+  // time, and is typically suitable for production workloads. O3 may enable
+  // costly or experimental optimizations that may greatly increase compile
+  // time.
+  EffortLevel optimization_level = 27;
+
+  // The amount of effort to spend on making the program fit in memory (where
+  // "fit in memory" here has a backend-dependent meaning). As a general
+  // guideline, O2 will expend significant effort on attempting to make the
+  // program fit. O0 will spend minimal effort and fail as quickly as possible
+  // instead. O3 might enable costly algorithms to reduce memory usage that may
+  // greatly increase compile time.
+  EffortLevel memory_fitting_level = 28;
 
   // If set, deduplicate hlo into function calls to reduce binary size. Only
   // works on TPU.
@@ -1312,7 +1366,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 39.
+// Next id: 41.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1340,8 +1394,10 @@ message HloModuleConfigProto {
   bool use_auto_spmd_partitioning = 8;
   repeated int64 auto_spmd_partitioning_mesh_shape = 9;
   repeated int64 auto_spmd_partitioning_mesh_ids = 10;
-  float exec_time_optimization_effort = 36;
-  float memory_fitting_effort = 37;
+  float exec_time_optimization_effort = 36 [deprecated = true];
+  float memory_fitting_effort = 37 [deprecated = true];
+  ExecutionOptions.EffortLevel optimization_level = 39;
+  ExecutionOptions.EffortLevel memory_fitting_level = 40;
   bool deduplicate_hlo = 11;
   int64 intra_op_parallelism_threads = 12;
   string device_type = 13;

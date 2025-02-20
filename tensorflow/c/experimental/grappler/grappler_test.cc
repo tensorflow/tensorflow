@@ -14,6 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/grappler/grappler.h"
 
+#include <cstddef>
+#include <memory>
+#include <set>
+#include <unordered_set>
+#include <vector>
+
 #include "absl/log/check.h"
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
 #include "tensorflow/c/tf_buffer.h"

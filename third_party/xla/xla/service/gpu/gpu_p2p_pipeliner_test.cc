@@ -51,12 +51,11 @@ class GpuP2PPipelinerTest : public HloTestBase {
   }
 
   absl::StatusOr<bool> RunOptimizer(
-      HloModule* module,
-      bool enable_experimental_pipeline_parallelism_opt = false) {
+      HloModule* module, bool enable_partial_send_recv_pipelining = false) {
     HloPassPipeline pipeline("optimizer");
     pipeline.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                                   /*allow_mixed_precision=*/false);
-    AddP2PPipeliner(pipeline, enable_experimental_pipeline_parallelism_opt);
+    pipeline.AddPass<GpuP2PPipeliner>(enable_partial_send_recv_pipelining);
     pipeline.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                                   /*allow_mixed_precision=*/false);
     return pipeline.Run(module);
@@ -100,13 +99,13 @@ TEST_F(GpuP2PPipelinerTest,
       frontend_attributes={
         _xla_send_recv_pipeline="0"
       }, control-predecessors={send.0}
-    recv-data = u32[2] get-tuple-element(recv-done.0), index=0
+    recv_data = u32[2] get-tuple-element(recv-done.0), index=0
 
     c1 = u32[] constant(1)
     new_count = u32[] add(count, c1)
 
     r = u32[2] broadcast(c1), dimensions={}
-    s = u32[2] add(r, recv-data)
+    s = u32[2] add(r, recv_data)
 
     send-done.0 = token[] send-done(send.0), channel_id=1,
       frontend_attributes={
@@ -344,9 +343,8 @@ TEST_F(GpuP2PPipelinerTest, PipelineParallelismExperimentalOpt) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kHloStr, config_));
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      RunOptimizer(module.get(),
-                   /*enable_experimental_pipeline_parallelism_opt=*/true));
+      bool changed, RunOptimizer(module.get(),
+                                 /*enable_partial_send_recv_pipelining=*/true));
   EXPECT_TRUE(changed);
 
   EXPECT_TRUE(RunFileCheck(module->ToString(), R"(

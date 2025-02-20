@@ -37,11 +37,11 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/io/buffered_inputstream.h"
 #include "xla/tsl/lib/io/random_inputstream.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/file_system.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 

@@ -317,3 +317,6 @@ def register_custom_type_id_handler(platform: str, handler: Any) -> None: ...
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
 
 register_custom_call_partitioner = _xla.register_custom_call_partitioner
+register_custom_call_as_batch_partitionable = (
+    _xla.register_custom_call_as_batch_partitionable
+)

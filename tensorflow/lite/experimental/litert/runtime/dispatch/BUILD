@@ -14,7 +14,10 @@
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/lite/experimental/litert:__subpackages__",
+        "//third_party/odml/infra/perf/mobile_tests/litert:__subpackages__",
+    ],
 )
 
 cc_library(
@@ -163,6 +166,11 @@ cc_test(
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
     }),
+    tags = [
+        "no_oss",
+        "nobuilder",
+        "notap",
+    ],
     deps = [
         ":dispatch_delegate",
         "//tensorflow/lite:framework",

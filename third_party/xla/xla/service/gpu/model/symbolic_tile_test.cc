@@ -24,23 +24,18 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/service/gpu/model/affine_map_evaluator.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ::llvm::SmallVector;
 using ::testing::ElementsAre;
 using ::testing::ExplainMatchResult;
-using ::testing::IsEmpty;
 using ::testing::Optional;
-using ::testing::SizeIs;
 
 using Constraint = ConstraintExpression::Constraint;
 
@@ -272,9 +267,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughReverse) {
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
-        offset_map: (d0) -> (-d0 + 179)
+        offset_map: (d0) -> (178)
         size_map: (d0) -> (d0)
-        stride_map: (d0) -> (1)
+        stride_map: (d0) -> (-1)
       )")));
 }
 
@@ -523,16 +518,44 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReshapeOfReverse) {
     }
   )"));
 
-  // TODO(b/331257678): the expected expressions should be simplified.
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
-        offset_map: (d0, d1) ->
-          (0, -((d0 + 5) floordiv 6) + 8, -(d0 - ((d0 - 1) floordiv 6) * 6) + 6, 0)
+        offset_map: (d0, d1) -> (0, 7, 5, 0)
         size_map: (d0, d1) ->
           (1, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, d1)
-        stride_map: (d0, d1) -> (0, 1, 1, 1)
+        stride_map: (d0, d1) -> (0, -1, -1, 1)
+      )")));
+}
+
+TEST_F(SymbolicTileTest, CanPropagateTileThroughReverseOfCombiningReshape) {
+  // A reverse of a combining reshape creates a negative stride atop a
+  // multivariate tile. We start off with this indexing map: (d0, d1, d2, d3) ->
+  // (d0 * 24 - d1 * 6 - d2 + 23, d3),
+  //     domain: d0 in [0, 1], d1 in [0, 3], d2 in [0, 5], d3 in [0, 3]
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    computation {
+      p0 = f32[48,4]{1,0} parameter(0)
+      reshape = f32[2,4,6,4]{3,2,1,0} reshape(p0)
+      ROOT reverse = f32[2,4,6,4]{3,2,1,0} reverse(reshape), dimensions={1,2}
+    }
+
+    ENTRY e {
+      p0 = f32[48,4]{1,0} parameter(0)
+      ROOT fusion = f32[2,4,6,4]{3,2,1,0} fusion(p0), kind=kLoop, calls=computation
+    }
+  )"));
+
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: (d0, d1, d2, d3) -> (23, 0)
+        size_map: (d0, d1, d2, d3) -> ((d0 * d1) * d2, d3)
+        stride_map: (d0, d1, d2, d3) -> (((-d2 + 7) floordiv 6) * (((-d1 + 5) floordiv 4) * ((-((-d0 + 3) floordiv 2) + 1) * 24) - (-((-d1 + 5) floordiv 4) + 1) * 6) - (-((-d2 + 7) floordiv 6) + 1), 1)
+        constraints: d0 in [1, 1] && d1 in [1, 1] || d0 in [1, 1] && d2 in [1, 1] || d0 in [1, 1] && d2 in [6, 6] || d1 in [1, 1] && d2 in [1, 1] || d1 in [4, 4] && d2 in [1, 1] || d1 in [4, 4] && d2 in [6, 6]
       )")));
 }
 

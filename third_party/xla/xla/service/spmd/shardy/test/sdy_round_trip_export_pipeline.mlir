@@ -147,6 +147,25 @@ func.func @sharding_and_op_sharding_rule(%arg0: tensor<8x2xf32>, %arg1: tensor<8
   return %0 : tensor<8x2xf64>
 }
 
+// CHECK-LABEL: func @while_with_no_sharding
+func.func @while_with_no_sharding(
+    %arg0: tensor<32x96xf32>, %arg1: tensor<32x96xf32>)
+    -> tensor<32x96xf32> {
+  // CHECK: %[[C0:.*]] = stablehlo.constant dense<0>
+  // CHECK: stablehlo.while(%iterArg = %arg0, %iterArg_1 = %[[C0]])
+  // CHECK-NOT: mhlo.sharding
+  %0 = stablehlo.constant dense<0> : tensor<i32>
+  %1 = stablehlo.constant dense<32> : tensor<i32>
+  %3:2 = stablehlo.while(%iterArg = %arg0, %iterArg_1 = %0) : tensor<32x96xf32>, tensor<i32>
+    cond {
+    %4 = stablehlo.compare LT, %iterArg_1, %1 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    stablehlo.return %4 : tensor<i1>
+  } do {
+    stablehlo.return %iterArg, %iterArg_1 : tensor<32x96xf32>, tensor<i32>
+  }
+  return %3#0 : tensor<32x96xf32>
+}
+
 // -----
 
 // CHECK-NOT: xla.sdy.meshes

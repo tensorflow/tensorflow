@@ -42,10 +42,20 @@ void CloneTo(const LiteRtTensorT& src, LiteRtTensorT& dest) {
   dest.SetName({src.Name().cbegin(), src.Name().cend()});
   dest.SetQarams(src.Qparams());
   dest.SetType(src.Type());
-  // TODO: Optimize buffer handoffs here.
-  OwningBufferRef<uint8_t> weights_buffer(src.Weights().Buffer().Data(),
-                                          src.Weights().Buffer().Size());
-  SetWeightsFromOwnedBuffer(dest.Weights(), std::move(weights_buffer));
+
+  const auto& src_weights = src.Weights();
+  auto& dest_weights = dest.Weights();
+
+  const auto same_manager =
+      src_weights.GetBufferManager() == dest_weights.GetBufferManager();
+
+  if (same_manager) {
+    dest_weights.SetBufferId(src_weights.GetBufferId());
+  } else {
+    OwningBufferRef<uint8_t> weights_buffer(src_weights.Buffer().Data(),
+                                            src_weights.Buffer().Size());
+    SetWeightsFromOwnedBuffer(dest_weights, std::move(weights_buffer));
+  }
 }
 
 void CloneTo(const LiteRtOpT& src, LiteRtOpT& dest) {

@@ -1134,7 +1134,6 @@ tf_gen_op_wrapper_py(
 cuda_py_strict_test(
     name = "light_outside_compilation_test",
     srcs = ["light_outside_compilation_test.py"],
-    python_version = "PY3",
     tags = [
         "no_oss",
     ],

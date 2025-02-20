@@ -271,8 +271,6 @@ py_strict_binary(
         ":saved_model_asset_data",
         ":saved_model_static_hashtable_asset_data",
     ],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/compat:v2_compat",
@@ -297,8 +295,6 @@ py_strict_binary(
 # py_strict_binary(
 #     name = "testdata/generate_chunked_models",
 #     srcs = ["testdata/generate_chunked_models.py"],
-#     python_version = "PY3",
-#     srcs_version = "PY3",
 #     deps = [
 #         "//tensorflow/python/compat:v2_compat",
 #         "//tensorflow/python/eager:def_function",

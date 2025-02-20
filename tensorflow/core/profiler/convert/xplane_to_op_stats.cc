@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
+#include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -353,6 +354,10 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       if (core_details.ParseFromArray(core_details_bytes.data(),
                                       core_details_bytes.size())) {
         core_details.set_hostname(hostname);
+        // This is a backfill for XPlanes that were create before this field was
+        // added.
+        core_details.set_is_sparse_core(
+            tsl::profiler::GetSparseCoreId(device_trace->name()).has_value());
         core_id_to_details_map[device_trace->id()] = core_details;
       }
     }
@@ -398,6 +403,11 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       op_stats.mutable_performance_counter_result()
           ->set_matrix_unit_utilization_percent(stat->DoubleValue());
     }
+    TfFunctionDb* tf_function_db = op_stats.mutable_tf_function_db();
+    visitor.ForEachLine([&](const XLineVisitor& line) {
+      CombineTfFunctionDb(ConvertHostThreadsXLineToTfFunctionDb(line),
+                          tf_function_db);
+    });
   }
   if (options.generate_step_db) {
     if (is_tpu) {

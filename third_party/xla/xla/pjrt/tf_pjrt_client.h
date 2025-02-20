@@ -98,12 +98,8 @@ class TfPjRtBuffer : public PjRtBuffer {
         wait_for_operations_to_complete);
   }
   bool IsDeleted() override { return wrapped_->IsDeleted(); }
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) override;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
-      PjRtMemorySpace* dst_memory_space) override {
-    return Unimplemented("CopyToMemorySpace not implemented");
-  }
+      PjRtMemorySpace* dst_memory_space) override;
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override {
     wrapped_->CopyToRemoteDevice(std::move(serialized_descriptor),

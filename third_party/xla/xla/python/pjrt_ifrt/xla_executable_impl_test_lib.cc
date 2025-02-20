@@ -179,10 +179,10 @@ TEST(LoadedExecutableImplTest, CompileAndExecutePortable) {
 
   ExecuteOptions execute_options;
   execute_options.fill_status = true;
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          loaded_executable->Execute(
-                              absl::MakeSpan(&array, 1), execute_options,
-                              /*devices=*/BasicDeviceList::Create({device})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
+                                 /*devices=*/client->MakeDeviceList({device})));
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
 

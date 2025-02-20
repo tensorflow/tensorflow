@@ -66,6 +66,16 @@ _EXPORT_LRT_ONLY_SCRIPT_DARWIN = "//tensorflow/lite/experimental/litert/build_co
 _EXPORT_LRT_ONLY_LINKOPT_LINUX = make_linkopt("--version-script=$(location {})".format(_EXPORT_LRT_ONLY_SCRIPT_LINUX))
 _EXPORT_LRT_ONLY_LINKOPT_DARWIN = make_linkopt("-exported_symbols_list,$(location {})".format(_EXPORT_LRT_ONLY_SCRIPT_DARWIN))
 
+def symbol_opts():
+    """Defines linker flags whether to include symbols or not."""
+    return select({
+        "//tensorflow:debug": [],
+        "//conditions:default": [
+            # Omit symbol table, for all non debug builds
+            "-Wl,-s",
+        ],
+    })
+
 def export_lrt_only_script():
     return select({
         "//tensorflow:linux_x86_64": [_EXPORT_LRT_ONLY_SCRIPT_LINUX],
@@ -82,22 +92,12 @@ def export_lrt_only_linkopt():
         "//tensorflow:macos": [_EXPORT_LRT_ONLY_LINKOPT_DARWIN],
         "//tensorflow:ios": [_EXPORT_LRT_ONLY_LINKOPT_DARWIN],
         "//conditions:default": [],
-    })
+    }) + symbol_opts()
 
 _EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX = "//tensorflow/lite/experimental/litert/build_common:export_litert_runtime_only_linux.lds"
 _EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN = "//tensorflow/lite/experimental/litert/build_common:export_litert_runtime_only_darwin.lds"
 _EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX = make_linkopt("--version-script=$(location {})".format(_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX))
 _EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN = make_linkopt("-exported_symbols_list,$(location {})".format(_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN))
-
-def symbol_opts():
-    """Defines linker flags whether to include symbols or not."""
-    return select({
-        "//tensorflow:debug": [],
-        "//conditions:default": [
-            # Omit symbol table, for all non debug builds
-            "-Wl,-s",
-        ],
-    })
 
 # TODO b/391390553: Add "-Wl,--no-undefined" to make sure all symbols are defined.
 _EXPORT_LRT_COMMON_LINKOPTS_LINUX = [
@@ -276,4 +276,16 @@ def litert_dynamic_lib(
         tags = tags,
         visibility = vis,
         deps = [lib_target_ref],
+    )
+
+def copy_file(name, src, target, visibility = None):
+    input_path = "$(location %s)" % src
+    output_path = "$(@D)/" + target
+
+    native.genrule(
+        name = name,
+        srcs = [src],
+        outs = [target],
+        visibility = visibility,
+        cmd = "cp %s %s" % (input_path, output_path),
     )

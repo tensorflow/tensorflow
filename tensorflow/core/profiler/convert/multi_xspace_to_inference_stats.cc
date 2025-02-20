@@ -67,6 +67,7 @@ SampledInferenceStatsProto GetSampledInferenceStatsProto(
   }
   return result;
 }
+}  // namespace
 
 StepEvents GetNonOverlappedStepEvents(XSpace* xspace) {
   StepEvents non_overlapped_step_events;
@@ -97,7 +98,6 @@ StepEvents GetNonOverlappedStepEvents(XSpace* xspace) {
       ToNonOverlappedStepEvents(overlapped_step_events);
   return non_overlapped_step_events;
 }
-}  // namespace
 
 absl::Status ConvertMultiXSpaceToInferenceStats(
     const SessionSnapshot& session_snapshot, absl::string_view request_column,

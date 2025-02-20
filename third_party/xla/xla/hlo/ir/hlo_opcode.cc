@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_opcode.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -49,21 +50,7 @@ absl::StatusOr<HloOpcode> StringToHloOpcode(absl::string_view opcode_name) {
   return it->second;
 }
 
-bool HloOpcodeIsComparison(HloOpcode opcode) {
-  return opcode == HloOpcode::kCompare;
-}
-
-bool HloOpcodeIsVariadic(HloOpcode opcode) {
-  switch (opcode) {
-#define CASE_IS_VARIADIC(enum_name, opcode_name, arity, ...) \
-  case HloOpcode::enum_name:                                 \
-    return arity == kHloOpcodeIsVariadic;
-    HLO_OPCODE_LIST(CASE_IS_VARIADIC)
-#undef CASE_IS_VARIADIC
-  }
-}
-
-std::optional<int> HloOpcodeArity(HloOpcode opcode) {
+std::optional<int8_t> HloOpcodeArity(HloOpcode opcode) {
   switch (opcode) {
 #define CASE_ARITY(enum_name, opcode_name, arity, ...)  \
   case HloOpcode::enum_name:                            \
@@ -72,11 +59,6 @@ std::optional<int> HloOpcodeArity(HloOpcode opcode) {
     HLO_OPCODE_LIST(CASE_ARITY)
 #undef CASE_ARITY
   }
-}
-
-bool HloOpcodeIsAsync(HloOpcode opcode) {
-  return opcode == HloOpcode::kAsyncStart ||
-         opcode == HloOpcode::kAsyncUpdate || opcode == HloOpcode::kAsyncDone;
 }
 
 }  // namespace xla

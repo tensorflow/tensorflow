@@ -212,7 +212,8 @@ StatusOr<se::gpu::BlasLt::Epilogue> GetBlasLtEpilogOp(
   } else if (fusion == FusedComputationType::kBiasAddWithGeluApproximate) {
     return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
   } else {
-    return errors::Internal("Unsupported fusion for BlasLt Matmul");
+    return errors::Internal("Unsupported fusion for BlasLt Matmul: " + 
+                                                std::to_string((int)fusion));
   }
 }
 
@@ -479,11 +480,18 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     const int64_t n = b.dim_size(trans_b ? 0 : 1);
 
     se::dnn::ActivationMode matmul_activation_mode;
-    bool use_cudnn = false;
 
 #if !(GOOGLE_CUDA || TF_HIPBLASLT)
-    use_cudnn = true;
+    bool use_cudnn = true;
+#else
+    bool use_cudnn = false;
+    const auto& cc =
+        stream->parent()->GetDeviceDescription().gpu_compute_capability();
+    if (auto* procm = std::get_if<se::RocmComputeCapability>(&cc)) {
+      use_cudnn = !procm->gfx9_mi200_or_later();
+    }
 #endif
+
     // use_cudnn is for hipblaslt doesn't support yet
     switch (fusion) {
       case FusedComputationType::kBiasAddWithGeluExact:
@@ -523,11 +531,6 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     use_cudnn = true;
 #endif
 
-    const auto& cc =
-        stream->parent()->GetDeviceDescription().gpu_compute_capability();
-    if (auto* procm = std::get_if<se::RocmComputeCapability>(&cc)) {
-      use_cudnn = !procm->gfx9_mi200_or_later();
-    }
     BlasScratchAllocator scratch_allocator(context);
 
     // The Gelu exact fusion is supported by the cuDNN.

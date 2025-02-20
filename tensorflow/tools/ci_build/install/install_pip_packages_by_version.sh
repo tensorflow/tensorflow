@@ -48,7 +48,7 @@ JAX_PACKAGES=(
   "opt-einsum"
   "auditwheel"
   "typing_extensions"
-  "ml_dtypes>=0.4.0"
+  "ml_dtypes>=0.5.1"
   "importlib_metadata>=4.6"
   "flatbuffers"
   "build"

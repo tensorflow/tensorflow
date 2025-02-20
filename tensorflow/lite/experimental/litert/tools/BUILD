@@ -21,7 +21,6 @@ package(
 
 cc_library(
     name = "apply_plugin",
-    testonly = 1,
     srcs = ["apply_plugin.cc"],
     hdrs = ["apply_plugin.h"],
     deps = [
@@ -78,7 +77,6 @@ cc_test(
 
 litert_cc_bin_with_qnn(
     name = "apply_plugin_main",
-    testonly = 1,
     srcs = ["apply_plugin_main.cc"],
     data = [
         "//tensorflow/lite/experimental/litert/vendors/examples:example_plugin_so",

@@ -26,6 +26,10 @@ limitations under the License.
 
 namespace xla {
 
+inline constexpr absl::string_view kCollectiveStreamAttrName =
+    "_xla_gpu_collective_stream";
+inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
+
 // CollectivePermuteDecomposer is a pass that (1) converts CollectivePermute
 // operations without any cycle in their (source, target) relationship to
 // Send/Recv, and (2) annotates the Send/Recv for pipelining with a frontend

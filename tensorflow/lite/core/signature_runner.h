@@ -108,9 +108,13 @@ class SignatureRunner {
   size_t output_size() const { return subgraph_->outputs().size(); }
 
   /// Read-only access to list of signature input names.
+  /// Note: The order of the names is in sync with the order of the SignatureDef
+  /// in the model.
   const std::vector<const char*>& input_names() { return input_names_; }
 
   /// Read-only access to list of signature output names.
+  /// Note: The order of the names is in sync with the order of the SignatureDef
+  /// in the model.
   const std::vector<const char*>& output_names() { return output_names_; }
 
   /// Returns the input tensor identified by 'input_name' in the

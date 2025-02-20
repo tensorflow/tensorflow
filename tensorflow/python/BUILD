@@ -84,7 +84,6 @@ package(
 py_strict_library(
     name = "python",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/compiler/aot/tests:__pkg__",  # TODO(b/34059704): remove when fixed
@@ -109,7 +108,6 @@ py_strict_library(
 # TODO(b/199420795) investigate minimal set of dependencies ...
 py_strict_library(
     name = "keras_lib",
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow:internal",
@@ -131,7 +129,6 @@ py_strict_library(
 py_strict_library(
     name = "no_contrib",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
@@ -349,7 +346,6 @@ py_strict_library(
 py_strict_library(
     name = "modules_with_exports",
     srcs = ["modules_with_exports.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
@@ -598,7 +594,6 @@ cc_header_only_library(
 
 py_strict_library(
     name = "extra_py_tests_deps",
-    srcs_version = "PY3",
     # extra_py_tests_deps is public to allow the use of tf_py_test or
     # cuda_py_test build rules for out-of-tree custom ops.
     # extra_py_tests_deps should NOT be used as dependency directly
@@ -618,7 +613,6 @@ py_strict_library(
 
 py_strict_library(
     name = "distributed_framework_test_lib",
-    srcs_version = "PY3",
     deps = ["//tensorflow/python/framework:test_lib"],
 )
 
@@ -628,7 +622,6 @@ py_strict_library(
 py_strict_library(
     name = "global_test_configuration",
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
     deps =
         tf_enable_mlir_bridge(),
 )
@@ -658,7 +651,6 @@ py_strict_library(
         # Import will fail, indicating no global dlopen flags
         otherwise = [],
     ),  # b/153585257
-    srcs_version = "PY3",
     deps = [
         ":pywrap_tensorflow_internal",
         "//tensorflow/python/platform:self_check",
@@ -1083,7 +1075,6 @@ pywrap_aware_cc_import(
 py_strict_library(
     name = "pywrap_mlir",
     srcs = ["pywrap_mlir.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_mlir",
@@ -1125,7 +1116,6 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "pywrap_sanitizers",
     srcs = ["pywrap_sanitizers.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_sanitizers",
@@ -1197,7 +1187,6 @@ cc_library(
 py_strict_library(
     name = "pywrap_tfe",
     srcs = ["pywrap_tfe.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tfe",
@@ -1287,7 +1276,6 @@ py_strict_library(
     name = "pywrap_tfe_monitoring_reader",
     testonly = True,
     srcs = ["pywrap_tfe_monitoring_reader.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tfe_monitoring_reader",
@@ -1408,7 +1396,6 @@ tf_pybind_cc_library_wrapper(
 py_strict_library(
     name = "tf2",
     srcs = ["tf2.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/platform:_pywrap_tf2",
         "//tensorflow/python/util:tf_export",
@@ -1506,12 +1493,27 @@ cc_library(
     ),
 )
 
+cc_library(
+    name = "_cuda_deps_filter",
+    srcs = [],
+    deps = if_pywrap(
+        if_true = if_cuda_is_configured(["@local_xla//xla/tsl/cuda:cupti"]),
+    ),
+)
+
 pywrap_library(
     name = "_pywrap_tensorflow",
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items
     common_lib_filters = {
-        "tensorflow/libtensorflow_framework.so.2": "//tensorflow:tensorflow_framework_pywrap_filter",
+        "tensorflow/libtensorflow_framework.so.2": [
+            "//tensorflow:tensorflow_framework_pywrap_filter",
+            ":_cuda_deps_filter",
+            "@com_google_absl//absl/debugging:leak_check",
+            "@com_google_absl//absl/flags:flag",
+            "@com_google_absl//absl/log:die_if_null",
+            "@com_google_absl//absl/random",
+        ],
         "tensorflow/libtensorflow_cc.so.2": "//tensorflow:tensorflow_cc_pywrap_filter",
     },
     # buildifier: disable=unsorted-dict-items

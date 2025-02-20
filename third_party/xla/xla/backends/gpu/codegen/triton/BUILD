@@ -198,6 +198,7 @@ cc_library(
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:passes",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
@@ -472,7 +473,6 @@ cc_library(
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@triton//:TritonAnalysis",
         "@triton//:TritonDialects",
         "@triton//:TritonGPUToLLVM",
         "@triton//:TritonGPUTransforms",
@@ -619,7 +619,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     shard_count = 20,
@@ -673,9 +673,10 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
+    shard_count = 10,
     tags = [
         "no_mac",
     ],
@@ -688,6 +689,7 @@ xla_test(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
@@ -710,7 +712,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     shard_count = 30,
@@ -755,7 +757,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     tags = [
@@ -899,7 +901,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     tags = [
@@ -927,7 +929,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     shard_count = 10,
@@ -1016,7 +1018,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     tags = ["no_mac",

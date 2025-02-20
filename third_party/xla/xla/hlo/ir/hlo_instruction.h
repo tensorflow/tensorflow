@@ -692,7 +692,29 @@ class HloInstruction {
   //   output_offsets: array of ragged offsets in the target replica output.
   //   recv_sizes: ragged recv sizes tensor.
   //
-  // The '*_offsets' and '*_sizes' tensors must have the same shape.
+  // The '*_offsets' and '*_sizes' tensors must all have the same shape.
+  // Two shapes are supported for the '*_offsets' and '*_sizes' tensors:
+  //   *) [num_devices] where ragged-all-to-all may send at most one update to
+  //      each remote device in the replica group. For example:
+  //
+  //      for (remote_device_id : replica_group) {
+  //        SEND input[input_offsets[remote_device_id]],
+  //             output[output_offsets[remote_device_id]],
+  //             send_sizes[remote_device_id]
+  //      }
+  //
+  //   *) [num_devices, num_updates] where ragged-all-to-all may send up to
+  //      'num_updates' updates the same remote device (each at different
+  //      offsets), for each remote device in the replica group. For example:
+  //
+  //      for (remote_device_id : replica_group) {
+  //        for (update_idx : num_updates) {
+  //          SEND input[input_offsets[remote_device_id][update_idx]],
+  //               output[output_offsets[remote_device_id][update_idx]]],
+  //               send_sizes[remote_device_id][update_idx]
+  //        }
+  //      }
+  //
   // The output buffer is passed in as an input (and aliased in the output),
   // to support incremental updates to the same buffer.
   //

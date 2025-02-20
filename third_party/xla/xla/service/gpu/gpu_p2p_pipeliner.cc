@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -210,15 +211,16 @@ absl::Status PostprocessRotatedP2P(HloInstruction* instr) {
 
 }  // anonymous namespace
 
-void AddP2PPipeliner(HloPassPipeline& pipeline,
-                     bool enable_partial_send_recv_pipelining) {
+absl::StatusOr<bool> GpuP2PPipeliner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto should_process = ShouldPipeline;
   CollectivePipeliner::HloPostprocessor postprocess_backward_peeled_op =
       PostprocessPeeledP2P;
   CollectivePipeliner::HloPostprocessor postprocess_backward_rotated_op =
       PostprocessRotatedP2P;
 
-  if (enable_partial_send_recv_pipelining) {
+  if (enable_partial_send_recv_pipelining_) {
     should_process = PipelineOnlySendRecvStart;
     postprocess_backward_peeled_op = std::nullopt;
     postprocess_backward_rotated_op = std::nullopt;
@@ -241,7 +243,8 @@ void AddP2PPipeliner(HloPassPipeline& pipeline,
       /*should_allow_control_dependencies=*/true,
       /*=postprocess_backward_peeled_op*/ postprocess_backward_peeled_op,
       /*=postprocess_backward_rotated_op*/ postprocess_backward_rotated_op};
-  pipeline.AddPass<CollectivePipeliner>(config);
+
+  return CollectivePipeliner(config).Run(module, execution_threads);
 }
 
 }  // namespace gpu

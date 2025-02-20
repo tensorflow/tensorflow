@@ -404,6 +404,8 @@ TfLiteAllocationStrategy TfLiteTensorGetAllocationStrategy(
       return kTfLiteAllocationStrategyUnknown;
     case kTfLiteVariantObject:
       return kTfLiteAllocationStrategyNew;
+    case kTfLiteNonCpu:
+      return kTfLiteAllocationStrategyUnknown;
   }
   return kTfLiteAllocationStrategyUnknown;
 }
@@ -428,6 +430,8 @@ TfLiteRunStability TfLiteTensorGetBufferAddressStability(
       return kTfLiteRunStabilityUnknown;
     case kTfLiteVariantObject:
       return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStabilityUnknown;
   }
   return kTfLiteRunStabilityUnknown;
 }
@@ -451,6 +455,8 @@ TfLiteRunStability TfLiteTensorGetDataStability(const TfLiteTensor* const t) {
       return kTfLiteRunStabilityUnknown;
     case kTfLiteVariantObject:
       return kTfLiteRunStabilitySingleRun;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStabilityUnknown;
   }
   return kTfLiteRunStabilityUnknown;
 }
@@ -477,11 +483,13 @@ TfLiteRunStep TfLiteTensorGetDataKnownStep(const TfLiteTensor* t) {
       return kTfLiteRunStepUnknown;
     case kTfLiteVariantObject:
       return kTfLiteRunStepEval;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStepUnknown;
   }
   return kTfLiteRunStepUnknown;
 }
 
-// Returns the operation steop when the shape of a tensor is computed.
+// Returns the operation step when the shape of a tensor is computed.
 //
 // Some operations can precompute the shape of their results before the
 // evaluation step. This makes the shape available earlier for subsequent
@@ -504,6 +512,8 @@ TfLiteRunStep TfLiteTensorGetShapeKnownStep(const TfLiteTensor* t) {
       return kTfLiteRunStepUnknown;
     case kTfLiteVariantObject:
       return kTfLiteRunStepEval;
+    case kTfLiteNonCpu:
+      return kTfLiteRunStepUnknown;
   }
   return kTfLiteRunStepUnknown;
 }

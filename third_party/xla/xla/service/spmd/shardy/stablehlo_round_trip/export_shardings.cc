@@ -66,6 +66,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
+namespace stablehlo = ::mlir::stablehlo;
+
 namespace xla {
 namespace sdy {
 
@@ -86,8 +88,6 @@ using ::mlir::StringRef;
 using ::mlir::success;
 using ::mlir::SymbolTable;
 using ::mlir::func::FuncOp;
-
-using ::mlir::stablehlo::CustomCallOp;
 
 using ::mlir::sdy::AxisRefAttr;
 using ::mlir::sdy::DimensionShardingAttr;
@@ -149,7 +149,8 @@ SmallVector<AxisRefAttr> getOrderedAxisRefs(
 
 // Convert the shardings from kShardingAttr into kXlaShardingAttr.
 LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
-                         OpBuilder& builder) {
+                         OpBuilder& builder,
+                         bool addMissingShardingToControlFlow) {
   std::function<StringAttr(const HloSharding&)> getStringAttr =
       [&](const HloSharding& hloSharding) {
         return builder.getStringAttr(hloSharding.ToString());
@@ -187,6 +188,13 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
           kXlaShardingAttr,
           convertToHloShardingAttr(op, shardings, getMeshAttr, getStringAttr));
       op->removeAttr(kShardingAttr);
+    } else if (addMissingShardingToControlFlow &&
+               mlir::isa<stablehlo::WhileOp, stablehlo::CaseOp,
+                         stablehlo::IfOp>(op) &&
+               !op->hasAttr(kXlaShardingAttr)) {
+      // We check if the op already has a `kXlaShardingAttr`, since a manual
+      // sharding might have been added in shard map export pass.
+      op->setAttr(kXlaShardingAttr, getStringAttr(HloSharding::Replicate()));
     }
   });
 
@@ -199,6 +207,9 @@ class ExportStablehloShardingsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExportStablehloShardingsPass)
 
+  explicit ExportStablehloShardingsPass(bool addMissingShardingToControlFlow)
+      : addMissingShardingToControlFlow(addMissingShardingToControlFlow) {}
+
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
 
@@ -208,12 +219,13 @@ class ExportStablehloShardingsPass
     auto builder = OpBuilder::atBlockBegin(&moduleOp.getBodyRegion().front());
 
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
-      if (mlir::failed(exportFunc(funcOp, symbolTable, builder))) {
+      if (mlir::failed(exportFunc(funcOp, symbolTable, builder,
+                                  addMissingShardingToControlFlow))) {
         signalPassFailure();
       }
     }
 
-    moduleOp.walk([&](CustomCallOp customCall) {
+    moduleOp.walk([&](stablehlo::CustomCallOp customCall) {
       // StableHLO doesn't have an equivalent of `erf` and `topk` ops.
       // If they have a sharding annotation, we need to move it into
       // `mhlo.attributes`, which StableHLO->MHLO conversion would lift back up.
@@ -255,6 +267,9 @@ class ExportStablehloShardingsPass
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     registry.insert<SdyDialect>();
   }
+
+ private:
+  bool addMissingShardingToControlFlow;
 };
 
 }  // namespace
@@ -376,12 +391,14 @@ StringAttr convertToHloShardingAttr(
       HloSharding::Tuple(xla::ShapeUtil::MakeTupleShape(shapes), newShardings));
 }
 
-std::unique_ptr<Pass> createExportStablehloShardingsPass() {
-  return std::make_unique<ExportStablehloShardingsPass>();
+std::unique_ptr<Pass> createExportStablehloShardingsPass(
+    bool addMissingShardingToControlFlow) {
+  return std::make_unique<ExportStablehloShardingsPass>(
+      addMissingShardingToControlFlow);
 }
 
 void registerStablehloExportShardingsPass() {
-  mlir::registerPass(createExportStablehloShardingsPass);
+  mlir::registerPass(std::bind(createExportStablehloShardingsPass, false));
 }
 
 }  // namespace sdy

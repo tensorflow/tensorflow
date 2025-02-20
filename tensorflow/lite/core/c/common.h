@@ -396,6 +396,9 @@ typedef union TfLitePtrUnion {
 ///  * `kTfLiteVariantObject`: Allocation is an arbitrary type-erased C++
 ///  object.
 ///        Allocation and deallocation are done through `new` and `delete`.
+///  * `kTfLiteNonCpu`: Tensor buffer is in non-CPU memory, such as AHWB, GPU
+///        memory. This tensor is not accessed by the CPU.
+///        This is only used by LiteRt API.
 typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
   kTfLiteMmapRo,
@@ -405,6 +408,7 @@ typedef enum TfLiteAllocationType {
   kTfLitePersistentRo,
   kTfLiteCustom,
   kTfLiteVariantObject,
+  kTfLiteNonCpu,
 } TfLiteAllocationType;
 
 /// Memory allocation strategies.

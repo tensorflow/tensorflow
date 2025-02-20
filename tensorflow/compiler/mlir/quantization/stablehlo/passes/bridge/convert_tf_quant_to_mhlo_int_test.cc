@@ -313,6 +313,58 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
       kProgram, {&arg0}, /*tf_program=*/std::nullopt, /*error_tolerance=*/0.35);
 }
 
+TEST_F(ConvertTfQuantToMhloIntTest,
+       UniformQuantizeAndDequantizeToValidGraphQuint8) {
+  constexpr absl::string_view kProgram = R"mlir(
+func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %scale = "tf.Const"() { value = dense<0.347> : tensor<f32> } : () -> tensor<f32>
+  %zp = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+  %0 = "tf.UniformQuantize"(%arg0, %scale, %zp) {
+    quantization_axis = -1 : i64,
+    quantization_min_val = 0 : i64,
+    quantization_max_val = 255 : i64
+  } : (tensor<10xf32>, tensor<f32>, tensor<i32>) -> tensor<10x!tf_type.quint8>
+  %1 = "tf.UniformDequantize"(%0, %scale, %zp) {
+    quantization_axis = -1 : i64,
+    quantization_min_val = 0 : i64,
+    quantization_max_val = 255 : i64
+  } : (tensor<10x!tf_type.quint8>, tensor<f32>, tensor<i32>) -> tensor<10xf32>
+  return %1 : tensor<10xf32>
+})mlir";
+  TF_ASSERT_OK_AND_ASSIGN(auto arg0, CreateRandomF32Literal({10}));
+  ExecuteAndCompareResultsWithTfKernel(kProgram, {&arg0},
+                                       /*tf_program=*/std::nullopt,
+                                       /*error_tolerance=*/0.35);
+}
+
+TEST_F(ConvertTfQuantToMhloIntTest,
+       UniformQuantizeAndDequantizePerChannelToValidGraphQuint8) {
+  constexpr absl::string_view kProgram = R"mlir(
+func.func @main(
+  %arg0: tensor<10x10xf32>, %scale: tensor<10xf32>, %zp: tensor<10xi32>
+  ) -> tensor<10x10xf32> {
+  %0 = "tf.UniformQuantize"(%arg0, %scale, %zp) {
+    quantization_axis = 1 : i64,
+    quantization_min_val = 0 : i64,
+    quantization_max_val = 255 : i64
+  } : (tensor<10x10xf32>, tensor<10xf32>, tensor<10xi32>) -> tensor<10x10x!tf_type.quint8>
+  %1 = "tf.UniformDequantize"(%0, %scale, %zp) {
+    quantization_axis = 1 : i64,
+    quantization_min_val = 0 : i64,
+    quantization_max_val = 255 : i64
+  } : (tensor<10x10x!tf_type.quint8>, tensor<10xf32>, tensor<10xi32>) -> tensor<10x10xf32>
+  return %1 : tensor<10x10xf32>
+})mlir";
+  TF_ASSERT_OK_AND_ASSIGN(auto arg0, CreateRandomF32Literal({10, 10}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto scale, CreateRandomF32Literal({10}, /*min=*/0.0001, /*max=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(auto zp,
+                          CreateRandomI32Literal({10}, /*min=*/0, /*max=*/255));
+  ExecuteAndCompareResultsWithTfKernel(kProgram, {&arg0, &scale, &zp},
+                                       /*tf_program=*/std::nullopt,
+                                       /*error_tolerance=*/0.35);
+}
+
 TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizePerChannelToValidGraph) {
   constexpr absl::string_view kProgram = R"mlir(
 func.func @main(

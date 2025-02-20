@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -31,7 +32,9 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
@@ -47,6 +50,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -449,46 +453,36 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   TF_RET_CHECK(env.kv_store != nullptr);
   TF_RET_CHECK(env.client->device_count() == kNumNodes);
   TF_RET_CHECK(env.client->addressable_device_count() == 1);
-  // Make HLO module IDs of multiple_gemm_fusions.hlo differ: the autotuner
-  // should not rely on them.
-  if (node_id == 0) {
-    TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadHloModuleAndArguments(
-                           GetHloPath("single_device.hlo"), InputFormat::kText)
-                           .status());
-  }
-  // Use a pair of modules that differ by a value of a constant that is outside
-  // GEMM fusions. Modules should be nevertheless considered equivalent by
-  // the autotuner.
+
+  // The logic for exchanging autotuning results is tested using mocks in
+  // gemm_fusion_autotuner_test.cc. Here, we just check that compilation
+  // actually succeeds, and that the autotuner runs correctly ends up storing
+  // results for each node in the key-value store.
   TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
       *env.client, GetDebugOptionsFromFlags(),
       FunctionalHloRunner::PreprocessingOptions{},
       FunctionalHloRunner::RawCompileOptions{.num_replicas = kNumNodes},
-      GetHloPath(absl::StrFormat("multiple_gemm_fusions_%d.hlo", node_id + 1)),
-      InputFormat::kText, node_id, kNumNodes, /*kv_store=*/nullptr,
+      GetHloPath("multiple_gemm_fusions.hlo"), InputFormat::kText, node_id,
+      kNumNodes, /*kv_store=*/nullptr,
       /*use_gpu_count_workaround=*/false));
   if (node_id == 0) {
     TF_ASSIGN_OR_RETURN(
         std::string results0,
         env.kv_store->Get("gemm_fusion_autotuning_results_"
+                          "b190aeb9aa0b9e93e4c08d095726f562_"
                           "iuhMRX2JY-YpaUJD3Pw0h3H3HNGWEzN4xA0s9Q3CoK8_0",
                           absl::Seconds(1)));
     CHECK(absl::StrContains(results0, "run_time"));
     TF_ASSIGN_OR_RETURN(
         std::string results1,
         env.kv_store->Get("gemm_fusion_autotuning_results_"
+                          "b190aeb9aa0b9e93e4c08d095726f562_"
                           "iuhMRX2JY-YpaUJD3Pw0h3H3HNGWEzN4xA0s9Q3CoK8_1",
                           absl::Seconds(1)));
     CHECK(absl::StrContains(results1, "run_time"));
     // The nodes autotune different fusions.
     CHECK_NE(results0, results1);
   }
-  // Compile another module to test that the autotuner doesn't fail trying to
-  // exchange again cached results for the previous module.
-  TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-      *env.client, GetDebugOptionsFromFlags(),
-      FunctionalHloRunner::PreprocessingOptions{},
-      FunctionalHloRunner::RawCompileOptions{},
-      GetHloPath("single_gemm_fusion.hlo"), InputFormat::kText));
   return absl::OkStatus();
 }
 
@@ -631,6 +625,49 @@ TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshot) {
 
   CHECK_EQ(hlo_module_and_arguments_from_text.arguments.size(),
            hlo_module_and_arguments_from_binary.arguments.size());
+}
+
+TEST_F(FunctionalHloRunnerTest, FixFakeArguments) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  // Options corresponding to --num_replicas=1 --num_partitions=1
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  CompileOptions compile_options;
+  FunctionalHloRunner::RunningOptions running_options;
+
+  std::minstd_rand0 engine(42);
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRun(
+      *client, debug_options, preproc_options, compile_options, running_options,
+      {GetHloPath("single_device.hlo")}, InputFormat::kText,
+      /*arguments=*/{}, /*engine=*/&engine));
+}
+
+TEST(FunctionalHloRunnerTest, TestHloUnoptimizedSnapshotDeSerialization) {
+  FunctionalHloRunner::HloModuleAndArguments hlo_module_and_arguments_from_text;
+  std::string path_to_text_hlo =
+      GetHloPath("sharded_unoptimized_hlo_snapshot.pbtxt");
+
+  // Read the text proto
+  HloUnoptimizedSnapshot snapshot;
+  TF_ASSERT_OK(
+      tsl::ReadTextProto(tsl::Env::Default(), path_to_text_hlo, &snapshot));
+
+  // Serialize the snapshot to string
+  std::string output;
+  tsl::protobuf::io::StringOutputStream output_stream(&output);
+  TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
+
+  // Read the snapshot back from the string
+  tsl::protobuf::io::ArrayInputStream input_stream(output.data(),
+                                                   output.size());
+  auto maybe_deserialized_snapshot =
+      DeserializeHloUnoptimizedSnapshot(&input_stream);
+  ASSERT_TRUE(maybe_deserialized_snapshot.ok());
+
+  EXPECT_EQ(snapshot.SerializeAsString(),
+            maybe_deserialized_snapshot->SerializeAsString());
 }
 
 }  // namespace

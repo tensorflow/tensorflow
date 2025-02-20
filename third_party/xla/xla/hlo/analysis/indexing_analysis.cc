@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -1633,6 +1634,8 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
     return ComputeOutputToInputTransposeOpIndexing(transpose, ctx);
   }
+  LOG(ERROR) << "ComputeOutputToInputIndexing is not implemented for opcode "
+             << instr->opcode();
   // If we cannot compute output-to-input indexing, we return std::nullopt for
   // every op parameter.
   return CreateUnknownIndexing(instr->operand_count());

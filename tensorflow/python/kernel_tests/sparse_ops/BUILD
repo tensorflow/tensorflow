@@ -362,7 +362,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "sparse_xent_op_test_base",
     srcs = ["sparse_xent_op_test_base.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",

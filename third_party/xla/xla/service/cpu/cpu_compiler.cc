@@ -87,6 +87,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
+#include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/analysis/indexed_array_analysis.h"
@@ -804,6 +805,13 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
+  if (module->config()
+          .debug_options()
+          .xla_cpu_experimental_xnn_graph_fusion_mode() !=
+      DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED) {
+    pipeline.AddPass<XnnGraphFusion>();
+  }
+
   // Add a fusion pass now that layout assignment is done.
   pipeline.AddPass<CpuInstructionFusion>();
 
@@ -1354,7 +1362,7 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
       /*disable_expensive_passes=*/
       debug_options.xla_llvm_disable_expensive_passes(),
       /*slp_vectorizer_disabled=*/options::SlpVectorizerDisabled(config),
-      /*enable_loop_unrolling=*/options::EnableLoopUnrolling(config),
+      /*disable_loop_unrolling=*/options::DisableLoopUnrolling(config),
   };
 
   // Compiler hooks to intercept compiled LLVM IR modules.
@@ -1956,8 +1964,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           module->config().debug_options().xla_llvm_disable_expensive_passes(),
           /*disable_slp_vectorizer=*/
           options::SlpVectorizerDisabled(module->config()),
-          /*enable_loop_unrolling=*/
-          options::EnableLoopUnrolling(module->config()),
+          /*disable_loop_unrolling=*/
+          options::DisableLoopUnrolling(module->config()),
           /*dfsan_enabled=*/aot_options.sanitize_dataflow(),
           /*dfsan_abilists_enabled=*/aot_options.sanitize_abilists_dataflow()};
 

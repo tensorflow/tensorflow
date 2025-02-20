@@ -150,6 +150,7 @@ LiteRtStatus LiteRtGetTensorBufferFastRpcBuffer(
     int* fastrpc_buffer_fd);
 #endif  // LITERT_HAS_FASTRPC_SUPPORT
 
+#if LITERT_HAS_OPENCL_SUPPORT
 // Create a tensor buffer from an existing OpenCL buffer of a given size, with
 // optional opencl memory buffer deallocator (it can be NULL). An non-zero
 // `opencl_buffer_offset` can be used to specify multiple tensor buffers sharing
@@ -157,14 +158,15 @@ LiteRtStatus LiteRtGetTensorBufferFastRpcBuffer(
 // `opencl_buffer_size` must be the entire size of the underlying OpenCL
 // memory buffer, including the allocation needed for all tensor buffers
 // sharing it.
-LiteRtStatus LiteRtCreateTensorBufferFromOpenCLBuffer(
+LiteRtStatus LiteRtCreateTensorBufferFromOpenClBuffer(
     const LiteRtRankedTensorType* tensor_type, cl_mem cl_mem_addr,
     size_t opencl_buffer_size, LiteRtOpenClDeallocator deallocator,
     LiteRtTensorBuffer* buffer);
 
 // Return an error if the backing buffer is not a OpenCL buffer.
-LiteRtStatus LiteRtGetTensorBufferOpenCLBuffer(LiteRtTensorBuffer tensor_buffer,
-                                               void** cl_mem_addr);
+LiteRtStatus LiteRtGetTensorBufferOpenClBuffer(LiteRtTensorBuffer tensor_buffer,
+                                               cl_mem* cl_mem_addr);
+#endif  // LITERT_HAS_OPENCL_SUPPORT
 
 // Create a buffer backed by managed memory for a given size.
 LiteRtStatus LiteRtCreateManagedTensorBuffer(

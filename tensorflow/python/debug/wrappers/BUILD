@@ -9,7 +9,6 @@ package(
 py_strict_library(
     name = "framework",
     srcs = ["framework.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
@@ -26,7 +25,6 @@ py_strict_library(
 py_strict_library(
     name = "dumping_wrapper",
     srcs = ["dumping_wrapper.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":framework",
@@ -39,7 +37,6 @@ py_strict_library(
 py_strict_library(
     name = "grpc_wrapper",
     srcs = ["grpc_wrapper.py"],
-    srcs_version = "PY3",
     deps = [
         ":framework",
         "//tensorflow/python/debug/lib:common",
@@ -50,7 +47,6 @@ py_strict_library(
 py_strict_library(
     name = "local_cli_wrapper",
     srcs = ["local_cli_wrapper.py"],
-    srcs_version = "PY3",
     deps = [
         ":framework",
         "//tensorflow/python/debug/cli:analyzer_cli",
@@ -69,7 +65,6 @@ py_strict_library(
 py_strict_library(
     name = "hooks",
     srcs = ["hooks.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//third_party/py/tf_slim:__subpackages__",
@@ -91,7 +86,7 @@ py_strict_test(
     srcs = ["framework_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [],
+    tags = [], # sync 251102: "no-rocm" tag set
     deps = [
         ":framework",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -118,8 +113,6 @@ py_strict_test(
     name = "dumping_wrapper_test",
     size = "small",
     srcs = ["dumping_wrapper_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":dumping_wrapper",
         ":framework",
@@ -144,8 +137,6 @@ py_strict_test(
     name = "local_cli_wrapper_test",
     size = "small",
     srcs = ["local_cli_wrapper_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":local_cli_wrapper",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -179,8 +170,6 @@ py_strict_test(
     name = "disk_usage_test",
     size = "small",
     srcs = ["disk_usage_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":dumping_wrapper",
         ":hooks",

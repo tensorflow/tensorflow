@@ -26,6 +26,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/device_factory.h"
@@ -45,10 +48,7 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/criticality.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

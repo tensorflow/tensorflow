@@ -111,7 +111,6 @@ xla_cc_binary(
 py_strict_binary(
     name = "ncu_rep",
     srcs = ["ncu_rep.py"],
-    srcs_version = "PY3",
     deps = [
         ":ncu_rep_lib",
         "@absl_py//absl:app",
@@ -122,7 +121,6 @@ py_strict_binary(
 py_strict_library(
     name = "ncu_rep_lib",
     srcs = ["ncu_rep_lib.py"],
-    srcs_version = "PY3",
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",

@@ -256,24 +256,20 @@ void AddPreQuantizationStableHloToTfPasses(
       mlir::TFL::CreateLegalizeJaxRandomPass());
 
   // Canonicalize, CSE etc.
-  pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::createCanonicalizerPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   // DCE for private symbols.
   pass_manager.addPass(mlir::createSymbolDCEPass());
-
   pass_manager.addPass(mlir::TF::CreateStripNoinlineAttributePass());
   // Add inline pass.
   pass_manager.addPass(mlir::createInlinerPass());
-
-  // Expands mhlo.tuple ops.
   pass_manager.addPass(
-      mlir::mhlo::createExpandHloTuplesPass(entry_function_name.str()));
-  // Flatten tuples for control flows.
+      mlir::stablehlo_ext::createStablehloFlattenEntryFunctionTuplesPass(
+          {entry_function_name.str()}));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createFlattenTuplePass());
-
+      mlir::stablehlo_ext::createStablehloFlattenTuplePass());
+  pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   mlir::odml::AddMhloOptimizationPasses(
       pass_manager,
       /*add_fold_broadcast_pass=*/pass_config.enable_stablehlo_quantizer);

@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
@@ -329,7 +330,7 @@ absl::StatusOr<bool> ShardyXLA::Run(
         tsl::io::JoinPath(shardyDir, "shardy", uniqueModuleName(*hloModule));
     LOG(INFO) << "Using Shardy output directory: " << shardyDir;
   }
-
+  TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(shardyDir));
   // MLIR pipeline: (1) import, (2) Shardy, and (3) export.
 
   bool enableVerifier = false;

@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
+#include <memory>
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -166,7 +170,8 @@ class RemoveTfIfConstArgs
     // Now create the call op to the original branch.
     auto call_op = builder.create<mlir::TF::StatefulPartitionedCallOp>(
         new_branch.getLoc(), new_branch_type.getResults(), call_args,
-        branch.getSymName(), "", "", "");
+        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, branch.getSymName(), "",
+        "", "");
     // Note that the outputs are not changed.
     builder.create<mlir::func::ReturnOp>(new_branch.getLoc(),
                                          call_op.getOutput());

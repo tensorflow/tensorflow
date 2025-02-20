@@ -107,7 +107,7 @@ class HloPassFix : public Pass {
           RunOnChangedComputationsOnce(module, run_state, execution_threads));
       VLOG(3) << Pass::name() << " iteration " << run_state->iteration
               << " changed_this_iteration: "
-              << !run_state->changed_last_iteration.empty();
+              << !run_state->changed_this_iteration.empty();
       run_state->IncrementIteration();
       if (run_state->iteration == kIterationLimit) {
         if (module->config()

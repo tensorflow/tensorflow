@@ -29,7 +29,7 @@ namespace gpu {
 // communication compute overlap.
 constexpr float kExtraCollectiveOptimizations = 0.2;
 
-// Returns true if the pass is enabled via `exec_time_optimization_effort` at
+// Returns true if the pass is enabled via `optimization_level` at
 // the potential expense of compile time.
 template <typename Pass>
 bool IsPassEnabledAtOptimizationEffort(const HloModule& module) {
@@ -41,7 +41,11 @@ bool IsPassEnabledAtOptimizationEffort(const HloModule& module) {
       std::is_same_v<Pass, LatencyHidingScheduler>;
 
   if (is_collective_optimization_pass) {
-    return exec_effort >= kExtraCollectiveOptimizations;
+    ExecutionOptions::EffortLevel opt_level =
+        module.config().optimization_level();
+    return (opt_level == ExecutionOptions::EFFORT_O3) ||
+           (opt_level == ExecutionOptions::EFFORT_UNKNOWN &&
+            exec_effort >= kExtraCollectiveOptimizations);
   }
 
   return true;

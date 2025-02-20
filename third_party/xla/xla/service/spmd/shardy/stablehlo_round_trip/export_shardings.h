@@ -50,7 +50,11 @@ mlir::StringAttr convertToHloShardingAttr(
 // Creates a pass that converts the shardings from `kShardingAttr` to
 // `kXlaShardingAttr` and removes mesh symbols. Fully or partially manual
 // shardings are processed in `ShardMapExportPass`.
-std::unique_ptr<mlir::Pass> createExportStablehloShardingsPass();
+//
+// If `addMissingShardingToControlFlow` is true, the pass will add a replicated
+// hlo sharding to control flow ops (while, case, if) that have no sdy sharding.
+std::unique_ptr<mlir::Pass> createExportStablehloShardingsPass(
+    bool addMissingShardingToControlFlow = false);
 
 // Register the xla-sdy-stablehlo-export-shardings pass.
 void registerStablehloExportShardingsPass();

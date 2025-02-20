@@ -16,6 +16,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # copybara:uncomment "//third_party/mediapipe/calculators/tensor:__subpackages__",
+        # copybara:uncomment "//third_party/odml/litert:__subpackages__",
         "//tensorflow/lite/experimental/litert:__subpackages__",
     ],
 )
@@ -122,12 +123,6 @@ cc_library(
 )
 
 cc_library(
-    name = "test_macros",
-    hdrs = ["test_macros.h"],
-    deps = ["//tensorflow/lite/experimental/litert/c:litert_common"],
-)
-
-cc_library(
     name = "matchers",
     testonly = True,
     hdrs = ["matchers.h"],
@@ -163,3 +158,5 @@ cc_library(
         "@com_google_googletest//:gtest",
     ],
 )
+
+exports_files(srcs = ["testdata/simple_model_google_tensor.bin"])

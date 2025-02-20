@@ -8,6 +8,7 @@ PywrapInfo = provider(
         "py_stub": "Pybind Python stub used to resolve cross-package references",
         "cc_only": "True if this PywrapInfo represents cc-only library (no PyIni_)",
         "starlark_only": "",
+        "default_runfiles": "",
     },
 )
 
@@ -21,6 +22,7 @@ PywrapFilters = provider(
     fields = {
         "pywrap_lib_filter": "",
         "common_lib_filters": "",
+        "dynamic_lib_filter": "",
     },
 )
 
@@ -68,12 +70,16 @@ def pywrap_library(
     if starlark_only_pywrap_count > 0:
         starlark_only_filter_full_name = "%s%s__starlark_only_common" % (cur_pkg, name)
 
+    inverse_common_lib_filters = _construct_inverse_common_lib_filters(
+        common_lib_filters,
+    )
+
     _linker_input_filters(
         name = linker_input_filters_name,
         dep = ":%s" % info_collector_name,
         pywrap_lib_filter = pywrap_lib_filter,
         pywrap_lib_exclusion_filter = pywrap_lib_exclusion_filter,
-        common_lib_filters = {v: k for k, v in common_lib_filters.items()},
+        common_lib_filters = inverse_common_lib_filters,
         starlark_only_filter_name = starlark_only_filter_full_name,
     )
 
@@ -108,7 +114,7 @@ def pywrap_library(
         common_cc_binary_name = "%s" % common_lib_name
         common_import_name = _construct_common_binary(
             common_cc_binary_name,
-            [":%s" % common_split_name] + common_deps,
+            common_deps + [":%s" % common_split_name],
             linkopts,
             testonly,
             compatible_with,
@@ -117,6 +123,7 @@ def pywrap_library(
             binaries_data.values(),
             common_lib_pkg,
             ver_script,
+            data = [":%s" % common_split_name],
         )
         actual_binaries_data = binaries_data
         actual_common_deps = common_deps
@@ -223,7 +230,8 @@ def _construct_common_binary(
         local_defines,
         dependency_common_lib_packages,
         dependent_common_lib_package,
-        version_script):
+        version_script,
+        data):
     actual_linkopts = _construct_linkopt_soname(name) + _construct_linkopt_rpaths(
         dependency_common_lib_packages,
         dependent_common_lib_package,
@@ -242,6 +250,7 @@ def _construct_common_binary(
         compatible_with = compatible_with,
         win_def_file = win_def_file,
         local_defines = local_defines,
+        #        data = data,
     )
 
     if_lib_name = "%s_if_lib" % name
@@ -263,6 +272,14 @@ def _construct_common_binary(
         compatible_with = compatible_with,
     )
 
+    cc_lib_name = "%s_cc_library" % name
+    native.cc_library(
+        name = cc_lib_name,
+        deps = [":%s" % import_name],
+        testonly = testonly,
+        data = data,
+    )
+
     return import_name
 
 def _pywrap_split_library_impl(ctx):
@@ -275,6 +292,7 @@ def _pywrap_split_library_impl(ctx):
 
     split_linker_inputs = []
     private_linker_inputs = []
+    default_runfiles = None
     if not pw.cc_only:
         split_linker_inputs.append(li)
         pywrap_lib_filter = ctx.attr.linker_input_filters[PywrapFilters].pywrap_lib_filter
@@ -286,11 +304,14 @@ def _pywrap_split_library_impl(ctx):
             depset(direct = private_lis),
         ]
 
+    #        default_runfiles = pw.default_runfiles
+
     return _construct_split_library_cc_info(
         ctx,
         split_linker_inputs,
         user_link_flags,
         private_linker_inputs,
+        default_runfiles,
     )
 
 _pywrap_split_library = rule(
@@ -332,15 +353,30 @@ def _pywrap_common_split_library_impl(ctx):
     else:
         libs_to_include = filters.common_lib_filters[ctx.attr.common_lib_full_name]
 
+    user_link_flags = {}
+    dynamic_lib_filter = filters.dynamic_lib_filter
+    default_runfiles = ctx.runfiles()
     for pw in pywrap_infos:
         pw_lis = pw.cc_info.linking_context.linker_inputs.to_list()[1:]
+        pw_runfiles_merged = False
         for li in pw_lis:
             if li in libs_to_exclude:
                 continue
-            if include_all_not_excluded or (li in libs_to_include):
+            if include_all_not_excluded or (li in libs_to_include) or li in dynamic_lib_filter:
                 split_linker_inputs.append(li)
+                for user_link_flag in li.user_link_flags:
+                    user_link_flags[user_link_flag] = True
+                if not pw_runfiles_merged:
+                    default_runfiles = default_runfiles.merge(pw.default_runfiles)
+                    pw_runfiles_merged = True
 
-    return _construct_split_library_cc_info(ctx, split_linker_inputs, [], [])
+    return _construct_split_library_cc_info(
+        ctx,
+        split_linker_inputs,
+        list(user_link_flags.keys()),
+        [],
+        default_runfiles,
+    )
 
 _pywrap_common_split_library = rule(
     attrs = {
@@ -367,7 +403,8 @@ def _construct_split_library_cc_info(
         ctx,
         split_linker_inputs,
         user_link_flags,
-        private_linker_inputs):
+        private_linker_inputs,
+        default_runfiles):
     dependency_libraries = _construct_dependency_libraries(
         ctx,
         split_linker_inputs,
@@ -386,7 +423,11 @@ def _construct_split_library_cc_info(
         ),
     )
 
-    return [CcInfo(linking_context = linking_context)]
+    return [
+        CcInfo(linking_context = linking_context),
+        #        DefaultInfo(files = default_runfiles.files)
+        DefaultInfo(runfiles = default_runfiles),
+    ]
 
 def _construct_dependency_libraries(ctx, split_linker_inputs):
     cc_toolchain = find_cpp_toolchain(ctx)
@@ -400,7 +441,7 @@ def _construct_dependency_libraries(ctx, split_linker_inputs):
     for split_linker_input in split_linker_inputs:
         for lib in split_linker_input.libraries:
             lib_copy = lib
-            if not lib.alwayslink:
+            if not lib.alwayslink and (lib.static_library or lib.pic_static_library):
                 lib_copy = cc_common.create_library_to_link(
                     actions = ctx.actions,
                     cc_toolchain = cc_toolchain,
@@ -418,6 +459,10 @@ def _linker_input_filters_impl(ctx):
     pywrap_lib_exclusion_filter = {}
     pywrap_lib_filter = {}
     visited_filters = {}
+
+    #
+    # pywrap private filter
+    #
     if ctx.attr.pywrap_lib_exclusion_filter:
         for li in ctx.attr.pywrap_lib_exclusion_filter[CcInfo].linking_context.linker_inputs.to_list():
             pywrap_lib_exclusion_filter[li] = li.owner
@@ -429,6 +474,9 @@ def _linker_input_filters_impl(ctx):
 
     common_lib_filters = {k: {} for k in ctx.attr.common_lib_filters.values()}
 
+    #
+    # common lib filters
+    #
     for filter, name in ctx.attr.common_lib_filters.items():
         filter_li = filter[CcInfo].linking_context.linker_inputs.to_list()
         for li in filter_li:
@@ -436,6 +484,9 @@ def _linker_input_filters_impl(ctx):
                 common_lib_filters[name][li] = li.owner
                 visited_filters[li] = li.owner
 
+    #
+    # starlark -only filter
+    #
     pywrap_infos = ctx.attr.dep[CollectedPywrapInfo].pywrap_infos.to_list()
     starlark_only_filter = {}
 
@@ -451,10 +502,29 @@ def _linker_input_filters_impl(ctx):
                     starlark_only_filter.pop(li, None)
 
         common_lib_filters[ctx.attr.starlark_only_filter_name] = starlark_only_filter
+
+    #
+    # dynamic libs filter
+    #
+    dynamic_lib_filter = {}
+    empty_lib_filter = {}
+    for pw in pywrap_infos:
+        for li in pw.cc_info.linking_context.linker_inputs.to_list()[1:]:
+            all_dynamic = None
+            for lib in li.libraries:
+                if lib.static_library or lib.pic_static_library or not lib.dynamic_library:
+                    all_dynamic = False
+                    break
+                elif all_dynamic == None:
+                    all_dynamic = True
+            if all_dynamic:
+                dynamic_lib_filter[li] = li.owner
+
     return [
         PywrapFilters(
             pywrap_lib_filter = pywrap_lib_filter,
             common_lib_filters = common_lib_filters,
+            dynamic_lib_filter = dynamic_lib_filter,
         ),
     ]
 
@@ -488,7 +558,7 @@ _linker_input_filters = rule(
 def pywrap_common_library(name, dep, filter_name = None):
     native.alias(
         name = name,
-        actual = "%s_import" % (filter_name if filter_name else dep + "_common"),
+        actual = "%s_cc_library" % (filter_name if filter_name else dep + "_common"),
     )
 
 def pywrap_binaries(name, dep, **kwargs):
@@ -621,10 +691,15 @@ def _pywrap_info_wrapper_impl(ctx):
         substitutions = substitutions,
     )
 
+    default_runfiles = ctx.runfiles().merge(
+        ctx.attr.deps[0][DefaultInfo].default_runfiles,
+    )
+
     return [
         PyInfo(transitive_sources = depset()),
         PywrapInfo(
             cc_info = ctx.attr.deps[0][CcInfo],
+            default_runfiles = default_runfiles,
             owner = ctx.label,
             common_lib_packages = ctx.attr.common_lib_packages,
             py_stub = py_stub,
@@ -652,11 +727,16 @@ _pywrap_info_wrapper = rule(
 
 def _cc_only_pywrap_info_wrapper_impl(ctx):
     wrapped_dep = ctx.attr.deps[0]
+    default_runfiles = ctx.runfiles().merge(
+        ctx.attr.deps[0][DefaultInfo].default_runfiles,
+    )
+
     return [
         PyInfo(transitive_sources = depset()),
         PywrapInfo(
             cc_info = wrapped_dep[CcInfo],
             owner = ctx.label,
+            default_runfiles = default_runfiles,
             common_lib_packages = ctx.attr.common_lib_packages,
             py_stub = None,
             cc_only = True,
@@ -922,6 +1002,20 @@ def _get_common_lib_package_and_name(common_lib_full_name):
     if "/" in common_lib_full_name:
         return common_lib_full_name.rsplit("/", 1)
     return "", common_lib_full_name
+
+def _construct_inverse_common_lib_filters(common_lib_filters):
+    inverse_common_lib_filters = {}
+    for common_lib_k, common_lib_v in common_lib_filters.items():
+        new_common_lib_k = common_lib_v
+        if type(common_lib_v) == type([]):
+            new_common_lib_k = "_%s_common_lib_filter" % common_lib_k.rsplit("/", 1)[-1]
+            native.cc_library(
+                name = new_common_lib_k,
+                deps = common_lib_v,
+            )
+
+        inverse_common_lib_filters[new_common_lib_k] = common_lib_k
+    return inverse_common_lib_filters
 
 def _construct_linkopt_soname(name):
     soname = name.rsplit("/", 1)[1] if "/" in name else name

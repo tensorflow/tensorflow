@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -91,7 +92,7 @@ void SetTestFilterIfNotUserSpecified(absl::string_view custom_filter) {
 
 absl::StatusOr<tsl::RCReference<DeviceList>> GetDevices(
     Client* client, absl::Span<const int> device_indices) {
-  BasicDeviceList::Devices devices;
+  absl::InlinedVector<xla::ifrt::Device*, 1> devices;
   devices.reserve(device_indices.size());
   const absl::Span<Device* const> client_devices = client->devices();
   for (int device_index : device_indices) {
@@ -101,12 +102,12 @@ absl::StatusOr<tsl::RCReference<DeviceList>> GetDevices(
     }
     devices.push_back(client_devices[device_index]);
   }
-  return BasicDeviceList::Create(std::move(devices));
+  return client->MakeDeviceList(devices);
 }
 
 absl::StatusOr<tsl::RCReference<DeviceList>> GetAddressableDevices(
     Client* client, absl::Span<const int> device_indices) {
-  BasicDeviceList::Devices devices;
+  absl::InlinedVector<xla::ifrt::Device*, 1> devices;
   devices.reserve(device_indices.size());
   const absl::Span<Device* const> client_devices =
       client->addressable_devices();
@@ -117,7 +118,7 @@ absl::StatusOr<tsl::RCReference<DeviceList>> GetAddressableDevices(
     }
     devices.push_back(client_devices[device_index]);
   }
-  return BasicDeviceList::Create(std::move(devices));
+  return client->MakeDeviceList(std::move(devices));
 }
 
 }  // namespace test_util

@@ -88,11 +88,11 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -630,6 +630,8 @@ absl::StatusOr<nb::object> PyClient::MakePythonCallbackUsingHostSendAndRecv(
   return callback_capsule;
 }
 
+// TODO(b/394595987): Remove this API method once we remove the call from
+// mlir.py's get_emit_python_callback.
 absl::StatusOr<std::pair<uint64_t, nb::object>>
 PyClient::GetEmitPythonCallbackDescriptor(
     nb::callable callable, absl::Span<Shape const> operand_shapes,
@@ -645,6 +647,20 @@ PyClient::GetEmitPythonCallbackDescriptor(
         static_cast<ifrt::LoadedHostCallback*>(ptr)->DropRef();
       });
   return std::make_pair(descriptor, nb::object(std::move(callback_capsule)));
+}
+
+// TODO(b/394595987): Deprecate / clean up this API method to remove the need
+// for `operand_shapes` and `result_shapes` once we can remove
+// xla::PyClient::GetEmitPythonCallbackDescriptor (called by mlir.py's
+// get_emit_python_callback for CPU/GPU devices).
+absl::StatusOr<nb::object> PyClient::GetEmitPythonCallback(
+    nb::callable callable) {
+  absl::Span<const Shape> operand_shapes;
+  absl::Span<const Shape> result_shapes;
+  TF_ASSIGN_OR_RETURN(auto descriptor_and_callback,
+                      GetEmitPythonCallbackDescriptor(
+                          std::move(callable), operand_shapes, result_shapes));
+  return nb::object(std::move(descriptor_and_callback.second));
 }
 
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
@@ -764,6 +780,9 @@ PyType_Slot PyClient::slots_[] = {
            xla::ValueOrThrowWrapper(&PyClient::GetEmitPythonCallbackDescriptor),
            nb::arg("callable"), nb::arg("operand_shapes"),
            nb::arg("result_shapes").none() = nb::none())
+      .def("get_emit_python_callback",
+           xla::ValueOrThrowWrapper(&PyClient::GetEmitPythonCallback),
+           nb::arg("callable"))
       .def("make_python_callback_from_host_send_and_recv",
            xla::ValueOrThrowWrapper(
                &PyClient::MakePythonCallbackUsingHostSendAndRecv),

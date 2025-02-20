@@ -210,6 +210,10 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
       .WillByDefault([this](int local_hardware_id) {
         return delegated_->LookupAddressableDevice(local_hardware_id);
       });
+  ON_CALL(*this, MakeDeviceList)
+      .WillByDefault([this](absl::Span<xla::ifrt::Device* const> devices) {
+        return delegated_->MakeDeviceList(devices);
+      });
   ON_CALL(*this, GetDefaultCompiler).WillByDefault([this]() {
     return delegated_->GetDefaultCompiler();
   });

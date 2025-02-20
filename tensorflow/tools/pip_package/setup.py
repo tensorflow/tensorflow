@@ -113,7 +113,7 @@ REQUIRED_PACKAGES = [
     'keras-nightly >= 3.6.0.dev',
     'numpy >= 1.26.0, < 2.2.0',
     'h5py >= 3.11.0',
-    'ml_dtypes >= 0.4.0, < 1.0.0',
+    'ml_dtypes >= 0.5.1, < 1.0.0',
 ]
 
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
@@ -159,7 +159,7 @@ EXTRA_PACKAGES['and-cuda'] = [
     'nvidia-curand-cu12 == 10.3.6.82',
     'nvidia-cusolver-cu12 == 11.6.3.83',
     'nvidia-cusparse-cu12 == 12.5.1.3',
-    'nvidia-nccl-cu12 == 2.23.4',
+    'nvidia-nccl-cu12 == 2.25.1',
     'nvidia-nvjitlink-cu12 == 12.5.82',
 ]
 
@@ -247,7 +247,7 @@ class InstallHeaders(Command):
         '/tensorflow/include/external/com_google_absl': '',
         '/tensorflow/include/external/ducc': '/ducc',
         '/tensorflow/include/external/eigen_archive': '',
-        '/tensorflow/include/external/ml_dtypes': '/ml_dtypes',
+        '/tensorflow/include/external/ml_dtypes_py': '',
         '/tensorflow/include/tensorflow/compiler/xla': (
             '/tensorflow/include/xla'
         ),
@@ -358,7 +358,7 @@ headers = (
     + list(find_files('*.inc', 'tensorflow/include/external/com_google_absl'))
     + list(find_files('*.h', 'tensorflow/include/external/ducc/google'))
     + list(find_files('*', 'tensorflow/include/external/eigen_archive'))
-    + list(find_files('*.h', 'tensorflow/include/external/ml_dtypes'))
+    + list(find_files('*.h', 'tensorflow/include/external/ml_dtypes_py'))
 )
 
 # Quite a lot of setup() options are different if this is a collaborator package

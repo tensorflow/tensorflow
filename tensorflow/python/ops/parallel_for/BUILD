@@ -14,7 +14,6 @@ py_strict_library(
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":control_flow_ops",
         ":gradients",
@@ -24,7 +23,6 @@ py_strict_library(
 py_strict_library(
     name = "pfor_lib",
     srcs = ["pfor.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/core:protos_all_py",
@@ -82,7 +80,6 @@ py_strict_library(
 py_strict_library(
     name = "control_flow_ops",
     srcs = ["control_flow_ops.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":pfor_lib",
@@ -115,7 +112,6 @@ py_strict_library(
 py_strict_library(
     name = "test_util",
     srcs = ["test_util.py"],
-    srcs_version = "PY3",
     deps = [
         ":control_flow_ops",
         "//tensorflow/python/ops:variables",
@@ -276,7 +272,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "gradients",
     srcs = ["gradients.py"],
-    srcs_version = "PY3",
     deps = [
         ":control_flow_ops",
         "//tensorflow/python/framework:ops",
@@ -322,8 +317,6 @@ cuda_py_strict_test(
 py_strict_test(
     name = "pfor_test",
     srcs = ["pfor_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":pfor_lib",
         "//tensorflow/python/framework:constant_op",

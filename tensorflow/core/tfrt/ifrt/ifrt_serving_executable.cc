@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -433,7 +434,9 @@ IfrtServingExecutable::CreateExecutableSynchronously(
       .platform_name = ifrt_client_->platform_name(),
   };
 
-  if (tf2hlo_arg.platform_name != xla::CudaName()) {
+  // Only get device topology for clients that implement GetTopologyForDevices.
+  if (tf2hlo_arg.platform_name != xla::CudaName() &&
+      !absl::StartsWith(ifrt_client_->runtime_type(), "proxy/")) {
     TF_ASSIGN_OR_RETURN(
         tf2hlo_arg.topology,
         ifrt_client_->GetTopologyForDevices(assigned_device_list_));
