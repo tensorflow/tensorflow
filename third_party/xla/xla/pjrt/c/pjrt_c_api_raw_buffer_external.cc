@@ -82,12 +82,13 @@ absl::StatusOr<size_t> PjRtCApiRawBuffer_GetOnDeviceSizeInBytes(
 
 xla::PjRtFuture<> PjRtCApiRawBuffer_CopyRawHostToDevice(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
-    PJRT_RawBuffer* buffer, void* dst, int64_t offset, int64_t transfer_size) {
+    PJRT_RawBuffer* buffer, const void* src, int64_t offset,
+    int64_t transfer_size) {
   PJRT_RawBuffer_CopyRawHostToDevice_Args args;
   args.struct_size = PJRT_RawBuffer_CopyRawHostToDevice_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer;
-  args.dst = dst;
+  args.src = src;
   args.offset = offset;
   args.transfer_size = transfer_size;
   args.event = nullptr;
@@ -143,10 +144,11 @@ absl::StatusOr<size_t> PjRtCApiRawBuffer::GetOnDeviceSizeInBytes() const {
                                                         c_buffer_);
 }
 
-PjRtFuture<> PjRtCApiRawBuffer::CopyRawHostToDevice(void* dst, int64_t offset,
+PjRtFuture<> PjRtCApiRawBuffer::CopyRawHostToDevice(const void* src,
+                                                    int64_t offset,
                                                     int64_t transfer_size) {
   return pjrt::PjRtCApiRawBuffer_CopyRawHostToDevice(
-      c_api_, c_extension_, c_buffer_, dst, offset, transfer_size);
+      c_api_, c_extension_, c_buffer_, src, offset, transfer_size);
 }
 
 PjRtFuture<> PjRtCApiRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
