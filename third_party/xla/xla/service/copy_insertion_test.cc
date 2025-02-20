@@ -4492,9 +4492,9 @@ TEST_F(CopyInsertionTest, NonCopyableChainPipelinedSeparatedParts) {
     HloModule test
 
     while_body {
-      param = (b(f32[16]), f32[16]) parameter(0)
-      noncopyable0-w = b(f32[16]) get-tuple-element(param), index=0
-      pw1 = f32[16] get-tuple-element(param), index=1
+      param = (f32[16], b(f32[16])) parameter(0)
+      noncopyable0-w = b(f32[16]) get-tuple-element(param), index=1
+      pw1 = f32[16] get-tuple-element(param), index=0
       dw0 = f32[16] add(pw1, pw1)
       call0-w = (b(f32[16]), f32[16], token[])
         custom-call(noncopyable0-w, dw0), custom_call_target="update0",
@@ -4514,12 +4514,12 @@ TEST_F(CopyInsertionTest, NonCopyableChainPipelinedSeparatedParts) {
         custom_call_target="Unpin", output_to_operand_aliasing={{}:(0, {})}
       add = f32[16] add(dw4, unpin-noncopyable1-w) // keep noncopyable1-w alive.
       dw5 = f32[16] add(add, dw3) // Keep dw3 alive.
-      ROOT tuple = (b(f32[16]), f32[16]) tuple(noncopyable2-w, dw5)
+      ROOT tuple = (f32[16], b(f32[16])) tuple(dw5, noncopyable2-w)
     }
 
     // Infinite loop to keep IR small.
     while_condition {
-      pc = (b(f32[16]), f32[16]) parameter(0)
+      pc = (f32[16], b(f32[16])) parameter(0)
       ROOT infinite_loop = pred[] constant(true)
     }
 
@@ -4535,11 +4535,11 @@ TEST_F(CopyInsertionTest, NonCopyableChainPipelinedSeparatedParts) {
         output_to_operand_aliasing={{0}:(0, {})}
       noncopyable0 = b(f32[16]) get-tuple-element(call0), index=0
       d2 = f32[16] get-tuple-element(call0), index=1
-      init = (b(f32[16]), f32[16]) tuple(noncopyable0, d2)
-      while = (b(f32[16]), f32[16]) while(init), condition=while_condition,
+      init = (f32[16], b(f32[16])) tuple(d2, noncopyable0)
+      while = (f32[16], b(f32[16])) while(init), condition=while_condition,
         body=while_body
-      noncopyable1 = b(f32[16]) get-tuple-element(while), index=0
-      d3 = f32[16] get-tuple-element(while), index=1
+      noncopyable1 = b(f32[16]) get-tuple-element(while), index=1
+      d3 = f32[16] get-tuple-element(while), index=0
       call1 = (b(f32[16]), f32[16], token[])
         custom-call(noncopyable1), custom_call_target="update1",
         output_to_operand_aliasing={{0}:(0, {})}

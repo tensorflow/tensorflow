@@ -144,7 +144,8 @@ class BufferValue {
   // Whether this buffer contains a tuple.
   bool IsTuple() const { return is_tuple_; }
 
-  // Whether this buffer contains an array.
+  // Whether this buffer contains an array, that is, has an array shape or a
+  // buffer shape.
   bool IsArray() const { return is_array_; }
 
   bool operator<(const BufferValue& other) const { return id_ < other.id_; }
@@ -173,6 +174,8 @@ class BufferValue {
   // delete LogicalBuffer and this class, we don't refactor all the shared
   // features from LogicalBuffer and HloValue into this class.
   Id id_ : 62;
+  // Whether the buffer corresponds to array storage, that is, the buffer
+  // has an array-shape or a buffer-shape.
   bool is_array_ : 1;
   bool is_tuple_ : 1;
   Color color_ = kInvalidColor;

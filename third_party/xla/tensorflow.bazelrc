@@ -195,6 +195,8 @@ build:cuda --@local_config_cuda//:enable_cuda
 build:cuda --config=cuda_version
 # This flag is needed to include CUDA libraries.
 build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
+# TODO(ybaturina): Remove this once the wheel size issue is fixed.
+build:cuda --config=clang_local
 
 # This configuration is used for building the wheels.
 build:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false

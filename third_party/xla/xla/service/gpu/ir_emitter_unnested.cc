@@ -1139,7 +1139,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
             operands.push_back(std::nullopt);
             return absl::OkStatus();
           }
-          if (!subshape.IsArray()) {
+          if (!subshape.IsArrayOrBuffer()) {
             return absl::OkStatus();
           }
           TF_ASSIGN_OR_RETURN(auto slice,
@@ -1156,7 +1156,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
           results.push_back(std::nullopt);
           return absl::OkStatus();
         }
-        if (!subshape.IsArray()) {
+        if (!subshape.IsArrayOrBuffer()) {
           return absl::OkStatus();
         }
         TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForHlo(instr, index));
@@ -2950,6 +2950,11 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         return EmitTritonCustomCall(custom_call);
       }
       if (instr->custom_call_target() == kNopCustomCallTarget) {
+        return absl::OkStatus();
+      }
+      if (instr->custom_call_target() == kPinCustomCallTarget ||
+          instr->custom_call_target() == kUnpinCustomCallTarget ||
+          instr->custom_call_target() == kCreateBufferCustomCallTarget) {
         return absl::OkStatus();
       }
       return EmitCustomCallThunk(custom_call);
