@@ -966,7 +966,7 @@ class Function(core.PolymorphicFunction, trackable.Trackable):
 
     def _check_inputs(args, kwargs):
       all_inputs = list(args) + list(kwargs.values())
-      # Emtpy input is okay.
+      # Empty input is okay.
       if not all_inputs:
         return
       if any(map(is_tensor_spec, all_inputs)) and any(
@@ -1441,7 +1441,7 @@ def function(
   True
 
   `ConcreteFunction`s can be executed just like `PolymorphicFunction`s, but their
-  input is resticted to the types to which they're specialized.
+  input is restricted to the types to which they're specialized.
 
   ## Retracing
 

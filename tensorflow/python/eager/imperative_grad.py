@@ -48,7 +48,7 @@ def imperative_grad(tape,
     sources were generated. Should have the same length as sources. Only needs
     to be populated if unconnected_gradients is 'zero'.
    unconnected_gradients: determines the value returned if the target and
-    sources are unconnected. When 'none' the value returned is None wheras when
+    sources are unconnected. When 'none' the value returned is None whereas when
     'zero' a zero tensor in the same shape as the sources is returned.
 
   Returns:

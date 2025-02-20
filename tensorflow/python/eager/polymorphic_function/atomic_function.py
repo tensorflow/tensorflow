@@ -55,7 +55,7 @@ class CallOptions:
   # Used by ACD to list Ops/Tensors/Callables that must be called in advance.
   control_captures: List[Any] = dataclasses.field(default_factory=list)
 
-  # Determines what kind of partitoned call is used for this function.
+  # Determines what kind of partitioned call is used for this function.
   is_stateful: bool = False
 
 
