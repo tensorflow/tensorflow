@@ -137,6 +137,9 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
                      ToString(tiled_hlo.indexing_map())));
   }
 
+  // Here we rely on IndexingMap internals. Symbols are split into range vars
+  // and runtime variables. The range vars come first, followed by the runtime
+  // variables.
   std::vector<AffineExpr> symbol_lower_bounds(
       tile_offset_indexing.GetRangeVarsCount(),
       mlir::getAffineConstantExpr(0, mlir_context));
