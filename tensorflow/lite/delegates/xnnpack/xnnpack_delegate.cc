@@ -2802,17 +2802,6 @@ class Subgraph {
         return VisitFloorNode(subgraph, delegate, logging_context, node_index,
                               node, context->tensors, input_output_tensors);
       case kTfLiteBuiltinGelu: {
-        const TfLiteGeluParams* gelu_params =
-            static_cast<const TfLiteGeluParams*>(node->builtin_data);
-        // Sorry, we don't do approximates here, only the real thing to full
-        // accuracy.
-        // TODO(b/338031720) - Add support for the tanh-based GELU
-        // approximation.
-        if (gelu_params->approximate) {
-          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                   "Unsupported approximate Gelu.");
-          return kTfLiteError;
-        }
         return VisitGeluNode(subgraph, delegate, logging_context, node_index,
                              node, context->tensors, input_output_tensors);
       }
