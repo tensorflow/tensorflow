@@ -53,6 +53,7 @@ class TritonTest : public GpuCodegenTest {
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     debug_options
         .set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
+    debug_options.set_xla_gpu_crash_on_verification_failures(true);
     return debug_options;
   }
 
@@ -241,7 +242,7 @@ TEST_F(TritonTest, FuseSubchannelDequantizationFused) {
 
       a = f32[2,16,1,2048]{3,2,1,0} parameter(2)
       a.bitcast = f32[2,16,2048]{2,1,0} bitcast(a)
-      ROOT dot = f32[16,4096,2]{2,1,0} dot(w.bitcast, a.bitcast), 
+      ROOT dot = f32[16,4096,2]{2,1,0} dot(w.bitcast, a.bitcast),
           lhs_batch_dims={0},
           lhs_contracting_dims={1},
           rhs_batch_dims={1},
@@ -264,6 +265,65 @@ TEST_F(TritonTest, FuseSubchannelDequantizationFused) {
               "block_m":16,
               "block_n":16,
               "block_k":256,
+              "split_k":1,
+              "num_stages":1,
+              "num_warps":2,
+              "num_ctas":1
+            }
+          },
+          "force_earliest_schedule":false
+        }
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonTest, FuseSubchannelDequantizationFusedWithSmallBlockKSize) {
+  // This test is a Subchannel Dequantization fusion.
+  // We run the fused version to avoid the hlo passes.
+  // The case where we do:
+  // param -> bitcast -> broadcast -> multiply -> bitcast -> dot.
+  constexpr absl::string_view kHloText = R"(
+    HloModule FuseSubchannelDequantizationFused
+
+    fusion {
+      w.s4 = s4[16,2048,4096]{2,1,0:E(4)} parameter(0)
+      w.s8 = s8[16,2048,4096]{2,1,0} convert(w.s4)
+      w.s8.bitcast = s8[16,8,256,4096]{3,2,1,0} bitcast(w.s8)
+      w.f32 = f32[16,8,256,4096]{3,2,1,0} convert(w.s8.bitcast)
+
+      s.f32 = f32[16,8,1,4096]{3,2,1,0} parameter(1)
+      s.f32.bitcast = f32[16,8,4096]{2,1,0} bitcast(s.f32)
+      s.f32.broadcast = f32[16,8,256,4096]{3,2,1,0} broadcast(s.f32.bitcast), dimensions={0,1,3}
+      w = f32[16,8,256,4096]{3,2,1,0} multiply(w.f32, s.f32.broadcast)
+      w.bitcast = f32[16,2048,4096]{2,1,0} bitcast(w)
+
+      a = f32[2,16,1,2048]{3,2,1,0} parameter(2)
+      a.bitcast = f32[2,16,2048]{2,1,0} bitcast(a)
+      ROOT dot = f32[16,4096,2]{2,1,0} dot(w.bitcast, a.bitcast), 
+          lhs_batch_dims={0},
+          lhs_contracting_dims={1},
+          rhs_batch_dims={1},
+          rhs_contracting_dims={2}
+    } // fusion
+
+    ENTRY main {
+      w.s4 = s4[16,2048,4096]{2,1,0:E(4)} parameter(0)
+      s.f32 = f32[16,8,1,4096]{3,2,1,0} parameter(1)
+      a.f32 = f32[2,16,1,2048]{3,2,1,0} parameter(2)
+      ROOT fusion = f32[16,4096,2]{2,1,0} fusion(w.s4, s.f32, a.f32),
+        kind=kCustom,
+        calls=fusion,
+        backend_config={
+          "operation_queue_id":"0",
+          "wait_on_operation_queues":[],
+          "fusion_backend_config":{
+            "kind":"__triton_gemm",
+            "triton_gemm_config":{
+              "block_m":16,
+              "block_n":16,
+              "block_k":16,
               "split_k":1,
               "num_stages":1,
               "num_warps":2,

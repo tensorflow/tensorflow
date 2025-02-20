@@ -1154,7 +1154,8 @@ class MatMulEmitterHelper {
   // given side & hlo instruction.
   SmallVector<Value> EmitIncrements(EmitterLocOpBuilder b, const Side& side,
                                     const HloInstruction& hlo,
-                                    int64_t contracting_dimension) {
+                                    int64_t contracting_dimension, Value ki,
+                                    int64_t block_k) {
     SmallVector<Value> increments;
     for (const DimProperties& dim : side.tiled_dims) {
       if (NonTrivialTiledDimensionHasNoIterationAtParameter(side.scope, hlo,
@@ -1165,8 +1166,27 @@ class MatMulEmitterHelper {
       if (dim.index == contracting_dimension) {
         const TensorIterationSpec::DimIterationSpec* spec =
             analysis_.IterSpec(side.scope, &hlo, dim.index);
-        if (spec->at(0).broadcast_multiplier > 1) {
-          increments.push_back(Cst32(b, 1));
+        int64_t broadcast = spec->at(0).broadcast_multiplier;
+        if (broadcast > 1) {
+          if (broadcast != block_k) {
+            // If the broadcast multiplier is not equal to the block_k, we need
+            // to compute the increment conditionally. It has to advance by 1
+            // if the current block is the last one in the broadcasted fragment,
+            // and by 0 otherwise. Advance by 1 is computed as:
+            // ((ki + block_k) / broadcast) * broadcast == ki + block_k.
+            Value one = Cst32(b, 1);
+            Value zero = Cst32(b, 0);
+            Value add = b.create<ma::AddIOp>(ki, Cst32(b, block_k));
+            Value div = b.create<ma::DivSIOp>(add, Cst32(b, broadcast));
+            Value mul = b.create<ma::MulIOp>(div, Cst32(b, broadcast));
+            Value cond = b.create<ma::CmpIOp>(ma::CmpIPredicate::eq, mul, add);
+            Value one_or_zero = b.create<ma::SelectOp>(cond, one, zero);
+            increments.push_back(one_or_zero);
+          } else {
+            // If the broadcast multiplier is equal to the block_k, we can
+            // advance by 1 unconditionally.
+            increments.push_back(Cst32(b, 1));
+          }
         } else {
           increments.push_back(
               CreateConst(b, b.getI32Type(), dim.block_size * dim.split_value));
@@ -1370,9 +1390,12 @@ class MatMulEmitterHelper {
           boundary_checks));
     }
     if (specs.back()->at(0).broadcast_multiplier > 1) {
-      if (properties.block_size != specs.back()->at(0).broadcast_multiplier) {
+      if (specs.back()->at(0).broadcast_multiplier % properties.block_size) {
         return UncompilableMatmul(
-            "Broadcast has a different size than the block size.");
+            absl::StrCat("Broadcast multiplier is not a multiple of the block "
+                         "size. block_size: ",
+                         properties.block_size, " vs broadcast_multiplier: ",
+                         specs.back()->at(0).broadcast_multiplier));
       }
       if (properties.split_value > 1) {
         return UncompilableMatmul(
@@ -1998,22 +2021,21 @@ class IterableInput {
  public:
   IterableInput(size_t iter_arg_index, size_t operand_index,
                 int contracting_dimension, Type type, Type storage_type,
-                SmallVector<Value> increments, const HloInstruction* hlo_instr,
-                const Side* side, std::vector<int32_t> boundary_checks)
+                const HloInstruction* hlo_instr, const Side* side,
+                std::vector<int32_t> boundary_checks, int64_t block_k)
       : iter_arg_index_(iter_arg_index),
         operand_index_(operand_index),
         contracting_dimension_(contracting_dimension),
         type_(type),
         storage_type_(storage_type),
-        increments_(increments),
+        block_k_(block_k),
         hlo_instr_(hlo_instr),
         side_(side),
         boundary_checks_(boundary_checks) {};
 
   static absl::StatusOr<IterableInput> CreateIterableInput(
       size_t iter_arg_index, EmitterLocOpBuilder& b, const MatMulDims& dims,
-      const Side* side, const HloInstruction* hlo_instr,
-      MatMulEmitterHelper& emitter) {
+      const Side* side, const HloInstruction* hlo_instr, int64_t block_k) {
     Type input_ty;
     if (side->scope == TritonFusionAnalysis::Scope::META) {
       input_ty = b.getI16Type();
@@ -2026,13 +2048,23 @@ class IterableInput {
             ? dims.rhs_contracting_dim_idx
             : dims.lhs_contracting_dim_idx;
 
-    SmallVector<Value> increments =
-        emitter.EmitIncrements(b, *side, *hlo_instr, contracting_dimension);
-
     return IterableInput(iter_arg_index, GetOperandIndex(side->scope),
                          contracting_dimension, input_ty,
-                         StorageType(b, input_ty), increments, hlo_instr, side,
-                         /*boundary_checks=*/{});
+                         StorageType(b, input_ty), hlo_instr, side,
+                         /*boundary_checks=*/{}, block_k);
+  }
+
+  Value EmitAdvance(EmitterLocOpBuilder b, MatMulEmitterHelper& emitter,
+                    Value ki, ValueRange iter_args) const {
+    SmallVector<Value> increments = emitter.EmitIncrements(
+        b, *side_, *hlo_instr_, contracting_dimension_, ki, block_k_);
+
+    if (increments.empty()) {
+      return iter_args[iter_arg_index_];
+    }
+
+    const Value& iter_arg = iter_args[iter_arg_index_];
+    return b.create<mt::AdvanceOp>(iter_arg.getType(), iter_arg, increments);
   }
 
   Value EmitLoad(EmitterLocOpBuilder b, ValueRange args) const {
@@ -2054,8 +2086,8 @@ class IterableInput {
   Type type_;
   // Storage type of the input (in case it is different & needs to be casted).
   Type storage_type_;
-  // Represents how much to increment the input on each loop iteration.
-  SmallVector<Value> increments_;
+  // Step size of the contracting dimension.
+  int64_t block_k_;
 
   // Necessary for some operations at the moment. Maybe could be refactored out.
   const HloInstruction* hlo_instr_;
@@ -2243,10 +2275,10 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
 
   llvm::SmallVector<IterableInput> inputs;
 
-  auto body_builder = [&](mlir::OpBuilder&, mlir::Location, Value ki,
-                          ValueRange iter_args) -> void {
-    SmallVector<Value> iter_args_next;
-    iter_args_next.reserve(iter_args.size());
+  auto body_builder_callback = [&](mlir::OpBuilder&, mlir::Location, Value ki,
+                                   ValueRange iter_args) -> void {
+    SmallVector<Value> args_for_yield;
+    args_for_yield.reserve(iter_args.size());
     std::array<absl::flat_hash_map<const HloInstruction*, Value>, 3> values;
 
     // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
@@ -2255,14 +2287,7 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
       CHECK(values[input.operand_index_]
                 .insert({input.hlo_instr_, param_value})
                 .second);
-
-      if (input.increments_.empty()) {
-        iter_args_next.push_back(iter_args[input.iter_arg_index_]);
-      } else {
-        iter_args_next.push_back(b.create<mt::AdvanceOp>(
-            iter_args[input.iter_arg_index_].getType(),
-            iter_args[input.iter_arg_index_], input.increments_));
-      }
+      args_for_yield.push_back(input.EmitAdvance(b, emitter, ki, iter_args));
     }
 
     // Emit all operations of LHS and RHS scopes.
@@ -2293,9 +2318,9 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     }
 
     if (is_sparse) {
-      iter_args_next.push_back(b.create<mt::xla::SparseDotOp>(
+      args_for_yield.push_back(b.create<mt::xla::SparseDotOp>(
           dot_input_lhs, dot_input_rhs, iter_args.back(), dot_input_meta));
-      b.create<mlir::scf::YieldOp>(iter_args_next);
+      b.create<mlir::scf::YieldOp>(args_for_yield);
       return;
     }
 
@@ -2341,9 +2366,9 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
                               /*inputPrecision=*/dot_precision,
                               /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
     }
-    iter_args_next.push_back(accumulator_next);
+    args_for_yield.push_back(accumulator_next);
 
-    b.create<mlir::scf::YieldOp>(iter_args_next);
+    b.create<mlir::scf::YieldOp>(args_for_yield);
     return;
   };
 
@@ -2351,7 +2376,7 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
   // that change with every loop iteration and are passed between them.
   SmallVector<Value> iter_args;
   iter_args.reserve(lsize + rsize + 1 + is_sparse);
-
+  int64_t step_k = block_k * split_k;
   for (const Side* side : scopes.input_scopes()) {
     for (const HloInstruction* input_hlo : ScopeInputs(analysis, side->scope)) {
       TF_ASSIGN_OR_RETURN(SmallVector<Value> arguments,
@@ -2359,7 +2384,7 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
       TF_ASSIGN_OR_RETURN(
           IterableInput iter_input,
           IterableInput::CreateIterableInput(iter_args.size(), b, dims, side,
-                                             input_hlo, emitter));
+                                             input_hlo, step_k));
       TF_ASSIGN_OR_RETURN(Value tensor_ptr,
                           emitter.EmitTensorPointer(
                               b, input_hlo, *side, arguments, scopes.pid_k(),
@@ -2371,10 +2396,10 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
 
   iter_args.push_back(accumulator_init);
   Value acc_final = b.create<mlir::scf::ForOp>(
-                         /*lowerBound=*/c32(0),
-                         /*upperBound=*/c32(dims.k),
-                         /*step=*/c32(block_k * split_k),
-                         /*iterArgs=*/iter_args, body_builder)
+                         /*lowerBound*/ c32(0),
+                         /*upperBound*/ c32(dims.k),
+                         /*step*/ c32(step_k),
+                         /*iterArgs*/ iter_args, body_builder_callback)
                         .getResult(iter_args.size() - 1);
   absl::flat_hash_map<const HloInstruction*, Value> values_out;
   TF_ASSIGN_OR_RETURN(Type acc_final_ty,

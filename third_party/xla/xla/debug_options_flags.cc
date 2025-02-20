@@ -1776,8 +1776,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           ->xla_gpu_experimental_enable_subchannel_dequantisation_fusion(),
       "Enable fusion for the subchannel dequantisation sequences like "
       "[x,z]param -> [x,y,z]broadcast -> [x*y,z]bitcast -> multiply -> dot. "
-      "Compilation can fail with Broadcast has a different size than the block "
-      "size. Performance can be worse, because some block sizes / split-k > 1 "
+      "Performance can be worse, because some block sizes / split-k > 1 "
       "is not considered for subchannel dequant fusions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_triton_heroless_priority_fusion",
