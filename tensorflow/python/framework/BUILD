@@ -321,6 +321,7 @@ py_strict_library(
 py_strict_library(
     name = "byte_swap_tensor",
     srcs = ["byte_swap_tensor.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":dtypes",
         "//tensorflow/core:protos_all_py",
@@ -1811,13 +1812,19 @@ py_strict_library(
 py_strict_library(
     name = "tensor_shape",
     srcs = ["tensor_shape.py"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//smartass/brain/configure/python:__pkg__",
+    # "//third_party/py/reverb:__subpackages__",
+    # "//third_party/py/tf_agents:__subpackages__",
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     visibility = [
-        "//smartass/brain/configure/python:__pkg__",
-        "//tensorflow:internal",
-        "//third_party/py/reverb:__subpackages__",
-        "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
@@ -1959,7 +1966,13 @@ pytype_strict_library(
 pytype_strict_library(
     name = "importer",
     srcs = ["importer.py"],
-    visibility = visibility + ["//tensorflow:internal"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + ["//tensorflow:internal"],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":c_api_util",
         ":device",
@@ -1983,7 +1996,13 @@ pytype_strict_library(
 pytype_strict_library(
     name = "load_library",
     srcs = ["load_library.py"],
-    visibility = visibility + ["//tensorflow:internal"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + ["//tensorflow:internal"],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":_pywrap_python_op_gen",
         "//tensorflow/python/client:pywrap_tf_session",
@@ -2104,6 +2123,7 @@ pytype_strict_library(
 py_strict_library(
     name = "versions",
     srcs = ["versions.py"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/util:tf_export",

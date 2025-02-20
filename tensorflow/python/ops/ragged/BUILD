@@ -467,6 +467,7 @@ py_strict_library(
         "ragged_tensor_shape.py",
         "ragged_where_op.py",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":ragged_config",
         ":ragged_tensor_value",

@@ -199,11 +199,17 @@ py_strict_library(
 py_strict_library(
     name = "context",
     srcs = ["context.py"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//smartass/brain/ops:__subpackages__",
+    # "//third_party/py/jax_tpu_embedding:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     visibility = [
-        "//smartass/brain/ops:__subpackages__",
-        "//tensorflow:internal",
-        "//third_party/py/jax_tpu_embedding:__subpackages__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":cancellation",
         ":execute",

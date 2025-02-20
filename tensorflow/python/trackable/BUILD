@@ -145,6 +145,7 @@ py_strict_library(
 py_strict_library(
     name = "autotrackable",
     srcs = ["autotrackable.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":base",
         ":data_structures",
