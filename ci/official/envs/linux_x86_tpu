@@ -20,4 +20,4 @@ TFCI_LIB_SUFFIX="-tpu-linux-x86_64"
 TFCI_WHL_BAZEL_TEST_ENABLE=0
 TFCI_WHL_IMPORT_TEST_ENABLE=0
 TFCI_WHL_SIZE_LIMIT=580M
-TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS="-f https://storage.googleapis.com/libtpu-tf-releases/index.html"
+TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS="-f https://storage.googleapis.com/libtpu-wheels/index.html"
