@@ -101,8 +101,8 @@ ENTRY entry {
   const HloInstruction* rhs = nullptr;
   EXPECT_THAT(fusion->fused_expression_root(),
               GmockMatch(match::Dot(match::Fusion(&lhs), match::Fusion(&rhs))));
-  EXPECT_THAT(*lhs, OutputTileSizesIs(ElementsAre(64, 32)));
-  EXPECT_THAT(*rhs, OutputTileSizesIs(ElementsAre(32, 256)));
+  EXPECT_THAT(*lhs, OutputTileSizesIs(ElementsAre(32)));
+  EXPECT_THAT(*rhs, OutputTileSizesIs(ElementsAre(32)));
 }
 
 // Tests hoisting of bitcasts which would otherwise trigger unsatisfiable
@@ -146,8 +146,8 @@ ENTRY entry {
   const HloInstruction* rhs = nullptr;
   EXPECT_THAT(fusion->fused_expression_root(),
               GmockMatch(match::Dot(match::Fusion(&lhs), match::Fusion(&rhs))));
-  EXPECT_THAT(*lhs, OutputTileSizesIs(ElementsAre(32, 16)));
-  EXPECT_THAT(*rhs, OutputTileSizesIs(ElementsAre(16, 64)));
+  EXPECT_THAT(*lhs, OutputTileSizesIs(ElementsAre(16)));
+  EXPECT_THAT(*rhs, OutputTileSizesIs(ElementsAre(16)));
 }
 
 TEST_F(NestGemmFusionTest, SupportsTwoBitcastsFromSameParameter) {
@@ -187,8 +187,8 @@ ENTRY entry {
   const HloInstruction* rhs = nullptr;
   EXPECT_THAT(fusion->fused_expression_root(),
               GmockMatch(match::Dot(match::Fusion(&lhs), match::Fusion(&rhs))));
-  EXPECT_THAT(*lhs, OutputTileSizesIs(ElementsAre(4, 8)));
-  EXPECT_THAT(*rhs, OutputTileSizesIs(ElementsAre(8, 4)));
+  EXPECT_THAT(*lhs, OutputTileSizesIs(ElementsAre(8)));
+  EXPECT_THAT(*rhs, OutputTileSizesIs(ElementsAre(8)));
 }
 
 TEST_F(NestGemmFusionTest, BitcastsCanBeHoistedPastOtherBitcasts) {
