@@ -31,12 +31,14 @@
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
@@ -44,6 +46,7 @@
 namespace litert {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::FloatNear;
 using ::testing::Pointwise;
 
@@ -135,46 +138,80 @@ Expected<std::vector<LiteRtTensorBuffer>> CreateOutputBuffers(
 }
 
 TEST(CompiledModelTest, Basic) {
-  std::string path = testing::GetTestFilePath(kModelFileName);
-
-  LiteRtModel model;
-  ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
-
-  LiteRtCompilationOptions compilation_options;
-  ASSERT_EQ(LiteRtCreateCompilationOptions(&compilation_options),
-            kLiteRtStatusOk);
-  ASSERT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
-                compilation_options, kLiteRtHwAcceleratorCpu),
-            kLiteRtStatusOk);
-
+  // Environment setup.
   LITERT_ASSERT_OK_AND_ASSIGN(LiteRtEnvironmentT::Ptr env,
                               LiteRtEnvironmentT::CreateWithOptions({}));
   LiteRtEnvironmentT* env_ptr = env.release();
 
-  LITERT_ASSERT_OK_AND_ASSIGN(
-      LiteRtCompiledModelT::Ptr compiled_model,
-      LiteRtCompiledModelT::Create(
-          env_ptr, model,
-          LiteRtCompiledModelT::OptionsPtr(compilation_options)));
+  // Create LiteRtModel and check signatures.
+  std::string path = testing::GetTestFilePath(kModelFileName);
+  LiteRtModel model;
+  ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
 
   absl::Span<LiteRtSignature> signatures = model->Signatures();
   ASSERT_EQ(signatures.size(), 1);
   absl::string_view signature_key = signatures[0]->Key();
   EXPECT_EQ(signature_key, LiteRtSignatureT::kDefaultSignatureKey);
 
+  const std::vector<std::string>& input_names = signatures[0]->InputNames();
+  EXPECT_THAT(input_names, ElementsAre("arg0", "arg1"));
+
+  const std::vector<std::string>& output_names = signatures[0]->OutputNames();
+  EXPECT_THAT(output_names, ElementsAre("tfl.add"));
+
+  // Create CompiledModel with options.
+  LiteRtCompilationOptions compilation_options;
+  ASSERT_EQ(LiteRtCreateCompilationOptions(&compilation_options),
+            kLiteRtStatusOk);
+  ASSERT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
+                compilation_options, kLiteRtHwAcceleratorCpu),
+            kLiteRtStatusOk);
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtCompiledModelT::Ptr compiled_model,
+      LiteRtCompiledModelT::Create(
+          env_ptr, model,
+          LiteRtCompiledModelT::OptionsPtr(compilation_options)));
+
+  // Check CompiledModel buffer requirements.
+  // input and output expect host memory.
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtTensorBufferRequirementsT * input_buffer_requirements_arg0,
+      compiled_model->GetInputBufferRequirements(
+          /*signature_key=*/LiteRtSignatureT::kDefaultSignatureKey,
+          /*input_index=*/0));
+  const std::vector<LiteRtTensorBufferType>& input_buffer_types_arg0 =
+      input_buffer_requirements_arg0->SupportedBufferTypes();
+  EXPECT_THAT(input_buffer_types_arg0,
+              ElementsAre(kLiteRtTensorBufferTypeHostMemory));
+
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtTensorBufferRequirementsT * input_buffer_requirements_arg1,
+      compiled_model->GetInputBufferRequirements(
+          /*signature_key=*/LiteRtSignatureT::kDefaultSignatureKey,
+          /*input_index=*/1));
+  const std::vector<LiteRtTensorBufferType>& input_buffer_types_arg1 =
+      input_buffer_requirements_arg1->SupportedBufferTypes();
+  EXPECT_THAT(input_buffer_types_arg1,
+              ElementsAre(kLiteRtTensorBufferTypeHostMemory));
+
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtTensorBufferRequirementsT * output_buffer_requirements,
+      compiled_model->GetOutputBufferRequirements(
+          /*signature_key=*/LiteRtSignatureT::kDefaultSignatureKey,
+          /*output_index=*/0));
+  const std::vector<LiteRtTensorBufferType>& output_buffer_types =
+      output_buffer_requirements->SupportedBufferTypes();
+  EXPECT_THAT(output_buffer_types,
+              ElementsAre(kLiteRtTensorBufferTypeHostMemory));
+
+  // Create and fill input and output LiteRtTensorBuffers.
   LITERT_ASSERT_OK_AND_ASSIGN(
       std::vector<LiteRtTensorBuffer> input_buffers,
       CreateInputBuffers(model, *compiled_model, signature_key));
-
   LITERT_ASSERT_OK_AND_ASSIGN(
       std::vector<LiteRtTensorBuffer> output_buffers,
       CreateOutputBuffers(model, *compiled_model, signature_key));
 
-  // Fill model inputs.
-  const std::vector<std::string>& input_names = signatures[0]->InputNames();
-  EXPECT_EQ(input_names.size(), 2);
-  EXPECT_EQ(input_names.at(0), "arg0");
-  EXPECT_EQ(input_names.at(1), "arg1");
   LiteRtTensorBuffer& input_0_buffer = input_buffers[0];
   {
     TensorBuffer cpu_buffer(input_0_buffer, /*owned=*/false);
@@ -193,9 +230,6 @@ TEST(CompiledModelTest, Basic) {
   compiled_model->Run(signature_key, input_buffers, output_buffers, async);
 
   // Check model output.
-  const std::vector<std::string>& output_names = signatures[0]->OutputNames();
-  EXPECT_EQ(output_names.size(), 1);
-  EXPECT_EQ(output_names.at(0), "tfl.add");
   {
     void* host_mem_addr;
     ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr),
@@ -225,32 +259,72 @@ TEST(CompiledModelTest, UseAhwbBuffer) {
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices";
 #endif
+  // Environment setup.
   LITERT_ASSERT_OK_AND_ASSIGN(LiteRtEnvironmentT::Ptr env,
                               LiteRtEnvironmentT::CreateWithOptions({}));
   LiteRtEnvironmentT* env_ptr = env.release();
 
+  // Create LiteRtModel and check signatures.
   std::string path = testing::GetTestFilePath(kModelFileName);
   LiteRtModel model;
   ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
-
-  LiteRtCompilationOptions compilation_options;
-  ASSERT_EQ(LiteRtCreateCompilationOptions(&compilation_options),
-            kLiteRtStatusOk);
-  ASSERT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
-                compilation_options, kLiteRtHwAcceleratorCpu),
-            kLiteRtStatusOk);
-
-  LITERT_ASSERT_OK_AND_ASSIGN(
-      LiteRtCompiledModelT::Ptr compiled_model,
-      LiteRtCompiledModelT::Create(
-          env_ptr, model,
-          LiteRtCompiledModelT::OptionsPtr(compilation_options)));
 
   absl::Span<LiteRtSignature> signatures = model->Signatures();
   ASSERT_EQ(signatures.size(), 1);
   absl::string_view signature_key = signatures[0]->Key();
   EXPECT_EQ(signature_key, LiteRtSignatureT::kDefaultSignatureKey);
 
+  const std::vector<std::string>& input_names = signatures[0]->InputNames();
+  EXPECT_THAT(input_names, ElementsAre("arg0", "arg1"));
+
+  const std::vector<std::string>& output_names = signatures[0]->OutputNames();
+  EXPECT_THAT(output_names, ElementsAre("tfl.add"));
+
+  // Create CompiledModel with options.
+  LiteRtCompilationOptions compilation_options;
+  ASSERT_EQ(LiteRtCreateCompilationOptions(&compilation_options),
+            kLiteRtStatusOk);
+  ASSERT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
+                compilation_options, kLiteRtHwAcceleratorCpu),
+            kLiteRtStatusOk);
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtCompiledModelT::Ptr compiled_model,
+      LiteRtCompiledModelT::Create(
+          env_ptr, model,
+          LiteRtCompiledModelT::OptionsPtr(compilation_options)));
+
+  // Check input and output buffer requirements expect host memory.
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtTensorBufferRequirementsT * input_buffer_requirements_arg0,
+      compiled_model->GetInputBufferRequirements(
+          /*signature_key=*/LiteRtSignatureT::kDefaultSignatureKey,
+          /*input_index=*/0));
+  const std::vector<LiteRtTensorBufferType>& input_buffer_types_arg0 =
+      input_buffer_requirements_arg0->SupportedBufferTypes();
+  EXPECT_THAT(input_buffer_types_arg0,
+              ElementsAre(kLiteRtTensorBufferTypeHostMemory));
+
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtTensorBufferRequirementsT * input_buffer_requirements_arg1,
+      compiled_model->GetInputBufferRequirements(
+          /*signature_key=*/LiteRtSignatureT::kDefaultSignatureKey,
+          /*input_index=*/1));
+  const std::vector<LiteRtTensorBufferType>& input_buffer_types_arg1 =
+      input_buffer_requirements_arg1->SupportedBufferTypes();
+  EXPECT_THAT(input_buffer_types_arg1,
+              ElementsAre(kLiteRtTensorBufferTypeHostMemory));
+
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtTensorBufferRequirementsT * output_buffer_requirements,
+      compiled_model->GetOutputBufferRequirements(
+          /*signature_key=*/LiteRtSignatureT::kDefaultSignatureKey,
+          /*output_index=*/0));
+  const std::vector<LiteRtTensorBufferType>& output_buffer_types =
+      output_buffer_requirements->SupportedBufferTypes();
+  EXPECT_THAT(output_buffer_types,
+              ElementsAre(kLiteRtTensorBufferTypeHostMemory));
+
+  // Create and fill input and output buffers.
   LITERT_ASSERT_OK_AND_ASSIGN(
       std::vector<LiteRtTensorBuffer> input_buffers,
       CreateInputBuffers(model, signature_key, kLiteRtTensorBufferTypeAhwb,
@@ -261,11 +335,6 @@ TEST(CompiledModelTest, UseAhwbBuffer) {
       CreateOutputBuffers(model, signature_key, kLiteRtTensorBufferTypeAhwb,
                           sizeof(float) * kTestOutputSize));
 
-  // Fill model inputs.
-  const std::vector<std::string>& input_names = signatures[0]->InputNames();
-  EXPECT_EQ(input_names.size(), 2);
-  EXPECT_EQ(input_names.at(0), "arg0");
-  EXPECT_EQ(input_names.at(1), "arg1");
   LiteRtTensorBuffer& input_0_buffer = input_buffers[0];
   EXPECT_EQ(input_0_buffer->buffer_type(), kLiteRtTensorBufferTypeAhwb);
   {
@@ -285,9 +354,6 @@ TEST(CompiledModelTest, UseAhwbBuffer) {
   compiled_model->Run(signature_key, input_buffers, output_buffers, async);
 
   // Check model output.
-  const std::vector<std::string>& output_names = signatures[0]->OutputNames();
-  EXPECT_EQ(output_names.size(), 1);
-  EXPECT_EQ(output_names.at(0), "tfl.add");
   {
     void* host_mem_addr;
     ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr),
@@ -323,22 +389,73 @@ TEST(CompiledModelTest, UseOpenCLBuffer) {
     GTEST_SKIP() << "OpenCL buffers are not supported on this platform; "
                     "skipping the test";
   }
-  std::string path = testing::GetTestFilePath(kModelFileName);
-  LiteRtModel model;
-  ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
-
+  // Environment setup.
   LITERT_ASSERT_OK_AND_ASSIGN(LiteRtEnvironmentT::Ptr env,
                               LiteRtEnvironmentT::CreateWithOptions({}));
   LiteRtEnvironmentT* env_ptr = env.release();
 
-  LITERT_ASSERT_OK_AND_ASSIGN(LiteRtCompiledModelT::Ptr compiled_model,
-                              LiteRtCompiledModelT::Create(env_ptr, model));
+  // Create LiteRtModel and check signatures.
+  std::string path = testing::GetTestFilePath(kModelFileName);
+  LiteRtModel model;
+  ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
 
   absl::Span<LiteRtSignature> signatures = model->Signatures();
   ASSERT_EQ(signatures.size(), 1);
   absl::string_view signature_key = signatures[0]->Key();
   EXPECT_EQ(signature_key, LiteRtSignatureT::kDefaultSignatureKey);
 
+  const std::vector<std::string>& input_names = signatures[0]->InputNames();
+  EXPECT_THAT(input_names, ElementsAre("arg0", "arg1"));
+
+  const std::vector<std::string>& output_names = signatures[0]->OutputNames();
+  EXPECT_THAT(output_names, ElementsAre("tfl.add"));
+
+  // Create CompiledModel with options.
+  LiteRtCompilationOptions compilation_options;
+  ASSERT_EQ(LiteRtCreateCompilationOptions(&compilation_options),
+            kLiteRtStatusOk);
+  ASSERT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
+                compilation_options, kLiteRtHwAcceleratorCpu),
+            kLiteRtStatusOk);
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtCompiledModelT::Ptr compiled_model,
+      LiteRtCompiledModelT::Create(
+          env_ptr, model,
+          LiteRtCompiledModelT::OptionsPtr(compilation_options)));
+
+  // Check ComiledModel buffer requirements.
+  // input and output expect host memory.
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtTensorBufferRequirementsT * input_buffer_requirements_arg0,
+      compiled_model->GetInputBufferRequirements(
+          /*signature_key=*/LiteRtSignatureT::kDefaultSignatureKey,
+          /*input_index=*/0));
+  const std::vector<LiteRtTensorBufferType>& input_buffer_types_arg0 =
+      input_buffer_requirements_arg0->SupportedBufferTypes();
+  EXPECT_THAT(input_buffer_types_arg0,
+              ElementsAre(kLiteRtTensorBufferTypeHostMemory));
+
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtTensorBufferRequirementsT * input_buffer_requirements_arg1,
+      compiled_model->GetInputBufferRequirements(
+          /*signature_key=*/LiteRtSignatureT::kDefaultSignatureKey,
+          /*input_index=*/1));
+  const std::vector<LiteRtTensorBufferType>& input_buffer_types_arg1 =
+      input_buffer_requirements_arg1->SupportedBufferTypes();
+  EXPECT_THAT(input_buffer_types_arg1,
+              ElementsAre(kLiteRtTensorBufferTypeHostMemory));
+
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      LiteRtTensorBufferRequirementsT * output_buffer_requirements,
+      compiled_model->GetOutputBufferRequirements(
+          /*signature_key=*/LiteRtSignatureT::kDefaultSignatureKey,
+          /*output_index=*/0));
+  const std::vector<LiteRtTensorBufferType>& output_buffer_types =
+      output_buffer_requirements->SupportedBufferTypes();
+  EXPECT_THAT(output_buffer_types,
+              ElementsAre(kLiteRtTensorBufferTypeHostMemory));
+
+  // Create and fill input and output buffers.
   LITERT_ASSERT_OK_AND_ASSIGN(
       std::vector<LiteRtTensorBuffer> input_buffers,
       CreateInputBuffers(model, signature_key, kLiteRtTensorBufferTypeOpenCl,
@@ -350,10 +467,6 @@ TEST(CompiledModelTest, UseOpenCLBuffer) {
                           sizeof(float) * kTestOutputSize));
 
   // Fill model inputs.
-  const std::vector<std::string>& input_names = signatures[0]->InputNames();
-  EXPECT_EQ(input_names.size(), 2);
-  EXPECT_EQ(input_names.at(0), "arg0");
-  EXPECT_EQ(input_names.at(1), "arg1");
   LiteRtTensorBuffer& input_0_buffer = input_buffers[0];
   EXPECT_EQ(input_0_buffer->buffer_type(), kLiteRtTensorBufferTypeOpenCl);
   {
@@ -373,9 +486,6 @@ TEST(CompiledModelTest, UseOpenCLBuffer) {
   compiled_model->Run(signature_key, input_buffers, output_buffers, async);
 
   // Check model output.
-  const std::vector<std::string>& output_names = signatures[0]->OutputNames();
-  EXPECT_EQ(output_names.size(), 1);
-  EXPECT_EQ(output_names.at(0), "tfl.add");
   {
     void* host_mem_addr;
     ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr),

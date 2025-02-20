@@ -44,15 +44,6 @@ namespace xla::cpu {
 // A work queue that partitions `num_tasks` tasks into `num_partitions`
 // partitions processed by parallel workers.
 class WorkQueue {
-  // Align all atomic counters to a cache line boundary to avoid false
-  // sharing between multiple worker threads.
-  static constexpr size_t kAtomicAlignment =
-#if defined(__cpp_lib_hardware_interference_size)
-      std::hardware_destructive_interference_size;
-#else
-      64;
-#endif
-
  public:
   WorkQueue(size_t num_tasks, size_t num_partitions);
 
@@ -68,6 +59,15 @@ class WorkQueue {
  private:
   friend class Worker;
 
+  // Align all atomic counters to a cache line boundary to avoid false
+  // sharing between multiple worker threads.
+  static constexpr size_t kAtomicAlignment =
+#if defined(__cpp_lib_hardware_interference_size)
+      std::hardware_destructive_interference_size;
+#else
+      64;
+#endif
+
   struct Partition {
     void Initialize(size_t begin, size_t end);
 
@@ -79,11 +79,19 @@ class WorkQueue {
 
   // An empty work queue flag to stop worker threads from looping through all
   // partitions looking for work.
-  bool empty() const { return empty_.load(std::memory_order_relaxed); }
-  void set_empty() { empty_.store(true, std::memory_order_relaxed); }
+  bool IsEmpty() const { return empty_.load(std::memory_order_relaxed); }
+  void SetEmpty() { empty_.store(true, std::memory_order_relaxed); }
+
+  // Notify that one of the workers switched to the work stealing mode.
+  void NotifyWorkStealingWorker();
+
+  // Decrements the number of work stealing workers by at most `max_workers` and
+  // returns the number of decremented work stealing workers.
+  size_t DecrementWorkStealingWorkers(size_t max_workers);
 
   absl::FixedArray<Partition, 32> partitions_;
   alignas(kAtomicAlignment) std::atomic<bool> empty_;
+  alignas(kAtomicAlignment) std::atomic<size_t> num_work_stealing_workers_;
 };
 
 // Worker processes tasks from the work queue starting from the assigned
@@ -136,11 +144,12 @@ inline void WorkQueue::Partition::Initialize(size_t begin, size_t end) {
 }
 
 inline WorkQueue::WorkQueue(size_t num_tasks, size_t num_partitions)
-    : partitions_(num_partitions), empty_(num_tasks == 0) {
+    : partitions_(num_partitions),
+      empty_(num_tasks == 0),
+      num_work_stealing_workers_(0) {
   size_t partition_size =
       tsl::MathUtil::FloorOfRatio(num_tasks, num_partitions);
   size_t rem_tasks = num_tasks % num_partitions;
-
   for (size_t i = 0, begin = 0, end = 0; i < num_partitions; ++i, begin = end) {
     end = begin + partition_size + ((i < rem_tasks) ? 1 : 0);
     partitions_[i].Initialize(begin, end);
@@ -169,6 +178,23 @@ inline std::pair<size_t, size_t> WorkQueue::partition_range(
   return {partitions_[partition_index].begin, partitions_[partition_index].end};
 }
 
+inline void WorkQueue::NotifyWorkStealingWorker() {
+  num_work_stealing_workers_.fetch_add(1, std::memory_order_relaxed);
+}
+
+inline size_t WorkQueue::DecrementWorkStealingWorkers(size_t max_workers) {
+  size_t n = num_work_stealing_workers_.load(std::memory_order_relaxed);
+
+  size_t decrement = std::min(n, max_workers);
+  while (decrement && !num_work_stealing_workers_.compare_exchange_weak(
+                          n, n - decrement, std::memory_order_relaxed,
+                          std::memory_order_relaxed)) {
+    decrement = std::min(n, max_workers);
+  }
+
+  return decrement;
+}
+
 inline Worker::Worker(size_t worker_index, WorkQueue* queue)
     : worker_index_(worker_index),
       partition_index_(worker_index),
@@ -178,7 +204,13 @@ inline std::optional<size_t> Worker::Pop() {
   std::optional<size_t> task = queue_->Pop(partition_index_);
   if (ABSL_PREDICT_TRUE(task)) return task;
 
-  while (!task.has_value() && !queue_->empty()) {
+  // If we didn't find a task in the initially assigned partition, notify the
+  // work queue that we are switching to work stealing mode.
+  if (ABSL_PREDICT_FALSE(partition_index_ == worker_index_)) {
+    queue_->NotifyWorkStealingWorker();
+  }
+
+  while (!task.has_value() && !queue_->IsEmpty()) {
     // Wrap around to the first partition.
     if (ABSL_PREDICT_FALSE(++partition_index_ >= queue_->num_partitions())) {
       partition_index_ = 0;
@@ -186,7 +218,7 @@ inline std::optional<size_t> Worker::Pop() {
 
     // We checked all partitions and got back to the partition we started from.
     if (ABSL_PREDICT_FALSE(partition_index_ == worker_index_)) {
-      queue_->set_empty();
+      queue_->SetEmpty();
       break;
     }
 
@@ -220,6 +252,7 @@ Worker::ParallelizeContext<ParallelTask>::ParallelizeContext(
       parallel_task(std::forward<ParallelTask>(parallel_task)) {}
 
 template <typename ParallelTask>
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 void Worker::ParallelizeWithContext(ParallelizeContext<ParallelTask>* ctx,
                                     uint16_t start_index, uint16_t end_index) {
   DCHECK_LT(start_index, end_index) << "Invalid worker index range";
@@ -238,11 +271,26 @@ void Worker::ParallelizeWithContext(ParallelizeContext<ParallelTask>* ctx,
   while (end_index - start_index > 1) {
     // If work queue is empty, we don't need to keep enqueuing more workers and
     // can simply count down for the remaining workers.
-    if (ABSL_PREDICT_FALSE(ctx->work_queue.empty())) {
+    if (ABSL_PREDICT_FALSE(ctx->work_queue.IsEmpty())) {
       count_down(end_index - start_index, absl::OkStatus());
       return;
     }
 
+    // If we have workers in the work stealing mode, we can skip enqueuing
+    // more tasks as existing workers will process remaining partitions. By
+    // doing this optimization we avoid unnecessary thread pool overheads.
+    size_t skip_workers =
+        ctx->work_queue.DecrementWorkStealingWorkers(end_index - start_index);
+    if (ABSL_PREDICT_FALSE(skip_workers > 0)) {
+      DCHECK_LE(skip_workers, end_index - start_index);
+      count_down(skip_workers, absl::OkStatus());
+
+      end_index -= skip_workers;
+      if (start_index == end_index) return;
+      if (end_index - start_index == 1) break;
+    }
+
+    DCHECK_GE(end_index - start_index, 1);
     uint16_t mid_index = (start_index + end_index) / 2;
     ctx->device->enqueueNoNotification([ctx, mid_index, end_index] {
       ParallelizeWithContext(ctx, mid_index, end_index);
