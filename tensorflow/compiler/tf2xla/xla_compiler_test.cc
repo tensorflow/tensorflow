@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"

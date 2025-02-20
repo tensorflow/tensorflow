@@ -16,30 +16,15 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
-
-/*static*/ absl::StatusOr<std::unique_ptr<HloModule>>
-HloRunnerInterface::CreateModuleFromString(const absl::string_view hlo_string,
-                                           const DebugOptions& debug_options) {
-  HloModuleConfig config;
-  config.set_debug_options(debug_options);
-  return ParseAndReturnUnverifiedModule(hlo_string, config);
-}
 
 namespace {
 template <class T>
@@ -51,52 +36,7 @@ std::vector<T*> MakePointerVector(absl::Span<T> input_vec) {
   }
   return output_pointers;
 }
-
 }  // namespace
-
-absl::StatusOr<std::unique_ptr<HloModule>>
-HloRunnerInterface::CreateModuleFromProto(const HloModuleProto& proto,
-                                          const DebugOptions& debug_options) {
-  TF_ASSIGN_OR_RETURN(
-      HloModuleConfig config,
-      HloModule::CreateModuleConfigFromProto(proto, debug_options));
-  return HloModule::CreateFromProto(proto, config);
-}
-
-/*static*/ absl::StatusOr<std::unique_ptr<HloModule>>
-HloRunnerInterface::ReadModuleFromBinaryProtoFile(
-    absl::string_view filename, const DebugOptions& debug_options) {
-  HloProto proto;
-  TF_RETURN_IF_ERROR(
-      tsl::ReadBinaryProto(tsl::Env::Default(), std::string(filename), &proto));
-  return CreateModuleFromProto(proto.hlo_module(), debug_options);
-}
-
-/*static*/ absl::StatusOr<std::unique_ptr<HloModule>>
-HloRunnerInterface::ReadModuleFromHloTextFile(absl::string_view filename,
-                                              const DebugOptions& debug_options,
-                                              const HloParserOptions& options) {
-  std::string hlo_string;
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
-                                           std::string(filename), &hlo_string));
-  HloModuleConfig config;
-  config.set_debug_options(debug_options);
-  return ParseAndReturnUnverifiedModule(hlo_string, config, options);
-}
-
-/*static*/ absl::StatusOr<std::unique_ptr<HloModule>>
-HloRunnerInterface::ReadModuleFromModuleBinaryProtofile(
-    const std::string& filename, const DebugOptions& debug_options) {
-  HloModuleProto module_proto;
-  TF_RETURN_IF_ERROR(
-      tsl::ReadBinaryProto(tsl::Env::Default(), filename, &module_proto));
-
-  TF_ASSIGN_OR_RETURN(
-      HloModuleConfig module_config,
-      HloModule::CreateModuleConfigFromProto(module_proto, debug_options));
-
-  return HloModule::CreateFromProto(module_proto, module_config);
-}
 
 absl::StatusOr<Literal> HloRunnerInterface::Execute(
     std::unique_ptr<HloModule> module, absl::Span<const Literal> arguments,
