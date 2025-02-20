@@ -65,6 +65,7 @@ pybind_extension(
         "@FP16//:__subpackages__",
         "@FXdiv//:__subpackages__",
         "@gemmlowp//:__subpackages__",
+        "@go_googleapis//google/api:annotations_proto",
         "@gif//:__subpackages__",
         "@highwayhash//:__subpackages__",
         "@hwloc//:__subpackages__",
