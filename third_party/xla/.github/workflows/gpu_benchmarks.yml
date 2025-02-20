@@ -70,12 +70,12 @@ jobs:
       # TODO(juliagmt): Add more performance-criticalHLOs to benchmark.
       - name: Run xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo
         run: |
-        ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=gpu --log_output=True --use_spmd_partitioning --xla_gpu_dump_xspace_to=xla/results/xspace.pbtxt xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo
+          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=gpu --log_output=True --use_spmd_partitioning --xla_gpu_dump_xspace_to=xla/results/xspace.pbtxt xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo
 
       - name: Compute the cost of gpu_hlo_pass.hlo
         run: |
-        PWD=$(pwd)
-        bazel run //xla/tools:compute_cost -- --input=$PWD/xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo --format=hlo --gpu
+          PWD=$(pwd)
+          bazel run //xla/tools:compute_cost -- --input=$PWD/xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo --format=hlo --gpu
 
       - name: Upload XSpace
         uses: actions/upload-artifact@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
