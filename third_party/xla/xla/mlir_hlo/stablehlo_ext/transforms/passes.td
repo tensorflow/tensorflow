@@ -66,7 +66,7 @@ def StablehloFlattenEntryFunctionTuplesPass : Pass<"stablehlo-ext-expand-flatten
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
 
-def StablehloLegalizeQuantCompositePass : Pass<"legalize-quant-composite", "ModuleOp"> {
+def StablehloLegalizeQuantCompositePass : Pass<"stablehlo-ext-legalize-quant-composite", "ModuleOp"> {
   let summary = "Lowers the quantization related composites op to native quantized ops.";
   let description = [{
     Legalizes the following composite ops to native quantized ops:
@@ -112,3 +112,12 @@ def StablehloLegalizeQuantCompositePass : Pass<"legalize-quant-composite", "Modu
     "stablehlo::StablehloDialect"
   ];
 }
+
+def StablehloAddQDQAfterConvPass : Pass<"stablehlo-ext-add-qdq-after-conv", "ModuleOp"> {
+  let summary = "Add quant and dequant ops after convolution op.";
+ let dependentDialects = [
+    "mlir::quant::QuantDialect",
+    "stablehlo::StablehloDialect"
+  ];
+} 
+

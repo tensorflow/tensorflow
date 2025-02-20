@@ -1085,6 +1085,7 @@ cc_library(
     srcs = [
         "stablehlo_ext/transforms/chlo_recompose_ops.cpp",
         "stablehlo_ext/transforms/sdy_refine_shapes.cpp",
+        "stablehlo_ext/transforms/stablehlo_add_quant_dequant_conv.cpp",
         "stablehlo_ext/transforms/stablehlo_canonicalize_dynamism.cpp",
         "stablehlo_ext/transforms/stablehlo_flatten_entry_function_tuples.cpp",
         "stablehlo_ext/transforms/stablehlo_flatten_tuple.cpp",
@@ -1118,6 +1119,7 @@ cc_library(
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_ops_inc_gen",
+        "@stablehlo//:stablehlo_pass_utils",
         "@stablehlo//:stablehlo_passes",
         "@stablehlo//:stablehlo_passes_optimization",
         "@stablehlo//:stablehlo_type_inference",

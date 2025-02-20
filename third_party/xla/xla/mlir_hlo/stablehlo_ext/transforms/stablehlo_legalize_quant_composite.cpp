@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/transforms/PassUtils.h"
 
 namespace mlir {
 namespace stablehlo_ext {
@@ -223,23 +224,6 @@ LogicalResult getQuantCompositeAttributes(
   return success();
 }
 
-Type getQuantizedElementType(Location loc, Type storageType, Type expressedType,
-                             ArrayRef<double> scales,
-                             ArrayRef<int64_t> zeroPoints,
-                             int32_t quantizedDimension, int64_t storageTypeMin,
-                             int64_t storageTypeMax) {
-  unsigned flags =
-      !storageType.isUnsignedInteger() ? quant::QuantizationFlags::Signed : 0;
-  if (quantizedDimension == -1) {
-    return quant::UniformQuantizedType::getChecked(
-        loc, flags, storageType, expressedType, scales[0], zeroPoints[0],
-        storageTypeMin, storageTypeMax);
-  }
-  return quant::UniformQuantizedPerAxisType::getChecked(
-      loc, flags, storageType, expressedType, scales, zeroPoints,
-      quantizedDimension, storageTypeMin, storageTypeMax);
-}
-
 class RewriteQuantizeCompositeOp
     : public OpRewritePattern<stablehlo::CompositeOp> {
   using OpRewritePattern<stablehlo::CompositeOp>::OpRewritePattern;
@@ -265,7 +249,7 @@ class RewriteQuantizeCompositeOp
     }
 
     Type expressedType = getElementTypeOrSelf(op.getInputs().front().getType());
-    Type quantizedElementType = getQuantizedElementType(
+    Type quantizedElementType = stablehlo::getQuantizedElementType(
         op.getLoc(), storageType, expressedType, scales, zeroPoints,
         quantizedDimension, storageTypeMin, storageTypeMax);
     RankedTensorType outputQuantizedType = RankedTensorType::get(
@@ -305,7 +289,7 @@ class RewriteDequantizeCompositeOp
 
     Type expressedType =
         getElementTypeOrSelf(op.getResults().front().getType());
-    Type quantizedElementType = getQuantizedElementType(
+    Type quantizedElementType = stablehlo::getQuantizedElementType(
         op.getLoc(), storageType, expressedType, scales, zeroPoints,
         quantizedDimension, storageTypeMin, storageTypeMax);
     auto quantizedType =
@@ -386,7 +370,7 @@ class RewriteFakeQuantCompositeOp
     }
 
     Type expressedType = getElementTypeOrSelf(op.getType(0));
-    Type quantizedElementType = getQuantizedElementType(
+    Type quantizedElementType = stablehlo::getQuantizedElementType(
         op.getLoc(), storageType, expressedType, scales, zeroPoints,
         quantizedDimension, storageTypeMin, storageTypeMax);
     RankedTensorType quantizedType = RankedTensorType::get(

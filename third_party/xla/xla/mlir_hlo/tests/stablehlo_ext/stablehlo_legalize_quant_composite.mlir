@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --legalize-quant-composite --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: mlir-hlo-opt --stablehlo-ext-legalize-quant-composite --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: func @fake_quant
 func.func @fake_quant(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
