@@ -382,8 +382,8 @@ cc_library(
     hdrs = ["litert_accelerator_registration.h"],
     deps = [
         ":litert_accelerator",
+        ":litert_accelerator_options",
         ":litert_common",
-        ":litert_compiled_model",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/core:accelerator",
         "//tensorflow/lite/experimental/litert/core:environment",
@@ -395,9 +395,9 @@ cc_test(
     srcs = ["litert_accelerator_registration_test.cc"],
     deps = [
         ":litert_accelerator",
+        ":litert_accelerator_options",
         ":litert_accelerator_registration",
         ":litert_common",
-        ":litert_compiled_model",
         ":litert_environment",
         "//tensorflow/lite/experimental/litert/core:accelerator",
         "@com_google_googletest//:gtest_main",

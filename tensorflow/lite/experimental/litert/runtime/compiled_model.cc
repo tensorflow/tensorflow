@@ -23,8 +23,12 @@
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/core/accelerator_model_compilation_data.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerators/dispatch/dispatch_accelerator.h"
 
 #if defined(__ANDROID__)
 #include <android/hardware_buffer.h>
@@ -160,58 +164,49 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
     return Unexpected(kLiteRtStatusErrorRuntimeFailure);
   }
 
-  if (hardware_accelerators & kLiteRtHwAcceleratorGpu) {
-    // Query GPU accelerator and apply the delegate.
-    // TODO b/394958439 - Support NPU delegate here.
-    auto& registry = env->GetAcceleratorRegistry();
-    for (int i = 0; i < registry.size(); ++i) {
-      auto accelerator = registry.Get(i);
-      LiteRtHwAcceleratorSet accelerator_supported_hardware;
-      if ((*accelerator)
-              ->GetHardwareSupport(*accelerator,
-                                   &accelerator_supported_hardware) !=
-          kLiteRtStatusOk) {
-        continue;
+  // TODO: b/397399776 - Auto register accelerators
+  LiteRtRegisterNpuAccelerator(env, /*options=*/nullptr);
+
+  // Add a new link in the accelerator compilation options that holds some data
+  // that is computed during model compilation.
+  LITERT_ASSIGN_OR_RETURN(auto model_compilation_data,
+                          litert::ModelCompilationData::Create());
+  model_compilation_data->allocation_base = model_buffer;
+  LITERT_RETURN_IF_ERROR(LiteRtAddAcceleratorCompilationOptions(
+      compilation_options.get(), model_compilation_data.release()));
+
+  // Retrieve the accelerator options list.
+  LiteRtAcceleratorCompilationOptions accelerator_options = nullptr;
+  LITERT_RETURN_IF_ERROR(LiteRtGetAcceleratorCompilationOptions(
+      compilation_options.get(), &accelerator_options));
+
+  // Apply the first accelerator matching the requested hardware support to the
+  // model.
+  for (auto& accelerator : env->GetAcceleratorRegistry()) {
+    LiteRtHwAcceleratorSet accelerator_supported_hardware;
+    LITERT_RETURN_IF_ERROR(accelerator->GetHardwareSupport(
+        accelerator.get(), &accelerator_supported_hardware));
+    if (hardware_accelerators & accelerator_supported_hardware) {
+      TfLiteOpaqueDelegate* delegate_ptr = nullptr;
+      LITERT_RETURN_IF_ERROR(
+          accelerator->CreateDelegate(accelerator.get(), accelerator_options,
+                                      reinterpret_cast<void**>(&delegate_ptr)));
+
+      auto delegate = tflite::TfLiteOpaqueDelegateUniquePtr(
+          delegate_ptr, reinterpret_cast<void (*)(TfLiteOpaqueDelegate*)>(
+                            accelerator->DestroyDelegate));
+
+      if (compiled_model->interp_->ModifyGraphWithDelegate(delegate_ptr) !=
+          kTfLiteOk) {
+        return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                          "Failed to modify graph with delegate");
       }
-      if (accelerator_supported_hardware & kLiteRtHwAcceleratorGpu) {
-        TfLiteOpaqueDelegate* delegate_ptr = nullptr;
-        if ((*accelerator)
-                ->CreateDelegate(*accelerator,
-                                 reinterpret_cast<void**>(&delegate_ptr)) !=
-            kLiteRtStatusOk) {
-          continue;
-        }
-        auto delegate = tflite::TfLiteOpaqueDelegateUniquePtr(
-            delegate_ptr, reinterpret_cast<void (*)(TfLiteOpaqueDelegate*)>(
-                              (*accelerator)->DestroyDelegate));
-        if (compiled_model->interp_->ModifyGraphWithDelegate(delegate_ptr) !=
-            kTfLiteOk) {
-          return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                            "Failed to modify graph with delegate");
-        }
-        compiled_model->RegisterDelegate(std::move(delegate));
-        break;
-      }
+      compiled_model->RegisterDelegate(std::move(delegate));
+
+      // We only apply the first matching accelerator.
+      break;
     }
   }
-
-  // Apply the dispatch delegate, unconditionally, since the loaded model may
-  // have been compiled for NPU at AOT.
-  // TODO: b/394958439 - Get the DispatchDelegate from the AcceleratorRegistry.
-  auto dispatch_delegate_options =
-      litert::CreateDispatchDelegateOptionsPtr(*env);
-  LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
-                                           model_buffer);
-  auto dispatch_delegate = litert::CreateDispatchDelegatePtr(
-      *env, std::move(dispatch_delegate_options));
-  if (auto status = compiled_model->interp_->ModifyGraphWithDelegate(
-          dispatch_delegate.get());
-      status != kTfLiteOk) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Failed to modify graph with delegate");
-  }
-
-  compiled_model->RegisterDelegate(std::move(dispatch_delegate));
 
   compiled_model->CheckCpuTensors();
   return compiled_model;

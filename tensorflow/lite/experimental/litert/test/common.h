@@ -48,6 +48,7 @@ class UniqueTestDirectory {
 };
 
 std::string GetTestFilePath(absl::string_view filename);
+std::string GetTfliteFilePath(absl::string_view filename);
 
 Model LoadTestFileModel(absl::string_view filename);
 

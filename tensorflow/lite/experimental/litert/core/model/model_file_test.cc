@@ -210,6 +210,21 @@ TEST(ModelLoadTest, WithSignature) {
   EXPECT_EQ(&signature->get().GetSubgraph(), litert_model.MainSubgraph());
 }
 
+TEST(ModelLoadTest, NoSignature) {
+  auto model = *Model::CreateFromFile(testing::GetTfliteFilePath(
+      "java/demo/app/src/main/assets/mobilenet_v1_1.0_224.tflite"));
+  if (!model) {
+    GTEST_SKIP() << "Model file is not available.";
+  }
+  auto& litert_model = *model.Get();
+  auto signature =
+      litert_model.FindSignature(LiteRtSignatureT::kDefaultSignatureKey);
+  ASSERT_TRUE(signature);
+  EXPECT_EQ(signature->get().InputNames().size(), 1);
+  EXPECT_EQ(signature->get().OutputNames().size(), 1);
+  EXPECT_EQ(&signature->get().GetSubgraph(), litert_model.MainSubgraph());
+}
+
 TEST(ModelSerializeTest, WithSignature) {
   auto model = litert::testing::LoadTestFileModel(kAddSimple);
   auto& litert_model = *model.Get();
