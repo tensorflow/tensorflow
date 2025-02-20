@@ -60,9 +60,10 @@ class WorkQueue {
   // if the partition is complete.
   std::optional<size_t> Pop(size_t partition_index);
 
-  size_t num_partitions() const { return partitions_.size(); }
+  // Return the partition [begin, end) task range.
+  std::pair<size_t, size_t> partition_range(size_t partition_index) const;
 
-  bool empty() const { return empty_.load(std::memory_order_relaxed); }
+  size_t num_partitions() const { return partitions_.size(); }
 
  private:
   friend class Worker;
@@ -75,6 +76,11 @@ class WorkQueue {
     size_t begin;
     size_t end;
   };
+
+  // An empty work queue flag to stop worker threads from looping through all
+  // partitions looking for work.
+  bool empty() const { return empty_.load(std::memory_order_relaxed); }
+  void set_empty() { empty_.store(true, std::memory_order_relaxed); }
 
   absl::FixedArray<Partition, 32> partitions_;
   alignas(kAtomicAlignment) std::atomic<bool> empty_;
@@ -131,9 +137,12 @@ inline void WorkQueue::Partition::Initialize(size_t begin, size_t end) {
 
 inline WorkQueue::WorkQueue(size_t num_tasks, size_t num_partitions)
     : partitions_(num_partitions), empty_(num_tasks == 0) {
-  size_t partition_size = tsl::MathUtil::CeilOfRatio(num_tasks, num_partitions);
-  for (size_t i = 0, begin = 0, end = partition_size; i < num_partitions;
-       ++i, begin = end, end = std::min(num_tasks, end + partition_size)) {
+  size_t partition_size =
+      tsl::MathUtil::FloorOfRatio(num_tasks, num_partitions);
+  size_t rem_tasks = num_tasks % num_partitions;
+
+  for (size_t i = 0, begin = 0, end = 0; i < num_partitions; ++i, begin = end) {
+    end = begin + partition_size + ((i < rem_tasks) ? 1 : 0);
     partitions_[i].Initialize(begin, end);
   }
 }
@@ -154,6 +163,12 @@ inline std::optional<size_t> WorkQueue::Pop(size_t partition_index) {
                                                     : std::make_optional(index);
 }
 
+inline std::pair<size_t, size_t> WorkQueue::partition_range(
+    size_t partition_index) const {
+  DCHECK(partition_index < partitions_.size()) << "Invalid partition index";
+  return {partitions_[partition_index].begin, partitions_[partition_index].end};
+}
+
 inline Worker::Worker(size_t worker_index, WorkQueue* queue)
     : worker_index_(worker_index),
       partition_index_(worker_index),
@@ -171,7 +186,7 @@ inline std::optional<size_t> Worker::Pop() {
 
     // We checked all partitions and got back to the partition we started from.
     if (ABSL_PREDICT_FALSE(partition_index_ == worker_index_)) {
-      queue_->empty_.store(true, std::memory_order_relaxed);
+      queue_->set_empty();
       break;
     }
 
