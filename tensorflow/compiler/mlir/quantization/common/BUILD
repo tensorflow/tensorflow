@@ -119,7 +119,7 @@ cc_library(
     deps = [
         ":func",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:context",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
