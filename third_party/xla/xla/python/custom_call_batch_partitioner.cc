@@ -129,7 +129,9 @@ std::optional<std::pair<HloSharding, int64_t>> ComputeBatchShardingFromOperands(
 
   if (hlo->operand_count() == 1) {
     const HloInstruction* operand = hlo->operand(0);
-    CHECK(operand->has_sharding());
+    if (!operand->has_sharding()) {
+      return std::nullopt;
+    }
     return std::make_pair(GetBatchSharding(operand->sharding(), num_batch_dims),
                           num_batch_dims);
   }
@@ -138,9 +140,13 @@ std::optional<std::pair<HloSharding, int64_t>> ComputeBatchShardingFromOperands(
   target_shardings.reserve(hlo->operand_count());
   for (size_t i = 0; i < hlo->operand_count(); ++i) {
     const HloInstruction* operand = hlo->operand(i);
-    CHECK(operand->has_sharding());
-    target_shardings.push_back(
-        GetBatchSharding(operand->sharding(), num_batch_dims));
+    if (operand->has_sharding()) {
+      target_shardings.push_back(
+          GetBatchSharding(operand->sharding(), num_batch_dims));
+    }
+  }
+  if (target_shardings.empty()) {
+    return std::nullopt;
   }
   return std::make_pair(hlo_sharding_util::FindCommonSharding(target_shardings),
                         num_batch_dims);
