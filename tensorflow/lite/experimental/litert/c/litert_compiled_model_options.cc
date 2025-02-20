@@ -95,13 +95,9 @@ LiteRtStatus LiteRtAddAcceleratorCompilationOptions(
   LRT_CHECK_NON_NULL(options);
   LRT_CHECK_NON_NULL(accelerator_compilation_options);
 
-  if (!options->accelerator_compilation_options) {
-    options->accelerator_compilation_options = accelerator_compilation_options;
-  } else {
-    LiteRtAppendAcceleratorCompilationOptions(
-        options->accelerator_compilation_options,
-        accelerator_compilation_options);
-  }
+  LiteRtAppendAcceleratorCompilationOptions(
+      &options->accelerator_compilation_options,
+      accelerator_compilation_options);
 
   return kLiteRtStatusOk;
 }
