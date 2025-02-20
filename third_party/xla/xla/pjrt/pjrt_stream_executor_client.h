@@ -52,9 +52,9 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -76,54 +76,6 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 
 namespace xla {
-
-class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
- public:
-  explicit PjRtStreamExecutorDeviceDescription(int id, std::string device_kind,
-                                               int process_index = 0)
-      : id_(id),
-        process_index_(process_index),
-        device_kind_(std::move(device_kind)) {}
-
-  int id() const override { return id_; }
-
-  int process_index() const override { return process_index_; }
-
-  absl::string_view device_kind() const override { return device_kind_; }
-
-  absl::string_view ToString() const override { return to_string_; }
-
-  absl::string_view DebugString() const override { return debug_string_; }
-
-  absl::Span<int const> coords() const { return absl::MakeSpan(coords_); }
-
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
-  void SetAttributes(
-      absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes) {
-    attributes_ = std::move(attributes);
-  }
-
-  void SetDebugString(std::string debug_string) {
-    debug_string_ = std::move(debug_string);
-  }
-
-  void SetToString(std::string to_string) { to_string_ = std::move(to_string); }
-
-  void SetCoords(std::array<int, 1> coords) { coords_ = coords; }
-
- private:
-  const int id_;
-  const int process_index_;
-  const std::string device_kind_;
-  std::string debug_string_ = "<unknown SE device>";
-  std::string to_string_ = "<unknown SE device>";
-  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
-  std::array<int, 1> coords_;
-};
 
 class PjRtStreamExecutorDevice : public PjRtDevice {
  public:

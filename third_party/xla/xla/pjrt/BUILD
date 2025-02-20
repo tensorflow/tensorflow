@@ -511,9 +511,9 @@ cc_library(
         ":pjrt_client",
         ":pjrt_common",
         ":pjrt_compiler",
-        ":pjrt_device_description",
         ":pjrt_executable",
         ":pjrt_future",
+        ":pjrt_stream_executor_device_description",
         ":semaphore",
         ":tracked_device_buffer",
         ":transpose",
@@ -1125,5 +1125,16 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "pjrt_stream_executor_device_description",
+    hdrs = ["pjrt_stream_executor_device_description.h"],
+    deps = [
+        ":pjrt_device_description",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
