@@ -101,7 +101,7 @@ typedef enum {
   // Tool related errors.
   kLiteRtStatusErrorInvalidToolConfig = 1500,
 
-  // Lealization related errors.
+  // Legalization related errors.
   kLiteRtStatusLegalizeNoMatch = 2000,
   kLiteRtStatusErrorInvalidLegalization = 2001,
 } LiteRtStatus;

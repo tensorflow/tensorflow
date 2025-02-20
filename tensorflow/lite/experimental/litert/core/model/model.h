@@ -22,6 +22,7 @@
 #include <iterator>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -874,21 +875,26 @@ std::optional<std::string> GetCustomOpCode(const LiteRtModelT& model,
 // Utils
 //
 
-// Used for communicating selections of ops.
+using LiteRtOpWithPartitionIndex = std::pair<LiteRtOp, LiteRtParamIndex>;
+
+// Used for communicating selections of ops in when partitioning.
 class LiteRtOpListT {
  public:
-  void Push(LiteRtOp op) { ops_.push_back(op); }
+  void Push(LiteRtOp op, LiteRtParamIndex partition_index = 0) {
+    values_.push_back(LiteRtOpWithPartitionIndex(op, partition_index));
+  }
 
-  std::vector<LiteRtOp> Vec() const {
-    std::vector<LiteRtOp> res;
-    res.reserve(ops_.size());
-    res.assign(ops_.begin(), ops_.end());
-    return res;
+  std::vector<LiteRtOpWithPartitionIndex> Values() const {
+    std::vector<LiteRtOpWithPartitionIndex> ops;
+    ops.reserve(values_.size());
+    ops.assign(values_.begin(), values_.end());
+
+    return ops;
   }
 
  private:
   // Investigate if this is possible with vector (hit some issues).
-  std::list<LiteRtOp> ops_;
+  std::list<LiteRtOpWithPartitionIndex> values_;
 };
 
 namespace detail {

@@ -176,7 +176,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
       continue;
     }
 
-    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get(), 0));
   }
 
   return kLiteRtStatusOk;

@@ -55,6 +55,7 @@ using WeightSharingMap =
 namespace {
 
 constexpr char kPluginManufacturer[] = "Qualcomm";
+constexpr LiteRtParamIndex kDefaultPartitionIndex = 0;
 
 // clang-format off
 constexpr std::pair<const char*, QnnHtpDevice_Arch_t> kPluginSocModels[] = {
@@ -290,7 +291,10 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
               return kLiteRtStatusOk ==
                      (*qnn_manager)->ValidateOp(op_wrapper.GetOpConfig());
             })) {
-      LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
+      LITERT_RETURN_IF_ERROR(
+          // Use default partition index if vendor doesn't support multiple
+          // partitions.
+          LiteRtPushOp(selected_ops, op.Get(), kDefaultPartitionIndex));
     }
   }
 

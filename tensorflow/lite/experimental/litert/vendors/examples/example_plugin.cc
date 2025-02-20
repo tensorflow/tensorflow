@@ -43,10 +43,11 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
                                            LiteRtOpList selected_ops) {
   ::litert::Subgraph main_subgraph(subgraph);
   for (const auto& op : main_subgraph.Ops()) {
-    if (op.Code() != kLiteRtOpCodeTflMul) {
-      continue;
+    if (op.Code() == kLiteRtOpCodeTflMul) {
+      LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get(), 0));
+    } else if (op.Code() == kLiteRtOpCodeTflSub) {
+      LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get(), 1));
     }
-    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
   }
   return kLiteRtStatusOk;
 }
@@ -59,10 +60,12 @@ LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
   const litert::Subgraph sg(subgraph);
   int num_muls_in_partition = 0;
   for (const auto& op : sg.Ops()) {
-    if (op.Code() != kLiteRtOpCodeTflMul) {
+    if (op.Code() != kLiteRtOpCodeTflMul && op.Code() != kLiteRtOpCodeTflSub) {
       return kLiteRtStatusErrorUnsupported;
     }
-    ++num_muls_in_partition;
+    if (op.Code() == kLiteRtOpCodeTflMul) {
+      ++num_muls_in_partition;
+    }
   }
 
   {

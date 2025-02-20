@@ -52,11 +52,11 @@ TEST(TestCallGoogleTensorPlugin, PartitionSimpleMultiAdd) {
   LiteRtOpListT selected_op_list;
   LITERT_ASSERT_OK(LiteRtCompilerPluginPartition(
       plugin.get(), model.Subgraph(0)->Get(), &selected_op_list));
-  const auto selected_ops = selected_op_list.Vec();
+  const auto selected_ops = selected_op_list.Values();
 
   ASSERT_EQ(selected_ops.size(), 2);
-  ASSERT_EQ(selected_ops[0]->OpCode(), kLiteRtOpCodeTflMul);
-  ASSERT_EQ(selected_ops[1]->OpCode(), kLiteRtOpCodeTflMul);
+  ASSERT_EQ(selected_ops[0].first->OpCode(), kLiteRtOpCodeTflMul);
+  ASSERT_EQ(selected_ops[1].first->OpCode(), kLiteRtOpCodeTflMul);
 }
 
 TEST(TestCallGoogleTensorPlugin, CompileMulSubgraph) {

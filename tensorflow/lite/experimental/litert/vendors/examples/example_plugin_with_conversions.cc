@@ -84,7 +84,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
   }
 
   for (auto* op : *ops) {
-    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op, 0));
   }
 
   return kLiteRtStatusOk;
