@@ -76,12 +76,14 @@ class OptProvider {
   // Adds an entry of pass name vs pass registration function to registry.
   template <typename T, typename... Args>
   void RegisterPass(Args... args) {
+    std::string pass_name(T(args...).name());
+    if (pass_registry_.find(pass_name) != pass_registry_.end()) {
+      LOG(FATAL) << "Pass " << pass_name
+                 << " already registered to the hlo-opt tool. Please use a "
+                 << "different name.";
+    }
     pass_registry_.insert(std::make_pair(
-        std::string(T(std::forward<Args>(args)...).name()),
-        [args...](HloPassPipeline& p) {
-          p.AddPass<T>(std::forward<decltype(std::as_const(args))>(
-              std::as_const(args))...);
-        }));
+        pass_name, [args...](HloPassPipeline& p) { p.AddPass<T>(args...); }));
   }
 
   // Registers all hardware independent passes.

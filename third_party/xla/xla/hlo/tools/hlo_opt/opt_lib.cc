@@ -313,8 +313,7 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<QrExpander>();
   RegisterPass<RealImagExpander>();
   RegisterPass<ReduceDecomposer>();
-  // Follow-up change will revert this comment.
-  // RegisterPass<ReduceWindowRewriter>(128);
+  RegisterPass<ReduceWindowRewriter>(/*base_length=*/16);
   RegisterPass<ReorderConvertReduceAdd>();
   RegisterPass<ReorderReduceTranspose>();
   RegisterPass<ReshapeDecomposer>();
