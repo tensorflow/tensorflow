@@ -69,6 +69,10 @@ inline int UnpackCpuProcessIndex(PjRtGlobalDeviceId global_device_id) {
   return global_device_id.value() / kMaxCpuDevicesPerProcess;
 }
 
+inline int UnpackCpuLocalDeviceId(PjRtGlobalDeviceId global_device_id) {
+  return global_device_id.value() % kMaxCpuDevicesPerProcess;
+}
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_PLUGIN_XLA_CPU_CPU_TOPOLOGY_H_

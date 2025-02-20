@@ -177,6 +177,7 @@ cc_library(
         "//xla/pjrt:utils",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:cpu_device_description",
+        "//xla/pjrt/plugin/xla_cpu:cpu_execute_options",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
         "//xla/service:buffer_assignment",
