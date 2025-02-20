@@ -1337,6 +1337,7 @@ cc_library(
     deps = [
         "convert_type",
         ":op_quant_spec_getters_inc",
+        ":shape_and_size_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_passes_inc_gen",
@@ -1359,6 +1360,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",

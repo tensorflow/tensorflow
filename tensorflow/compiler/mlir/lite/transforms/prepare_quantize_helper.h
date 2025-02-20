@@ -20,11 +20,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
@@ -32,7 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/operator_property.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
@@ -573,6 +575,77 @@ class ConvertSvdfStatsToQDQs : public ConvertOpStatsToQDQs<TFL::SVDFOp> {
     auto op_property = operator_property::GetOperatorProperty(op_variant);
     return ConvertOpStatsToQDQs<TFL::SVDFOp>::processInputs(
         op, op_variant, op_property, rewriter);
+  }
+};
+
+class PropagateReshapedPerAxisQuantDim
+    : public OpRewritePattern<TFL::ReshapeOp> {
+ public:
+  explicit PropagateReshapedPerAxisQuantDim(MLIRContext* context)
+      : OpRewritePattern<TFL::ReshapeOp>(context) {}
+  LogicalResult matchAndRewrite(TFL::ReshapeOp reshape_op,
+                                PatternRewriter& rewriter) const override {
+    // Check if the quantization is per-axis
+    auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
+        reshape_op.getOperand(0).getDefiningOp());
+    if (!dq_op) {
+      return rewriter.notifyMatchFailure(
+          reshape_op, "Per-axis quantized ReshapeOp match failed");
+    }
+    auto q_op = dyn_cast_or_null<quantfork::QuantizeCastOp>(
+        dq_op.getOperand().getDefiningOp());
+    if (!q_op) {
+      return rewriter.notifyMatchFailure(
+          reshape_op, "Per-axis quantized ReshapeOp match failed");
+    }
+    auto qtype =
+        mlir::cast<TensorType>(dq_op.getArg().getType()).getElementType();
+    auto per_axis_quant =
+        dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(qtype);
+    if (!per_axis_quant) {
+      return rewriter.notifyMatchFailure(
+          reshape_op, "ReshapeOp result is not per-axis quantized");
+    }
+
+    // Return if the result of ReshapeOp is already quantized
+    auto next_op = *reshape_op.getResult().getUsers().begin();
+    if (dyn_cast_or_null<quantfork::QuantizeCastOp>(next_op))
+      return rewriter.notifyMatchFailure(
+          reshape_op, "ReshapeOp result is already quantized");
+
+    // Get the new quantization dimension
+    absl::StatusOr<int32_t> new_quant_dim = GetQuantDimensionAfterReshape(
+        reshape_op.getInput().getType().getShape(),
+        reshape_op.getType().getShape(),
+        per_axis_quant.getQuantizedDimension());
+
+    if (!new_quant_dim.ok()) {
+      return rewriter.notifyMatchFailure(
+          reshape_op, "Invalid quantization dimension after ReshapeOp");
+    }
+
+    // Insert a QDQ pair with the new quantized dimension after ReshapeOp
+    auto new_element_type =
+        mlir::quant::UniformQuantizedPerAxisType::getChecked(
+            reshape_op.getLoc(), per_axis_quant.getFlags(),
+            per_axis_quant.getStorageType(), per_axis_quant.getExpressedType(),
+            per_axis_quant.getScales(), per_axis_quant.getZeroPoints(),
+            *new_quant_dim, per_axis_quant.getStorageTypeMin(),
+            per_axis_quant.getStorageTypeMax());
+
+    auto new_tensor_type = RankedTensorType::getChecked(
+        reshape_op.getLoc(), reshape_op.getType().getShape(), new_element_type);
+
+    rewriter.setInsertionPointAfter(reshape_op);
+    auto new_q_op = rewriter.create<quantfork::QuantizeCastOp>(
+        reshape_op.getLoc(), new_tensor_type, q_op.getArg());
+    auto new_dq_op = rewriter.create<quantfork::DequantizeCastOp>(
+        new_q_op.getLoc(), reshape_op.getResult().getType(),
+        new_q_op.getResult());
+    reshape_op.getResult().replaceAllUsesWith(new_dq_op.getResult());
+    new_q_op.setOperand(reshape_op.getResult());
+
+    return success();
   }
 };
 
