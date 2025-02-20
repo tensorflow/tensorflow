@@ -89,9 +89,10 @@ class KernelApiIrBuilder {
     // read-only if it is not aliased with any result.
     absl::flat_hash_set<int64_t> invariant_arguments;
 
-    // the set of buffer uses for this kernel, can be empty if buffer
+    // The set of buffers used by this kernel, can be empty if buffer assignment
     // was not provided.
-    absl::InlinedVector<BufferUse, 8> buffer_uses;
+    absl::InlinedVector<BufferAllocation::Slice, 8> argument_buffers;
+    absl::InlinedVector<BufferAllocation::Slice, 8> result_buffers;
   };
 
   KernelApiIrBuilder(llvm::LLVMContext& context, Options options);
