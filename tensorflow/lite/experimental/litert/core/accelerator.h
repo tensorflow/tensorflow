@@ -29,47 +29,6 @@ extern "C" {
 struct LiteRtCompiledModelT;
 struct LiteRtEnvironmentT;
 
-struct LiteRtAcceleratorT {
-  // Points to the type-erased accelerator state.
-  void* data;
-
-  // Points to the environment that owns this accelerator.
-  LiteRtEnvironmentT* env;
-
-  // NOLINTBEGIN(*-readability-class-member-naming)
-
-  // Releases the the data.
-  //
-  // This function is used by the framework to clean up the accelerator. It
-  // should not be called by client code.
-  void (*ReleaseData)(void*);
-
-  // Retrieves the accelerator name.
-  LiteRtStatus (*GetName)(LiteRtAcceleratorT* accelerator, const char** name);
-
-  // Retrieves the accelerator version.
-  LiteRtStatus (*GetVersion)(LiteRtAcceleratorT* accelerator,
-                             LiteRtApiVersion* version);
-
-  // Retrieves the accelerator hardware support.
-  LiteRtStatus (*GetHardwareSupport)(
-      LiteRtAcceleratorT* accelerator,
-      LiteRtHwAcceleratorSet* supported_hardware);
-
-  // Creates a delegate for the accelerator.
-  // Used void** instead of TfLiteOpaqueDelegate** to avoid TFLite dependency.
-  LiteRtStatus (*CreateDelegate)(LiteRtAcceleratorT* accelerator,
-                                 void** delegate);
-
-  // Destroys created delegate for the accelerator.
-  // The function signature is matched with existing TfLiteOpaqueDelegate
-  // interface to use.
-  // Used void* instead of TfLiteOpaqueDelegate* to avoid TFLite dependency.
-  void (*DestroyDelegate)(void* delegate);
-
-  // NOLINTEND(*-readability-class-member-naming)
-};
-
 // This must be the very first field (or base) of every accelerator option
 // object in order to make the option objects part of a list.
 struct LiteRtAcceleratorCompilationOptionsHeader {
@@ -127,6 +86,48 @@ LiteRtStatus LiteRtSetAcceleratorCompilationOptionsIdentifier(
 LiteRtStatus LiteRtSetAcceleratorCompilationOptionsVersion(
     LiteRtAcceleratorCompilationOptionsHeader* options,
     LiteRtApiVersion version);
+struct LiteRtAcceleratorT {
+  // Points to the type-erased accelerator state.
+  void* data;
+
+  // Points to the environment that owns this accelerator.
+  LiteRtEnvironmentT* env;
+
+  // NOLINTBEGIN(*-readability-class-member-naming)
+
+  // Releases the the data.
+  //
+  // This function is used by the framework to clean up the accelerator. It
+  // should not be called by client code.
+  void (*ReleaseData)(void*);
+
+  // Retrieves the accelerator name.
+  LiteRtStatus (*GetName)(LiteRtAcceleratorT* accelerator, const char** name);
+
+  // Retrieves the accelerator version.
+  LiteRtStatus (*GetVersion)(LiteRtAcceleratorT* accelerator,
+                             LiteRtApiVersion* version);
+
+  // Retrieves the accelerator hardware support.
+  LiteRtStatus (*GetHardwareSupport)(
+      LiteRtAcceleratorT* accelerator,
+      LiteRtHwAcceleratorSet* supported_hardware);
+
+  // Creates a delegate for the accelerator.
+  // Used void** instead of TfLiteOpaqueDelegate** to avoid TFLite dependency.
+  LiteRtStatus (*CreateDelegate)(
+      LiteRtAcceleratorT* accelerator,
+      LiteRtAcceleratorCompilationOptionsHeader* compilation_options,
+      void** delegate);
+
+  // Destroys created delegate for the accelerator.
+  // The function signature is matched with existing TfLiteOpaqueDelegate
+  // interface to use.
+  // Used void* instead of TfLiteOpaqueDelegate* to avoid TFLite dependency.
+  void (*DestroyDelegate)(void* delegate);
+
+  // NOLINTEND(*-readability-class-member-naming)
+};
 
 }  // extern "C"
 

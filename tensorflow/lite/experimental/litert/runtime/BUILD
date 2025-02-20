@@ -190,6 +190,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_options",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_compiled_model_options",
         "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",

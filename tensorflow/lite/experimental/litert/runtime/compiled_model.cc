@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 
@@ -160,6 +161,10 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
     return Unexpected(kLiteRtStatusErrorRuntimeFailure);
   }
 
+  LiteRtAcceleratorCompilationOptions accelerator_options;
+  LiteRtGetAcceleratorCompilationOptions(compilation_options.get(),
+                                         &accelerator_options);
+
   if (hardware_accelerators & kLiteRtHwAcceleratorGpu) {
     // Query GPU accelerator and apply the delegate.
     // TODO b/394958439 - Support NPU delegate here.
@@ -176,7 +181,7 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
       if (accelerator_supported_hardware & kLiteRtHwAcceleratorGpu) {
         TfLiteOpaqueDelegate* delegate_ptr = nullptr;
         if ((*accelerator)
-                ->CreateDelegate(*accelerator,
+                ->CreateDelegate(*accelerator, accelerator_options,
                                  reinterpret_cast<void**>(&delegate_ptr)) !=
             kLiteRtStatusOk) {
           continue;
