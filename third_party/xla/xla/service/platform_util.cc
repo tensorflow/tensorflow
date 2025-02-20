@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/compiler.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/host/host_platform_id.h"
@@ -99,6 +100,11 @@ PlatformUtil::GetSupportedPlatforms() {
 }
 
 absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
+  TF_RET_CHECK(GetDebugOptionsFromFlags().xla_allow_get_default_platform())
+      << "--xla_allow_get_default_platform=false means GetDefaultPlatform is "
+         "not allowed and the platform must be specified. If this is a test "
+         "that has been migrated to PJRT, double-check that you are using a "
+         "PJRT-compatible test class.";
   TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
 
   se::Platform* platform = nullptr;

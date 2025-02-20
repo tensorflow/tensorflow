@@ -1175,6 +1175,26 @@ xla_test(
 )
 
 xla_test(
+    name = "get_default_platform_test",
+    srcs = ["get_default_platform_test.cc"],
+    disabled_backends = [
+        "cpu",
+        "gpu",
+        "interpreter",
+    ],
+    tags = [
+        "test_migrated_to_hlo_runner_pjrt",
+    ],
+    deps = [
+        "//xla/service:platform_util",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
     tags = ["test_xla_cpu_no_thunks"],
@@ -2069,7 +2089,8 @@ xla_test(
         "test_xla_cpu_no_thunks",
     ],
     deps = [
-        ":client_library_test_base",
+        ":client_library_test_runner_mixin",
+        ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         ":literal_test_util",
         ":test_macros_header",
@@ -2082,12 +2103,12 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
-        "//xla/service:platform_util",
-        "//xla/stream_executor:platform",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
