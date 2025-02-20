@@ -557,8 +557,10 @@ typedef struct TfLiteTensor {
   /// only populated when unknown dimensions exist in a read-write tensor (i.e.
   /// an input or output tensor). (e.g.  `dims` contains [1, 1, 1, 3] and
   /// `dims_signature` contains [1, -1, -1, 3]).  If no unknown dimensions exist
-  /// then `dims_signature` is either null, or set to an empty array.  Note that
-  /// this field only exists when TF_LITE_STATIC_MEMORY is not defined.
+  /// then `dims_signature` is either null, or set to an empty array.  Use
+  /// `TfLiteTensorGetDimsSignature` to get `dims_signature` if non-empty or
+  /// otherwise fallback to `dims`.  Note that this field only exists when
+  /// TF_LITE_STATIC_MEMORY is not defined.
   const TfLiteIntArray* dims_signature;
 } TfLiteTensor;
 
@@ -760,6 +762,12 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
 /// start of the region up to the minimum of the old and new sizes. In the case
 /// of NULL tensor, or an error allocating new memory, returns `kTfLiteError`.
 TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
+
+/// Returns the shape of the tensor, with -1 for any unknown dimension sizes.
+/// If any dimension is unknown, this is the same as `t->dims_signature`.
+/// If all dimensions are known, this is the same as `t->dims`.
+/// (`dims_signature` is NULL or empty if all dimensions are known.)
+const TfLiteIntArray* TfLiteTensorGetDimsSignature(const TfLiteTensor* t);
 #endif  // TF_LITE_STATIC_MEMORY
 
 /// WARNING: This is an experimental interface that is subject to change.

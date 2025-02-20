@@ -433,6 +433,14 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
 TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   return TfLiteTensorResizeMaybeCopy(num_bytes, tensor, true);
 }
+
+const TfLiteIntArray* TfLiteTensorGetDimsSignature(const TfLiteTensor* t) {
+  if (t->dims_signature != nullptr && t->dims_signature->size != 0) {
+    return t->dims_signature;
+  } else {
+    return t->dims;
+  }
+}
 #endif  // TF_LITE_STATIC_MEMORY
 
 const char* TfLiteTypeGetName(TfLiteType type) {
