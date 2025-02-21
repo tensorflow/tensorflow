@@ -42,6 +42,7 @@ using ::testing::Values;
 // TODO: Add support and uncomment these models.
 const auto kSupportedOps =
                   Values(
+                    "rms_norm_composite.tflite",
                     "simple_add_op.tflite",
                     "simple_div_op.tflite",
                     "simple_mul_op.tflite",

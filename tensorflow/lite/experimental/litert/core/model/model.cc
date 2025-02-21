@@ -37,6 +37,7 @@ using ::litert::internal::TflBufferPtr;
 using ::litert::internal::TflOpCode;
 using ::litert::internal::TflOpCodePtr;
 using ::litert::internal::TflOptions;
+using ::litert::internal::TflOptions2;
 
 std::optional<std::string> GetCustomOpCode(const LiteRtModelT& model,
                                            const LiteRtOpT& op) {
@@ -109,6 +110,10 @@ int32_t GetTflOpCodeInd(const LiteRtOpT& litert_op) {
 
 const TflOptions& GetTflOptions(const LiteRtOpT& litert_op) {
   return litert_op.tfl_option_;
+}
+
+const TflOptions2& GetTflOptions2(const LiteRtOpT& litert_op) {
+  return litert_op.tfl_option_2_;
 }
 
 TflOptions&& TakeTflOptions(LiteRtOpT& litert_op) {

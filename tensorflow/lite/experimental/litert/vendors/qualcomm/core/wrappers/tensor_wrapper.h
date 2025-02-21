@@ -94,9 +94,9 @@ class TensorWrapper final {
     return qnn_tensor_.v2.clientBuf.data;
   };
 
- private:
   size_t GetTensorSize() const;
 
+ private:
   Qnn_TensorType_t GetTensorType() const;
 
   Qnn_Tensor_t qnn_tensor_{.version = QNN_TENSOR_VERSION_2,

@@ -14,16 +14,20 @@
 
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 
+#include <stdlib.h>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -35,6 +39,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/litert/c/litert_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
@@ -381,20 +387,51 @@ LiteRtStatus PartitionSubgraph(
 
 }  // namespace
 
+inline LiteRtStatus FindDecompositionSubgraphs(
+    LiteRtSubgraphT& subgraph,
+    absl::flat_hash_set<int32_t>& decomposition_subgraphs) {
+  static constexpr absl::string_view kRMSNormCompositeName = "odml.rms_norm";
+  for (auto& op : subgraph.Ops()) {
+    if (op->OpCode() == kLiteRtOpCodeShloComposite) {
+      const char* op_name;
+      LITERT_RETURN_IF_ERROR(LiteRtGetSHLOCompositeOpName(op, &op_name));
+      if (std::strcmp(op_name, kRMSNormCompositeName.data()) == 0) {
+        int32_t decomposition_subgraph_index;
+        LITERT_RETURN_IF_ERROR(
+            LiteRtGetSHLOCompositeOpDecompositionSubgraphIndex(
+                op, &decomposition_subgraph_index));
+        decomposition_subgraphs.insert(decomposition_subgraph_index);
+      }
+    }
+  }
+  return kLiteRtStatusOk;
+}
+
 Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
                                          LiteRtModelT& model) {
+  absl::flat_hash_set<int32_t> decomposition_subgraphs;
+  for (auto* subgraph : model.Subgraphs()) {
+    LITERT_RETURN_IF_ERROR(
+        FindDecompositionSubgraphs(*subgraph, decomposition_subgraphs));
+  }
   // Accumulate partition results for each subgraph in model.
   PartitionResult result;
-  for (auto* subgraph : model.Subgraphs()) {
+  for (int i = 0; i < model.Subgraphs().size(); ++i) {
+    // for (auto* subgraph : model.Subgraphs()) {
+    if (decomposition_subgraphs.contains(i)) {
+      LITERT_LOG(LITERT_INFO, "Skipping subgraph containing rms_norm");
+      continue;
+    }
     // Get selected ops from plugin.
-    auto selected_ops = compiler_plugin.Partition(Subgraph(subgraph));
+    auto selected_ops =
+        compiler_plugin.Partition(Subgraph(model.Subgraphs()[i]));
     if (!selected_ops) {
       LITERT_LOG(LITERT_ERROR, "Failed to get partitions from plugin");
       return selected_ops.Error();
     }
 
-    LITERT_RETURN_IF_ERROR(
-        PartitionSubgraph(*selected_ops, *subgraph, result, model.Buffers()));
+    LITERT_RETURN_IF_ERROR(PartitionSubgraph(
+        *selected_ops, *model.Subgraphs()[i], result, model.Buffers()));
   }
   ABSL_DCHECK_EQ(result.first.size(), result.second.Size());
   return result;
