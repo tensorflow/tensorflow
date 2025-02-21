@@ -65,6 +65,7 @@ tf_cc_test(
         "//tensorflow/tools/graph_transforms:transform_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
     ],
 )
