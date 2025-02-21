@@ -282,6 +282,57 @@ ENTRY main {
   EXPECT_NEAR(absl::ToDoubleMicroseconds(runtime_data.exec_time), 5, 1);
 }
 
+TEST_F(GpuIndexingPerformanceModelTest, NestedFusionIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add = f32[] add(param_0, param_1)
+}
+
+inner {
+  param_0 = f32[512,911] parameter(0)
+  param_1 = f32[911] parameter(1)
+  broadcast = f32[512,911] broadcast(param_1), dimensions={1}
+  ROOT multiply = f32[512,911] multiply(param_0, broadcast)
+}
+
+outer {
+  param_0 = f32[512,911] parameter(0)
+  param_1 = f32[911] parameter(1)
+  fusion = f32[512,911] fusion(param_0, param_1), kind=kLoop, calls=inner
+  constant = f32[] constant(0)
+  ROOT reduce = f32[512] reduce(fusion, constant), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  param_0 = f32[512,911] parameter(0)
+  param_1 = f32[911] parameter(1)
+  ROOT root = f32[512] fusion(param_0, param_1), kind=kCustom, calls=outer, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["4"],"num_warps":"4"}}}
+}
+)"));
+  auto root = module->entry_computation()->root_instruction();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto runtime_data,
+                          indexing_cost_model_.EstimateRunTimeForTriton(root));
+
+  constexpr int64_t kF32SizeBytes = 4;
+  constexpr int64_t kParam0SizeBytes = kF32SizeBytes * 512 * 911;
+  constexpr int64_t kParam1SizeBytes = kF32SizeBytes * 911;
+  constexpr int64_t kOutputSizeBytes = kF32SizeBytes * 512;
+
+  // Each block reads a tile of shape [4, 911] from param_0 and all of param_1.
+  // In total param_0 is read once and param_1 is read 512/4 times.
+  constexpr int64_t kExpectedBytesRead =
+      kParam0SizeBytes + 512 / 4 * kParam1SizeBytes;
+
+  EXPECT_EQ(runtime_data.bytes_read, kExpectedBytesRead);
+  EXPECT_EQ(runtime_data.bytes_written, kOutputSizeBytes);
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(runtime_data.exec_time), 2.5, 1);
+}
+
 TEST_F(GpuIndexingPerformanceModelTest,
        EstimateBestTiling_TritonSoftmax_IsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
