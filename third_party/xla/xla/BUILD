@@ -25,6 +25,12 @@ exports_files([
 
 xla_package_groups()
 
+bzl_library(
+    name = "package_groups_bzl",
+    srcs = ["package_groups.bzl"],
+    visibility = ["//visibility:public"],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
