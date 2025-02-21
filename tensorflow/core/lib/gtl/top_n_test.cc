@@ -17,6 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gtl/top_n.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
