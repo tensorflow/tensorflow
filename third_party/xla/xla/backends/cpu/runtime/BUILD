@@ -30,8 +30,8 @@ filegroup(
 filegroup(
     name = "runtime_hdrs",
     srcs = [
-        "concurrency.h",
         "convolution_thunk_internal.h",
+        "work_queue.h",
     ],
     visibility = internal_visibility([":friends"]),
 )
@@ -412,28 +412,6 @@ cc_library(
 )
 
 cc_library(
-    name = "concurrency",
-    hdrs = ["concurrency.h"],
-    deps = [
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_cc_test(
-    name = "concurrency_test",
-    srcs = ["concurrency_test.cc"],
-    deps = [
-        ":concurrency",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
-cc_library(
     name = "convolution_lib",
     srcs = ["convolution_lib.cc"],
     hdrs = ["convolution_lib.h"],
@@ -464,7 +442,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":concurrency",
+        ":work_queue",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
