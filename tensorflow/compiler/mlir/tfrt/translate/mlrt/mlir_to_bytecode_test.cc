@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/translate/mlrt/mlir_to_bytecode.h"
 
+#include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>
