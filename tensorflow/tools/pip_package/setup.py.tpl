@@ -43,16 +43,17 @@ from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
 
+# A genrule //tensorflow/tools/pip_package:setup_py replaces dummy string by
+# by the data provided in //tensorflow/tf_version.bzl.
+# The version suffix can be set by passing the build parameters
+# --repo_env=ML_WHEEL_BUILD_DATE=<date> and
+# --repo_env=ML_WHEEL_VERSION_SUFFIX=<suffix>.
+# To update the project version, update tf_version.bzl.
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-# Also update tensorflow/tensorflow.bzl and
-# tensorflow/core/public/release_version.h
-_VERSION = '2.20.0'
+_VERSION = '0.0.0'
 
-# Update this version when a new libtpu stable version is released.
-LATEST_RELEASE_LIBTPU_VERSION = '0.0.9'
-NEXT_LIBTPU_VERSION = '0.0.10'
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
 # equivalents (tf_nightly_*). The package is controlled from the argument line
@@ -116,7 +117,7 @@ REQUIRED_PACKAGES = [
     'keras-nightly >= 3.6.0.dev',
     'numpy >= 1.26.0, < 2.2.0',
     'h5py >= 3.11.0',
-    'ml_dtypes >= 0.5.1, < 1.0.0',
+    'ml_dtypes >= 0.4.0, < 1.0.0',
 ]
 
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
@@ -162,7 +163,7 @@ EXTRA_PACKAGES['and-cuda'] = [
     'nvidia-curand-cu12 == 10.3.6.82',
     'nvidia-cusolver-cu12 == 11.6.3.83',
     'nvidia-cusparse-cu12 == 12.5.1.3',
-    'nvidia-nccl-cu12 == 2.25.1',
+    'nvidia-nccl-cu12 == 2.23.4',
     'nvidia-nvjitlink-cu12 == 12.5.82',
 ]
 
@@ -250,7 +251,7 @@ class InstallHeaders(Command):
         '/tensorflow/include/external/com_google_absl': '',
         '/tensorflow/include/external/ducc': '/ducc',
         '/tensorflow/include/external/eigen_archive': '',
-        '/tensorflow/include/external/ml_dtypes_py': '',
+        '/tensorflow/include/external/ml_dtypes': '/ml_dtypes',
         '/tensorflow/include/tensorflow/compiler/xla': (
             '/tensorflow/include/xla'
         ),
@@ -313,14 +314,17 @@ if '_tpu' in project_name:
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      LATEST_RELEASE_LIBTPU_VERSION,
-      NEXT_LIBTPU_VERSION + '.dev'
+      _VERSION.replace('-', ''),
+      '0.1.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)
           - datetime.timedelta(hours=8)
-      ).strftime('%Y%m%d') + '+nightly',
+      ).strftime('%Y%m%d'),
   )
-  REQUIRED_PACKAGES.append([f'libtpu=={_libtpu_version}'])
+  if _libtpu_version.startswith('0.1'):
+    REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
+  else:
+    REQUIRED_PACKAGES.append([f'libtpu=={_libtpu_version}'])
   CONSOLE_SCRIPTS.extend([
       'start_grpc_tpu_worker = tensorflow.python.tools.grpc_tpu_worker:run',
       ('start_grpc_tpu_service = '
@@ -358,7 +362,7 @@ headers = (
     + list(find_files('*.inc', 'tensorflow/include/external/com_google_absl'))
     + list(find_files('*.h', 'tensorflow/include/external/ducc/google'))
     + list(find_files('*', 'tensorflow/include/external/eigen_archive'))
-    + list(find_files('*.h', 'tensorflow/include/external/ml_dtypes_py'))
+    + list(find_files('*.h', 'tensorflow/include/external/ml_dtypes'))
 )
 
 # Quite a lot of setup() options are different if this is a collaborator package

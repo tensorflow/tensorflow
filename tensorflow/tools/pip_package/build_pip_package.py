@@ -71,6 +71,7 @@ def parse_args() -> argparse.Namespace:
       "--xla_aot", help="xla aot compiled sources", action="append"
   )
   parser.add_argument("--version", help="TF version")
+  parser.add_argument("--build-tag", help="Wheel filename build tag")
   parser.add_argument("--collab", help="True if collaborator build")
   return parser.parse_args()
 
@@ -419,6 +420,7 @@ def build_wheel(
     project_name: str,
     platform: str,
     collab: str = False,
+    build_tag: str = None,
 ) -> None:
   """Build the wheel in the target directory.
 
@@ -428,6 +430,7 @@ def build_wheel(
     project_name: name to pass to setup.py.
     platform: platform name to pass to setup.py.
     collab: defines if this is a collab build
+    build_tag: build tag to be used in the wheel name
   """
   env = os.environ.copy()
   if is_windows():
@@ -446,7 +449,7 @@ def build_wheel(
           "bdist_wheel",
           f"--dist-dir={dir_path}",
           f"--plat-name={platform}",
-      ],
+      ] + ([f"--build={build_tag}"] if build_tag else []),
       check=True,
       cwd=cwd,
       env=env,
@@ -472,6 +475,7 @@ if __name__ == "__main__":
         args.project_name,
         args.platform,
         args.collab,
+        args.build_tag,
     )
   finally:
     temp_dir.cleanup()

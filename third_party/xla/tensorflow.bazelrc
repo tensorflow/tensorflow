@@ -69,6 +69,16 @@
 
 # Default build options. These are applied first and unconditionally.
 
+# These are used to generate the ML wheel version string.
+# See the explanation in the file comment of
+# @local_tsl//third_party/py/python_wheel.bzl.
+# The generated version suffix is used in
+# third_party/tensorflow/core/public/release_version.h and
+# third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
+build --repo_env=ML_WHEEL_TYPE="snapshot"
+build --repo_env=ML_WHEEL_BUILD_DATE=""
+build --repo_env=ML_WHEEL_VERSION_SUFFIX=""
+
 # For projects which use TensorFlow as part of a Bazel build process, putting
 # nothing in a bazelrc will default to a monolithic build. The following line
 # opts in to modular op registration support by default.
