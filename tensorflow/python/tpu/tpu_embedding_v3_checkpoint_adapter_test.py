@@ -98,17 +98,6 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
         )
     )
     layouts = {
-        "one": create_layout(
-            tables_name="one",
-            stacked_table_name="one_two",
-            num_sparse_cores=8,
-            num_partitions=4,
-            unsharded_shape=(20, 4),
-            unsharded_padded_shape=(24, 8),
-            row_offset=0,
-            shard_rotation=0,
-            total_rows_per_sparse_core_shard=7,
-        ),
         "two": create_layout(
             tables_name="two",
             stacked_table_name="one_two",
@@ -118,6 +107,17 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
             unsharded_padded_shape=(32, 8),
             row_offset=3,
             shard_rotation=1,
+            total_rows_per_sparse_core_shard=7,
+        ),
+        "one": create_layout(
+            tables_name="one",
+            stacked_table_name="one_two",
+            num_sparse_cores=8,
+            num_partitions=4,
+            unsharded_shape=(20, 4),
+            unsharded_padded_shape=(24, 8),
+            row_offset=0,
+            shard_rotation=0,
             total_rows_per_sparse_core_shard=7,
         ),
     }
@@ -151,6 +151,11 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
             [70, 70, 70, 70, 0, 0, 0, 0],
             [78, 78, 78, 78, 0, 0, 0, 0],
         ]),
+    )
+    self.assertAllEqual(callback._checkpoint_local_names, ["one", "two"])
+    self.assertAllEqual(
+        [l.table_name for l in callback._to_shard_layout],
+        ["one", "two"],
     )
 
   def test_adapt_sharded_to_unsharded_simple(self):
