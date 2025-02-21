@@ -19,7 +19,7 @@ cc_library(
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/transforms:utils",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FunctionInterfaces",
+        "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -32,10 +32,10 @@ cc_library(
     hdrs = ["pass.h"],
     deps = [
         ":Impl",
-        "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/transforms:PassIncGen",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
 )
