@@ -14,8 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/memory_types.h"
 
-#include <utility>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <unordered_map>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"

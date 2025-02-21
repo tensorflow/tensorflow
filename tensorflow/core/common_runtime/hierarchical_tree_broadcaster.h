@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/framework/collective.h"
 
