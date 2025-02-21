@@ -93,15 +93,8 @@ void AddStrictQDQQuantizationPasses(
     const tflite::ConverterFlags& converter_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager& pass_manager) {
-  mlir::quant::QuantizationSpecs updated_quant_specs;
-  updated_quant_specs = pass_config.quant_specs;
-  // TODO(majiddadashi): setting QDQCOnversionMode to static to enable per-axis
-  // propagation of parameters for transpose in the prepare quantize pass. The
-  // flag likely should become an enum value of QDQConversionMode.
-  updated_quant_specs.qdq_conversion_mode =
-      mlir::quant::QDQConversionMode::kQDQStatic;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreatePrepareQuantizePass(updated_quant_specs));
+      mlir::TFL::CreatePrepareQuantizePass(pass_config.quant_specs));
 
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateQuantizePass(pass_config.quant_specs));
@@ -577,7 +570,8 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
 
-    if (pass_config.quant_specs.strict_qdq_mode) {
+    if (pass_config.quant_specs.qdq_conversion_mode ==
+        mlir::quant::QDQConversionMode::kQDQStrict) {
       pass_manager->addPass(mlir::TFL::CreateLowerQuantAnnotationsPass());
 
       // To remove the quant annotation decompositions.
@@ -602,7 +596,8 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
         mlir::createCanonicalizerPass());
     pass_manager->addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
 
-    if (pass_config.quant_specs.strict_qdq_mode) {
+    if (pass_config.quant_specs.qdq_conversion_mode ==
+        mlir::quant::QDQConversionMode::kQDQStrict) {
       AddStrictQDQQuantizationPasses(converter_flags, pass_config,
                                      *pass_manager);
     } else {

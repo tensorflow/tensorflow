@@ -215,6 +215,8 @@ struct QuantizePass : public impl::QuantizePassBase<QuantizePass> {
     enable_legacy_quantize_ = quant_specs.legacy_float_scale;
     enable_dynamic_range_quantization_ = quant_specs.weight_quantization;
     enable_weight_only_quantization_ = quant_specs.weight_only_quantization;
+    qdq_conversion_mode_ =
+        quant::GetQDQQuantModeString(quant_specs.qdq_conversion_mode);
   }
 
   void runOnOperation() override;
@@ -234,11 +236,16 @@ void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
+  // Following updates the quant spec from the pass options since the tests
+  // might have updated them.
   quant_specs.verify_numeric = enable_numeric_verify_;
   quant_specs.whole_model_verify = enable_whole_model_verify_;
   quant_specs.legacy_float_scale = enable_legacy_quantize_;
   quant_specs.weight_quantization = enable_dynamic_range_quantization_;
   quant_specs.weight_only_quantization = enable_weight_only_quantization_;
+  quant_specs.qdq_conversion_mode =
+      quant::GetQDQQuantModeFromString(qdq_conversion_mode_);
+
   if (!ops_blocklist_flag_.empty()) {
     quant_specs.ops_blocklist = absl::flat_hash_set<std::string>(
         ops_blocklist_flag_.begin(), ops_blocklist_flag_.end());
@@ -273,6 +280,10 @@ void QuantizePass::runOnOperation() {
       quant_specs.qdq_conversion_mode ==
           quant::QDQConversionMode::kQDQDynamic) {
     patterns.add<TFLDynamicRangeQuantization>(ctx, quant_params);
+  } else if (quant_specs.qdq_conversion_mode ==
+             quant::QDQConversionMode::kQDQStrict) {
+    patterns.add<TFLFullQuantization, TFLFullQuantizationReverse,
+                 TFLDynamicRangeQuantization>(ctx, quant_params);
   } else {
     patterns.add<TFLFullQuantization, TFLFullQuantizationReverse>(ctx,
                                                                   quant_params);
