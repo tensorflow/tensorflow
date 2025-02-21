@@ -100,7 +100,7 @@ class AnalyticalLatencyHidingSchedulerTest : public GpuCodegenTest {
 
 TEST_F(AnalyticalLatencyHidingSchedulerTest, TestAnalyticalLatencyEstimator) {
   if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::PASCAL_)) {
+          se::CudaComputeCapability::kPascal)) {
     GTEST_SKIP() << "This test is for Pascal+ GPUs.";
   }
   const se::DeviceDescription dev_info =

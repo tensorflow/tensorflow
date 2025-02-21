@@ -209,7 +209,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
               std::string serialized_graph_string) {
     if (!IsCuda()) return;
     if (GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::HOPPER)) {
+            se::CudaComputeCapability::kHopper)) {
       // On Hopper and newer architectures, test numerical correctness and
       // verify the HLO of the Custom Call with operand and return layouts and
       // the serialized graph based on the full compiler pipeline.
@@ -243,19 +243,19 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
                               ParseAndReturnVerifiedModule(pre_hlo_string));
       TF_ASSERT_OK_AND_ASSIGN(
           bool changed, RunHloPass(ConvRewriter(se::CudaComputeCapability{
-                                       se::CudaComputeCapability::HOPPER, 0}),
+                                       se::CudaComputeCapability::kHopper, 0}),
                                    module.get()));
       EXPECT_TRUE(changed);
       RunAndFilecheckHloRewrite(
           module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
           CudnnFusedConvRewriter(
-              se::CudaComputeCapability{se::CudaComputeCapability::HOPPER, 0},
+              se::CudaComputeCapability{se::CudaComputeCapability::kHopper, 0},
               GetDnnVersion(), GetToolkitVersion()),
           custom_call_string);
       RunAndFilecheckHloRewrite(
           module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
           CudnnFusedConvRewriter(
-              se::CudaComputeCapability{se::CudaComputeCapability::HOPPER, 0},
+              se::CudaComputeCapability{se::CudaComputeCapability::kHopper, 0},
               GetDnnVersion(), GetToolkitVersion()),
           serialized_graph_string);
     }
@@ -495,7 +495,7 @@ TEST_F(CudnnFusedConvRewriterTest, DontFuseEluWithDepthwiseConv) {
 
 TEST_F(CudnnFusedConvRewriterTest, TestRelu6) {
   if (IsCuda() && !GetCudaComputeCapability().IsAtLeast(
-                      se::CudaComputeCapability::AMPERE)) {
+                      se::CudaComputeCapability::kAmpere)) {
     GTEST_SKIP() << "Conv-Bias-Relu6 fusion is supported and recommended with "
                     "the Nvidia Ampere+ GPUs.";
   }
@@ -523,7 +523,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6) {
 // with runtime fusion (or, if we do, that it works!).
 TEST_F(CudnnFusedConvRewriterTest, TestRelu6OddChannels) {
   if (IsCuda() && !GetCudaComputeCapability().IsAtLeast(
-                      se::CudaComputeCapability::AMPERE)) {
+                      se::CudaComputeCapability::kAmpere)) {
     GTEST_SKIP() << "Conv-Bias-Relu6 fusion is supported and recommended with "
                     "the Nvidia Ampere+ GPUs.";
   }
@@ -544,7 +544,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6OddChannels) {
 
 TEST_F(CudnnFusedConvRewriterTest, TestLeakyRelu) {
   if (IsCuda() && !GetCudaComputeCapability().IsAtLeast(
-                      se::CudaComputeCapability::AMPERE)) {
+                      se::CudaComputeCapability::kAmpere)) {
     GTEST_SKIP()
         << "Conv-Bias-LeakyRelu fusion is supported and recommended with "
            "the Nvidia Ampere+ GPUs.";

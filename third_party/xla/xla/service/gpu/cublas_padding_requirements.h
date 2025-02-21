@@ -37,9 +37,9 @@ struct HipblasPaddingRequirement {
 
 // List of padding requirements per compute capability and data type.
 constexpr std::array<CublasPaddingRequirement, 3> CublasPaddingRequirements{
-    {{se::CudaComputeCapability::VOLTA, S8, 4},
-     {se::CudaComputeCapability::VOLTA, F16, 8},
-     {se::CudaComputeCapability::AMPERE, BF16, 8}}};
+    {{se::CudaComputeCapability::kVolta, S8, 4},
+     {se::CudaComputeCapability::kVolta, F16, 8},
+     {se::CudaComputeCapability::kAmpere, BF16, 8}}};
 
 constexpr std::array<HipblasPaddingRequirement, 2> HipblasPaddingRequirements{
     {{/*rocm gpu arch,*/ F16, 8}, {/*rocm gpu arch,*/ BF16, 8}}};

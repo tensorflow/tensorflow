@@ -105,13 +105,13 @@ int GetNumThreads(int warp_size, int min_num_threads, int max_num_threads,
 float GetMaxSysBwFromGpu(const se::CudaComputeCapability cc,
                          const double* bandwidths_table) {
   switch (cc.major) {
-    case se::CudaComputeCapability::VOLTA:
+    case se::CudaComputeCapability::kVolta:
       return bandwidths_table[0];
-    case se::CudaComputeCapability::AMPERE:
+    case se::CudaComputeCapability::kAmpere:
       return bandwidths_table[1];
-    case se::CudaComputeCapability::HOPPER:
+    case se::CudaComputeCapability::kHopper:
       return bandwidths_table[2];
-    case se::CudaComputeCapability::BLACKWELL:
+    case se::CudaComputeCapability::kBlackwell:
       return bandwidths_table[3];
     default:
       return bandwidths_table[4];
@@ -124,13 +124,13 @@ float GetMaxSysBwFromGpu(const se::CudaComputeCapability cc,
 /*static*/
 float GpuPerformanceWithCollectiveModel::GetNvlinkBw(
     se::CudaComputeCapability compute_capability) {
-  return compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER)
+  return compute_capability.IsAtLeast(se::CudaComputeCapability::kHopper)
              ? kSm90NvlinkBandwidth
-         : compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)
+         : compute_capability.IsAtLeast(se::CudaComputeCapability::kAmpere)
              ? kSm80NvlinkBandwidth
-         : compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)
+         : compute_capability.IsAtLeast(se::CudaComputeCapability::kVolta)
              ? kSm70NvlinkBandwidth
-         : compute_capability.IsAtLeast(se::CudaComputeCapability::PASCAL_)
+         : compute_capability.IsAtLeast(se::CudaComputeCapability::kPascal)
              ? kSm60NvlinkBandwidth
              : kSm80NvlinkBandwidth;
 }
@@ -214,10 +214,10 @@ GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
   int64_t size_of_speed_array = kIntraNodeSpeeds.size();
   int64_t size_of_sm90_speed_array = kIntraNodeSpeedsSm90.size();
 
-  int num_speeds = compute_cap.major >= se::CudaComputeCapability::HOPPER
+  int num_speeds = compute_cap.major >= se::CudaComputeCapability::kHopper
                        ? size_of_sm90_speed_array
                        : size_of_speed_array;
-  const double* speeds = compute_cap.major >= se::CudaComputeCapability::HOPPER
+  const double* speeds = compute_cap.major >= se::CudaComputeCapability::kHopper
                              ? kIntraNodeSpeedsSm90.data()
                              : kIntraNodeSpeeds.data();
 
