@@ -2,9 +2,11 @@ load("@local_xla//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load(
     "@local_xla//xla/tsl:tsl.bzl",
     "check_deps",
+    "internal_visibility",
 )
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_cuda_only_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_custom_op_py_strict_library")
+load("//tensorflow/compiler/jit:package_groups.bzl", "legacy_jit_users_package_group")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -22,6 +24,8 @@ package(
     ],
     licenses = ["notice"],
 )
+
+legacy_jit_users_package_group(name = "legacy_jit_users")
 
 package_group(
     name = "internal",
@@ -55,12 +59,11 @@ filegroup(
 )
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
+# This target is deprecated as it pulls in all the XLA devices and bloats the dependencies.
+# Please use the individual targets in the deps list as needed. See b/336889334.
 cc_library(
     name = "jit",
-    visibility = [
-        ":friends",
-        "//learning/tfx:__subpackages__",
-    ],
+    visibility = internal_visibility([":legacy_jit_users"]),
     deps = [
         ":xla_cpu_device",
         ":xla_cpu_jit",
