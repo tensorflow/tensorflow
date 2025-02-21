@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
@@ -532,6 +533,69 @@ TEST(ArrayImplTest, CopyToSameDevices) {
       /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
   TF_ASSERT_OK(future.Await());
   EXPECT_THAT(out_data, ElementsAreArray(data));
+}
+
+TEST(ArrayImplTest, AssembleAndDisassembleNonAddressableArray) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  if (client->device_count() - client->addressable_device_count() < 2) {
+    GTEST_SKIP() << "Skipping test; needs at least 2 non-addressable devices.";
+  }
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  std::vector<float> data(6);
+  std::iota(data.begin(), data.end(), 0);
+  Device* device0 = client->addressable_devices().at(0);
+  std::shared_ptr<const Sharding> sharding0 =
+      SingleDeviceSharding::Create(device0, MemoryKind());
+  Device* device1 = client->addressable_devices().at(1);
+  std::shared_ptr<const Sharding> sharding1 =
+      SingleDeviceSharding::Create(device1, MemoryKind());
+
+  std::vector<tsl::RCReference<Array>> arrays;
+  Shape assembled_shape({4, 3});
+  ShardingParam sharding_param(
+      /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}});
+
+  absl::flat_hash_set<DeviceId> addressable_device_ids;
+  for (auto* device : client->addressable_devices()) {
+    addressable_device_ids.insert(device->Id());
+  }
+  std::vector<Device*> non_addressable_devices;
+  for (auto* device : client->devices()) {
+    if (!addressable_device_ids.contains(device->Id())) {
+      non_addressable_devices.push_back(device);
+    }
+    if (non_addressable_devices.size() >= 2) {
+      break;
+    }
+  }
+  auto ifrt_device_list = client->MakeDeviceList(non_addressable_devices);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const Sharding> sharding_param_sharding,
+      ShardingParamSharding::Create(std::move(sharding_param), ifrt_device_list,
+                                    MemoryKind()));
+  std::shared_ptr<const Sharding> assembled_shardings[] = {
+      ConcreteEvenSharding::Create(ifrt_device_list, MemoryKind(),
+                                   assembled_shape, shape),
+      sharding_param_sharding};
+  for (auto& assembled_sharding : assembled_shardings) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto assembled_array,
+        client->AssembleArrayFromSingleDeviceArrays(
+            dtype, assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
+            ArrayCopySemantics::kAlwaysCopy,
+            SingleDeviceShardSemantics::kAddressableShards));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto single_device_arrays,
+        assembled_array->DisassembleIntoSingleDeviceArrays(
+            ArrayCopySemantics::kAlwaysCopy,
+            SingleDeviceShardSemantics::kAddressableShards));
+
+    ASSERT_THAT(single_device_arrays, SizeIs(0));
+  }
 }
 
 TEST(ArrayImplTest, CopyToDifferentDevice) {

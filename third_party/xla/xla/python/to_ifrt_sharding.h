@@ -33,6 +33,9 @@ xla::HloSharding GetXlaHloSharding(nanobind::handle sharding,
 absl::StatusOr<tsl::RCReference<xla::ifrt::DeviceList>> GetIfrtDeviceList(
     nanobind::handle sharding_py);
 
+// Gets `xla::ifrt::MemoryKind` from a JAX Sharding.
+xla::ifrt::MemoryKind GetMemoryKind(nanobind::handle sharding);
+
 // Converts a JAX Sharding into `xla::ifrt::HloSharding`.
 absl::StatusOr<std::shared_ptr<const xla::ifrt::Sharding>> GetIfrtHloSharding(
     nanobind::handle sharding, const xla::ifrt::Shape& shape);
