@@ -272,7 +272,15 @@ xla_cc_test(
     ]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = ["requires-gpu-nvidia"],
+    tags = [
+        "requires-gpu-nvidia",
+        # Stop chloroxylenol from running this test with msan because msan does
+        # not work with CUDA.
+        #
+        # go/chloroxylenol-faq#how-do-i-stop-chloroxylenol-from-running-my-test
+        # go/cuda#memorysanitizer
+        "nomsan",
+    ],
     deps = [
         ":gpu_collectives",
         ":nccl_communicator",
