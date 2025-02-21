@@ -41,11 +41,19 @@ std::tuple<int, int, int> GetLinkedTensorRTVersion() {
 
 std::tuple<int, int, int> GetLoadedTensorRTVersion() {
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   int ver = getInferLibVersion();
   int major = ver / 1000;
   ver = ver - major * 1000;
   int minor = ver / 100;
   int patch = ver - minor * 100;
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+  // Note: The above logic using getInferLibVersion() produces the wrong version
+  // numbers since TensorRT 10.0, so these new functions must be used instead.
+  int major = getInferLibMajorVersion();
+  int minor = getInferLibMinorVersion();
+  int patch = getInferLibPatchVersion();
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
   return std::tuple<int, int, int>{major, minor, patch};
 #else
   return std::tuple<int, int, int>{0, 0, 0};
@@ -59,6 +67,7 @@ std::tuple<int, int, int> GetLoadedTensorRTVersion() {
 namespace tensorflow {
 namespace tensorrt {
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
 Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
                           const nvinfer1::ICudaEngine* cuda_engine,
                           int* binding_index) {
@@ -93,6 +102,11 @@ Status GetTrtBindingIndex(int network_input_index, int profile_index,
   return GetTrtBindingIndex(input_name.c_str(), profile_index, cuda_engine,
                             binding_index);
 }
+#else  // IS_TRT_VERSION_GE(10, 0, 0, 0)
+string GetTrtInputName(int network_input_index) {
+  return absl::StrCat(IONamePrefixes::kInputPHName, network_input_index);
+}
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
 
 namespace {
 
@@ -234,6 +248,19 @@ std::ostream& operator<<(std::ostream& os, const nvinfer1::DataType& v) {
       os << "kUINT8";
       break;
 #endif
+
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+    case nvinfer1::DataType::kBF16:
+      os << "kBF16";
+      break;
+    case nvinfer1::DataType::kINT64:
+      os << "kINT64";
+      break;
+    case nvinfer1::DataType::kINT4:
+      os << "kINT4";
+      break;
+#endif
+
   }
   return os;
 }

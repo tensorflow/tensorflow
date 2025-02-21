@@ -311,6 +311,14 @@ class EinsumDescriptor {
         builder->Shape(operand.tensor()->trt_tensor());
     TRT_ENSURE_PTR_OK(shape_layer);
     nvinfer1::ITensor* shape = (*shape_layer)->getOutput(0);
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+    // TODO(benbarsdell): Casting to int32 makes this match the pre-TRT10
+    // behavior, but it would be better to instead cast the other int32
+    // tensors to int64.
+    shape = builder->Network()
+                ->addCast(*shape, nvinfer1::DataType::kINT32)
+                ->getOutput(0);
+#endif
     for (int i = 0; i < operand.GetTrtDims().nbDims; i++) {
       int idx = permute.empty() ? i : permute.at(i);
       StatusOr<nvinfer1::ISliceLayer*> slice_layer =

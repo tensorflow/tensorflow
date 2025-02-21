@@ -64,6 +64,15 @@ class ConvertLikeOps : public OpConverterBase<ConvertLikeOps<V>> {
           builder->Shape(input.tensor()->trt_tensor());
       TF_RETURN_IF_ERROR(shape_layer.status());
       dims_input_tensor = (*shape_layer)->getOutput(0);
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+      // TODO(benbarsdell): Casting to int32 makes this match the pre-TRT10
+      // behavior, but it would be better to instead cast the other int32
+      // tensors to int64.
+      dims_input_tensor = network
+                              ->addCast(*dims_input_tensor->trt_tensor(),
+                                        nvinfer1::DataType::kINT32)
+                              ->getOutput(0);
+#endif
       dims.nbDims = 0;
     }
 

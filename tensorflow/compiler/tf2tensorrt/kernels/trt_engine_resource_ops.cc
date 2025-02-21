@@ -147,7 +147,12 @@ class InitializeTRTResource : public OpKernel {
       TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
           infer->deserializeCudaEngine(
               engine_instance.serialized_engine().c_str(),
-              engine_instance.serialized_engine().size(), nullptr));
+              engine_instance.serialized_engine().size()
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                  ,
+              nullptr
+#endif
+              ));
       auto raw_engine = engine.get();
       std::vector<ExecutionContext> ctx_vec;
       if (num_loaded_engine == 0) {
@@ -163,9 +168,10 @@ class InitializeTRTResource : public OpKernel {
         // we have only a single execution context.
         ctx_vec.push_back(ExecutionContext::Create(raw_engine));
       }
-      resource->cache_.emplace(engine_input_shapes,
-                               std::make_unique<EngineContext>(
-                                   std::move(engine), std::move(ctx_vec)));
+      resource->cache_.emplace(
+          engine_input_shapes,
+          std::make_unique<EngineContext>(std::move(infer), std::move(engine),
+                                          std::move(ctx_vec)));
       ++num_loaded_engine;
     } while (1);
     VLOG(1) << "Loaded " << num_loaded_engine << " TRT engines for op "
