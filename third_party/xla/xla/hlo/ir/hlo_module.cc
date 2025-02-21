@@ -436,6 +436,19 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
   }
 }
 
+std::string HloModule::ToString() const {
+  const DebugOptions& db_options = config().debug_options();
+  HloPrintOptions print_options = db_options.xla_dump_hlo_as_long_text()
+                                      ? HloPrintOptions::Default()
+                                      : HloPrintOptions::ShortParsable();
+  print_options.set_print_large_constants(
+      db_options.xla_dump_large_constants());
+  print_options.set_print_metadata(!db_options.xla_dump_disable_metadata());
+  print_options.set_syntax_sugar_async_ops(
+      db_options.xla_syntax_sugar_async_ops());
+  return ToString(print_options);
+}
+
 std::string HloModule::ToString(const HloPrintOptions& options) const {
   StringPrinter printer;
   Print(&printer, options);
