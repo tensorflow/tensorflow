@@ -4,7 +4,6 @@ package tensorflow;
 
 import "google/protobuf/wrappers.proto";
 
-option cc_enable_arenas = true;
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // A TensorBundle addition which saves extra information about the objects which
@@ -17,6 +16,7 @@ message TrackableObjectGraph {
       // An index into `TrackableObjectGraph.nodes`, indicating the object
       // being referenced.
       int32 node_id = 1;
+
       // A user-provided name for the edge.
       string local_name = 2;
     }
@@ -26,16 +26,20 @@ message TrackableObjectGraph {
       // `SerializedTensor` named "VARIABLE_VALUE" by convention. This value may
       // be restored on object creation as an optimization.
       string name = 1;
+
       // The full name of the variable/tensor, if applicable. Used to allow
       // name-based loading of checkpoints which were saved using an
       // object-based API. Should match the checkpoint key which would have been
       // assigned by tf.train.Saver.
       string full_name = 2;
+
       // The generated name of the Tensor in the checkpoint.
       string checkpoint_key = 3;
+
       // Deprecated bool field for optional restore. This field has never been
       // set to True.
       reserved "optional_restore";
+
       reserved 4;
     }
 
@@ -43,8 +47,10 @@ message TrackableObjectGraph {
       // An index into `TrackableObjectGraph.nodes`, indicating the
       // variable object this slot was created for.
       int32 original_variable_node_id = 1;
+
       // The name of the slot (e.g. "m"/"v").
       string slot_name = 2;
+
       // An index into `TrackableObjectGraph.nodes`, indicating the
       // `Object` with the value of the slot variable.
       int32 slot_variable_node_id = 3;
@@ -52,8 +58,10 @@ message TrackableObjectGraph {
 
     // Objects which this object depends on.
     repeated ObjectReference children = 1;
+
     // Serialized data specific to this object.
     repeated SerializedTensor attributes = 2;
+
     // Slot variables owned by this object.
     repeated SlotVariableReference slot_variables = 3;
 
