@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/cc/training/queue_runner.h"
 
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
