@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/python/py_device.h"
 #include "xla/python/traceback.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
@@ -210,6 +211,9 @@ absl::StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
     const ifrt::ExecuteOptions& options, const nb_class_ptr<PyClient>& client,
     ifrt::LoadedExecutable* ifrt_loaded_executable, absl::Span<const ArgT> args,
     std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
+  VLOG(2) << "ExecuteShardedOnLocalDevicesInternal "
+          << ifrt_loaded_executable->name()
+          << " execute_options: " << options.ToProto();
   std::vector<tsl::RCReference<ifrt::Array>> output_arrays;
   std::unique_ptr<ifrt::Future<>> returned_future;
   int num_computations = ifrt_loaded_executable->addressable_devices().size();
@@ -373,6 +377,7 @@ PyLoadedExecutable::ExecuteShardedOnLocalDevices(
   xla::ifrt::ExecuteOptions options = options_;
   options.launch_id = GetNextLaunchId();
   options.fill_status = false;
+  options.execution_stream_id = tsl::Env::Default()->GetCurrentThreadId();
   std::optional<std::vector<PjRtFuture<>>> returned_futures;
   TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
                       ExecuteShardedOnLocalDevicesInternal(
@@ -387,6 +392,7 @@ PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
   xla::ifrt::ExecuteOptions options = options_;
   options.launch_id = GetNextLaunchId();
   options.fill_status = true;
+  options.execution_stream_id = tsl::Env::Default()->GetCurrentThreadId();
   std::optional<std::vector<PjRtFuture<>>> returned_futures;
   returned_futures.emplace();
   TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
@@ -402,6 +408,7 @@ absl::StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
   xla::ifrt::ExecuteOptions options = options_;
   options.launch_id = GetNextLaunchId();
   options.fill_status = with_tokens;
+  options.execution_stream_id = tsl::Env::Default()->GetCurrentThreadId();
   std::optional<std::vector<PjRtFuture<>>> returned_futures;
   if (with_tokens) {
     returned_futures.emplace();
