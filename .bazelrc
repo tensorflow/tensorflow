@@ -66,7 +66,7 @@
 #     release_gpu_linux:               Toolchain and CUDA options for Linux GPU builds.
 #     release_cpu_macos:               Toolchain and CUDA options for MacOS CPU builds.
 #     release_cpu_windows:             Toolchain and CUDA options for Windows CPU builds.
-
+# LINT.IfChange
 # Default build options. These are applied first and unconditionally.
 
 # For projects which use TensorFlow as part of a Bazel build process, putting
@@ -894,3 +894,4 @@ build:rbe_cross_compile_macos_x86 --jobs=100
 test:rbe_cross_compile_macos_x86 --jobs=100
 # END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS
+# LINT.ThenChange(//xla/tensorflow.bazelrc)
