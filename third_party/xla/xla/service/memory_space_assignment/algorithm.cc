@@ -1691,6 +1691,28 @@ void FixAllocationSequenceAfterPostAllocationTransformation(
   }
 }
 
+// Verifies that the operands_in_alternate_memory_map is consistent with the
+// allocations in the AllocationSequence.
+bool VerifyOperandsInAlternateMemoryMap(
+    const AllocationSequence* allocations,
+    const absl::flat_hash_map<const HloInstruction*,
+                              absl::flat_hash_set<std::pair<int, ShapeIndex>>>&
+        operands_in_alternate_memory_map) {
+  absl::flat_hash_map<const HloInstruction*,
+                      absl::flat_hash_set<std::pair<int, ShapeIndex>>>
+      reference_map;
+  for (const std::unique_ptr<xla::memory_space_assignment::Allocation>&
+           allocation : *allocations) {
+    if (allocation->is_in_alternate_mem()) {
+      for (const HloUse& use : allocation->uses()) {
+        reference_map[use.instruction].insert(
+            std::make_pair(use.operand_number, use.operand_index));
+      }
+    }
+  }
+  return reference_map == operands_in_alternate_memory_map;
+}
+
 }  // namespace
 
 absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
@@ -1944,6 +1966,11 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
       finalized_values_.insert(value);
     }
   }
+
+  CHECK(VerifyOperandsInAlternateMemoryMap(allocations_,
+                                           operands_in_alternate_memory_map_))
+      << "operands_in_alternate_memory_map_ is not consistent with the "
+         "finalizied allocations.";
 
   if (options_.repack_after_every_allocation) {
     if (!options_.repacker) {
@@ -3661,6 +3688,10 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
       buffer_interval.size = allocation->chunk().size;
       buffer_interval.buffer = prefetch_candidate.buffer;
       AddToPendingChunks(buffer_interval, chunk_candidate);
+      for (const HloUse& use : allocation->uses()) {
+        operands_in_alternate_memory_map_[use.instruction].insert(
+            std::make_pair(use.operand_number, use.operand_index));
+      }
     }
     allocations_->push_back(std::move(allocation));
   }
@@ -4096,9 +4127,26 @@ void MsaAlgorithm::UpdateReservedScopedAllocationSize() {
   absl::flat_hash_map<int64_t, int64_t> reserved_scoped_memory_map;
   for (int i = 0; i < instruction_sequence.size(); ++i) {
     const HloInstruction* instruction = instruction_sequence[i];
+    absl::flat_hash_set<std::pair<int, ShapeIndex>>
+        empty_operand_in_alternate_memory;
+    auto find_operands_in_alternate_memory_it =
+        operands_in_alternate_memory_map_.find(instruction);
+    const absl::flat_hash_set<std::pair<int, ShapeIndex>>&
+        operands_in_alternate_memory =
+            find_operands_in_alternate_memory_it ==
+                    operands_in_alternate_memory_map_.end()
+                ? empty_operand_in_alternate_memory
+                : find_operands_in_alternate_memory_it->second;
+    absl::flat_hash_set<ShapeIndex> empty_output_in_alternate_memory;
+    auto find_outputs_in_alternate_memory_it =
+        outputs_in_alternate_memory_map_.find(instruction);
+    const absl::flat_hash_set<ShapeIndex>& outputs_in_alternate_memory =
+        find_outputs_in_alternate_memory_it ==
+                outputs_in_alternate_memory_map_.end()
+            ? empty_output_in_alternate_memory
+            : find_outputs_in_alternate_memory_it->second;
     reserved_scoped_memory_map[i] = options_.reserved_scoped_memory_fn(
-        instruction, operands_in_alternate_memory_map_[instruction],
-        outputs_in_alternate_memory_map_[instruction]);
+        instruction, operands_in_alternate_memory, outputs_in_alternate_memory);
   }
   // Update scoped allocation sizes.
   for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
