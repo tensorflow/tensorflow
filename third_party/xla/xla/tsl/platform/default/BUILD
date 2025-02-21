@@ -20,6 +20,7 @@ package(
         "//tensorflow/core/platform:__pkg__",
         "@local_tsl//tsl/platform:__pkg__",
         "//xla/tsl/platform:__pkg__",
+        "//third_party/reactant:__subpackages__",
     ]),
     licenses = ["notice"],
 )
