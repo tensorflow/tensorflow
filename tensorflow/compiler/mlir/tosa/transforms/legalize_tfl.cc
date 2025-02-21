@@ -1225,11 +1225,11 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
     // quantized average pool, while TOSA does. Force the TOSA
     // zero_points to zero to ensure that the calculations match
 
-    auto quant_attr = rewriter.getAttr<tosa::UnaryOpQuantizationAttr>(
-        /*input_zp=*/0, /*output_zp=*/0);
+    auto input_zp_attr = rewriter.getI32IntegerAttr(0);
+    auto output_zp_attr = rewriter.getI32IntegerAttr(0);
     result = CreateOpAndInfer<tosa::AvgPool2dOp>(
-        rewriter, op->getLoc(), average_type, tfl_avgpool_op.getInput(),
-        kernel_size, stride, pad, acc_attr, quant_attr);
+        rewriter, op->getLoc(), average_type, avg_pool_input, kernel_size,
+        stride, pad, acc_attr, input_zp_attr, output_zp_attr);
   } else {
     result = CreateOpAndInfer<tosa::AvgPool2dOp>(
         rewriter, op->getLoc(), average_type, tfl_avgpool_op.getInput(),
