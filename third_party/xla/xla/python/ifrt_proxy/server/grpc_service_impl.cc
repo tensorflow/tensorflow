@@ -31,6 +31,7 @@
 #include "grpcpp/support/status.h"
 #include "grpcpp/support/sync_stream.h"
 #include "xla/pjrt/distributed/util.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/proto_util.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
@@ -91,8 +92,17 @@ namespace proxy {
     CHECK_GT(host_buffer_stores_.erase(session_id), 0);
   };
 
+  absl::StatusOr<AttributeMap> initialization_data =
+      AttributeMap::FromProto(metadata.initialization_data());
+  if (!initialization_data.ok()) {
+    LOG(INFO) << "Failed to parse initialization data for session "
+              << session_id << ": " << initialization_data.status();
+    return xla::ToGrpcStatus(initialization_data.status());
+  }
+
   auto backend = backend_factory_(metadata.version(), session_id,
-                                  std::move(host_buffer_store));
+                                  std::move(host_buffer_store),
+                                  *std::move(initialization_data));
   if (!backend.ok()) {
     LOG(INFO) << "Creating IFRT backend " << session_id
               << " failed: " << backend.status();

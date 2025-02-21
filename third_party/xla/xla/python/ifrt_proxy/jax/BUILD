@@ -23,9 +23,7 @@ package(
 pytype_strict_library(
     name = "ifrt_proxy_internal",
     srcs = ["ifrt_proxy_internal.py"],
-    deps = [
-        "//xla/python:xla_client",
-    ],
+    deps = ["//xla/python:xla_client"],
 )
 
 # copybara:uncomment_begin(ifrt_proxy.py is not exported to github)
