@@ -3518,10 +3518,21 @@ MATH_DEPS = [
     "@eigen_archive//:eigen3",
 ]
 
+cc_library(
+    name = "gepp_hwy",
+    srcs = ["sparse_matmul_op_hwy.cc"],
+    hdrs = ["sparse_matmul_op_hwy.h"],
+    deps = MATH_DEPS + ["@com_google_highway//:hwy"],
+)
+
 tf_kernel_library(
     name = "sparse_matmul_op",
     prefix = "sparse_matmul_op",
-    deps = MATH_DEPS + ["@local_xla//xla/tsl/framework/contraction:eigen_contraction_kernel"],
+    deps = MATH_DEPS + [
+        "gepp_hwy",
+        "@com_google_highway//:hwy",
+        "@local_xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
+    ],
 )
 
 cc_library(
