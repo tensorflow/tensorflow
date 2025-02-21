@@ -6125,6 +6125,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleRemainder(
 
 absl::Status AlgebraicSimplifierVisitor::HandleReshape(
     HloInstruction* reshape) {
+  LOG(INFO) << "my_gg0: " << reshape->ToString();
   auto operand = reshape->mutable_operand(0);
 
   // Reshape directly to empty constant if the shape contains zero-element

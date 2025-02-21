@@ -101,20 +101,17 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       const std::string& name = TestName(), int64_t replica_count = 1);
 
   // Parses the given string and returns module as a VerifiedHloModule.
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                               int64_t replica_count = 1,
-                               int64_t num_partitions = 1);
-  // Parses the given string and returns module as a VerifiedHloModule.
-  //
+  using HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule;
+
   // To obtain a HloModuleConfig with a specific replica and partition count and
   // no further customization, either use the overload above or use
   // GetModuleConfigForTest. The latter option may be useful if you want to pass
   // custom HloParserOptions as well.
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-  ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text, const HloModuleConfig& config,
-      const HloParserOptions& parser_options = HloParserOptions());
+  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
+                               const HloModuleConfig& config,
+                               const HloParserOptions& parser_options =
+                                   HloParserOptions()) const override;
 
   HloComputation* AddEntryComputationAndUpdateEntryComputationLayout(
       HloModule*, std::unique_ptr<HloComputation> computation);
