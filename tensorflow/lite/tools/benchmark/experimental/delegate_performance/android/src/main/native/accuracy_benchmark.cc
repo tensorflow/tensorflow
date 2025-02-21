@@ -20,6 +20,9 @@ limitations under the License.
 #include <sys/stat.h>
 
 #include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
