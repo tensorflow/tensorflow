@@ -54,9 +54,8 @@ void Pack(Model* model, PackOperator const& op) {
 
 }  // namespace
 
-::tensorflow::Status ResolveConstantPack::Run(Model* model,
-                                              std::size_t op_index,
-                                              bool* modified) {
+absl::Status ResolveConstantPack::Run(Model* model, std::size_t op_index,
+                                      bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
