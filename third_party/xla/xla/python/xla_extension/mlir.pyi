@@ -16,7 +16,9 @@
 from typing import Union
 from . import XlaComputation
 
-def xla_computation_to_mlir_module(computation: XlaComputation) -> str: ...
+def xla_computation_to_mlir_module(
+    computation: XlaComputation, emit_stable_hlo: bool = ...
+) -> str: ...
 def mlir_module_to_xla_computation(
     mlir_module: Union[bytes, str],
     use_tuple_args: bool = ...,
