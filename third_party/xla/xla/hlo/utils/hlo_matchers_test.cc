@@ -15,15 +15,28 @@ limitations under the License.
 
 #include "xla/hlo/utils/hlo_matchers.h"
 
+#include <cstdint>
+#include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "xla/array.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -364,8 +377,7 @@ TEST_F(HloMatchersTest, SourceTargetPairsMatcher) {
   Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
   std::unique_ptr<HloInstruction> p0 =
       HloInstruction::CreateParameter(0, shape, "param");
-  std::vector<std::pair<int64_t, int64_t>> source_target_pairs = {
-      {0, 1}, {2, 3}, {1, 2}};
+  SourceTargetPairs source_target_pairs({{0, 1}, {2, 3}, {1, 2}});
   std::unique_ptr<HloInstruction> cp = HloInstruction::CreateCollectivePermute(
       shape, p0.get(), source_target_pairs, std::nullopt);
   EXPECT_THAT(Explain(p0.get(), op::SourceTargetPairs({{0, 1}})),

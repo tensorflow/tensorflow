@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/layout.h"
@@ -276,6 +277,7 @@ class HloParserImpl : public HloParser {
   absl::StatusOr<PaddingConfig> ParsePaddingConfigOnly();
   absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly();
   absl::StatusOr<CollectiveDeviceList> ParseCollectiveDeviceListOnly();
+  absl::StatusOr<SourceTargetPairs> ParseSourceTargetPairsOnly();
 
  private:
   // Types of attributes.
@@ -522,6 +524,7 @@ class HloParserImpl : public HloParser {
   bool ParseParameterReplication(ParameterReplication* parameter_replication);
   bool ParseBooleanListOrSingleBoolean(BoolList* boolean_list);
   bool ParseReplicaGroupsOnly(std::vector<ReplicaGroup>* replica_groups);
+  bool ParseSourceTargetPairsOnly(SourceTargetPairs* source_target_pairs);
 
   // Parses the metadata behind a kDOmain instruction.
   bool ParseDomain(DomainData* domain);
@@ -1892,14 +1895,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           !ParseAttributes(attrs, allow_attributes, shape)) {
         return nullptr;
       }
-      std::vector<std::pair<int64_t, int64_t>> pairs(source_targets->size());
-      for (int i = 0; i < pairs.size(); i++) {
-        if ((*source_targets)[i].size() != 2) {
+      SourceTargetPairs pairs;
+      for (const std::vector<int64_t>& pair : *source_targets) {
+        if (pair.size() != 2) {
           TokenError("expects 'source_target_pairs=' to be a list of pairs");
           return nullptr;
         }
-        pairs[i].first = (*source_targets)[i][0];
-        pairs[i].second = (*source_targets)[i][1];
+        pairs.emplace_back(pair[0], pair[1]);
       }
       if (!slice_sizes.has_value()) {
         if (opcode == HloOpcode::kCollectivePermute) {
@@ -4057,6 +4059,30 @@ bool HloParserImpl::ParseReplicaGroupsOnly(
   return true;
 }
 
+// source_target_pairs ::='{' int64_tlist_elements '}'
+// int64_tlist_elements
+//   ::= /*empty*/
+//   ::= int64_tlist (',' int64_tlist)*
+// int64_tlist ::= '{' int64_elements '}'
+// int64_elements
+//   ::= /*empty*/
+//   ::= int64_val (',' int64_val)*
+bool HloParserImpl::ParseSourceTargetPairsOnly(
+    SourceTargetPairs* source_target_pairs) {
+  std::vector<std::vector<int64_t>> result;
+  if (!ParseInt64ListList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
+                          &result)) {
+    return false;
+  }
+  *source_target_pairs = SourceTargetPairs();
+  for (const std::vector<int64_t>& pair : result) {
+    if (pair.size() != 2) {
+      return TokenError("source_target_pairs should have exactly two elements");
+    }
+    source_target_pairs->emplace_back(pair[0], pair[1]);
+  }
+  return true;
+}
 // domain ::= '{' 'kind=' domain_kind ',' 'entry=' entry_sharding ','
 //            'exit=' exit_sharding '}'
 bool HloParserImpl::ParseDomain(DomainData* domain) {
@@ -7163,6 +7189,19 @@ HloParserImpl::ParseReplicaGroupsOnly() {
   return replica_groups;
 }
 
+absl::StatusOr<SourceTargetPairs> HloParserImpl::ParseSourceTargetPairsOnly() {
+  lexer_.Lex();
+  SourceTargetPairs source_target_pairs;
+  if (!ParseSourceTargetPairsOnly(&source_target_pairs)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument(
+        "Syntax error:\nExtra content after source target pairs");
+  }
+  return source_target_pairs;
+}
+
 absl::StatusOr<CollectiveDeviceList>
 HloParserImpl::ParseCollectiveDeviceListOnly() {
   lexer_.Lex();
@@ -7315,6 +7354,12 @@ absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
     absl::string_view str) {
   HloParserImpl parser(str);
   return parser.ParseReplicaGroupsOnly();
+}
+
+absl::StatusOr<SourceTargetPairs> ParseSourceTargetPairsOnly(
+    absl::string_view str) {
+  HloParserImpl parser(str);
+  return parser.ParseSourceTargetPairsOnly();
 }
 
 absl::StatusOr<CollectiveDeviceList> ParseCollectiveDeviceListOnly(

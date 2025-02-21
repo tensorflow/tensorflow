@@ -13,32 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/source_target_pairs.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 
 #include <memory>
-#include <utility>
-#include <vector>
+#include <string>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-struct Cannonical {
-  SourceTargetPairs cycle;
-  SourceTargetPairs main_edge;
-  SourceTargetPairs back_edge;
-};
-
-class CollectivePermuteUtilsTest : public ::testing::Test {
+class SourceTargetPairsTest : public ::testing::Test {
  protected:
   SourceTargetPairs fwd2_ = SourceTargetPairs({{0, 1}, {1, 0}});
   SourceTargetPairs bwd2_ = SourceTargetPairs({{0, 1}, {1, 0}});
@@ -46,30 +37,45 @@ class CollectivePermuteUtilsTest : public ::testing::Test {
   SourceTargetPairs bwd4_ = SourceTargetPairs({{0, 3}, {1, 0}, {2, 1}, {3, 2}});
 };
 
-TEST_F(CollectivePermuteUtilsTest, FromString) {
-  EXPECT_EQ(SourceTargetPairs::FromString("{{0,1},{1,0}}").value(), fwd2_);
-  EXPECT_EQ(SourceTargetPairs::FromString("{{0,1}, {1,0}}").value(), bwd2_);
-  EXPECT_EQ(SourceTargetPairs::FromString("{{0,1},{1,2},{2,3},{3,0}}").value(),
-            fwd4_);
-  EXPECT_THAT(SourceTargetPairs::FromString("{{0,1},{1}}"),
-              ::tsl::testing::StatusIs(absl::StatusCode::kInternal));
+TEST_F(SourceTargetPairsTest, Compare) {
+  EXPECT_EQ(SourceTargetPairs(), SourceTargetPairs());
+  EXPECT_EQ(SourceTargetPairs({{0, 1}, {1, 0}}),
+            SourceTargetPairs({{0, 1}, {1, 0}}));
 }
 
-TEST_F(CollectivePermuteUtilsTest, AbslStringify) {
-  EXPECT_EQ(
+TEST_F(SourceTargetPairsTest, ProtoConversion) {
+  SourceTargetPairs in_pairs = SourceTargetPairs({{2, 3}, {3, 4}});
+
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+  std::unique_ptr<HloInstruction> p0 =
+      HloInstruction::CreateParameter(0, shape, "p0");
+  p0->SetUniqueId(0);
+  std::unique_ptr<HloInstruction> in_cp =
+      HloInstruction::CreateCollectivePermute(shape, p0.get(), in_pairs, 1);
+  in_cp->SetUniqueId(1);
+  HloInstructionProto proto = in_cp->ToProto();
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloInstruction> deserialized,
+      HloInstruction::CreateFromProto(proto, {{0, in_cp->mutable_operand(0)}}));
+
+  EXPECT_EQ(deserialized->source_target_pairs(), in_pairs);
+}
+
+TEST_F(SourceTargetPairsTest, AbslStringify) {
+  std::string formatted =
       absl::StrFormat("Source Target Pairs: %v",
-                      SourceTargetPairs::FromString("{{0,1},{1,0}}").value()),
-      "Source Target Pairs: {{0,1},{1,0}}");
+                      ParseSourceTargetPairsOnly("{{0,1},{1,0}}").value());
+  EXPECT_EQ(formatted, "Source Target Pairs: {{0,1},{1,0}}");
 }
 
-TEST_F(CollectivePermuteUtilsTest, SourceTargetPairsString) {
+TEST_F(SourceTargetPairsTest, SourceTargetPairsString) {
   EXPECT_EQ(fwd2_.ToString(), "{{0,1},{1,0}}");
   EXPECT_EQ(bwd2_.ToString(), "{{0,1},{1,0}}");
   EXPECT_EQ(fwd4_.ToString(), "{{0,1},{1,2},{2,3},{3,0}}");
   EXPECT_EQ(bwd4_.ToString(), "{{0,3},{1,0},{2,1},{3,2}}");
 }
 
-TEST_F(CollectivePermuteUtilsTest, GetMaxDeviceNum) {
+TEST_F(SourceTargetPairsTest, GetMaxDeviceNum) {
   EXPECT_EQ(fwd2_.GetMaxDeviceNum(), 1);
   EXPECT_EQ(bwd2_.GetMaxDeviceNum(), 1);
   EXPECT_EQ(fwd4_.GetMaxDeviceNum(), 3);
@@ -77,6 +83,12 @@ TEST_F(CollectivePermuteUtilsTest, GetMaxDeviceNum) {
   EXPECT_EQ(
       SourceTargetPairs({{0, 1}, {1, 2}, {2, 300}, {3, 4}}).GetMaxDeviceNum(),
       300);
+}
+
+TEST_F(SourceTargetPairsTest, IsSelfIdentity) {
+  EXPECT_TRUE(SourceTargetPairs().IsSelfIdentity());
+  EXPECT_TRUE(SourceTargetPairs({{0, 0}, {1, 1}}).IsSelfIdentity());
+  EXPECT_FALSE(SourceTargetPairs({{0, 0}, {1, 0}}).IsSelfIdentity());
 }
 
 }  // namespace

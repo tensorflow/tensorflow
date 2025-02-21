@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/permutation_util.h"
@@ -791,56 +792,56 @@ absl::Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
     }
   }
 
-  for (const auto& p : hlo->source_target_pairs()) {
-    TF_RET_CHECK(p.first >= 0)
-        << "Source " << p.first
+  for (const SourceTargetPair& p : hlo->source_target_pairs().data()) {
+    TF_RET_CHECK(p.source >= 0)
+        << "Source " << p.source
         << " in the instruction's source-target pair must be >= 0 : "
         << hlo->ToString();
-    TF_RET_CHECK(limit == 1 || p.first < limit)
-        << "Source " << p.first
+    TF_RET_CHECK(limit == 1 || p.source < limit)
+        << "Source " << p.source
         << " in the instruction's source-target pair must be < " << limit
         << " : " << hlo->ToString();
-    if (seen_source_to_targets.contains(p.first) &&
-        seen_source_to_targets[p.first].size() == allowed_seen_count) {
+    if (seen_source_to_targets.contains(p.source) &&
+        seen_source_to_targets[p.source].size() == allowed_seen_count) {
       if (allowed_seen_count == 1) {
         return Internal(
             "Source %d appears more than once in instruction's source-target "
             "pairs: %s",
-            p.first, hlo->ToString());
+            p.source, hlo->ToString());
       } else {
         return Internal(
             "Source %d appears more than %d times in instruction's "
             "source-target "
             "pairs: %s",
-            p.first, allowed_seen_count, hlo->ToString());
+            p.source, allowed_seen_count, hlo->ToString());
       }
     } else {
-      seen_source_to_targets[p.first].push_back(p.second);
+      seen_source_to_targets[p.source].push_back(p.target);
     }
-    TF_RET_CHECK(p.second >= 0)
-        << "Target " << p.second
+    TF_RET_CHECK(p.target >= 0)
+        << "Target " << p.target
         << " in the instruction's source-target pair must be >= 0 : "
         << hlo->ToString();
-    TF_RET_CHECK(limit == 1 || p.second < limit)
-        << "Target " << p.second
+    TF_RET_CHECK(limit == 1 || p.target < limit)
+        << "Target " << p.target
         << " in the instruction's source-target pair must be < " << limit
         << " : " << hlo->ToString();
-    if (seen_target_to_sources.contains(p.second) &&
-        seen_target_to_sources[p.second].size() == allowed_seen_count) {
+    if (seen_target_to_sources.contains(p.target) &&
+        seen_target_to_sources[p.target].size() == allowed_seen_count) {
       if (allowed_seen_count == 1) {
         return Internal(
             "Target %d appears more than once in instruction's source-target "
             "pairs: %s",
-            p.second, hlo->ToString());
+            p.target, hlo->ToString());
       } else {
         return Internal(
             "Target %d appears more than %d times in instruction's "
             "source-target "
             "pairs: %s",
-            p.second, allowed_seen_count, hlo->ToString());
+            p.target, allowed_seen_count, hlo->ToString());
       }
     } else {
-      seen_target_to_sources[p.second].push_back(p.first);
+      seen_target_to_sources[p.target].push_back(p.source);
     }
   }
   return absl::OkStatus();
