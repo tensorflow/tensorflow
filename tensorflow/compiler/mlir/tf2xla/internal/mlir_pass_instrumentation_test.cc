@@ -16,14 +16,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/mlir_pass_instrumentation.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 

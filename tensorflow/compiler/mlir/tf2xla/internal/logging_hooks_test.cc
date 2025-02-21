@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
 
-#include <cstdint>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project

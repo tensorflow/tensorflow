@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/log/log.h"
