@@ -24,8 +24,6 @@ limitations under the License.
 namespace stream_executor {
 namespace tpu {
 
-TfTpu_BaseFn* InitializeApiFn();
-
 const TfTpu_OpsApiFn* OpsApiFn();
 
 const TfTpu_ProfilerApiFn* ProfilerApiFn();
