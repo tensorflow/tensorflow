@@ -78,11 +78,14 @@ struct BlockLevelParameters {
 class TiledHloComputation {
  public:
   // Creates a computation from a list of instructions. The instructions are
-  // expected to be sorted in def-before-use order.
+  // expected to be sorted in def-before-use order. The `roots` parameter should
+  // provide the roots in the order by increasing output index, and the pointers
+  // in `roots` should point to tiled hlo instructions from `instructions`.
   static TiledHloComputation FromSortedTiledHloInstructions(
       std::vector<std::unique_ptr<TiledHloInstruction>> instructions,
+      std::vector<const TiledHloInstruction*> roots,
       llvm::SmallVector<int64_t> num_output_tiles_per_dim) {
-    return TiledHloComputation(std::move(instructions),
+    return TiledHloComputation(std::move(instructions), std::move(roots),
                                std::move(num_output_tiles_per_dim));
   }
 
@@ -105,9 +108,12 @@ class TiledHloComputation {
     return Product(num_output_tiles_per_dim());
   }
 
-  // Returns the root instruction of the computation.
-  const TiledHloInstruction* GetRoot() const {
-    return instructions_.back().get();
+  // Returns the root instructions of the computation. When a computation has
+  // several outputs (i.e. it has a tuple root), the roots are the operands of
+  // the root tuple. The roots are order by increasing output index, and point
+  // to tiled hlo instructions from `instructions_`.
+  const std::vector<const TiledHloInstruction*>& GetRoots() const {
+    return roots_;
   }
 
   // Returns a string representation of the computation. Used only for error
@@ -117,12 +123,18 @@ class TiledHloComputation {
  private:
   explicit TiledHloComputation(
       std::vector<std::unique_ptr<TiledHloInstruction>> instructions,
+      std::vector<const TiledHloInstruction*> roots,
       llvm::SmallVector<int64_t> num_output_tiles_per_dim)
       : instructions_(std::move(instructions)),
+        roots_(std::move(roots)),
         num_output_tiles_per_dim_(std::move(num_output_tiles_per_dim)) {}
 
   // Stores instructions in the computation in def-before-use order.
   std::vector<std::unique_ptr<TiledHloInstruction>> instructions_;
+
+  // Stores pointers to the root instructions. Note that they do not necessarily
+  // appear all at the end of `instructions_`.
+  std::vector<const TiledHloInstruction*> roots_;
 
   // Stores the number of output tiles for each dimension.
   llvm::SmallVector<int64_t> num_output_tiles_per_dim_;

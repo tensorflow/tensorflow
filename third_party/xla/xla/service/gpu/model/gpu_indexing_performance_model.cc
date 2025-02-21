@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -50,9 +51,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -495,19 +496,25 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
         operand_read_info.read_bandwidth_utilization_rate);
   }
 
-  int64_t bytes_written =
-      GetShapeSizeRecursive(tiled_hlo_computation.GetRoot()->hlo()->shape());
+  auto roots = tiled_hlo_computation.GetRoots();
+  int64_t bytes_written = 0;
+  absl::Duration write_time;
+  for (auto* root : roots) {
+    int64_t effective_bandwidth =
+        BandwidthUtilizationRateHeuristicForTiledMemoryAccess(*root,
+                                                              *device_info_) *
+        device_info_->memory_bandwidth();
+    int64_t bytes_written_for_root =
+        GetShapeSizeRecursive(root->hlo()->shape());
+    write_time +=
+        absl::Seconds(1.0 * bytes_written_for_root / effective_bandwidth);
+    bytes_written += bytes_written_for_root;
+  }
 
   absl::Duration compute_time =
       ComputeTime(*device_info_, flops, launch_dimensions.num_blocks(),
                   launch_dimensions.num_threads_per_block());
 
-  int64_t effective_bandwidth =
-      BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
-          *tiled_hlo_computation.GetRoot(), *device_info_) *
-      device_info_->memory_bandwidth();
-  absl::Duration write_time =
-      absl::Seconds(1.0 * bytes_written / effective_bandwidth);
   absl::Duration memory_access_time = read_time + write_time;
   absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
       compute_time, memory_access_time, GpuPerformanceModelOptions::Default());
@@ -609,9 +616,24 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
   std::optional<TiledRunTimeData> best_tiled_run_time_data;
 
   for (const auto& tiling : tilings) {
-    TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                        analysis.ComputeTiledHloInstructions(tiling));
+    // TODO(b/372454662): This needs to be adjusted if we want to support more
+    // than one "real root" (i.e. a root without users).
+    // Currently ComputeTiledHloInstructions() may fail and return an
+    // Unimplemented error for cases of multi-output fusion that we do not
+    // support yet.
+    auto maybe_tiled_hlo_computation =
+        analysis.ComputeTiledHloInstructions(tiling);
+    if (!maybe_tiled_hlo_computation.ok()) {
+      if (maybe_tiled_hlo_computation.status().code() ==
+              absl::StatusCode::kUnimplemented &&
+          absl::StrContains(maybe_tiled_hlo_computation.status().message(),
+                            "multi-output fusion")) {
+        continue;
+      }
+      return maybe_tiled_hlo_computation.status();
+    }
 
+    auto tiled_hlo_computation = std::move(maybe_tiled_hlo_computation.value());
     LaunchDimensions launch_dimensions =
         GetLaunchDimensionsForTiledFusion(tiled_hlo_computation, *device_info_);
 
@@ -624,8 +646,12 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
         estimate_run_time_data.exec_time <
             best_tiled_run_time_data->runtime_data.exec_time) {
       BlockLevelParameters block_level_parameters;
-      block_level_parameters.output_tile_sizes = {
-          std::vector<int64_t>(tiling.begin(), tiling.end())};
+      auto tiled_roots = tiled_hlo_computation.GetRoots();
+      block_level_parameters.output_tile_sizes.reserve(tiled_roots.size());
+      for (auto tiled_root : tiled_roots) {
+        block_level_parameters.output_tile_sizes.emplace_back(
+            tiled_root->tile_sizes().begin(), tiled_root->tile_sizes().end());
+      }
       block_level_parameters.num_warps =
           launch_dimensions.num_threads_per_block() / WarpSize(*device_info_);
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -43,9 +44,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
@@ -53,6 +56,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -61,6 +65,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -69,6 +74,7 @@ namespace gpu {
 namespace {
 
 using ::mlir::AffineExpr;
+using ::mlir::AffineExprKind;
 using ::mlir::MLIRContext;
 
 struct OutputTilingInfo {
@@ -364,16 +370,38 @@ void SortTiledHloInstructionsInPostOrder(
   OrderedUniquePtrValueHashSet<SymbolicTiledHloInstruction>
       tiled_hlo_instructions_set;
 
-  auto roots = fusion.GetRoots();
-  if (roots.size() > 1) {
-    return FusionDecision::Forbid("Multi-output fusions are not supported. ")
-           << fusion.ToString();
+  auto fusion_adaptor_roots = fusion.GetRoots();
+  const HloInstruction* real_root = nullptr;
+  // Check if there is just one root without any users inside `fusion`. If there
+  // is just one such root, it implies that any other root is an ancestor of
+  // this root.
+  for (auto& fusion_adaptor_root : fusion_adaptor_roots) {
+    if (fusion_adaptor_root.GetUsers().empty()) {
+      if (real_root) {
+        return FusionDecision::Forbid(
+                   "Only simple multi-output fusions with one real root are "
+                   "supported. ")
+               << fusion.ToString();
+      }
+      real_root = &fusion_adaptor_root.instruction();
+    }
   }
-  auto& root = roots[0];
-
+  // Each fusion should have at least one root without users.
+  CHECK(real_root != nullptr);
+  // Keep track of the roots separately. If there is just a single root, we
+  // don't need that, as it will necessarily appear last in def-before-use
+  // order. But with multiple roots, we can have roots that are also ancestors
+  // of another root.
+  std::vector<const HloInstruction*> roots;
+  roots.reserve(fusion_adaptor_roots.size());
+  absl::c_transform(
+      fusion_adaptor_roots, std::back_inserter(roots),
+      [&](const HloInstructionAdaptor instr) { return &instr.instruction(); });
+  // TODO(b/372454662): Once we get rid of the restriction of only one real
+  // root, this needs to be adapted.
   auto [root_tiled_hlo, _] = tiled_hlo_instructions_set.Insert(
       std::make_unique<SymbolicTiledHloInstruction>(
-          &root.instruction(), CreateIdentityMap(root.shape(), ctx)));
+          real_root, CreateIdentityMap(real_root->shape(), ctx)));
 
   std::vector<SymbolicTiledHloInstruction*> worklist = {root_tiled_hlo};
 
@@ -443,7 +471,7 @@ void SortTiledHloInstructionsInPostOrder(
   }
 
   return SymbolicTileAnalysis(
-      std::move(tiled_hlo_instructions),
+      std::move(tiled_hlo_instructions), std::move(roots),
       std::get<ConstraintExpression>(std::move(constraints_or)),
       std::move(emitter_specific_constraints), ctx);
 }
@@ -476,6 +504,177 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
 
   return constraints_.IsSatisfiedBy(tile_parameters);
 }
+
+namespace {
+void CollectUsedDimIds(AffineExpr expr, std::vector<bool>& dim_var_used) {
+  switch (expr.getKind()) {
+    case AffineExprKind::DimId: {
+      const uint32_t dim_id =
+          mlir::cast<mlir::AffineDimExpr>(expr).getPosition();
+      dim_var_used[dim_id] = true;
+      break;
+    }
+    case AffineExprKind::Add:
+    case AffineExprKind::Mul:
+    case AffineExprKind::FloorDiv:
+    case AffineExprKind::Mod: {
+      auto bin_op = mlir::cast<mlir::AffineBinaryOpExpr>(expr);
+      CollectUsedDimIds(bin_op.getLHS(), dim_var_used);
+      CollectUsedDimIds(bin_op.getRHS(), dim_var_used);
+      break;
+    }
+    case AffineExprKind::CeilDiv: {
+      std::string expr_str;
+      llvm::raw_string_ostream string_stream(expr_str);
+      expr.print(string_stream);
+      CHECK(false)
+          << "We do not expect CeilDiv in our indexing expressions, got "
+          << expr_str;
+      break;
+    }
+    case AffineExprKind::Constant:
+    case AffineExprKind::SymbolId:
+      break;
+  }
+}
+
+bool AllDimIdsAreUsedOrHaveDomainSize1(const IndexingMap& tile_offsets) {
+  std::vector<bool> dim_var_used(tile_offsets.GetDimVarsCount(), false);
+  for (int64_t i = 0; i < dim_var_used.size(); ++i) {
+    if (tile_offsets.GetDimensionBound(i).IsPoint()) {
+      dim_var_used[i] = true;
+    }
+  }
+  auto offset_expressions = tile_offsets.GetAffineMap().getResults();
+  for (auto offset_expr : offset_expressions) {
+    CollectUsedDimIds(offset_expr, dim_var_used);
+  }
+  return absl::c_all_of(dim_var_used, [](bool value) { return value; });
+}
+
+// Returns true when we can determine that the tiling attached to
+// `tiled_hlo_instr` covers the whole shape of the corresponding hlo instruction
+// uniquely. For a tiling to cover a whole shape uniquely, we need to prove that
+// every output index is covered by the tiling function (*surjectivity*), and
+// that tiles do not overlap (*injectivity*).
+bool TilingCoversWholeShapeUniquely(TiledHloInstruction* tiled_hlo_instr) {
+  // Check whether we can use `tiled_hlo_instr`.
+  Shape output_shape = tiled_hlo_instr->hlo()->shape();
+  auto maybe_tile_offset_indexing = tiled_hlo_instr->tile_offsets_indexing();
+  if (!maybe_tile_offset_indexing.ok()) {
+    return false;
+  }
+  auto tile_offset_indexing = maybe_tile_offset_indexing.value();
+  // We first check *injectivity*. `tile_offsets_indexing` is derived from a map
+  // from the "real root"'s output to the output of the given instruction, and
+  // gives us the tile offsets of each tile. By construction, we know that the
+  // mapping can be decomposed into offset + stride * index, so it is a linear
+  // expression. Therefore it should hold that also the composed indexing map
+  // `tile_offset_indexing` (where we have inserted 0, tile_size, tile_size * 2,
+  // ... instead of 0, 1, 2, ...) can be decomposed to an expression
+  // offset + stride * tile_size * index. This implies that for each dimension
+  // `tile_offset_indexing` has an expression for the tile offsets that ensures
+  // there is a gap of tile_size between different tile offsets. Therefore
+  // injectivity can be checked by verifying that for each combination of input
+  // variables, a distinct result is produced. We can check this by ensuring
+  // that each input variable is used at least once in the result expression of
+  // `tile_offsets_indexing`.
+
+  // This is a slightly handwavy claim, but holds because expressions of the
+  // form `d0 floordiv c` never initially appear in a symbolic tile without an
+  // associated `d0 mod c`, and operations of the form `d0 * d1` never appear.
+  // This should leave us with a guarantee that any combination involving
+  // several independent variables won't ever produce duplicate indices. (And
+  // trivially, if a parameter `d0` doesn't appear in the output expressions, it
+  // means that there are at least `range(d0)` identical outputs for the
+  // function. In that case, injectivity only holds if `range(d0) = 1`.
+  // TODO(b/390559452): This logic may not work out for ops like ReduceWindow or
+  // Convolutions, where we might have overlapping tiles "by design"
+  // (recognizable with symbol `s_i` with `range(s_i) > 1`). For now, just
+  // disallow any symbols.
+  if (tile_offset_indexing.GetSymbolCount() > 0) {
+    return false;
+  }
+  if (!AllDimIdsAreUsedOrHaveDomainSize1(tile_offset_indexing)) {
+    return false;
+  }
+  auto range_evaluator = tile_offset_indexing.GetRangeEvaluator();
+  for (int64_t i = 0; i < output_shape.rank(); ++i) {
+    // For now, all strides need to be 0 or 1. With stride 0, we also need to
+    // check whether the tile covers the whole dimension.
+    // TODO(b/390559452): If we allow strides with absolute value > 1, we
+    // need to make sure that the tile offset expression has an additive
+    // component with domain [0, stride - 1]. Also we don't handle negative
+    // strides yet.
+    if (tiled_hlo_instr->tile_stride(i) < 0 ||
+        tiled_hlo_instr->tile_stride(i) > 1) {
+      return false;
+    }
+    // Below we check *surjectivity*, which amounts to checking that
+    // `tile_offsets_indexing` yields contiguous tiles of contiguous
+    // elements (`stride = 1`), and that the first tile and last tile
+    // respectively map to the start and end of the array.
+    // Given that we restrict the stride to 0 or 1, it is enough to check the
+    // range of the tile offsets whether the largest tile offset plus the tile
+    // cover the dimension size, and the smallest tile offset is 0.
+    auto interval = range_evaluator.ComputeExpressionRange(
+        tile_offset_indexing.GetAffineMap().getResult(i));
+    if (interval.lower != 0) {
+      return false;
+    }
+    // We can allow that the last tile extends into out of bounds, we add
+    // proper masking during codegen to make sure that we don't
+    // read/write out of bounds.
+    if ((interval.upper + tiled_hlo_instr->tile_size(i) <
+         output_shape.dimensions(i))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+absl::StatusOr<std::vector<const TiledHloInstruction*>> InitializeTiledRoots(
+    absl::Span<const HloInstruction* const> roots,
+    const std::vector<std::unique_ptr<TiledHloInstruction>>&
+        tiled_hlo_instructions) {
+  absl::flat_hash_map<const HloInstruction*, int64_t> roots_to_output_index;
+  roots_to_output_index.reserve(roots.size());
+  int64_t output_index = 0;
+  for (auto* root : roots) {
+    roots_to_output_index[root] = output_index;
+    ++output_index;
+  }
+
+  // Collect a tiled hlo instruction for each root. The roots which are extra
+  // outputs can reference "internal" tiled hlo instructions and may appear
+  // multiple times in `instructions_`.
+  std::vector<const TiledHloInstruction*> tiled_roots(roots.size(), nullptr);
+  // Handle the real root as special case.
+  tiled_roots[roots_to_output_index[tiled_hlo_instructions.back()->hlo()]] =
+      tiled_hlo_instructions.back().get();
+  for (const auto& tiled_hlo_instr : llvm::drop_end(tiled_hlo_instructions)) {
+    auto it = roots_to_output_index.find(tiled_hlo_instr->hlo());
+    if (it != roots_to_output_index.end() &&
+        TilingCoversWholeShapeUniquely(tiled_hlo_instr.get())) {
+      // We may overwrite a previous value, but in case there are multiple
+      // tiled hlo instructions for the root, we arbitrarily prefer the last one
+      // in def-before-use order.
+      tiled_roots[it->second] = tiled_hlo_instr.get();
+    }
+  }
+  // We expect that we found at least one tiled hlo instruction for each root.
+  // If not, return an error.
+  for (auto [tiled_root, root] : llvm::zip(tiled_roots, roots)) {
+    if (tiled_root == nullptr) {
+      return absl::UnimplementedError(
+          absl::StrCat("Unsupported case of multi-output fusion, we found no "
+                       "tiling to reuse for ",
+                       root->ToString()));
+    }
+  }
+  return tiled_roots;
+}
+}  // namespace
 
 absl::StatusOr<TiledHloComputation>
 SymbolicTileAnalysis::ComputeTiledHloInstructions(
@@ -547,10 +746,19 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
         parameters_with_offset_indexing.insert(symbolic_tiled_hlo->hlo());
       }
     }
+    if (roots_.size() > 1) {
+      // We need tile_offset_indexing to check whether we can reuse a tile for
+      // another root.
+      parameters_with_offset_indexing.insert(roots_.begin(), roots_.end());
+    }
   }
 
+  // TODO(b/390569102): This assumes that there is only one root that matters
+  // for computing the tiling, and that it is the last symbolic tiled hlo
+  // instruction in the list.
   OutputTilingInfo output_tiling_info = ComputeOutputTilingInfo(
-      GetRoot()->hlo()->shape().dimensions(), tile_parameters, context_);
+      symbolic_tiled_hlo_instructions_.back()->hlo()->shape().dimensions(),
+      tile_parameters, context_);
 
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
   absl::flat_hash_map<const SymbolicTiledHloInstruction*, TiledHloInstruction*>
@@ -603,8 +811,11 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
 
     symbolic_to_tiled_hlo_map[symbolic_tiled_hlo.get()] = tiled_hlo;
   }
+  auto tiled_hlo_instructions = tiled_hlo_instructions_set.ExtractData();
+  TF_ASSIGN_OR_RETURN(auto tiled_roots,
+                      InitializeTiledRoots(roots_, tiled_hlo_instructions));
   return TiledHloComputation::FromSortedTiledHloInstructions(
-      tiled_hlo_instructions_set.ExtractData(),
+      std::move(tiled_hlo_instructions), tiled_roots,
       output_tiling_info.num_output_tiles_per_dim);
 }
 
