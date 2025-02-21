@@ -22,34 +22,93 @@ from tensorflow.python.platform import test
 
 class SortTest(test.TestCase):
 
+  def _test_truediv_factory(self, x, y, expected, name=None):
+    self.assertAllEqual(expected, tmoo._truediv_factory(x, y, name=name))
+
+  def _test_div_factory(self, x, y, expected, name=None):
+    self.assertAllEqual(expected, tmoo._div_factory(x, y, name=name))
+
   def _test_mul_dispatch_factory(self, x, y, expected, name=None):
     self.assertAllEqual(expected, tmoo._mul_dispatch_factory(x, y, name=name))
 
   def testNonBooleanTensor(self):
+    # Test mul operator.
     x = constant_op.constant([1, 2, 3])
     y = constant_op.constant([4, 5, 6])
     expected = constant_op.constant([4, 10, 18])
     self._test_mul_dispatch_factory(x, y, expected)
+    
+    # Test div operator.
+    x = constant_op.constant([1, 1, 0, 0])
+    y = constant_op.constant([0, 1, 0, 1])
+    expected = constant_op.constant([float('inf'), 1.0, float('nan'), 0.0])
+    self._test_div_factory(x, y, expected)
+
+    # Test truediv operator.
+    x = constant_op.constant([1, 1, 0, 0])
+    y = constant_op.constant([0, 1, 0, 1])
+    expected = constant_op.constant([float('inf'), 1.0, float('nan'), 0.0])
+    self._test_truediv_factory(x, y, expected)
 
   def testBooleanTensor(self):
+    # Test mul operator.
     x = constant_op.constant([True, False, True])
     y = constant_op.constant([False, True, True])
     expected = constant_op.constant([False, False, True])
     self._test_mul_dispatch_factory(x, y, expected)
+    
+    # Test div operator.
+    x = constant_op.constant([True, True, False, False])
+    y = constant_op.constant([False, True, False, True])
+    expected = constant_op.constant([float('inf'), 1.0, float('nan'), 0.0])
+    self._test_div_factory(x, y, expected)
 
+    # Test truediv operator.
+    x = constant_op.constant([True, True, False, False])
+    y = constant_op.constant([False, True, False, True])
+    expected = constant_op.constant([float('inf'), 1.0, float('nan'), 0.0])
+    self._test_truediv_factory(x, y, expected)
+    
   def testBooleanMix(self):
     # Non-boolean tensor is first.
+    #
+    # Test mul operator.
     x = constant_op.constant([1, 2, 3])
     y = constant_op.constant([False, True, True])
     expected = constant_op.constant([False, True, True])
     self._test_mul_dispatch_factory(x, y, expected)
+    
+    # Test div operator.
+    x = constant_op.constant([1, 1, 0, 0])
+    y = constant_op.constant([False, True, False, True])
+    expected = constant_op.constant([float('inf'), 1.0, float('nan'), 0.0])
+    self._test_div_factory(x, y, expected)
+
+    # Test truediv operator.
+    x = constant_op.constant([1, 1, 0, 0])
+    y = constant_op.constant([False, True, False, True])
+    expected = constant_op.constant([float('inf'), 1.0, float('nan'), 0.0])
+    self._test_truediv_factory(x, y, expected)
 
     # Boolean tensor is first.
+    #
+    # Test mul operator.
     x = constant_op.constant([False, True, True])
     y = constant_op.constant([1, 2, 3])
     expected = constant_op.constant([False, True, True])
     self._test_mul_dispatch_factory(x, y, expected)
+    
+    # Test div operator.
+    x = constant_op.constant([True, True, False, False])
+    y = constant_op.constant([0, 1, 0, 1])
+    expected = constant_op.constant([float('inf'), 1.0, float('nan'), 0.0])
+    self._test_div_factory(x, y, expected)
 
+    # Test truediv operator.
+    x = constant_op.constant([True, True, False, False])
+    y = constant_op.constant([0, 1, 0, 1])
+    expected = constant_op.constant([float('inf'), 1.0, float('nan'), 0.0])
+    self._test_truediv_factory(x, y, expected)
 
 if __name__ == "__main__":
   test.main()
