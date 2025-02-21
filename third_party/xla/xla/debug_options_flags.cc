@@ -93,7 +93,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
   opts.set_xla_cpu_parallel_codegen_split_count(32);
   opts.set_xla_cpu_copy_insertion_use_region_analysis(false);
-  opts.set_xla_cpu_enable_concurrency_optimized_scheduler(true);
+  opts.set_xla_cpu_enable_concurrency_optimized_scheduler(false);
   opts.set_xla_cpu_prefer_vector_width(256);
   opts.set_xla_cpu_max_isa("");
 
