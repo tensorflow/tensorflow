@@ -136,6 +136,20 @@ def if_google(google_value, oss_value = []):
     """
     return oss_value  # copybara:comment_replace return google_value
 
+# Used for toolchain resolution, which work either at Google or on Bazel 7
+def config_setting_for_bazel7(*, constraint_values = [], legacy_values = {}, values = {}, **kwargs):
+    """A config_setting that uses either constraint values or legacy config flag values.
+
+    At the moment it uses constraint values at Google. When Tensorflow upgrades to Bazel 7
+    (or flips --incompatible_enable_cc_toolchain_resolution on Bazel <=6) the constraint value
+    configuration will be ready.
+    """
+    native.config_setting(
+        constraint_values = if_google(constraint_values, {}),
+        values = if_google(values, values | legacy_values),
+        **kwargs
+    )
+
 def if_v2(a):
     return select({
         clean_dep("//tensorflow:api_version_2"): a,
