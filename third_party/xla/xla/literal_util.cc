@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -325,7 +326,7 @@ void PopulateWithFloatingPointData(
     bool use_large_range, std::optional<int64_t> max_bits_of_precision) {
   using ComputeT =
       std::conditional_t<sizeof(FloatT) < sizeof(float), float, FloatT>;
-  CHECK(engine != nullptr);
+  CHECK_NE(engine, nullptr);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   if (max_bits_of_precision.has_value()) {
@@ -355,7 +356,7 @@ template <typename ComplexT>
 void PopulateWithComplexData(Literal* result, std::minstd_rand0* engine,
                              bool no_duplicates, bool use_large_range) {
   using InnerFloatT = typename ComplexT::value_type;
-  CHECK(engine != nullptr);
+  CHECK_NE(engine, nullptr);
   CHECK_EQ(result->shape().element_type(),
            primitive_util::NativeToPrimitiveType<ComplexT>());
   Shape floating_point_shape = ShapeUtil::ChangeElementType(
@@ -391,7 +392,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
                                               std::minstd_rand0* engine,
                                               bool no_duplicates, IntT min,
                                               IntT max) {
-  CHECK(engine != nullptr);
+  CHECK_NE(engine, nullptr);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<IntT>());
   if (no_duplicates &&
