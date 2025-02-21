@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/random/uniform_int_distribution.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -333,7 +334,7 @@ void PopulateWithFloatingPointData(
                                "max_bits_of_precision for floating points.";
     CHECK(!no_duplicates) << "Cannot set both no_duplicates and "
                              "max_bits_of_precision for floating points.";
-    std::uniform_int_distribution<int64_t> generator(
+    absl::uniform_int_distribution<int64_t> generator(
         -(1 << *max_bits_of_precision), 1 << *max_bits_of_precision);
     for (FloatT& value : literal->data<FloatT>()) {
       int64_t temp = generator(*engine);
@@ -401,7 +402,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
     std::shuffle(literal->data<IntT>().begin(), literal->data<IntT>().end(),
                  *engine);
   } else {
-    std::uniform_int_distribution<RngT<IntT>> generator(
+    absl::uniform_int_distribution<RngT<IntT>> generator(
         static_cast<RngT<IntT>>(min), static_cast<RngT<IntT>>(max));
     for (IntT& value : literal->data<IntT>()) {
       value = static_cast<IntT>(generator(*engine));
@@ -742,7 +743,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
             return absl::OkStatus();
           }
           if constexpr (primitive_type_constant == PRED) {
-            std::uniform_int_distribution<int> generator(0, 1);
+            absl::uniform_int_distribution<int> generator(0, 1);
             TF_CHECK_OK(literal.Populate<bool>(
                 [&](absl::Span<const int64_t> /*indices*/) {
                   return generator(*engine);
