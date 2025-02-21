@@ -532,7 +532,8 @@ class CoalescingForTiledHloTest : public CoalescingTest {
             tile_sizes, /*constraints_are_known_satisfied=*/true,
             /*compute_all_tile_offset_indexing_maps=*/true);
 
-    const TiledHloInstruction* tiled_hlo_root = tiled_hlo_computation.GetRoot();
+    const TiledHloInstruction* tiled_hlo_root =
+        tiled_hlo_computation.GetRoots()[0];
     std::vector<bool> result;
     for (const TiledHloInstruction* operand : tiled_hlo_root->operands()) {
       result.push_back(IsTiledReadCoalescedHeuristic(*operand, device_info_));
@@ -553,7 +554,8 @@ class CoalescingForTiledHloTest : public CoalescingTest {
             tile_sizes, /*constraints_are_known_satisfied=*/true,
             /*compute_all_tile_offset_indexing_maps=*/true);
 
-    const TiledHloInstruction* tiled_hlo_root = tiled_hlo_computation.GetRoot();
+    const TiledHloInstruction* tiled_hlo_root =
+        tiled_hlo_computation.GetRoots()[0];
     std::vector<double> result;
     for (const TiledHloInstruction* operand : tiled_hlo_root->operands()) {
       result.push_back(BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
