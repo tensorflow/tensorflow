@@ -362,13 +362,13 @@ class UnfuseBatchNormTrainingPattern
 // In combination with marking such ops as illegal, this allows backends that
 // do not have special support for fused batchnorm to use simpler arithmetic
 // primitives.
-void populateUnfuseBatchNormInferencePattern(MLIRContext *context,
-                                             RewritePatternSet *patterns) {
+static void populateUnfuseBatchNormInferencePattern(
+    MLIRContext *context, RewritePatternSet *patterns) {
   patterns->add<UnfuseBatchNormInferencePattern>(context);
 }
 
-void populateUnfuseBatchNormTrainingPattern(MLIRContext *context,
-                                            RewritePatternSet *patterns) {
+static void populateUnfuseBatchNormTrainingPattern(
+    MLIRContext *context, RewritePatternSet *patterns) {
   patterns->add<UnfuseBatchNormTrainingPattern>(context);
 }
 
