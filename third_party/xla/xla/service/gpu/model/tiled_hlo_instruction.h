@@ -43,6 +43,8 @@ namespace gpu {
 // where (d0, d1, ...) is the tile multi-index.
 class TiledHloInstruction {
  public:
+  virtual ~TiledHloInstruction() = default;
+
   // Creates an instance of TiledHloInstruction. Returns an error if any of the
   // following preconditions is not met:
   // * Number of tile sizes, strides should match HLO shape rank.
