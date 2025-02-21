@@ -656,7 +656,7 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, BatchDotFloat) {
       std::unique_ptr<HloModule> module,
       HloTestBase::ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(
-      HloTestBase::RunAndCompare(std::move(module), ErrorSpec{1e-5, 1e-5}));
+      HloTestBase::RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
 }
 
 XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,

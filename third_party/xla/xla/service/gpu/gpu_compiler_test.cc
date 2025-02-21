@@ -535,7 +535,7 @@ TEST_F(GpuCompilerTestWithAutotuneDb,
                 .cuda_compute_capability();
   if (!cc.IsAtLeastAmpere()) {
     GTEST_SKIP() << "Autotuning results have only been generated for Ampere "
-                 << "and Hopper GPUs";
+                 << "and later GPUs";
   }
   const absl::string_view hlo_string = R"(
 HloModule test
