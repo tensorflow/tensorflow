@@ -3120,10 +3120,9 @@ PjRtStreamExecutorLoadedExecutable::Execute(
         *hlo_inputs.add_arguments() = literal->ToProto();
       }
       *hlo_snapshot.add_partitions() = std::move(hlo_inputs);
-
-      DumpHloUnoptimizedSnapshotIfEnabled(
-          hlo_snapshot, input_hlo_snapshot_bits_->debug_options);
     }
+    DumpHloUnoptimizedSnapshotIfEnabled(
+        hlo_snapshot, input_hlo_snapshot_bits_->debug_options);
   }
 
   RunId run_id;
