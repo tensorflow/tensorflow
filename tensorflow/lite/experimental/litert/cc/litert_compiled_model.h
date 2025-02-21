@@ -147,6 +147,14 @@ class CompiledModel
     return Create(env, model, std::move(options));
   }
 
+  // Get input buffer requirements for the given signature and input name.
+  Expected<TensorBufferRequirements> GetInputBufferRequirements(
+      absl::string_view signature_name, absl::string_view input_name) {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_name));
+    return GetInputBufferRequirements(signature_index, input_name);
+  }
+
   // Returns the buffer requirements for the given n-th input tensor. The
   // returned TensorBufferRequirements is used to create the input tensor
   // buffer.
@@ -164,6 +172,14 @@ class CompiledModel
     LITERT_ASSIGN_OR_RETURN(size_t input_index,
                             FindInputIndex(signature_index, input_name));
     return GetInputBufferRequirements(signature_index, input_index);
+  }
+
+  // Get output buffer requirements for the given signature and output name.
+  Expected<TensorBufferRequirements> GetOutputBufferRequirements(
+      absl::string_view signature_name, absl::string_view output_name) {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_name));
+    return GetOutputBufferRequirements(signature_index, output_name);
   }
 
   // Returns the buffer requirements for the given output tensor. The returned
@@ -199,12 +215,32 @@ class CompiledModel
                                    /*is_input=*/false);
   }
 
+  // A helper function to create input tensor buffers for the given signature.
+  // It uses BufferRequirements and RankedTensorType to create the input tensor
+  // buffers.
+  Expected<std::vector<TensorBuffer>> CreateInputBuffers(
+      absl::string_view signature_name) const {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_name));
+    return CreateInputOutputBuffers(signature_index, /*is_input=*/true);
+  }
+
   // A helper function to creates the input tensor buffers for the given
   // signature. It uses BufferRequirements and RankedTensorType to create the
   // input tensor buffers.
   Expected<std::vector<TensorBuffer>> CreateInputBuffers(
       size_t signature_index) const {
     return CreateInputOutputBuffers(signature_index, /*is_input=*/true);
+  }
+
+  // A helper function to create output tensor buffers for the given signature.
+  // It uses BufferRequirements and RankedTensorType to create the output tensor
+  // buffers.
+  Expected<std::vector<TensorBuffer>> CreateOutputBuffers(
+      absl::string_view signature_name) const {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_name));
+    return CreateOutputBuffers(signature_index);
   }
 
   // A helper function to creates the output tensor buffers for the given
@@ -234,6 +270,16 @@ class CompiledModel
                           bool& async) const {
     async = true;
     return RunHelper(signature_index, input_buffers, output_buffers, async);
+  }
+
+  // Runs the model of the given signature key synchronously with the provided
+  // input/output TensorBuffers.
+  Expected<void> Run(absl::string_view signature_key,
+                     const std::vector<TensorBuffer>& input_buffers,
+                     const std::vector<TensorBuffer>& output_buffers) const {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_key));
+    return Run(signature_index, input_buffers, output_buffers);
   }
 
   // Runs the model of the given signature key synchronously with the provided
