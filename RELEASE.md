@@ -74,6 +74,9 @@ This release contains contributions from many people at Google, as well as:
     * Interpreter:
       * `tf.lite.Interpreter` gives deprecation warning redirecting to its new location at `ai_edge_litert.interpreter`, as the API `tf.lite.Interpreter` will be deleted in TF 2.20. See the [migration guide](https://ai.google.dev/edge/litert/migration) for details.
 
+* The `tensorflow-io-gcs-filesystem` package is now optional, due its limited support.
+  To install it alongside `tensorflow`, run `pip install "tensorflow[gcs-filesystem]"`.
+
 ### Known Caveats
 
 ### Major Features and Improvements
