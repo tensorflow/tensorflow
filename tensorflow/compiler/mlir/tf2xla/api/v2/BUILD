@@ -5,9 +5,6 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 # Please reach out to tf-bridge-team@ before using the TF2XLA bridge.
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        ":__subpackages__",
-    ],
 )
 
 cc_library(
@@ -112,9 +109,7 @@ tf_cc_test(
 tf_proto_library(
     name = "device_type_proto",
     srcs = ["device_type.proto"],
-    visibility = [
-        "//learning/serving/contrib/tfrt/mlir/saved_model_analysis:__pkg__",
-    ],
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
@@ -122,7 +117,6 @@ cc_library(
     srcs = ["cluster_tf.cc"],
     hdrs = ["cluster_tf.h"],
     visibility = [
-        "//learning/serving/contrib/tfrt/mlir/saved_model_analysis:__pkg__",
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:__pkg__",
         "//tensorflow/compiler/tf2xla:__pkg__",
@@ -188,7 +182,6 @@ cc_library(
     srcs = ["tf_dialect_to_executor.cc"],
     hdrs = ["tf_dialect_to_executor.h"],
     visibility = [
-        "//learning/serving/contrib/tfrt/mlir/saved_model_analysis:__pkg__",
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/compiler/tf2xla:__pkg__",
     ],
