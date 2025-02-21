@@ -6202,6 +6202,18 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
           }
 
           if (should_rewrite) {
+            // If the "before copy" is from host memory, we cannot do this
+            // rewrite.
+            HloInstruction* copy_before_operand =
+                copy_before->mutable_operand(0);
+            if (copy_before_operand->shape().has_layout() &&
+                copy_before_operand->shape().layout().memory_space() ==
+                    Layout::kHostMemorySpace) {
+              should_rewrite = false;
+            }
+          }
+
+          if (should_rewrite) {
             // Can now cut down the number of ops. Make sure the memory usage
             // does not increase too much.
             int64_t total_shape_size_before_rewrite = 0;
