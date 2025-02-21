@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/flex/test_util.h"
 
-#include "absl/memory/memory.h"
+#include <cstddef>
+#include <vector>
+
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "third_party/protobuf/text_format.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
