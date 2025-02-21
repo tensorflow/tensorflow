@@ -1109,6 +1109,8 @@ CoordinationServiceStandaloneImpl::GetTaskState(
     {
       absl::MutexLock l(&state_mu_);
       state_info.set_state(cluster_state_[task_name]->GetState());
+      state_info.set_incarnation(
+          cluster_state_[task_name]->GetTaskIncarnation());
       error = cluster_state_[task_name]->GetStatus();
     }
     *state_info.mutable_task() = task;
