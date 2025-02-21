@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/fusion_utils.h"
 
+#include <iostream>
+#include <unordered_set>
+
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value_util.h"

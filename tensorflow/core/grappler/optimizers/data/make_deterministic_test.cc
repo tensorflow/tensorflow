@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/make_deterministic.h"
 
+#include <cstdint>
+#include <string>
+#include <tuple>
+#include <vector>
+
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function_testlib.h"
