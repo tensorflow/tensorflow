@@ -96,6 +96,10 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   const RelocationModel relocation_model_;
 };
 
+// Contains the object file data created as a result of ahead-of-time
+// computation.
+using ObjectFileData = std::vector<char>;
+
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
   CpuAotCompilationResult(
