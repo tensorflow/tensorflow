@@ -23,6 +23,9 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
 
 namespace {
