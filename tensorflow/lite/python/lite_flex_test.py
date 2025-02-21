@@ -305,11 +305,11 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     to_save = m.eval.get_concrete_function()
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
     tf.saved_model.save(m, save_dir, to_save)
-    converter = tf.lite.TFLiteConverter.from_saved_model(save_dir)
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
 
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     converter.experimental_enable_resource_variables = True
     tflite_model = converter.convert()

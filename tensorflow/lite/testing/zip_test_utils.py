@@ -30,6 +30,7 @@ import numpy as np
 import tensorflow as tf
 
 from google.protobuf import text_format
+from tensorflow.lite.python import lite
 from tensorflow.lite.testing import _pywrap_string_util
 from tensorflow.lite.testing import generate_examples_report as report_lib
 from tensorflow.lite.tools import flatbuffer_utils
@@ -501,7 +502,7 @@ def make_zip_of_tests(options,
           (input_values, output_values): Maps of input values and output values
           built.
         """
-        interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
+        interpreter = lite.Interpreter(model_content=tflite_model_binary)
         interpreter.allocate_tensors()
 
         input_details = interpreter.get_input_details()

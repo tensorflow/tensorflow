@@ -30,6 +30,7 @@ py_strict_library(
     ],
 )
 
+# Use --config=disable_tf_lite_py when running this test under github.
 py_strict_test(
     name = "modify_model_interface_lib_test",
     srcs = ["modify_model_interface_lib_test.py"],
@@ -38,6 +39,7 @@ py_strict_test(
         #internal proto upb dep
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],

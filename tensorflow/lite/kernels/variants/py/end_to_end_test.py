@@ -18,6 +18,7 @@ import tensorflow as tf
 
 from tensorflow.lite.kernels.variants.py import register_list_ops_py
 from tensorflow.lite.python import interpreter as _interpreter
+from tensorflow.lite.python import lite
 from tensorflow.python.ops import list_ops
 from tensorflow.python.platform import googletest
 
@@ -35,12 +36,12 @@ class ListOpsTest(parameterized.TestCase):
   def _get_interpreter_from_c_func(self, func):
     concrete_function_list = [func.get_concrete_function()]
 
-    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
         concrete_function_list
     )
     # Don't allow flex ops.
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.TFLITE_BUILTINS,
     ]
     converter.allow_custom_ops = True
     converter.legalize_custom_tensor_list_ops = True

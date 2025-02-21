@@ -18,13 +18,14 @@ import os
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.lite.python import lite
 from tensorflow.lite.tools.optimize.python import modify_model_interface_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 def build_tflite_model_with_full_integer_quantization(
-    supported_ops=tf.lite.OpsSet.TFLITE_BUILTINS_INT8):
+    supported_ops=lite.OpsSet.TFLITE_BUILTINS_INT8):
   # Define TF model
   input_size = 3
   model = tf.keras.Sequential([
@@ -34,8 +35,8 @@ def build_tflite_model_with_full_integer_quantization(
   ])
 
   # Convert TF Model to a Quantized TFLite Model
-  converter = tf.lite.TFLiteConverter.from_keras_model(model)
-  converter.optimizations = [tf.lite.Optimize.DEFAULT]
+  converter = lite.TFLiteConverterV2.from_keras_model(model)
+  converter.optimizations = [lite.Optimize.DEFAULT]
 
   def representative_dataset_gen():
     for i in range(10):
@@ -68,9 +69,9 @@ class ModifyModelInterfaceTest(test_util.TensorFlowTestCase):
 
     # 3. VALIDATE
     # Load TFLite model and allocate tensors.
-    initial_interpreter = tf.lite.Interpreter(model_path=initial_file)
+    initial_interpreter = lite.Interpreter(model_path=initial_file)
     initial_interpreter.allocate_tensors()
-    final_interpreter = tf.lite.Interpreter(model_path=final_file)
+    final_interpreter = lite.Interpreter(model_path=final_file)
     final_interpreter.allocate_tensors()
 
     # Get input and output types.
@@ -93,7 +94,7 @@ class ModifyModelInterfaceTest(test_util.TensorFlowTestCase):
     final_file = os.path.join(temp_dir, 'final_model.tflite')
     # Define initial model
     initial_model = build_tflite_model_with_full_integer_quantization(
-        supported_ops=tf.lite.OpsSet
+        supported_ops=lite.OpsSet
         .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8)
     with open(initial_file, 'wb') as model_file:
       model_file.write(initial_model)
@@ -105,9 +106,9 @@ class ModifyModelInterfaceTest(test_util.TensorFlowTestCase):
 
     # 3. VALIDATE
     # Load TFLite model and allocate tensors.
-    initial_interpreter = tf.lite.Interpreter(model_path=initial_file)
+    initial_interpreter = lite.Interpreter(model_path=initial_file)
     initial_interpreter.allocate_tensors()
-    final_interpreter = tf.lite.Interpreter(model_path=final_file)
+    final_interpreter = lite.Interpreter(model_path=final_file)
     final_interpreter.allocate_tensors()
 
     # Get input and output types.
@@ -140,9 +141,9 @@ class ModifyModelInterfaceTest(test_util.TensorFlowTestCase):
 
     # 3. VALIDATE
     # Load TFLite model and allocate tensors.
-    initial_interpreter = tf.lite.Interpreter(model_path=initial_file)
+    initial_interpreter = lite.Interpreter(model_path=initial_file)
     initial_interpreter.allocate_tensors()
-    final_interpreter = tf.lite.Interpreter(model_path=final_file)
+    final_interpreter = lite.Interpreter(model_path=final_file)
     final_interpreter.allocate_tensors()
 
     # Get input and output types.

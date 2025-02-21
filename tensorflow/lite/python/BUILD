@@ -64,6 +64,7 @@ py_strict_test(
         #internal proto upb dep
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/metrics",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/python/framework:test_lib",
@@ -79,6 +80,7 @@ py_strict_binary(
     deps = [
         ":tflite_convert_main_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "@absl_py//absl:app",
     ],
 )
@@ -409,6 +411,7 @@ py_strict_test(
         #internal proto upb dep
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:convert_to_constants",
@@ -621,6 +624,7 @@ py_strict_test(
         ":analyzer",
         #internal proto upb dep
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",

@@ -130,7 +130,7 @@ py_strict_library(
     ],
     deps = [
         ":zip_test_utils",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python:test_util",
         "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/saved_model:signature_constants",
@@ -149,6 +149,7 @@ py_strict_library(
         # "//third_party/py/tensorflow_addons",
         # copybara:uncomment_end
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:list_ops",
         "//tensorflow/python/ops:rnn",
@@ -172,6 +173,7 @@ py_strict_library(
         ":_pywrap_string_util",
         ":generate_examples_report",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/saved_model:signature_constants",
