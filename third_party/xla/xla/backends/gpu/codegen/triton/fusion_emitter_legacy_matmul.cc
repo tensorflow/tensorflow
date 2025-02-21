@@ -936,9 +936,6 @@ MatMulLaunchConfig::MatMulLaunchConfig(const TritonGemmConfig& config,
 absl::Status ValidateMatMulConfig(const TritonGemmConfig& config,
                                   const HloDotInstruction& dot) {
   TF_RET_CHECK(config.split_k >= 1);
-  TF_RET_CHECK(config.block_m >= 16);
-  TF_RET_CHECK(config.block_k >= 16);
-  TF_RET_CHECK(config.block_n >= 16);
 
   const auto& dims = dot.dot_dimension_numbers();
   int num_batch_dims =
