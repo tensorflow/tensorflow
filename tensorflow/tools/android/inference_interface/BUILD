@@ -32,6 +32,7 @@ cc_library(
     name = "android_tensorflow_inference_jni",
     srcs = if_android([":android_tensorflow_inference_jni_srcs"]),
     copts = tf_copts(),
+    features = ["-layering_check"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:portable_tensorflow_lib_lite",

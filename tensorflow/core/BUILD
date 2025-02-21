@@ -1137,7 +1137,7 @@ cc_library(
         "//tensorflow/core/util:android_test_hdrs",
     ],
     copts = tf_copts(android_optimization_level_override = None) + if_ios(["-Os"]),
-    features = tf_features_nomodules_if_mobile() + tf_opts_nortti_if_lite_protos(),
+    features = tf_features_nomodules_if_mobile() + tf_opts_nortti_if_lite_protos() + if_android(["-layering_check"]),
     tags = [
         "manual",
         "notap",
