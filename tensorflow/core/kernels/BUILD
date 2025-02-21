@@ -964,6 +964,7 @@ cc_library(
         ":unpack_op",
         ":unravel_index_op",
         ":where_op",
+        ":wrap_pad_op",
     ],
 )
 
@@ -1094,6 +1095,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "pad_op",
     prefix = "pad_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "wrap_pad_op",
+    prefix = "wrap_pad_op",
     deps = ARRAY_DEPS,
 )
 
@@ -3334,11 +3341,13 @@ tf_cc_tests(
         "restore_v2_op_test.cc",
         "save_op_test.cc",
         "save_v2_op_test.cc",
+        "wrap_pad_op_test.cc",
     ],
     deps = [
         ":io",
         ":ops_testutil",
         ":ops_util",
+        ":wrap_pad_op",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -3349,6 +3358,23 @@ tf_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/util/tensor_bundle",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "wrap_pad_op_benchmark_test",
+    srcs = ["wrap_pad_op_benchmark_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":wrap_pad_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -6604,6 +6630,8 @@ filegroup(
         "transpose_functor.h",
         "transpose_op.h",
         "where_op.h",
+        "wrap_pad_op.h",
+        "wrap_pad_op_cpu_impl.h",
         "xent_op.h",
     ] + [
         "//tensorflow/core/kernels/data:portable_all_op_kernels_headers",
@@ -6956,6 +6984,12 @@ filegroup(
         "unsorted_segment_join_op.cc",
         "where_op.cc",
         "whole_file_read_ops.cc",
+        "wrap_pad_op.cc",
+        "wrap_pad_op_cpu_impl_1.cc",
+        "wrap_pad_op_cpu_impl_2.cc",
+        "wrap_pad_op_cpu_impl_3.cc",
+        "wrap_pad_op_cpu_impl_4.cc",
+        "wrap_pad_op_cpu_impl_5.cc",
         "xent_op.cc",
         ":portable_extended_ops_headers",
     ] + [
