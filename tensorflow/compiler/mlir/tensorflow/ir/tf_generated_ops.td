@@ -5627,6 +5627,28 @@ the behavior can be unexpected:
 
 This operation has a gradient and thus allows for training `min` and `max`
 values.
+>>> # Create sample input tensor
+>>> inputs = tf.random.uniform(shape=(2, 3), minval=-2.0, maxval=2.0, dtype=tf.float32)
+>>> 
+>>> # Create per-channel min and max values
+>>> min_vals = tf.constant([-1.0, -2.0, -0.8], dtype=tf.float32)
+>>> max_vals = tf.constant([2.0, 1.5, 3.5], dtype=tf.float32)
+>>> 
+>>> # Quantize the input tensor
+>>> quantized_outputs = tf.quantization.fake_quant_with_min_max_vars_per_channel(
+...     inputs, min_vals, max_vals, num_bits=8, narrow_range=False
+... )
+>>> 
+>>> 
+>>> print("Input:", inputs)
+ Input: tf.Tensor(
+[[-1.6714907  1.9085183 -1.0085092]
+ [-1.4660316  1.3541527  1.4107189]], shape=(2, 3), dtype=float32)
+>>> 
+>>> print("\n Output:", quantized_outputs)
+ Output: tf.Tensor(
+[[-1.         1.4960785 -0.7925491]
+ [-1.         1.3588235  1.4164706]], shape=(2, 3), dtype=float32)
   }];
 
   let arguments = (ins
