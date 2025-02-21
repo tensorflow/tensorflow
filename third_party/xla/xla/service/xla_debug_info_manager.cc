@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -61,6 +62,32 @@ void XlaDebugInfoManager::StartTracing() {
   tracing_active_ = true;
 }
 
+static void print_msg_size(const std::string& name, const proto2::Message& msg,
+                           int level, const std::string& prefix) {
+  if (level <= 0) return;
+  LOG(INFO) << prefix << name << ", ByteSizeLong()=" << msg.ByteSizeLong();
+  if (level <= 1) return;
+
+  std::string child_prefix = prefix + "----";
+  const auto* desc = msg.GetDescriptor();
+  const auto* refl = msg.GetReflection();
+  auto field_count = desc->field_count();
+  for (int i = 0; i < field_count; i++) {
+    const proto2::FieldDescriptor* field = desc->field(i);
+    const proto2::Message& child_msg = refl->GetMessage(msg, field);
+    int field_size = field->is_repeated() ? refl->FieldSize(msg, field) : 0;
+    LOG(INFO) << child_prefix << field->name()
+              << ", element count=" << field_size
+              << ", ByteSizeLong()=" << child_msg.ByteSizeLong();
+    for (int j = 0; j < field_size; j++) {
+      const proto2::Message& sub_ch_msg =
+          refl->GetRepeatedMessage(msg, field, j);
+      std::string sub_ch_name = field->name() + "[" + std::to_string(j) + "]";
+      print_msg_size(sub_ch_name, sub_ch_msg, level - 1, child_prefix);
+    }
+  }
+}
+
 void XlaDebugInfoManager::StopTracing(
     std::vector<std::unique_ptr<HloProto>>* module_debug_info) {
   std::vector<XlaModuleEntry> modules_to_serialize;
@@ -88,6 +115,11 @@ void XlaDebugInfoManager::StopTracing(
     module_debug_info->clear();
     for (const auto& m : modules_to_serialize) {
       auto hlo_proto = std::make_unique<HloProto>(MakeHloProto(*m.hlo_module));
+      const auto& module_proto = hlo_proto->hlo_module();
+      LOG(INFO) << "XlaModule size info for " << m.hlo_module->name()
+                << ", id=" << m.hlo_module->unique_id();
+      print_msg_size("xla_module", module_proto, 2, "----");
+      print_msg_size("buffer_assignment", m.buffer_assignment, 2, "----");
       *hlo_proto->mutable_buffer_assignment() = m.buffer_assignment;
       module_debug_info->emplace_back(std::move(hlo_proto));
     }
