@@ -15,10 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_IR_MLRT_MLRT_DIALECT_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_IR_MLRT_MLRT_DIALECT_H_
 
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/TypeSupport.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlrt {
 namespace compiler {
