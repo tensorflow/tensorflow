@@ -15,6 +15,8 @@ limitations under the License.
 
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
