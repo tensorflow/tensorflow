@@ -15,8 +15,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/unfold_large_splat_constants_pass.h"
 
 #include <cstddef>
-#include <cstdint>
-#include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
