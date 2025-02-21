@@ -65,6 +65,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using absl::flat_hash_map;
+using absl::flat_hash_set;
+
 constexpr int64_t kMaxMemoryMapDimensionSize = 100;
 
 struct AsciiMemoryMapParameters {
@@ -162,14 +165,11 @@ std::string MemoryMapToString(int64_t start, int64_t end,
   return output;
 }
 
-}  // namespace
-
-using absl::flat_hash_map;
-using absl::flat_hash_set;
-
 bool IsOdd(int x) { return (x % 2) == 1; }
 
 bool IsEven(int x) { return (x % 2) == 0; }
+
+}  // namespace
 
 HeapSimulator::Chunk HeapSimulator::Chunk::FromOffsetEnd(int64_t offset,
                                                          int64_t end) {
@@ -240,15 +240,14 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
 }
 
 absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
-    const HloComputation& computation, const HloInstructionSequence& sequence,
-    const HloAliasAnalysis& alias_analysis,
+    const HloComputation& computation, const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const HloSchedule* schedule) {
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
-                         computation, sequence, alias_analysis, size_function,
-                         schedule, HeapSimulator::Options()));
+                         computation, alias_analysis, size_function, schedule,
+                         HeapSimulator::Options()));
   return result.heap_size;
 }
 
@@ -259,14 +258,12 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     const BufferValue::SizeFunction& size_fn, const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options, &schedule);
   const HloComputation* entry_computation = module.entry_computation();
-  const HloInstructionSequence& instruction_sequence =
-      schedule.sequence(entry_computation);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloLiveRange> hlo_live_range,
       HloLiveRange::Run(schedule, alias_analysis, entry_computation));
-  TF_RETURN_IF_ERROR(heap.RunComputation(*entry_computation,
-                                         instruction_sequence, alias_analysis,
-                                         hlo_live_range.get()));
+  XLA_VLOG_LINES(1, entry_computation->parent()->ToString());
+  XLA_VLOG_LINES(2, entry_computation->ToString());
+  TF_RETURN_IF_ERROR(heap.RunComputation(alias_analysis, hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -284,17 +281,16 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
                       HloLiveRange::Run(schedule, alias_analysis, &computation,
                                         /*module_scoped_analysis=*/false));
-  TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
-                                         alias_analysis, hlo_live_range.get()));
+  XLA_VLOG_LINES(1, computation.parent()->ToString());
+  XLA_VLOG_LINES(2, computation.ToString());
+  TF_RETURN_IF_ERROR(heap.RunComputation(alias_analysis, hlo_live_range.get()));
   return heap.Finish();
 }
 
 /*static*/
 absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
-    const HloComputation& computation,
-    const HloInstructionSequence& instruction_sequence,
-    const HloAliasAnalysis& alias_analysis,
+    const HloComputation& computation, const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_fn, const HloSchedule* schedule,
     const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
@@ -302,31 +298,27 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloLiveRange> hlo_live_range,
       HloLiveRange::Run(*schedule, alias_analysis, &computation));
-  TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
-                                         alias_analysis, hlo_live_range.get()));
+  XLA_VLOG_LINES(1, computation.parent()->ToString());
+  XLA_VLOG_LINES(2, computation.ToString());
+  TF_RETURN_IF_ERROR(heap.RunComputation(alias_analysis, hlo_live_range.get()));
   return heap.Finish();
 }
 
-// Runs a heap simulation for the given 'computation', assuming the given
-// 'instruction_sequence'.
 absl::Status HeapSimulator::RunComputation(
-    const HloComputation& computation,
-    const HloInstructionSequence& instruction_sequence,
     const HloAliasAnalysis& alias_analysis, HloLiveRange* hlo_live_range) {
-  XLA_VLOG_LINES(1, computation.parent()->ToString());
-  XLA_VLOG_LINES(2, computation.ToString());
-
   VLOG(1) << hlo_live_range->ToString();
 
   HloDataflowAnalysis& dataflow_analysis = alias_analysis.dataflow_analysis();
 
   // Record the buffer define/free event for each time step. We free all
-  // remaining buffers (entry parameter, etc) after the program has finished
+  // remaining buffers (entry parameter, etc.) after the program has finished
   // running, so we set the size of to program_end_time + 1.
   std::vector<std::vector<const HloValue*>> buffers_defined(
       hlo_live_range->schedule_end_time() + 1);
   std::vector<std::vector<const HloValue*>> buffers_freed(
       hlo_live_range->schedule_end_time() + 1);
+
+  auto& buffer_live_ranges = hlo_live_range->buffer_live_ranges();
 
   // values_to_assign tracks the HloValues that we need to assign a buffer to.
   // Note that we only need to assign a buffer to a value when both of the
@@ -340,21 +332,12 @@ absl::Status HeapSimulator::RunComputation(
   // assign a buffer if we are doing global heap simulation.
   std::vector<const HloValue*> values_to_assign;
   values_to_assign.reserve(dataflow_analysis.values().size());
-
-  auto& buffer_live_ranges = hlo_live_range->buffer_live_ranges();
-
-  for (const HloValue* value : dataflow_analysis.values()) {
-    // Ignore buffers that are not tracked.
-    if (!buffer_live_ranges.contains(value)) {
-      continue;
-    }
-    if (IgnoreBuffer(value)) {
-      continue;
-    }
-
-    values_to_assign.push_back(value);
-  }
-
+  std::copy_if(
+      dataflow_analysis.values().begin(), dataflow_analysis.values().end(),
+      std::back_inserter(values_to_assign),
+      [this, &buffer_live_ranges](const HloValue* value) {
+        return buffer_live_ranges.contains(value) && !IgnoreBuffer(value);
+      });
   absl::c_sort(values_to_assign,
                [&](const HloValue* value1, const HloValue* value2) {
                  const auto& live_range1 = buffer_live_ranges.at(value1);
@@ -368,12 +351,12 @@ absl::Status HeapSimulator::RunComputation(
   // For each value that we need to assign a buffer to, add the define and free
   // events.
   for (const HloValue* value : values_to_assign) {
-    auto live_range = buffer_live_ranges.at(value);
+    const HloLiveRange::TimeBound& live_range = buffer_live_ranges.at(value);
     buffers_defined[live_range.start].push_back(value);
     buffers_freed[live_range.end].push_back(value);
   }
 
-  // All HloValues in a hlo buffer should be allocated to the same address. This
+  // All HloValues in an HloBuffer should be allocated to the same address. This
   // map tracks the first value that got allocated in a buffer.
   absl::flat_hash_map<const HloBuffer*, const HloValue*> first_allocated_value;
 
@@ -381,122 +364,126 @@ absl::Status HeapSimulator::RunComputation(
 
   // Populate buffer sizes with the maximum size of the constituent HloValues.
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
-    int64_t size = 0;
+    int64_t max_buffer_size = 0;
     for (const HloValue* value : buffer.values()) {
-      size = std::max(size, size_fn_(*value));
+      max_buffer_size = std::max(max_buffer_size, size_fn_(*value));
     }
     for (const HloValue* value : buffer.values()) {
-      buffer_sizes_[value] = size;
+      buffer_sizes_[value] = max_buffer_size;
     }
   }
 
   // Go through each step in the program and replay each buffer define and free
   // events.
-  for (int64_t i = 0; i < hlo_live_range->schedule_end_time() + 1; ++i) {
-    VLOG(1) << "Time step: " << i;
+  for (int64_t time = 0; time < hlo_live_range->schedule_end_time() + 1;
+       ++time) {
+    VLOG(1) << "Time step: " << time;
 
-    for (const HloValue* value : buffers_defined[i]) {
-      bool shared = false;
+    for (const HloValue* value : buffers_defined[time]) {
       VLOG(1) << "Start buffer: " << value->ToShortString();
       const HloBuffer* hlo_buffer =
           &alias_analysis.GetBufferContainingValue(*value);
-      if (first_allocated_value.count(hlo_buffer) != 0) {
+
+      if (auto it = first_allocated_value.find(hlo_buffer);
+          it != first_allocated_value.end()) {
         // We've already assigned an address for another value in this HloBuffer
         // (HloBuffer holds several aliased HloValues). All values in a buffer
         // should be assigned the same address. Find the one that's already
         // allocated and reuse its address.
-        ShareBuffer(value, first_allocated_value[hlo_buffer],
-                    value->instruction());
+        ShareBuffer(value, it->second, value->instruction());
         VLOG(1) << "  ShareWith"
                 << first_allocated_value[hlo_buffer]->ToShortString();
         continue;
       }
-      if (options_.may_reuse_operand_buffers &&
-          hlo_buffer->values().size() == 1) {
-        // We don't support sharing an aliased buffer
-        // (hlo_buffer->values().size() > 1) with its operand.
-        for (const HloInstruction* operand : value->instruction()->operands()) {
-          const HloValueSet operand_value_set =
-              dataflow_analysis.GetValueSet(operand);
-          for (const HloValue* operand_value : operand_value_set.values()) {
-            const HloBuffer* operand_buffer =
-                &alias_analysis.GetBufferContainingValue(*operand_value);
-            if (operand_buffer->values().size() > 1) {
-              continue;
-            }
-            auto it = buffer_live_ranges.find(operand_value);
-            if (it == buffer_live_ranges.end()) {
-              continue;
-            }
 
-            auto& operand_live_range = it->second;
+      const HloValue* shared_operand_value =
+          GetSharedOperandValue(value, time, hlo_buffer, buffers_freed,
+                                buffer_live_ranges, alias_analysis);
+      if (shared_operand_value != nullptr) {
+        // Remove the operand buffer right before sharing (allocating) a
+        // new one.
+        Free(shared_operand_value, shared_operand_value->instruction());
+        buffers_freed[time].erase(
+            std::remove(buffers_freed[time].begin(), buffers_freed[time].end(),
+                        shared_operand_value),
+            buffers_freed[time].end());
+        ShareBuffer(value, shared_operand_value, value->instruction());
 
-            auto& user_live_range = buffer_live_ranges[value];
-
-            // Can only share buffers that are about to be freed.
-            if (operand_live_range.end != i) {
-              continue;
-            }
-
-            if (IgnoreBuffer(operand_value)) {
-              continue;
-            }
-
-            if (!absl::c_linear_search(buffers_freed[i], operand_value)) {
-              // If the operand buffer is not being freed (either because it has
-              // existing users, or it has been reused by other buffers), don't
-              // consider the operand as a candidate of buffer sharing.
-              continue;
-            }
-
-            // The instruction that defines the operand value can be different
-            // from the actual operand, if directly passing the defining
-            // instruction into "CanShareOperandBufferWithUser" it creates a
-            // check failure. The first condition guards against that case.
-            if (value->instruction()->IsUserOf(operand_value->instruction()) &&
-                value->instruction()->opcode() != HloOpcode::kCopy &&
-                dataflow_analysis.CanShareOperandBufferWithUser(
-                    operand_value->instruction(), operand_value->index(),
-                    value->instruction(), value->index())) {
-              // Remove the operand buffer right before sharing (allocating) a
-              // new one.
-              Free(operand_value, operand_value->instruction());
-              buffers_freed[i].erase(
-                  std::remove(buffers_freed[i].begin(), buffers_freed[i].end(),
-                              operand_value),
-                  buffers_freed[i].end());
-              ShareBuffer(value, operand_value, value->instruction());
-              // The live range of the operand buffer is now extended to the end
-              // of the current instruction.
-              operand_live_range.end = user_live_range.end;
-              VLOG(1) << "Sharing " << value->ToShortString() << " with "
-                      << operand_value->ToShortString()
-                      << ", size:" << size_fn_(*value);
-              shared = true;
-              break;
-            }
-          }
-          if (shared) {
-            break;
-          }
-        }
-      }
-      if (!shared) {
+        // The live range of the operand buffer is now extended to the end
+        // of the current instruction. Presence in buffer_live_ranges is
+        // guaranteed if shared_operand_value is non-null.
+        buffer_live_ranges[shared_operand_value].end =
+            buffer_live_ranges[value].end;
+        VLOG(1) << "Sharing " << value->ToShortString() << " with "
+                << shared_operand_value->ToShortString()
+                << ", size:" << size_fn_(*value);
+      } else {
         Alloc(value, value->instruction());
         first_allocated_value[hlo_buffer] = value;
       }
     }
 
-    if (!buffers_freed[i].empty()) {
-      VLOG(1) << "Free Buffer: ";
-    }
-    for (const HloValue* value : buffers_freed[i]) {
-      VLOG(1) << "  " << value->ToShortString();
-
+    for (const HloValue* value : buffers_freed[time]) {
+      VLOG(1) << "Free buffer: " << value->ToShortString();
       Free(value, value->instruction());
     }
   }
   return absl::OkStatus();
+}
+
+const HloValue* HeapSimulator::GetSharedOperandValue(
+    const HloValue* value, int64_t time, const HloBuffer* hlo_buffer,
+    const std::vector<std::vector<const HloValue*>>& buffers_freed,
+    const absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
+        buffer_live_ranges,
+    const HloAliasAnalysis& alias_analysis) {
+  if (!options_.may_reuse_operand_buffers || hlo_buffer->values().size() != 1) {
+    // We don't support sharing an aliased buffer
+    // (hlo_buffer->values().size() > 1) with its operand.
+    return nullptr;
+  }
+
+  for (const HloInstruction* operand : value->instruction()->operands()) {
+    const HloValueSet operand_value_set =
+        alias_analysis.dataflow_analysis().GetValueSet(operand);
+    for (const HloValue* operand_value : operand_value_set.values()) {
+      const HloBuffer* operand_buffer =
+          &alias_analysis.GetBufferContainingValue(*operand_value);
+      if (operand_buffer->values().size() > 1) {
+        continue;
+      }
+      auto buffer_live_range_it = buffer_live_ranges.find(operand_value);
+      if (buffer_live_range_it == buffer_live_ranges.end()) {
+        continue;
+      }
+      // Can only share buffers that are about to be freed.
+      if (buffer_live_range_it->second.end != time) {
+        continue;
+      }
+      if (IgnoreBuffer(operand_value)) {
+        continue;
+      }
+      if (!absl::c_linear_search(buffers_freed[time], operand_value)) {
+        // If the operand buffer is not being freed (either because it has
+        // existing users, or it has been reused by other buffers), don't
+        // consider the operand as a candidate of buffer sharing.
+        continue;
+      }
+
+      // The instruction that defines the operand value can be different
+      // from the actual operand, if directly passing the defining
+      // instruction into "CanShareOperandBufferWithUser" it creates a
+      // check failure. The first condition guards against that case.
+      if (value->instruction()->IsUserOf(operand_value->instruction()) &&
+          value->instruction()->opcode() != HloOpcode::kCopy &&
+          alias_analysis.dataflow_analysis().CanShareOperandBufferWithUser(
+              operand_value->instruction(), operand_value->index(),
+              value->instruction(), value->index())) {
+        return operand_value;
+      }
+    }
+  }
+  return nullptr;
 }
 
 HeapSimulator::HeapSimulator(std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
@@ -527,9 +514,9 @@ bool HeapSimulator::IgnoreBuffer(const HloValue* buffer) const {
          !options_.buffers_to_assign->contains(buffer);
 }
 
-// Alloc always calls the underlying heap algorithm.
 void HeapSimulator::Alloc(const HloValue* buffer,
                           const HloInstruction* instruction) {
+  // Alloc always calls the underlying heap algorithm.
   CHECK(!allocated_buffers_.contains(buffer))
       << "Alloc called on allocated buffer: " << *buffer;
   CHECK(!freed_buffers_.contains(buffer))
@@ -540,28 +527,29 @@ void HeapSimulator::Alloc(const HloValue* buffer,
   algorithm_->Alloc(buffer, size);
   no_fragmentation_stats_->Alloc(buffer, size);
   FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
-                 nullptr);
+                 /*share_with_canonical=*/nullptr);
 }
 
-// Free calls the underlying algorithm for non-shared buffers, and for shared
-// buffers whose group liveness has expired.  Shared group liveness is tracked
-// by maintaining a refcount; the Free call on the last buffer in the group
-// causes Free to be called on the underlying algorithm.
 void HeapSimulator::Free(const HloValue* buffer,
                          const HloInstruction* instruction) {
+  // Free calls the underlying algorithm for non-shared buffers, and for shared
+  // buffers whose group liveness has expired.  Shared group liveness is tracked
+  // by maintaining a refcount; the Free call on the last buffer in the group
+  // causes Free to be called on the underlying algorithm.
   const int64_t size = GetBufferSize(buffer);
   algorithm_->Free(buffer, size);
   no_fragmentation_stats_->Free(buffer, size);
-  FillDebugTrace(HeapSimulatorTrace::Event::FREE, buffer, instruction, nullptr);
+  FillDebugTrace(HeapSimulatorTrace::Event::FREE, buffer, instruction,
+                 /*share_with_canonical=*/nullptr);
 }
 
-// ShareBuffer associates buffers with their SharedGroup in shared_buffers_.
-// The 'buffer' must be a non-allocated, non-freed buffer, just like in calls
-// to Alloc.  The 'shared' buffer must be a previously allocated or shared
-// buffer. Both 'buffer' and 'shared' will be associated with the same
-// SharedGroup.
 void HeapSimulator::ShareBuffer(const HloValue* buffer, const HloValue* shared,
                                 const HloInstruction* instruction) {
+  // ShareBuffer associates buffers with their SharedGroup in shared_buffers_.
+  // The 'buffer' must be a non-allocated, non-freed buffer, just like in calls
+  // to Alloc.  The 'shared' buffer must be a previously allocated or shared
+  // buffer. Both 'buffer' and 'shared' will be associated with the same
+  // SharedGroup.
   algorithm_->ShareWith(buffer, shared, GetBufferSize(shared));
   no_fragmentation_stats_->ShareWith(buffer, shared, GetBufferSize(shared));
   FillDebugTrace(HeapSimulatorTrace::Event::SHARE_WITH, buffer, instruction,

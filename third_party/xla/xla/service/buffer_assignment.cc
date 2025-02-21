@@ -1888,14 +1888,12 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
               computation_map.find(private_stack_computation);
           CHECK(computation_map_it != computation_map.end());
           options.buffers_to_assign = &computation_map_it->second;
-          const HloInstructionSequence* instruction_sequence =
-              hlo_ordering.SequentialOrder(*private_stack_computation);
           TF_ASSIGN_OR_RETURN(
               HeapSimulator::Result<HloValue> result,
-              HeapSimulator::Run(
-                  get_heap_algorithm(alignment), *private_stack_computation,
-                  *instruction_sequence, assignment->alias_analysis(),
-                  assignment->buffer_size_, &schedule, options));
+              HeapSimulator::Run(get_heap_algorithm(alignment),
+                                 *private_stack_computation,
+                                 assignment->alias_analysis(),
+                                 assignment->buffer_size_, &schedule, options));
           AssignBuffersFromHeapSimulator(result, assignment, color,
                                          isolation_options);
         }
