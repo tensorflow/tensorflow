@@ -32,21 +32,6 @@ limitations under the License.
 
 namespace tsl {
 
-// This is a singly linked list of nodes waiting for notification, hanging off
-// of AsyncValue.  When the value becomes available or if an error occurs, the
-// callbacks are informed.
-class NotifierListNode {
- public:
-  explicit NotifierListNode(absl::AnyInvocable<void()> notification)
-      : next_(nullptr), notification_(std::move(notification)) {}
-
- private:
-  friend class AsyncValue;
-  // This is the next thing waiting on the AsyncValue.
-  NotifierListNode* next_;
-  absl::AnyInvocable<void()> notification_;
-};
-
 uint16_t AsyncValue::CreateTypeInfoAndReturnTypeIdImpl(
     const TypeInfo& type_info) {
   size_t type_id = GetTypeInfoTableSingleton()->emplace_back(type_info) + 1;
@@ -76,61 +61,51 @@ void AsyncValue::NotifyAvailable(State available_state) {
 
   // Mark the value as available, ensuring that new queries for the state see
   // the value that got filled in.
-  auto old_value = waiters_and_state_.exchange(
+  auto waiters_and_state = waiters_and_state_.exchange(
       WaitersAndState(nullptr, available_state), std::memory_order_acq_rel);
-  DCHECK(old_value.state() == State::kUnconstructed ||
-         old_value.state() == State::kConstructed);
+  DCHECK(waiters_and_state.state() == State::kUnconstructed ||
+         waiters_and_state.state() == State::kConstructed);
 
-  RunWaiters(old_value.waiter());
+  RunWaiters(waiters_and_state.waiter());
 }
 
-void AsyncValue::RunWaiters(NotifierListNode* list) {
+void AsyncValue::RunWaiters(WaiterListNode* list) {
   while (list) {
-    NotifierListNode* node = list;
-    // TODO(chky): pass state into notification_ so that waiters do not need to
-    // check atomic state again.
-    node->notification_();
-    list = node->next_;
+    WaiterListNode* node = list;
+    (*node)();
+    list = node->next;
     delete node;
   }
 }
 
-// If the value is available or becomes available, this calls the closure
-// immediately. Otherwise, the add closure to the waiter list where it will be
-// called when the value becomes available.
-void AsyncValue::EnqueueWaiter(absl::AnyInvocable<void()> waiter,
-                               WaitersAndState old_value) {
-  // Create the node for our waiter.
-  auto* node = new NotifierListNode(std::move(waiter));
-  auto old_state = old_value.state();
-
-  // Swap the next link in. old_value.state() must be unavailable when
+void AsyncValue::EnqueueWaiterListNode(WaiterListNode* waiter,
+                                       WaitersAndState waiters_and_state) {
+  // Swap the next link in. waiters_and_state.state() must be unavailable when
   // evaluating the loop condition. The acquire barrier on the compare_exchange
   // ensures that prior changes to waiter list are visible here as we may call
   // RunWaiter() on it. The release barrier ensures that prior changes to *node
   // appear to happen before it's added to the list.
-  node->next_ = old_value.waiter();
-  auto new_value = WaitersAndState(node, old_state);
-  while (!waiters_and_state_.compare_exchange_weak(old_value, new_value,
-                                                   std::memory_order_acq_rel,
-                                                   std::memory_order_acquire)) {
-    // While swapping in our waiter, the value could have become available.  If
+  waiter->next = waiters_and_state.waiter();
+  while (!waiters_and_state_.compare_exchange_weak(
+      waiters_and_state, WaitersAndState(waiter, waiters_and_state.state()),
+      std::memory_order_acq_rel, std::memory_order_acquire)) {
+    // While swapping in our waiter, the value could have become available. If
     // so, just run the waiter.
-    if (old_value.state() == State::kConcrete ||
-        old_value.state() == State::kError) {
-      DCHECK(old_value.waiter() == nullptr);
-      node->notification_();
-      delete node;
+    if (waiters_and_state.state() == State::kConcrete ||
+        waiters_and_state.state() == State::kError) {
+      DCHECK(waiters_and_state.waiter() == nullptr);
+      (*waiter)();
+      delete waiter;
       return;
     }
-    // Update the waiter list in new_value.
-    node->next_ = old_value.waiter();
+    // Update the waiter to point to the new head of the waiter list.
+    waiter->next = waiters_and_state.waiter();
   }
 
-  // compare_exchange_weak succeeds. The old_value must be in either
+  // compare_exchange_weak succeeds. The waiters_and_state must be in either
   // kUnconstructed or kConstructed state.
-  DCHECK(old_value.state() == State::kUnconstructed ||
-         old_value.state() == State::kConstructed);
+  DCHECK(waiters_and_state.state() == State::kUnconstructed ||
+         waiters_and_state.state() == State::kConstructed);
 }
 
 void AsyncValue::SetError(absl::Status status) {
