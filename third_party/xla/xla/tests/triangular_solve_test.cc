@@ -13,12 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <limits>
 #include <memory>
-#include <numeric>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/log/check.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/hlo/builder/lib/math.h"
