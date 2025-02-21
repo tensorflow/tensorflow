@@ -1499,6 +1499,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
         "@flatbuffers",
     ],
 )
