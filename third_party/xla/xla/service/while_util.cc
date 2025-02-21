@@ -168,6 +168,8 @@ WhileUtil::MakeInstructionsLiveIn(
   TF_RETURN_IF_ERROR(new_while->CopyAllControlDepsFrom(while_instr));
   TF_RETURN_IF_ERROR(while_instr->DropAllControlDeps());
   TF_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(replacement_instr));
+  TF_RETURN_IF_ERROR(new_while->CopyAllControlDepsFrom(while_instr));
+  TF_RETURN_IF_ERROR(while_instr->DropAllControlDeps());
   TF_RETURN_IF_ERROR(containing_computation->RemoveInstruction(while_instr));
 
   HloInstruction* while_body_param = new_while_body->parameter_instruction(0);
