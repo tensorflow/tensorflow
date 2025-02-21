@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <Python.h>
 
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
