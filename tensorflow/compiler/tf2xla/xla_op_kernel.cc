@@ -562,8 +562,9 @@ absl::Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   }
   if (variable->type() != type) {
     return errors::InvalidArgument(
-        "Trying to read variable with wrong dtype. Expected ",
-        DataTypeString(type), " got ", DataTypeString(variable->type()));
+        "Trying to read variable '", variable->name(),
+        "' with wrong dtype. Expected ", DataTypeString(type), " got ",
+        DataTypeString(variable->type()));
   }
   if (shape) {
     *shape = variable->shape();
