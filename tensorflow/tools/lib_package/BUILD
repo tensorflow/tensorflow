@@ -5,7 +5,11 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl")
 load("@rules_pkg//:pkg.bzl", "pkg_tar", "pkg_zip")
 load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_macos")
-load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_pywrap",
+    "tf_additional_license_deps",
+)
 
 package(default_visibility = ["//visibility:private"])
 
@@ -52,7 +56,14 @@ pkg_tar(
 # Shared objects that all TensorFlow libraries depend on.
 pkg_tar(
     name = "common_deps",
-    srcs = ["//tensorflow:tensorflow_framework"],
+    srcs = if_pywrap(
+        if_false = [
+            "//tensorflow:tensorflow_framework",
+        ],
+        if_true = [
+            "//tensorflow/python:tensorflow_common_framework",
+        ],
+    ),
     symlinks = if_macos(
         {
             "libtensorflow_framework.dylib": "libtensorflow_framework.%s.dylib" % VERSION_MAJOR,
@@ -102,7 +113,10 @@ pkg_tar(
 
 pkg_tar(
     name = "clib",
-    srcs = ["//tensorflow"],
+    srcs = if_pywrap(
+        if_false = ["//tensorflow"],
+        if_true = ["//tensorflow/python:_pywrap_tensorflow"],
+    ),
     package_dir = "lib",
     symlinks = if_macos(
         {
