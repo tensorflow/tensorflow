@@ -30,6 +30,7 @@ from absl.testing import parameterized
 import ml_dtypes
 import numpy as np
 
+from xla.python import py_host_callback_pb2
 from xla.python import xla_client
 
 # pylint: disable=g-import-not-at-top
@@ -3447,7 +3448,30 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
         self.assertEqual(
             getattr(options.executable_build_options.debug_options, name),
             getattr(restored.executable_build_options.debug_options, name),
-            msg=name)
+            msg=name,
+        )
+      # Arbitrary proto that is not a known compilation environment to force an
+      # error that will only be raised if we make it into the AddEnv code.
+      with self.assertRaisesRegex(
+          xla_client.XlaRuntimeError,
+          expected_regex="Unknown compilation environment",
+      ):
+        executable_build_options.comp_envs.AddEnv(
+            py_host_callback_pb2.PyHostCallbackProto()
+        )
+
+    def testCompileOptionsCanSetCompilationEnvironments(self):
+      options = xla_client.CompileOptions()
+      executable_build_options = options.executable_build_options
+      # Arbitrary proto that is not a known compilation environment to force an
+      # error that will only be raised if we make it into the AddEnv code.
+      with self.assertRaisesRegex(
+          xla_client.XlaRuntimeError,
+          expected_regex="Unknown compilation environment",
+      ):
+        executable_build_options.comp_envs.AddEnv(
+            py_host_callback_pb2.PyHostCallbackProto()
+        )
 
   tests.append(ClientTest)
 

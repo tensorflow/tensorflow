@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/xla_compiler.h"
 
+#include <Python.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -43,6 +45,8 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "third_party/protobuf/message.h"
+#include "third_party/py/google/protobuf/proto_api.h"
 #include "xla/array.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
@@ -120,6 +124,16 @@ struct type_caster<xla::OpMetadata> {
     return true;
   }
 };
+
+const proto2::python::PyProto_API* GetProtoApi() {
+  static constexpr char module_name[] = "google.protobuf.pyext._message";
+  PyObject* imp = PyImport_ImportModule(module_name);
+  CHECK(imp != nullptr);
+  static const auto* py_proto_api =
+      static_cast<const ::proto2::python::PyProto_API*>(
+          PyCapsule_Import(proto2::python::PyProtoAPICapsuleName(), 0));
+  return py_proto_api;
+}
 
 }  // namespace detail
 }  // namespace nanobind
@@ -1334,6 +1348,26 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                    &DebugOptions::xla_gpu_experimental_autotune_cache_mode,
                    &DebugOptions::set_xla_gpu_experimental_autotune_cache_mode);
 
+  nb::class_<CompilationEnvironments>(m, "CompilationEnvironments")
+      .def(nb::init<>())
+      .def("AddEnv", [](CompilationEnvironments& comp_envs, nb::handle& h) {
+        PyObject* o = h.ptr();
+        auto proto_api = nanobind::detail::GetProtoApi();
+        if (proto_api == nullptr) {
+          throw xla::XlaRuntimeError(absl::InternalError("No proto API"));
+        }
+        auto python_message = proto_api->GetConstMessagePointer(o);
+        if (!python_message.ok()) {
+          throw xla::XlaRuntimeError(
+              absl::InternalError("Can not get message pointer"));
+        }
+        proto2::python::PythonConstMessagePointer moved_msg(
+            std::move(*python_message));
+        std::unique_ptr<proto2::Message> message(moved_msg.get().New());
+        message->CopyFrom(moved_msg.get());
+        return xla::ThrowIfError(comp_envs.AddEnv(std::move(message)));
+      });
+
   nb::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(nb::init<>())
       .def("__repr__", &ExecutableBuildOptions::ToString)
@@ -1355,6 +1389,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                        : std::nullopt;
           },
           &ExecutableBuildOptions::set_result_layout)
+      .def_prop_ro("comp_envs", &ExecutableBuildOptions::mutable_comp_envs)
       .def_prop_rw("num_replicas", &ExecutableBuildOptions::num_replicas,
                    &ExecutableBuildOptions::set_num_replicas)
       .def_prop_rw("num_partitions", &ExecutableBuildOptions::num_partitions,
