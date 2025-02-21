@@ -3554,12 +3554,12 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_Quint8, I1, I64, QI16]>:$input,
+    TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_I4, QI4, TFL_Quint8, I1, I64, QI16]>:$input,
     TFL_TensorOf<[I32]>:$perm
   );
 
   let results = (outs
-    TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_Quint8, I1, I64, QI16]>:$output
+    TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_I4, QI4, TFL_Quint8, I1, I64, QI16]>:$output
   );
 
   let hasVerifier = 1;
