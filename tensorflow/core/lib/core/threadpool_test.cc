@@ -16,8 +16,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 
 #include <atomic>
+#include <cstdint>
+#include <cstdio>
+#include <functional>
 #include <optional>
+#include <vector>
 
+#include "absl/log/log.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/optional.h"
