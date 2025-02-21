@@ -16,6 +16,13 @@ limitations under the License.
 #include "tensorflow/c/eager/parallel_device/parallel_device_testlib.h"
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
