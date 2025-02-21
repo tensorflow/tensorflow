@@ -28,21 +28,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-// Returns the string representation of the specified PluginKind.
-std::string PluginKindString(PluginKind plugin_kind) {
-  switch (plugin_kind) {
-    case PluginKind::kBlas:
-      return "BLAS";
-    case PluginKind::kDnn:
-      return "DNN";
-    case PluginKind::kFft:
-      return "FFT";
-    case PluginKind::kInvalid:
-    default:
-      return "kInvalid";
-  }
-}
-
 static absl::Mutex& GetPluginRegistryMutex() {
   static absl::Mutex mu(absl::kConstInit);
   return mu;
@@ -75,29 +60,6 @@ absl::Status PluginRegistry::RegisterFactoryInternal(
 
   (*factories) = factory;
   return absl::OkStatus();
-}
-
-bool PluginRegistry::HasFactory(Platform::Id platform_id,
-                                PluginKind plugin_kind) const {
-  auto iter = factories_.find(platform_id);
-  if (iter == factories_.end()) {
-    return false;
-  }
-
-  switch (plugin_kind) {
-    case PluginKind::kBlas:
-      return iter->second.blas.has_value();
-    case PluginKind::kDnn:
-      return iter->second.dnn.has_value();
-    case PluginKind::kFft:
-      return iter->second.fft.has_value();
-    default:
-      break;
-  }
-
-  LOG(ERROR) << "Invalid plugin kind specified: "
-             << PluginKindString(plugin_kind);
-  return false;
 }
 
 // Explicit instantiations to support types exposed in user/public API.
