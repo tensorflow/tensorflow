@@ -243,6 +243,7 @@ cuda_py_strict_test(
     shard_count = 10,
     xla_tags = [
         "no_cuda_asan",  # times-out
+        "no_windows",  # TODO(b/381495196): fix test.
     ],
     deps = [
         "//tensorflow/python/compat",
