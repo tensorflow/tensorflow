@@ -15,7 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
@@ -23,12 +29,15 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
