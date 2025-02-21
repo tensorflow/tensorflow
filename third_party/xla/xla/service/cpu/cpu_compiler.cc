@@ -164,6 +164,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/fusion_wrapper.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/metrics.h"
@@ -191,6 +192,7 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/service/map_inliner.h"
 #include "xla/service/scatter_expander.h"
+#include "xla/service/scatter_simplifier.h"
 #include "xla/service/select_and_scatter_expander.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/sharding_remover.h"
@@ -478,6 +480,11 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
     TargetMachineFeatures* target_machine_features) {
   const int64_t num_partitions = module->config().num_partitions();
+  const bool is_thunk_runtime =
+      module->config().debug_options().xla_cpu_use_thunk_runtime();
+  const bool is_fusion_emitters =
+      is_thunk_runtime &&
+      module->config().debug_options().xla_cpu_use_fusion_emitters();
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
       return InvalidArgument(
@@ -561,8 +568,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Rewrite to custom calls with target as oneDNN library calls.
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
-  bool is_thunk_runtime =
-      module->config().debug_options().xla_cpu_use_thunk_runtime();
   if (!is_aot_compile && !is_thunk_runtime) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
@@ -663,7 +668,13 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       DynamicDimensionInference::ShapeCheckMode::kIgnore;
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   pipeline.AddPass<SelectAndScatterExpander>();
-  pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+  if (is_fusion_emitters) {
+    pipeline.AddPass<ScatterSimplifier>();
+    pipeline.AddPass<ScatterExpander>(
+        ScatterExpander::kEliminateSimpleScatters);
+  } else {
+    pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+  }
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
 
   // Run fp16 dots/convs in fp32 and then downcast the result to fp16.
@@ -765,6 +776,10 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     HloModule* module, bool is_aot_compile,
     TargetMachineFeatures* target_machine_features,
     const CompileOptions& compile_options) {
+  const auto& debug_options = module->config().debug_options();
+  const bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
+  const bool is_fusion_emitters =
+      is_thunk_runtime && debug_options.xla_cpu_use_fusion_emitters();
   HloPassPipeline pipeline("HLO passes after layout assignment");
 
   {
@@ -788,12 +803,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
           : tsl::port::NumSchedulableCPUs();
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-  auto& debug_options = module->config().debug_options();
-  bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
-
   // AOT compiled code runs in single thread.
   if (!is_aot_compile && !is_thunk_runtime) {
-    auto debug_options = module->config().debug_options();
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
     // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
@@ -819,6 +830,9 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
   // Add a fusion pass now that layout assignment is done.
   pipeline.AddPass<CpuInstructionFusion>();
+  if (is_fusion_emitters) {
+    pipeline.AddPass<FusionWrapper>();
+  }
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -863,9 +877,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   pipeline.AddPass<OptimizeInputOutputBufferAlias>(true);
 
   // If enabled we'll use more precise region based analysis for copy removal.
-  if (module->config()
-          .debug_options()
-          .xla_cpu_copy_insertion_use_region_analysis()) {
+  if (debug_options.xla_cpu_copy_insertion_use_region_analysis()) {
     pipeline.AddPass<CopyInsertion>(
         /*can_share_buffer=*/nullptr,
         /*use_region_based_live_range_analysis=*/-1);
@@ -1841,6 +1853,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
     if (!module->has_schedule()) {
+      if (module->config().debug_options().xla_cpu_use_thunk_runtime()) {
+        return InvalidArgument("CompileAheadOfTime does not work with thunks");
+      }
       TF_RETURN_IF_ERROR(RunHloPasses(module, /*is_aot_compile=*/true,
                                       target_machine.get(),
                                       /*dummy*/ CompileOptions{}));
