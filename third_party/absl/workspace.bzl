@@ -7,8 +7,8 @@ def repo():
 
     # Attention: tools parse and update these lines.
     # LINT.IfChange
-    ABSL_COMMIT = "fb3621f4f897824c0dbe0615fa94543df6192f30"
-    ABSL_SHA256 = "0320586856674d16b0b7a4d4afb22151bdc798490bb7f295eddd8f6a62b46fea"
+    ABSL_COMMIT = "dd4c89bd657f1e247ce5111a5c89ffe6ccfd0c92"
+    ABSL_SHA256 = "8dd54939e1905172a12be10e9ea8b7bbf56d8e2c1855955b0d9c9e478b487d6d"
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/abseil-cpp.cmake)
 
     SYS_DIRS = [
@@ -44,7 +44,4 @@ def repo():
         system_link_files = SYS_LINKS,
         strip_prefix = "abseil-cpp-{commit}".format(commit = ABSL_COMMIT),
         urls = tf_mirror_urls("https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT)),
-        patch_file = [
-            "//third_party/absl:nvidia_jetson.patch",
-        ],
     )
