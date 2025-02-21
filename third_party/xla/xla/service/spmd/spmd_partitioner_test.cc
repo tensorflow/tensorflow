@@ -11164,6 +11164,21 @@ ENTRY entry {
   EXPECT_THAT(root, op::Reshape(op::AllReduce(op::Select(_, slice, _))));
 }
 
+TEST_P(SpmdPartitioningTest, ParameterSlice) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p0 = f32[8] parameter(0), sharding={devices=[8]<=[8]}
+  ROOT %slice = f32[2] slice(%p0), slice={[0:2]}, sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::AllReduce(op::DynamicUpdateSlice(
+                        _, op::Select(_, op::Parameter(0), _), _)));
+}
+
 TEST_P(SpmdPartitioningTest, GatherParallelDimRedistributionOperand) {
   absl::string_view hlo_string = R"(
 HloModule module
