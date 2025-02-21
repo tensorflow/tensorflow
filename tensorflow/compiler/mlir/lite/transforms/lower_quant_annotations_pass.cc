@@ -272,7 +272,7 @@ class RewriteFakeQuantCompositeOp
 
     if (failed(FillCompositeParams(op, scales, zero_points, num_bits, is_signed,
                                    is_narrow_range))) {
-      return failure();
+      return rewriter.notifyMatchFailure(op, "Failed to fill composite params");
     }
 
     ShapedType input_shaped_type = cast<ShapedType>(op.getOperand(0).getType());
@@ -290,7 +290,9 @@ class RewriteFakeQuantCompositeOp
         quantized_dimension =
             quantized_dimension_attr.getValue().getSExtValue();
       } else {
-        return failure();
+        return rewriter.notifyMatchFailure(
+            op,
+            "quantization_dimension attribute is missing from the composite.");
       }
       quantized_element_type = GetPerAxisQuantizedTensorType(
           rewriter, scales, zero_points, quantized_dimension,

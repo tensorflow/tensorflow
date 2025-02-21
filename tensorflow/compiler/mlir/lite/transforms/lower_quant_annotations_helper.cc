@@ -45,7 +45,7 @@ LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
     return failure();
   }
   for (auto float_attr : scale_attr.getValues<FloatAttr>()) {
-    scales.push_back(float_attr.getValueAsDouble());
+    scales.push_back(float_attr.getValue().convertToDouble());
   }
 
   auto zero_point_attr = llvm::dyn_cast_or_null<DenseIntElementsAttr>(
@@ -54,9 +54,14 @@ LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
     for (int i = 0; i < scales.size(); ++i) {
       zero_points.push_back(0);
     }
+  } else if (zero_point_attr.isSplat()) {
+    for (int i = 0; i < scales.size(); ++i) {
+      zero_points.push_back(
+          zero_point_attr.getSplatValue<IntegerAttr>().getInt());
+    }
   } else {
-    for (int64_t zp : zero_point_attr.getValues<int64_t>()) {
-      zero_points.push_back(zp);
+    for (IntegerAttr zp : zero_point_attr.getValues<IntegerAttr>()) {
+      zero_points.push_back(zp.getInt());
     }
   }
 
