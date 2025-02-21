@@ -402,7 +402,6 @@ cc_library(
         ":remove_identity_op_pattern",
         ":replace_cast_hacks_with_tf_xla_ops_inc_gen",
         ":tf_quant_ops",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:func",
