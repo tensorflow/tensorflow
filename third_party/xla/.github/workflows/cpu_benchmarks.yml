@@ -138,7 +138,7 @@ jobs:
           done
 
       - name: Upload Results ${{ matrix.build_target }}
-        uses: actions/upload-artifact@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: cpu-xla-benchmarks-${{ matrix.job_info.os }}
           path: xla/results
