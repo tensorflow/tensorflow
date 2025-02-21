@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_COMMAND_LINE_FLAGS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_COMMAND_LINE_FLAGS_H_
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
