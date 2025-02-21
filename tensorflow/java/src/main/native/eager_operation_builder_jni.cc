@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/java/src/main/native/eager_operation_builder_jni.h"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
-#include <set>
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
