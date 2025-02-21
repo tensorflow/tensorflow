@@ -3453,12 +3453,9 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   normalize(input_width, output_width, scale_x_n, scale_x_d, offset_x,
             border_x);
 
-  DenseI64ArrayAttr scale = rewriter.getDenseI64ArrayAttr(
-      {scale_y_n, scale_y_d, scale_x_n, scale_x_d});
-  DenseI64ArrayAttr offset =
-      rewriter.getDenseI64ArrayAttr({offset_y, offset_x});
-  DenseI64ArrayAttr border =
-      rewriter.getDenseI64ArrayAttr({border_y, border_x});
+  auto scale = getTosaConstShape(rewriter, op->getLoc(), {scale_y_n, scale_y_d, scale_x_n, scale_x_d});
+  auto offset = getTosaConstShape(rewriter, op->getLoc(), {offset_y, offset_x});
+  auto border = getTosaConstShape(rewriter, op->getLoc(), {border_y, border_x});
 
   StringAttr resize_mode = rewriter.getStringAttr(mode);
 
