@@ -684,9 +684,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Same as above but takes shape arguments directly.
   bool SameShape(const Shape& lhs, const Shape& rhs) const;
 
-  // A Broadcast that feeds an element-wise operation with a unique non-scalar
-  // operand can sink to after the operation.
-  absl::StatusOr<bool> TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
+  // Attempts to sink broadcasts to after element-wise operations if all
+  // operands of that element-wise operation are compatible broadcasts. Returns
+  // whether a change was made.
+  absl::StatusOr<bool> TryToSinkBroadcastAfterElementwiseOps(
       HloInstruction* broadcast);
 
   absl::StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);

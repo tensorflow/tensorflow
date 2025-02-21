@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -70,6 +71,7 @@ namespace {
 
 using ::testing::ElementsAre;
 namespace m = match;
+namespace op = xla::testing::opcode_matchers;
 
 class AlgebraicSimplifierTest : public HloHardwareIndependentTestBase {
  public:
@@ -4951,6 +4953,28 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
               GmockMatch(m::Slice(m::Pad(m::Parameter(0), m::Op().Is(zero)))));
   EXPECT_FALSE(
       has_negative_padding(computation->root_instruction()->operand(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, BroadcastSinking) {
+  constexpr absl::string_view kModuleStr = R"(
+      HloModule m
+
+      main {
+        p0 = u32[2]{0} parameter(0)
+        p1 = u32[2]{0} parameter(1)
+        b0 = u32[1024,1,2]{2,1,0} broadcast(p0), dimensions={2}
+        b1 = u32[1024,1,2]{2,1,0} broadcast(p1), dimensions={2}
+        ROOT o = u32[1024,1,2]{2,1,0} or(b0, b1)
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Broadcast(op::Or(op::Parameter(0), op::Parameter(1))));
 }
 
 TEST_F(AlgebraicSimplifierTest, CanDisableBroadcastSinking) {
