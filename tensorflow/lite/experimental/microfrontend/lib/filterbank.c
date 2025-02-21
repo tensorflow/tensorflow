@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/filterbank.h"
 
+#include <stdint.h>
 #include <string.h>
 
 #include "tensorflow/lite/experimental/microfrontend/lib/bits.h"

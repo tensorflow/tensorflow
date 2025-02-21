@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/frontend.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
+#include <cstddef>
+
 #include "tensorflow/lite/experimental/microfrontend/lib/bits.h"
 
 struct FrontendOutput FrontendProcessSamples(struct FrontendState* state,

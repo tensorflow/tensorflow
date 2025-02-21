@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/window.h"
 
+#include <stdint.h>
 #include <string.h>
 
 int WindowProcessSamples(struct WindowState* state, const int16_t* samples,
