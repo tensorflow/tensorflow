@@ -936,7 +936,6 @@ Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
         UnrankedTensorType::get(input_type.getElementType()), input_val,
         getTosaConstShape(rewriter, op->getLoc(), start),
         getTosaConstShape(rewriter, op->getLoc(), size));
-
     return slice_op.getResult();
   }
 

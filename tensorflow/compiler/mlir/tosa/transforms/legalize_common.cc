@@ -132,7 +132,6 @@ static Value buildReshape(ImplicitLocOpBuilder& builder, Value value,
       mlir::tosa::shapeType::get(builder.getContext(), staticShape.size());
   auto staticShapeAttr =
       builder.getIndexTensorAttr(tensorflow::ConvertMlirShapeToTF(staticShape));
-
   auto staticShapeValue = builder.create<tosa::ConstShapeOp>(
       builder.getLoc(), staticShapeType, staticShapeAttr);
 
@@ -2804,18 +2803,20 @@ std::optional<Value> convertFusedActivation(PatternRewriter& rewriter,
     // legalization.
     auto input_qtype = mlir::cast<mlir::quant::UniformQuantizedType>(
         input_type.getElementType());
+    auto input_element_type = input_qtype.getStorageType();
 
     if (fused_activation_fn.getValue() == "NONE") {
       return input_value;
     } else if (fused_activation_fn.getValue() == "RELU") {
-      int32_t quantized_0 = input_qtype.getZeroPoint();
-      int32_t quantized_max = input_qtype.getStorageTypeMax();
+      int64_t quantized_0 = input_qtype.getZeroPoint();
+      int64_t quantized_max = input_qtype.getStorageTypeMax();
 
       auto clamp_op = CreateOpAndInfer<tosa::ClampOp>(
           rewriter, op->getLoc(), input_type, input_value,
-          rewriter.getI64IntegerAttr(quantized_0),
-          rewriter.getI64IntegerAttr(quantized_max),
-          rewriter.getF32FloatAttr(0), rewriter.getF32FloatAttr(0));
+          /* min_val = */
+          rewriter.getIntegerAttr(input_element_type, quantized_0),
+          /* max_val = */
+          rewriter.getIntegerAttr(input_element_type, quantized_max));
 
       return clamp_op.getResult();
     } else if (fused_activation_fn.getValue() == "RELU6") {
@@ -2830,9 +2831,10 @@ std::optional<Value> convertFusedActivation(PatternRewriter& rewriter,
 
       auto clamp_op = CreateOpAndInfer<tosa::ClampOp>(
           rewriter, op->getLoc(), input_type, input_value,
-          rewriter.getI64IntegerAttr(clamp_min),
-          rewriter.getI64IntegerAttr(clamp_max), rewriter.getF32FloatAttr(0),
-          rewriter.getF32FloatAttr(0));
+          /* min_val = */
+          rewriter.getIntegerAttr(input_element_type, clamp_min),
+          /* max_val = */
+          rewriter.getIntegerAttr(input_element_type, clamp_max));
 
       return clamp_op.getResult();
     } else if (fused_activation_fn.getValue() == "RELU_N1_TO_1") {
@@ -2848,9 +2850,10 @@ std::optional<Value> convertFusedActivation(PatternRewriter& rewriter,
 
       auto clamp_op = CreateOpAndInfer<tosa::ClampOp>(
           rewriter, op->getLoc(), input_type, input_value,
-          rewriter.getI64IntegerAttr(clamp_min),
-          rewriter.getI64IntegerAttr(clamp_max), rewriter.getF32FloatAttr(0),
-          rewriter.getF32FloatAttr(0));
+          /* min_val = */
+          rewriter.getIntegerAttr(input_element_type, clamp_min),
+          /* max_val = */
+          rewriter.getIntegerAttr(input_element_type, clamp_max));
 
       return clamp_op.getResult();
     } else {
@@ -2870,26 +2873,21 @@ std::optional<Value> convertFusedActivation(PatternRewriter& rewriter,
       if (fused_activation_fn.getValue() == "RELU") {
         return CreateOpAndInfer<tosa::ClampOp>(
                    rewriter, op->getLoc(), input_type, input_value,
-                   rewriter.getI64IntegerAttr(0),
-                   rewriter.getI64IntegerAttr(
-                       std::numeric_limits<int32_t>::max()),
-                   rewriter.getF32FloatAttr(0.0f),
+                   /* min_val = */ rewriter.getF32FloatAttr(0.0f),
+                   /* max_val = */
                    rewriter.getF32FloatAttr(std::numeric_limits<float>::max()))
             .getResult();
       } else if (fused_activation_fn.getValue() == "RELU6") {
         return CreateOpAndInfer<tosa::ClampOp>(
                    rewriter, op->getLoc(), input_type, input_value,
-                   rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(6),
-                   rewriter.getF32FloatAttr(0.0f),
-                   rewriter.getF32FloatAttr(6.0f))
+                   /* min_val = */ rewriter.getF32FloatAttr(0.0f),
+                   /* max_val = */ rewriter.getF32FloatAttr(6.0f))
             .getResult();
       } else if (fused_activation_fn.getValue() == "RELU_N1_TO_1") {
-        return CreateOpAndInfer<tosa::ClampOp>(rewriter, op->getLoc(),
-                                               input_type, input_value,
-                                               rewriter.getI64IntegerAttr(-1),
-                                               rewriter.getI64IntegerAttr(1),
-                                               rewriter.getF32FloatAttr(-1.0),
-                                               rewriter.getF32FloatAttr(1.0))
+        return CreateOpAndInfer<tosa::ClampOp>(
+                   rewriter, op->getLoc(), input_type, input_value,
+                   /* min_val = */ rewriter.getF32FloatAttr(-1.0),
+                   /* max_val = */ rewriter.getF32FloatAttr(1.0))
             .getResult();
       } else if (fused_activation_fn.getValue() == "TANH") {
         return CreateOpAndInfer<tosa::TanhOp>(rewriter, op->getLoc(),

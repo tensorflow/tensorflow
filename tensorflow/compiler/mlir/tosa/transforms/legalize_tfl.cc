@@ -329,6 +329,7 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
   }
 
   int64_t clamp_min = 0;
+  int64_t clamp_max = std::numeric_limits<int64_t>::max();
   Value clamp_in = tfl_relu_op.getX();
 
   if (output_is_qtype) {
@@ -341,6 +342,7 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
 
     clamp_min = output_qtype.getZeroPoint();
     TrimQuantizedIntegerRangeMin(input_qtype, clamp_min);
+    TrimQuantizedIntegerRangeMax(input_qtype, clamp_max);
 
     clamp_in =
         buildRescale(rewriter, op, output_type, tfl_relu_op.getX(),
@@ -349,12 +351,24 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
                      /*double_round=*/false, /*scale32=*/true);
   }
 
-  CreateReplaceOpAndInfer<tosa::ClampOp>(
-      rewriter, op, output_type, clamp_in,
-      rewriter.getI64IntegerAttr(clamp_min),
-      rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
-      rewriter.getF32FloatAttr(0.0f),
-      rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
+  auto element_type = input_type.getElementType();
+  if (auto quant_type =
+          dyn_cast<mlir::quant::UniformQuantizedType>(element_type)) {
+    element_type = quant_type.getStorageType();
+  }
+
+  mlir::Attribute min_val, max_val;
+  if (element_type.isa<mlir::FloatType>()) {
+    min_val = rewriter.getFloatAttr(element_type, 0.0f);
+    max_val =
+        rewriter.getFloatAttr(element_type, std::numeric_limits<float>::max());
+  } else {
+    min_val = rewriter.getIntegerAttr(element_type, clamp_min);
+    max_val = rewriter.getIntegerAttr(element_type, clamp_max);
+  }
+
+  CreateReplaceOpAndInfer<tosa::ClampOp>(rewriter, op, output_type, clamp_in,
+                                         min_val, max_val);
 
   return success();
 }
@@ -407,11 +421,23 @@ LogicalResult ConvertTFLRelu1Op::matchAndRewrite(
                      /*double_round=*/false, /*scale32=*/true);
   }
 
+  auto element_type = input_type.getElementType();
+  if (auto quant_type =
+          dyn_cast<mlir::quant::UniformQuantizedType>(element_type)) {
+    element_type = quant_type.getStorageType();
+  }
+
+  mlir::Attribute min_val, max_val;
+  if (element_type.isa<mlir::FloatType>()) {
+    min_val = rewriter.getFloatAttr(element_type, -1.0f);
+    max_val = rewriter.getFloatAttr(element_type, 1.0f);
+  } else {
+    min_val = rewriter.getIntegerAttr(element_type, clamp_min);
+    max_val = rewriter.getIntegerAttr(element_type, clamp_max);
+  }
+
   CreateReplaceOpAndInfer<tosa::ClampOp>(rewriter, op, output_type, clamp_in,
-                                         rewriter.getI64IntegerAttr(clamp_min),
-                                         rewriter.getI64IntegerAttr(clamp_max),
-                                         rewriter.getF32FloatAttr(-1.0f),
-                                         rewriter.getF32FloatAttr(1.0f));
+                                         min_val, max_val);
 
   return success();
 }
@@ -462,11 +488,23 @@ LogicalResult ConvertTFLRelu0To1Op::matchAndRewrite(
                      /*double_round=*/false, /*scale32=*/true);
   }
 
+  auto element_type = input_type.getElementType();
+  if (auto quant_type =
+          dyn_cast<mlir::quant::UniformQuantizedType>(element_type)) {
+    element_type = quant_type.getStorageType();
+  }
+
+  mlir::Attribute min_val, max_val;
+  if (element_type.isa<mlir::FloatType>()) {
+    min_val = rewriter.getFloatAttr(element_type, 0.0f);
+    max_val = rewriter.getFloatAttr(element_type, 1.0f);
+  } else {
+    min_val = rewriter.getIntegerAttr(element_type, clamp_min);
+    max_val = rewriter.getIntegerAttr(element_type, clamp_max);
+  }
+
   CreateReplaceOpAndInfer<tosa::ClampOp>(rewriter, op, output_type, clamp_in,
-                                         rewriter.getI64IntegerAttr(clamp_min),
-                                         rewriter.getI64IntegerAttr(clamp_max),
-                                         rewriter.getF32FloatAttr(0.0f),
-                                         rewriter.getF32FloatAttr(1.0f));
+                                         min_val, max_val);
 
   return success();
 }
@@ -517,11 +555,23 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
                      /*double_round=*/false, /*scale32=*/true);
   }
 
+  auto element_type = input_type.getElementType();
+  if (auto quant_type =
+          dyn_cast<mlir::quant::UniformQuantizedType>(element_type)) {
+    element_type = quant_type.getStorageType();
+  }
+
+  mlir::Attribute min_val, max_val;
+  if (element_type.isa<mlir::FloatType>()) {
+    min_val = rewriter.getFloatAttr(element_type, 0.0f);
+    max_val = rewriter.getFloatAttr(element_type, 6.0f);
+  } else {
+    min_val = rewriter.getIntegerAttr(element_type, clamp_min);
+    max_val = rewriter.getIntegerAttr(element_type, clamp_max);
+  }
+
   CreateReplaceOpAndInfer<tosa::ClampOp>(rewriter, op, output_type, clamp_in,
-                                         rewriter.getI64IntegerAttr(clamp_min),
-                                         rewriter.getI64IntegerAttr(clamp_max),
-                                         rewriter.getF32FloatAttr(0.0f),
-                                         rewriter.getF32FloatAttr(6.0f));
+                                         min_val, max_val);
 
   return success();
 }
@@ -1693,6 +1743,7 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
       dyn_cast<ShapedType>(tfl_conv_op.getWeights().getType());
   ShapedType output_type =
       dyn_cast<ShapedType>(tfl_conv_op.getResult().getType());
+
   // Not a ranked tensor output
   if (!input_type) return failure();
   if (!output_type) return failure();
@@ -3403,8 +3454,8 @@ LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
 
     auto op3_relu_op2_6 = CreateOpAndInfer<tosa::ClampOp>(
         rewriter, op->getLoc(), output_type, op2_add_x_op1.getResult(),
-        rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(0),
-        rewriter.getF32FloatAttr(0.0f), rewriter.getF32FloatAttr(6.0f));
+        /* min_val = */ rewriter.getF32FloatAttr(0.0f),
+        /* max_val = */ rewriter.getF32FloatAttr(6.0f));
 
     auto op4_mul_x_op3 = CreateMulOpAndInfer(rewriter, op, output_type,
                                              tfl_hardswish_op.getInput(),

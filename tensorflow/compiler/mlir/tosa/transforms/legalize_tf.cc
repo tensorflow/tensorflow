@@ -169,12 +169,25 @@ LogicalResult ConvertTFReluOp::matchAndRewrite(
   // Not a tensor output
   if (!output_type) return failure();
 
+  auto element_type = output_type.getElementType();
+  if (auto quant_type =
+          dyn_cast<mlir::quant::UniformQuantizedType>(element_type)) {
+    element_type = quant_type.getStorageType();
+  }
+
+  mlir::Attribute min_val, max_val;
+  if (element_type.isa<mlir::FloatType>()) {
+    min_val = rewriter.getFloatAttr(element_type, 0.0f);
+    max_val =
+        rewriter.getFloatAttr(element_type, std::numeric_limits<float>::max());
+  } else {
+    min_val = rewriter.getIntegerAttr(element_type, 0);
+    max_val = rewriter.getIntegerAttr(element_type,
+                                      std::numeric_limits<int32_t>::max());
+  }
+
   CreateReplaceOpAndInfer<tosa::ClampOp>(
-      rewriter, op, output_type, tf_relu_op.getFeatures(),
-      rewriter.getI64IntegerAttr(0),
-      rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
-      rewriter.getF32FloatAttr(0.0f),
-      rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
+      rewriter, op, output_type, tf_relu_op.getFeatures(), min_val, max_val);
   return success();
 }
 
@@ -187,10 +200,23 @@ LogicalResult ConvertTFRelu6Op::matchAndRewrite(
   // Not a tensor output
   if (!output_type) return failure();
 
+  auto element_type = output_type.getElementType();
+  if (auto quant_type =
+          dyn_cast<mlir::quant::UniformQuantizedType>(element_type)) {
+    element_type = quant_type.getStorageType();
+  }
+
+  mlir::Attribute min_val, max_val;
+  if (element_type.isa<mlir::FloatType>()) {
+    min_val = rewriter.getFloatAttr(element_type, 0.0f);
+    max_val = rewriter.getFloatAttr(element_type, 6.0f);
+  } else {
+    min_val = rewriter.getIntegerAttr(element_type, 0);
+    max_val = rewriter.getIntegerAttr(element_type, 6);
+  }
+
   CreateReplaceOpAndInfer<tosa::ClampOp>(
-      rewriter, op, output_type, tf_relu6_op.getFeatures(),
-      rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(6),
-      rewriter.getF32FloatAttr(0.0f), rewriter.getF32FloatAttr(6.0f));
+      rewriter, op, output_type, tf_relu6_op.getFeatures(), min_val, max_val);
   return success();
 }
 
