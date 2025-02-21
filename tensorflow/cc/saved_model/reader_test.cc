@@ -79,7 +79,7 @@ TEST_F(ReaderTest, NoTagMatch) {
   const string export_dir = GetDataDependencyFilepath(TestDataSharded());
   absl::Status st = ReadMetaGraphDefFromSavedModel(export_dir, {"missing-tag"},
                                                    &meta_graph_def);
-  EXPECT_FALSE(st.ok());
+  EXPECT_EQ(st.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(absl::StrContains(
       st.message(),
       "Could not find meta graph def matching supplied tags: { missing-tag }"))
@@ -92,7 +92,7 @@ TEST_F(ReaderTest, NoTagMatchMultiple) {
   const string export_dir = GetDataDependencyFilepath(TestDataSharded());
   absl::Status st = ReadMetaGraphDefFromSavedModel(
       export_dir, {kSavedModelTagServe, "missing-tag"}, &meta_graph_def);
-  EXPECT_FALSE(st.ok());
+  EXPECT_EQ(st.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(absl::StrContains(
       st.message(), "Could not find meta graph def matching supplied tags: "))
       << st.message();
