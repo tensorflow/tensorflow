@@ -134,6 +134,36 @@ xla_cc_binary(
     ],
 )
 
+xla_cc_binary(
+    name = "convert",
+    srcs = ["convert.cc"],
+    deps = [
+        "//xla/service:hlo_module_util",
+        "//xla/service:hlo_proto_util",
+        "//xla/tsl/util:command_line_flags",
+        "//xla/tsl/util:fixed_option_set_flag",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:protobuf",
+    ],
+)
+
+lit_test_suite(
+    name = "hlo_convert_tests",
+    srcs = [
+        "tests/convert_to_pbtxt.hlo",
+        "tests/convert_to_text.hlo",
+    ],
+    cfg = "//xla:lit.cfg.py",
+    data = [
+        "tests/convert_to_text.hlo.pb",
+    ],
+    tools = [
+        ":convert",
+        "@llvm-project//llvm:FileCheck",
+    ],
+)
+
 build_test(
     name = "hlo_proto_to_json_build_test",
     targets = [

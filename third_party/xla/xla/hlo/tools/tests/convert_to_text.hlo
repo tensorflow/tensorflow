@@ -1,0 +1,10 @@
+// RUN: convert %s | FileCheck %s
+// RUN: convert --input_format=proto_binary %s.pb | FileCheck %s
+
+// CHECK: ENTRY
+// CHECK-SAME: mod1
+// CHECK-SAME: s8
+
+mod1 {
+  a = s8[] constant(0)
+}

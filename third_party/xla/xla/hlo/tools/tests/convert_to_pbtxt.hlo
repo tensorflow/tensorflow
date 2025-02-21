@@ -1,0 +1,7 @@
+// RUN: convert --output_format=proto_text %s | FileCheck %s
+
+// CHECK: entry_computation_name: "mod1"
+
+mod1 {
+  a = s8[] constant(0)
+}
