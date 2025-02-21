@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_COLOCATE_PREDECESSOR_TREES_PASS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_COLOCATE_PREDECESSOR_TREES_PASS_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
 // TODO(b/344910755): Use the marker in Fill op to find the identity op. This
