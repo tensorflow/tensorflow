@@ -103,7 +103,14 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
                                                  Value input_value,
                                                  ShapedType output_type,
                                                  llvm::ArrayRef<Value> dims) {
-  auto e_ty = mlir::cast<ShapedType>(input_value.getType()).getElementType();
+  const ShapedType input_ty = dyn_cast<ShapedType>(input_value.getType());
+  if (!input_ty) {
+    (void)rewriter.notifyMatchFailure(
+            op, "input is not a shaped type");
+    return std::nullopt;
+  }
+
+  const auto e_ty = input_ty.getElementType();
   llvm::SmallVector<int64_t> static_dims;
 
   if (output_type.hasRank()) {
@@ -144,6 +151,19 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
     (void)rewriter.notifyMatchFailure(
         op, "multiple dynamic shapes when creating tosa::ReshapeOp");
     return std::nullopt;
+  }
+
+  // If the input shape is static and only one dynamic dim is detected, we
+  // can easily resolve the dim to be static
+  if (input_ty.hasStaticShape() && dyn_count == 1) {
+    const int64_t total_elements = input_ty.getNumElements();
+    const int64_t shape_elements = std::accumulate(static_dims.begin(), static_dims.end(), 1,
+        [](int64_t a, int64_t b) {
+      return b == tensorflow::kTFDynamicSize ? a : a * b;
+    });
+    const int64_t dynamic_dim_value = total_elements / shape_elements;
+    std::replace(static_dims.begin(), static_dims.end(), tensorflow::kTFDynamicSize,
+      dynamic_dim_value);
   }
 
   DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(static_dims);
