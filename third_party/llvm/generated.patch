@@ -1,171 +1,500 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGBuiltin.cpp b/clang/lib/CodeGen/CGBuiltin.cpp
---- a/clang/lib/CodeGen/CGBuiltin.cpp
-+++ b/clang/lib/CodeGen/CGBuiltin.cpp
-@@ -859,24 +859,6 @@
-   StoreCos->setMetadata(LLVMContext::MD_noalias, AliasScopeList);
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/CodeGen/RDFRegisters.h b/llvm/include/llvm/CodeGen/RDFRegisters.h
+--- a/llvm/include/llvm/CodeGen/RDFRegisters.h
++++ b/llvm/include/llvm/CodeGen/RDFRegisters.h
+@@ -114,7 +114,7 @@
+     return Register::isPhysicalRegister(Id);
+   }
+   static constexpr bool isUnitId(unsigned Id) {
+-    return Register(Id).isVirtual();
++    return Register::isVirtualRegister(Id);
+   }
+   static constexpr bool isMaskId(unsigned Id) { return Register(Id).isStack(); }
+ 
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/CodeGen/Register.h b/llvm/include/llvm/CodeGen/Register.h
+--- a/llvm/include/llvm/CodeGen/Register.h
++++ b/llvm/include/llvm/CodeGen/Register.h
+@@ -54,6 +54,12 @@
+     return MCRegister::isPhysicalRegister(Reg);
+   }
+ 
++  /// Return true if the specified register number is in
++  /// the virtual register namespace.
++  static constexpr bool isVirtualRegister(unsigned Reg) {
++    return Reg & MCRegister::VirtualRegFlag;
++  }
++
+   /// Convert a 0-based index to a virtual register number.
+   /// This is the inverse operation of VirtReg2IndexFunctor below.
+   static Register index2VirtReg(unsigned Index) {
+@@ -63,7 +69,7 @@
+ 
+   /// Return true if the specified register number is in the virtual register
+   /// namespace.
+-  constexpr bool isVirtual() const { return Reg & MCRegister::VirtualRegFlag; }
++  constexpr bool isVirtual() const { return isVirtualRegister(Reg); }
+ 
+   /// Return true if the specified register number is in the physical register
+   /// namespace.
+@@ -150,14 +156,14 @@
+ 
+ public:
+   constexpr explicit VirtRegOrUnit(MCRegUnit Unit) : VRegOrUnit(Unit) {
+-    assert(!Register(VRegOrUnit).isVirtual());
++    assert(!Register::isVirtualRegister(VRegOrUnit));
+   }
+   constexpr explicit VirtRegOrUnit(Register Reg) : VRegOrUnit(Reg.id()) {
+     assert(Reg.isVirtual());
+   }
+ 
+   constexpr bool isVirtualReg() const {
+-    return Register(VRegOrUnit).isVirtual();
++    return Register::isVirtualRegister(VRegOrUnit);
+   }
+ 
+   constexpr MCRegUnit asMCRegUnit() const {
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/EarlyIfConversion.cpp b/llvm/lib/CodeGen/EarlyIfConversion.cpp
+--- a/llvm/lib/CodeGen/EarlyIfConversion.cpp
++++ b/llvm/lib/CodeGen/EarlyIfConversion.cpp
+@@ -522,8 +522,8 @@
+       if (PI.PHI->getOperand(i+1).getMBB() == FPred)
+         PI.FReg = PI.PHI->getOperand(i).getReg();
+     }
+-    assert(Register(PI.TReg).isVirtual() && "Bad PHI");
+-    assert(Register(PI.FReg).isVirtual() && "Bad PHI");
++    assert(Register::isVirtualRegister(PI.TReg) && "Bad PHI");
++    assert(Register::isVirtualRegister(PI.FReg) && "Bad PHI");
+ 
+     // Get target information.
+     if (!TII->canInsertSelect(*Head, Cond, PI.PHI->getOperand(0).getReg(),
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/LiveInterval.cpp b/llvm/lib/CodeGen/LiveInterval.cpp
+--- a/llvm/lib/CodeGen/LiveInterval.cpp
++++ b/llvm/lib/CodeGen/LiveInterval.cpp
+@@ -876,7 +876,7 @@
+                                        unsigned ComposeSubRegIdx) {
+   // Phys reg should not be tracked at subreg level.
+   // Same for noreg (Reg == 0).
+-  if (!Register(Reg).isVirtual() || !Reg)
++  if (!Register::isVirtualRegister(Reg) || !Reg)
+     return;
+   // Remove the values that don't define those lanes.
+   SmallVector<VNInfo *, 8> ToBeRemoved;
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/MachineTraceMetrics.cpp b/llvm/lib/CodeGen/MachineTraceMetrics.cpp
+--- a/llvm/lib/CodeGen/MachineTraceMetrics.cpp
++++ b/llvm/lib/CodeGen/MachineTraceMetrics.cpp
+@@ -682,7 +682,7 @@
+   /// Create a DataDep from an SSA form virtual register.
+   DataDep(const MachineRegisterInfo *MRI, unsigned VirtReg, unsigned UseOp)
+     : UseOp(UseOp) {
+-    assert(Register(VirtReg).isVirtual());
++    assert(Register::isVirtualRegister(VirtReg));
+     MachineOperand *DefMO = MRI->getOneDef(VirtReg);
+     assert(DefMO && "Register does not have unique def");
+     DefMI = DefMO->getParent();
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/MIRVRegNamerUtils.cpp b/llvm/lib/CodeGen/MIRVRegNamerUtils.cpp
+--- a/llvm/lib/CodeGen/MIRVRegNamerUtils.cpp
++++ b/llvm/lib/CodeGen/MIRVRegNamerUtils.cpp
+@@ -137,7 +137,7 @@
  }
  
--static llvm::Value *emitModfBuiltin(CodeGenFunction &CGF, const CallExpr *E,
--                                    llvm::Intrinsic::ID IntrinsicID) {
--  llvm::Value *Val = CGF.EmitScalarExpr(E->getArg(0));
--  llvm::Value *IntPartDest = CGF.EmitScalarExpr(E->getArg(1));
--
--  llvm::Value *Call =
--      CGF.Builder.CreateIntrinsic(IntrinsicID, {Val->getType()}, Val);
--
--  llvm::Value *FractionalResult = CGF.Builder.CreateExtractValue(Call, 0);
--  llvm::Value *IntegralResult = CGF.Builder.CreateExtractValue(Call, 1);
--
--  QualType DestPtrType = E->getArg(1)->getType()->getPointeeType();
--  LValue IntegralLV = CGF.MakeNaturalAlignAddrLValue(IntPartDest, DestPtrType);
--  CGF.EmitStoreOfScalar(IntegralResult, IntegralLV);
--
--  return FractionalResult;
--}
--
- /// EmitFAbs - Emit a call to @llvm.fabs().
- static Value *EmitFAbs(CodeGenFunction &CGF, Value *V) {
-   Function *F = CGF.CGM.getIntrinsic(Intrinsic::fabs, V->getType());
-@@ -4130,15 +4112,6 @@
-   case Builtin::BI__builtin_frexpf128:
-   case Builtin::BI__builtin_frexpf16:
-     return RValue::get(emitFrexpBuiltin(*this, E, Intrinsic::frexp));
--  case Builtin::BImodf:
--  case Builtin::BImodff:
--  case Builtin::BImodfl:
--  case Builtin::BI__builtin_modf:
--  case Builtin::BI__builtin_modff:
--  case Builtin::BI__builtin_modfl:
--    if (Builder.getIsFPConstrained())
--      break; // TODO: Emit constrained modf intrinsic once one exists.
--    return RValue::get(emitModfBuiltin(*this, E, Intrinsic::modf));
-   case Builtin::BI__builtin_isgreater:
-   case Builtin::BI__builtin_isgreaterequal:
-   case Builtin::BI__builtin_isless:
-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/aix-builtin-mapping.c b/clang/test/CodeGen/aix-builtin-mapping.c
---- a/clang/test/CodeGen/aix-builtin-mapping.c
-+++ b/clang/test/CodeGen/aix-builtin-mapping.c
-@@ -17,6 +17,6 @@
-   returnValue = __builtin_ldexpl(1.0L, 1);
+ unsigned VRegRenamer::createVirtualRegister(unsigned VReg) {
+-  assert(Register(VReg).isVirtual() && "Expected Virtual Registers");
++  assert(Register::isVirtualRegister(VReg) && "Expected Virtual Registers");
+   std::string Name = getInstructionOpcodeHash(*MRI.getVRegDef(VReg));
+   return createVirtualRegisterWithLowerName(VReg, Name);
+ }
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/RegisterPressure.cpp b/llvm/lib/CodeGen/RegisterPressure.cpp
+--- a/llvm/lib/CodeGen/RegisterPressure.cpp
++++ b/llvm/lib/CodeGen/RegisterPressure.cpp
+@@ -231,7 +231,7 @@
  }
  
--// CHECK: %{{.+}} = call { double, double } @llvm.modf.f64(double 1.000000e+00)
-+// CHECK: %call = call double @modf(double noundef 1.000000e+00, ptr noundef %DummyLongDouble) #3
- // CHECK: %{{.+}} = call { double, i32 } @llvm.frexp.f64.i32(double 0.000000e+00)
- // CHECK: %{{.+}} = call double @llvm.ldexp.f64.i32(double 1.000000e+00, i32 1)
-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/builtin-attributes.c b/clang/test/CodeGen/builtin-attributes.c
---- a/clang/test/CodeGen/builtin-attributes.c
-+++ b/clang/test/CodeGen/builtin-attributes.c
-@@ -24,11 +24,6 @@
-   return __builtin_strstr(a, b);
+ static const LiveRange *getLiveRange(const LiveIntervals &LIS, unsigned Reg) {
+-  if (Register(Reg).isVirtual())
++  if (Register::isVirtualRegister(Reg))
+     return &LIS.getInterval(Reg);
+   return LIS.getCachedRegUnit(Reg);
+ }
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/FastISel.cpp b/llvm/lib/CodeGen/SelectionDAG/FastISel.cpp
+--- a/llvm/lib/CodeGen/SelectionDAG/FastISel.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/FastISel.cpp
+@@ -2229,7 +2229,8 @@
+ Register FastISel::fastEmitInst_extractsubreg(MVT RetVT, unsigned Op0,
+                                               uint32_t Idx) {
+   Register ResultReg = createResultReg(TLI.getRegClassFor(RetVT));
+-  assert(Register(Op0).isVirtual() && "Cannot yet extract from physregs");
++  assert(Register::isVirtualRegister(Op0) &&
++         "Cannot yet extract from physregs");
+   const TargetRegisterClass *RC = MRI.getRegClass(Op0);
+   MRI.constrainRegClass(Op0, TRI.getSubClassWithSubReg(RC, Idx));
+   BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, MIMD, TII.get(TargetOpcode::COPY),
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/ScheduleDAGSDNodes.cpp b/llvm/lib/CodeGen/SelectionDAG/ScheduleDAGSDNodes.cpp
+--- a/llvm/lib/CodeGen/SelectionDAG/ScheduleDAGSDNodes.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/ScheduleDAGSDNodes.cpp
+@@ -116,11 +116,11 @@
+   if (Op != 2 || User->getOpcode() != ISD::CopyToReg)
+     return;
+ 
+-  Register Reg = cast<RegisterSDNode>(User->getOperand(1))->getReg();
++  unsigned Reg = cast<RegisterSDNode>(User->getOperand(1))->getReg();
+   if (TLI.checkForPhysRegDependency(Def, User, Op, TRI, TII, PhysReg, Cost))
+     return;
+ 
+-  if (Reg.isVirtual())
++  if (Register::isVirtualRegister(Reg))
+     return;
+ 
+   unsigned ResNo = User->getOperand(2).getResNo();
+@@ -664,8 +664,8 @@
+       TII->getOperandLatency(InstrItins, Def, DefIdx, Use, OpIdx);
+   if (Latency > 1U && Use->getOpcode() == ISD::CopyToReg &&
+       !BB->succ_empty()) {
+-    Register Reg = cast<RegisterSDNode>(Use->getOperand(1))->getReg();
+-    if (Reg.isVirtual())
++    unsigned Reg = cast<RegisterSDNode>(Use->getOperand(1))->getReg();
++    if (Register::isVirtualRegister(Reg))
+       // This copy is a liveout value. It is likely coalesced, so reduce the
+       // latency so not to penalize the def.
+       // FIXME: need target specific adjustment here?
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp b/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp
+--- a/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp
+@@ -908,7 +908,8 @@
+ 
+       // If the source register was virtual and if we know something about it,
+       // add an assert node.
+-      if (!Regs[Part + i].isVirtual() || !RegisterVT.isInteger())
++      if (!Register::isVirtualRegister(Regs[Part + i]) ||
++          !RegisterVT.isInteger())
+         continue;
+ 
+       const FunctionLoweringInfo::LiveOutInfo *LOI =
+@@ -1022,7 +1023,7 @@
+   InlineAsm::Flag Flag(Code, Regs.size());
+   if (HasMatching)
+     Flag.setMatchingOp(MatchingIdx);
+-  else if (!Regs.empty() && Regs.front().isVirtual()) {
++  else if (!Regs.empty() && Register::isVirtualRegister(Regs.front())) {
+     // Put the register class of the virtual registers in the flag word.  That
+     // way, later passes can recompute register class constraints for inline
+     // assembly as well as normal instructions.
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/TargetRegisterInfo.cpp b/llvm/lib/CodeGen/TargetRegisterInfo.cpp
+--- a/llvm/lib/CodeGen/TargetRegisterInfo.cpp
++++ b/llvm/lib/CodeGen/TargetRegisterInfo.cpp
+@@ -160,7 +160,7 @@
+ 
+ Printable printVRegOrUnit(unsigned Unit, const TargetRegisterInfo *TRI) {
+   return Printable([Unit, TRI](raw_ostream &OS) {
+-    if (Register(Unit).isVirtual()) {
++    if (Register::isVirtualRegister(Unit)) {
+       OS << '%' << Register(Unit).virtRegIndex();
+     } else {
+       OS << printRegUnit(Unit, TRI);
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/AArch64/AArch64AdvSIMDScalarPass.cpp b/llvm/lib/Target/AArch64/AArch64AdvSIMDScalarPass.cpp
+--- a/llvm/lib/Target/AArch64/AArch64AdvSIMDScalarPass.cpp
++++ b/llvm/lib/Target/AArch64/AArch64AdvSIMDScalarPass.cpp
+@@ -105,14 +105,14 @@
+                     const MachineRegisterInfo *MRI) {
+   if (SubReg)
+     return false;
+-  if (Register(Reg).isVirtual())
++  if (Register::isVirtualRegister(Reg))
+     return MRI->getRegClass(Reg)->hasSuperClassEq(&AArch64::GPR64RegClass);
+   return AArch64::GPR64RegClass.contains(Reg);
  }
  
--// Note: Use asm label to disable intrinsic lowering of modf.
--double modf(double x, double*) asm("modf");
--float modff(float x, float*) asm("modff");
--long double modfl(long double x, long double*) asm("modfl");
--
- // frexp is NOT readnone. It writes to its pointer argument.
- //
- // CHECK: f3
-@@ -60,9 +55,9 @@
-   frexp(x, &e);
-   frexpf(x, &e);
-   frexpl(x, &e);
--  modf(x, &e);
--  modff(x, &e);
--  modfl(x, &e);
-+  __builtin_modf(x, &e);
-+  __builtin_modff(x, &e);
-+  __builtin_modfl(x, &e);
-   __builtin_remquo(x, x, &e);
-   __builtin_remquof(x, x, &e);
-   __builtin_remquol(x, x, &e);
-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/math-builtins-long.c b/clang/test/CodeGen/math-builtins-long.c
---- a/clang/test/CodeGen/math-builtins-long.c
-+++ b/clang/test/CodeGen/math-builtins-long.c
-@@ -58,9 +58,9 @@
-   // PPCF128: call fp128 @ldexpf128(fp128 noundef %{{.+}}, {{(signext)?.+}})
-   __builtin_ldexpl(f,f);
+ static bool isFPR64(unsigned Reg, unsigned SubReg,
+                     const MachineRegisterInfo *MRI) {
+-  if (Register(Reg).isVirtual())
++  if (Register::isVirtualRegister(Reg))
+     return (MRI->getRegClass(Reg)->hasSuperClassEq(&AArch64::FPR64RegClass) &&
+             SubReg == 0) ||
+            (MRI->getRegClass(Reg)->hasSuperClassEq(&AArch64::FPR128RegClass) &&
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/AArch64/AArch64ConditionalCompares.cpp b/llvm/lib/Target/AArch64/AArch64ConditionalCompares.cpp
+--- a/llvm/lib/Target/AArch64/AArch64ConditionalCompares.cpp
++++ b/llvm/lib/Target/AArch64/AArch64ConditionalCompares.cpp
+@@ -258,7 +258,7 @@
+   // Writes to the zero register are dead.
+   if (DstReg == AArch64::WZR || DstReg == AArch64::XZR)
+     return true;
+-  if (!Register(DstReg).isVirtual())
++  if (!Register::isVirtualRegister(DstReg))
+     return false;
+   // A virtual register def without any uses will be marked dead later, and
+   // eventually replaced by the zero register.
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
+--- a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
++++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
+@@ -677,7 +677,7 @@
  
--  // F80: call { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80 %{{.+}})
--  // PPC: call { ppc_fp128, ppc_fp128 } @llvm.modf.ppcf128(ppc_fp128 %{{.+}})
--  // X86F128: call { fp128, fp128 } @llvm.modf.f128(fp128 %{{.+}})
-+  // F80: call x86_fp80 @modfl(x86_fp80 noundef %{{.+}}, ptr noundef %{{.+}})
-+  // PPC: call ppc_fp128 @modfl(ppc_fp128 noundef %{{.+}}, ptr noundef %{{.+}})
-+  // X86F128: call fp128 @modfl(fp128 noundef %{{.+}}, ptr noundef %{{.+}})
-   // PPCF128: call fp128 @modff128(fp128 noundef %{{.+}}, ptr noundef %{{.+}})
-   __builtin_modfl(f,l);
+ // Find the original register that VReg is copied from.
+ static unsigned removeCopies(const MachineRegisterInfo &MRI, unsigned VReg) {
+-  while (Register(VReg).isVirtual()) {
++  while (Register::isVirtualRegister(VReg)) {
+     const MachineInstr *DefMI = MRI.getVRegDef(VReg);
+     if (!DefMI->isFullCopy())
+       return VReg;
+@@ -692,7 +692,7 @@
+ static unsigned canFoldIntoCSel(const MachineRegisterInfo &MRI, unsigned VReg,
+                                 unsigned *NewVReg = nullptr) {
+   VReg = removeCopies(MRI, VReg);
+-  if (!Register(VReg).isVirtual())
++  if (!Register::isVirtualRegister(VReg))
+     return 0;
  
-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/math-libcalls.c b/clang/test/CodeGen/math-libcalls.c
---- a/clang/test/CodeGen/math-libcalls.c
-+++ b/clang/test/CodeGen/math-libcalls.c
-@@ -83,12 +83,12 @@
+   bool Is64Bit = AArch64::GPR64allRegClass.hasSubClassEq(MRI.getRegClass(VReg));
+@@ -6121,9 +6121,9 @@
+     Register SrcReg = SrcMO.getReg();
+     // This is slightly expensive to compute for physical regs since
+     // getMinimalPhysRegClass is slow.
+-    auto getRegClass = [&](Register Reg) {
+-      return Reg.isVirtual() ? MRI.getRegClass(Reg)
+-                             : TRI.getMinimalPhysRegClass(Reg);
++    auto getRegClass = [&](unsigned Reg) {
++      return Register::isVirtualRegister(Reg) ? MRI.getRegClass(Reg)
++                                              : TRI.getMinimalPhysRegClass(Reg);
+     };
  
-   modf(f,d);       modff(f,fp);      modfl(f,l);
+     if (DstMO.getSubReg() == 0 && SrcMO.getSubReg() == 0) {
+@@ -7456,7 +7456,7 @@
+     MRI.constrainRegClass(SrcReg0, RC);
+   if (SrcReg1.isVirtual())
+     MRI.constrainRegClass(SrcReg1, RC);
+-  if (Register(VR).isVirtual())
++  if (Register::isVirtualRegister(VR))
+     MRI.constrainRegClass(VR, RC);
  
--  // NO__ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
--  // NO__ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
--  // NO__ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
--  // HAS_ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
--  // HAS_ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
--  // HAS_ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
-+  // NO__ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
-+  // NO__ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
-+  // NO__ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
-+  // HAS_ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
-+  // HAS_ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
-+  // HAS_ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
-   // HAS_MAYTRAP: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
-   // HAS_MAYTRAP: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
-   // HAS_MAYTRAP: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/X86/math-builtins.c b/clang/test/CodeGen/X86/math-builtins.c
---- a/clang/test/CodeGen/X86/math-builtins.c
-+++ b/clang/test/CodeGen/X86/math-builtins.c
-@@ -38,24 +38,6 @@
- // NO__ERRNO-NEXT: [[FREXP_F128_0:%.+]] = extractvalue { fp128, i32 } [[FREXP_F128]], 0
+   MachineInstrBuilder MIB =
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/ARC/ARCOptAddrMode.cpp b/llvm/lib/Target/ARC/ARCOptAddrMode.cpp
+--- a/llvm/lib/Target/ARC/ARCOptAddrMode.cpp
++++ b/llvm/lib/Target/ARC/ARCOptAddrMode.cpp
+@@ -151,7 +151,7 @@
+                                MachineDominatorTree *MDT,
+                                MachineRegisterInfo *MRI) {
  
+-  assert(Register(VReg).isVirtual() && "Expected virtual register!");
++  assert(Register::isVirtualRegister(VReg) && "Expected virtual register!");
  
--// NO__ERRNO: [[MODF_F64:%.+]] = call { double, double } @llvm.modf.f64(double %{{.+}})
--// NO__ERRNO-NEXT: [[MODF_F64_FP:%.+]] = extractvalue { double, double } [[MODF_F64]], 0
--// NO__ERRNO-NEXT: [[MODF_F64_IP:%.+]] = extractvalue { double, double } [[MODF_F64]], 1
--// NO__ERRNO-NEXT: store double [[MODF_F64_IP]], ptr %{{.+}}, align 8
--
--// NO__ERRNO: [[MODF_F32:%.+]] = call { float, float } @llvm.modf.f32(float %{{.+}})
--// NO__ERRNO-NEXT: [[MODF_F32_FP:%.+]] = extractvalue { float, float } [[MODF_F32]], 0
--// NO__ERRNO-NEXT: [[MODF_F32_IP:%.+]] = extractvalue { float, float } [[MODF_F32]], 1
--// NO__ERRNO-NEXT: store float [[MODF_F32_IP]], ptr %{{.+}}, align 4
--
--// NO__ERRNO: [[MODF_F80:%.+]] = call { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80 %{{.+}})
--// NO__ERRNO-NEXT: [[MODF_F80_FP:%.+]] = extractvalue { x86_fp80, x86_fp80 } [[MODF_F80]], 0
--// NO__ERRNO-NEXT: [[MODF_F80_IP:%.+]] = extractvalue { x86_fp80, x86_fp80 } [[MODF_F80]], 1
--// NO__ERRNO-NEXT: store x86_fp80 [[MODF_F80_IP]], ptr %{{.+}}, align 16
--
--// NO__ERRNO: call fp128 @modff128(fp128 noundef %{{.+}}, ptr noundef %{{.+}})
--
--
- // NO__ERRNO: [[SINCOS_F64:%.+]] = call { double, double } @llvm.sincos.f64(double %{{.+}})
- // NO__ERRNO-NEXT: [[SINCOS_F64_0:%.+]] = extractvalue { double, double } [[SINCOS_F64]], 0
- // NO__ERRNO-NEXT: [[SINCOS_F64_1:%.+]] = extractvalue { double, double } [[SINCOS_F64]], 1
-@@ -157,13 +139,13 @@
+   for (const MachineOperand &Use : MRI->use_nodbg_operands(VReg)) {
+     const MachineInstr *User = Use.getParent();
+@@ -216,7 +216,7 @@
+   }
  
-   __builtin_modf(f,d);       __builtin_modff(f,fp);      __builtin_modfl(f,l); __builtin_modff128(f,l);
+   Register B = Base.getReg();
+-  if (!B.isVirtual())
++  if (!Register::isVirtualRegister(B)) {
+     LLVM_DEBUG(dbgs() << "[ABAW] Base is not VReg\n");
+     return nullptr;
+   }
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/ARM/A15SDOptimizer.cpp b/llvm/lib/Target/ARM/A15SDOptimizer.cpp
+--- a/llvm/lib/Target/ARM/A15SDOptimizer.cpp
++++ b/llvm/lib/Target/ARM/A15SDOptimizer.cpp
+@@ -152,7 +152,7 @@
+ // Get the subreg type that is most likely to be coalesced
+ // for an SPR register that will be used in VDUP32d pseudo.
+ unsigned A15SDOptimizer::getPrefSPRLane(unsigned SReg) {
+-  if (!Register(SReg).isVirtual())
++  if (!Register::isVirtualRegister(SReg))
+     return getDPRLaneFromSPR(SReg);
  
--// NO__ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
--// NO__ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
--// NO__ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
--// NO__ERRNO: declare fp128 @modff128(fp128 noundef, ptr noundef) [[NOT_READNONE:#[0-9]+]]
--// HAS_ERRNO: declare { double, double } @llvm.modf.f64(double) [[READNONE_INTRINSIC]]
--// HAS_ERRNO: declare { float, float } @llvm.modf.f32(float) [[READNONE_INTRINSIC]]
--// HAS_ERRNO: declare { x86_fp80, x86_fp80 } @llvm.modf.f80(x86_fp80) [[READNONE_INTRINSIC]]
-+// NO__ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE:#[0-9]+]]
-+// NO__ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
-+// NO__ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
-+// NO__ERRNO: declare fp128 @modff128(fp128 noundef, ptr noundef) [[NOT_READNONE]]
-+// HAS_ERRNO: declare double @modf(double noundef, ptr noundef) [[NOT_READNONE]]
-+// HAS_ERRNO: declare float @modff(float noundef, ptr noundef) [[NOT_READNONE]]
-+// HAS_ERRNO: declare x86_fp80 @modfl(x86_fp80 noundef, ptr noundef) [[NOT_READNONE]]
- // HAS_ERRNO: declare fp128 @modff128(fp128 noundef, ptr noundef) [[NOT_READNONE]]
+   MachineInstr *MI = MRI->getVRegDef(SReg);
+@@ -166,7 +166,7 @@
+     SReg = MI->getOperand(1).getReg();
+   }
  
-   __builtin_nan(c);        __builtin_nanf(c);       __builtin_nanl(c); __builtin_nanf128(c);
+-  if (Register(SReg).isVirtual()) {
++  if (Register::isVirtualRegister(SReg)) {
+     if (MO->getSubReg() == ARM::ssub_1) return ARM::ssub_1;
+     return ARM::ssub_0;
+   }
+@@ -598,7 +598,7 @@
+     // we can end up with multiple defs of this DPR.
+ 
+     SmallVector<MachineInstr *, 8> DefSrcs;
+-    if (!Register(I).isVirtual())
++    if (!Register::isVirtualRegister(I))
+       continue;
+     MachineInstr *Def = MRI->getVRegDef(I);
+     if (!Def)
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/ARM/ARMLatencyMutations.cpp b/llvm/lib/Target/ARM/ARMLatencyMutations.cpp
+--- a/llvm/lib/Target/ARM/ARMLatencyMutations.cpp
++++ b/llvm/lib/Target/ARM/ARMLatencyMutations.cpp
+@@ -756,7 +756,7 @@
+       !II->producesQP(SrcMI->getOpcode()))
+     return 0;
+ 
+-  if (Register(RegID).isVirtual()) {
++  if (Register::isVirtualRegister(RegID)) {
+     if (II->producesSP(SrcMI->getOpcode()) &&
+         II->consumesDP(DstMI->getOpcode())) {
+       for (auto &OP : SrcMI->operands())
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/AVR/AVRISelDAGToDAG.cpp b/llvm/lib/Target/AVR/AVRISelDAGToDAG.cpp
+--- a/llvm/lib/Target/AVR/AVRISelDAGToDAG.cpp
++++ b/llvm/lib/Target/AVR/AVRISelDAGToDAG.cpp
+@@ -253,15 +253,15 @@
+     SDValue ImmOp = Op->getOperand(1);
+     ConstantSDNode *ImmNode = dyn_cast<ConstantSDNode>(ImmOp);
+ 
+-    Register Reg;
++    unsigned Reg;
+     bool CanHandleRegImmOpt = ImmNode && ImmNode->getAPIntValue().ult(64);
+ 
+     if (CopyFromRegOp->getOpcode() == ISD::CopyFromReg) {
+       RegisterSDNode *RegNode =
+           cast<RegisterSDNode>(CopyFromRegOp->getOperand(1));
+       Reg = RegNode->getReg();
+-      CanHandleRegImmOpt &=
+-          (Reg.isVirtual() || AVR::PTRDISPREGSRegClass.contains(Reg));
++      CanHandleRegImmOpt &= (Register::isVirtualRegister(Reg) ||
++                             AVR::PTRDISPREGSRegClass.contains(Reg));
+     } else {
+       CanHandleRegImmOpt = false;
+     }
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/Hexagon/HexagonCopyHoisting.cpp b/llvm/lib/Target/Hexagon/HexagonCopyHoisting.cpp
+--- a/llvm/lib/Target/Hexagon/HexagonCopyHoisting.cpp
++++ b/llvm/lib/Target/Hexagon/HexagonCopyHoisting.cpp
+@@ -139,7 +139,8 @@
+   Register DstReg = MI->getOperand(0).getReg();
+   Register SrcReg = MI->getOperand(1).getReg();
+ 
+-  if (!DstReg.isVirtual() || !SrcReg.isVirtual() ||
++  if (!Register::isVirtualRegister(DstReg) ||
++      !Register::isVirtualRegister(SrcReg) ||
+       MRI->getRegClass(DstReg) != &Hexagon::IntRegsRegClass ||
+       MRI->getRegClass(SrcReg) != &Hexagon::IntRegsRegClass)
+     return;
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/M68k/M68kISelLowering.cpp b/llvm/lib/Target/M68k/M68kISelLowering.cpp
+--- a/llvm/lib/Target/M68k/M68kISelLowering.cpp
++++ b/llvm/lib/Target/M68k/M68kISelLowering.cpp
+@@ -322,7 +322,7 @@
+   int FI = INT_MAX;
+   if (Arg.getOpcode() == ISD::CopyFromReg) {
+     Register VR = cast<RegisterSDNode>(Arg.getOperand(1))->getReg();
+-    if (!VR.isVirtual())
++    if (!Register::isVirtualRegister(VR))
+       return false;
+     MachineInstr *Def = MRI->getVRegDef(VR);
+     if (!Def)
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp b/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp
+--- a/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp
++++ b/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp
+@@ -205,7 +205,7 @@
+ }
+ 
+ unsigned NVPTXAsmPrinter::encodeVirtualRegister(unsigned Reg) {
+-  if (Register(Reg).isVirtual()) {
++  if (Register::isVirtualRegister(Reg)) {
+     const TargetRegisterClass *RC = MRI->getRegClass(Reg);
+ 
+     DenseMap<unsigned, unsigned> &RegMap = VRegMapping[RC];
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/PowerPC/PPCInstrInfo.cpp b/llvm/lib/Target/PowerPC/PPCInstrInfo.cpp
+--- a/llvm/lib/Target/PowerPC/PPCInstrInfo.cpp
++++ b/llvm/lib/Target/PowerPC/PPCInstrInfo.cpp
+@@ -5131,7 +5131,7 @@
+ // This function checks for sign extension from 32 bits to 64 bits.
+ static bool definedBySignExtendingOp(const unsigned Reg,
+                                      const MachineRegisterInfo *MRI) {
+-  if (!Register(Reg).isVirtual())
++  if (!Register::isVirtualRegister(Reg))
+     return false;
+ 
+   MachineInstr *MI = MRI->getVRegDef(Reg);
+@@ -5178,7 +5178,7 @@
+ // in the higher 32 bits then this function will return true.
+ static bool definedByZeroExtendingOp(const unsigned Reg,
+                                      const MachineRegisterInfo *MRI) {
+-  if (!Register(Reg).isVirtual())
++  if (!Register::isVirtualRegister(Reg))
+     return false;
+ 
+   MachineInstr *MI = MRI->getVRegDef(Reg);
+@@ -5463,7 +5463,7 @@
+ PPCInstrInfo::isSignOrZeroExtended(const unsigned Reg,
+                                    const unsigned BinOpDepth,
+                                    const MachineRegisterInfo *MRI) const {
+-  if (!Register(Reg).isVirtual())
++  if (!Register::isVirtualRegister(Reg))
+     return std::pair<bool, bool>(false, false);
+ 
+   MachineInstr *MI = MRI->getVRegDef(Reg);
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/PowerPC/PPCMIPeephole.cpp b/llvm/lib/Target/PowerPC/PPCMIPeephole.cpp
+--- a/llvm/lib/Target/PowerPC/PPCMIPeephole.cpp
++++ b/llvm/lib/Target/PowerPC/PPCMIPeephole.cpp
+@@ -1482,7 +1482,7 @@
+     }
+     else if (Inst->isFullCopy())
+       NextReg = Inst->getOperand(1).getReg();
+-    if (NextReg == SrcReg || !Register(NextReg).isVirtual())
++    if (NextReg == SrcReg || !Register::isVirtualRegister(NextReg))
+       break;
+     SrcReg = NextReg;
+   }
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/PowerPC/PPCReduceCRLogicals.cpp b/llvm/lib/Target/PowerPC/PPCReduceCRLogicals.cpp
+--- a/llvm/lib/Target/PowerPC/PPCReduceCRLogicals.cpp
++++ b/llvm/lib/Target/PowerPC/PPCReduceCRLogicals.cpp
+@@ -537,7 +537,7 @@
+                                                      unsigned &Subreg,
+                                                      MachineInstr *&CpDef) {
+   Subreg = -1;
+-  if (!Register(Reg).isVirtual())
++  if (!Register::isVirtualRegister(Reg))
+     return nullptr;
+   MachineInstr *Copy = MRI->getVRegDef(Reg);
+   CpDef = Copy;
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/PowerPC/PPCVSXCopy.cpp b/llvm/lib/Target/PowerPC/PPCVSXCopy.cpp
+--- a/llvm/lib/Target/PowerPC/PPCVSXCopy.cpp
++++ b/llvm/lib/Target/PowerPC/PPCVSXCopy.cpp
+@@ -40,9 +40,9 @@
+ 
+     const TargetInstrInfo *TII;
+ 
+-    bool IsRegInClass(Register Reg, const TargetRegisterClass *RC,
++    bool IsRegInClass(unsigned Reg, const TargetRegisterClass *RC,
+                       MachineRegisterInfo &MRI) {
+-      if (Reg.isVirtual()) {
++      if (Register::isVirtualRegister(Reg)) {
+         return RC->hasSubClassEq(MRI.getRegClass(Reg));
+       } else if (RC->contains(Reg)) {
+         return true;
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/PowerPC/PPCVSXSwapRemoval.cpp b/llvm/lib/Target/PowerPC/PPCVSXSwapRemoval.cpp
+--- a/llvm/lib/Target/PowerPC/PPCVSXSwapRemoval.cpp
++++ b/llvm/lib/Target/PowerPC/PPCVSXSwapRemoval.cpp
+@@ -157,7 +157,7 @@
+ 
+   // Return true iff the given register is in the given class.
+   bool isRegInClass(unsigned Reg, const TargetRegisterClass *RC) {
+-    if (Register(Reg).isVirtual())
++    if (Register::isVirtualRegister(Reg))
+       return RC->hasSubClassEq(MRI->getRegClass(Reg));
+     return RC->contains(Reg);
+   }
+@@ -560,7 +560,7 @@
+   if (!MI->isCopyLike())
+     return SrcReg;
+ 
+-  Register CopySrcReg;
++  unsigned CopySrcReg;
+   if (MI->isCopy())
+     CopySrcReg = MI->getOperand(1).getReg();
+   else {
+@@ -568,7 +568,7 @@
+     CopySrcReg = MI->getOperand(2).getReg();
+   }
+ 
+-  if (!CopySrcReg.isVirtual()) {
++  if (!Register::isVirtualRegister(CopySrcReg)) {
+     if (!isScalarVecReg(CopySrcReg))
+       SwapVector[VecIdx].MentionsPhysVR = 1;
+     return CopySrcReg;
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/WebAssembly/WebAssemblyInstrInfo.cpp b/llvm/lib/Target/WebAssembly/WebAssemblyInstrInfo.cpp
+--- a/llvm/lib/Target/WebAssembly/WebAssemblyInstrInfo.cpp
++++ b/llvm/lib/Target/WebAssembly/WebAssemblyInstrInfo.cpp
+@@ -64,7 +64,7 @@
+   // exist. However we need to handle both here.
+   auto &MRI = MBB.getParent()->getRegInfo();
+   const TargetRegisterClass *RC =
+-      Register(DestReg).isVirtual()
++      Register::isVirtualRegister(DestReg)
+           ? MRI.getRegClass(DestReg)
+           : MRI.getTargetRegisterInfo()->getMinimalPhysRegClass(DestReg);
+ 
