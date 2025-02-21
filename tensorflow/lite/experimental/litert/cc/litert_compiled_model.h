@@ -165,12 +165,14 @@ class CompiledModel
   // The same as above except this function takes input tensor name.
   Expected<TensorBufferRequirements> GetInputBufferRequirements(
       size_t signature_index, absl::string_view input_name) const {
-    auto signature = model_.GetSignature(signature_index);
-    auto input_index = FindInputIndex(signature_index, input_name);
-    if (!input_index) {
-      return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find input");
+    LiteRtTensorBufferRequirements buffer_requirements;
+    if (auto status = LiteRtGetCompiledModelInputBufferRequirementsByTensorName(
+            Get(), signature_index, std::string(input_name).c_str(),
+            &buffer_requirements);
+        status != kLiteRtStatusOk) {
+      return Unexpected(status, "Failed to get input buffer requirements");
     }
-    return GetInputBufferRequirements(signature_index, *input_index);
+    return TensorBufferRequirements(buffer_requirements, /*owned=*/false);
   }
 
   // Returns the buffer requirements for the given output tensor. The returned
@@ -190,12 +192,15 @@ class CompiledModel
   // The same as above except this function takes output tensor name.
   Expected<TensorBufferRequirements> GetOutputBufferRequirements(
       size_t signature_index, absl::string_view output_name) const {
-    auto signature = model_.GetSignature(signature_index);
-    auto output_index = FindOutputIndex(signature_index, output_name);
-    if (!output_index) {
-      return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find output");
+    LiteRtTensorBufferRequirements buffer_requirements;
+    if (auto status =
+            LiteRtGetCompiledModelOutputBufferRequirementsByTensorName(
+                Get(), signature_index, std::string(output_name).c_str(),
+                &buffer_requirements);
+        status != kLiteRtStatusOk) {
+      return Unexpected(status, "Failed to get output buffer requirements");
     }
-    return GetOutputBufferRequirements(signature_index, *output_index);
+    return TensorBufferRequirements(buffer_requirements, /*owned=*/false);
   }
 
   // Creates an input tensor buffer for the given signature and input name.
