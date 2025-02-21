@@ -516,7 +516,7 @@ Status ModularRandomAccessFile::Read(uint64 offset, size_t n,
 
 Status ModularRandomAccessFile::Name(StringPiece* result) const {
   *result = filename_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ModularWritableFile::Append(StringPiece data) {
@@ -540,7 +540,7 @@ Status ModularWritableFile::Close() {
 }
 
 Status ModularWritableFile::Flush() {
-  if (ops_->flush == nullptr) return OkStatus();
+  if (ops_->flush == nullptr) return absl::OkStatus();
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   ops_->flush(file_.get(), plugin_status.get());
@@ -557,7 +557,7 @@ Status ModularWritableFile::Sync() {
 
 Status ModularWritableFile::Name(StringPiece* result) const {
   *result = filename_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ModularWritableFile::Tell(int64_t* position) {
