@@ -280,6 +280,7 @@ xla_cc_test(
         ":ifrt_ir_program_serdes",
         ":version",
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt/support:module_parsing",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
