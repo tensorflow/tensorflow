@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -947,6 +948,31 @@ TEST_F(HloCseTest, MultiOutputFusion) {
       GmockMatch(m::Tuple(m::Add(&add0, m::Parameter(0), m::Parameter(1)),
                           m::Add(&add1, m::Parameter(0), m::Parameter(1)))));
   EXPECT_EQ(add0, add1);
+}
+
+TEST_F(HloCseTest, ResultAccuracyCseKey) {
+  const char* const hlo_string = R"(
+    HloModule m
+    ENTRY main.6 {
+  Arg_0.1 = f32[4]{0} parameter(0), metadata={op_name="x"}
+  Arg_0.2 = f32[4]{0} parameter(1), metadata={op_name="x"}
+  exponential.2 = f32[4]{0} exponential(Arg_0.1), result_accuracy={tolerance={atol=0.03125,rtol=0.03125,ulps=2}}
+  exponential.3 = f32[4]{0} exponential(Arg_0.2), result_accuracy={tolerance={atol=0.03125,rtol=0.03125,ulps=2}}
+  exponential.4 = f32[4]{0} exponential(Arg_0.1), result_accuracy={mode=highest}
+  exponential.5 = f32[4]{0} exponential(Arg_0.1), result_accuracy={mode=highest}
+  ROOT t = tuple(exponential.2, exponential.3, exponential.4, exponential.5)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  // same result accuracy, so one of the exponentials should be dropped
+  EXPECT_EQ(cse.Run(m.get()).value(), true);
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_NE(root->operand(0), root->operand(1));
+  EXPECT_NE(root->operand(1), root->operand(2));
+  // after CSE, should be tuple(exponential.2, exponential.3, exponential.4,
+  // exponential.4)
+  EXPECT_EQ(root->operand(2), root->operand(3));
 }
 
 class HloCseCommutativeOpTest

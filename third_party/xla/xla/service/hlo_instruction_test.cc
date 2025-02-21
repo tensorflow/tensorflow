@@ -3356,5 +3356,27 @@ TEST_F(HloInstructionTest, PrintUnaryWithResultAccuracy) {
   EXPECT_FALSE(exp_default_set->has_result_accuracy());
 }
 
+TEST_F(HloInstructionTest, EqualResultAccuracy) {
+  ResultAccuracy result_accuracy_highest;
+  result_accuracy_highest.set_mode(ResultAccuracy::HIGHEST);
+
+  HloComputation::Builder builder("Exp");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
+  HloInstruction* exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, x));
+  exp1->set_result_accuracy(result_accuracy_highest);
+  HloInstruction* exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, x));
+  exp2->set_result_accuracy(result_accuracy_highest);
+  EXPECT_TRUE(exp1->equal_result_accuracy(exp2));
+
+  // Now set exp2 with different result accuracy.
+  ResultAccuracy result_accuracy_rtol;
+  result_accuracy_rtol.mutable_tolerance()->set_rtol(0.4);
+  exp2->set_result_accuracy(result_accuracy_rtol);
+  EXPECT_FALSE(exp1->equal_result_accuracy(exp2));
+}
+
 }  // namespace
 }  // namespace xla

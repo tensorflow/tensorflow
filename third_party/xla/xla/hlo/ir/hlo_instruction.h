@@ -1914,6 +1914,18 @@ class HloInstruction {
                           result_accuracy().mode() != ResultAccuracy::DEFAULT);
   }
 
+  bool equal_result_accuracy(const HloInstruction* other) const {
+    return result_accuracy().has_tolerance() ==
+               other->result_accuracy().has_tolerance() &&
+           result_accuracy().tolerance().atol() ==
+               other->result_accuracy().tolerance().atol() &&
+           result_accuracy().tolerance().rtol() ==
+               other->result_accuracy().tolerance().rtol() &&
+           result_accuracy().tolerance().ulps() ==
+               other->result_accuracy().tolerance().ulps() &&
+           result_accuracy().mode() == other->result_accuracy().mode();
+  }
+
   void add_single_statistic(Statistic statistic) {
     *mutable_rare()->statistics_viz.add_statistics() = std::move(statistic);
   }
