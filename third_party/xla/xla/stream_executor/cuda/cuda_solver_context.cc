@@ -21,8 +21,10 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
 #include "third_party/gpus/cuda/include/cusolver_common.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu_solver_context.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
