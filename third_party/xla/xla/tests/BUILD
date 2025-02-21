@@ -40,8 +40,10 @@ cc_library(
     testonly = True,
     srcs = ["xla_internal_test_main.cc"],
     deps = [
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla:debug_options_flags",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
@@ -758,6 +760,7 @@ xla_test(
         "//xla:types",
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -1849,6 +1852,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
     ],
 )
