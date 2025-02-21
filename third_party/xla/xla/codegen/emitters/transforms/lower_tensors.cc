@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -802,6 +803,15 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   }
 
  private:
+  std::tuple<llvm::StringRef, ml::AtomicOrdering> determinateScopeAndOrdering()
+      const {
+    if (device_spec_.IsAmdGpu()) {
+      return std::make_tuple(llvm::StringRef("agent-one-as"),
+                             ml::AtomicOrdering::monotonic);
+    }
+    return std::make_tuple(llvm::StringRef(), ml::AtomicOrdering::seq_cst);
+  }
+
   // Certain computations, such as floating-point addition and integer
   // maximization, can be simply implemented using an LLVM atomic instruction.
   // If "computation" is one of this kind, emits code to do that and returns
@@ -820,8 +830,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     ml::AtomicBinOp atomic_bin_op = modifier_parameters->second;
 
     Location loc = op.getLoc();
-    bool is_amd = device_spec_.IsAmdGpu();
-    llvm::StringRef sync_scope = is_amd ? "agent" : "";
+    auto [sync_scope, ordering] = determinateScopeAndOrdering();
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
     Value addr = CreateGep(op.getInput(), op.getIndices(), b);
 
@@ -840,24 +849,23 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       case ml::AtomicBinOp::umax:
       case ml::AtomicBinOp::umin: {
         rewriter.create<ml::AtomicRMWOp>(loc, atomic_bin_op, addr, modifier_arg,
-                                         ml::AtomicOrdering::seq_cst,
-                                         sync_scope);
+                                         ordering, sync_scope);
         return success();
       }
       case ml::AtomicBinOp::fadd: {
         // TODO(b/336367154): Introduce an atomic_rmw op with the binOp attr.
-        return is_amd
+        return device_spec_.IsAmdGpu()
                    ? emitAMDAtomicFAdd(
-                         loc, modifier_arg, addr, sync_scope,
+                         loc, modifier_arg, addr,
                          device_spec_.gpu().rocm_compute_capability(), rewriter)
                    : emitNVidiaAtomicFAdd(
-                         loc, modifier_arg, addr, sync_scope,
+                         loc, modifier_arg, addr,
                          device_spec_.gpu().cuda_compute_capability(), rewriter,
                          op);
       }
       case ml::AtomicBinOp::fmax: {
         return rewriteAtomicFMaxAsIntAtomics(loc, modifier_arg, addr,
-                                             sync_scope, rewriter);
+                                             sync_scope, ordering, rewriter);
       }
       default:
         return failure();
@@ -866,7 +874,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   }
 
   LogicalResult emitNVidiaAtomicFAdd(
-      Location loc, Value modifier_arg, Value addr, llvm::StringRef sync_scope,
+      Location loc, Value modifier_arg, Value addr,
       const se::CudaComputeCapability& cuda_compute_capability, OpBuilder& b,
       AtomicRMWOp& op) const {
     Type element_type = modifier_arg.getType();
@@ -891,7 +899,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     }
 
     b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
-                              ml::AtomicOrdering::seq_cst, sync_scope);
+                              ml::AtomicOrdering::seq_cst);
     return success();
   }
 
@@ -944,34 +952,78 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   }
 
   LogicalResult emitAMDAtomicFAdd(
-      Location loc, Value modifier_arg, Value addr, llvm::StringRef sync_scope,
+      Location loc, Value modifier_arg, Value addr,
       const se::RocmComputeCapability& rocm_compute_capability,
       OpBuilder& b) const {
     Type element_type = modifier_arg.getType();
-    bool is_supported_f16_atomic =
-        element_type.isF16() &&
-        rocm_compute_capability.has_fp16_atomics_support();
-    if (!element_type.isF32() && !is_supported_f16_atomic) {
+    if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
+      // TODO(rocm) Don't vectorize atomics if we cannot satisfy 4-byte
+      // alignment
+      if (!(vector_type.getNumElements() == 2 &&
+            (vector_type.getElementType().isF16() ||
+             vector_type.getElementType().isBF16()))) {
+        return failure();
+      }
+    } else if (!element_type.isF32() && !element_type.isF16() &&
+               !element_type.isBF16() && !element_type.isF64()) {
       return failure();
     }
-    constexpr int kGlobalMemory = 1;
-    constexpr int kSharedMemory = 3;
-    auto addr_type = mlir::cast<ml::LLVMPointerType>(addr.getType());
-    // adds to shared memory are always atomic.
-    if (addr_type.getAddressSpace() != kSharedMemory) {
-      // The compiler will only generate a global_atomic_fadd if the pointer
-      // is in global addrspace (1)
-      addr = b.create<ml::AddrSpaceCastOp>(
-          loc, ml::LLVMPointerType::get(b.getContext(), kGlobalMemory), addr);
+
+    if ((element_type.isF16() &&
+         rocm_compute_capability.has_packed_fp16_atomics_support()) ||
+        (element_type.isBF16() &&
+         rocm_compute_capability.has_packed_bf16_atomics_support())) {
+      auto packed_type = mlir::VectorType::get({2}, element_type);
+      auto i64_type = b.getI64Type();
+      auto i32_type = b.getI32Type();
+      auto i16_type = b.getI16Type();
+      Value addr_int = b.create<ml::PtrToIntOp>(loc, i64_type, addr);
+      Value addr_masked = b.create<ml::AndOp>(
+          loc, addr_int, b.create<ml::ConstantOp>(loc, i64_type, -4));
+
+      Value offset = b.create<ml::AndOp>(
+          loc, b.create<ml::TruncOp>(loc, i32_type, addr_int),
+          b.create<ml::ConstantOp>(loc, i32_type, 2));
+
+      Value shift = b.create<ml::MulOp>(
+          loc, offset, b.create<ml::ConstantOp>(loc, i32_type, 8));
+
+      Value modifier_int = b.create<ml::BitcastOp>(loc, i16_type, modifier_arg);
+
+      Value modifier_masked = b.create<ml::ShlOp>(
+          loc, b.create<ml::ZExtOp>(loc, i32_type, modifier_int), shift);
+
+      constexpr int kGlobalMemory = 1;
+      addr = b.create<ml::IntToPtrOp>(
+          loc, ml::LLVMPointerType::get(b.getContext(), kGlobalMemory),
+          addr_masked);
+
+      modifier_arg = b.create<ml::BitcastOp>(loc, packed_type, modifier_masked);
+      element_type = packed_type;
     }
-    b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
-                              ml::AtomicOrdering::seq_cst, sync_scope);
+
+    auto op = b.create<ml::AtomicRMWOp>(
+        loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
+        ml::AtomicOrdering::monotonic, "agent-one-as");
+
+    auto unitAttr = b.getUnitAttr();
+    auto* rocdl =
+        op->getContext()->getOrLoadDialect<mlir::ROCDL::ROCDLDialect>();
+    auto noRemoteMemHelper = rocdl->getNoRemoteMemoryAttrHelper();
+    auto noFineMemHelper = rocdl->getNoFineGrainedMemoryAttrHelper();
+    auto ignoreDenormalModeHelper = rocdl->getIgnoreDenormalModeAttrHelper();
+
+    noRemoteMemHelper.setAttr(op, unitAttr);
+    noFineMemHelper.setAttr(op, unitAttr);
+    ignoreDenormalModeHelper.setAttr(op, unitAttr);
+
     return success();
   }
 
   LogicalResult rewriteAtomicFMaxAsIntAtomics(Location loc, Value modifier_arg,
                                               Value addr,
                                               llvm::StringRef sync_scope,
+                                              ml::AtomicOrdering ordering,
                                               OpBuilder& b) const {
     Type element_type = modifier_arg.getType();
     if (!element_type.isF32()) {
@@ -1025,16 +1077,16 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
         loc, is_not_negative,
         [&](OpBuilder& nested_b, Location nested_loc) {
           // atomicMax((int *)address, __float_as_int(val))
-          nested_b.create<ml::AtomicRMWOp>(
-              loc, ml::AtomicBinOp::max, addr, source_float_as_int,
-              ml::AtomicOrdering::seq_cst, sync_scope);
+          nested_b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::max, addr,
+                                           source_float_as_int, ordering,
+                                           sync_scope);
           nested_b.create<scf::YieldOp>(nested_loc);
         },
         [&](OpBuilder& nested_b, Location nested_loc) {
           // atomicMax((int *)address, __float_as_int(val))
-          nested_b.create<ml::AtomicRMWOp>(
-              loc, ml::AtomicBinOp::umin, addr, source_float_as_int,
-              ml::AtomicOrdering::seq_cst, sync_scope);
+          nested_b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::umin, addr,
+                                           source_float_as_int, ordering,
+                                           sync_scope);
           nested_b.create<scf::YieldOp>(nested_loc);
         });
     then_builder.create<scf::YieldOp>(loc);
@@ -1159,11 +1211,11 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
             new_value = CreateBitcast(b, op, result, atomic_ty);
           }
 
+          auto [sync_scope, ordering] = determinateScopeAndOrdering();
+
           // Try saving the result atomically, retry if failed.
           Value cmpxchg = b.create<ml::AtomicCmpXchgOp>(
-              loc, addr, old_value, new_value,
-              /*success_ordering=*/ml::AtomicOrdering::seq_cst,
-              /*failure_ordering=*/ml::AtomicOrdering::seq_cst);
+              loc, addr, old_value, new_value, ordering, ordering, sync_scope);
           Value next = b.create<ml::ExtractValueOp>(cmpxchg, 0);
           Value ok = b.create<ml::ExtractValueOp>(cmpxchg, 1);
           Value low_bit = b.create<ml::ConstantOp>(b.getOneAttr(b.getI1Type()));
