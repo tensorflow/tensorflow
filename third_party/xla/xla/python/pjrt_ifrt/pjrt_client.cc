@@ -586,7 +586,7 @@ absl::StatusOr<tsl::RCReference<Array>> MakeStringArrayFromHostBuffer(
 
 absl::StatusOr<tsl::RCReference<Array>>
 AssembleStringArrayFromSingleDeviceStringArrays(
-    Shape shape, std::shared_ptr<const Sharding> sharding,
+    PjRtClient* client, Shape shape, std::shared_ptr<const Sharding> sharding,
     absl::Span<tsl::RCReference<Array>> arrays,
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
@@ -692,8 +692,8 @@ AssembleStringArrayFromSingleDeviceStringArrays(
         });
   }
 
-  return BasicStringArray::Create(arrays[0]->client(), std::move(shape),
-                                  std::move(sharding), buffers_future,
+  return BasicStringArray::Create(client, std::move(shape), std::move(sharding),
+                                  buffers_future,
                                   std::move(on_done_with_buffer));
 }
 
@@ -968,8 +968,9 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
     }
     buffers.push_back(std::move(buffer));
   }
+  auto layout = buffers.front()->layout();
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
-                           std::move(buffers));
+                           std::move(buffers), std::move(layout));
 }
 
 absl::StatusOr<tsl::RCReference<Array>>
@@ -1003,7 +1004,8 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
   DCHECK(this);
-  if (llvm::isa<const SingleDeviceSharding>(sharding.get())) {
+  if (!arrays.empty() &&
+      llvm::isa<const SingleDeviceSharding>(sharding.get())) {
     // Assemble with SingleDeviceSharding is No-op.
     if (arrays.size() != 1) {
       return InvalidArgument(
@@ -1036,7 +1038,7 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
   }
   if (dtype.kind() == DType::kString) {
     return AssembleStringArrayFromSingleDeviceStringArrays(
-        shape, sharding, arrays, array_copy_semantics,
+        this, shape, sharding, arrays, array_copy_semantics,
         single_device_shard_semantics);
   }
   PjRtArray::PjRtBuffers buffers;
@@ -1074,8 +1076,22 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
         break;
     }
   }
+  // TODO(yashkatariya): Remove the following logic once layout is plumbed
+  // through.
+  std::shared_ptr<const PjRtLayout> layout;
+  if (dtype.kind() == DType::kToken) {
+    layout = std::make_shared<PjRtLayout>(xla::Layout());
+  } else if (buffers.empty()) {
+    TF_ASSIGN_OR_RETURN(auto shard_shape, sharding->GetShardShape(shape));
+    TF_ASSIGN_OR_RETURN(layout,
+                        GetDefaultLayout(dtype, shard_shape.dims(),
+                                         sharding->devices()->devices().front(),
+                                         sharding->memory_kind()));
+  } else {
+    layout = buffers.front()->layout();
+  }
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
-                           std::move(buffers));
+                           std::move(buffers), std::move(layout));
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<Array>>> PjRtClient::CopyArrays(
