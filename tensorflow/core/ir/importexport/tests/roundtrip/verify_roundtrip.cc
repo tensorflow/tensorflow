@@ -17,26 +17,32 @@ limitations under the License.
 #include <utility>
 
 #include <gmock/gmock.h>
+#include "absl/log/log.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
+#include "third_party/protobuf/util/message_differencer.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/ir/importexport/load_proto.h"
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
 #include "tensorflow/core/transforms/consolidate_attrs/pass.h"
+#include "tsl/platform/status.h"
 
 using mlir::MLIRContext;
 using tensorflow::GraphDef;
