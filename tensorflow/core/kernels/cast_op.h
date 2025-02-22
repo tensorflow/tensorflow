@@ -82,6 +82,15 @@ limitations under the License.
   SPECIALIZE_CAST(devname, float8_e4m3fn, float)                      \
   SPECIALIZE_CAST(devname, float8_e4m3fn, bfloat16)                   \
   SPECIALIZE_CAST(devname, float8_e4m3fn, Eigen::half)                \
+  SPECIALIZE_CAST(devname, float8_e5m2fnuz, double)                   \
+  SPECIALIZE_CAST(devname, float8_e5m2fnuz, float)                    \
+  SPECIALIZE_CAST(devname, float8_e5m2fnuz, bfloat16)                 \
+  SPECIALIZE_CAST(devname, float8_e5m2fnuz, Eigen::half)              \
+  SPECIALIZE_CAST(devname, float8_e5m2fnuz, float8_e4m3fnuz)          \
+  SPECIALIZE_CAST(devname, float8_e4m3fnuz, double)                   \
+  SPECIALIZE_CAST(devname, float8_e4m3fnuz, float)                    \
+  SPECIALIZE_CAST(devname, float8_e4m3fnuz, bfloat16)                 \
+  SPECIALIZE_CAST(devname, float8_e4m3fnuz, Eigen::half)              \
   template <typename OUT_TYPE, typename IN_TYPE>                      \
   struct CastFunctor<devname, OUT_TYPE, IN_TYPE> {                    \
     void operator()(const devname& d,                                 \
@@ -111,6 +120,15 @@ limitations under the License.
   SPECIALIZE_CAST(devname, float8_e4m3fn, float)                   \
   SPECIALIZE_CAST(devname, float8_e4m3fn, bfloat16)                \
   SPECIALIZE_CAST(devname, float8_e4m3fn, Eigen::half)             \
+  SPECIALIZE_CAST(devname, float8_e5m2fnuz, double)                \
+  SPECIALIZE_CAST(devname, float8_e5m2fnuz, float)                 \
+  SPECIALIZE_CAST(devname, float8_e5m2fnuz, bfloat16)              \
+  SPECIALIZE_CAST(devname, float8_e5m2fnuz, Eigen::half)           \
+  SPECIALIZE_CAST(devname, float8_e5m2fnuz, float8_e4m3fnuz)       \
+  SPECIALIZE_CAST(devname, float8_e4m3fnuz, double)                \
+  SPECIALIZE_CAST(devname, float8_e4m3fnuz, float)                 \
+  SPECIALIZE_CAST(devname, float8_e4m3fnuz, bfloat16)              \
+  SPECIALIZE_CAST(devname, float8_e4m3fnuz, Eigen::half)           \
   template <typename OUT_TYPE, typename IN_TYPE>                   \
   struct CastFunctor<devname, OUT_TYPE, IN_TYPE> {                 \
     void operator()(const devname& d,                              \
