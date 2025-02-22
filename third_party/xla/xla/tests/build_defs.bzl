@@ -2,6 +2,7 @@
 
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:plugin.bzl", "plugins")
+load("//xla/tsl:tsl.bzl", "if_google")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
@@ -191,7 +192,10 @@ def xla_test(
         backend_tags = {},
         backend_args = {},
         backend_kwargs = {},
-        linkstatic = False,
+        # Inside Google, we link statically to catch duplicate main() definitions.
+        # However, this increases the size of the test binary, which breaks Nvidia's build.
+        # Therefore we use dynamic linking outside Google.
+        linkstatic = if_google(True, False),
         **kwargs):
     """Generates cc_test targets for the given XLA backends.
 
