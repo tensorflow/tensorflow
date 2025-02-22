@@ -378,7 +378,8 @@ def xla_test_library(
         srcs,
         hdrs = [],
         deps = [],
-        backends = []):
+        backends = [],
+        **kwargs):
     """Generates cc_library targets for the given XLA backends.
 
     This rule forces the sources to be compiled for each backend so that the
@@ -412,6 +413,7 @@ def xla_test_library(
       backends: A list of backends to generate libraries for.
         Supported values: "cpu", "gpu". If this list is empty, the
         library will be generated for all supported backends.
+      **kwargs: Additional keyword arguments to pass to native.cc_library.
     """
 
     if not backends:
@@ -439,6 +441,7 @@ def xla_test_library(
             copts = ["-DXLA_TEST_BACKEND_%s=1" % backend.upper()] +
                     this_backend_copts,
             deps = deps + backend_deps,
+            **kwargs
         )
 
 def generate_backend_suites(backends = []):  # buildifier: disable=unnamed-macro

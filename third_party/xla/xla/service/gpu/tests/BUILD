@@ -797,6 +797,7 @@ cc_library(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
     ],
+    alwayslink = True,  # This library registers test cases at static initialization time.
 )
 
 # This shows that tests can load an autotune cache.

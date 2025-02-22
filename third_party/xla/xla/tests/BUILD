@@ -365,6 +365,7 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test",
     ],
+    alwayslink = True,  # This library registers test cases at static initialization time.
 )
 
 cc_library(
@@ -2034,6 +2035,7 @@ xla_test_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
+    alwayslink = True,  # This library registers test cases at static initialization time.
 )
 
 xla_test(
