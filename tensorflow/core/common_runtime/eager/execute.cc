@@ -1893,11 +1893,21 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                                               ctx.GetContextViewId()));
         }
       }
-      int64_t num_elements;
-      TF_RETURN_IF_ERROR(input->NumElements(&num_elements));
-      if ((input->Type() == TensorHandle::HandleType::LOCAL) &&
-          (num_elements == 1) && (input->DataType() != DT_VARIANT) &&
-          SendAsProtosWhenPossible()) {
+
+      bool send_as_protos =
+          SendAsProtosWhenPossible() &&
+          (input->Type() == TensorHandle::HandleType::LOCAL) &&
+          (input->DataType() != DT_VARIANT);
+      // Make the final determination on whether to take the send_as_protos
+      // path. We do this only if the other conditions are met, since the
+      // blocking call to NumElements can hurt performance.
+      if (send_as_protos) {
+        int64_t num_elements;
+        TF_RETURN_IF_ERROR(input->NumElements(&num_elements));
+        send_as_protos = (num_elements == 1);
+      }
+
+      if (send_as_protos) {
         auto* input_tensor_proto = remote_op->add_op_inputs()->mutable_tensor();
         const tensorflow::Tensor* input_tensor = nullptr;
         TensorHandle* local_cpu_input_handle = nullptr;

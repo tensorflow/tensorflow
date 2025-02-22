@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --passes=foo2bar | FileCheck %s
+// RUN: hlo-opt %s --passes=test-only-foo2bar | FileCheck %s
 
 HloModule ModulePassChanged
 

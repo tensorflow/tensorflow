@@ -302,8 +302,12 @@ StepEvents ConvertTpuDeviceTraceXLineToStepEvents(const uint64 device_id,
       [&](const ParentRef& parent) {
         OpMetrics op_metrics = FromXEvent(parent.event);
         op_metrics.set_time_ps(parent.device_timespan.duration_ps());
-        op_metrics.set_self_time_ps(op_metrics.time_ps() -
-                                    parent.children_duration_ps);
+        // TODO(b/397774568): Remove this once the SparseCore OpMetricsDb is
+        // implemented.
+        if (device_id < kSparseCoreIndexStart) {
+          op_metrics.set_self_time_ps(op_metrics.time_ps() -
+                                      parent.children_duration_ps);
+        }
         op_metrics_builder[parent.group_id].AddOpMetric(
             op_metrics, GetOpKeyFromXEvent(parent.event));
       },
@@ -349,9 +353,9 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
     int64_t line_id = line.Id();
     if (line_id == kThreadIdStepInfo ||
         (tpu_core_id.has_value() &&
-         line.Name() == tsl::profiler::kStepLineName) ||
-        (sc_core_id.has_value() &&
-         line.Name() == tsl::profiler::kSparseCoreStepLineName)) {
+         line.Name() == tsl::profiler::kStepLineName)) {
+      // TODO(b/397774568): Re-add processing of SparseCore steps once the
+      // SparseCore OpMetricsDb is implemented.
       StepEvents step_marker_events = ConvertDeviceStepInfoToStepMarkers(line);
       UnionCombineStepEvents(step_marker_events, &device_step_events);
     } else if (IsDerivedThreadId(line_id)) {
@@ -368,6 +372,9 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
             ConvertTpuDeviceTraceXLineToStepEvents(plane.Id(), line);
         IntersectCombineStepEvents(stream_step_events, &device_step_events);
       } else if (sc_core_id.has_value()) {
+        // TODO(b/397774568): Switch to IsOpLineName once SparseCore OpMetricsDb
+        // is implemented.
+        if (line.Name() != tsl::profiler::kSparseCoreStepLineName) return;
         stream_step_events = ConvertTpuDeviceTraceXLineToStepEvents(
             kSparseCoreIndexStart + plane.Id(), line);
         IntersectCombineStepEvents(stream_step_events, &device_step_events);

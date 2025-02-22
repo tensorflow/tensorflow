@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_HLO_TOOLS_TESTS_HLO_OPT_DUMMY_PASSES_H_
-#define XLA_HLO_TOOLS_TESTS_HLO_OPT_DUMMY_PASSES_H_
+#ifndef XLA_HLO_TOOLS_TESTS_HLO_OPT_TEST_ONLY_PASSES_H_
+#define XLA_HLO_TOOLS_TESTS_HLO_OPT_TEST_ONLY_PASSES_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -24,13 +24,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 
-namespace xla {
+namespace xla::test_only {
 
 // A module pass which renames instructions named 'foo' to 'bar'.
 class FooToBarModulePass : public HloModulePass {
  public:
-  absl::string_view name() const override { return "foo2bar"; }
+  absl::string_view name() const override { return "test-only-foo2bar"; }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(HloModule* module,
@@ -52,7 +53,7 @@ class FooToBarModulePass : public HloModulePass {
 // A module pass which renames instructions named 'bar' to 'hello'.
 class BarToHelloModulePass : public HloModulePass {
  public:
-  absl::string_view name() const override { return "bar2hello"; }
+  absl::string_view name() const override { return "test-only-bar2hello"; }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(HloModule* module,
@@ -71,6 +72,26 @@ class BarToHelloModulePass : public HloModulePass {
   }
 };
 
-}  // namespace xla
+// Allows `AlgebraicSimplifier::PromoteConvolutionToF32IfNotOnednnCompatible` to
+// be tested regardless of whether the build configuration uses OneDNN.
+class AlgebraicSimplifierWithOnednnEnabled : public AlgebraicSimplifier {
+ public:
+  absl::string_view name() const override {
+    return "test-only-algebraic-simplifier-with-onednn-enabled";
+  }
 
-#endif  // XLA_HLO_TOOLS_TESTS_HLO_OPT_DUMMY_PASSES_H_
+  explicit AlgebraicSimplifierWithOnednnEnabled()
+      : AlgebraicSimplifier(TestSpecificOptions()) {}
+
+ private:
+  static AlgebraicSimplifierOptions TestSpecificOptions() {
+    AlgebraicSimplifierOptions options;
+    options.set_enable_onednn_support(true);
+    options.set_executing_on_cpu(true);
+    return options;
+  }
+};
+
+}  // namespace xla::test_only
+
+#endif  // XLA_HLO_TOOLS_TESTS_HLO_OPT_TEST_ONLY_PASSES_H_

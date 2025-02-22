@@ -1,5 +1,5 @@
-// RUN: hlo-opt %s --passes=foo2bar,bar2hello | FileCheck %s --check-prefix=CHECK
-// RUN: hlo-opt %s --passes=bar2hello,foo2bar | FileCheck %s --check-prefix=CHECK-OUT-OF-ORDER
+// RUN: hlo-opt %s --passes=test-only-foo2bar,test-only-bar2hello | FileCheck %s --check-prefix=CHECK
+// RUN: hlo-opt %s --passes=test-only-bar2hello,test-only-foo2bar | FileCheck %s --check-prefix=CHECK-OUT-OF-ORDER
 
 
 HloModule ModulePassChanged

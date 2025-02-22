@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/timespan.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -250,18 +251,25 @@ OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
         parent.children_duration_ps += child.device_timespan.duration_ps();
       });
 
+  auto track_first_and_last_op_timestamps = [&](const XEventVisitor& event) {
+    tsl::profiler::Timespan timespan = GetDeviceEventTimespan(event);
+    first_op_timestamp_ps =
+        std::min(first_op_timestamp_ps, timespan.begin_ps());
+    last_op_timestamp_ps = std::max(last_op_timestamp_ps, timespan.end_ps());
+  };
+
   plane.ForEachLine([&](const XLineVisitor& line) {
+    if (line.Name() == tsl::profiler::kSparseCoreStepLineName ||
+        line.Name() == tsl::profiler::kStepLineName) {
+      line.ForEachEvent(track_first_and_last_op_timestamps);
+    }
     if (!tsl::profiler::IsOpLineName(line.Name())) return;
-    event_stack.Flush();
     line.ForEachEvent([&](const XEventVisitor& event) {
       tsl::profiler::Timespan timespan = GetDeviceEventTimespan(event);
-      first_op_timestamp_ps =
-          std::min(first_op_timestamp_ps, timespan.begin_ps());
-      last_op_timestamp_ps = std::max(last_op_timestamp_ps, timespan.end_ps());
+      track_first_and_last_op_timestamps(event);
 
       event_stack.Push({.event = event, .device_timespan = timespan});
     });
-
     event_stack.Flush();
   });
 
