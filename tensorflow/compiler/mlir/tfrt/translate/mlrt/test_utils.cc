@@ -15,8 +15,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/mlrt/test_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
-#include <functional>
 #include <numeric>
 #include <string>
 #include <utility>
