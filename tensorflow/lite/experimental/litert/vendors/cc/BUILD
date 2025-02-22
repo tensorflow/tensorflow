@@ -21,6 +21,7 @@ cc_library(
     name = "litert_compiler_plugin",
     hdrs = ["litert_compiler_plugin.h"],
     deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin",
     ],
@@ -118,6 +119,18 @@ cc_test(
         "//tensorflow/lite/experimental/litert/vendors/examples:example_ir",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "litert_compiler_plugin_test",
+    srcs = ["litert_compiler_plugin_test.cc"],
+    deps = [
+        ":litert_compiler_plugin",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/test:matchers",
+        "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin",
         "@com_google_googletest//:gtest_main",
     ],
 )
