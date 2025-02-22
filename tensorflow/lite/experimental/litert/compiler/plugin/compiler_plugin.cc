@@ -158,6 +158,7 @@ LiteRtStatus ResolvePluginApi(void* lib_handle,
                    result.get_compiled_result_call_info);
   RESOLVE_API_FUNC(kLiteRtGetNumCompiledResultCalls,
                    result.get_compiled_result_num_calls);
+  RESOLVE_API_FUNC(kLiteRtCompilerPluginSetFlags, result.set_flags);
 
   return kLiteRtStatusOk;
 }

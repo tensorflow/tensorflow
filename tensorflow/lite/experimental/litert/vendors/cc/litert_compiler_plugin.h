@@ -62,7 +62,7 @@ class CompilerFlags {
 
   LiteRtStatus SetPluginFlags(
       LiteRtCompilerPlugin handle,
-      decltype(LiteRtCompilerPluginSetFlags) set_flags) {
+      decltype(LiteRtCompilerPluginSetFlags) set_flags) const {
     std::vector<const char*> keys(keys_.size());
     std::vector<const char*> values(values_.size());
     for (auto i = 0; i < keys_.size(); ++i) {

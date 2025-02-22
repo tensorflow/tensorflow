@@ -40,6 +40,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin_api",
+        "//tensorflow/lite/experimental/litert/vendors/cc:litert_compiler_plugin",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -75,6 +76,7 @@ cc_library(
 #         "//tensorflow/lite/experimental/litert/core:filesystem",
 #         "//tensorflow/lite/experimental/litert/core/model",
 #         "//tensorflow/lite/experimental/litert/test:common",
+#         "//tensorflow/lite/experimental/litert/test:matchers",
 #         "//tensorflow/lite/experimental/litert/tools:dump",
 #     ],
 # )

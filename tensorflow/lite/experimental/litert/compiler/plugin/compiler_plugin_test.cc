@@ -30,6 +30,7 @@
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
 
 namespace litert::internal {
@@ -101,6 +102,12 @@ TEST(CompilerPluginTest, SocModels) {
 
   EXPECT_THAT(plugins->front().SocModels(),
               ::testing::ElementsAreArray({kTestModels}));
+}
+
+TEST(CompilerPluginTest, SetFlags) {
+  auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
+  ASSERT_EQ(plugins->size(), 1);
+  LITERT_ASSERT_OK(plugins->front().SetFlags(CompilerFlags()));
 }
 
 TEST(CompilerPluginTest, Partition) {
