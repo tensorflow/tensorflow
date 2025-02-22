@@ -44,28 +44,24 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
+#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 namespace {
 
 #define GEN_PASS_DEF_VECTORIZELOADSANDSTORESPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 using mlir::Value;
 
 namespace arith = ::mlir::arith;
 namespace ml = ::mlir::LLVM;
 namespace scf = mlir::scf;
-
-bool IsAMD(const se::DeviceDescription& device_description) {
-  return std::holds_alternative<se::RocmComputeCapability>(
-      device_description.gpu_compute_capability());
-}
 
 // Tries to find the stride of a symbol or dimension in an affine expression.
 // Returns std::nullopt if the stride could not be determined.
@@ -325,17 +321,16 @@ bool IsConflictFree(AtomicRMWOp op) {
          bbarg.getOwner()->getParentOp() == op->getParentOp();
 }
 
-struct VectorizeAtomicRMW : mlir::OpRewritePattern<AtomicRMWOp> {
-  VectorizeAtomicRMW(mlir::MLIRContext* context,
-                     const se::DeviceDescription* device_description)
-      : OpRewritePattern<AtomicRMWOp>(context),
-        device_description_(device_description) {}
+class VectorizeAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
+ public:
+  VectorizeAtomicRMW(mlir::MLIRContext* context, const DeviceSpec& device_spec)
+      : OpRewritePattern<AtomicRMWOp>(context), device_spec_(device_spec) {}
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
       AtomicRMWOp op, mlir::PatternRewriter& rewriter) const override {
-    if (IsAMD(*device_description_) ||
-        !device_description_->cuda_compute_capability().IsAtLeastHopper()) {
+    if (!device_spec_.IsNvidiaGpu() ||
+        !device_spec_.gpu().cuda_compute_capability().IsAtLeastHopper()) {
       return rewriter.notifyMatchFailure(
           op,
           "atomic vectorization currently only supported on Hopper or later");
@@ -407,7 +402,7 @@ struct VectorizeAtomicRMW : mlir::OpRewritePattern<AtomicRMWOp> {
     return mlir::success();
   }
 
-  const se::DeviceDescription* device_description_;
+  const DeviceSpec& device_spec_;
 };
 
 struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
@@ -477,34 +472,38 @@ class VectorizeLoadsAndStoresPass
 
   explicit VectorizeLoadsAndStoresPass(
       const se::DeviceDescription& device_description)
-      : device_description_(device_description) {}
+      : device_spec_(device_description) {}
 
   void runOnOperation() override {
-    if (!gpu_device_info_.empty()) {
+    if (target_type_ == "gpu" && !gpu_device_info_.empty()) {
       se::GpuDeviceInfoProto device_info;
       CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
                                                        &device_info));
-      device_description_ = se::DeviceDescription(device_info);
+      *device_spec_.mutable_type() = se::DeviceDescription(device_info);
+    } else if (target_type_ == "cpu") {
+      CHECK(gpu_device_info_.empty());
+      *device_spec_.mutable_type() = CpuDeviceSpec{};
     }
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
     patterns.add<VectorizeLoad, VectorizeStore>(mlir_context);
-    patterns.add<VectorizeAtomicRMW>(mlir_context, &device_description_);
+    patterns.add<VectorizeAtomicRMW>(mlir_context, device_spec_);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }
 
-  se::DeviceDescription device_description_;
+  DeviceSpec device_spec_;
 };
 
 }  // namespace
 
 std::unique_ptr<::mlir::Pass> CreateVectorizeLoadsAndStoresPass(
-    const std::string& gpu_device_info) {
+    const std::string& target_type, const std::string& gpu_device_info) {
   VectorizeLoadsAndStoresPassOptions options;
   options.gpu_device_info_ = gpu_device_info;
+  options.target_type_ = target_type;
   return std::make_unique<VectorizeLoadsAndStoresPass>(options);
 }
 
@@ -513,5 +512,5 @@ std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
   return std::make_unique<VectorizeLoadsAndStoresPass>(device_description);
 }
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla

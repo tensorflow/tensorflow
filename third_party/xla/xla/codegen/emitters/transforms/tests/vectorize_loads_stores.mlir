@@ -1,9 +1,13 @@
 // RUN: emitters_opt -allow-unregistered-dialect %s -split-input-file \
-// RUN: -xla-gpu-vectorize-loads-stores="gpu_device_info='cuda_compute_capability {major: 6}'" -cse -canonicalize \
+// RUN: -xla-vectorize-loads-stores="gpu_device_info='cuda_compute_capability {major: 6}'" -cse -canonicalize \
+// RUN: | FileCheck %s
+
+// RUN: emitters_opt -allow-unregistered-dialect %s -split-input-file \
+// RUN: -xla-vectorize-loads-stores="target_type=cpu" -cse -canonicalize \
 // RUN: | FileCheck %s
 
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
-// RUN: -xla-gpu-vectorize-loads-stores="gpu_device_info='cuda_compute_capability {major: 9}'" -cse -canonicalize \
+// RUN: -xla-vectorize-loads-stores="gpu_device_info='cuda_compute_capability {major: 9}'" -cse -canonicalize \
 // RUN: | FileCheck %s --check-prefix=CHECK-HOPPER
 
 #map = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"
