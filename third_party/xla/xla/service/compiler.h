@@ -121,11 +121,15 @@ class Compiler {
 
     se::GpuTargetConfigProto ToProto() const;
 
+    // TODO(tsilytskyi): use "= default;" from C++20
     bool operator==(const TargetConfig& other) const {
-      // TODO(cheshire): More efficient comparator, this is currently just for
-      // tests.
-      return ToProto().SerializeAsString() ==
-             other.ToProto().SerializeAsString();
+      if (this == &other) {
+        return true;
+      }
+      return this->device_description == other.device_description &&
+             this->platform_name == other.platform_name &&
+             this->dnn_version_info == other.dnn_version_info &&
+             this->device_description_str == other.device_description_str;
     }
 
     std::string ToString() { return ToProto().DebugString(); }
