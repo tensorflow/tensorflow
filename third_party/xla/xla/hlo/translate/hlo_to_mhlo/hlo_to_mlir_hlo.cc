@@ -33,43 +33,55 @@ namespace xla {
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
     mlir::MLIRContext& ctx, xla::HloModuleProto const* hlo_module,
-    bool import_all_computations, bool flatten_computation_args_result) {
+    bool import_all_computations, bool flatten_computation_args_result,
+    bool import_layout_modes) {
   mlir::OwningOpRef<mlir::ModuleOp> module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
-  TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, hlo_module,
-                                         import_all_computations,
-                                         flatten_computation_args_result));
+  TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(
+      *module, hlo_module, import_all_computations,
+      flatten_computation_args_result, import_layout_modes));
   return module;
 }
 
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                                  xla::HloModuleProto const* hlo_module_proto,
                                  bool import_all_computation,
-                                 bool flatten_computation_args_result) {
+                                 bool flatten_computation_args_result,
+                                 bool import_layout_modes) {
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
-  return HloModuleImporter(module, import_all_computation,
-                           flatten_computation_args_result)
+  return HloModuleImporter(
+             module, HloModuleImporterOptions()
+                         .set_flatten_computation_args_result(
+                             flatten_computation_args_result)
+                         .set_import_all_computation(import_all_computation)
+                         .set_import_layout_modes(import_layout_modes))
       .Import(*hlo_module_proto);
 }
 
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                                  const xla::HloModule* hlo_module,
                                  bool import_all_computation,
-                                 bool flatten_computation_args_result) {
+                                 bool flatten_computation_args_result,
+                                 bool import_layout_modes) {
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
-  return HloModuleImporter(module, import_all_computation,
-                           flatten_computation_args_result)
+  return HloModuleImporter(
+             module, HloModuleImporterOptions()
+                         .set_flatten_computation_args_result(
+                             flatten_computation_args_result)
+                         .set_import_all_computation(import_all_computation)
+                         .set_import_layout_modes(import_layout_modes))
       .Import(*hlo_module);
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
     mlir::MLIRContext& ctx, const xla::HloModule* hlo_module,
-    bool import_all_computations, bool flatten_computation_args_result) {
+    bool import_layout_modes, bool import_all_computations,
+    bool flatten_computation_args_result) {
   mlir::OwningOpRef<mlir::ModuleOp> module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
-  TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, hlo_module,
-                                         import_all_computations,
-                                         flatten_computation_args_result));
+  TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(
+      *module, hlo_module, import_all_computations,
+      flatten_computation_args_result, import_layout_modes));
   return module;
 }
 

@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "xla/hlo/translate/hlo_to_mhlo/module_attributes_importer.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -33,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_module_config.h"
@@ -308,6 +315,70 @@ void ImportUseAutoSpmdPartitioning(const HloModule& hlo_module,
   module->setAttr(kUseAutoSpmdPartitioning,
                   mlir::BoolAttr::get(builder.getContext(),
                                       hlo_module.use_auto_spmd_partitioning()));
+}
+
+namespace {
+
+void ImportParameterLayoutModes(mlir::func::FuncOp main,
+                                const ComputationLayout& computation_layout,
+                                bool flatten_computation_args_result,
+                                mlir::Builder builder) {
+  std::vector<const Shape*> parameter_shapes;
+  for (const ShapeLayout& shape : computation_layout.parameter_layouts()) {
+    if (flatten_computation_args_result) {
+      ShapeUtil::FlattenTupleShape(shape.shape(), parameter_shapes);
+    } else {
+      parameter_shapes.push_back(&shape.shape());
+    }
+  }
+  CHECK_EQ(parameter_shapes.size(), main.getNumArguments());
+  for (size_t i = 0; i < main.getNumArguments(); ++i) {
+    const Shape& shape = *parameter_shapes[i];
+    if (shape.IsTuple() || (shape.IsArray() && shape.rank() == 0)) continue;
+    if (LayoutUtil::HasAnyLayout(*parameter_shapes[i])) continue;
+    main.setArgAttrs(
+        i, mlir::NamedAttribute(builder.getStringAttr("mhlo.layout_mode"),
+                                builder.getStringAttr("auto")));
+  }
+}
+
+void ImportResultLayoutModes(mlir::func::FuncOp main,
+                             const ComputationLayout& computation_layout,
+                             bool flatten_computation_args_result,
+                             mlir::Builder builder) {
+  const Shape& result_shape = computation_layout.result_layout().shape();
+  std::vector<const Shape*> result_shapes =
+      flatten_computation_args_result
+          ? ShapeUtil::FlattenTupleShape(result_shape)
+          : std::vector<const Shape*>{&result_shape};
+  CHECK_EQ(result_shapes.size(), main.getNumResults());
+  for (size_t i = 0; i < main.getNumResults(); ++i) {
+    const Shape& shape = *result_shapes[i];
+    if (shape.IsTuple() || (shape.IsArray() && shape.rank() == 0)) continue;
+    if (LayoutUtil::HasAnyLayout(shape)) continue;
+    main.setResultAttrs(
+        i, mlir::NamedAttribute(builder.getStringAttr("mhlo.layout_mode"),
+                                builder.getStringAttr("auto")));
+  }
+}
+
+}  // namespace
+
+absl::Status ImportLayoutModes(const HloModule& hlo_module,
+                               mlir::ModuleOp module,
+                               bool flatten_computation_args_result,
+                               mlir::Builder builder) {
+  const auto& computation_layout = hlo_module.entry_computation_layout();
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
+  if (!main) {
+    return InvalidArgument(
+        "Module without main function passed to ImportLayoutModes");
+  }
+  ImportParameterLayoutModes(main, computation_layout,
+                             flatten_computation_args_result, builder);
+  ImportResultLayoutModes(main, computation_layout,
+                          flatten_computation_args_result, builder);
+  return absl::OkStatus();
 }
 
 }  // namespace xla

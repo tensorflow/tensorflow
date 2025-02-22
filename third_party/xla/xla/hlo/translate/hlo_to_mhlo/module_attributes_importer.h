@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSLATE_HLO_TO_MHLO_MODULE_ATTRIBUTES_IMPORTER_H_
 #define XLA_HLO_TRANSLATE_HLO_TO_MHLO_MODULE_ATTRIBUTES_IMPORTER_H_
 
+#include "absl/status/status.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/util.h"
@@ -61,6 +62,11 @@ void ImportSpmdParametersShardings(const HloModule& hlo_module,
 void ImportUseAutoSpmdPartitioning(const HloModule& hlo_module,
                                    mlir::ModuleOp module,
                                    mlir::Builder builder);
+
+absl::Status ImportLayoutModes(const HloModule& hlo_module,
+                               mlir::ModuleOp module,
+                               bool flatten_computation_args_result,
+                               mlir::Builder builder);
 
 }  // namespace xla
 

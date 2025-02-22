@@ -37,12 +37,8 @@ limitations under the License.
 namespace xla {
 
 HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
-                                     bool import_all_computation,
-                                     bool flatten_computation_args_result)
-    : import_all_computation_(import_all_computation),
-      flatten_computation_args_result_(flatten_computation_args_result),
-      symbol_table_(module),
-      builder_(module.getContext()) {
+                                     const HloModuleImporterOptions& options)
+    : options_(options), symbol_table_(module), builder_(module.getContext()) {
   module.getContext()->loadDialect<mlir::arith::ArithDialect>();
   module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
@@ -53,38 +49,45 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
   auto module = llvm::cast<mlir::ModuleOp>(symbol_table_.getOp());
   module.setName(hlo_module.name());
 
-  ImportCrossProgramPrefetches(hlo_module, module,
-                               flatten_computation_args_result_, builder_);
+  ImportCrossProgramPrefetches(
+      hlo_module, module, options_.flatten_computation_args_result, builder_);
   ImportFrontendAttributes(hlo_module, module, builder_);
   ImportInputOutputAlias(hlo_module, module, builder_);
   ImportIsDynamic(hlo_module, module, builder_);
   ImportNumPartitions(hlo_module, module, builder_);
   ImportNumReplicas(hlo_module, module, builder_);
   ImportSpmdOutputSharding(hlo_module, module, builder_);
-  ImportSpmdParametersShardings(hlo_module, module,
-                                flatten_computation_args_result_, builder_);
+  ImportSpmdParametersShardings(
+      hlo_module, module, options_.flatten_computation_args_result, builder_);
   ImportUseAutoSpmdPartitioning(hlo_module, module, builder_);
 
-  if (!import_all_computation_)
+  if (!options_.import_all_computation) {
     // Only import the entry computation, any reachable one will be imported
     // unless turned into a region operation.
     return HloFunctionImporter::ImportAsFunc(
                *hlo_module.entry_computation(), symbol_table_, &function_map_,
                &builder_,
-               /*is_main*/ true, flatten_computation_args_result_)
+               /*is_main*/ true, options_.flatten_computation_args_result)
         .status();
+  }
 
   auto* module_entry_computation = hlo_module.entry_computation();
-  for (const auto* computation : hlo_module.computations())
+  for (const auto* computation : hlo_module.computations()) {
     TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
                            *computation, symbol_table_, &function_map_,
                            &builder_,
                            /*is_main*/ computation == module_entry_computation,
-                           flatten_computation_args_result_)
+                           options_.flatten_computation_args_result)
                            .status());
+  }
 
   ImportEntryComputationLayoutAndTiles(
-      hlo_module, module, flatten_computation_args_result_, builder_);
+      hlo_module, module, options_.flatten_computation_args_result, builder_);
+  if (options_.import_layout_modes) {
+    TF_RETURN_IF_ERROR(
+        ImportLayoutModes(hlo_module, module,
+                          options_.flatten_computation_args_result, builder_));
+  }
   return absl::OkStatus();
 }
 

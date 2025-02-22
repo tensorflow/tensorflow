@@ -32,13 +32,31 @@ class HloComputation;
 class HloInstruction;
 class Shape;
 
+struct HloModuleImporterOptions {
+  bool import_all_computation = false;
+  bool flatten_computation_args_result = false;
+  bool import_layout_modes = false;
+
+  HloModuleImporterOptions& set_import_all_computation(bool value) {
+    import_all_computation = value;
+    return *this;
+  }
+  HloModuleImporterOptions& set_flatten_computation_args_result(bool value) {
+    flatten_computation_args_result = value;
+    return *this;
+  }
+  HloModuleImporterOptions& set_import_layout_modes(bool value) {
+    import_layout_modes = value;
+    return *this;
+  }
+};
+
 // Importer that takes an HloModule and imports it as an MLIR module in the XLA
 // dialect. HloModuleImporter does not take ownership.
 class HloModuleImporter {
  public:
   explicit HloModuleImporter(mlir::ModuleOp module,
-                             bool import_all_computation = false,
-                             bool flatten_computation_args_result = false);
+                             const HloModuleImporterOptions& options = {});
 
   // Import the HloModule into the MLIR Module.
   absl::Status Import(const xla::HloModule& module);
@@ -47,8 +65,7 @@ class HloModuleImporter {
   absl::Status Import(const xla::HloModuleProto& module);
 
  private:
-  bool import_all_computation_;
-  bool flatten_computation_args_result_;
+  HloModuleImporterOptions options_;
   mlir::SymbolTable symbol_table_;
   mlir::Builder builder_;
 

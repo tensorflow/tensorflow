@@ -1051,6 +1051,11 @@ class ShapeUtil {
   // for all types.
   static void UpdateElementSizeInBits(Shape* s, bool pack_subbyte_types);
 
+  // Recursively flattens a tuple shape into a vector of subshapes.
+  static void FlattenTupleShape(const Shape& shape,
+                                std::vector<const Shape*>& flattened);
+  static std::vector<const Shape*> FlattenTupleShape(const Shape& shape);
+
  private:
   // Fills *shape ignoring dynamic dimensions. Returns true on success.
   // REQUIRES: *shape is empty.

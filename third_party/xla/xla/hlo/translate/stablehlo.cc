@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -97,25 +98,33 @@ void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry) {
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
-    mlir::MLIRContext& ctx, const xla::HloModule* hlo_module) {
+    mlir::MLIRContext& ctx, const xla::HloModule* hlo_module,
+    bool import_layout_modes) {
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
-  TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
-                                       /*import_all_computation=*/true,
-                                       /*flatten_computation_args_result=*/true)
-                         .Import(*hlo_module));
+  TF_RETURN_IF_ERROR(
+      HloModuleImporter(mlir_module.get(),
+                        HloModuleImporterOptions()
+                            .set_import_all_computation(true)
+                            .set_flatten_computation_args_result(true)
+                            .set_import_layout_modes(import_layout_modes))
+          .Import(*hlo_module));
   TF_RETURN_IF_ERROR(MhloToStablehlo(mlir_module.get()));
   return std::move(mlir_module);
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
-    mlir::MLIRContext& ctx, const xla::HloModuleProto* hlo_module_proto) {
+    mlir::MLIRContext& ctx, const xla::HloModuleProto* hlo_module_proto,
+    bool import_layout_modes) {
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
-  TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
-                                       /*import_all_computation=*/true,
-                                       /*flatten_computation_args_result=*/true)
-                         .Import(*hlo_module_proto));
+  TF_RETURN_IF_ERROR(
+      HloModuleImporter(mlir_module.get(),
+                        HloModuleImporterOptions()
+                            .set_import_all_computation(true)
+                            .set_flatten_computation_args_result(true)
+                            .set_import_layout_modes(import_layout_modes))
+          .Import(*hlo_module_proto));
   TF_RETURN_IF_ERROR(MhloToStablehlo(mlir_module.get()));
   return std::move(mlir_module);
 }

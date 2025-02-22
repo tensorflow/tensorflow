@@ -34,11 +34,13 @@ void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry);
 
 // Convert HloModule to StableHLO module.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
-    mlir::MLIRContext& ctx, const xla::HloModule* hlo_module);
+    mlir::MLIRContext& ctx, const xla::HloModule* hlo_module,
+    bool import_layout_modes = false);
 
 // Convert HloModuleProto to StableHLO module.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
-    mlir::MLIRContext& ctx, const xla::HloModuleProto* hlo_module);
+    mlir::MLIRContext& ctx, const xla::HloModuleProto* hlo_module,
+    bool import_layout_modes = false);
 
 // Convert StableHLO module to HloModule.
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(

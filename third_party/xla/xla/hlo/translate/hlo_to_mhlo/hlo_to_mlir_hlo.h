@@ -39,15 +39,20 @@ class HloModuleProto;
 //
 // If `flatten_computation_args_result` is set to true, flattens all tuple
 // arguments and result of every computation when importing them as func ops.
+//
+// If `import_layout_modes` is set to true, imports AUTO layout from HLO modules
+// are "mhlo.layout_mode=auto" attributes.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
     mlir::MLIRContext& ctx, xla::HloModuleProto const* hlo_module,
     bool import_all_computations = false,
-    bool flatten_computation_args_result = false);
+    bool flatten_computation_args_result = false,
+    bool import_layout_modes = false);
 
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                                  xla::HloModuleProto const* hlo_module,
                                  bool import_all_computations = false,
-                                 bool flatten_computation_args_result = false);
+                                 bool flatten_computation_args_result = false,
+                                 bool import_layout_modes = false);
 
 // Converts an HLO module to a MLIR module in HLO dialect.
 //
@@ -56,15 +61,20 @@ absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
 //
 // If `flatten_computation_args_result` is set to true, flattens all tuple
 // arguments and result of every computation when importing them as func ops.
+//
+// If `import_layout_modes` is set to true, imports AUTO layout from HLO modules
+// are "mhlo.layout_mode=auto" attributes.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
     mlir::MLIRContext& ctx, const xla::HloModule* hlo_module,
     bool import_all_computations = false,
-    bool flatten_computation_args_result = false);
+    bool flatten_computation_args_result = false,
+    bool import_layout_modes = false);
 
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                                  const xla::HloModule* hlo_module,
                                  bool import_all_computations = false,
-                                 bool flatten_computation_args_result = false);
+                                 bool flatten_computation_args_result = false,
+                                 bool import_layout_modes = false);
 
 }  // namespace xla
 

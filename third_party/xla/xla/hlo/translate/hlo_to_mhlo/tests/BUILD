@@ -10,6 +10,7 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             "attributes.hlo",
+            "auto_layout.hlo",
             "bool_compare.hlo",
             "call.hlo",
             "case_conditional.hlo",
