@@ -14,8 +14,6 @@ those to this list.
 """
 
 temporary_patch_list = [
-    "//third_party/triton:temporary/fix_fence_insertion_race.patch",
-    "//third_party/triton:temporary/enable_peer_access.patch",
     "//third_party/triton:temporary/sm120.patch",
     # Add new patches just above this line
 ]
