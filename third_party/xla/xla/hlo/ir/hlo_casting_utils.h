@@ -21,17 +21,41 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_CASTING_UTILS_H_
 #define XLA_HLO_IR_HLO_CASTING_UTILS_H_
 
+#include <string>
+
+#include "absl/base/config.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace xla {
+
+namespace cast_internal {
+
+template <typename T>
+inline const char* TypeName() {
+#ifdef ABSL_INTERNAL_HAS_RTTI
+  return typeid(T).name();
+#else
+  return "unknown (no RTTI)";
+#endif
+}
+
+template <typename T>
+inline std::string WrongCastError(const HloInstruction* instr) {
+  return absl::StrFormat(
+      "HloInstruction '%s' is of type '%s' and cannot be downcased to '%s.'",
+      instr->name(), TypeName<decltype(instr)>(), TypeName<T>());
+}
+}  // namespace cast_internal
 
 // Downcasts a const HloInstruction pointer. Dies if argument is nullptr or
 // TargetClass::ClassOf() does not match. Similar to LLVM's cast.
 template <typename T>
 const T* Cast(const HloInstruction* instr) {
   CHECK(instr != nullptr);
-  CHECK(T::ClassOf(instr));
+  CHECK(T::ClassOf(instr)) << cast_internal::WrongCastError<T>(instr);
   return tsl::down_cast<const T*>(instr);
 }
 
@@ -39,9 +63,7 @@ const T* Cast(const HloInstruction* instr) {
 // TargetClass::ClassOf() does not match. Similar to LLVM's cast.
 template <typename T>
 T* Cast(HloInstruction* instr) {
-  CHECK(instr != nullptr);
-  CHECK(T::ClassOf(instr));
-  return tsl::down_cast<T*>(instr);
+  return const_cast<T*>(Cast<T>(const_cast<const HloInstruction*>(instr)));
 }
 
 // Downcasts a const HloInstruction pointer or returns nullptr if
