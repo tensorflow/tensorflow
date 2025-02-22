@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/inference/batch_op_rewriter.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "google/protobuf/wrappers.pb.h"
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/escaping.h"
-#include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/inference/batch_op_rewriter.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
