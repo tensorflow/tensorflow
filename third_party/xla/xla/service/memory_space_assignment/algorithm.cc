@@ -2050,6 +2050,10 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
         // If any of the operands of the instruction has an in-place user, we
         // don't run the post-allocation transformation.
         for (HloInstruction* operand : instr->operands()) {
+          // We don't care about users of constants.
+          if (operand->opcode() == HloOpcode::kConstant) {
+            continue;
+          }
           for (HloInstruction* user : operand->users()) {
             if (HloDataflowAnalysis::IsInPlaceOperation(user->opcode())) {
               continue;
