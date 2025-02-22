@@ -27,6 +27,7 @@ lit_test_suite(
             "algebraic_simplifier.hlo",
             "all_passes_smoke_test.hlo",
             "cholesky_expander.hlo",
+            "hlo_opt_emit_proto.hlo",
             "hlo_opt_expect_failure.hlo",
             "run_multiple_passes.hlo",
             "run_single_pass.hlo",
