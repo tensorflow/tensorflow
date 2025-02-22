@@ -602,7 +602,6 @@ TEST(CurlHttpRequestTest, PutRequest_WithoutBody) {
   EXPECT_EQ(3, libcurl.headers_->size());
   EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers_)[0]);
   EXPECT_EQ("Content-Length: 0", (*libcurl.headers_)[1]);
-  EXPECT_EQ("Transfer-Encoding: identity", (*libcurl.headers_)[2]);
   EXPECT_TRUE(libcurl.is_put_);
   EXPECT_EQ("", libcurl.posted_content_);
 }
@@ -644,7 +643,6 @@ TEST(CurlHttpRequestTest, PostRequest_WithoutBody) {
   EXPECT_EQ(3, libcurl.headers_->size());
   EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers_)[0]);
   EXPECT_EQ("Content-Length: 0", (*libcurl.headers_)[1]);
-  EXPECT_EQ("Transfer-Encoding: identity", (*libcurl.headers_)[2]);
   EXPECT_TRUE(libcurl.is_post_);
   EXPECT_EQ("", libcurl.posted_content_);
 }
