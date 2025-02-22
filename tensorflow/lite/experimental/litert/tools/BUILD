@@ -34,6 +34,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
+        "//tensorflow/lite/experimental/litert/compiler/plugin:compiler_flags",
         "//tensorflow/lite/experimental/litert/compiler/plugin:compiler_plugin",
         "//tensorflow/lite/experimental/litert/core/model:model_serialize",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
@@ -96,7 +97,9 @@ litert_cc_bin_with_qnn(
     deps = [
         ":apply_plugin",
         ":outstream",
+        "//tensorflow/lite/experimental/litert/compiler/plugin:compiler_flags",
         "//tensorflow/lite/experimental/litert/core:build_stamp",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
@@ -121,7 +124,8 @@ cc_binary(
     deps = [
         ":apply_plugin",
         ":outstream",
-        "//tensorflow/lite/experimental/litert/core:build_stamp",
+        "//tensorflow/lite/experimental/litert/compiler/plugin:compiler_flags",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
     ],

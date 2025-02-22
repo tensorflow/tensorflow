@@ -29,6 +29,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_flags.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
@@ -115,6 +116,11 @@ class CompilerPlugin {
   // instances and stores handle.
   static Expected<std::vector<CompilerPlugin>> LoadPlugins(
       absl::Span<const absl::string_view> lib_search_paths);
+
+  // Set compiler flags within the plugin.
+  LiteRtStatus SetFlags(const CompilerFlags& flags) {
+    return flags.SetPluginFlags(plugin_handle_, plugin_api_.set_flags);
+  }
 
   CompilerPlugin(CompilerPlugin&& other);
   CompilerPlugin& operator=(CompilerPlugin&& other);

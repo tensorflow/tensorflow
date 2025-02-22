@@ -205,6 +205,14 @@ void LiteRtDestroyCompiledResult(LiteRtCompiledResult compiled_result) {
 // Plugins can hold state.
 struct LiteRtCompilerPluginT {};
 
+LiteRtStatus LiteRtCompilerPluginSetFlags(LiteRtCompilerPlugin compiler_plugin,
+                                          LiteRtParamIndex num_flags,
+                                          const char** keys,
+                                          const char** values) {
+  // IMPLEMENT ME
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus LiteRtCreateCompilerPlugin(LiteRtCompilerPlugin* compiler_plugin) {
   auto* plugin = new LiteRtCompilerPluginT;
   *compiler_plugin = plugin;

@@ -35,6 +35,14 @@ constexpr char kPluginSocModel[] = "ExampleSocModel";
 }  // namespace
 }  // namespace litert::example
 
+LiteRtStatus LiteRtCompilerPluginSetFlags(LiteRtCompilerPlugin compiler_plugin,
+                                          LiteRtParamIndex num_flags,
+                                          const char** keys,
+                                          const char** values) {
+  // IMPLEMENT ME
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus LiteRtGetCompilerPluginVersion(LiteRtApiVersion* api_version) {
   if (!api_version) {
     return kLiteRtStatusErrorInvalidArgument;
