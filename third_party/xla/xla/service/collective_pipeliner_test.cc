@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/scheduling_annotations_util.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -4354,6 +4355,147 @@ ENTRY entry {
                                      op::AllGather(op::AllReduce()),
                                      op::GetTupleElement(op::While()),
                                      op::Constant(), op::Constant()));
+}
+
+TEST_F(CollectivePipelinerTest, PipelinedSchedulingAnnotationsForward) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99), frontend_attributes={_scheduling_group_id="1"}
+  rs.1 = bf16[1,1,128] reduce-scatter(mul), replica_groups={}, dimensions={1}, to_apply=add, channel_id=2
+  ar.1 = bf16[1,1,128] all-reduce(rs.1), replica_groups={}, to_apply=add, channel_id=1, frontend_attributes={_scheduling_group_id="2"}
+  ag.1 = bf16[1,8,128] all-gather(ar.1), replica_groups={}, dimensions={1}, channel_id=3, frontend_attributes={_scheduling_group_id="3"}
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ag.1, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0, false, true,
+                           CollectivePipeliner::PipeliningDirection::kForward,
+                           HloPredicateIsOp<HloOpcode::kAllReduce>,
+                           /*acceptable_formatting=*/HloPredicateTrue,
+                           /*reuse_pipelined_op_buffer=*/HloPredicateTrue)
+                  .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  for (HloInstruction* instr : module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kMultiply) {
+      EXPECT_EQ(GetSchedulingAnnotation(instr), 4);
+    } else if (instr->opcode() == HloOpcode::kAllReduce) {
+      EXPECT_EQ(GetSchedulingAnnotation(instr), 5);
+    } else if (instr->opcode() == HloOpcode::kAllGather) {
+      EXPECT_EQ(GetSchedulingAnnotation(instr), 6);
+    }
+  }
+}
+
+TEST_F(CollectivePipelinerTest, PipelinedSchedulingAnnotationsBackward) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,1,2,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,1,2,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.k = bf16[3,1,2,128] get-tuple-element(param), index=2
+  constant.2561 = s32[] constant(0)
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.k = bf16[1,1,2,128] dynamic-slice(get-tuple-element.k, select.1348, constant.2561, constant.2561, constant.2561), dynamic_slice_sizes={1,1,2,128}
+  r = bf16[1,2,128] reshape(dynamic-slice.k), frontend_attributes={_scheduling_group_id="1"}
+  a = bf16[1,2,128] add(r, r), control-predecessors={constant.2559}
+  ag = bf16[1,8,128] all-gather(a), dimensions={1}, replica_groups={}, frontend_attributes={_scheduling_group_id="2"}
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, ag)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1, frontend_attributes={_scheduling_group_id="3"}
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ar.1, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,1,2,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.k), control-predecessors={a}
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  p1 = bf16[3,1,2,128] parameter(1)
+  tuple = (s32[], bf16[3,8,128], bf16[3,1,2,128]) tuple(c0, p0, p1)
+  while = (s32[], bf16[3,8,128], bf16[3,1,2,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/false,
+                           /*process_different_sized_ops=*/false,
+                           CollectivePipeliner::PipeliningDirection::kBackward,
+                           IsAllGather)
+                  .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  for (HloInstruction* instr : module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kReshape) {
+      EXPECT_EQ(GetSchedulingAnnotation(instr), 4);
+    } else if (instr->opcode() == HloOpcode::kAllGather) {
+      EXPECT_EQ(GetSchedulingAnnotation(instr), 5);
+    } else if (instr->opcode() == HloOpcode::kAllReduce) {
+      EXPECT_EQ(GetSchedulingAnnotation(instr), 6);
+    }
+  }
 }
 
 }  // namespace
