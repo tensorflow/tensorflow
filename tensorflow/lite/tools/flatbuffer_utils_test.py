@@ -18,6 +18,9 @@ import os
 import subprocess
 import sys
 
+import flatbuffers
+
+from tensorflow.lite.python import schema_py_generated as schema  # pylint:disable=g-direct-tensorflow-import
 from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.lite.tools import test_utils
 from tensorflow.python.framework import test_util
@@ -247,6 +250,57 @@ class CountResourceVariablesTest(test_util.TensorFlowTestCase):
     # shared name.
     self.assertEqual(
         flatbuffer_utils.count_resource_variables(initial_model), 1)
+
+
+class GetOptionsTest(test_util.TensorFlowTestCase):
+
+  op: schema.Operator
+  op_t: schema.OperatorT
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    builder = flatbuffers.Builder(1024)
+    schema.StableHLOCompositeOptionsStart(builder)
+    schema.AddDecompositionSubgraphIndex(builder, 10)
+    opts = schema.StableHLOCompositeOptionsEnd(builder)
+    schema.OperatorStart(builder)
+    schema.OperatorAddBuiltinOptions2(builder, opts)
+    schema.OperatorAddBuiltinOptions2Type(
+        builder, schema.BuiltinOptions2.StableHLOCompositeOptions
+    )
+    op_offset = schema.OperatorEnd(builder)
+    builder.Finish(op_offset)
+    op = builder.Output()
+    cls.op = schema.Operator.GetRootAs(op)
+    cls.op_t = schema.OperatorT.InitFromObj(cls.op)
+
+  def test_get_options(self):
+    ty = schema.StableHLOCompositeOptionsT
+    opts = flatbuffer_utils.get_options_as(self.op, ty)
+    self.assertIsNotNone(opts)
+    self.assertIsInstance(opts, ty)
+    self.assertEqual(opts.decompositionSubgraphIndex, 10)
+
+  def test_get_options_obj(self):
+    ty = schema.StableHLOCompositeOptionsT
+    opts = flatbuffer_utils.get_options_as(self.op_t, ty)
+    self.assertIsNotNone(opts)
+    self.assertIsInstance(opts, ty)
+    self.assertEqual(opts.decompositionSubgraphIndex, 10)
+
+  def test_get_options_not_schema_type_raises(self):
+    with self.assertRaises(ValueError):
+      flatbuffer_utils.get_options_as(self.op, int)
+
+  def test_get_options_not_object_type_raises(self):
+    with self.assertRaises(ValueError):
+      flatbuffer_utils.get_options_as(self.op, schema.StableHLOCompositeOptions)
+
+  def test_get_options_op_type_does_not_match(self):
+    ty = schema.Conv2DOptionsT
+    opts = flatbuffer_utils.get_options_as(self.op, ty)
+    self.assertIsNone(opts)
 
 
 if __name__ == '__main__':
