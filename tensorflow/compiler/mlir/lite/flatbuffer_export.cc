@@ -558,7 +558,8 @@ class Translator {
       OpOrArgNameMapper* op_or_arg_name_mapper,
       const std::map<std::string, std::string>& metadata,
       bool serialize_stablehlo_ops,
-      std::optional<size_t> custom_option_alignment);
+      std::optional<size_t> custom_option_alignment,
+      bool disable_buffer_deduping = false);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
@@ -567,7 +568,8 @@ class Translator {
                       const std::unordered_set<std::string>& saved_model_tags,
                       OpOrArgNameMapper* op_or_arg_name_mapper,
                       const std::map<std::string, std::string>& metadata,
-                      std::optional<size_t> custom_option_alignment)
+                      std::optional<size_t> custom_option_alignment,
+                      bool disable_buffer_deduping)
       : module_(module),
         name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize),
@@ -580,7 +582,8 @@ class Translator {
                             converter_flags.supported_backends().end()),
         serialize_debug_metadata_(converter_flags.serialize_debug_metadata()),
         use_buffer_offset_(converter_flags.use_buffer_offset()),
-        custom_option_alignment_(custom_option_alignment) {
+        custom_option_alignment_(custom_option_alignment),
+        disable_buffer_deduping_(disable_buffer_deduping) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -930,6 +933,8 @@ class Translator {
 
   std::optional<size_t> custom_option_alignment_ = std::nullopt;
 
+  bool disable_buffer_deduping_ = false;
+
   // Map from mlir constant attribute to the buffer index. This is used to
   // deduplicate the buffers in the flatbuffer.
   llvm::DenseMap<mlir::ElementsAttr, int> const_attribute_to_buffer_map_;
@@ -967,6 +972,7 @@ std::string Translator::UniqueName(mlir::Value val) {
 
 std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     mlir::Value value, bool can_be_deduplicated, int& index) {
+  can_be_deduplicated = can_be_deduplicated && !disable_buffer_deduping_;
   auto inst = value.getDefiningOp();
   ElementsAttr attr;
   if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
@@ -3870,8 +3876,8 @@ std::optional<std::string> Translator::Translate(
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper,
     const std::map<std::string, std::string>& metadata,
-    bool serialize_stablehlo_ops,
-    std::optional<size_t> custom_option_alignment) {
+    bool serialize_stablehlo_ops, std::optional<size_t> custom_option_alignment,
+    bool disable_buffer_deduping) {
   OpOrArgLocNameMapper default_op_or_arg_name_mapper;
   if (!op_or_arg_name_mapper)
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
@@ -3887,9 +3893,9 @@ std::optional<std::string> Translator::Translate(
     new_converter_flags.set_use_buffer_offset(true);
   }
 
-  auto translator = std::unique_ptr<Translator>(
-      new Translator(module, new_converter_flags, tags, op_or_arg_name_mapper,
-                     metadata, custom_option_alignment));
+  auto translator = std::unique_ptr<Translator>(new Translator(
+      module, new_converter_flags, tags, op_or_arg_name_mapper, metadata,
+      custom_option_alignment, disable_buffer_deduping));
   translator->convert_stablehlo_ = serialize_stablehlo_ops;
   auto ret = translator->TranslateInternal();
 
@@ -3900,9 +3906,9 @@ std::optional<std::string> Translator::Translate(
     ret = std::nullopt;
     auto new_converter_flags = converter_flags;
     new_converter_flags.set_use_buffer_offset(true);
-    translator = std::unique_ptr<Translator>(
-        new Translator(module, new_converter_flags, tags, op_or_arg_name_mapper,
-                       metadata, custom_option_alignment));
+    translator = std::unique_ptr<Translator>(new Translator(
+        module, new_converter_flags, tags, op_or_arg_name_mapper, metadata,
+        custom_option_alignment, disable_buffer_deduping));
     return translator->TranslateInternal();
   }
   return ret;
@@ -4495,7 +4501,7 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
   auto maybe_translated = Translator::Translate(
       module, options.converter_flags, options.saved_model_tags,
       options.op_or_arg_name_mapper, options.metadata, serialize_stablehlo_ops,
-      options.custom_option_alignment);
+      options.custom_option_alignment, options.disable_buffer_deduping);
   if (!maybe_translated) return false;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return true;

@@ -48,6 +48,9 @@ struct FlatbufferExportOptions {
   // options. If specified, the value should be multiplier of 16 (default
   // alignment for TFL flatbuffer).
   std::optional<size_t> custom_option_alignment = std::nullopt;
+  // Whether to disable buffer-deduping which emits tensors with shared
+  // buffers.
+  bool disable_buffer_deduping = false;
 };
 
 // Translates the given MLIR `module` into a FlatBuffer and stores the
