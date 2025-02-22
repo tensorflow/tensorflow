@@ -12,8 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdint>
 #include <initializer_list>
+#include <map>
 #include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/common.h"
