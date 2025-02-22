@@ -138,11 +138,15 @@ class TraceVisibilityFilter : public TraceEventsFilterInterface {
     tsl::profiler::Timespan visible_span = VisibleSpan();
     uint64_t start_time_ps = visible_span.begin_ps();
     uint64_t end_time_ps = visible_span.end_ps();
-    if (end_time_ps == 0 && trace.has_max_timestamp_ps()) {
-      end_time_ps = trace.max_timestamp_ps();
+    if (trace.has_min_timestamp_ps()) {
+      if (start_time_ps < trace.min_timestamp_ps()) {
+        start_time_ps = trace.min_timestamp_ps();
+      }
     }
-    if (start_time_ps == 0 && trace.has_min_timestamp_ps()) {
-      start_time_ps = trace.min_timestamp_ps();
+    if (trace.has_max_timestamp_ps()) {
+      if (end_time_ps == 0 || end_time_ps > trace.max_timestamp_ps()) {
+        end_time_ps = trace.max_timestamp_ps();
+      }
     }
     visible_span =
         tsl::profiler::Timespan::FromEndPoints(start_time_ps, end_time_ps);
