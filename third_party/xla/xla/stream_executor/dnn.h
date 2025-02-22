@@ -1105,6 +1105,12 @@ class DnnGraph {
                                int64_t local_device_ordinal) const = 0;
   virtual void InitDropoutState(int64_t local_device_count, int64_t seed,
                                 int64_t increment) = 0;
+  virtual absl::StatusOr<bool> SupportsExplicitCommandBufferConstruction()
+      const = 0;
+  using RawCommandBufferHandle = void*;
+  virtual absl::Status PopulateOrUpdateRawCommandBuffer(
+      Stream&, absl::Span<DeviceMemoryBase> operands, RawCommandBufferHandle,
+      bool do_update) = 0;
 };
 
 using LazyDnnGraph = std::unique_ptr<DnnGraph>;

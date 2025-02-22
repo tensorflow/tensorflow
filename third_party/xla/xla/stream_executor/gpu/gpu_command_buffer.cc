@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -442,6 +443,39 @@ absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
     GraphNodeHandle node =
         execution_scope.nodes[execution_scope.update_state.node_idx++].handle;
     return UpdateMemsetNode(node, *dst, bit_pattern, num_elements);
+  }
+
+  return UnsupportedStateError(state_);
+}
+
+absl::Status GpuCommandBuffer::DnnGraph(ExecutionScopeId execution_scope_id,
+                                        dnn::DnnGraph& dnn_graph,
+                                        Stream& stream,
+                                        absl::Span<DeviceMemoryBase> operands) {
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
+
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+
+  TF_ASSIGN_OR_RETURN(auto nested, stream.parent()->CreateCommandBuffer(
+                                       CommandBuffer::Mode::kNested));
+  GpuCommandBuffer& nested_gpu =
+      tensorflow::down_cast<GpuCommandBuffer&>(*nested);
+
+  if (state_ == State::kCreate) {
+    TF_RETURN_IF_ERROR(
+        nested_gpu.PopulateDnnGraphNode(dnn_graph, stream, operands));
+    Dependencies barrier = GetBarrier(execution_scope_id);
+    TF_ASSIGN_OR_RETURN(execution_scope.nodes.emplace_back().handle,
+                        CreateChildNode(barrier, *nested));
+    return absl::OkStatus();
+  }
+
+  if (state_ == State::kUpdate) {
+    GraphNodeHandle node =
+        execution_scope.nodes[execution_scope.update_state.node_idx++].handle;
+    TF_RETURN_IF_ERROR(
+        nested_gpu.UpdateDnnGraphNode(dnn_graph, stream, operands, node));
+    return UpdateChildNode(node, *nested);
   }
 
   return UnsupportedStateError(state_);

@@ -185,6 +185,7 @@ gpu_only_cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -639,6 +640,7 @@ xla_test(
         "//xla/service:platform_util",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:dnn",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
@@ -667,6 +669,7 @@ xla_test(
         "@local_tsl//tsl/platform:test_benchmark",
     ] + if_cuda([
         "//xla/stream_executor/cuda:cuda_platform",
+        "//xla/stream_executor/cuda:cudnn_plugin",
     ]) + if_rocm([
         "//xla/stream_executor/rocm:rocm_platform",
     ]),
