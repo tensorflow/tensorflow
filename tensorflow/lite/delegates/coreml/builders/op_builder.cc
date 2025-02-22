@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/coreml/builders/op_builder.h"
 
+#include <cstdio>
 #include <functional>
 #include <memory>
 #include <string>
