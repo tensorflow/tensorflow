@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/coreml/builders/util.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "fp16.h"  // from @FP16
