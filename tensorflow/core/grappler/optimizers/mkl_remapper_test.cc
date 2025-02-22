@@ -1711,6 +1711,105 @@ TEST_F(FusedConvBiasAddAndHardSwishTest,
   RunTest<DT_BFLOAT16, true>("Add", true);
 }
 
+class FusedMatMulBiasAddMulAddEluTest : public GrapplerTest {
+ public:
+  template <DataType DTYPE>
+  void RunTest() {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+    if (!IsDataTypeSupportedByOneDNNOnThisCPU(DTYPE))
+      GTEST_SKIP()
+          << "Intel oneDNN with " << DataType_Name(DTYPE)
+          << " is not supported, skipping FusedMatMulBiasAddAndGelu test.";
+    using ::tensorflow::ops::Placeholder;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto addv2_shape = ops::Placeholder::Shape({8, 32});
+    auto addv2_in2_shape = ops::Placeholder::Shape({32});
+    auto lhs_shape = ops::Placeholder::Shape({8, 32});
+    auto rhs_shape = ops::Placeholder::Shape({32, 64});
+    auto bias_shape = ops::Placeholder::Shape({64});
+    auto mul_shape = ops::Placeholder::Shape({64});
+    auto add_shape = ops::Placeholder::Shape({64});
+
+    auto lhs_t = GenerateTensorWithSetRandom<DTYPE>({8, 32});
+    auto addv2_in2_t = GenerateTensorWithSetRandom<DTYPE>({32});
+    auto rhs_const = GenerateTensorWithSetRandom<DTYPE>({32, 64});
+    auto bias_const = GenerateTensorWithSetRandom<DTYPE>({64});
+    auto mul_const = GenerateTensorWithSetRandom<DTYPE>({64});
+    auto add_const = GenerateTensorWithSetRandom<DTYPE>({64});
+
+    auto addv2_in2 = Placeholder(s.WithOpName("addv2_in2"), DTYPE, addv2_in2_shape);
+    auto lhs = Placeholder(s.WithOpName("lhs"), DTYPE, lhs_shape);
+    auto rhs = Placeholder(s.WithOpName("rhs"), DTYPE, rhs_shape);
+    auto bias = Placeholder(s.WithOpName("bias"), DTYPE, bias_shape);
+    auto mul_in = Placeholder(s.WithOpName("mul"), DTYPE, mul_shape);
+    auto add_in = Placeholder(s.WithOpName("add"), DTYPE, add_shape);
+
+    auto addv2 = ops::AddV2(s.WithOpName("addv2"), lhs, addv2_in2);
+    auto matmul = ops::MatMul(s.WithOpName("matmul"), addv2, rhs);
+    auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), matmul, bias);
+    auto mul = ops::Mul(s.WithOpName("mul"), bias_add, mul_in);
+    auto add = ops::AddV2(s.WithOpName("add"), mul, add_in);
+    auto elu = ops::Elu(s.WithOpName("elu"), add);
+
+    auto fetch = ops::Identity(s.WithOpName("fetch"), elu);
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"addv2_in2", addv2_in2_t},{"lhs", lhs_t},
+                 {"rhs", rhs_const}, {"bias", bias_const},
+                 {"mul", mul_const}, {"add", add_const}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef optimized_graph;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
+
+    int found = 0;
+    for (const NodeDef& node : optimized_graph.node()) {
+      if (node.name() == "elu") {
+        EXPECT_EQ(node.op(), "_FusedMatMul");
+        ASSERT_GE(node.input_size(), 3);
+        EXPECT_EQ(node.input(0), "addv2");
+        EXPECT_EQ(node.input(1), "rhs_folded");
+        EXPECT_EQ(node.input(2), "add_add_folded");
+        EXPECT_EQ(node.attr().at("num_args").i(), 1);
+        const auto fused_ops = node.attr().at("fused_ops").list().s();
+        ASSERT_EQ(fused_ops.size(), 2);
+        EXPECT_EQ(fused_ops[0], "BiasAdd");
+        EXPECT_EQ(fused_ops[1], "Elu");
+        found++;
+      }
+    }
+    EXPECT_EQ(1, found);
+
+    // Evaluate result without remapper fusion
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+
+    auto tensors_evaluated =
+        EvaluateNodes(optimized_graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_evaluated.size(), 1);
+    test::ExpectClose(tensors_evaluated[0], tensors_expected[0], 1e-6);
+  }
+};
+
+TEST_F(FusedMatMulBiasAddMulAddEluTest, fp32) {
+  RunTest<DT_FLOAT>();
+}
+TEST_F(FusedMatMulBiasAddMulAddEluTest, bf16) {
+  RunTest<DT_BFLOAT16>();
+}
+TEST_F(FusedMatMulBiasAddMulAddEluTest, fp16) {
+  RunTest<DT_HALF>();
+}
+
 }  // namespace grappler
 }  // namespace tensorflow
 #endif  // INTEL_MKL
