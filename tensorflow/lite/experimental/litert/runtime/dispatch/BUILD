@@ -90,6 +90,7 @@ cc_test(
     name = "dispatch_delegate_google_tensor_test",
     srcs = ["dispatch_delegate_google_tensor_test.cc"],
     data = [
+        "//tensorflow/lite/experimental/litert/test:testdata/shared_input_cpu_npu.tflite",
         "//tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch:dispatch_api_so",
     ],
     linkopts = select({
@@ -132,6 +133,7 @@ cc_test(
     name = "dispatch_delegate_qualcomm_test",
     srcs = ["dispatch_delegate_qualcomm_test.cc"],
     data = [
+        "//tensorflow/lite/experimental/litert/test:testdata/shared_input_cpu_npu.tflite",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch:dispatch_api_so",
     ],
     linkopts = select({
@@ -166,6 +168,7 @@ cc_test(
     name = "dispatch_delegate_mediatek_test",
     srcs = ["dispatch_delegate_mediatek_test.cc"],
     data = [
+        "//tensorflow/lite/experimental/litert/test:testdata/shared_input_cpu_npu.tflite",
         "//tensorflow/lite/experimental/litert/vendors/mediatek/dispatch:dispatch_api_so",
     ],
     linkopts = select({
