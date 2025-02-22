@@ -78,4 +78,5 @@ class CompilerFlags {
 };
 
 }  // namespace litert
+
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_CC_LITERT_COMPILER_PLUGIN_H_
