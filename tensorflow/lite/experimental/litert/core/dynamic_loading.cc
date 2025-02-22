@@ -15,6 +15,7 @@
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
 
 #include <dlfcn.h>
+#include <unistd.h>
 
 // clang-format off
 #ifndef __ANDROID__
@@ -100,8 +101,13 @@ LiteRtStatus FindLiteRtSharedLibsHelper(const std::string& search_path,
 
   // TODO implement path glob in core/filesystem.h and remove filesystem
   // include from this file.
-  for (const auto& entry : std::filesystem::directory_iterator(search_path)) {
+  for (const auto& entry : std::filesystem::directory_iterator(
+           search_path,
+           std::filesystem::directory_options::skip_permission_denied)) {
     const auto& path = entry.path();
+    if (access(path.c_str(), R_OK) != 0) {
+      continue;
+    }
     if (entry.is_regular_file()) {
       if (full_match) {
         if (path.string().find(lib_pattern) != -1) {

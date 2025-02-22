@@ -511,12 +511,13 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
 Expected<ApplyPluginsResult> ApplyPlugins(
     LiteRtEnvironment environment, LiteRtModel model,
     LiteRtHwAcceleratorSet selected_hw_accelerators) {
-  std::string compiler_plugin_lib_path = ".";
   auto option =
       environment->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryDir);
-  if (option.has_value() && option->type == kLiteRtAnyTypeString) {
-    compiler_plugin_lib_path = option->str_value;
+  if (!option.has_value() || option->type != kLiteRtAnyTypeString) {
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "Compiler plugin is not configured");
   }
+  std::string compiler_plugin_lib_path = option->str_value;
 
   const std::array<const absl::string_view, 1>
       compiler_plugin_lib_search_paths = {compiler_plugin_lib_path};
