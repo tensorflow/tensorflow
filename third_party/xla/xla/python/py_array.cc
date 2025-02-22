@@ -1559,45 +1559,50 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
           PrimitiveType_Name(buffer.element_type()));
     }
 
-    // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
-    // Additionally we call BlockHostUntilReady() below, which may block.
-    nb::gil_scoped_release gil_release;
+    std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
+    {
+      // We call BlockHostUntilReady() below, which may block.
+      nb::gil_scoped_release gil_release;
 
-    if (buffer.IsTuple()) {
-      return InvalidArgument(
-          "Python buffer protocol is only defined for array buffers.");
-    }
-    if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
-      return InvalidArgument("XLA buffers are read-only.");
-    }
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
-        buffer.AcquireExternalReference());
-    if (buffer.IsDeleted()) {
-      return InvalidArgument("Deleted buffer used in buffer protocol.");
+      if (buffer.IsTuple()) {
+        return InvalidArgument(
+            "Python buffer protocol is only defined for array buffers.");
+      }
+      if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
+        return InvalidArgument("XLA buffers are read-only.");
+      }
+      TF_ASSIGN_OR_RETURN(external_reference_hold,
+                          buffer.AcquireExternalReference());
+      if (buffer.IsDeleted()) {
+        return InvalidArgument("Deleted buffer used in buffer protocol.");
+      }
+
+      // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
+      Layout xla_layout = buffer.layout()->xla_layout();
+
+      if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
+           (flags & PyBUF_STRIDES) == PyBUF_ND) &&
+          !LayoutUtil::IsMonotonicWithDim0Major(xla_layout)) {
+        return InvalidArgument("Buffer is not in C-contiguous layout.");
+      } else if ((flags & PyBUF_F_CONTIGUOUS) == PyBUF_F_CONTIGUOUS &&
+                 !LayoutUtil::IsMonotonicWithDim0Minor(xla_layout)) {
+        return InvalidArgument("Buffer is not in F-contiguous layout.");
+      } else if ((flags & PyBUF_ANY_CONTIGUOUS) == PyBUF_ANY_CONTIGUOUS &&
+                 !LayoutUtil::IsMonotonicWithDim0Major(xla_layout) &&
+                 !LayoutUtil::IsMonotonicWithDim0Minor(xla_layout)) {
+        return InvalidArgument("Buffer is not in contiguous layout.");
+      } else if (!HasDefaultLayout(xla_layout)) {
+        // Fail and fall back to using __array__ if the CPU buffer has a device
+        // specific layout. For instance, this happens for host buffers in
+        // pinned memories of the TPU device.
+        return InvalidArgument(
+            "Buffer is potentially a device buffer with non default layout.");
+      }
+      TF_RETURN_IF_ERROR(buffer.BlockHostUntilReady());
     }
 
-    // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-    Layout xla_layout = buffer.layout()->xla_layout();
-
-    if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
-         (flags & PyBUF_STRIDES) == PyBUF_ND) &&
-        !LayoutUtil::IsMonotonicWithDim0Major(xla_layout)) {
-      return InvalidArgument("Buffer is not in C-contiguous layout.");
-    } else if ((flags & PyBUF_F_CONTIGUOUS) == PyBUF_F_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(xla_layout)) {
-      return InvalidArgument("Buffer is not in F-contiguous layout.");
-    } else if ((flags & PyBUF_ANY_CONTIGUOUS) == PyBUF_ANY_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Major(xla_layout) &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(xla_layout)) {
-      return InvalidArgument("Buffer is not in contiguous layout.");
-    } else if (!HasDefaultLayout(xla_layout)) {
-      // Fail and fall back to using __array__ if the CPU buffer has a device
-      // specific layout. For instance, this happens for host buffers in pinned
-      // memories of the TPU device.
-      return InvalidArgument(
-          "Buffer is potentially a device buffer with non default layout.");
-    }
+    // We must hold the GIL (or at least prevent Python GC) while writing to the
+    // view object, see https://github.com/python/cpython/issues/130409.
     std::memset(view, 0, sizeof(Py_buffer));
     const void* root_ptr =
         external_reference_hold->OpaqueDeviceMemoryDataPointer();
@@ -1618,14 +1623,14 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
         view->shape = reinterpret_cast<Py_ssize_t*>(
             const_cast<int64_t*>(buffer.dimensions().data()));
         if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
-          extra->strides = ByteStridesForShape(buffer.element_type(),
-                                               buffer.dimensions(), xla_layout);
+          extra->strides =
+              ByteStridesForShape(buffer.element_type(), buffer.dimensions(),
+                                  buffer.layout()->xla_layout());
           view->strides = reinterpret_cast<Py_ssize_t*>(
               const_cast<int64_t*>(extra->strides.data()));
         }
       }
     }
-    TF_RETURN_IF_ERROR(buffer.BlockHostUntilReady());
     view->internal = extra.release();
     return absl::OkStatus();
   }();
