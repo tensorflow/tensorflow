@@ -815,6 +815,8 @@ def tsl_protobuf_deps():
 def tsl_cc_test(
         name,
         linkstatic = True,
+        args = None,
+        shuffle_tests = True,
         deps = [],
         **kwargs):
     """A wrapper around cc_test that adds protobuf deps if needed.
@@ -822,12 +824,30 @@ def tsl_cc_test(
     It also defaults to linkstatic = True, which is a good practice for catching duplicate
     symbols at link time (e.g. linking in two main() functions).
 
+    By default, it also shuffles the tests to avoid test ordering dependencies.
+
     Use tsl_cc_test instead of cc_test in all .../tsl/... directories.
+
+    Args:
+      name: The name of the test.
+      linkstatic: Whether to link statically.
+      args: The arguments to pass to the test.
+      shuffle_tests: Whether to shuffle the test cases.
+      deps: The dependencies of the test.
+      **kwargs: Other arguments to pass to the test.
     """
+
+    if args == None:
+        args = []
+
+    if shuffle_tests:
+        # Shuffle tests to avoid test ordering dependencies.
+        args = args + ["--gtest_shuffle"]
 
     native.cc_test(
         name = name,
         linkstatic = linkstatic,
+        args = args,
         deps = deps + if_tsl_link_protobuf(
             [],
             [
