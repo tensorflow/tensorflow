@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/xla_spmd/layout_to_xla_sharding.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
