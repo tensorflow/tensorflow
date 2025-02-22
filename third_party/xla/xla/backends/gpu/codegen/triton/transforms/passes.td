@@ -18,6 +18,19 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def TritonXLAToTritonPass : Pass<"triton-xla-to-triton", "mlir::ModuleOp"> {
+  let summary = "Convert XLA Triton ops to Triton ops.";
+  let description = [{
+    This pass converts XLA Triton ops to Triton ops. It is currently used for
+    lowering Load/Store logic. The pass should determine whether to use TMA or
+    normal loads and stores.
+  }];
+  let dependentDialects = [
+    "triton::TritonDialect",
+  ];
+  let constructor = "CreateTritonXLAToTritonPass()";
+}
+
 def GeneralizeKernelSignaturePass
     : Pass<"generalize-kernel-signature"> {
   let summary = "Rewrite kernels to use generic data pointer arguments.";

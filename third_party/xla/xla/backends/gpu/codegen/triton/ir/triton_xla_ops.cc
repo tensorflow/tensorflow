@@ -159,12 +159,21 @@ mlir::ParseResult parseI64ArrayAttr(mlir::AsmParser& parser,
   return mlir::success();
 }
 
+mlir::ParseResult parseI32ArrayAttr(mlir::AsmParser& parser,
+                                    mlir::DenseI32ArrayAttr& array) {
+  array = mlir::dyn_cast_or_null<mlir::DenseI32ArrayAttr>(
+      mlir::DenseI32ArrayAttr::parse(parser, mlir::Type{}));
+  if (!array) return mlir::failure();
+  return mlir::success();
+}
+
 ParseResult TileOp::parse(OpAsmParser& parser, OperationState& result) {
   OpAsmParser::UnresolvedOperand src;
   TiledTensorType tiled_tensor_type;
-  DenseI64ArrayAttr offsets, sizes, strides;
-  if (parser.parseOperand(src) || parseI64ArrayAttr(parser, offsets) ||
-      parseI64ArrayAttr(parser, sizes) || parseI64ArrayAttr(parser, strides) ||
+  DenseI64ArrayAttr strides;
+  DenseI32ArrayAttr offsets, sizes;
+  if (parser.parseOperand(src) || parseI32ArrayAttr(parser, offsets) ||
+      parseI32ArrayAttr(parser, sizes) || parseI64ArrayAttr(parser, strides) ||
       parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(tiled_tensor_type)) {
     return failure();
@@ -221,9 +230,9 @@ ParseResult ExtractOp::parse(OpAsmParser& parser, OperationState& result) {
   auto tiled_tensor_type = TiledTensorType::get(
       parser.getContext(), mlir::cast<RankedTensorType>(tile_type),
       mlir::cast<RankedTensorType>(original_type));
-  auto index_type = builder.getIndexType();
+  auto offset_type = builder.getI32Type();
   if (parser.resolveOperand(tiled_tensor, tiled_tensor_type, result.operands) ||
-      parser.resolveOperands(offsets, index_type, result.operands)) {
+      parser.resolveOperands(offsets, offset_type, result.operands)) {
     return failure();
   }
   result.addTypes(tile_type);
@@ -273,9 +282,9 @@ ParseResult InsertOp::parse(OpAsmParser& parser, OperationState& result) {
       parser.getContext(), mlir::cast<RankedTensorType>(tile_type),
       mlir::cast<RankedTensorType>(original_type));
 
-  auto index_type = builder.getIndexType();
+  auto offset_type = builder.getI32Type();
   if (parser.resolveOperand(tiled_tensor, tiled_tensor_type, result.operands) ||
-      parser.resolveOperands(offsets, index_type, result.operands)) {
+      parser.resolveOperands(offsets, offset_type, result.operands)) {
     return failure();
   }
   result.addTypes(original_type);
