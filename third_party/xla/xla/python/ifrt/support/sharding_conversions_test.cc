@@ -56,8 +56,7 @@ using ::tsl::testing::StatusIs;
 using xla::HloSharding;
 
 absl::StatusOr<HloSharding> ToHloShardingViaOpSharding(
-    const ShardingParam& sharding_param,
-    const tsl::RCReference<DeviceList>& device_list) {
+    const ShardingParam& sharding_param, const DeviceListRef& device_list) {
   TF_ASSIGN_OR_RETURN(xla::OpSharding op_sharding,
                       ToOpSharding(sharding_param, device_list));
   return HloSharding::FromProto(op_sharding);
@@ -87,8 +86,7 @@ std::shared_ptr<MockClient> MakeTestClient(int num_devices) {
       .WillByDefault(
           [state]() -> absl::Span<Device* const> { return state->devices; });
   ON_CALL(*client, MakeDeviceList)
-      .WillByDefault([](absl::Span<Device* const> devices)
-                         -> tsl::RCReference<DeviceList> {
+      .WillByDefault([](absl::Span<Device* const> devices) -> DeviceListRef {
         return BasicDeviceList::Create(devices);
       });
   return client;
@@ -98,8 +96,7 @@ class ShardingConversionsTest : public testing::TestWithParam<int> {
  public:
   void SetUp() override { client_ = MakeTestClient(GetParam()); }
 
-  tsl::RCReference<DeviceList> GetDevices(
-      absl::Span<const int> device_indices) {
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
     return test_util::GetDevices(client_.get(), device_indices).value();
   }
 
@@ -316,8 +313,7 @@ class HloShardingToShardingParamTest
     client_ = MakeTestClient(param.num_devices);
   }
 
-  tsl::RCReference<DeviceList> GetDevices(
-      absl::Span<const int> device_indices) {
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
     return test_util::GetDevices(client_.get(), device_indices).value();
   }
 

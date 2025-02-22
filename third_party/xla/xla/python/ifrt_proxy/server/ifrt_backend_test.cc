@@ -965,7 +965,7 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
   BasicDeviceList::Devices ds;
   TF_ASSERT_OK_AND_ASSIGN(ds.emplace_back(),
                           mock_client_->LookupDevice(DeviceId(1)));
-  tsl::RCReference<DeviceList> devices = BasicDeviceList::Create(std::move(ds));
+  DeviceListRef devices = BasicDeviceList::Create(std::move(ds));
   MemoryKind memory_kind("device");
 
   EXPECT_CALL(*mock_client_, CopyArrays(ElementsAreArray(src_arrays),
@@ -1391,7 +1391,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
       .WillOnce(
           Invoke([&](absl::Span<tsl::RCReference<Array>> args,
                      const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
-                     std::optional<tsl::RCReference<DeviceList>> devices)
+                     std::optional<DeviceListRef> devices)
                      -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
             return LoadedExecutable::ExecuteResult{
                 .status = Future<>(absl::InternalError("injected error")),

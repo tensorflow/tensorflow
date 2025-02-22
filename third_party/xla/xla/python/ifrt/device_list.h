@@ -101,9 +101,10 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   virtual std::string ToString() const = 0;
 };
 
+using DeviceListRef = tsl::RCReference<DeviceList>;
+
 // Returns the id of each device in `device_list`.
-std::vector<DeviceId> GetDeviceIds(
-    const tsl::RCReference<DeviceList>& device_list);
+std::vector<DeviceId> GetDeviceIds(const DeviceListRef& device_list);
 
 // Hash function for `DeviceList`. Assumes that every unique device has a unique
 // `Device` object, not duplicate `Device` objects ("d1 == d2 if d1->id() ==

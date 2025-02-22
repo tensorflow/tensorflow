@@ -115,7 +115,7 @@ class SingleDeviceSharding : public Sharding {
 
   // Used only in C++ to accelerate `PyArray::MakeFromSingleDeviceArray()`.
   SingleDeviceSharding(xla::nb_class_ptr<xla::PyClient> client,
-                       tsl::RCReference<xla::ifrt::DeviceList> device_list,
+                       xla::ifrt::DeviceListRef device_list,
                        nanobind::object memory_kind);
 
   const nanobind::object& device() const { return device_; }

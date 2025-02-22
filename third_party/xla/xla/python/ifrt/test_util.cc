@@ -90,8 +90,8 @@ void SetTestFilterIfNotUserSpecified(absl::string_view custom_filter) {
 #endif
 }
 
-absl::StatusOr<tsl::RCReference<DeviceList>> GetDevices(
-    Client* client, absl::Span<const int> device_indices) {
+absl::StatusOr<DeviceListRef> GetDevices(Client* client,
+                                         absl::Span<const int> device_indices) {
   absl::InlinedVector<xla::ifrt::Device*, 1> devices;
   devices.reserve(device_indices.size());
   const absl::Span<Device* const> client_devices = client->devices();
@@ -105,7 +105,7 @@ absl::StatusOr<tsl::RCReference<DeviceList>> GetDevices(
   return client->MakeDeviceList(devices);
 }
 
-absl::StatusOr<tsl::RCReference<DeviceList>> GetAddressableDevices(
+absl::StatusOr<DeviceListRef> GetAddressableDevices(
     Client* client, absl::Span<const int> device_indices) {
   absl::InlinedVector<xla::ifrt::Device*, 1> devices;
   devices.reserve(device_indices.size());

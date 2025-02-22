@@ -37,8 +37,7 @@ struct CustomCallProgram
   // Specification for a single array. The sharding of all input and output
   // specs must use only the devices in `devices`.
   CustomCallProgram(std::string type, std::string name,
-                    absl::Cord serialized_program_text,
-                    tsl::RCReference<DeviceList> devices,
+                    absl::Cord serialized_program_text, DeviceListRef devices,
                     std::vector<ArraySpec> input_specs,
                     std::vector<ArraySpec> output_specs)
       : type(std::move(type)),
@@ -62,7 +61,7 @@ struct CustomCallProgram
   absl::Cord serialized_program_text;
 
   // List of devices to compile and run the custom call program on.
-  tsl::RCReference<DeviceList> devices;
+  DeviceListRef devices;
 
   // Specification for input and output arrays. The custom call program must
   // expect to receive input arrays and return output arrays both following the
