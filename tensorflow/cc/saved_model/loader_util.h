@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CC_SAVED_MODEL_LOADER_UTIL_H_
 
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
