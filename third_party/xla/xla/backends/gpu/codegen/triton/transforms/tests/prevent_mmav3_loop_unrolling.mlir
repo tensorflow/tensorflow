@@ -1,7 +1,7 @@
 // RUN: xla-opt %s -split-input-file -prevent-mmav3-loop-unrolling | FileCheck %s
 
 #mma = #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 32, 16]}>
-#shared = #ttg.shared<{vec = 8, perPhase = 2, maxPhase = 4, order = [1, 0], hasLeadingOffset = true}>
+#shared = #ttg.nvmma_shared<{swizzlingByteWidth = 64, transposed = false, elementBitWidth = 16}>
 #smem = #ttg.shared_memory
 // CHECK-LABEL: @add_pragma_nounroll
 tt.func @add_pragma_nounroll(%arg0: !ttg.memdesc<64x32xf16, #shared, #smem>, %arg1: !ttg.memdesc<32x32xf16, #shared, #smem>) {
@@ -41,7 +41,7 @@ tt.func @do_not_unroll_loops_without_mmav3(%arg0: tensor<64x32xf16, #dot_a>, %ar
 // -----
 
 #mma = #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 32, 16]}>
-#shared = #ttg.shared<{vec = 8, perPhase = 2, maxPhase = 4, order = [1, 0], hasLeadingOffset = true}>
+#shared = #ttg.nvmma_shared<{swizzlingByteWidth = 64, transposed = false, elementBitWidth = 16}>
 #smem = #ttg.shared_memory
 // CHECK-LABEL: @add_pragma_unroll_exactly_once
 tt.func @add_pragma_unroll_exactly_once(%arg0: !ttg.memdesc<64x32xf16, #shared, #smem>, %arg1: !ttg.memdesc<32x32xf16, #shared, #smem>) {
