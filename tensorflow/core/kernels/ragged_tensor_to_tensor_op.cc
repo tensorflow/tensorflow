@@ -140,6 +140,9 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
 
   absl::Status CalculateOutputSize(INDEX_TYPE first_dim, OpKernelContext* c,
                                    vector<INDEX_TYPE>* result) {
+    if (c->input(kValueInputIndex).NumElements() == 0) {
+        return errors::InvalidArgument("Invalid row_splits for empty values");
+    }
     TensorShapeProto value_shape_proto;
     c->input(kValueInputIndex).shape().AsProto(&value_shape_proto);
 
@@ -166,12 +169,18 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     result->reserve(output_shape_proto.dim_size());
     for (const TensorShapeProto::Dim& dim : output_shape_proto.dim()) {
       // Note that this may be -1 (if dimension size is unknown).
-      result->push_back(dim.size());
+        INDEX_TYPE dim_size = dim.size();
+        if (dim_size < 0) {
+            if (dim_size == -1) {
+                dim_size = (&dim == &output_shape_proto.dim(0)) ? first_dim : 0;
+            } else {
+                return errors::InvalidArgument(
+                    "Invalid dimension size: ", dim_size);
+            }
+        }
+        result->push_back(dim_size);
     }
 
-    if ((*result)[0] < 0) {
-      (*result)[0] = first_dim;
-    }
     for (int i = 1; i <= ragged_rank_; ++i) {
       if ((*result)[i] < 0) {
         TF_RETURN_IF_ERROR(GetMaxWidth(c, i, &(*result)[i]));
@@ -372,6 +381,15 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    const Tensor& values_tensor = context->input(kValueInputIndex);
+    if (values_tensor.NumElements() == 0) {
+        const Tensor& row_splits_tensor = 
+            context->input(kFirstPartitionInputIndex);
+        if (row_splits_tensor.dim_size(0) > 1) {
+            OP_REQUIRES(context, false, 
+                errors::InvalidArgument("Invalid row_splits for empty values"));
+        }
+    }
     INDEX_TYPE first_dimension;
     const Tensor first_partition_tensor =
         context->input(kFirstPartitionInputIndex);
