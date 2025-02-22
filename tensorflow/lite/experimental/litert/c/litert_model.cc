@@ -17,6 +17,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <tuple>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -24,7 +26,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_load.h"
-
+#include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 //
 // Model
 //
@@ -129,6 +131,25 @@ LiteRtStatus LiteRtGetModelSignature(LiteRtModel model,
 }
 
 void LiteRtDestroyModel(LiteRtModel model) { delete model; }
+
+LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
+                                  size_t* size, size_t* offset,
+                                  bool destroy_model) {
+  auto serialized = litert::internal::SerializeModel(std::move(*model));
+  // Even if we fail to serialize, we still need to destroy the model if
+  // requested. This is because the model may have been partially serialized
+  // and we don't want to leak memory. Also if ownership of the model is
+  // transferred to the caller, we need to ensure that the model is destroyed
+  // when the caller is done with it.
+  if (destroy_model) {
+    delete model;
+  }
+  if (!serialized) {
+    return serialized.Error().Status();
+  }
+  std::tie(*buf, *size, *offset) = serialized->Release();
+  return kLiteRtStatusOk;
+}
 
 LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op,
                           LiteRtParamIndex index) {

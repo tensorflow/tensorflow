@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstddef>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -20,7 +21,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
@@ -60,8 +60,6 @@ TEST(TestCallGoogleTensorPlugin, PartitionSimpleMultiAdd) {
 }
 
 TEST(TestCallGoogleTensorPlugin, CompileMulSubgraph) {
-  GTEST_SKIP() << "Skipping this test until the compiler wrapper is updated";
-  /* DISABLES CODE */
   auto plugin = CreatePlugin();
   auto model = testing::LoadTestFileModel("mul_simple.tflite");
 
@@ -69,8 +67,25 @@ TEST(TestCallGoogleTensorPlugin, CompileMulSubgraph) {
   LITERT_ASSERT_OK(
       LiteRtCompilerPluginCompile(plugin.get(), "P25", model.Get(), &compiled));
 
+  const void* byte_code;
+  size_t byte_code_size;
+  LITERT_ASSERT_OK(LiteRtGetCompiledResultByteCode(compiled, 0, &byte_code,
+                                                   &byte_code_size));
+  absl::string_view byte_code_string(reinterpret_cast<const char*>(byte_code),
+                                     byte_code_size);
+  ASSERT_FALSE(byte_code_string.empty());
+
+  const void* op_data;
+  size_t op_data_size;
+  LiteRtParamIndex byte_code_idx;
+  LITERT_ASSERT_OK(LiteRtGetCompiledResultCallInfo(
+      compiled, 0, &op_data, &op_data_size, &byte_code_idx));
+  absl::string_view op_data_string(reinterpret_cast<const char*>(op_data),
+                                   op_data_size);
+  ASSERT_EQ("Partition_0", op_data_string);
+
   LiteRtDestroyCompiledResult(compiled);
-}  // Todo(abhirs): activate this test once the compiler wrapper is updated
+}
 
 }  // namespace
 }  // namespace litert

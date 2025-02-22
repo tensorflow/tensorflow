@@ -537,17 +537,3 @@ Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model) {
 }
 
 }  // namespace litert::internal
-
-LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
-                                  size_t* size, size_t* offset,
-                                  bool destroy_model) {
-  auto serialized = litert::internal::SerializeModel(std::move(*model));
-  if (destroy_model) {
-    delete model;
-  }
-  if (!serialized) {
-    return serialized.Error().Status();
-  }
-  std::tie(*buf, *size, *offset) = serialized->Release();
-  return kLiteRtStatusOk;
-}

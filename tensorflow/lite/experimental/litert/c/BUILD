@@ -94,6 +94,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/model:model_load",
+        "//tensorflow/lite/experimental/litert/core/model:model_serialize",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

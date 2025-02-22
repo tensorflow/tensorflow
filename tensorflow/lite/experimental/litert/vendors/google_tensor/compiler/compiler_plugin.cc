@@ -16,22 +16,29 @@
 
 #include <cstddef>
 #include <cstdlib>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
+#include "tensorflow/lite/experimental/litert/vendors/google_tensor/adapter.h"
+
 //
 // Configurations
 //
 
-namespace {
+namespace google_tensor {
 
 constexpr char kPluginManufacturer[] = "GoogleTensor";
 
@@ -47,10 +54,11 @@ constexpr LiteRtOpCode kSupportedOps[] = {
 constexpr auto kNumPluginSocModels =
     sizeof(kPluginSocModels) / sizeof(kPluginSocModels[0]);
 
-}  // namespace
+}  // namespace google_tensor
 
 LiteRtStatus LiteRtGetCompilerPluginVersion(LiteRtApiVersion* api_version) {
   if (api_version == nullptr) {
+    LITERT_LOG(LITERT_ERROR, "%s", "api_version is nullptr");
     return kLiteRtStatusErrorInvalidArgument;
   }
   api_version->major = LITERT_API_VERSION_MAJOR;
@@ -60,13 +68,15 @@ LiteRtStatus LiteRtGetCompilerPluginVersion(LiteRtApiVersion* api_version) {
 }
 
 const char* LiteRtGetCompilerPluginSocManufacturer() {
-  return kPluginManufacturer;
+  return google_tensor::kPluginManufacturer;
 }
 
 LiteRtStatus LiteRtGetCompilerPluginSupportedHardware(
     LiteRtCompilerPlugin compiler_plugin,
     LiteRtHwAccelerators* supported_hardware) {
   if (!compiler_plugin || !supported_hardware) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               "compiler_plugin or supported_hardware is nullptr");
     return kLiteRtStatusErrorInvalidArgument;
   }
   *supported_hardware = kLiteRtHwAcceleratorNpu;
@@ -77,20 +87,25 @@ LiteRtStatus LiteRtGetNumCompilerPluginSupportedSocModels(
     LiteRtCompilerPlugin compiler_plugin,
     LiteRtParamIndex* num_supported_soc_models) {
   if (compiler_plugin == nullptr || num_supported_soc_models == nullptr) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               "compiler_plugin or num_supported_soc_models is nullptr");
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *num_supported_soc_models = kNumPluginSocModels;
+  *num_supported_soc_models = google_tensor::kNumPluginSocModels;
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
     LiteRtCompilerPlugin compiler_plugin, LiteRtParamIndex soc_model_idx,
     const char** soc_model_name) {
-  if (compiler_plugin == nullptr || soc_model_idx >= kNumPluginSocModels ||
+  if (compiler_plugin == nullptr ||
+      soc_model_idx >= google_tensor::kNumPluginSocModels ||
       soc_model_name == nullptr) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               "compiler_plugin or soc_model_idx or soc_model_name is nullptr");
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *soc_model_name = kPluginSocModels[soc_model_idx];
+  *soc_model_name = google_tensor::kPluginSocModels[soc_model_idx];
   return kLiteRtStatusOk;
 }
 
@@ -98,34 +113,65 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
 // Compiled Result Definition
 //
 
+// TODO (abhirs): Revisit this struct after updating the compiler api wrapper to
+// return multiple bytecodes.
 struct LiteRtCompiledResultT {
   std::string byte_code;
   std::vector<std::string> per_op_data;
 };
 
 LiteRtStatus LiteRtGetCompiledResultByteCode(
-    LiteRtCompiledResult compiled_result, const void** byte_code,
-    size_t* byte_code_size) {
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex byte_code_idx,
+    const void** byte_code, size_t* byte_code_size) {
+  if (!compiled_result || !byte_code || !byte_code_size ||
+      (byte_code_idx != 0)) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               "compiled_result or byte_code or byte_code_size"
+               "or byte_code_idx is nullptr");
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *byte_code = compiled_result->byte_code.data();
   *byte_code_size = compiled_result->byte_code.size();
   return kLiteRtStatusOk;
 }
 
+LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_byte_code) {
+  if (!compiled_result || !num_byte_code) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               "compiled_result or num_byte_code is nullptr");
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *num_byte_code = 1;
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus LiteRtGetCompiledResultCallInfo(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex call_idx,
-    const void** call_info, size_t* call_info_size) {
-  if (call_idx >= compiled_result->per_op_data.size()) {
+    const void** call_info, size_t* call_info_size,
+    LiteRtParamIndex* byte_code_idx) {
+  if (!compiled_result || !call_info || !call_info_size) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               "compiled_result or call_info or call_info_size is nullptr");
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (call_idx >= compiled_result->per_op_data.size()) {
+    LITERT_LOG(LITERT_ERROR, "%s", "call_idx is out of bounds");
     return kLiteRtStatusErrorIndexOOB;
   }
 
   *call_info = compiled_result->per_op_data.at(call_idx).data();
   *call_info_size = compiled_result->per_op_data.at(call_idx).size();
+  *byte_code_idx = 0;
 
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus LiteRtGetNumCompiledResultCalls(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_calls) {
+  if (!compiled_result || !num_calls) {
+    LITERT_LOG(LITERT_ERROR, "%s", "compiled_result or num_calls is nullptr");
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *num_calls = compiled_result->per_op_data.size();
   return kLiteRtStatusOk;
 }
@@ -161,7 +207,7 @@ void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin) {
   delete compiler_plugin;
 }
 
-namespace {
+namespace google_tensor {
 //  TODO(abhirs): update the function to use the darwinn inbuilt way of
 //  finding supportedops
 bool IsOpSupported(const litert::Op& op) {
@@ -173,14 +219,14 @@ bool IsOpSupported(const litert::Op& op) {
   return false;
 }
 
-}  // namespace
+}  // namespace google_tensor
 
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops) {
   ::litert::Subgraph graph(subgraph);
   for (const auto& op : graph.Ops()) {
-    if (!IsOpSupported(op)) {
+    if (!google_tensor::IsOpSupported(op)) {
       continue;
     }
 
@@ -190,54 +236,63 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
   return kLiteRtStatusOk;
 }
 
-namespace {
-
-absl::string_view convert_to_tfl(LiteRtSubgraph subgraph) {
-  // TODO(abhirs): implement this
-  // LiteRtModelT model;
-  // model.EmplaceSubgraph(subgraph);
-  // auto serialized = litert::internal::SerializeModel(std::move(model));
-  // if (!serialized) {
-  //   return "";
-  // }
-  // absl::string_view buffer(reinterpret_cast<const char*>(serialized->Data()),
-  //                          serialized->Size());
-  absl::string_view buffer = "";
-  return buffer;
-}
-
-LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
-                                    LiteRtSubgraph subgraph,
-                                    const char* soc_model,
-                                    LiteRtCompiledResultT& result) {
-  //  TODO(abhirs): implement this
-  // 1. Convert the subgraph to a flatbuffer
-  absl::string_view buffer = convert_to_tfl(subgraph);
-  if (buffer.empty()) {
-    return kLiteRtStatusErrorRuntimeFailure;
-  }
-  // 2. compile the flatbuffer using compiler_api_wrapper
-  // 3. Get the bytecode from the compiled executable
-  // 4. Get the per op data from the compiled executable
-  // 5. Store the per op data in the result
-  // 6. Store the bytecode in the result
-  return kLiteRtStatusOk;
-}
-}  // namespace
-
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
-    LiteRtSubgraph* partitions, LiteRtParamIndex num_partitions,
-    LiteRtCompiledResult* compiled_result) {
+    LiteRtModel partitions, LiteRtCompiledResult* compiled_result) {
   if (compiler_plugin == nullptr || soc_model == nullptr ||
       partitions == nullptr || compiled_result == nullptr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  LiteRtCompiledResult result = new LiteRtCompiledResultT;
-  for (auto i = 0; i < num_partitions; ++i) {
-    LITERT_RETURN_IF_ERROR(
-        CompileSinglePartition(i, partitions[i], soc_model, *result));
+  auto model = litert::Model::CreateFromNonOwnedHandle(partitions);
+  const auto num_partitions = model.NumSubgraphs();
+  LITERT_LOG(LITERT_INFO,
+             "Starting GoogleTensor Compilation for %d subgraphs, soc_model=%s",
+             num_partitions, soc_model);
+
+  // Serialize model.
+  LITERT_LOG(LITERT_INFO, "%s", "Serializing model");
+  litert::OwningBufferRef buf;
+  auto [data, size, offset] = buf.GetWeak();
+
+  LITERT_RETURN_IF_ERROR(
+      LiteRtSerializeModel(partitions, &data, &size, &offset, false));
+  // TODO(abhirs): add support for serializing subgraphs
+
+  absl::string_view buffer_str(reinterpret_cast<const char*>(buf.Data()),
+                               buf.Size());
+
+  // Loading Google Tensor Compiler Adapter
+  LITERT_LOG(LITERT_INFO, "%s", "Loading Google Tensor Compiler Adapter");
+  auto adapter_result = litert::google_tensor::Adapter::Create(
+      /*shared_library_dir=*/std::nullopt);
+  if (!adapter_result.HasValue()) {
+    const auto& error_message = adapter_result.Error().Message();
+    LITERT_LOG(LITERT_ERROR, "Failed to create adapter: %s",
+               error_message.c_str());
+    return kLiteRtStatusErrorRuntimeFailure;
   }
-  *compiled_result = result;
+
+  // Compile model.
+  LITERT_LOG(LITERT_INFO, "%s", "Compiling model...");
+  // TODO(abhirs): add support for multiple bytecodes
+  absl::string_view soc_model_view(soc_model);
+  std::string compiled;
+  auto compile_status = adapter_result.Value()->api().compile(
+      buffer_str, soc_model_view, &compiled);
+
+  if (!compile_status.ok()) {
+    LITERT_LOG(LITERT_ERROR, "Failed to compile model");
+    return kLiteRtStatusErrorRuntimeFailure;
+  }
+
+  // Result
+  auto result = std::make_unique<LiteRtCompiledResultT>();
+
+  result->byte_code = std::string(compiled.data(), compiled.size());
+  // Generate per_op_data.
+  for (auto i = 0; i < num_partitions; ++i) {
+    result->per_op_data.emplace_back(absl::StrFormat("Partition_%d", i));
+  }
+  *compiled_result = result.release();
   return kLiteRtStatusOk;
 }
