@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -55,7 +54,6 @@ AllToAllThunk::AllToAllThunk(Info info, OpParams op_params,
 
 tsl::AsyncValueRef<AllToAllThunk::ExecuteEvent> AllToAllThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   TF_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 

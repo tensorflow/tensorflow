@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -71,8 +70,6 @@ CollectivePermuteThunk::CollectivePermuteThunk(
 
 tsl::AsyncValueRef<CollectivePermuteThunk::ExecuteEvent>
 CollectivePermuteThunk::Execute(const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
-
   TF_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   Thunk::CollectiveExecuteParams* collective_params = params.collective_params;

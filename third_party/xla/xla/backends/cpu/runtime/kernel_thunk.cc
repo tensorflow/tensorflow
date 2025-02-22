@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
@@ -51,7 +50,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/profiler/lib/traceme.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -161,11 +159,8 @@ template <int64_t num_arguments, int64_t num_results>
 ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<Thunk::ExecuteEvent>
 KernelThunk<num_arguments, num_results>::ExecuteInternal(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
-
   VLOG(3) << absl::StreamFormat(
-      "Launch host kernel %s with %d arguments buffers and %d results buffers: "
-      "#threads=%s",
+      "Launch host kernel %s with %d arguments and %d results: #threads=%s",
       kernel_name_, arguments_buffers_.size(), results_buffers_.size(),
       thread_dim_.ToString());
 
@@ -174,7 +169,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
 
   const BufferAllocations* allocations = params.buffer_allocations;
 
-  for (BufferAllocation::Slice& buffer : arguments_buffers_) {
+  for (const BufferAllocation::Slice& buffer : arguments_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
       TF_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
       kernel_args_ptr++->data = mem.opaque();
@@ -184,7 +179,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
     }
   }
 
-  for (BufferAllocation::Slice& buffer : results_buffers_) {
+  for (const BufferAllocation::Slice& buffer : results_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
       TF_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
       kernel_args_ptr++->data = mem.opaque();
@@ -209,19 +204,20 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
 
   // TODO(ezhulenev): Kernel ptr should be loaded as a part of Thunk
   // initialization stage.
-  absl::call_once(kernel_init_flag_, [&]() {
+  absl::call_once(kernel_init_flag_, [&] {
     // Because thunks are owned by a parent CpuExecutable, we can safely assume
     // that kernel pointer will not change after we find it the first time.
     absl::StatusOr<FunctionLibrary::Kernel*> kernel_fn =
         params.function_library->ResolveFunction<FunctionLibrary::Kernel>(
             kernel_name_);
 
-    if (ABSL_PREDICT_TRUE(kernel_fn.ok())) {
+    if (kernel_fn.ok()) {
       kernel_.emplace(num_kernel_args_, *kernel_fn);
     } else {
       kernel_ = std::move(kernel_fn.status());
     }
   });
+
   TF_RETURN_IF_ERROR(kernel_.status());
   Kernel* kernel = &kernel_.value();
 

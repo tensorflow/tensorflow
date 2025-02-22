@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -65,8 +64,6 @@ WhileThunk::WhileThunk(Info info, BufferAllocation::Slice cond_buffer,
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> WhileThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
-
   VLOG(3) << absl::StreamFormat(
       "While: #trip_count=%s",
       trip_count_.has_value() ? absl::StrCat(*trip_count_) : "unknown");
