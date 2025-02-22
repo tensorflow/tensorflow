@@ -17,6 +17,7 @@ limitations under the License.
 
 // b/194424657: On macs, the compiler hangs when trying to compile this file
 
+#include <gtest/gtest.h>
 #if !defined(__APPLE__)
 
 #include <cstdint>

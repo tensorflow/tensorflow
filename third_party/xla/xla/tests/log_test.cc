@@ -16,6 +16,7 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/tests/client_library_test_base.h"

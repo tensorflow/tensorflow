@@ -17,8 +17,12 @@ limitations under the License.
 // resulting object file to stdout.
 
 #include <iostream>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/client/client_library.h"
@@ -28,6 +32,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 

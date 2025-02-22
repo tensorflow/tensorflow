@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
 #include "absl/base/dynamic_annotations.h"
 #include "xla/executable_run_options.h"
 #include "tsl/platform/test.h"

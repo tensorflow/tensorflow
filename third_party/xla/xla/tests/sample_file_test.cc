@@ -17,7 +17,6 @@ limitations under the License.
 // and compare results on gpu and cpu.
 
 #include <string>
-#include <vector>
 
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/platform_util.h"
