@@ -53,9 +53,8 @@ class HloShardingTest : public test_util::DeviceTest {};
 
 TEST_P(HloShardingTest, CreateWithBadDeviceList) {
   auto xla_hlo_sharding = xla::HloSharding::Replicate();
-  EXPECT_DEATH(HloSharding::Create(tsl::RCReference<DeviceList>(), MemoryKind(),
-                                   xla_hlo_sharding),
-               "");
+  EXPECT_DEATH(
+      HloSharding::Create(DeviceListRef(), MemoryKind(), xla_hlo_sharding), "");
 
   EXPECT_DEATH(HloSharding::Create(BasicDeviceList::Create({}), MemoryKind(),
                                    xla_hlo_sharding),

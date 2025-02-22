@@ -327,10 +327,10 @@ PjRtLoadedExecutable::CreateInternal(
     TF_ASSIGN_OR_RETURN(Device * ifrt_device, client->LookupPjRtDevice(device));
     ds.push_back(ifrt_device);
   }
-  tsl::RCReference<DeviceList> devices = BasicDeviceList::Create(std::move(ds));
+  DeviceListRef devices = BasicDeviceList::Create(std::move(ds));
   // Devices used for constructing output shardings. A fake one will be used for
   // a portable executable.
-  std::optional<tsl::RCReference<DeviceList>> sharding_devices;
+  std::optional<DeviceListRef> sharding_devices;
   if (devices->devices().empty()) {
     sharding_devices =
         BasicDeviceList::Create({client->addressable_devices().front()});
@@ -468,8 +468,7 @@ PjRtLoadedExecutable::CreateInternal(
 PjRtLoadedExecutable::PjRtLoadedExecutable(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-    tsl::RCReference<DeviceList> devices,
-    std::vector<Device*> addressable_devices,
+    DeviceListRef devices, std::vector<Device*> addressable_devices,
     std::vector<tsl::RCReference<LoadedHostCallback>> all_loaded_host_callbacks,
     std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
         host_send_recv_callbacks,
@@ -490,9 +489,9 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
 PjRtLoadedExecutable::~PjRtLoadedExecutable() = default;
 
 absl::StatusOr<PjRtLoadedExecutable::ExecuteResult>
-PjRtLoadedExecutable::Execute(
-    absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
-    std::optional<tsl::RCReference<DeviceList>> devices) {
+PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
+                              const ExecuteOptions& options,
+                              std::optional<DeviceListRef> devices) {
   DCHECK(this);
   // TODO(hyeontaek): Check input sharding consistency.
 

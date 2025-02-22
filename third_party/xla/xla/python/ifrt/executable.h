@@ -234,7 +234,7 @@ class LoadedExecutable
   // API).
   virtual absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
-      std::optional<tsl::RCReference<DeviceList>> devices) = 0;
+      std::optional<DeviceListRef> devices) = 0;
 
   // Deletes the executable from the devices. The operation may be asynchronous.
   // The returned future will have the result of the deletion on the devices.

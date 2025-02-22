@@ -31,7 +31,7 @@ namespace ifrt {
 
 char DeviceList::ID = 0;
 
-absl::StatusOr<tsl::RCReference<DeviceList>> DeviceList::FromProto(
+absl::StatusOr<DeviceListRef> DeviceList::FromProto(
     xla::ifrt::Client* client, const DeviceListProto& proto) {
   absl::InlinedVector<Device*, 1> devices;
   devices.reserve(proto.device_ids_size());
@@ -52,8 +52,7 @@ DeviceListProto DeviceList::ToProto() const {
   return proto;
 }
 
-std::vector<DeviceId> GetDeviceIds(
-    const tsl::RCReference<DeviceList>& device_list) {
+std::vector<DeviceId> GetDeviceIds(const DeviceListRef& device_list) {
   std::vector<DeviceId> ids;
   ids.reserve(device_list->devices().size());
   for (const Device* device : device_list->devices()) {

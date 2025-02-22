@@ -54,9 +54,9 @@ class HloSharding final
   // devices to optimize the common path of passing it to the user or to a
   // lower-level runtime. It is instead validated when the information in the
   // sharding is used within IFRT, e.g., in `Disassemble()`.
-  static std::unique_ptr<HloSharding> Create(
-      tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
-      xla::HloSharding xla_hlo_sharding);
+  static std::unique_ptr<HloSharding> Create(DeviceListRef devices,
+                                             MemoryKind memory_kind,
+                                             xla::HloSharding xla_hlo_sharding);
 
   // Returns the wrapped XLA `HloSharding`.
   const xla::HloSharding& xla_hlo_sharding() const { return xla_hlo_sharding_; }
@@ -70,7 +70,7 @@ class HloSharding final
   bool HasSamePartitioning(const Sharding& other) const override;
 
   absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
-      std::optional<tsl::RCReference<DeviceList>> devices,
+      std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -100,7 +100,7 @@ class HloSharding final
   static char ID;  // NOLINT
 
  private:
-  HloSharding(tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
+  HloSharding(DeviceListRef devices, MemoryKind memory_kind,
               xla::HloSharding xla_hlo_sharding);
 
   void Hash(absl::HashState state) const override;

@@ -132,13 +132,11 @@ std::shared_ptr<MockClient> MakeDeviceTestClient(int num_devices,
         return it->second.get();
       });
   ON_CALL(*client, MakeDeviceList)
-      .WillByDefault([](absl::Span<Device* const> devices)
-                         -> tsl::RCReference<DeviceList> {
+      .WillByDefault([](absl::Span<Device* const> devices) -> DeviceListRef {
         return BasicDeviceList::Create(devices);
       });
   ON_CALL(*client, GetTopologyForDevices)
-      .WillByDefault(
-          [](const tsl::RCReference<DeviceList>&) { return nullptr; });
+      .WillByDefault([](const DeviceListRef&) { return nullptr; });
   return client;
 }
 
@@ -149,12 +147,11 @@ void DeviceTest::SetUp() {
   client_ = MakeDeviceTestClient(num_devices, num_addressable_devices);
 }
 
-tsl::RCReference<DeviceList> DeviceTest::GetDevices(
-    absl::Span<const int> device_indices) {
+DeviceListRef DeviceTest::GetDevices(absl::Span<const int> device_indices) {
   return test_util::GetDevices(client_.get(), device_indices).value();
 }
 
-tsl::RCReference<DeviceList> DeviceTest::GetAddressableDevices(
+DeviceListRef DeviceTest::GetAddressableDevices(
     absl::Span<const int> device_indices) {
   return test_util::GetAddressableDevices(client_.get(), device_indices)
       .value();

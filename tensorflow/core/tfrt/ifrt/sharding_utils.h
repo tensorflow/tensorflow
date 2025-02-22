@@ -48,7 +48,7 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
 // device_list directly instead of a list of device_ids.
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
+    const xla::ifrt::DeviceListRef& device_list,
     const xla::HloSharding& hlo_sharding,
     const tsl::thread::ThreadPool& thread_pool);
 
@@ -66,7 +66,7 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
 xla::ifrt::Future<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
-    const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
+    const xla::ifrt::DeviceListRef& device_list,
     tsl::thread::ThreadPool& thread_pool);
 
 // A wrapper around xla::ShapeUtil::ByteStrides to get the byte strides of a

@@ -151,7 +151,7 @@ class IfrtServingExecutable {
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
-      tsl::RCReference<xla::ifrt::DeviceList> assigned_device_list,
+      xla::ifrt::DeviceListRef assigned_device_list,
       tsl::protobuf::Message* compilation_environment_proto,
       TfToHloCompiler* tf_to_hlo_compiler,
       IfrtPersistentCompilationCache* persistent_compilation_cache)
@@ -184,7 +184,7 @@ class IfrtServingExecutable {
   // test portable execution condition even if the Module itself is already
   // released.
   tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata_;
-  const tsl::RCReference<xla::ifrt::DeviceList> assigned_device_list_;
+  const xla::ifrt::DeviceListRef assigned_device_list_;
 
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
   tsl::thread::ThreadPool& thread_pool_;
@@ -219,11 +219,11 @@ class IfrtServingExecutable {
       absl::Span<const tensorflow::Tensor> inputs,
       absl::Span<const int> variable_arg_indices,
       const CachedExecutableBundle& executable_bundle,
-      const tsl::RCReference<xla::ifrt::DeviceList>& devices);
+      const xla::ifrt::DeviceListRef& devices);
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> ConvertTensorToArray(
       const tensorflow::Tensor& tensor,
-      const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
+      const xla::ifrt::DeviceListRef& device_list,
       const xla::OpSharding& sharding);
 
   xla::ifrt::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(

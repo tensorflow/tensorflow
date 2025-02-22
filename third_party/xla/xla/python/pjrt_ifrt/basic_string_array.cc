@@ -303,7 +303,7 @@ Future<> BasicStringArray::CopyToHostBuffer(
 }
 
 absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Copy(
-    std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices,
+    std::optional<xla::ifrt::DeviceListRef> devices,
     std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
   DCHECK(this);

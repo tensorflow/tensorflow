@@ -124,7 +124,7 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
 
   absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> CopyArrays(
       absl::Span<tsl::RCReference<ifrt::Array>> arrays,
-      std::optional<tsl::RCReference<ifrt::DeviceList>> devices,
+      std::optional<ifrt::DeviceListRef> devices,
       std::optional<ifrt::MemoryKind> memory_kind,
       ifrt::ArrayCopySemantics semantics) override;
 
@@ -162,13 +162,13 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   absl::StatusOr<ifrt::Device*> LookupAddressableDevice(
       int local_hardware_id) const override;
 
-  tsl::RCReference<ifrt::DeviceList> MakeDeviceList(
+  ifrt::DeviceListRef MakeDeviceList(
       absl::Span<ifrt::Device* const> devices) const override;
 
   ifrt::Compiler* GetDefaultCompiler() override;
 
   absl::StatusOr<std::shared_ptr<ifrt::Topology>> GetTopologyForDevices(
-      const tsl::RCReference<ifrt::DeviceList>& devices) const override;
+      const ifrt::DeviceListRef& devices) const override;
 
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayout(
       ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,

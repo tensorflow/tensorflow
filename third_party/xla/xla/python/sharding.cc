@@ -218,7 +218,7 @@ SingleDeviceSharding::SingleDeviceSharding(nb::object device,
 
 SingleDeviceSharding::SingleDeviceSharding(
     xla::nb_class_ptr<xla::PyClient> client,
-    tsl::RCReference<xla::ifrt::DeviceList> device_list, nb::object memory_kind)
+    xla::ifrt::DeviceListRef device_list, nb::object memory_kind)
     : Sharding(/*num_devices=*/1),
       device_(client->GetPyDevice(device_list->devices().front())),
       memory_kind_(std::move(memory_kind)),

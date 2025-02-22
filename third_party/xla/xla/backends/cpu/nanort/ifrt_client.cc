@@ -819,7 +819,7 @@ class NanoExecutable final
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<ifrt::Array>> args,
       const ExecuteOptions& options,
-      std::optional<tsl::RCReference<ifrt::DeviceList>> devices) override {
+      std::optional<ifrt::DeviceListRef> devices) override {
     if (ABSL_PREDICT_FALSE(args.size() != input_shardings_.size())) {
       return InvalidArgument(
           "Number of arguments %d is not what executable expects %d",
@@ -1313,11 +1313,10 @@ NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
-NanoIfrtClient::CopyArrays(
-    absl::Span<tsl::RCReference<ifrt::Array>> arrays,
-    std::optional<tsl::RCReference<ifrt::DeviceList>> devices,
-    std::optional<ifrt::MemoryKind> memory_kind,
-    ifrt::ArrayCopySemantics semantics) {
+NanoIfrtClient::CopyArrays(absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+                           std::optional<ifrt::DeviceListRef> devices,
+                           std::optional<ifrt::MemoryKind> memory_kind,
+                           ifrt::ArrayCopySemantics semantics) {
   std::vector<tsl::RCReference<ifrt::Array>> result;
   result.reserve(arrays.size());
   for (const auto& array : arrays) {
@@ -1422,7 +1421,7 @@ absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupAddressableDevice(
   return device_.get();
 }
 
-tsl::RCReference<ifrt::DeviceList> NanoIfrtClient::MakeDeviceList(
+ifrt::DeviceListRef NanoIfrtClient::MakeDeviceList(
     absl::Span<ifrt::Device* const> devices) const {
   return xla::ifrt::BasicDeviceList::Create(devices);
 }
@@ -1431,7 +1430,7 @@ ifrt::Compiler* NanoIfrtClient::GetDefaultCompiler() { return compiler_.get(); }
 
 absl::StatusOr<std::shared_ptr<ifrt::Topology>>
 NanoIfrtClient::GetTopologyForDevices(
-    const tsl::RCReference<ifrt::DeviceList>& devices) const {
+    const ifrt::DeviceListRef& devices) const {
   return absl::UnimplementedError("GetTopologyForDevices is not implemented.");
 }
 

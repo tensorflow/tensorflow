@@ -69,7 +69,7 @@ absl::StatusOr<ArraySpec> CreateArraySpec(Client* client,
                                           absl::Span<const int> device_indices,
                                           Shape shard_shape = Shape({2, 3}),
                                           DType dtype = DType(DType::kS32)) {
-  TF_ASSIGN_OR_RETURN(tsl::RCReference<DeviceList> device_list,
+  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
                       test_util::GetAddressableDevices(client, device_indices));
   TF_ASSIGN_OR_RETURN(Shape shape,
                       GetShape(device_indices.size(), shard_shape));
