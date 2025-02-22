@@ -19,9 +19,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/lite/kernels/shim/tensor_view.h"
 
 namespace tflite {
 namespace shim {
