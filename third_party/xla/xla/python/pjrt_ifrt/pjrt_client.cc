@@ -862,7 +862,7 @@ absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
   return LookupPjRtDevice(pjrt_device);
 }
 
-tsl::RCReference<DeviceList> PjRtClient::MakeDeviceList(
+DeviceListRef PjRtClient::MakeDeviceList(
     absl::Span<Device* const> devices) const {
   return xla::ifrt::BasicDeviceList::Create(devices);
 }
@@ -1080,8 +1080,8 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
 
 absl::StatusOr<std::vector<tsl::RCReference<Array>>> PjRtClient::CopyArrays(
     absl::Span<tsl::RCReference<Array>> arrays,
-    std::optional<tsl::RCReference<DeviceList>> devices,
-    std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) {
+    std::optional<DeviceListRef> devices, std::optional<MemoryKind> memory_kind,
+    ArrayCopySemantics semantics) {
   if (arrays.empty()) {
     return std::vector<tsl::RCReference<Array>>();
   }
@@ -1137,7 +1137,7 @@ absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
 }
 
 absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
-    const tsl::RCReference<xla::ifrt::DeviceList>& devices) const {
+    const xla::ifrt::DeviceListRef& devices) const {
   // TODO(parkers): Consider constructing a sub-slice topology based on the
   // provided devices.
   TF_ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());

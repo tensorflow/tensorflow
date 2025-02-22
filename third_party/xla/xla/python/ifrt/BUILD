@@ -57,6 +57,7 @@ cc_library(
         "index_domain.h",
         "memory.h",
         "program.h",
+        "ref_wrapper.h",
         # TODO(hyeontaek): Move this SerDes out of `ifrt` target once `Compiler::DeserializeLoadedExecutable()` is split into executable deserialization and executable loading, and thus the method can be removed.
         "executable_serdes.h",
         "shape.h",

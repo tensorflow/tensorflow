@@ -68,11 +68,11 @@ class IfrtIrExecutableImplTestBase : public testing::Test {
   // directly.
   absl::StatusOr<tsl::RCReference<Array>> CreateArray(
       absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
-      ShardingParam sharding_param, tsl::RCReference<DeviceList> device_list);
+      ShardingParam sharding_param, DeviceListRef device_list);
 
   // Picks a given number of devices.
   // Error when `count` is larger than the total number of devices.
-  absl::StatusOr<tsl::RCReference<DeviceList>> PickDevices(int count);
+  absl::StatusOr<DeviceListRef> PickDevices(int count);
 
   mlir::MLIRContext mlir_context_;
   std::shared_ptr<Client> client_;

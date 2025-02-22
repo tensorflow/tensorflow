@@ -245,7 +245,7 @@ class CompileOnlyIfRtClient final
 
   absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> CopyArrays(
       absl::Span<tsl::RCReference<ifrt::Array>> arrays,
-      std::optional<tsl::RCReference<ifrt::DeviceList>> devices,
+      std::optional<ifrt::DeviceListRef> devices,
       std::optional<ifrt::MemoryKind> memory_kind,
       ifrt::ArrayCopySemantics semantics) override {
     return Unimplemented("CopyArrays not available with compile-only client.");
@@ -311,7 +311,7 @@ class CompileOnlyIfRtClient final
         "LookupAddressableDevice not available with compile-only client.");
   }
 
-  tsl::RCReference<ifrt::DeviceList> MakeDeviceList(
+  ifrt::DeviceListRef MakeDeviceList(
       absl::Span<ifrt::Device* const> devices) const override {
     return ifrt::BasicDeviceList::Create(devices);
   }
@@ -323,7 +323,7 @@ class CompileOnlyIfRtClient final
   const ifrt::PjRtTopology& topology() const { return *topology_; }
 
   absl::StatusOr<std::shared_ptr<ifrt::Topology>> GetTopologyForDevices(
-      const tsl::RCReference<xla::ifrt::DeviceList>& devices) const override {
+      const xla::ifrt::DeviceListRef& devices) const override {
     return topology_;
   }
 

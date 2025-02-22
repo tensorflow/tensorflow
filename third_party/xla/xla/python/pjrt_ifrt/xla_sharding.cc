@@ -70,8 +70,8 @@ bool NextIndex(Index::Elements* index, absl::Span<const int64_t> limit) {
 // Generates IndexDomains for an HloSharding, using XLA HloSharding APIs.
 // Note that this is O(N^2) where N is the number of devices (shards).
 std::vector<IndexDomain> IndexDomainsSlowPath(
-    const xla::HloSharding& hlo_sharding,
-    const tsl::RCReference<DeviceList>& devices, const Shape& shape,
+    const xla::HloSharding& hlo_sharding, const DeviceListRef& devices,
+    const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) {
   // Only shape dimensions are used.
   auto xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
@@ -107,9 +107,8 @@ std::vector<IndexDomain> IndexDomainsSlowPath(
 
 // Returns a canonicalized memory kind for the given devices.
 // REQUIRES: !devices->devices().empty()
-MemoryKind CanonicalizeMemoryKindWithDevices(
-    const MemoryKind& memory_kind,
-    const tsl::RCReference<DeviceList>& devices) {
+MemoryKind CanonicalizeMemoryKindWithDevices(const MemoryKind& memory_kind,
+                                             const DeviceListRef& devices) {
   CHECK(devices != nullptr);
   CHECK(!devices->devices().empty());
   return CanonicalizeMemoryKind(memory_kind, devices->devices().front());
@@ -118,15 +117,14 @@ MemoryKind CanonicalizeMemoryKindWithDevices(
 }  // namespace
 
 std::unique_ptr<HloSharding> HloSharding::Create(
-    tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
+    DeviceListRef devices, MemoryKind memory_kind,
     xla::HloSharding xla_hlo_sharding) {
   memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<HloSharding>(new HloSharding(
       std::move(devices), memory_kind, std::move(xla_hlo_sharding)));
 }
 
-HloSharding::HloSharding(tsl::RCReference<DeviceList> devices,
-                         MemoryKind memory_kind,
+HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
                          xla::HloSharding xla_hlo_sharding)
     : llvm::RTTIExtends<HloSharding, XlaCompatibleSharding>(
           std::move(devices), memory_kind, xla_hlo_sharding.IsReplicated()),
@@ -176,7 +174,7 @@ bool HloSharding::HasSamePartitioning(const Sharding& other) const {
 }
 
 absl::StatusOr<std::unique_ptr<Sharding>> HloSharding::WithDeviceAssignment(
-    std::optional<tsl::RCReference<DeviceList>> devices,
+    std::optional<DeviceListRef> devices,
     std::optional<MemoryKind> memory_kind) const {
   if (devices.has_value() && (*devices)->size() != devices_->size()) {
     return InvalidArgument(

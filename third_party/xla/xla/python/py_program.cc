@@ -69,9 +69,8 @@ namespace nb = ::nanobind;
 namespace {
 
 // Gets `ifrt::DeviceList` from a sequence of JAX devices.
-absl::StatusOr<tsl::RCReference<ifrt::DeviceList>> GetDeviceList(
-    nb::sequence devices) {
-  tsl::RCReference<ifrt::DeviceList> ifrt_device_list;
+absl::StatusOr<ifrt::DeviceListRef> GetDeviceList(nb::sequence devices) {
+  ifrt::DeviceListRef ifrt_device_list;
   if (devices.type().is(jax::PyDeviceList::type())) {
     return nb::cast<const jax::PyDeviceList*>(devices)->ifrt_device_list();
   } else {
@@ -102,8 +101,7 @@ xla::HloSharding GetXlaHloSharding(nb::handle sharding,
 }
 
 // Gets `ifrt::DeviceList` from a JAX Sharding.
-absl::StatusOr<tsl::RCReference<ifrt::DeviceList>> GetIfrtDeviceList(
-    nb::handle sharding) {
+absl::StatusOr<ifrt::DeviceListRef> GetIfrtDeviceList(nb::handle sharding) {
   if (sharding.type().is(jax::NamedSharding::type())) {
     TF_ASSIGN_OR_RETURN(
         auto ns_device_list,

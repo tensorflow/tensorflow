@@ -49,7 +49,7 @@ namespace jax {
 namespace nb = ::nanobind;
 
 PyDeviceList::PyDeviceList(xla::nb_class_ptr<xla::PyClient> py_client,
-                           tsl::RCReference<xla::ifrt::DeviceList> device_list)
+                           xla::ifrt::DeviceListRef device_list)
     : py_client_(std::move(py_client)), device_list_(std::move(device_list)) {}
 
 PyDeviceList::PyDeviceList(nb::tuple py_device_assignment)
@@ -85,8 +85,8 @@ PyDeviceList::~PyDeviceList() {
   }
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::DeviceList>>
-PyDeviceList::ifrt_device_list() const {
+absl::StatusOr<xla::ifrt::DeviceListRef> PyDeviceList::ifrt_device_list()
+    const {
   switch (device_list_.index()) {
     case 0:
       return std::get<0>(device_list_);
@@ -162,8 +162,7 @@ int PyDeviceList::Len() const {
 nb::object PyDeviceList::GetItem(int index) {
   switch (device_list_.index()) {
     case 0: {
-      const tsl::RCReference<xla::ifrt::DeviceList>& device_list =
-          std::get<0>(device_list_);
+      const xla::ifrt::DeviceListRef& device_list = std::get<0>(device_list_);
       if (index < -device_list->size() || index >= device_list->size()) {
         throw nb::index_error();
       } else if (index < 0) {
@@ -181,8 +180,7 @@ nb::object PyDeviceList::GetItem(int index) {
 nb::object PyDeviceList::GetSlice(nb::slice slice) {
   switch (device_list_.index()) {
     case 0: {
-      const tsl::RCReference<xla::ifrt::DeviceList>& device_list =
-          std::get<0>(device_list_);
+      const xla::ifrt::DeviceListRef& device_list = std::get<0>(device_list_);
       const absl::Span<xla::ifrt::Device* const> devices =
           device_list->devices();
       Py_ssize_t start, stop, step, slicelength;
@@ -208,8 +206,7 @@ nb::object PyDeviceList::GetSlice(nb::slice slice) {
 nb::tuple PyDeviceList::AsTuple() const {
   switch (device_list_.index()) {
     case 0: {
-      const tsl::RCReference<xla::ifrt::DeviceList>& device_list =
-          std::get<0>(device_list_);
+      const xla::ifrt::DeviceListRef& device_list = std::get<0>(device_list_);
       nb::tuple out = nb::steal<nb::tuple>(PyTuple_New(device_list->size()));
       int i = 0;
       for (xla::ifrt::Device* device : device_list->devices()) {
