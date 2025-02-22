@@ -9792,13 +9792,12 @@ ENTRY entry {
                              op::Constant(), op::Reshape()));
   auto multiply =
       AllOf(op::Shape("f32[6,2]"), op::Multiply(multiply_lhs, multiply_rhs));
-  auto replicated_lhs = AllOf(op::Shape("f32[6,3]"),
-                              op::AllReduce(op::DynamicUpdateSlice(
-                                  op::Broadcast(), op::Select(_, multiply, _),
-                                  op::Constant(), op::Reshape())));
+  auto add = AllOf(op::Shape("f32[6,2]"), op::Add(multiply, multiply_rhs));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Shape("f32[6,3]"),
-                          op::Add(replicated_lhs, op::Constant())));
+                          op::AllReduce(op::DynamicUpdateSlice(
+                              op::Broadcast(), op::Select(_, add, _),
+                              op::Constant(), op::Reshape()))));
 }
 
 TEST_P(SpmdPartitioningTest, ElementwiseTest_SubgroupSharding_ReplicateToTile) {
@@ -9812,9 +9811,9 @@ ENTRY entry {
   constant.1 = f32[6,3]{1,0}
     constant({{2,7,2},{2,9,2},{2,6,2},{3,7,2},{2,9,3},{2,3,2}}),
     sharding={devices=[1,1,2,2]<=[4] last_tile_dims={replicated,manual}}
-   multiply = f32[6,3]{1,0} multiply(constant, constant.1),
+  multiply = f32[6,3]{1,0} multiply(constant, constant.1),
     sharding={devices=[1,1,2,2]<=[4] last_tile_dims={replicated,manual}}
-   ROOT add = f32[6,3]{1,0} add(multiply, constant.1),
+  ROOT add = f32[6,3]{1,0} add(multiply, constant.1),
     sharding={devices=[1,2,2]<=[4] last_tile_dims={manual}}
 }
 )";
@@ -9825,14 +9824,11 @@ ENTRY entry {
 
   auto multiply = AllOf(op::Shape("f32[6,3]"),
                         op::Multiply(op::Constant(), op::Constant()));
-  auto add_lhs = AllOf(op::Shape("f32[6,2]"),
-                       op::DynamicSlice(op::Pad(multiply, op::Constant()),
-                                        op::Constant(), op::Reshape()));
-  auto add_rhs = AllOf(op::Shape("f32[6,2]"),
-                       op::DynamicSlice(op::Pad(op::Constant(), op::Constant()),
-                                        op::Constant(), op::Reshape()));
+  auto add = AllOf(op::Shape("f32[6,3]"), op::Add(multiply, op::Constant()));
   const auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, AllOf(op::Shape("f32[6,2]"), op::Add(add_lhs, add_rhs)));
+  EXPECT_THAT(root, AllOf(op::Shape("f32[6,2]"),
+                          op::DynamicSlice(op::Pad(add, op::Constant()),
+                                           op::Constant(), op::Reshape())));
 }
 
 TEST_P(SpmdPartitioningTest,
