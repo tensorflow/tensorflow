@@ -101,6 +101,8 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   virtual std::string ToString() const = 0;
 };
 
+using DeviceListRef = tsl::RCReference<DeviceList>;
+
 // Returns the id of each device in `device_list`.
 std::vector<DeviceId> GetDeviceIds(
     const tsl::RCReference<DeviceList>& device_list);
