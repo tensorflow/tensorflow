@@ -76,7 +76,7 @@ $ hlo-opt myinput.hlo --platform=CUDA --stage=llvm
 
 which would print the dump to stdout (or to a given file if `-o` was specified).
 
-### Deviceless Usage
+### Deviceless Compilation
 
 Access to a GPU is not needed for most of the compilation, and by specifying a
 GPU spec on the command line we can get e.g. PTX output without access to an
@@ -152,11 +152,65 @@ results {
 The autotuning database can be serialized using
 `XLA_FLAGS=--xla_gpu_dump_autotune_results_t=<myfile.pbtxt>`
 
-### Running a Single Compiler Pass
+### `hlo-opt` and HLO Passes
 
-The flags from `XLA_FLAGS` are also supported, so the tool can be used to test
-running a single pass:
+#### Run Single/Multiple passes
+The `hlo-opt` tool allows execution of an individual passes
+independent of the full compilation pipeline. This isolation helps to quickly
+run passes on input hlo module and pinpoint the root cause of failures,
+eliminating need to run full compilation pipeline wait for it to complete.
 
 ```
-$ hlo-opt --platform=CUDA --stage=hlo --passes=algebraic_simplifer input.hlo
+$ hlo-opt --passes=reduce-window-rewriter,scatter_expander input.hlo
+```
+Note: `--platform` option is not required.
+
+`hlo-opt` tool also supports XLA_FLAGS.
+
+```
+$ hlo-opt --passes=reduce-window-rewriter,scatter_expander --xla_reduce_window_rewrite_base_length=128 input.hlo
+```
+Use`list-passes` option to get the pass name string.
+
+```
+$ hlo-opt --list-passes
+```
+
+#### Assist New HLO Pass Development
+If you are writing a new hlo pass, `hlo-opt` tool provides an easier way to
+validate your pass functionality and write unit tests.
+
+* First, write your pass.
+* Register the new pass to the `hlo-opt` tool at `hlo/tools/opt_lib.cc`. Don't forget to add build dependency.
+
+```
+RegisterPass<FooPass>(FooPassInputOptions)
+```
+Include pass registration as part of your PR so that the pass will be
+available to use for all hlo-opt users.
+
+* Rebuild the `hlo-opt` tool and use `--passes=` option to run the pass.
+
+```
+$ hlo-opt --passes=foo-pass input.hlo
+```
+
+* Writing unit tests for the pass? refer https://openxla.org/xla/test_hlo_passes. for more details.
+
+### Miscellaneous Uses
+
+* Pass Runtime Measurement: For large models, full
+compilation runs can take minutes and making it challenging to detect subtle
+performance regressions. In contrast, individual pass runs allow for precise
+performance measurement and the easy detection of even small increases in
+execution time caused by new code changes.
+
+* Convert HLO `HLO text` -> `pbtxt`
+```
+$ hlo-opt --emit-proto input.hlo
+```
+
+* Convert HLO `pb` or `pbtxt` -> `HLO text`
+```
+$ hlo-opt input.pb or input.pbtxt
 ```
