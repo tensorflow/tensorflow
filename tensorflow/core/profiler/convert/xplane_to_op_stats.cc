@@ -413,6 +413,11 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
           has_device, /*maybe_drop_incomplete_steps=*/false, step_events);
       *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
           ComputePrecisionStats(step_events);
+      OpMetricsDbCombiner combiner(
+          op_stats.mutable_hlo_metrics_db_complete_steps_only());
+      for (const auto& step_info : op_stats.step_db().step_sequence()) {
+        combiner.Combine(step_info.hlo_metrics_db());
+      }
     } else {
       StepEvents nonoverlapped_step_events =
           ToNonOverlappedStepEvents(step_events);
