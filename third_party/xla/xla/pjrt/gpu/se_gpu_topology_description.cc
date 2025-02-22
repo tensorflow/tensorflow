@@ -31,7 +31,7 @@ absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
     const {
   std::string result;
   if (!tsl::SerializeToStringDeterministic(gpu_topology_->ToProto(), &result)) {
-    return absl::InternalError("Failed to serialize gpu_topology");
+    return absl::InternalError("Failed to serialize gpu_topologys");
   }
   return result;
 }
