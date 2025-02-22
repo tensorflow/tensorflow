@@ -353,8 +353,7 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       std::move(context), std::move(module), converter_flags, pass_config_copy,
       saved_model_tags, model_flags.saved_model_dir(), result,
-      /*serialize_stablehlo_ops=*/false, /*export_to_mlir=*/false,
-      quantization_py_function_lib);
+      /*export_to_mlir=*/false, quantization_py_function_lib);
 
   return status;
 }

@@ -392,8 +392,7 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     tflite::ConverterFlags& converter_flags,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    llvm::StringRef saved_model_dir, std::string* result,
-    bool serialize_stablehlo_ops, bool export_to_mlir,
+    llvm::StringRef saved_model_dir, std::string* result, bool export_to_mlir,
     const PyFunctionLibrary* quantization_py_function_lib) {
   // TODO: b/353597396 - Remove this once the StableHLO Quantizer is fully
   // eliminated from the TFLite Converter.
