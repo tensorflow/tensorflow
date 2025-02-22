@@ -15,9 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_BASE_COLLECTIVE_EXECUTOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_BASE_COLLECTIVE_EXECUTOR_H_
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
