@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/verifiers/graph_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
