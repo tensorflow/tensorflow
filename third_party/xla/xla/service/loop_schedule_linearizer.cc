@@ -175,7 +175,7 @@ absl::StatusOr<bool> LoopScheduleLinearizer::Run(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kWhile) {
+      if (HloPredicateIsNotOp<HloOpcode::kWhile>(instruction)) {
         continue;
       }
 

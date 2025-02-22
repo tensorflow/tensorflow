@@ -279,7 +279,7 @@ std::optional<std::pair<int64_t, bool>> GetOperandConcatDim(
     const HloInstruction* hlo, int64_t operand_index, int64_t hlo_concat_dim,
     bool hlo_inserted_concat_dim,
     const ConcatGroup* combined_operand_group = nullptr) {
-  if (hlo->IsElementwise() || hlo->opcode() == HloOpcode::kAllReduce) {
+  if (hlo->IsElementwise() || HloPredicateIsOp<HloOpcode::kAllReduce>(hlo)) {
     return std::pair<int64_t, bool>(hlo_concat_dim, hlo_inserted_concat_dim);
   }
   int64_t operand_concat_dim = -1;
@@ -288,7 +288,7 @@ std::optional<std::pair<int64_t, bool>> GetOperandConcatDim(
       combined_operand_group == nullptr
           ? hlo->operand(operand_index)->shape()
           : combined_operand_group->elements.back()->shape();
-  if (hlo->opcode() == HloOpcode::kBroadcast) {
+  if (HloPredicateIsOp<HloOpcode::kBroadcast>(hlo)) {
     operand_concat_dim = 0;
     operand_inserted_concat_dim = true;
     // Try to place operand_concat_dim adjacent to dims the same way as the
@@ -311,7 +311,7 @@ std::optional<std::pair<int64_t, bool>> GetOperandConcatDim(
         min_dist_to_concat_dim = hlo->dimensions(i) - hlo_concat_dim;
       }
     }
-  } else if (hlo->opcode() == HloOpcode::kReduce) {
+  } else if (HloPredicateIsOp<HloOpcode::kReduce>(hlo)) {
     if (operand_index != 0) {
       return std::nullopt;
     }
@@ -327,7 +327,7 @@ std::optional<std::pair<int64_t, bool>> GetOperandConcatDim(
         operand_concat_dim++;
       }
     }
-  } else if (hlo->opcode() == HloOpcode::kReshape) {
+  } else if (HloPredicateIsOp<HloOpcode::kReshape>(hlo)) {
     int64_t i = 0;
     int64_t j = 0;
     operand_inserted_concat_dim = false;
@@ -375,7 +375,7 @@ std::optional<std::pair<int64_t, bool>> GetOperandConcatDim(
 void ModifyHloPropertiesForConcatShape(const ConcatGroup& group,
                                        HloInstruction* hlo) {
   *hlo->mutable_shape() = group.GetConcatShape();
-  if (hlo->opcode() == HloOpcode::kBroadcast) {
+  if (HloPredicateIsOp<HloOpcode::kBroadcast>(hlo)) {
     // Use the last element to infer the operand concat dim, since the first
     // element's operand might have been rewriten.
     auto operand_dim = GetOperandConcatDim(
@@ -408,7 +408,7 @@ void ModifyHloPropertiesForConcatShape(const ConcatGroup& group,
       }
     }
     *hlo->mutable_dimensions() = std::move(dims);
-  } else if (hlo->opcode() == HloOpcode::kReduce) {
+  } else if (HloPredicateIsOp<HloOpcode::kReduce>(hlo)) {
     auto operand_dim = GetOperandConcatDim(
         group.elements.back(), 0, group.concat_dim, group.inserted_concat_dim);
     int64_t operand_concat_dim = operand_dim->first;
@@ -500,7 +500,7 @@ bool GroupHlosForConcat(
       continue;
     }
     if (absl::c_all_of(hlos, [&](const HloInstruction* element) {
-          return element->opcode() == HloOpcode::kGetTupleElement &&
+          return HloPredicateIsOp<HloOpcode::kGetTupleElement>(element) &&
                  element->operand(0) == body->parameter_instruction(0);
         })) {
       group_is_param_gtes = true;
@@ -530,7 +530,7 @@ bool GroupHlosForConcat(
                                     /*layout_sensitive=*/false)) {
               return true;
             }
-            if (element->opcode() == HloOpcode::kReduce &&
+            if (HloPredicateIsOp<HloOpcode::kReduce>(element) &&
                 (element->operand_count() != 2 ||
                  element->operand(1) != hlos[0]->operand(1))) {
               return true;
@@ -641,7 +641,7 @@ bool GroupHlosForConcat(
 std::vector<bool> TupleElementsUsedInCond(HloInstruction* loop) {
   std::vector<bool> result(loop->shape().tuple_shapes_size(), false);
   for (auto user : loop->while_condition()->parameter_instruction(0)->users()) {
-    if (user->opcode() != HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsNotOp<HloOpcode::kGetTupleElement>(user)) {
       absl::c_fill(result, true);
       return result;
     }
@@ -696,7 +696,7 @@ absl::Status RemoveCopiesFromRoot(HloComputation* body) {
   CHECK_EQ(root->opcode(), HloOpcode::kTuple);
   for (int64_t i = 0; i < root->operand_count(); ++i) {
     auto copy = root->mutable_operand(i);
-    if (copy->opcode() == HloOpcode::kCopy) {
+    if (HloPredicateIsOp<HloOpcode::kCopy>(copy)) {
       TF_RETURN_IF_ERROR(root->ReplaceOperandWith(i, copy->mutable_operand(0)));
     }
   }
@@ -798,14 +798,14 @@ absl::Status RewriteLoopWithConcatGroups(
       continue;
     }
     const auto& group = groups.GetGroup(group_and_index->first);
-    if (hlo->opcode() == HloOpcode::kSlice) {
+    if (HloPredicateIsOp<HloOpcode::kSlice>(hlo)) {
       // We could just replace hlo with its operand; however, to follow the
       // practice of using the first element as full data, we defer that
       // replacement.
       slices_to_remove.push_back(hlo);
     } else {
       int64_t operand_count_to_adjust = hlo->operand_count();
-      if (hlo->opcode() == HloOpcode::kReduce) {
+      if (HloPredicateIsOp<HloOpcode::kReduce>(hlo)) {
         CHECK_EQ(operand_count_to_adjust, 2);
         operand_count_to_adjust = 1;
       }
@@ -915,7 +915,8 @@ absl::Status RewriteLoopWithConcatGroups(
       continue;
     }
     const auto& group_and_index = groups.GetGroupIndex(hlo);
-    if ((!group_and_index.has_value() || hlo->opcode() == HloOpcode::kReduce) &&
+    if ((!group_and_index.has_value() ||
+         HloPredicateIsOp<HloOpcode::kReduce>(hlo)) &&
         hlo != body->root_instruction()) {
       auto operands = hlo->operands();
       if (group_and_index.has_value()) {
@@ -949,7 +950,8 @@ absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
   auto body = loop->while_body();
   auto param = body->parameter_instruction(0);
   auto root = body->root_instruction();
-  if (!param->shape().IsTuple() || root->opcode() != HloOpcode::kTuple) {
+  if (!param->shape().IsTuple() ||
+      HloPredicateIsNotOp<HloOpcode::kTuple>(root)) {
     return false;
   }
   std::vector<HloInstruction*> gtes(param->shape().tuple_shapes_size(),
@@ -957,7 +959,7 @@ absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
   ConcatGroups groups;
   auto indices_used_in_cond = TupleElementsUsedInCond(loop);
   for (auto user : param->users()) {
-    if (user->opcode() != HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsNotOp<HloOpcode::kGetTupleElement>(user)) {
       // Unhandled user opcode.
       return false;
     }
@@ -977,7 +979,7 @@ absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
   for (int64_t i = 0; i < body_instructions.size(); ++i) {
     auto hlo = body_instructions[i];
     topological_order[hlo] = i;
-    if (hlo->opcode() == HloOpcode::kConcatenate &&
+    if (HloPredicateIsOp<HloOpcode::kConcatenate>(hlo) &&
         hlo->operand_count() >= min_operand_count_to_optimize) {
       concats.push_back(hlo);
     }
@@ -1026,7 +1028,7 @@ absl::StatusOr<bool> WhileLoopConcatCodeMotion::Run(
   for (HloComputation* comp :
        module->MakeComputationPostOrder(execution_threads)) {
     for (HloInstruction* hlo : comp->MakeInstructionPostOrder()) {
-      if (hlo->opcode() == HloOpcode::kWhile) {
+      if (HloPredicateIsOp<HloOpcode::kWhile>(hlo)) {
         TF_ASSIGN_OR_RETURN(bool loop_changed,
                             RunOnLoop(hlo, min_operand_count_to_optimize_));
         changed |= loop_changed;
