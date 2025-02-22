@@ -13,9 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetOperations.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
+#include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 
@@ -57,22 +64,17 @@ struct XlaInlinerInterface : public mlir::DialectInlinerInterface {
       return false;
     }
 
-    // If callee and caller call the same third function, inline. We have no
-    // guarantee that the indices are the same, but there is a good chance they
-    // are (or if the callee gets inlined as well, there will be CSE
-    // opportunities).
-    // This is duct tape to work around the limitations of our partitioner.
-    // Ideally, the partitioner would be aware of the actual indexing and create
-    // the partitions based on it (i.e., the case where the indices are the same
-    // would never happen).
+    // If callee calls a subset of functions of its caller, then we inline.
     llvm::SmallDenseSet<llvm::StringRef> callee_calls;
     for (auto call : region->getOps<PureCallOp>()) {
       callee_calls.insert(call.getCallee());
     }
+    llvm::SmallDenseSet<llvm::StringRef> caller_calls;
     for (auto call : call->getParentRegion()->getOps<PureCallOp>()) {
-      if (callee_calls.contains(call.getCallee())) {
-        return true;
-      }
+      caller_calls.insert(call.getCallee());
+    }
+    if (!llvm::set_is_subset(callee_calls, caller_calls)) {
+      return false;
     }
 
     constexpr int kMaxOperationsToInline = 8;
