@@ -68,5 +68,7 @@ tf_cc_binary(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:op_gen_lib",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:status",
     ],
 )
