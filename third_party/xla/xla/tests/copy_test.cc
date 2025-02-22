@@ -99,8 +99,7 @@ XLA_TEST_F(CopyOpTest, CopyR1S3U32) {
   TestCopyOp(LiteralUtil::CreateR1<uint32_t>({1, 2, 3}));
 }
 
-// TODO: b/396485312 - fix and reenable.
-XLA_TEST_F(CopyOpTest, DISABLED_CopyDynamicR1S1310720U32Dynamic0) {
+XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic0) {
   // TODO(vsytch): CPU emitter doesn't handle dynamic shapes.
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
@@ -113,8 +112,7 @@ XLA_TEST_F(CopyOpTest, DISABLED_CopyDynamicR1S1310720U32Dynamic0) {
                     bounded_shape);
 }
 
-// TODO: b/396485312 - fix and reenable.
-XLA_TEST_F(CopyOpTest, DISABLED_CopyDynamicR1S1310720U32Dynamic106632) {
+XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic106632) {
   // TODO(vsytch): CPU emitter doesn't handle dynamic shapes.
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
@@ -128,8 +126,7 @@ XLA_TEST_F(CopyOpTest, DISABLED_CopyDynamicR1S1310720U32Dynamic106632) {
       bounded_shape);
 }
 
-// TODO: b/396485312 - fix and reenable.
-XLA_TEST_F(CopyOpTest, DISABLED_CopyDynamicR1S1310720U32Dynamic1310720) {
+XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic1310720) {
   // TODO(vsytch): CPU emitter doesn't handle dynamic shapes.
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
@@ -143,8 +140,7 @@ XLA_TEST_F(CopyOpTest, DISABLED_CopyDynamicR1S1310720U32Dynamic1310720) {
       bounded_shape);
 }
 
-// TODO: b/396485312 - fix and reenable.
-XLA_TEST_F(CopyOpTest, DISABLED_CopyDynamicR1S512U32Dynamic64) {
+XLA_TEST_F(CopyOpTest, CopyDynamicR1S512U32Dynamic64) {
   // TODO(vsytch): CPU emitter doesn't handle dynamic shapes.
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
