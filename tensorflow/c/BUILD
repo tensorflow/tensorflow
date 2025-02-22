@@ -118,6 +118,24 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
+    deps = [
+        ":c_api_headers",
+        ":tf_buffer_hdrs",
+        ":tf_datatype_hdrs",
+        ":tf_status_headers",
+        ":tf_tensor_hdrs",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/platform:status",
+    ],
 )
 
 cc_library(
@@ -334,6 +352,7 @@ cc_library(
         ":c_api_macros",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:stringprintf",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -492,6 +511,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":c_api_macros_hdrs",
+        "//tensorflow/core:protos_all_cc",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -535,6 +555,8 @@ cc_library(
         ":tf_status_helper",
         ":tf_tensor_internal",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -602,6 +624,8 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
+        "//third_party/protobuf:protobuf_lite",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -688,6 +712,9 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_status_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla/tsl/c:tsl_status_helper",
         "@local_xla//xla/tsl/platform:status",
     ],
@@ -699,6 +726,8 @@ tf_cc_test(
     deps = [
         ":tf_status",
         ":tf_status_helper",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:status",
@@ -841,10 +870,13 @@ tf_cuda_library(
         ":tf_tensor_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/gtl:cleanup",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
     ] + if_not_mobile([
         "//tensorflow/core/kernels:tensor_list",
         "//tensorflow/core/kernels:tensor_list_util",
@@ -869,6 +901,8 @@ tf_cuda_library(
         ":c_api_macros_hdrs",
         ":tf_datatype",
         ":tf_status_helper",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -1040,6 +1074,8 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -1122,6 +1158,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1140,6 +1177,7 @@ tf_cuda_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        "@com_google_absl//absl/log:check",
         "//tensorflow/core:protos_all_cc",
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
     ],
