@@ -86,6 +86,8 @@ absl::StatusOr<bool> RunOptimizer(
         std::nullopt,
     CollectivePipeliner::HloPostprocessor postprocess_backward_rotated =
         std::nullopt,
+    CollectivePipeliner::HloPostprocessor postprocess_backward_peeled_trailing =
+        std::nullopt,
     bool should_add_loop_invariant_op_in_chain = false,
     int64_t collective_size_threshold_to_stop_sinking = INT64_MAX) {
   CollectivePipeliner::Config config = {
@@ -101,7 +103,8 @@ absl::StatusOr<bool> RunOptimizer(
       /*reuse_pipelined_op_buffer=*/reuse_pipelined_op_buffer,
       should_allow_loop_variant_parameter_in_chain,
       /*should_allow_control_dependencies=*/false, postprocess_backward_peeled,
-      postprocess_backward_rotated, should_add_loop_invariant_op_in_chain,
+      postprocess_backward_rotated, postprocess_backward_peeled_trailing,
+      should_add_loop_invariant_op_in_chain,
       /*postprocess_pipelined_ops=*/std::nullopt,
       collective_size_threshold_to_stop_sinking};
   HloPassPipeline pass("optimizer");
@@ -2790,13 +2793,15 @@ TEST_F(CollectivePipelinerTest,
   };
   const char* kAttr = "_xla_other_attr";
   // Mutate an existing attribute.
-  auto postprocess_peeled = [&](HloInstruction* instr) {
+  auto postprocess_peeled = [&](HloInstruction* instr,
+                                HloInstruction* new_while_instr) {
     xla::FrontendAttributes attributes = instr->frontend_attributes();
     (*attributes.mutable_map())[kAttr] = "1";
     instr->set_frontend_attributes(attributes);
     return absl::OkStatus();
   };
-  auto postprocess_rotated = [&](HloInstruction* instr) {
+  auto postprocess_rotated = [&](HloInstruction* instr,
+                                 HloInstruction* new_while_instr) {
     xla::FrontendAttributes attributes = instr->frontend_attributes();
     (*attributes.mutable_map())[kAttr] = "2";
     instr->set_frontend_attributes(attributes);
@@ -3172,6 +3177,7 @@ ENTRY entry {
           /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateTrue,
           /*postprocess_backward_peeled=*/std::nullopt,
           /*postprocess_backward_rotated=*/std::nullopt,
+          /*postprocess_backward_peeled_trailing=*/std::nullopt,
           /*should_add_loop_invariant_op_in_chain=*/true)
           .value());
   XLA_VLOG_LINES(1, module->ToString());
@@ -3202,6 +3208,7 @@ ENTRY entry {
           /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateTrue,
           /*postprocess_backward_peeled=*/std::nullopt,
           /*postprocess_backward_rotated=*/std::nullopt,
+          /*postprocess_backward_peeled_trailing=*/std::nullopt,
           /*should_add_loop_invariant_op_in_chain=*/false)
           .value());
 }
@@ -3593,6 +3600,7 @@ ENTRY entry {
           /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
           /*postprocess_backward_peeled=*/std::nullopt,
           /*postprocess_backward_rotated=*/std::nullopt,
+          /*postprocess_backward_peeled_trailing=*/std::nullopt,
           /*should_add_loop_invariant_op_in_chain=*/false,
           /*collective_size_threshold_to_stop_sinking=*/1024)
           .value());
