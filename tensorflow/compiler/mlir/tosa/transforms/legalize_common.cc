@@ -2530,7 +2530,7 @@ std::optional<Value> convertStridedSliceOp(
     }
   }
 
-  SmallVector<int64_t> input_pads(
+  SmallVector<int32_t> input_pads(
       input_rank * 2);  // Stores pads on either side of a dimension
 
   // Step 0: Process the begin/end masks and build the begin/sizes for the
@@ -2558,6 +2558,8 @@ std::optional<Value> convertStridedSliceOp(
       strides[i] = 1;
     }
 
+    // Add padding if needed (in case of odd input dimension coupled with an
+    // even stride).
     // Note: no padding added to dynamic dimensions
     auto stride_remainder = a1_size[i] % strides[i];
     if (a1_size[i] > 0 && stride_remainder != 0) {
@@ -2576,13 +2578,20 @@ std::optional<Value> convertStridedSliceOp(
   const bool need_padding =
       llvm::any_of(input_pads, [](int64_t i) { return i != 0; });
   if (need_padding) {
-    Value a0_padding = getTosaConstShape(rewriter, op->getLoc(), input_pads);
+    RankedTensorType a0_pad_const_attr_type =
+        tensorflow::GetTypeFromTFTensorShape({(input_rank), 2},
+                                             rewriter.getIntegerType(32));
+
+    auto a0_pad_const_op = rewriter.create<tosa::ConstOp>(
+        op->getLoc(), a0_pad_const_attr_type,
+        DenseElementsAttr::get(a0_pad_const_attr_type,
+                               llvm::ArrayRef(input_pads)));
 
     auto a0_pad_input_op = CreateOpAndInfer<tosa::PadOp>(
         rewriter, op->getLoc(),
         tensorflow::GetTypeFromTFTensorShape(a1_size,
                                              result_type.getElementType()),
-        input_value, a0_padding);
+        input_value, a0_pad_const_op.getResult());
 
     input_value =
         a0_pad_input_op.getResult();  // overwrite input_value parameter
