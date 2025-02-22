@@ -4,7 +4,7 @@ load("//xla/tsl:tsl.bzl", "clean_dep")
 
 def runtime_copts():
     """Returns copts used for CPU runtime libraries."""
-    return (["-DEIGEN_AVOID_STL_ARRAY"] + select({
+    return (select({
         clean_dep("//xla/tsl:android_arm"): ["-mfpu=neon"],
         "//conditions:default": [],
     }) + select({
