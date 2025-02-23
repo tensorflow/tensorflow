@@ -264,10 +264,10 @@ Client::AssembleArrayFromSingleDeviceArrays(
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-Client::CopyArrays(
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-    std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices,
-    std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) {
+Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+                   std::optional<xla::ifrt::DeviceListRef> devices,
+                   std::optional<MemoryKind> memory_kind,
+                   ArrayCopySemantics semantics) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_arrays = arrays.size()]() {
     return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointCopyArrays",
                                         {{"n_arrays", n_arrays}});
@@ -402,7 +402,7 @@ absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(
   return *std::move(assignment_to_return);
 }
 
-tsl::RCReference<xla::ifrt::DeviceList> Client::MakeDeviceList(
+xla::ifrt::DeviceListRef Client::MakeDeviceList(
     absl::Span<xla::ifrt::Device* const> devices) const {
   return xla::ifrt::BasicDeviceList::Create(devices);
 }

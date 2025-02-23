@@ -992,7 +992,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
   for (const auto& handle : copy_arrays_request.array_handles()) {
     TF_ASSIGN_OR_RETURN(arrays.emplace_back(), GetArray(handle));
   }
-  std::optional<tsl::RCReference<DeviceList>> devices;
+  std::optional<DeviceListRef> devices;
   if (!copy_arrays_request.device_ids().empty()) {
     BasicDeviceList::Devices ds;
     for (const auto& device_id : copy_arrays_request.device_ids()) {
@@ -1365,7 +1365,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
     execute_options.fill_status = true;
   }
 
-  std::optional<tsl::RCReference<DeviceList>> devices;
+  std::optional<DeviceListRef> devices;
   if (!execute.device_ids().empty()) {
     BasicDeviceList::Devices d;
     d.reserve(execute.device_ids_size());
