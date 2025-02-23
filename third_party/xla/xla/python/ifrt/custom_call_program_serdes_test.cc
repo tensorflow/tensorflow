@@ -51,7 +51,7 @@ class CustomCallProgramSerDesTest : public test_util::DeviceTest {};
 TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   Shape shape0({10, 20});
   Shape shard_shape0({5, 20});
-  tsl::RCReference<DeviceList> devices = GetDevices({0, 1});
+  DeviceListRef devices = GetDevices({0, 1});
   std::shared_ptr<const Sharding> sharding0 =
       ConcreteEvenSharding::Create(devices, MemoryKind(),
                                    /*shape=*/shape0,
