@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
