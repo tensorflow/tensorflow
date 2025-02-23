@@ -166,7 +166,7 @@ class PjRtArray final
       ArrayCopySemantics semantics) override;
 
   absl::StatusOr<tsl::RCReference<Array>> Copy(
-      std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices,
+      std::optional<xla::ifrt::DeviceListRef> devices,
       std::optional<xla::ifrt::MemoryKind> memory_kind,
       ArrayCopySemantics semantics);
 

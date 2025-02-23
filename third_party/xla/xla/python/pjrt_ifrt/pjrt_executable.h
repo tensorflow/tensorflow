@@ -282,7 +282,7 @@ class PjRtLoadedExecutable final
   }
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
-      std::optional<tsl::RCReference<DeviceList>> devices) override;
+      std::optional<DeviceListRef> devices) override;
 
   Future<> Delete() override;
   bool IsDeleted() const override {
@@ -316,8 +316,7 @@ class PjRtLoadedExecutable final
   PjRtLoadedExecutable(
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-      tsl::RCReference<DeviceList> devices,
-      std::vector<Device*> addressable_devices,
+      DeviceListRef devices, std::vector<Device*> addressable_devices,
       std::vector<tsl::RCReference<LoadedHostCallback>>
           all_loaded_host_callbacks,
       std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
@@ -329,7 +328,7 @@ class PjRtLoadedExecutable final
   std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
   // Devices that `pjrt_loaded_executable_` runs on. Empty if the executable is
   // portable.
-  tsl::RCReference<DeviceList> devices_;
+  DeviceListRef devices_;
   std::vector<Device*> addressable_devices_;
   std::shared_ptr<std::vector<tsl::RCReference<LoadedHostCallback>>>
       all_loaded_host_callbacks_;
