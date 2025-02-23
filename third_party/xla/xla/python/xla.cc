@@ -460,7 +460,7 @@ NB_MODULE(xla_extension, m) {
             }
             ifrt_devices.push_back(py_device->device());
           }
-          tsl::RCReference<ifrt::DeviceList> device_list =
+          ifrt::DeviceListRef device_list =
               client->ifrt_client()->MakeDeviceList(ifrt_devices);
           return xla::ValueOrThrow(
               client->ifrt_client()->GetTopologyForDevices(device_list));
