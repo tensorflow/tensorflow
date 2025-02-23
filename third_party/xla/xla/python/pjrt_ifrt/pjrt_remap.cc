@@ -134,7 +134,8 @@ PjRtCompatibleClientRemapArrays(
                         PjRtArray::Create(client, plan.output_specs[i].dtype,
                                           plan.output_specs[i].shape,
                                           plan.output_specs[i].sharding,
-                                          std::move(out_buffers_list[i])));
+                                          std::move(out_buffers_list[i]),
+                                          plan.output_specs[i].layout));
     output_arrays.push_back(std::move(output_array));
   }
   return output_arrays;
