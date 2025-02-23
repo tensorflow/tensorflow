@@ -28,6 +28,7 @@ namespace mlir::triton::xla {
 #define GEN_PASS_DECL
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
+std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass();
 std::unique_ptr<mlir::Pass> CreateGeneralizeKernelSignaturePass();
 std::unique_ptr<mlir::Pass> CreateSparseAddEncodingPass(
     int32_t num_warps = 4, int32_t threads_per_warp = 32, int32_t num_ctas = 1);
