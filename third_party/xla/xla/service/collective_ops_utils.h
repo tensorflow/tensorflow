@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/source_target_pairs.h"
 #include "xla/stream_executor/device_memory.h"
 
 namespace xla {

@@ -18,7 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
-#include "xla/service/source_target_pairs.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 
 namespace xla {
 namespace collective_permute_cycle {
@@ -127,7 +127,7 @@ TEST_F(CollectivePermuteUtilsTest, GetCycleType) {
   EXPECT_EQ(GetCycleType(fwd4_.cycle), CycleType::kForward);
   EXPECT_EQ(GetCycleType(bwd4_.cycle), CycleType::kBackward);
 
-  EXPECT_EQ(GetCycleType(SourceTargetPairs({{}})), CycleType::kNone);
+  EXPECT_EQ(GetCycleType(SourceTargetPairs()), CycleType::kNone);
   EXPECT_EQ(GetCycleType(SourceTargetPairs({{0, 0}})), CycleType::kNone);
   EXPECT_EQ(GetCycleType(SourceTargetPairs({{0, 1}})), CycleType::kNone);
   EXPECT_EQ(GetCycleType(SourceTargetPairs({{1, 0}})), CycleType::kNone);

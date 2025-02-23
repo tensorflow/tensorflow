@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -713,7 +714,7 @@ HloInstructionProto HloChannelInstruction::ToProto() const {
 
 void HloChannelInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& /*options*/) const {
-  if (!channel_id_) return;
+  if (!channel_id_.has_value()) return;
   printer.Next([this](Printer* printer) {
     AppendCat(printer, "channel_id=", *channel_id_);
   });
@@ -1255,27 +1256,27 @@ HloCollectiveBroadcastInstruction::CloneWithNewOperandsImpl(
       channel_id());
 }
 
+// multiple operands
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    SourceTargetPairs source_target_pairs,
     const std::optional<int64_t>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
-      source_target_pairs_(source_target_pairs) {
+      source_target_pairs_(std::move(source_target_pairs)) {
   AppendOperands(operands);
   inplace_ = false;
 }
 
+// single operand
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
     HloOpcode opcode, const Shape& shape, HloInstruction* input,
     HloInstruction* output, HloInstruction* input_start_indices,
-    HloInstruction* output_start_indices,
-    absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+    HloInstruction* output_start_indices, SourceTargetPairs source_target_pairs,
     absl::Span<const std::vector<int64_t>> slice_sizes,
     const std::optional<int64_t>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
-      source_target_pairs_(source_target_pairs.begin(),
-                           source_target_pairs.end()),
+      source_target_pairs_(std::move(source_target_pairs)),
       slice_sizes_(slice_sizes.begin(), slice_sizes.end()) {
   AppendOperand(input);
   AppendOperand(output);
@@ -1286,13 +1287,13 @@ HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
 
 HloInstructionProto HloCollectivePermuteInstruction::ToProto() const {
   HloInstructionProto proto = HloChannelInstruction::ToProto();
-  for (const auto& pair : source_target_pairs()) {
+  for (const SourceTargetPair& pair : source_target_pairs().data()) {
     auto* proto_pair = proto.add_source_target_pairs();
-    proto_pair->set_source(pair.first);
-    proto_pair->set_target(pair.second);
+    proto_pair->set_source(pair.source);
+    proto_pair->set_target(pair.target);
   }
-  for (const auto& slice_size : dynamic_slice_sizes_list()) {
-    for (const auto& dimension_slice_size : slice_size) {
+  for (const std::vector<int64_t>& slice_size : dynamic_slice_sizes_list()) {
+    for (const int64_t& dimension_slice_size : slice_size) {
       proto.add_dynamic_slice_sizes(dimension_slice_size);
     }
   }
@@ -1303,13 +1304,8 @@ void HloCollectivePermuteInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
   HloChannelInstruction::PrintExtraAttributesImpl(printer, options);
   printer.Next([this](Printer* printer) {
-    printer->Append("source_target_pairs={");
-    AppendJoin(printer, source_target_pairs(), ",",
-               [](Printer* printer, const std::pair<int64_t, int64_t>& pair) {
-                 AppendCat(printer, "{", pair.first, ",", pair.second);
-                 printer->Append("}");
-               });
-    printer->Append("}");
+    printer->Append("source_target_pairs=");
+    printer->Append(source_target_pairs().ToString());
   });
   if (!dynamic_slice_sizes_list().empty()) {
     printer.Next([this](Printer* printer) {
@@ -1336,10 +1332,7 @@ bool HloCollectivePermuteInstruction::IdenticalSlowPathIgnoringChannelIdValues(
       static_cast<const HloCollectivePermuteInstruction&>(other);
   return HloChannelInstruction::IdenticalSlowPathIgnoringChannelIdValues(
              other, eq_computations) &&
-         absl::c_equal(
-             source_target_pairs(), casted_other.source_target_pairs(),
-             [](const std::pair<int64_t, int64_t>& a,
-                const std::pair<int64_t, int64_t>& b) { return a == b; }) &&
+         source_target_pairs() == casted_other.source_target_pairs() &&
          absl::c_equal(
              dynamic_slice_sizes_list(),
              casted_other.dynamic_slice_sizes_list(),
@@ -1358,6 +1351,7 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
         absl::Span<HloInstruction* const>(new_operands.subspan(0, 1)),
         source_target_pairs(), channel_id());
   } else {
+    // TODO(anatoliyy): why are here only 4 operands?
     return std::make_unique<HloCollectivePermuteInstruction>(
         opcode(), shape, new_operands[0], new_operands[1], new_operands[2],
         new_operands[3], source_target_pairs(), dynamic_slice_sizes_list(),

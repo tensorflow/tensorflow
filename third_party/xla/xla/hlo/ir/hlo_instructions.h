@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_INSTRUCTIONS_H_
 #define XLA_HLO_IR_HLO_INSTRUCTIONS_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -40,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_pool.h"
@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/status.h"
 #include "xla/xla_data.pb.h"
@@ -955,21 +954,23 @@ class HloCollectiveBroadcastInstruction : public HloCollectiveInstruction {
 
 class HloCollectivePermuteInstruction : public HloChannelInstruction {
  public:
+  // Multiple operands
   explicit HloCollectivePermuteInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      SourceTargetPairs source_target_pairs,
       const std::optional<int64_t>& channel_id);
 
+  // Single operand
   explicit HloCollectivePermuteInstruction(
       HloOpcode opcode, const Shape& shape, HloInstruction* input,
       HloInstruction* output, HloInstruction* input_start_indices,
       HloInstruction* output_start_indices,
-      absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+      SourceTargetPairs source_target_pairs,
       absl::Span<const std::vector<int64_t>> slice_sizes,
       const std::optional<int64_t>& channel_id);
 
-  const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs() const {
+  const SourceTargetPairs& source_target_pairs() const {
     return source_target_pairs_;
   }
 
@@ -1000,7 +1001,7 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs_;
+  const SourceTargetPairs source_target_pairs_;
   const std::vector<std::vector<int64_t>> slice_sizes_;
   bool inplace_;
 };

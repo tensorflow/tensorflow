@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -127,27 +128,28 @@ std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
 }
 
 bool SelectPredicateEval(const FoldableSelect& select_match,
-                         const SourceTargetPairType& pair) {
-  int64_t src_id = pair.first;
+                         const SourceTargetPair& pair) {
+  uint32_t src_id = pair.source;
   return select_match.cmp_direction == Comparison::Direction::kEq
              ? src_id == select_match.constant_id
              : src_id != select_match.constant_id;
 };
 
 std::optional<bool> StaticallyEvaluatePredicateForAllSourceIDs(
-    const FoldableSelect& select_match, const SourceTargetPairsType& pairs) {
+    const FoldableSelect& select_match, const SourceTargetPairs& pairs) {
   // If there are no pairs, the predicate is undefined.
-  if (pairs.empty()) return std::nullopt;
+  if (pairs.data().empty()) return std::nullopt;
 
   // Evaluate the select predicate for the first source target pair.
   CHECK(select_match.cmp_direction == Comparison::Direction::kEq ||
         select_match.cmp_direction == Comparison::Direction::kNe);
-  bool result_candidate = SelectPredicateEval(select_match, pairs.front());
+  bool result_candidate =
+      SelectPredicateEval(select_match, pairs.data().front());
 
   // Check that the result is the same for all source target pairs. If not,
   // we have a contradiction and cannot statically evaluate the predicate. We
   // return std::nullopt in this case.
-  if (!absl::c_all_of(pairs, [&](const SourceTargetPairType& it) -> bool {
+  if (!absl::c_all_of(pairs.data(), [&](const SourceTargetPair& it) -> bool {
         return result_candidate == SelectPredicateEval(select_match, it);
       })) {
     return std::nullopt;
