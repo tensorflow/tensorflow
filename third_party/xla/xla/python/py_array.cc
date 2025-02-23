@@ -200,8 +200,7 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
     }
   }
   ifrt::Client* client = ifrt_arrays.front()->client();
-  tsl::RCReference<ifrt::DeviceList> device_list =
-      client->MakeDeviceList(devices);
+  ifrt::DeviceListRef device_list = client->MakeDeviceList(devices);
   if (device_set.size() != device_list->size()) {
     throw nb::value_error(
         absl::StrFormat(
@@ -446,9 +445,9 @@ nb::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
 // Defined outside of the function as required by templatized function
 // `AbslHashValue`.
 struct BatchedCopyToDeviceWithShardingKey {
-  tsl::RCReference<ifrt::DeviceList> src_devices;
+  ifrt::DeviceListRef src_devices;
   ifrt::MemoryKind src_memory_kind;
-  tsl::RCReference<ifrt::DeviceList> dst_devices;
+  ifrt::DeviceListRef dst_devices;
   ifrt::MemoryKind dst_memory_kind;
   ifrt::ArrayCopySemantics array_copy_semantics;
 
@@ -1135,7 +1134,7 @@ PyArray::Storage::~PyArray_Storage() {
 
 absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
     absl::Span<const PyArray> py_arrays,
-    absl::Span<const tsl::RCReference<ifrt::DeviceList>> dst_device_lists,
+    absl::Span<const ifrt::DeviceListRef> dst_device_lists,
     absl::Span<const nb::object> dst_shardings,
     absl::Span<const ifrt::ArrayCopySemantics> array_copy_semantics) {
   if (py_arrays.empty()) {
@@ -1162,9 +1161,9 @@ absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
     const auto& array_cs = array_copy_semantics[i];
 
     auto* ifrt_array_ptr = py_array.ifrt_array();
-    const tsl::RCReference<ifrt::DeviceList>& src_devices =
+    const ifrt::DeviceListRef& src_devices =
         ifrt_array_ptr->sharding().devices();
-    const tsl::RCReference<ifrt::DeviceList>& dst_devices = dst_device_lists[i];
+    const ifrt::DeviceListRef& dst_devices = dst_device_lists[i];
 
     ifrt::MemoryKind src_memory_kind =
         ifrt::CanonicalizeMemoryKind(ifrt_array_ptr->sharding().memory_kind(),
@@ -2042,7 +2041,7 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
           return std::vector<PyArray>();
         }
         auto* client = arrays[0].ifrt_array()->client();
-        std::vector<tsl::RCReference<ifrt::DeviceList>> device_lists;
+        std::vector<ifrt::DeviceListRef> device_lists;
         device_lists.reserve(dst_device_lists.size());
         for (const auto& dst_devices : dst_device_lists) {
           absl::InlinedVector<ifrt::Device*, 1> devices;

@@ -136,8 +136,8 @@ absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
 
 // Returns the device assignment from the given IFRT devices list.
 absl::StatusOr<xla::DeviceAssignment> GetRuntimeXlaDeviceAssignment(
-    const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
-    int num_replicas, int num_cores_per_replica) {
+    const xla::ifrt::DeviceListRef& device_list, int num_replicas,
+    int num_cores_per_replica) {
   const int num_devices = num_replicas * num_cores_per_replica;
   const absl::Span<xla::ifrt::Device* const> devices = device_list->devices();
   if (devices.size() != num_devices) {
@@ -261,7 +261,7 @@ IfrtServingExecutable::Create(
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
 IfrtServingExecutable::ConvertTensorToArray(
     const tensorflow::Tensor& tensor,
-    const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
+    const xla::ifrt::DeviceListRef& device_list,
     const xla::OpSharding& sharding) {
   xla::ifrt::Shape input_shape = ToIfrtShape(tensor.shape());
   VLOG(2) << "Converting tensor of shape " << input_shape;
@@ -641,7 +641,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
   // `device_reservation` should be alive before the end of the execution.
   tsl::DeviceReservation device_reservation(kNoCoreSelectedIndex, nullptr);
-  tsl::RCReference<xla::ifrt::DeviceList> device_list;
+  xla::ifrt::DeviceListRef device_list;
   if (UsePortableExecution(compile_metadata)) {
     device_reservation =
         ifrt_serving_core_selector_->ReserveDevice(program_id_);
@@ -732,7 +732,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
   VLOG(2) << "Start Execution";
 
-  std::optional<tsl::RCReference<xla::ifrt::DeviceList>> execution_device_list;
+  std::optional<xla::ifrt::DeviceListRef> execution_device_list;
   if (UsePortableExecution(compile_metadata)) {
     execution_device_list = device_list;
   }
@@ -785,7 +785,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
     absl::Span<const tensorflow::Tensor> inputs,
     absl::Span<const int> variable_arg_indices,
     const CachedExecutableBundle& executable_bundle,
-    const tsl::RCReference<xla::ifrt::DeviceList>& devices) {
+    const xla::ifrt::DeviceListRef& devices) {
   for (const int i : variable_arg_indices) {
     if (inputs[i].dtype() != tensorflow::DT_STRING ||
         !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
