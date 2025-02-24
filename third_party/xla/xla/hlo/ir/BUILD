@@ -177,6 +177,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
         "//xla/service:hlo_module_config",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",

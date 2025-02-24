@@ -123,14 +123,9 @@ struct CanonicalDebugOptions {
             opts.xla_gpu_dump_hlo_unoptimized_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
-        dump_module_metadata(opts.xla_dump_module_metadata()),
         dump_compress_protos(opts.xla_dump_compress_protos()),
-        dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
         dump_fdo_profiles(opts.xla_gpu_experimental_dump_fdo_profiles()),
-        dump_as_long_text(opts.xla_dump_hlo_as_long_text()),
-        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()),
-        dump_large_constants(opts.xla_dump_large_constants()),
-        syntax_sugar_async_ops(opts.xla_syntax_sugar_async_ops()) {
+        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -252,14 +247,9 @@ struct CanonicalDebugOptions {
   bool dump_unoptimized_snapshots;
   bool dump_include_timestamp;
   int64_t dump_max_hlo_modules;
-  bool dump_module_metadata;
   bool dump_compress_protos;
-  bool dump_hlo_metadata;
   bool dump_fdo_profiles;
-  bool dump_as_long_text;
   bool dump_mlir_pretty_form;
-  bool dump_large_constants;
-  bool syntax_sugar_async_ops;
 };
 
 // Helper class to hold a list of functions that produces data to be written to
@@ -467,18 +457,8 @@ static std::vector<std::string> DumpHloModuleImpl(
   std::vector<std::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
-    auto print_options = opts.dump_as_long_text
-                             ? HloPrintOptions::Default()
-                             : HloPrintOptions::ShortParsable();
-    print_options.set_print_large_constants(opts.dump_large_constants);
-    print_options.set_print_control_dependencies(true);
-    print_options.set_print_operand_index_annotation_interval(5);
-    print_options.set_print_backend_config(true);
-    print_options.set_print_metadata(opts.dump_hlo_metadata);
-    print_options.set_print_name_after_closing_brace(true);
-    print_options.set_syntax_sugar_async_ops(opts.syntax_sugar_async_ops);
-    file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-        StrCat(filename, ".txt"), module.ToString(print_options), opts));
+    file_paths.push_back(DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"),
+                                                     module.ToString(), opts));
     if (buffer_assn) {
       DataProducer buffer_assignment;
       buffer_assignment.Append([&] { return buffer_assn->ToString(); });
@@ -986,7 +966,7 @@ void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {
   absl::flat_hash_set<int64_t> dumped_module_ids;
   for (const HloModule* module : modules) {
     CanonicalDebugOptions opts(module->config().debug_options());
-    if (!opts.dump_module_metadata) {
+    if (!module->config().debug_options().xla_dump_module_metadata()) {
       continue;
     }
     DumpHloModuleMetadata(module->metadata().proto(), opts, &dumped_module_ids);

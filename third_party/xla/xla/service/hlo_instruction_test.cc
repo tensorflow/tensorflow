@@ -2023,6 +2023,9 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }
 
 )";
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_syntax_sugar_async_ops(true);
   EXPECT_EQ(module->ToString(), expected_with_syntax_sugar);
   const std::string expected_without_syntax_sugar =
       R"(HloModule StringifyAsyncOps, entry_computation_layout={(f32[10]{0})->f32[20]{0}}
@@ -2109,6 +2112,9 @@ ENTRY %Entry (pentry: f32[20]) -> f32[10] {
 }
 
 )";
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_syntax_sugar_async_ops(true);
   EXPECT_EQ(module->ToString(), expected_with_syntax_sugar);
 
   const std::string expected_without_syntax_sugar =
