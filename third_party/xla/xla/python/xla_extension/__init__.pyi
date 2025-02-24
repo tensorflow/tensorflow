@@ -375,6 +375,7 @@ class ExecutableBuildOptions:
   auto_spmd_partitioning_mesh_shape: List[int]
   auto_spmd_partitioning_mesh_ids: List[int]
   use_shardy_partitioner: bool
+  def compilation_environments_from_serialized_proto(self, serialized_proto: bytes) -> None: ...
 
 class PrecisionConfig_Precision(enum.IntEnum):
   DEFAULT: int
