@@ -112,6 +112,13 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
                                    DeviceMemoryBase source,
                                    uint64_t size) override;
 
+  absl::Status PopulateDnnGraphNode(
+      dnn::DnnGraph&, Stream&, absl::Span<DeviceMemoryBase> operands) override;
+
+  absl::Status UpdateDnnGraphNode(dnn::DnnGraph&, Stream&,
+                                  absl::Span<DeviceMemoryBase> operands,
+                                  GraphNodeHandle) override;
+
   absl::StatusOr<GraphNodeHandle> CreateChildNode(
       const Dependencies& dependencies, const CommandBuffer& nested) override;
 

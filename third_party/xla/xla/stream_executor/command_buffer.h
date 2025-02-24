@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/lib/gtl/int_type.h"
@@ -172,9 +173,9 @@ class CommandBuffer {
   // Command buffer API
   //===--------------------------------------------------------------------===//
 
-  // Adds an execution barrier to a given execution scope: all commands added
-  // before a barrier in a the execution scope will complete before any of the
-  // commands added after a barrier in the same execution scope.
+  // Adds an execution barrier to a given execution scope: all commands
+  // added before a barrier in a the execution scope will complete before
+  // any of the commands added after a barrier in the same execution scope.
   virtual absl::Status Barrier(ExecutionScopeId execution_scope_id) = 0;
 
   // Adds an execution barrier that synchronizes commands across multiple
@@ -249,6 +250,10 @@ class CommandBuffer {
                       size_t num_elements) {
     return Memset(kDefaultExecutionScope, dst, bit_pattern, num_elements);
   }
+
+  // Adds a DNN graph launch command.
+  virtual absl::Status DnnGraph(ExecutionScopeId, dnn::DnnGraph&, Stream&,
+                                absl::Span<DeviceMemoryBase> operands) = 0;
 
   //--------------------------------------------------------------------------//
   // Command buffer condtitional commands API
