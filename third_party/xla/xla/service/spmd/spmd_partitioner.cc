@@ -2806,11 +2806,22 @@ absl::Status SpmdPartitioningVisitor::HandleElementwiseWithDimsToReplicate(
     return DefaultAction(hlo);
   }
 
-  // 1. Replicate the final sharding along `dims_to_replicate` to get
-  // temp_sharding.
-  const HloSharding temp_sharding =
-      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-          sharding, dims_to_replicate);
+  // 1. Obtain the temp_sharding by moving or replicating the sharding tiles.
+  HloSharding temp_sharding = sharding;
+  std::function<bool(int64_t)> not_in_dims_to_replicate = [&](int64_t dim) {
+    return !absl::c_linear_search(dims_to_replicate, dim);
+  };
+  for (int64_t dim : dims_to_replicate) {
+    if (std::optional<int64_t> target_dim =
+            hlo_sharding_util::GetFirstTargetDimToMoveShardingTiles(
+                hlo->shape(), temp_sharding, dim, not_in_dims_to_replicate)) {
+      temp_sharding = hlo_sharding_util::MoveAndMergeShardingTiles(
+          temp_sharding, dim, *target_dim);
+    } else {
+      temp_sharding = hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+          temp_sharding, {dim});
+    }
+  }
 
   // 2. Reshard the operands to temp_sharding.
   std::vector<HloInstruction*> new_operands;
