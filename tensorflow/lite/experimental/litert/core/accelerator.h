@@ -86,6 +86,7 @@ LiteRtStatus LiteRtSetAcceleratorCompilationOptionsIdentifier(
 LiteRtStatus LiteRtSetAcceleratorCompilationOptionsVersion(
     LiteRtAcceleratorCompilationOptionsHeader* options,
     LiteRtApiVersion version);
+
 struct LiteRtAcceleratorT {
   // Points to the type-erased accelerator state.
   void* data;
