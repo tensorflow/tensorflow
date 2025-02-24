@@ -16,6 +16,10 @@ limitations under the License.
 #include "xla/tests/codegen_test_base.h"
 
 #include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/status/statusor.h"
 
 namespace xla {
 
