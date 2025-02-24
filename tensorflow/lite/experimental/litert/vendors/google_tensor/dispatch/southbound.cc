@@ -135,6 +135,11 @@ Expected<void> Southbound::LoadSymbols(
   Load(api_->thr_invocation_context_attach_scratch_pad_buffer,
        thrInvocationContextAttachScratchPadBuffer);
 
+  Load(api_->thr_invocation_context_start_metrics_collection,
+       thrInvocationContextStartMetricsCollection);
+  Load(api_->thr_invocation_context_stop_metrics_collection,
+       thrInvocationContextStopMetricsCollection);
+
   Load(api_->thr_vendor_set_system_attribute_str,
        thrVendorSetSystemAttributeStr);
   Load(api_->thr_vendor_set_system_attribute_int64,
