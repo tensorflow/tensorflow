@@ -56,7 +56,8 @@ TfLiteOperator* CreateDelegateKernelRegistration(
             params->delegate_data);
         std::unique_ptr<SimpleOpaqueDelegateKernelInterface> delegate_kernel(
             delegate_data->CreateDelegateKernelInterface());
-        if (delegate_kernel->Init(context, params) != kTfLiteOk) {
+        if (delegate_kernel &&
+            delegate_kernel->Init(context, params) != kTfLiteOk) {
           return nullptr;
         }
         return delegate_kernel.release();

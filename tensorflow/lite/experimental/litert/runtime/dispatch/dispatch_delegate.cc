@@ -101,8 +101,8 @@ DispatchDelegate::CreateDelegateKernelInterface() {
   if (kernel) {
     return std::move(*kernel);
   } else {
-    LITERT_LOG(LITERT_ERROR, "Failed to create a dispatch delegate kernel: %s",
-               kernel.Error().Message().c_str());
+    LITERT_FATAL("Failed to create a dispatch delegate kernel: %s",
+                 kernel.Error().Message().c_str());
     return nullptr;
   }
 }
