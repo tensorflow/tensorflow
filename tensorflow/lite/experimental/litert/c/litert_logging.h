@@ -84,4 +84,12 @@ LiteRtStatus LiteRtDefaultLoggerLog(LiteRtLogSeverity severity,
 #define LITERT_LOG(severity, format, ...) \
   LITERT_LOGGER_LOG(LiteRtGetDefaultLogger(), severity, format, ##__VA_ARGS__);
 
+#define LITERT_ABORT abort()
+
+#define LITERT_FATAL(format, ...)                              \
+  do {                                                         \
+    LITERT_LOG(kLiteRtLogSeverityError, format, ##__VA_ARGS__) \
+    LITERT_ABORT;                                              \
+  } while (0)
+
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_LOGGING_H_
