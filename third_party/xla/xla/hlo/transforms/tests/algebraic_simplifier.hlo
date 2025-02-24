@@ -6,9 +6,9 @@
 // CHECK-LABEL: ENTRY %test
 // CHECK-NEXT:  %[[p0:[^ ]+]] = s32[8]{0} parameter(0)
 // CHECK-NEXT:  %[[p1:[^ ]+]] = s32[8]{0} parameter(1)
-// CHECK-NEXT:  %[[add:[^ ]+]] = s32[8]{0} add(s32[8]{0} %[[p0]], s32[8]{0} %[[p1]])
+// CHECK-NEXT:  %[[add:[^ ]+]] = s32[8]{0} add(%[[p0]], %[[p1]])
 // CHECK-NEXT:  %[[p2:[^ ]+]] = s32[8]{0} parameter(2)
-// CHECK-NEXT:  ROOT %[[multiply:[^ ]+]] = s32[8]{0} multiply(s32[8]{0} %[[add]], s32[8]{0} %[[p2]])
+// CHECK-NEXT:  ROOT %[[multiply:[^ ]+]] = s32[8]{0} multiply(%[[add]], %[[p2]])
 
 HloModule m
 ENTRY test {
