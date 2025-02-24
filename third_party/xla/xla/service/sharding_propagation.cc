@@ -1065,33 +1065,6 @@ bool IsCSEPreventionSharding(const HloSharding& sharding) {
          "_sharding_propagation_cse_prevention";
 }
 
-bool ShouldApplyShardingConstraint(
-    const HloInstruction* sharding_constraint,
-    absl::flat_hash_set<const HloInstruction*>&
-        instructions_constrained_by_different_shardings) {
-  const HloInstruction* operand = sharding_constraint->operand(0);
-  if (operand->has_sharding()) {
-    return false;
-  }
-
-  if (instructions_constrained_by_different_shardings.contains(operand)) {
-    // The operand is used by multiple sharding constraints with different
-    // shardings.
-    return false;
-  }
-
-  for (const HloInstruction* other_user : operand->users()) {
-    if (other_user != sharding_constraint &&
-        other_user->IsCustomCall("Sharding") &&
-        other_user->sharding() != sharding_constraint->sharding()) {
-      instructions_constrained_by_different_shardings.insert(operand);
-      return false;
-    }
-  }
-
-  return true;
-}
-
 }  // namespace
 
 bool InferDotShardingFromOperands(
@@ -1486,8 +1459,6 @@ absl::StatusOr<bool> ProcessShardingInstruction(
 
   for (HloComputation* computation : module->computations(execution_threads)) {
     auto instructions = computation->MakeInstructionPostOrder();
-    absl::flat_hash_set<const HloInstruction*>
-        instructions_constrained_by_different_shardings;
     for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
       HloInstruction* instruction = *it;
       if (instruction->IsCustomCall("Sharding")) {
@@ -1527,9 +1498,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
         if (!unspec_dims.empty()) {
           absl::c_sort(unspec_dims);
           unspecified_dims->emplace(instruction, std::move(unspec_dims));
-        } else if (ShouldApplyShardingConstraint(
-                       instruction,
-                       instructions_constrained_by_different_shardings)) {
+        } else if (!instruction->operand(0)->has_sharding()) {
           instruction->mutable_operand(0)->set_sharding(
               instruction->sharding());
         }
