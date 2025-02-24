@@ -229,6 +229,28 @@ class AsyncMemcpyCollectiveOps
                                    std::get<1>(GetParam())) {}
 };
 
+std::string GetAsyncTestName(bool is_async) {
+  return is_async ? "async" : "sync";
+}
+
+std::string GetMemcpyTestName(bool is_memcpy) {
+  return is_memcpy ? "memcpy" : "nccl";
+}
+
+std::string GetAsyncTestSuiteName(const ::testing::TestParamInfo<bool>& info) {
+  return GetAsyncTestName(info.param);
+}
+
+std::string GetMemcpyTestSuiteName(const ::testing::TestParamInfo<bool>& info) {
+  return GetMemcpyTestName(info.param);
+}
+
+std::string GetAsyncMemcpyTestSuiteName(
+    const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
+  return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",
+                      GetMemcpyTestName(std::get<1>(info.param)));
+}
+
 XLA_TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
   const absl::string_view kModuleStr = R"(
       HloModule test
@@ -848,14 +870,15 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
 }
 
 INSTANTIATE_TEST_SUITE_P(AsyncCollectiveOps, AsyncCollectiveOps,
-                         ::testing::Bool());
+                         ::testing::Bool(), GetAsyncTestSuiteName);
 
 INSTANTIATE_TEST_SUITE_P(MemcpyCollectiveOps, MemcpyCollectiveOps,
-                         ::testing::Bool());
+                         ::testing::Bool(), GetMemcpyTestSuiteName);
 
 INSTANTIATE_TEST_SUITE_P(AsyncMemcpyCollectiveOps, AsyncMemcpyCollectiveOps,
                          ::testing::Combine(::testing::Bool(),
-                                            ::testing::Bool()));
+                                            ::testing::Bool()),
+                         GetAsyncMemcpyTestSuiteName);
 
 // Tests for HLO level transforms.
 TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
@@ -2280,7 +2303,8 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
 
 INSTANTIATE_TEST_SUITE_P(RaggedAllToAllTest, RaggedAllToAllTest,
                          ::testing::Combine(::testing::Bool(),
-                                            ::testing::Bool()));
+                                            ::testing::Bool()),
+                         GetAsyncMemcpyTestSuiteName);
 
 TEST_F(CollectiveOpsTestE2E, MemcpyP2pWhileLoopCorrectness) {
   absl::string_view hlo_string = R"(
