@@ -69,6 +69,7 @@ ifrt_proxy_cc_test(
     name = "executable_impl_test_tfrt_cpu",
     timeout = "moderate",
     srcs = ["executable_impl_test_tfrt_cpu.cc"],
+    shuffle_tests = False,
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
         "//xla/python/ifrt:test_util",

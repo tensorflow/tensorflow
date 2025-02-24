@@ -17,10 +17,15 @@ def onednn_graph_cc_library(srcs = [], hdrs = [], deps = [], **kwargs):
         **kwargs
     )
 
-def onednn_graph_cc_test(srcs = [], deps = [], **kwargs):
+def onednn_graph_cc_test(
+        srcs = [],
+        deps = [],
+        shuffle_tests = False,
+        **kwargs):
     """xla_cc_test rule that has empty src and deps if not building with Graph API."""
     xla_cc_test(
         srcs = if_graph_api(srcs),
         deps = if_graph_api(deps) + ["@com_google_googletest//:gtest_main"],
+        shuffle_tests = shuffle_tests,
         **kwargs
     )

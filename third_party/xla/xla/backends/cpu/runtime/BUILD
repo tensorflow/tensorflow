@@ -150,6 +150,7 @@ cc_library(
 xla_cc_test(
     name = "object_pool_test",
     srcs = ["object_pool_test.cc"],
+    shuffle_tests = False,
     deps = [
         ":object_pool",
         "//xla/tsl/platform:env",

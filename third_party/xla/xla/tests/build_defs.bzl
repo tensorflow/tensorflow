@@ -192,6 +192,7 @@ def xla_test(
         backend_args = {},
         backend_kwargs = {},
         linkstatic = False,
+        shuffle_tests = False,
         **kwargs):
     """Generates cc_test targets for the given XLA backends.
 
@@ -262,6 +263,7 @@ def xla_test(
         arguments to pass to native.cc_test. Only use for kwargs that don't have a
         dedicated argument, like setting per-backend flaky or timeout attributes.
       linkstatic: Whether to link the test statically.
+      shuffle_tests: Whether to shuffle the test cases.
       **kwargs: Additional keyword arguments to pass to native.cc_test.
     """
 
@@ -342,6 +344,7 @@ def xla_test(
             deps = deps + backend_deps,
             data = data + this_backend_data,
             linkstatic = linkstatic,
+            shuffle_tests = shuffle_tests,
             **this_backend_kwargs
         )
 
