@@ -58,7 +58,7 @@ func.func @constant_splat_broadcast() -> tensor<1x?xf32, #mhlo.type_extensions<b
 // -----
 
 func.func @constant_with_dynamic_shape() -> tensor<1x?xf32, #mhlo.type_extensions<bounds = [?, 5]>> {
-  // expected-error@+2 {{elements literal type must have static shape}}
+  // expected-error@below {{elements literal type must have static shape}}
   %c = mhlo.constant dense<1> : tensor<1x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>
   return %c : tensor<1x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>
 }
