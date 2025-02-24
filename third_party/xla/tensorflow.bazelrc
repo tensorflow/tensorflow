@@ -2,20 +2,6 @@
 # This file tries to group and simplify build options for TensorFlow
 #
 # ----CONFIG OPTIONS----
-# Android options:
-#    android:
-#    android_arm:
-#    android_arm64:
-#    android_x86:
-#    android_x86_64:
-#
-# iOS options:
-#     ios:
-#     ios_armv7:
-#     ios_arm64:
-#     ios_x86_64:
-#     ios_fat:
-#
 # Macosx options
 #     darwin_arm64:
 #
@@ -105,9 +91,6 @@ build --features=-force_no_whole_archive
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --enable_platform_specific_config
 
-# Enable XLA support by default.
-build --define=with_xla_support=true
-
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --config=short_logs
 
@@ -133,30 +116,6 @@ test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 
 # Default options should come above this line.
 
-# Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
-# target CPU to build transient dependencies correctly. See
-# https://docs.bazel.build/versions/master/user-manual.html#flag--fat_apk_cpu
-build:android --crosstool_top=//external:android/crosstool
-build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
-build:android_arm --config=android
-build:android_arm --cpu=armeabi-v7a
-build:android_arm --fat_apk_cpu=armeabi-v7a
-build:android_arm64 --config=android
-build:android_arm64 --cpu=arm64-v8a
-build:android_arm64 --fat_apk_cpu=arm64-v8a
-build:android_x86 --config=android
-build:android_x86 --cpu=x86
-build:android_x86 --fat_apk_cpu=x86
-build:android_x86_64 --config=android
-build:android_x86_64 --cpu=x86_64
-build:android_x86_64 --fat_apk_cpu=x86_64
-
-# Build everything statically for Android since all static libs are later
-# bundled together into a single .so for deployment.
-build:android --dynamic_mode=off
-# TODO(belitskiy): Remove once on Clang 20.
-build:android --define=xnn_enable_avxvnniint8=false
-
 # Sets the default Apple platform to macOS.
 build:macos --apple_platform_type=macos
 
@@ -169,23 +128,6 @@ build:macos --features=archive_param_file
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64
 build:macos_arm64 --macos_minimum_os=11.0
-
-# iOS configs for each architecture and the fat binary builds.
-build:ios --apple_platform_type=ios
-build:ios --apple_bitcode=embedded --copt=-fembed-bitcode
-build:ios --copt=-Wno-c++11-narrowing
-build:ios_armv7 --config=ios
-build:ios_armv7 --cpu=ios_armv7
-build:ios_arm64 --config=ios
-build:ios_arm64 --cpu=ios_arm64
-build:ios_arm64e --config=ios
-build:ios_arm64e --cpu=ios_arm64e
-build:ios_sim_arm64 --config=ios
-build:ios_sim_arm64 --cpu=ios_sim_arm64
-build:ios_x86_64 --config=ios
-build:ios_x86_64 --cpu=ios_x86_64
-build:ios_fat --config=ios
-build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 
 # Config to use a mostly-static build and disable modular op registration
 # support (this will revert to loading TensorFlow with RTLD_GLOBAL in Python).
@@ -325,12 +267,6 @@ build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 
 # Don't trigger --config=<host platform> when cross-compiling.
-build:android --noenable_platform_specific_config
-build:ios --noenable_platform_specific_config
-
-# Suppress all C++ compiler warnings, otherwise build logs become 10s of MBs.
-build:android --copt=-w
-build:ios --copt=-w
 build:linux --host_copt=-w
 build:macos --copt=-w
 build:windows --copt=/W0
@@ -404,10 +340,6 @@ build:macos --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
 # By default, build TF in C++ 17 mode.
-build:android --cxxopt=-std=c++17
-build:android --host_cxxopt=-std=c++17
-build:ios --cxxopt=-std=c++17
-build:ios --host_cxxopt=-std=c++17
 build:linux --cxxopt=-std=c++17
 build:linux --host_cxxopt=-std=c++17
 build:macos --cxxopt=-std=c++17
@@ -484,11 +416,6 @@ build:v2 --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
 # Enable all targets in XLA
 build:cpu_cross --define=with_cross_compiler_support=true
 
-# Disable XLA on mobile.
-build:xla     --define=with_xla_support=true # TODO: remove, it's on by default.
-build:android --define=with_xla_support=false
-build:ios     --define=with_xla_support=false
-
 # BEGIN TF REMOTE BUILD EXECUTION OPTIONS
 # Options when using remote execution
 # WARNING: THESE OPTIONS WONT WORK IF YOU DO NOT HAVE PROPER AUTHENTICATION AND PERMISSIONS
@@ -548,17 +475,6 @@ build:rbe_linux_cpu --copt=-Wno-gnu-offsetof-extensions
 build:rbe_linux_cpu --python_path="/usr/bin/python3"
 # These you may need to change for your own GCP project.
 common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instances/default_instance
-
-# TODO(kanglan): Remove it after toolchain update is complete.
-build:rbe_linux_cpu_old --config=rbe_linux
-build:rbe_linux_cpu_old --host_crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu_old --crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu_old --extra_toolchains="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cpu_old --extra_execution_platforms="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cpu_old --host_platform="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cpu_old --platforms="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cpu_old --python_path="/usr/local/bin/python3.9"
-common:rbe_linux_cpu_old --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 
 build:rbe_linux_cuda --config=cuda_clang_official
 build:rbe_linux_cuda --config=rbe_linux_cpu
@@ -705,7 +621,6 @@ build:release_cpu_windows --config=avx_win
 build:release_cpu_windows --define=no_tensorflow_py_deps=true
 
 # Exclude TFRT integration for anything but Linux.
-build:android --config=no_tfrt
 build:macos   --config=no_tfrt
 build:windows --config=no_tfrt
 build:rocm --config=no_tfrt
