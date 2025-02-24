@@ -70,7 +70,7 @@ jobs:
       # TODO(juliagmt): Add more performance-criticalHLOs to benchmark.
       - name: Run xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo
         run: |
-          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=gpu --log_output=True --use_spmd_partitioning --xla_gpu_dump_xspace_to=xla/results/xspace.pb xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo
+          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=gpu --log_output=True --use_spmd_partitioning --xla_gpu_dump_xspace_to=results/xspace.pb xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo
 
       - name: Compute the cost of gpu_hlo_pass.hlo
         run: |
@@ -79,7 +79,7 @@ jobs:
 
       - name: Set XSPACE_PATH
         env:
-          XSPACE_PATH: $(pwd)/xla/results/xspace.pb
+          XSPACE_PATH: ${{ github.workspace }}/results/xspace.pb
         run: |
           echo "XSPACE_PATH is: $XSPACE_PATH"
 
@@ -98,4 +98,4 @@ jobs:
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: gpu-xla-benchmarks-xspace
-          path: xla/results/xspace.pb
+          path: results/xspace.pb
