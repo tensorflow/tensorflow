@@ -1007,5 +1007,39 @@ ENTRY main {
             comp2->root_instruction()->operand(0)->name());
 }
 
+TEST_F(HloComputationTest, ToStringWhileCreatingReplacements) {
+  const char* hlo = R"(
+  ENTRY main {
+    p0 = f32[8,8] parameter(0)
+    p1 = f32[8,8] parameter(1)
+    add = f32[8,8] add(p0, p1)
+    ROOT t = (f32[8,8], f32[8,8]) tuple(add, add)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  HloComputation* entry = m->entry_computation();
+
+  HloInstruction* add = FindInstruction(m.get(), HloOpcode::kAdd);
+  HloInstruction* convert = entry->AddInstruction(HloInstruction::CreateConvert(
+      ShapeUtil::MakeShape(BF16, add->shape().dimensions()), add));
+  EXPECT_EQ(entry->instruction_count(), 5);
+
+  // This is only to simulate a user outside the computation, which is the case
+  // when trying to collect replacements to eventually clone the computation.
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      replacements;
+  HloInstruction* root = entry->root_instruction();
+  replacements[root] = HloInstruction::CreateTuple({convert, convert});
+
+  // The instruction `convert` should now be in the post order.
+  std::vector<HloInstruction*> post_order = entry->MakeInstructionPostOrder();
+  EXPECT_EQ(post_order.size(), entry->instruction_count());
+
+  int counter = 0;
+  entry->ForEachInstructionPostOrder(
+      [&counter](HloInstruction* instr) { counter++; });
+  EXPECT_EQ(counter, entry->instruction_count());
+}
+
 }  // namespace
 }  // namespace xla
