@@ -75,7 +75,7 @@ MeshAttr removeSizeOneAxes(MeshAttr mesh) {
 TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
                                      const SymbolTable& symbolTable) {
   MeshAttr mesh = sharding.getMesh(symbolTable);
-  CHECK(mesh) << "unknown mesh: " << absl::string_view(sharding.getMeshName());
+  CHECK(mesh) << "unknown mesh: " << sharding.getMeshName().str();
 
   auto isNotSizeOne = [&](AxisRefAttr axis) { return axis.getSize(mesh) != 1; };
 

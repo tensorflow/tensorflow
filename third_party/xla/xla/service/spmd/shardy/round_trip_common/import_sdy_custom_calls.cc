@@ -61,7 +61,7 @@ mlir::LogicalResult rewriteShardingCustomCall(
   std::vector<int64_t> unspecDims;
   if (std::optional<mlir::Attribute> backendConfig = op.getBackendConfig()) {
     CHECK_OK(xla::sharding_op_util::ParseAttributes(
-        mlir::dyn_cast<mlir::StringAttr>(*backendConfig).getValue(),
+        mlir::dyn_cast<mlir::StringAttr>(*backendConfig).getValue().str(),
         &unspecDims));
   }
 

@@ -82,8 +82,9 @@ AttrTy parseStringAttr(mlir::DictionaryAttr dictAttr,
   if (mlir::Attribute stringAttr = dictAttr.get(attrName)) {
     std::string value;
     std::string error;
-    CHECK(absl::CUnescape(mlir::cast<mlir::StringAttr>(stringAttr).getValue(),
-                          &value, &error))
+    CHECK(absl::CUnescape(
+        mlir::cast<mlir::StringAttr>(stringAttr).getValue().str(), &value,
+        &error))
         << error;
     return mlir::cast<AttrTy>(
         mlir::parseAttribute(value, stringAttr.getContext()));
