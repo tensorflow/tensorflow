@@ -18,7 +18,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "xla/service/source_target_pairs.h"
 
 namespace xla {
@@ -124,7 +126,33 @@ CycleType GetCycleType(const SourceTargetPairs& pairs) {
 }
 
 bool HasCycles(const SourceTargetPairs& pairs) {
-  return GetCycleType(pairs) != CycleType::kNone;
+  // Build source-target map for quick lookup.
+  std::vector<int64_t> source_target_map(pairs.size(), -1);
+  for (int64_t i = 0; i < pairs.size(); ++i) {
+    int64_t source = pairs[i].source;
+    int64_t target = pairs[i].target;
+    while (source_target_map.size() <= source) source_target_map.push_back(-1);
+    source_target_map[source] = target;
+  }
+
+  // Cache indices known to be acyclic.
+  absl::flat_hash_set<int64_t> acyclic;
+
+  // Search for cycles.
+  int64_t n = source_target_map.size();
+  for (int64_t i = 0; i < n; ++i) {
+    absl::flat_hash_set<int64_t> path;
+    int64_t current = i;
+    while (current != -1 && !acyclic.contains(current)) {
+      if (path.contains(current)) return true;
+      path.insert(current);
+      current = current < n ? source_target_map[current] : -1;
+    }
+    acyclic.insert(path.begin(), path.end());
+  }
+
+  // No cycles found.
+  return false;
 }
 
 }  // namespace collective_permute_cycle
