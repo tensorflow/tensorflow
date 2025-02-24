@@ -1,5 +1,4 @@
-// RUN: not hlo-opt %s --passes=nonexistent-optimization-pass 2>&1 \
-// RUN:   | FileCheck %s
+// RUN: not hlo-opt %s --passes=nonexistent-optimization-pass 2>&1 | FileCheck %s
 
 // CHECK: INVALID_ARGUMENT: Pass nonexistent-optimization-pass not found.
 

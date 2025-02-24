@@ -26,7 +26,8 @@ class GenerateHloTestChecksTest(absltest.TestCase):
   def setUp(self):
     super().setUp()
     self._data_dir = os.path.dirname(__file__)
-    self._optimizer_path = os.path.join(self._data_dir, "hlo-opt")
+    parent_dir = os.path.abspath(os.path.join(self._data_dir, os.pardir))
+    self._optimizer_path = os.path.join(parent_dir, "hlo-opt")
     self._input_file_path = os.path.join(
         self._data_dir, "generate_hlo_test_checks_test_input.hlo"
     )
