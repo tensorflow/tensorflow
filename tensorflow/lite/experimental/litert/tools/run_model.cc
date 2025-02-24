@@ -47,11 +47,14 @@ Expected<void> RunModel() {
   LITERT_ASSIGN_OR_RETURN(auto model,
                           Model::CreateFromFile(absl::GetFlag(FLAGS_graph)));
 
+  const std::string dispatch_library_dir =
+      absl::GetFlag(FLAGS_dispatch_library_dir);
+
   std::vector<litert::Environment::Option> environment_options = {};
-  if (!absl::GetFlag(FLAGS_dispatch_library_dir).empty()) {
+  if (!dispatch_library_dir.empty()) {
     environment_options.push_back(litert::Environment::Option{
         litert::Environment::OptionTag::DispatchLibraryDir,
-        absl::string_view(absl::GetFlag(FLAGS_dispatch_library_dir))});
+        absl::string_view(dispatch_library_dir)});
   };
 
   LITERT_ASSIGN_OR_RETURN(
