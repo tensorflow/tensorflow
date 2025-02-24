@@ -29,10 +29,10 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_flags.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
-#include "tensorflow/lite/experimental/litert/vendors/cc/litert_compiler_plugin.h"
 
 // C++ wrappers and high-level functions for managing compiler plugins
 // and applying them to models.

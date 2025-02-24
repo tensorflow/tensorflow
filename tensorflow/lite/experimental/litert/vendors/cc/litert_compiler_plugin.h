@@ -16,11 +16,7 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_CC_LITERT_COMPILER_PLUGIN_H_
 
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 
@@ -46,36 +42,6 @@ inline PluginPtr CreatePlugin() {
   return PluginPtr(plugin);
 }
 
-class CompilerFlags {
- public:
-  CompilerFlags() = default;
-
-  void Clear() {
-    keys_.clear();
-    values_.clear();
-  }
-
-  void Push(std::string key, std::string value = "") {
-    keys_.push_back(std::move(key));
-    values_.push_back(std::move(value));
-  }
-
-  LiteRtStatus SetPluginFlags(
-      LiteRtCompilerPlugin handle,
-      decltype(LiteRtCompilerPluginSetFlags) set_flags) const {
-    std::vector<const char*> keys(keys_.size());
-    std::vector<const char*> values(values_.size());
-    for (auto i = 0; i < keys_.size(); ++i) {
-      keys[i] = keys_[i].c_str();
-      values[i] = values_[i].c_str();
-    }
-    return set_flags(handle, keys.size(), keys.data(), values.data());
-  }
-
- private:
-  std::vector<std::string> keys_;
-  std::vector<std::string> values_;
-};
-
 }  // namespace litert
+
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_CC_LITERT_COMPILER_PLUGIN_H_

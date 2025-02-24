@@ -17,7 +17,7 @@
 // that may be used in a stndalone fashion. They also may be composed
 // to create lowerings of entire graphs with topology.
 
-#include "tensorflow/lite/experimental/litert/vendors/cc/litert_compiler_plugin.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_flags.h"
 
 #include <string>
 #include <utility>
@@ -25,6 +25,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
@@ -48,7 +49,7 @@ LiteRtStatus LiteRtCompilerPluginSetFlags(LiteRtCompilerPlugin compiler_plugin,
   return kLiteRtStatusOk;
 }
 
-namespace litert {
+namespace litert::internal {
 namespace {
 
 using ::testing::ElementsAre;
@@ -73,5 +74,27 @@ TEST(CompilerFlagsTest, SetPluginFlags) {
                           Pair(kKey3, kEmtpyVal)));
 }
 
+TEST(CompilerFlagsTest, ParseCompilerFlags) {
+  static constexpr const char* kKey1 = "key1";
+  static constexpr const char* kKey2 = "key2";
+  static constexpr const char* kKey3 = "key3";
+  static constexpr const char* kValue1 = "value1";
+  static constexpr const char* kEmtpyVal = "";
+
+  const auto flags_str =
+      absl::StrCat(kKey1, "=", kValue1, ",", kKey2, "=", kEmtpyVal, ",", kKey3);
+
+  LiteRtCompilerPluginT plugin;
+  CompilerFlags flags;
+  flags.Push(kKey1, kValue1);
+  flags.Push(kKey2, kEmtpyVal);
+  flags.Push(kKey3);
+  LITERT_ASSERT_OK(flags.SetPluginFlags(&plugin, LiteRtCompilerPluginSetFlags));
+
+  EXPECT_THAT(plugin.flags,
+              ElementsAre(Pair(kKey1, kValue1), Pair(kKey2, kEmtpyVal),
+                          Pair(kKey3, kEmtpyVal)));
+}
+
 }  // namespace
-}  // namespace litert
+}  // namespace litert::internal

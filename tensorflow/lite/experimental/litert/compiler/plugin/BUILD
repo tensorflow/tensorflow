@@ -23,6 +23,7 @@ cc_library(
     hdrs = ["compiler_plugin.h"],
     deps = [
         ":algo",
+        ":compiler_flags",
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
@@ -40,7 +41,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin_api",
-        "//tensorflow/lite/experimental/litert/vendors/cc:litert_compiler_plugin",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -115,6 +115,32 @@ cc_test(
         "//tensorflow/lite/experimental/litert/core/model:graph_validation",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "compiler_flags",
+    srcs = ["compiler_flags.cc"],
+    hdrs = ["compiler_flags.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "compiler_flags_test",
+    srcs = ["compiler_flags_test.cc"],
+    deps = [
+        ":compiler_flags",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/test:matchers",
+        "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
