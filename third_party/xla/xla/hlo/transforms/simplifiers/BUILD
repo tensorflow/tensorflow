@@ -413,6 +413,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:test",
+        "//xla/hlo/utils:hlo_matchers",
         "//xla/service:hlo_creation_utils",
         "//xla/service:host_memory_offload_annotations_hdr",
         "//xla/service:layout_assignment",
