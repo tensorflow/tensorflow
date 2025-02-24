@@ -164,7 +164,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
       kernel_name_, arguments_buffers_.size(), results_buffers_.size(),
       thread_dim_.ToString());
 
-  KernelArgs kernel_args = kernel_args_;
+  alignas(64) KernelArgs kernel_args = kernel_args_;
   XLA_CPU_KernelArg* kernel_args_ptr = kernel_args.data();
 
   const BufferAllocations* allocations = params.buffer_allocations;
