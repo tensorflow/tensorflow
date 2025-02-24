@@ -344,6 +344,18 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests
    %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
      ragged_dot_dimension_numbers = #chlo.ragged_dot<
        lhs_batching_dimensions = [],
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
+@@ -57,7 +57,7 @@
+ // -----
+ 
+ func.func @constant_with_dynamic_shape() -> tensor<1x?xf32, #stablehlo.bounds<?, 5>> {
+-  // expected-error@+2 {{elements literal type must have static shape}}
++  // expected-error@below {{elements literal type must have static shape}}
+   %c = stablehlo.constant dense<1> : tensor<1x?xf32, #stablehlo.bounds<?, 5>>
+   return %c : tensor<1x?xf32, #stablehlo.bounds<?, 5>>
+ }
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
