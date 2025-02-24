@@ -18,9 +18,9 @@ limitations under the License.
 // flow/frames or side effecting ops yet.
 
 #include <iterator>
-#include <optional>
-#include <tuple>
+#include <memory>
 
+#include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"

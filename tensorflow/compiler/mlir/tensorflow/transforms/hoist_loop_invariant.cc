@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstddef>
 #include <memory>
-#include <utility>
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Casting.h"
