@@ -1238,7 +1238,7 @@ absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorClient::DmaMap");
   TF_ASSIGN_OR_RETURN(
       LocalDeviceState * local_device,
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(devices_[0])
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(addressable_devices_[0])
           ->GetLocalDeviceState());
   bool success = local_device->compute_stream()->parent()->HostMemoryRegister(
       data, buffer_size);
@@ -1255,7 +1255,7 @@ absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorClient::DmaUnmap");
   TF_ASSIGN_OR_RETURN(
       LocalDeviceState * local_device,
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(devices_[0])
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(addressable_devices_[0])
           ->GetLocalDeviceState());
   bool success =
       local_device->compute_stream()->parent()->HostMemoryUnregister(data);

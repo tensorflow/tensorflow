@@ -61,5 +61,17 @@ TEST(HloInstruction, AddFrontendAttributes) {
   EXPECT_EQ(instr.get_frontend_attribute("key2").value(), "value2");
 }
 
+TEST(HloInstruction, EraseFrontendAttribute) {
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
+  instr.add_frontend_attribute("key1", "value1");
+  instr.add_frontend_attribute("key2", "value2");
+  EXPECT_EQ(instr.erase_frontend_attribute("key2"), 1);
+  EXPECT_EQ(instr.erase_frontend_attribute("not_a_key"), 0);
+  EXPECT_EQ(instr.get_frontend_attribute("key1").value(), "value1")
+      << "key1 should not be erased";
+  EXPECT_EQ(instr.get_frontend_attribute("key2"), std::nullopt)
+      << "key2 should have been erased";
+}
+
 }  // namespace
 }  // namespace xla
