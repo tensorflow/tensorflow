@@ -399,7 +399,7 @@ tensorflow::grappler::GetNumAvailableGPUs
 tensorflow::grappler::GetNumAvailableLogicalCPUCores
 
 [//tensorflow/core/profiler/internal:traceme_recorder_impl] # profiler
-tensorflow::profiler::TraceMeRecorder::Record
+tsl::profiler::TraceMeRecorder::Record
 
 [//external/local_tsl/tsl/profiler/lib:profiler_session_impl] # profiler
 tsl::ProfilerSession::Create
