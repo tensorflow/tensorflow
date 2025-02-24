@@ -9,5 +9,8 @@ def python_init_rules():
         strip_prefix = "rules_python-0.39.0",
         url = "https://github.com/bazelbuild/rules_python/releases/download/0.39.0/rules_python-0.39.0.tar.gz",
         patch_args = ["-p1"],
-        patches = [Label("//third_party/py:rules_python.patch")],
+        patches = [
+            Label("//third_party/py:rules_python1.patch"),
+            Label("//third_party/py:rules_python2.patch"),
+        ],
     )

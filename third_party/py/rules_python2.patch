@@ -1,0 +1,57 @@
+diff --git a/python/versions.bzl b/python/versions.bzl
+index 774c24d1..d6fb2e19 100644
+--- a/python/versions.bzl
++++ b/python/versions.bzl
+@@ -581,6 +581,43 @@ TOOL_VERSIONS = {
+         },
+         "strip_prefix": "python",
+     },
++    "3.13.1": {
++        "url": "20241205/cpython-{python_version}+20241205-{platform}-{build}.{ext}",
++        "sha256": {
++            "aarch64-apple-darwin": "88b88b609129c12f4b3841845aca13230f61e97ba97bd0fb28ee64b0e442a34f",
++            "aarch64-unknown-linux-gnu": "fdfa86c2746d2ae700042c461846e6c37f70c249925b58de8cd02eb8d1423d4e",
++            "ppc64le-unknown-linux-gnu": "27b20b3237c55430ca1304e687d021f88373f906249f9cd272c5ff2803d5e5c3",
++            "s390x-unknown-linux-gnu": "7d0187e20cb5e36c689eec27e4d3de56d8b7f1c50dc5523550fc47377801521f",
++            "x86_64-apple-darwin": "47eef6efb8664e2d1d23a7cdaf56262d784f8ace48f3bfca1b183e95a49888d6",
++            "x86_64-pc-windows-msvc": "f51f0493a5f979ff0b8d8c598a8d74f2a4d86a190c2729c85e0af65c36a9cbbe",
++            "x86_64-unknown-linux-gnu": "242b2727df6c1e00de6a9f0f0dcb4562e168d27f428c785b0eb41a6aeb34d69a",
++            "x86_64-unknown-linux-musl": "76b30c6373b9c0aa2ba610e07da02f384aa210ac79643da38c66d3e6171c6ef5",
++            "aarch64-apple-darwin-freethreaded": "08f05618bdcf8064a7960b25d9ba92155447c9b08e0cf2f46a981e4c6a1bb5a5",
++            "aarch64-unknown-linux-gnu-freethreaded": "9f2fcb809f9ba6c7c014a8803073a88786701a98971135bce684355062e4bb35",
++            "ppc64le-unknown-linux-gnu-freethreaded": "15ceea78dff78ca8ccaac8d9c54b808af30daaa126f1f561e920a6896e098634",
++            "s390x-unknown-linux-gnu-freethreaded": "ed3c6118d1d12603309c930e93421ac7a30a69045ffd43006f63ecf71d72c317",
++            "x86_64-apple-darwin-freethreaded": "dc780fecd215d2cc9e573abf1e13a175fcfa8f6efd100ef888494a248a16cda8",
++            "x86_64-pc-windows-msvc-freethreaded": "7537b2ab361c0eabc0eabfca9ffd9862d7f5f6576eda13b97e98aceb5eea4fd3",
++            "x86_64-unknown-linux-gnu-freethreaded": "9ec1b81213f849d91f5ebe6a16196e85cd6ff7c05ca823ce0ab7ba5b0e9fee84",
++        },
++        "strip_prefix": {
++            "aarch64-apple-darwin": "python",
++            "aarch64-unknown-linux-gnu": "python",
++            "ppc64le-unknown-linux-gnu": "python",
++            "s390x-unknown-linux-gnu": "python",
++            "x86_64-apple-darwin": "python",
++            "x86_64-pc-windows-msvc": "python",
++            "x86_64-unknown-linux-gnu": "python",
++            "x86_64-unknown-linux-musl": "python",
++            "aarch64-apple-darwin-freethreaded": "python/install",
++            "aarch64-unknown-linux-gnu-freethreaded": "python/install",
++            "ppc64le-unknown-linux-gnu-freethreaded": "python/install",
++            "s390x-unknown-linux-gnu-freethreaded": "python/install",
++            "x86_64-apple-darwin-freethreaded": "python/install",
++            "x86_64-pc-windows-msvc-freethreaded": "python/install",
++            "x86_64-unknown-linux-gnu-freethreaded": "python/install",
++        },
++    },
+ }
+
+ # buildifier: disable=unsorted-dict-items
+@@ -590,7 +627,7 @@ MINOR_MAPPING = {
+     "3.10": "3.10.15",
+     "3.11": "3.11.10",
+     "3.12": "3.12.7",
+-    "3.13": "3.13.0",
++    "3.13": "3.13.1",
+ }
+
+ def _generate_platforms():
