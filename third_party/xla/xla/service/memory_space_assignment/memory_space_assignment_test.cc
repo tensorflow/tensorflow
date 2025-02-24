@@ -7998,19 +7998,20 @@ ENTRY entry {
   EXPECT_TRUE(repacker_ran);
 }
 
-TEST_F(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
-  // This test is designed to test UpdateReservedScopedVmemSize() in MSA, which
-  // will invoke reserved_scoped_memory_fn to update scoped allocation
-  // size. UpdateReservedScopedVmemSize() should iterate through all scheduled
-  // instruction and check if either their operands or outputs has been assigned
-  // in alternate memory. If so, corresponding operand/output will be passed to
-  // reserved_scoped_memory_fn. We isolate UpdateReservedScopedVmemSize() by
-  // constructing a dummy reserved_scoped_memory_fn that return +1 when operand
-  // set is empty, and return +2 when output set is empty, because if either set
-  // of an instruction is empty, it is gureented that some scoped allocation is
-  // required. We use +1/+2 to distinguish the correctness of each set.
-  // Therefore, after MSA pass, for each instruction, there are a few possible
-  // outcomes:
+TEST_F(MemorySpaceAssignmentTest,
+       ReduceReservedScopedAllocationIfOperandInAlternateMemory) {
+  // This test is designed to test UpdateReservedScopedAllocationSize() in MSA,
+  // which will invoke reserved_scoped_memory_fn to update scoped allocation
+  // size. UpdateReservedScopedAllocationSize() should iterate through all
+  // scheduled instruction and check if either their operands or outputs has
+  // been assigned in alternate memory. If so, corresponding operand/output will
+  // be passed to reserved_scoped_memory_fn. We isolate
+  // UpdateReservedScopedAllocationSize() by constructing a dummy
+  // reserved_scoped_memory_fn that return +1 when operand set is empty, and
+  // return +2 when output set is empty, because if either set of an instruction
+  // is empty, it is gureented that some scoped allocation is required. We use
+  // +1/+2 to distinguish the correctness of each set. Therefore, after MSA
+  // pass, for each instruction, there are a few possible outcomes:
   // 1. If both operand set and output set are not empty, scoped allocation
   //    size should be 0, since reserved_scoped_memory_fn will return 0.
   // 2. If only operand set is empty, scoped allocation size should be 2, since
@@ -8018,11 +8019,11 @@ TEST_F(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
   // 3. If only output set is empty, scoped allocation size should be 1, since
   //    reserved_scoped_memory_fn will return 1.
   // 4. If both sets are empty, scoped allocation size should be 3.
-  // Initially, UpdateReservedScopedVmemSize() will only be invoked after each
-  // MSA repacking, we use a similar test HLO module as used in "Repack" test.
-  // This test is capable of testing if UpdateReservedScopedVmemSize() can
-  // correctly pass operand/output set of all instructions to
-  // reserved_scoped_memory_fn.
+  // Initially, UpdateReservedScopedAllocationSize() will only be invoked after
+  // each MSA repacking, we use a similar test HLO module as used in "Repack"
+  // test. This test is capable of testing if
+  // UpdateReservedScopedAllocationSize() can correctly pass operand/output set
+  // of all instructions to reserved_scoped_memory_fn.
   absl::string_view hlo_string = R"(
   HloModule bug, is_scheduled=true
 
@@ -8059,11 +8060,13 @@ TEST_F(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
         int64_t scoped_memory_size = 0;
         if (operands_in_alternate_memory.empty()) {
           scoped_memory_size += 1;
-          LOG(INFO) << instruction->name() << " has no operand in vmem";
+          LOG(INFO) << instruction->name()
+                    << " has no operand in alternate memory";
         }
         if (outputs_in_alternate_memory.empty()) {
           scoped_memory_size += 2;
-          LOG(INFO) << instruction->name() << " has no output in vmem";
+          LOG(INFO) << instruction->name()
+                    << " has no output in alternate memory";
         }
         return scoped_memory_size;
       };
@@ -8196,7 +8199,7 @@ TEST_F(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
 }
 
 TEST_F(MemorySpaceAssignmentTest,
-       ReduceReservedScopedVmemUpdatesPeakMemoryUsage) {
+       ReduceReservedScopedAllocationUpdatesPeakMemoryUsage) {
   // This test is designed to test that the peak_memory_usage_ is updated
   // correctly after scoped memory allocation is updated. The test HLO module
   // has two HLO values: a and b. The size of a is 64, and the size of b is 128.
