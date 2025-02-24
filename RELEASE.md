@@ -64,15 +64,19 @@ This release contains contributions from many people at Google, as well as:
 ### Breaking Changes
 
 * `LiteRT`, a.k.a. `tf.lite`:
-  * C++ API:
-    * The public constants `tflite::Interpreter:kTensorsReservedCapacity`
-      and `tflite::Interpreter:kTensorsCapacityHeadroom` are now const
-      references, rather than `constexpr` compile-time constants.
-      (This is to enable better API compatibility for TFLite in Play services
-      while preserving the implementation flexibility to change the values of
-      these constants in the future.)
-    * Interpreter:
-      * `tf.lite.Interpreter` gives deprecation warning redirecting to its new location at `ai_edge_litert.interpreter`, as the API `tf.lite.Interpreter` will be deleted in TF 2.20. See the [migration guide](https://ai.google.dev/edge/litert/migration) for details.
+    * C++ API:
+      * The public constants `tflite::Interpreter:kTensorsReservedCapacity`
+        and `tflite::Interpreter:kTensorsCapacityHeadroom` are now const
+        references, rather than `constexpr` compile-time constants.
+        (This is to enable better API compatibility for TFLite in Play services
+        while preserving the implementation flexibility to change the values of
+        these constants in the future.)
+    * Python API:
+      * `tf.lite.Interpreter` gives deprecation warning redirecting to its new
+        location at `ai_edge_litert.interpreter`, as the API
+        `tf.lite.Interpreter` will be deleted in TF 2.20. See the
+        [migration guide](https://ai.google.dev/edge/litert/migration) for
+        details.
 
 ### Known Caveats
 
