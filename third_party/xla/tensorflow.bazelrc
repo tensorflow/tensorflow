@@ -46,13 +46,6 @@
 #     elinux_aarch64:  Embedded Linux options for aarch64 (ARM64) CPU support.
 #     elinux_armhf:    Embedded Linux options for armhf (ARMv7) CPU support.
 #
-# Release build options (for all operating systems)
-#     release_base:                    Common options for all builds on all operating systems.
-#     release_cpu_linux:               Toolchain and CUDA options for Linux CPU builds.
-#     release_gpu_linux:               Toolchain and CUDA options for Linux GPU builds.
-#     release_cpu_macos:               Toolchain and CUDA options for MacOS CPU builds.
-#     release_cpu_windows:             Toolchain and CUDA options for Windows CPU builds.
-
 # Default build options. These are applied first and unconditionally.
 
 # For projects which use TensorFlow as part of a Bazel build process, putting
@@ -515,74 +508,13 @@ try-import %workspace%/.tf_configure.bazelrc
 # Load rc file with user-specific options.
 try-import %workspace%/.bazelrc.user
 
-# Here are bazelrc configs for release builds
-# Build TensorFlow v2.
-test:release_base --test_size_filters=small,medium
-
-# Enable support for all targets
-build:release_base --config=cpu_cross
-
-# Ensure release_base is set on linux
-build:release_linux_base --config=release_base
-
-# Disable clang extension that rejects type definitions within offsetof.
-# This was added in clang-16 by https://reviews.llvm.org/D133574.
-# Can be removed once upb is updated, since a type definition is used within
-# offset of in the current version of ubp.
-# See https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
-build:release_linux_base --copt=-Wno-gnu-offsetof-extensions
-build:release_linux_base --copt=-Wno-error=array-parameter
-build:release_linux_base --copt=-Wno-error=unused-command-line-argument
-# Set lld as the linker.
-build:release_linux_base --linkopt="-fuse-ld=lld"
-build:release_linux_base --linkopt="-lm"
-
-# We have some invalid linker scripts in the build,
-# so we need to disable this check
-build:release_linux_base --linkopt=-Wl,--undefined-version
-
-# Container environment settings below this point.
-# Use Python 3.X as installed in container image
-build:release_linux_base --action_env PYTHON_BIN_PATH="/usr/bin/python3"
-build:release_linux_base --action_env PYTHON_LIB_PATH="/usr/lib/tf_python"
-build:release_linux_base --python_path="/usr/bin/python3"
-# Set Clang as compiler. Use the actual path to clang installed in container.
-build:release_linux_base --repo_env=CC="/usr/lib/llvm-18/bin/clang"
-build:release_linux_base --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
-# Test-related settings below this point.
-test:release_linux_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true
-test:release_linux_base --local_test_jobs=HOST_CPUS
-# Give only the list of failed tests at the end of the log
-test:release_linux_base --test_summary=short
-
-# Use the Clang toolchain to compile
-build:release_cpu_linux --config=release_linux_base
-build:release_cpu_linux --crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:release_cpu_linux --repo_env=TF_SYSROOT="/dt9"
-# Target the AVX instruction set
-build:release_cpu_linux --config=avx_linux
-
-build:release_gpu_linux --config=release_cpu_linux
-# Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
-# Note that linux cpu and cuda builds share the same toolchain now.
-build:release_gpu_linux --config=cuda_clang_official
-# Local test jobs has to be 4 because parallel_gpu_execute is fragile, I think
-test:release_gpu_linux --test_timeout=300,450,1200,3600 --local_test_jobs=4 --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute
-
-build:release_arm64_linux --config=release_linux_base
-build:release_arm64_linux --config=linux_arm64
-build:release_arm64_linux --crosstool_top="@ml2014_clang_aarch64_config_aarch64//crosstool:toolchain"
-build:release_arm64_linux --config=mkl_aarch64_threadpool
-build:release_arm64_linux --copt=-flax-vector-conversions
-test:release_arm64_linux --flaky_test_attempts=3
-
 build:release_cpu_macos --config=avx_linux
 
 # Base build configs for macOS
 build:release_macos_base --define=no_nccl_support=true --output_filter=^$
 
 # Ensure release_base is set on mac
-build:release_macos_base --config=release_base
+build:release_macos_base --config=cpu_cross
 
 # Build configs for macOS x86
 build:release_macos_x86 --config=release_macos_base
@@ -609,22 +541,6 @@ test:release_macos_base --flaky_test_attempts=3
 
 # Test configs for macOS x86
 test:release_macos_x86 --config=release_macos_base
-
-# Test configs for macOS Arm64
-test:release_macos_arm64 --config=release_macos_base
-
-# Ensure release_base is set on windows
-build:release_cpu_windows --config=release_base
-
-# TODO(kanglan): Update windows configs after b/289091160 is fixed
-build:release_cpu_windows --config=avx_win
-build:release_cpu_windows --define=no_tensorflow_py_deps=true
-
-# Exclude TFRT integration for anything but Linux.
-build:macos   --config=no_tfrt
-build:windows --config=no_tfrt
-build:rocm --config=no_tfrt
-build:no_tfrt --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/ir,tensorflow/compiler/mlir/tfrt/ir/mlrt,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/ifrt,tensorflow/compiler/mlir/tfrt/tests/mlrt,tensorflow/compiler/mlir/tfrt/tests/ir,tensorflow/compiler/mlir/tfrt/tests/analysis,tensorflow/compiler/mlir/tfrt/tests/jit,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_tfrt,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_jitrt,tensorflow/compiler/mlir/tfrt/tests/tf_to_corert,tensorflow/compiler/mlir/tfrt/tests/tf_to_tfrt_data,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/compiler/mlir/tfrt/transforms/mlrt,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/runtime_fallback/test,tensorflow/core/runtime_fallback/test/gpu,tensorflow/core/runtime_fallback/test/saved_model,tensorflow/core/runtime_fallback/test/testdata,tensorflow/core/tfrt/stubs,tensorflow/core/tfrt/tfrt_session,tensorflow/core/tfrt/mlrt,tensorflow/core/tfrt/mlrt/attribute,tensorflow/core/tfrt/mlrt/kernel,tensorflow/core/tfrt/mlrt/bytecode,tensorflow/core/tfrt/mlrt/interpreter,tensorflow/compiler/mlir/tfrt/translate/mlrt,tensorflow/compiler/mlir/tfrt/translate/mlrt/testdata,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/graph_executor,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils,tensorflow/core/tfrt/utils/debug,tensorflow/core/tfrt/saved_model/python,tensorflow/core/tfrt/graph_executor/python,tensorflow/core/tfrt/saved_model/utils
 
 # BEGIN TF CACHE HELPER OPTIONS
 # Options when using remote execution
