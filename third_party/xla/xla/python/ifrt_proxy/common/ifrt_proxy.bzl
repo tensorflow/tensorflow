@@ -3,7 +3,7 @@
 load("//xla:xla.bzl", "xla_cc_test")
 
 def ifrt_proxy_cc_test(
-        shuffle_tests = False,
+        shuffle_tests = True,
         **kwargs):
     xla_cc_test(
         shuffle_tests = shuffle_tests,
