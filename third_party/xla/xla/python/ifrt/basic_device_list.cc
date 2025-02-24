@@ -37,17 +37,15 @@ namespace ifrt {
 
 char BasicDeviceList::ID = 0;
 
-tsl::RCReference<DeviceList> BasicDeviceList::Create(Devices devices) {
-  return tsl::MakeRef<BasicDeviceList>(std::move(devices));
+DeviceListRef BasicDeviceList::Create(Devices devices) {
+  return DeviceListRef(tsl::MakeRef<BasicDeviceList>(std::move(devices)));
 }
 
-tsl::RCReference<DeviceList> BasicDeviceList::Create(
-    absl::Span<Device* const> devices) {
+DeviceListRef BasicDeviceList::Create(absl::Span<Device* const> devices) {
   return Create(Devices(devices.begin(), devices.end()));
 }
 
-tsl::RCReference<DeviceList> BasicDeviceList::Create(
-    std::initializer_list<Device*> devices) {
+DeviceListRef BasicDeviceList::Create(std::initializer_list<Device*> devices) {
   return Create(Devices(devices.begin(), devices.end()));
 }
 
