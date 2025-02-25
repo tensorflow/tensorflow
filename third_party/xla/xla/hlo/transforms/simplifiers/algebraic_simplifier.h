@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -800,6 +801,13 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Useful when we want to use the same visitor over multiple computations.
   void ResetState(HloComputation* computation);
+
+  // For cases where the stride won't end up being used, we update the limit
+  // and reset the stride to 1. Returns true if the stride is redundant (and the
+  // slice instruction is replaced).
+  // - For example in slices=([0:X:X]), where X == dimension
+  absl::StatusOr<bool> RemoveRedundantStride(
+      absl::Nonnull<HloInstruction*> slice);
 
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
