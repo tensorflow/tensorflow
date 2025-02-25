@@ -2404,7 +2404,10 @@ func.func @test_leaky_relu_qi16(%arg0: tensor<14x19x!quant.uniform<i16:f32, 0.01
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_qi8
-// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0 {border = array<i64: 14, 14>, mode = "BILINEAR", offset = array<i64: 0, 0>, scale = array<i64: 16, 2, 16, 2>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[16, 2, 16, 2]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[OFFSET:.*]] = tosa.const_shape {value = dense<0> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[BORDER:.*]] = tosa.const_shape {value = dense<14> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[OFFSET]], %[[BORDER]] {mode = "BILINEAR"}
 // CHECK: %[[VAR2:.*]] = tosa.rescale %[[VAR1]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 38>}
 func.func @test_resize_bilinear_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
   %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
@@ -2415,7 +2418,10 @@ func.func @test_resize_bilinear_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f3
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_half_qi8
-// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0 {border = array<i64: 7, 7>, mode = "BILINEAR", offset = array<i64: -7, -7>, scale = array<i64: 16, 2, 16, 2>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[16, 2, 16, 2]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[OFFSET:.*]] = tosa.const_shape {value = dense<-7> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[BORDER:.*]] = tosa.const_shape {value = dense<7> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[OFFSET]], %[[BORDER]] {mode = "BILINEAR"}
 func.func @test_resize_bilinear_half_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
   %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = false, half_pixel_centers = true} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
@@ -2425,7 +2431,9 @@ func.func @test_resize_bilinear_half_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_align_qi8
-// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0 {border = array<i64: 0, 0>, mode = "BILINEAR", offset = array<i64: 0, 0>, scale = array<i64: 1278, 158, 1278, 158>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[1278, 158, 1278, 158]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[CONST0:.*]] = tosa.const_shape {value = dense<0> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[CONST0]], %[[CONST0]] {mode = "BILINEAR"}
 func.func @test_resize_bilinear_align_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
   %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = true, half_pixel_centers = false} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
@@ -2435,7 +2443,9 @@ func.func @test_resize_bilinear_align_qi8(%arg0: tensor<1x80x80x2x!quant.uniform
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_align_half_qi8
-// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0 {border = array<i64: -560, -560>, mode = "BILINEAR", offset = array<i64: -560, -560>, scale = array<i64: 1278, 158, 1278, 158>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[1278, 158, 1278, 158]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[KM560:.*]] = tosa.const_shape {value = dense<-560> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[KM560]], %[[KM560]] {mode = "BILINEAR"}
 func.func @test_resize_bilinear_align_half_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
   %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = true, half_pixel_centers = true} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
@@ -2445,7 +2455,10 @@ func.func @test_resize_bilinear_align_half_qi8(%arg0: tensor<1x80x80x2x!quant.un
 // -----
 
 // CHECK-LABEL: test_resize_nearest_qi8
-// CHECK: %[[VAR1:.*]] = tosa.resize %arg0 {border = array<i64: 14, 14>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 0, 0>, scale = array<i64: 16, 2, 16, 2>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[16, 2, 16, 2]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[OFFSET:.*]] = tosa.const_shape {value = dense<0> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[BORDER:.*]] = tosa.const_shape {value = dense<14> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[OFFSET]], %[[BORDER]] {mode = "NEAREST_NEIGHBOR"}
 func.func @test_resize_nearest_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
   %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = false, half_pixel_centers = false} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
@@ -2456,7 +2469,10 @@ func.func @test_resize_nearest_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32
 // -----
 
 // CHECK-LABEL: test_resize_nearest_half_qi8
-// CHECK: %[[VAR1:.*]] = tosa.resize %arg0 {border = array<i64: 15, 15>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 1, 1>, scale = array<i64: 16, 2, 16, 2>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[16, 2, 16, 2]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[OFFSET:.*]] = tosa.const_shape {value = dense<1> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[BORDER:.*]] = tosa.const_shape {value = dense<15> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[OFFSET]], %[[BORDER]] {mode = "NEAREST_NEIGHBOR"}
 func.func @test_resize_nearest_half_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
   %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = false, half_pixel_centers = true} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
@@ -2466,7 +2482,9 @@ func.func @test_resize_nearest_half_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i
 // -----
 
 // CHECK-LABEL: test_resize_nearest_align_qi8
-// CHECK: %[[VAR1:.*]] = tosa.resize %arg0 {border = array<i64: 639, 639>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 639, 639>, scale = array<i64: 1278, 158, 1278, 158>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[1278, 158, 1278, 158]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[K639:.*]] = tosa.const_shape {value = dense<639> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[K639]], %[[K639]] {mode = "NEAREST_NEIGHBOR"}
 func.func @test_resize_nearest_align_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
   %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = true, half_pixel_centers = false} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
@@ -2476,7 +2494,9 @@ func.func @test_resize_nearest_align_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<
 // -----
 
 // CHECK-LABEL: test_resize_nearest_align_half_qi8
-// CHECK: %[[VAR1:.*]] = tosa.resize %arg0 {border = array<i64: 718, 718>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 718, 718>, scale = array<i64: 1278, 158, 1278, 158>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[1278, 158, 1278, 158]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[K718:.*]] = tosa.const_shape {value = dense<718> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[K718]], %[[K718]] {mode = "NEAREST_NEIGHBOR"}
 func.func @test_resize_nearest_align_half_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
   %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = true, half_pixel_centers = true} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
@@ -2486,7 +2506,10 @@ func.func @test_resize_nearest_align_half_qi8(%arg0: tensor<1x80x80x2x!quant.uni
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_f32_scalar_input
-// CHECK: %[[VAL_1:.*]] = tosa.resize %arg0 {border = array<i64: 1, 1>, mode = "BILINEAR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[2, 1, 2, 1]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[OFFSET:.*]] = tosa.const_shape {value = dense<0> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[BORDER:.*]] = tosa.const_shape {value = dense<1> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[OFFSET]], %[[BORDER]] {mode = "BILINEAR"}
 func.func @test_resize_bilinear_f32_scalar_input(%arg0: tensor<3x1x1x7xf32>) -> tensor<3x2x2x7xf32> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = false, half_pixel_centers = false} : (tensor<3x1x1x7xf32>, tensor<2xi32>) -> tensor<3x2x2x7xf32>
@@ -2496,7 +2519,10 @@ func.func @test_resize_bilinear_f32_scalar_input(%arg0: tensor<3x1x1x7xf32>) -> 
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_half_qi8_scalar_input
-// CHECK: %[[VAL_1:.*]] = tosa.resize %arg0 {border = array<i64: 1, 1>, mode = "BILINEAR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[2, 1, 2, 1]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[OFFSET:.*]] = tosa.const_shape {value = dense<0> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[BORDER:.*]] = tosa.const_shape {value = dense<1> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[OFFSET]], %[[BORDER]] {mode = "BILINEAR"}
 // CHECK: %[[VAL_2:.*]] = tosa.rescale %[[VAL_1]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 32>}
 func.func @test_resize_bilinear_half_qi8_scalar_input(%arg0: tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
@@ -2507,7 +2533,10 @@ func.func @test_resize_bilinear_half_qi8_scalar_input(%arg0: tensor<3x1x1x7x!qua
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_align_qi8_scalar_input
-// CHECK: %[[VAL_1:.*]] = tosa.resize %arg0 {border = array<i64: 1, 1>, mode = "BILINEAR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[2, 1, 2, 1]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[OFFSET:.*]] = tosa.const_shape {value = dense<0> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[BORDER:.*]] = tosa.const_shape {value = dense<1> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[OFFSET]], %[[BORDER]] {mode = "BILINEAR"}
 // CHECK: %[[VAL_2:.*]] = tosa.rescale %[[VAL_1]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 32>}
 func.func @test_resize_bilinear_align_qi8_scalar_input(%arg0: tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
@@ -2518,7 +2547,10 @@ func.func @test_resize_bilinear_align_qi8_scalar_input(%arg0: tensor<3x1x1x7x!qu
 // -----
 
 // CHECK-LABEL: test_resize_nearest_f32_scalar_input
-// CHECK: %[[VAL_1:.*]] = tosa.resize %arg0 {border = array<i64: 1, 1>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[2, 1, 2, 1]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[OFFSET:.*]] = tosa.const_shape {value = dense<0> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[BORDER:.*]] = tosa.const_shape {value = dense<1> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[OFFSET]], %[[BORDER]] {mode = "NEAREST_NEIGHBOR"}
 func.func @test_resize_nearest_f32_scalar_input(%arg0: tensor<3x1x1x7xf32>) -> tensor<3x2x2x7xf32> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = false, half_pixel_centers = false} : (tensor<3x1x1x7xf32>, tensor<2xi32>) -> tensor<3x2x2x7xf32>
@@ -2528,7 +2560,10 @@ func.func @test_resize_nearest_f32_scalar_input(%arg0: tensor<3x1x1x7xf32>) -> t
 // -----
 
 // CHECK-LABEL: test_resize_nearest_half_qi8_scalar_input
-// CHECK: %[[VAL_1:.*]] = tosa.resize %arg0 {border = array<i64: 1, 1>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[2, 1, 2, 1]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[OFFSET:.*]] = tosa.const_shape {value = dense<0> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[BORDER:.*]] = tosa.const_shape {value = dense<1> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[OFFSET]], %[[BORDER]] {mode = "NEAREST_NEIGHBOR"}
 func.func @test_resize_nearest_half_qi8_scalar_input(%arg0: tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = false, half_pixel_centers = true} : (tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>, tensor<2xi32>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>>
@@ -2538,7 +2573,10 @@ func.func @test_resize_nearest_half_qi8_scalar_input(%arg0: tensor<3x1x1x7x!quan
 // -----
 
 // CHECK-LABEL: test_resize_nearest_align_qi8_scalar_input
-// CHECK: %[[VAL_1:.*]] = tosa.resize %arg0 {border = array<i64: 1, 1>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
+// CHECK-DAG: %[[SCALE:.*]] = tosa.const_shape {value = dense<[2, 1, 2, 1]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[OFFSET:.*]] = tosa.const_shape {value = dense<0> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[BORDER:.*]] = tosa.const_shape {value = dense<1> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.resize %arg0, %[[SCALE]], %[[OFFSET]], %[[BORDER]] {mode = "NEAREST_NEIGHBOR"}
 func.func @test_resize_nearest_align_qi8_scalar_input(%arg0: tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = true, half_pixel_centers = false} : (tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>, tensor<2xi32>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>>
