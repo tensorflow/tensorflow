@@ -385,7 +385,6 @@ cc_library(
         ":litert_accelerator",
         ":litert_accelerator_options",
         ":litert_common",
-        ":litert_compiled_model",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/core:accelerator",
         "//tensorflow/lite/experimental/litert/core:environment",
