@@ -75,10 +75,12 @@ class SerializationContext {
       absl::flat_hash_map<LiteRtModelT::BufferId, TflBufferInd>;
 
   explicit SerializationContext(uint32_t dispatch_op_code_ind,
-                                LiteRtModelT& litert_model)
+                                LiteRtModelT& litert_model,
+                                size_t bytecode_alignment)
       : tfl_model_(std::make_unique<TflModel>()),
         dispatch_op_code_ind_(dispatch_op_code_ind),
-        litert_model_(litert_model) {
+        litert_model_(litert_model),
+        bytecode_alignment_(bytecode_alignment) {
     // Tfl expects empty buffer 0.
     tfl_model_->buffers.push_back(std::make_unique<TflBuffer>());
   }
@@ -88,6 +90,8 @@ class SerializationContext {
   TflModelPtr Release() && { return std::move(tfl_model_); }
 
   LiteRtModelT& LitertModel() { return litert_model_; }
+
+  size_t BytecodeAlignment() const { return bytecode_alignment_; }
 
   LiteRtStatus HandleTensorBuffer(TflTensor& tfl_tensor,
                                   const LiteRtTensorT& litert_tensor) {
@@ -171,6 +175,7 @@ class SerializationContext {
   TflOpAssetMap op_asset_map_;
   TflOffsetTensorMap offset_tensor_map_;
   TflBufferIdMap buffer_id_map_;
+  size_t bytecode_alignment_ = 0;
 };
 
 void SetOptions(const LiteRtOpT& litert_op, TflOp& tfl_op) {
@@ -361,7 +366,14 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
     return serialized_tfl;
   }
 
+  const auto align = builder.BytecodeAlignment();
+  // Pad the original model to the next multiple of the alignment.
+  auto align_offset = [align](size_t& cur_offset) {
+    cur_offset = (cur_offset + align - 1) & ~(align - 1);
+  };
+
   size_t cur_offset = serialized_tfl.Size();
+  align_offset(cur_offset);
 
   // Calculate the offset and size of each op asset.
   InsertOrderMap<LiteRtModelT::BufferId, std::pair<size_t, size_t>>
@@ -379,6 +391,7 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
     asset_buffer_offsets.InsertOrAssign(buf_id,
                                         {cur_offset, asset_buf->Size()});
     cur_offset += asset_buf->Size();
+    align_offset(cur_offset);
   }
 
   // Calculate the offset and size of each offset tensor.
@@ -471,11 +484,10 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
   OwningBufferRef<uint8_t> final_model(cur_offset);
 
   // Copy serialized tflite model.
-  uint8_t* start = final_model.Data();
+  uint8_t* const start = final_model.Data();
   std::memcpy(start, serialized_tfl.Data(), serialized_tfl.Size());
-  start += serialized_tfl.Size();
 
-  // Copy asset buffers.
+  // Copy asset buffers (aligned).
   for (auto it = asset_buffer_offsets.Begin(); it != asset_buffer_offsets.End();
        ++it) {
     const auto buf_id = it->first;
@@ -485,12 +497,11 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
       LITERT_LOG(LITERT_ERROR, "Failed to find asset buffer");
       return asset_buf.Error();
     }
-
-    std::memcpy(start, asset_buf->Data(), asset_buf->Size());
-    start += asset_buf->Size();
+    uint8_t* const offset = start + it->second.first;
+    std::memcpy(offset, asset_buf->Data(), asset_buf->Size());
   }
 
-  // Copy offset buffers.
+  // Copy offset tensor buffers.
   for (auto it = offset_tensor_offsets.Begin();
        it != offset_tensor_offsets.End(); ++it) {
     const auto buf_id = it->first;
@@ -501,8 +512,8 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
       return offset_buf.Error();
     }
 
-    std::memcpy(start, offset_buf->Data(), offset_buf->Size());
-    start += offset_buf->Size();
+    uint8_t* const offset = start + it->second.first;
+    std::memcpy(offset, offset_buf->Data(), offset_buf->Size());
   }
 
   return final_model;
@@ -510,14 +521,16 @@ Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
 
 }  // namespace
 
-Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model) {
+Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model,
+                                                  size_t bytecode_alignment) {
   // Pass the op code list through that was saved during loading. Add one more
   // op code for the dispatch ops
   auto tfl_op_codes = detail::TakeTflOpCodes(model);
   tfl_op_codes.push_back(
       MakeCustomOpCode(std::string(kLiteRtDispatchOpCustomCode)));
 
-  SerializationContext builder(tfl_op_codes.size() - 1, model);
+  SerializationContext builder(tfl_op_codes.size() - 1, model,
+                               bytecode_alignment);
   builder.Model().operator_codes = std::move(tfl_op_codes);
 
   auto tfl_model = PackAsTflite(builder);

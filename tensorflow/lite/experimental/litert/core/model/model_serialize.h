@@ -16,23 +16,15 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_SERIALIZE_H_
 
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
-
-#ifdef __cplusplus
-}
-
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert::internal {
 
-Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model);
+Expected<OwningBufferRef<uint8_t>> SerializeModel(
+    LiteRtModelT&& model, size_t bytecode_alignment = 1);
 
 }  // namespace litert::internal
 
-#endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_SERIALIZE_H_
