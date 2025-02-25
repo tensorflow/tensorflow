@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -51,10 +52,12 @@ static bool IsDotCodegenStrategy(DotImplementationStrategy strategy) {
   }
 }
 
-DotKernelEmitter::DotKernelEmitter(const HloInstruction* instr,
-                                   const BufferAssignment* buffer_assignment,
-                                   const TargetMachineFeatures* target_machine)
-    : instr_(instr),
+DotKernelEmitter::DotKernelEmitter(
+    const HloInstruction* instr, const BufferAssignment* buffer_assignment,
+    const TargetMachineFeatures* target_machine,
+    KernelEmitter::KernelEntryRenamer kernel_entry_renamer)
+    : KernelEmitter(kernel_entry_renamer),
+      instr_(instr),
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
@@ -84,7 +87,8 @@ absl::StatusOr<KernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
 
   TF_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
                       kernel_api_ir_builder.EmitKernelPrototype(
-                          *llvm_module, instr_, buffer_assignment_, "_kernel"));
+                          *llvm_module, instr_, buffer_assignment_,
+                          kernel_entry_renamer_, "_kernel"));
 
   llvm::IRBuilder<> builder(*ctx);
   builder.SetInsertPoint(

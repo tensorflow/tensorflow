@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -295,25 +296,35 @@ KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
 
 auto KernelApiIrBuilder::EmitKernelPrototype(
     llvm::Module& module, const HloInstruction* instr,
-    const BufferAssignment* buffer_assignment, absl::string_view suffix)
-    -> absl::StatusOr<KernelPrototype> {
+    const BufferAssignment* buffer_assignment,
+    KernelEmitter::KernelEntryRenamer kernel_entry_renamer,
+    absl::string_view suffix) -> absl::StatusOr<KernelPrototype> {
   TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
                       GetKernelArgumentsParameters(instr, buffer_assignment));
   TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
                       GetKernelResultsParameters(instr, buffer_assignment));
 
   return EmitKernelPrototype(module, absl::StrCat(instr->name(), suffix),
-                             arguments, results);
+                             arguments, results, kernel_entry_renamer);
 }
 
 auto KernelApiIrBuilder::EmitKernelPrototype(
     llvm::Module& module, absl::string_view name,
     absl::Span<const KernelParameter> arguments,
-    absl::Span<const KernelParameter> results)
+    absl::Span<const KernelParameter> results,
+    KernelEmitter::KernelEntryRenamer kernel_entry_renamer)
     -> absl::StatusOr<KernelPrototype> {
   CHECK(&module.getContext() == &context_) << "Module context mismatch";
 
-  VLOG(3) << "Emit kernel prototype: " << name
+  std::string kernel_entry_name(name.begin(), name.end());
+
+  if (kernel_entry_renamer && *kernel_entry_renamer) {
+    kernel_entry_name = (*kernel_entry_renamer)(kernel_entry_name);
+    VLOG(3) << "Rename kernel entry name from " << name << " to "
+            << kernel_entry_name;
+  }
+
+  VLOG(3) << "Emit kernel prototype: " << kernel_entry_name
           << ", #arguments=" << arguments.size()
           << ", #results=" << results.size();
   for (const KernelParameter& argument : arguments) {
@@ -327,12 +338,13 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
 
   TF_RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
 
-  MemoryDependencyAnalyzer memory_dependency_analyzer(context_, name, results);
+  MemoryDependencyAnalyzer memory_dependency_analyzer(
+      context_, kernel_entry_name, results);
 
   llvm::IRBuilder<> b(context_);
 
   // Create a kernel function with HostKernel API.
-  llvm::Function* function = EmitKernelFunction(module, name);
+  llvm::Function* function = EmitKernelFunction(module, kernel_entry_name);
 
   // Create an entry basic block and set insert point to the end of it.
   b.SetInsertPoint(llvm::BasicBlock::Create(context_, "", function));

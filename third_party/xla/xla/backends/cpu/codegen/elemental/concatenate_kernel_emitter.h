@@ -27,9 +27,10 @@ namespace xla::cpu {
 
 class ConcatenateKernelEmitter final : public KernelEmitter {
  public:
-  ConcatenateKernelEmitter(const HloInstruction* instr,
-                           const BufferAssignment* buffer_assignment,
-                           const TargetMachineFeatures* target_machine);
+  ConcatenateKernelEmitter(
+      const HloInstruction* instr, const BufferAssignment* buffer_assignment,
+      const TargetMachineFeatures* target_machine,
+      KernelEmitter::KernelEntryRenamer kernel_entry_renamer);
 
   absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
 

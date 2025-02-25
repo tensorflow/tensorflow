@@ -48,6 +48,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/CodeGen.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -96,13 +97,15 @@ KernelApiIrBuilder::Options KernelApiIrBuilderOptionsFromHloModuleConfig(
 //===----------------------------------------------------------------------===//
 
 IrEmitter2::IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
-                       IrEmitter* nested_ir_emitter)
+                       IrEmitter* nested_ir_emitter,
+                       KernelEmitter::KernelEntryRenamer kernel_entry_renamer)
     : hlo_module_(hlo_module),
       module_(module),
       nested_ir_emitter_(nested_ir_emitter),
       kernel_api_ir_builder_(
           module_->getContext(),
-          KernelApiIrBuilderOptionsFromHloModuleConfig(hlo_module_.config())) {}
+          KernelApiIrBuilderOptionsFromHloModuleConfig(hlo_module_.config())),
+      kernel_entry_renamer_(std::move(kernel_entry_renamer)) {}
 
 bool IrEmitter2::fast_min_max() const {
   return hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max();
@@ -350,7 +353,8 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
 absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     const HloInstruction* instr) {
   return kernel_api_ir_builder_.EmitKernelPrototype(
-      *module_, instr, &nested_ir_emitter_->assignment());
+      *module_, instr, &nested_ir_emitter_->assignment(),
+      kernel_entry_renamer_);
 }
 
 std::optional<IrEmitter2::ParallelConfig> IrEmitter2::GetParallelConfig(
