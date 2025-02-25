@@ -1435,6 +1435,7 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes, Regular2DDot) {
     csv.nextRow();
     csv.appendValue(m);
     for (int n = 1; n <= kMaxSize; n *= kStepSize) {
+      LOG(INFO) << "Running test for m=" << m << ", n=" << n;
       auto run = [&](std::string backend, absl::string_view pattern,
                      const DebugOptions& options) -> absl::string_view {
         auto test_name = absl::StrReplaceAll(TestName(), {{"/", "_"}});
