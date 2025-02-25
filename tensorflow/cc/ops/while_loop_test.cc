@@ -14,9 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/ops/while_loop.h"
+
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/while_context.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
