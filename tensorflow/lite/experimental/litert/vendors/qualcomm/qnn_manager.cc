@@ -15,7 +15,6 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>  // NOLINT
 #include <optional>
 #include <string>
@@ -266,17 +265,7 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
                               std::optional<std::string> shared_library_dir,
                               std::optional<QnnHtpDevice_Arch_t> soc_model) {
   if (shared_library_dir.has_value()) {
-    std::string new_adsp_library_path;
-    if (auto* adsp_library_path = getenv("ADSP_LIBRARY_PATH");
-        adsp_library_path != nullptr) {
-      new_adsp_library_path = absl::StrFormat(
-          "%s:%s", shared_library_dir->data(), adsp_library_path);
-    } else {
-      new_adsp_library_path = shared_library_dir->data();
-    }
-    LITERT_LOG(LITERT_INFO, "Setting ADSP_LIBRARY_PATH to %s",
-               new_adsp_library_path.data());
-    setenv("ADSP_LIBRARY_PATH", new_adsp_library_path.data(), /*overwrite=*/1);
+    setenv("ADSP_LIBRARY_PATH", shared_library_dir->data(), /*overwrite=*/1);
   }
 
   auto lib_qnn_htp_so_path = kLibQnnHtpSo;
