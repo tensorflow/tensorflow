@@ -34,6 +34,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_flags.h"
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
@@ -43,6 +44,7 @@
 namespace litert::tools {
 
 using ::litert::BufferRef;
+using ::litert::internal::CompilerFlags;
 using ::litert::internal::CompilerPlugin;
 using ::litert::internal::Dump;
 using ::litert::internal::PartitionResult;
@@ -87,6 +89,8 @@ class Context {
     return run_->outs.at(out_ind);
   }
 
+  const CompilerFlags& Flags() const { return run_->compiler_flags; }
+
   OutStream SwapOut(OutStream out) {
     ABSL_CHECK_EQ(run_->outs.size(), 1);
     auto res = run_->outs.front();
@@ -118,10 +122,12 @@ void DumpSubgraphs(ToolDisplay& display, absl::string_view label,
 }
 
 void DumpCompilationRequest(ToolDisplay& display, absl::string_view soc_model,
-                            size_t num_subgraphs) {
+                            size_t num_subgraphs, const CompilerFlags& flags) {
   display.Labeled() << absl::StreamFormat(
-      "Requesting compilation for target `%s` on %lu partitions\n", soc_model,
-      num_subgraphs);
+                           "Requesting compilation for target `%s` on %lu "
+                           "partitions with flags: ",
+                           soc_model, num_subgraphs)
+                    << flags << "\n";
 }
 
 void DumpCompilationResult(ToolDisplay& display, size_t byte_code_size,
@@ -360,8 +366,9 @@ LiteRtStatus Compile(Context& ctx) {
   }
 
   ctx.Dump().Start("Compiling");
-  DumpCompilationRequest(ctx.Dump(), ctx.SocModelTarget(),
-                         model.NumSubgraphs());
+  DumpCompilationRequest(ctx.Dump(), ctx.SocModelTarget(), model.NumSubgraphs(),
+                         ctx.Flags());
+  plugin->SetFlags(ctx.Flags());
   auto compilation_result = plugin->Compile(&model, ctx.SocModelTarget());
   if (!compilation_result) {
     ctx.Dump().Fail();
@@ -425,6 +432,7 @@ LiteRtStatus Apply(Context& ctx) {
   }
 
   ctx.Dump().Start("Applying plugin");
+  plugin->SetFlags(ctx.Flags());
   if (auto status =
           litert::internal::ApplyPlugin(*plugin, model, ctx.SocModelTarget());
       !status) {
