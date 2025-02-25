@@ -20,9 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -44,7 +44,7 @@ class ProfilerSession {
  public:
   // Creates a ProfilerSession and starts profiling.
   static std::unique_ptr<ProfilerSession> Create(
-    const tensorflow::ProfileOptions& options);
+      const tensorflow::ProfileOptions& options);
 
   static tensorflow::ProfileOptions DefaultOptions() {
     tensorflow::ProfileOptions options;
@@ -88,7 +88,7 @@ class ProfilerSession {
   tensorflow::ProfileOptions options_;
 #endif
   absl::Status status_ TF_GUARDED_BY(mutex_);
-  mutex mutex_;
+  absl::Mutex mutex_;
 };
 
 }  // namespace tsl
