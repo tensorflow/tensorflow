@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_CODEGEN_DOT_KERNEL_EMITTER_H_
-#define XLA_BACKENDS_CPU_CODEGEN_DOT_KERNEL_EMITTER_H_
+#ifndef XLA_BACKENDS_CPU_CODEGEN_DOT_DOT_KERNEL_EMITTER_H_
+#define XLA_BACKENDS_CPU_CODEGEN_DOT_DOT_KERNEL_EMITTER_H_
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
@@ -42,4 +42,4 @@ class DotKernelEmitter final : public KernelEmitter {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_CODEGEN_DOT_KERNEL_EMITTER_H_
+#endif  // XLA_BACKENDS_CPU_CODEGEN_DOT_DOT_KERNEL_EMITTER_H_
