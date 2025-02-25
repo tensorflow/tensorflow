@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -24,6 +25,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "nanobind/nanobind.h"
+#include "nanobind/stl/function.h"  // IWYU pragma: keep
+#include "nanobind/stl/optional.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/tuple.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
@@ -84,7 +87,7 @@ NB_MODULE(_extension, kernel_runner_module) {
                  ir, kernel_name,
                  se::ThreadDim{std::get<0>(thread_dim), std::get<1>(thread_dim),
                                std::get<2>(thread_dim)},
-                 {});
+                 {}, std::nullopt);
            });
 
   nb::class_<CpuCompiler>(kernel_runner_module, "HloCompiler")
@@ -119,24 +122,46 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   nb::class_<ElementalKernelEmitter, KernelEmitter>(kernel_runner_module,
                                                     "ElementalKernelEmitter")
-      .def(nb::init<const HloInstruction*, const BufferAssignment*,
-                    const TargetMachineFeatures*>(),
-           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
-           nb::keep_alive<1, 4>());
+      .def(
+          "__init__",
+          [](ElementalKernelEmitter* self,
+             const HloInstruction* hlo_instruction,
+             const BufferAssignment* buffer_assignment,
+             const TargetMachineFeatures* target_machine_features) {
+            new (self)
+                ElementalKernelEmitter(hlo_instruction, buffer_assignment,
+                                       target_machine_features, std::nullopt);
+          },
+          nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
+          nb::keep_alive<1, 4>());
 
   nb::class_<DotKernelEmitter, KernelEmitter>(kernel_runner_module,
                                               "DotKernelEmitter")
-      .def(nb::init<const HloInstruction*, const BufferAssignment*,
-                    const TargetMachineFeatures*>(),
-           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
-           nb::keep_alive<1, 4>());
+      .def(
+          "__init__",
+          [](DotKernelEmitter* self, const HloInstruction* hlo_instruction,
+             const BufferAssignment* buffer_assignment,
+             const TargetMachineFeatures* target_machine_features) {
+            new (self) DotKernelEmitter(hlo_instruction, buffer_assignment,
+                                        target_machine_features, std::nullopt);
+          },
+          nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
+          nb::keep_alive<1, 4>());
 
   nb::class_<ConcatenateKernelEmitter, KernelEmitter>(
       kernel_runner_module, "ConcatenateKernelEmitter")
-      .def(nb::init<const HloInstruction*, const BufferAssignment*,
-                    const TargetMachineFeatures*>(),
-           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
-           nb::keep_alive<1, 4>());
+      .def(
+          "__init__",
+          [](ConcatenateKernelEmitter* self,
+             const HloInstruction* hlo_instruction,
+             const BufferAssignment* buffer_assignment,
+             const TargetMachineFeatures* target_machine_features) {
+            new (self)
+                ConcatenateKernelEmitter(hlo_instruction, buffer_assignment,
+                                         target_machine_features, std::nullopt);
+          },
+          nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
+          nb::keep_alive<1, 4>());
 
   nb::class_<JitCompiler>(kernel_runner_module, "JitCompiler")
       .def(nb::new_([](const HloModuleConfig& config) {

@@ -103,16 +103,18 @@ limitations under the License.
 
 namespace xla::cpu {
 
-ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
-                           const BufferAssignment& buffer_assignment,
-                           const TargetMachineFeatures& target_machine_features,
-                           const HloModuleConfig& hlo_module_config)
+ThunkEmitter::ThunkEmitter(
+    IrEmitter2& ir_emitter, const BufferAssignment& buffer_assignment,
+    const TargetMachineFeatures& target_machine_features,
+    const HloModuleConfig& hlo_module_config,
+    KernelEmitter::KernelEntryRenamer kernel_entry_renamer)
     : ir_emitter_(ir_emitter),
       buffer_assignment_(buffer_assignment),
       target_machine_features_(target_machine_features),
       hlo_module_config_(hlo_module_config),
       communicator_resource_(
-          Resource::Create(Resource::kCollectiveCommunicator)) {}
+          Resource::Create(Resource::kCollectiveCommunicator)),
+      kernel_entry_renamer_(std::move(kernel_entry_renamer)) {}
 
 static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
   const HloModule* module = instruction->GetModule();
@@ -558,7 +560,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
     const HloInstruction* instruction) {
   ConcatenateKernelEmitter emitter(instruction, &buffer_assignment_,
-                                   &target_machine_features_);
+                                   &target_machine_features_,
+                                   kernel_entry_renamer_);
   TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                       emitter.EmitKernelDefinition());
 
@@ -658,7 +661,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
     const HloInstruction* instruction) {
   ElementalKernelEmitter emitter(instruction, &buffer_assignment_,
-                                 &target_machine_features_);
+                                 &target_machine_features_,
+                                 kernel_entry_renamer_);
   TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                       emitter.EmitKernelDefinition());
 
@@ -850,7 +854,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
     case DotImplementationStrategy::kTiledLlvmIrGemm:
     case DotImplementationStrategy::kTiledLlvmIrGemv: {
       DotKernelEmitter emitter(instruction, &buffer_assignment_,
-                               &target_machine_features_);
+                               &target_machine_features_,
+                               kernel_entry_renamer_);
       TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
 

@@ -74,7 +74,8 @@ class IrEmitter2 {
 
  public:
   IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
-             IrEmitter* nested_ir_emitter);
+             IrEmitter* nested_ir_emitter,
+             KernelEmitter::KernelEntryRenamer kernel_entry_renamer);
 
   // Emitted kernel information that defines how to launch it at run time.
   struct KernelInfo {
@@ -183,6 +184,8 @@ class IrEmitter2 {
   // Keeps track of all the functions emitted so far.
   std::vector<KernelInfo> kernels_;
   std::vector<ComparatorInfo> comparators_;
+
+  KernelEmitter::KernelEntryRenamer kernel_entry_renamer_;
 };
 
 }  // namespace xla::cpu
