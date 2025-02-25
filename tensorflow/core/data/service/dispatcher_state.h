@@ -279,7 +279,7 @@ class DispatcherState {
   // Stores a list of all tasks for the given worker to `tasks`. Returns
   // NOT_FOUND if there is no such worker.
   absl::Status TasksForWorker(
-      const absl::string_view worker_address,
+      absl::string_view worker_address,
       std::vector<std::shared_ptr<const Task>>& tasks) const;
 
   // If the dispatcher config explicitly specifies a list of workers, validates

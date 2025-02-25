@@ -40,11 +40,10 @@ std::string NewDatasetsDir() {
   if (Env::Default()->FileExists(dir).ok()) {
     int64_t undeleted_files;
     int64_t undeleted_dirs;
-    CHECK(Env::Default()
-              ->DeleteRecursively(dir, &undeleted_files, &undeleted_dirs)
-              .ok());
+    CHECK_OK(Env::Default()->DeleteRecursively(dir, &undeleted_files,
+                                               &undeleted_dirs));
   }
-  CHECK(Env::Default()->RecursivelyCreateDir(dir).ok());
+  CHECK_OK(Env::Default()->RecursivelyCreateDir(dir));
   return dir;
 }
 
