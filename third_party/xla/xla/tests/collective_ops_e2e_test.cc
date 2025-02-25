@@ -1924,6 +1924,13 @@ class RaggedAllToAllTest : public AsyncMemcpyCollectiveOps {
         ragged_all_to_all->shape().dimensions().begin(),
         ragged_all_to_all->shape().dimensions().end()};
 
+    // The ragged-all-to-all accepts an output tensor as a parameter to allow
+    // buffer reuse. We initialize the output tensor with -1 to make sure that
+    // we don't accidentally overwrite data that is not part of the
+    // ragged-all-to-all update.
+    Array<float> output_init_data(ragged_tensor_sizes);
+    output_init_data.Fill(-1);
+
     Array<IndexType> output_sizes = input_sizes;
     output_sizes.TransposeDimensions({1, 0, 2});
 
@@ -1934,8 +1941,7 @@ class RaggedAllToAllTest : public AsyncMemcpyCollectiveOps {
     int64_t num_replicas = input_sizes.dim(0);
     std::vector<Array<float>> input_data(num_replicas,
                                          Array<float>(ragged_tensor_sizes));
-    std::vector<Array<float>> output_data(num_replicas,
-                                          Array<float>(ragged_tensor_sizes));
+    std::vector<Array<float>> output_data(num_replicas, output_init_data);
     FillWithRandomData(input_data, output_data, input_offsets, output_offsets,
                        input_sizes);
 
@@ -1955,9 +1961,7 @@ class RaggedAllToAllTest : public AsyncMemcpyCollectiveOps {
           GetReplicaSlice(replica_id, output_sizes)));
     }
 
-    // The ragged-all-to-all accepts an output tensor as a parameter to allow
-    // buffer reuse. We initialize the output tensor with zeros.
-    output_init_ = LiteralUtil::CreateFull(ragged_tensor_sizes, 0);
+    output_init_ = LiteralUtil::CreateFromArray(output_init_data);
   }
 
   // Returns a vector of pointers to the literals in the format needed for
