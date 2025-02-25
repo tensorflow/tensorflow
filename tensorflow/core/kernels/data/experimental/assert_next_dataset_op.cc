@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/assert_next_dataset_op.h"
 
 #include <map>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
