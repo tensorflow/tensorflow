@@ -239,7 +239,7 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
       if (i < reduction_dimension) {
         range = b.create<ttir::ExpandDimsOp>(range, /*axis*/ 0);
       } else {
-        range = b.create<ttir::ExpandDimsOp>(range, /*axis*/ i + 1);
+        range = b.create<ttir::ExpandDimsOp>(range, /*axis*/ i + 2);
       }
     }
     Value mask = Broadcast(b, mlir::cast<TensorValue>(range), input_shape)
