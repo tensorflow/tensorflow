@@ -154,6 +154,7 @@ LiteRtStatus LiteRtDispatchInitialize(const LiteRtDispatchOption* options,
   if (status == kLiteRtStatusOk) {
     IsTheApiInitialized = true;
   }
+  LITERT_LOG(LITERT_INFO, "Dispatch API initialized.");
   return status;
 }
 

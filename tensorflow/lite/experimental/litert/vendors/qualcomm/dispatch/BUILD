@@ -52,12 +52,15 @@ litert_dynamic_lib(
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_any",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:context_binary_info",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_litert_delegate",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:common",
     ],
 )
 

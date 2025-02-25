@@ -21,6 +21,19 @@ package(
 )
 
 cc_library(
+    name = "qnn_litert_delegate",
+    hdrs = ["qnn_litert_delegate.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:common",
+    ],
+)
+
+cc_library(
+    name = "hexagon_backend_utils",
+    hdrs = ["hexagon_backend_utils.h"],
+)
+
+cc_library(
     name = "common",
     hdrs = ["common.h"],
     deps = [
@@ -28,6 +41,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:common",
     ],
 )
 
@@ -49,6 +63,8 @@ cc_library(
     hdrs = ["qnn_manager.h"],
     deps = [
         ":common",
+        ":perf_control",
+        ":qnn_litert_delegate",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
@@ -72,6 +88,7 @@ litert_cc_lib_with_qnn(
     ungrte = True,
     deps = [
         ":common",
+        ":perf_control",
         ":qnn_log",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -82,6 +99,8 @@ litert_cc_lib_with_qnn(
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_litert_delegate",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:common",
     ],
 )
 
@@ -125,6 +144,8 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:perf_control",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_litert_delegate",
     ],
 )
 
@@ -139,5 +160,21 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+    ],
+)
+
+cc_library(
+    name = "perf_control",
+    srcs = ["perf_control.cc"],
+    hdrs = ["perf_control.h"],
+    deps = [
+        ":common",
+        ":hexagon_backend_utils",
+        ":qnn_litert_delegate",
+        "@com_google_absl//absl/base:core_headers",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
     ],
 )
