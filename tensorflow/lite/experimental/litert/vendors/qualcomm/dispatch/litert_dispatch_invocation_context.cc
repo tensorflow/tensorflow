@@ -54,10 +54,12 @@ LiteRtDispatchInvocationContextT::LiteRtDispatchInvocationContextT(
 Expected<LiteRtDispatchInvocationContextT::Ptr>
 LiteRtDispatchInvocationContextT::Create(
     QnnManager& qnn, LiteRtDispatchDeviceContextT& device_context,
-    const void* exec_bytecode_ptr, size_t exec_bytecode_size,
-    const char* function_name) {
+    const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name) {
+  auto exec_bytecode_ptr =
+      static_cast<const uint8_t*>(exec_bytecode_buffer->base_addr) +
+      exec_bytecode_buffer->offset;
   auto context_binary_info = litert::qnn::ContextBinaryInfo::Create(
-      qnn, exec_bytecode_ptr, exec_bytecode_size);
+      qnn, exec_bytecode_ptr, exec_bytecode_buffer->size);
   if (!context_binary_info) {
     return Unexpected(context_binary_info.Error());
   }
@@ -93,7 +95,7 @@ LiteRtDispatchInvocationContextT::Create(
   auto context_handle = qnn.CreateContextHandle(
       configs,
       absl::MakeSpan(static_cast<const uint8_t*>(exec_bytecode_ptr),
-                     exec_bytecode_size),
+                     exec_bytecode_buffer->size),
       profile_handle);
   if (!context_handle) {
     return Unexpected(context_handle.Error());

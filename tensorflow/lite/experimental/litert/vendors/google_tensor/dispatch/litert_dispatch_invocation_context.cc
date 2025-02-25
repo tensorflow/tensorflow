@@ -52,9 +52,9 @@ litert::Expected<LiteRtDispatchInvocationContextT::Ptr>
 LiteRtDispatchInvocationContextT::CreateFromBytecode(
     const litert::google_tensor::Southbound& southbound,
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType exec_type, const void* exec_bytecode,
-    size_t exec_bytecode_size, const char* function_name, int num_inputs,
-    int num_outputs) {
+    LiteRtDispatchExecutableType exec_type,
+    const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
+    int num_inputs, int num_outputs) {
   auto graph = device_context->CreateGraph();
   if (!graph) {
     return graph.Error();
@@ -79,8 +79,8 @@ LiteRtDispatchInvocationContextT::CreateFromBytecode(
     return status.Error();
   }
 
-  auto exec_handle = device_context->LoadExecutable(exec_type, exec_bytecode,
-                                                    exec_bytecode_size);
+  auto exec_handle =
+      device_context->LoadExecutable(exec_type, exec_bytecode_buffer);
   if (!exec_handle) {
     return exec_handle.Error();
   }

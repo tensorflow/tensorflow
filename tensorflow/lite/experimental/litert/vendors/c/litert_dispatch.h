@@ -64,6 +64,13 @@ typedef struct LiteRtMetric {
   LiteRtAny value;
 } LiteRtMetric;
 
+typedef struct LiteRtMemBuffer {
+  int fd;  // File descriptor for an mmapped buffer, -1 if unused.
+  const void* base_addr;  // Base address of the buffer.
+  size_t offset;          // Offset of the buffer from the base address.
+  size_t size;            // Buffer size.
+} LiteRtMemBuffer;
+
 // This option can be used to specify a directory from where to load shared
 // libraries.
 static const char* kDispatchOptionSharedLibraryDir = "shared_library_dir";
@@ -148,9 +155,10 @@ LiteRtStatus LiteRtDispatchUnregisterTensorBuffer(
 // includes multiple functions.
 LiteRtStatus LiteRtDispatchInvocationContextCreate(
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType exec_type, const void* exec_bytecode_ptr,
-    size_t exec_bytecode_size, const char* function_name, int num_inputs,
-    int num_outputs, LiteRtDispatchInvocationContext* invocation_context);
+    LiteRtDispatchExecutableType exec_type,
+    const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
+    int num_inputs, int num_outputs,
+    LiteRtDispatchInvocationContext* invocation_context);
 
 LiteRtStatus LiteRtDispatchInvocationContextDestroy(
     LiteRtDispatchInvocationContext invocation_context);
@@ -263,8 +271,8 @@ LiteRtStatus LiteRtDispatchConnectGraphOutput(LiteRtDispatchGraph* graph,
 
 LiteRtStatus LiteRtDispatchLoadExecutable(
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType type, const void* bytecode,
-    size_t bytecode_size, LiteRtDispatchExecutableHandle* exec_handle);
+    LiteRtDispatchExecutableType type, const LiteRtMemBuffer* bytecode_buffer,
+    LiteRtDispatchExecutableHandle* exec_handle);
 
 LiteRtStatus LiteRtDispatchUnloadExecutable(
     LiteRtDispatchDeviceContext device_context,

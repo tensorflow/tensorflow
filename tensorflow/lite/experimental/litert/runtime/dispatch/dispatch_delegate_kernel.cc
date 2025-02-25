@@ -201,23 +201,26 @@ TfLiteStatus DispatchDelegateKernel::Init(
   const auto alloc_base = FindAllocBase(options_);
   if (!alloc_base) {
     LITERT_LOG(LITERT_ERROR,
-               "Could not find requried delegate options \"alloc_base\"", "");
+               "Could not find requried delegate options \"alloc_base\"");
     return kTfLiteError;
   }
 
-  // Get location of bytecode in the model buffer relative to alloc_base.
-  const auto bytecode_start = reinterpret_cast<const uint8_t*>(*alloc_base) +
-                              dispatch_opts.bytecode_offset;
-  BufferRef<uint8_t> bytecode(bytecode_start, dispatch_opts.bytecode_size);
-  const auto& function_name = dispatch_opts.name;
+  const auto alloc_fd = FindAllocFd(options_);
 
+  // Get location of bytecode in the model buffer relative to alloc_base.
+  LiteRtMemBuffer exec_bytecode_buffer = {
+      /*.fd=*/alloc_fd ? *alloc_fd : -1,
+      /*.base_addr=*/*alloc_base,
+      /*.offset=*/dispatch_opts.bytecode_offset,
+      /*.size=*/dispatch_opts.bytecode_size};
+  const auto& function_name = dispatch_opts.name;
   const int num_inputs = params->input_tensors->size;
   const int num_outputs = params->output_tensors->size;
 
   if (auto status = LiteRtDispatchInvocationContextCreate(
           device_context_, kLiteRtDispatchExecutableTypeMlModel,
-          bytecode.Data(), bytecode.Size(), function_name.data(), num_inputs,
-          num_outputs, &invocation_context_);
+          &exec_bytecode_buffer, function_name.data(), num_inputs, num_outputs,
+          &invocation_context_);
       status != kLiteRtStatusOk) {
     LITERT_LOG(LITERT_ERROR, "Failed to create invocation context: %d", status);
     return kTfLiteError;

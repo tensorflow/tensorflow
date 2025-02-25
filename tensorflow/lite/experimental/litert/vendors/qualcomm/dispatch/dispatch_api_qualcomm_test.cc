@@ -72,10 +72,14 @@ TEST(Qualcomm, DispatchApiWithFastRpc) {
   // Set up an invocation context for a given model.
   // ///////////////////////////////////////////////////////////////////////////
 
+  LiteRtMemBuffer exec_bytecode_buffer = {/*.fd=*/-1,
+                                          /*.base_addr=*/model->Data(),
+                                          /*.offset=*/0,
+                                          /*.size=*/model->Size()};
   LiteRtDispatchInvocationContext invocation_context = nullptr;
   EXPECT_EQ(LiteRtDispatchInvocationContextCreate(
                 device_context, kLiteRtDispatchExecutableTypeMlModel,
-                model->Data(), model->Size(), /*function_name=*/"simple",
+                &exec_bytecode_buffer, /*function_name=*/"simple",
                 /*num_inputs=*/2, /*num_outputs=*/1, &invocation_context),
             kLiteRtStatusOk);
   ABSL_LOG(INFO) << "Invocation context: " << invocation_context;
@@ -321,10 +325,14 @@ TEST(Qualcomm, DispatchApiWithDmaBuf) {
   // Set up an invocation context for a given model.
   // ///////////////////////////////////////////////////////////////////////////
 
+  LiteRtMemBuffer exec_bytecode_buffer = {/*.fd=*/-1,
+                                          /*.base_addr=*/model->Data(),
+                                          /*.offset=*/0,
+                                          /*.size=*/model->Size()};
   LiteRtDispatchInvocationContext invocation_context = nullptr;
   EXPECT_EQ(LiteRtDispatchInvocationContextCreate(
                 device_context, kLiteRtDispatchExecutableTypeMlModel,
-                model->Data(), model->Size(), /*function_name=*/"simple",
+                &exec_bytecode_buffer, /*function_name=*/"simple",
                 /*num_inputs=*/2, /*num_outputs=*/1, &invocation_context),
             kLiteRtStatusOk);
   ABSL_LOG(INFO) << "Invocation context: " << invocation_context;
