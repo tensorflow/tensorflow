@@ -335,14 +335,6 @@ LiteRtStatus LiteRtGetModelSignature(LiteRtModel model,
 // Destroy the given model, freeing any memory it owns.
 void LiteRtDestroyModel(LiteRtModel model);
 
-// Serializes model to valid tflite flatbuffer bytes.
-// NOTE this destroys the model before it returns unless destroy_model is false.
-// NOTE: Caller takes ownership of `buf`. Flatbuffers are packed into their
-// arrays back to front, so the valid flatbuffer is buf[offset, size].
-LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
-                                  size_t* size, size_t* offset,
-                                  bool destroy_model);
-
 //
 // Utility Types
 //
@@ -350,6 +342,28 @@ LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
 // An append only list of ops.
 LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op,
                           LiteRtParamIndex partition_index);
+
+//
+// Serialization related functions
+//
+
+// Options for model serialization.
+typedef struct LiteRtModelSerializationOptions {
+  // Alignment for bytecode assets that are appended to the model.
+  // Alignment is enforced relative to the first byte of the flatbuffer.
+  size_t bytecode_alignment;
+} LiteRtModelSerializationOptions;
+
+// Serializes model to valid tflite flatbuffer bytes.
+//
+// This destroys the model before it returns unless destroy_model is false.
+// Caller takes ownership of `buf`. Flatbuffers are packed into their arrays
+// back to front, so the valid flatbuffer is buf[offset, size]. See the above
+// options for more details.
+LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
+                                  size_t* size, size_t* offset,
+                                  bool destroy_model,
+                                  LiteRtModelSerializationOptions options);
 
 #ifdef __cplusplus
 }

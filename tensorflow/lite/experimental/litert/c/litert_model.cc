@@ -134,8 +134,10 @@ void LiteRtDestroyModel(LiteRtModel model) { delete model; }
 
 LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
                                   size_t* size, size_t* offset,
-                                  bool destroy_model) {
-  auto serialized = litert::internal::SerializeModel(std::move(*model));
+                                  bool destroy_model,
+                                  LiteRtModelSerializationOptions options) {
+  auto serialized = litert::internal::SerializeModel(
+      std::move(*model), options.bytecode_alignment);
   // Even if we fail to serialize, we still need to destroy the model if
   // requested. This is because the model may have been partially serialized
   // and we don't want to leak memory. Also if ownership of the model is

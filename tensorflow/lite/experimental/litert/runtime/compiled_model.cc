@@ -27,6 +27,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/accelerator_model_compilation_data.h"
 
 #if defined(__ANDROID__)
@@ -55,7 +56,6 @@
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 #include "tensorflow/lite/interpreter.h"
@@ -145,8 +145,10 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
     // TODO b/383120429 - Once LiteRtModel provide tflite::Model object, switch
     // to use it to initialize Interpreter instead of serializing LiteRtModel.
     auto [data, size, offset] = compiled_model->model_buf_.GetWeak();
+    const auto opts = litert::SerializationOptions::Defaults();
     if (LiteRtSerializeModel(model, &data, &size, &offset,
-                             /*destroy_model=*/false) != kLiteRtStatusOk) {
+                             /*destroy_model=*/false,
+                             opts) != kLiteRtStatusOk) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                         "Failed to serialize model");
     }

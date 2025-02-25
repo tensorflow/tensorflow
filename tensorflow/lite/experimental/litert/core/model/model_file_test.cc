@@ -89,8 +89,9 @@ Expected<Model> LoadModelThroughRoundTrip(absl::string_view filename) {
   OwningBufferRef buf;
   auto [data, size, offset] = buf.GetWeak();
 
-  LITERT_RETURN_IF_ERROR(
-      LiteRtSerializeModel(model->Release(), &data, &size, &offset, true));
+  const auto opts = litert::SerializationOptions::Defaults();
+  LITERT_RETURN_IF_ERROR(LiteRtSerializeModel(model->Release(), &data, &size,
+                                              &offset, true, opts));
 
   // Reload model.
   LiteRtModel result = nullptr;

@@ -253,9 +253,9 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   LITERT_LOG(LITERT_INFO, "%s", "Serializing model");
   litert::OwningBufferRef buf;
   auto [data, size, offset] = buf.GetWeak();
-
+  const auto opts = litert::SerializationOptions::Defaults();
   LITERT_RETURN_IF_ERROR(
-      LiteRtSerializeModel(partitions, &data, &size, &offset, false));
+      LiteRtSerializeModel(partitions, &data, &size, &offset, false, opts));
   // TODO(abhirs): add support for serializing subgraphs
 
   absl::string_view buffer_str(reinterpret_cast<const char*>(buf.Data()),
