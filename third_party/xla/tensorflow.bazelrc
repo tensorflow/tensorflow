@@ -87,9 +87,6 @@ build --enable_platform_specific_config
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --config=short_logs
 
-# TODO(mihaimaruseac): Document this option or remove if no longer needed
-build --config=v2
-
 # TF now has `cc_shared_library` targets, so it needs the experimental flag
 # TODO(rostam): Remove when `cc_shared_library` is enabled by default
 common --experimental_cc_shared_library
@@ -205,26 +202,13 @@ build:nvcc_clang --config=cuda_nvcc
 
 # Debug config
 build:dbg -c dbg
-# Only include debug info for files under tensorflow/, excluding kernels, to
-# reduce the size of the debug info in the binary. This is because if the debug
-# sections in the ELF binary are too large, errors can occur. See
-# https://github.com/tensorflow/tensorflow/issues/48919.
+# Only include debug info for files under xla/, to reduce the size of the debug
+# info in the binary. This is because if the debug sections in the ELF binary
+# are too large, errors can occur. See https://github.com/tensorflow/tensorflow/issues/48919.
 # Users can still include debug info for a specific kernel, e.g. with:
-#     --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g
-# Since this .bazelrc file is synced between the tensorflow/tensorflow repo and
-# the openxla/xla repo, also include debug info for files under xla/.
-build:dbg --per_file_copt=+.*,-tensorflow.*,-xla.*@-g0
-build:dbg --per_file_copt=+tensorflow/core/kernels.*@-g0
-# for now, disable arm_neon. see: https://github.com/tensorflow/tensorflow/issues/33360
-build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
+build:dbg --per_file_copt=+.*,-xla.*@-g0
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
-
-# Config to build TF TPU
-build:tpu --define=with_tpu_support=true
-build:tpu --define=framework_shared_object=true
-build:tpu --copt=-DLIBTPU_ON_GCE
-build:tpu --define=enable_mlir_bridge=true
 
 build:rocm --copt=-Wno-gnu-offsetof-extensions
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
@@ -254,10 +238,6 @@ build:sycl --repo_env TF_NEED_SYCL=1
 # Options to disable default on features
 build:nogcp --define=no_gcp_support=true
 build:nonccl --define=no_nccl_support=true
-
-# Modular TF build options
-build:dynamic_kernels --define=dynamic_loaded_kernels=true
-build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 
 # Don't trigger --config=<host platform> when cross-compiling.
 build:linux --host_copt=-w
@@ -342,9 +322,6 @@ build:windows --host_cxxopt=/std:c++17
 
 # On windows, we still link everything into a single DLL.
 build:windows --config=monolithic
-
-# On linux, we dynamically link small amount of kernels
-build:linux --config=dynamic_kernels
 
 # Make sure to include as little of windows.h as possible
 build:windows --copt=-DWIN32_LEAN_AND_MEAN
