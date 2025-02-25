@@ -27,15 +27,30 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
+#if LITERT_HAS_AHWB_SUPPORT
+#include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"
+#endif  // LITERT_HAS_AHWB_SUPPORT
+
 namespace litert {
 namespace internal {
 
 class GlBuffer {
  public:
-  explicit GlBuffer(tflite::gpu::gl::GlBuffer&& tflite_gl_buffer)
+  explicit GlBuffer(tflite::gpu::gl::GlBuffer&& tflite_gl_buffer
+#if LITERT_HAS_AHWB_SUPPORT
+                    ,
+                    AHardwareBuffer* ahwb = nullptr
+#endif  // LITERT_HAS_AHWB_SUPPORT
+                    )
       : tflite_gl_buffer_(std::move(tflite_gl_buffer)),
         deallocator_(nullptr),
-        size_(tflite_gl_buffer_.bytes_size()) {}
+        size_(tflite_gl_buffer_.bytes_size())
+#if LITERT_HAS_AHWB_SUPPORT
+        ,
+        ahwb_(ahwb)
+#endif  // LITERT_HAS_AHWB_SUPPORT
+  {
+  }
 
   GlBuffer(GLenum target, GLuint id, size_t bytes_size, size_t offset,
            LiteRtGlBufferDeallocator deallocator) {
@@ -70,6 +85,10 @@ class GlBuffer {
   static bool IsSupported() { return true; }
   static Expected<GlBuffer> Alloc(size_t bytes_size);
 
+#if LITERT_HAS_AHWB_SUPPORT
+  static Expected<GlBuffer> AllocFromAhwbBuffer(AhwbBuffer& ahwb_buffer);
+#endif  // LITERT_HAS_AHWB_SUPPORT
+
   template <typename T>
   Expected<T*> Lock();
 
@@ -89,6 +108,9 @@ class GlBuffer {
   void* data_ = nullptr;
   // The size of the buffer in bytes.
   size_t size_ = 0;
+#if LITERT_HAS_AHWB_SUPPORT
+  AHardwareBuffer* ahwb_ = nullptr;
+#endif  // LITERT_HAS_AHWB_SUPPORT
 };
 
 }  // namespace internal

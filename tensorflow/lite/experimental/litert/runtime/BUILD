@@ -41,6 +41,7 @@ cc_library(
         "dmabuf_buffer.cc",
         "fastrpc_buffer.cc",
         "gl_buffer.cc",
+        "gl_texture.cc",
         "ion_buffer.cc",
         "open_cl_buffer.cc",
         "tensor_buffer.cc",
@@ -51,6 +52,7 @@ cc_library(
         "event.h",
         "fastrpc_buffer.h",
         "gl_buffer.h",
+        "gl_texture.h",
         "ion_buffer.h",
         "open_cl_buffer.h",
         "tensor_buffer.h",
@@ -82,6 +84,7 @@ cc_library(
     ] + gles_deps() + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
+            "//tensorflow/lite/delegates/gpu/gl:gl_texture",
         ],
         "//conditions:default": [],
     }),
@@ -267,6 +270,12 @@ cc_test(
 cc_test(
     name = "gl_buffer_test",
     srcs = ["gl_buffer_test.cc"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-landroid",
+        ],
+        "//conditions:default": [],
+    }),
     tags = [
         "notap",
     ],
