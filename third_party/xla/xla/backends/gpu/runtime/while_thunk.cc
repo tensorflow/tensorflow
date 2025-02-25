@@ -108,7 +108,8 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (trip_count_.has_value()) {
     VLOG(2) << "Executing WhileThunk for " << *trip_count_ << " iterations";
     for (iter = 0; iter < trip_count_; ++iter) {
-      VLOG(3) << "Executing iteration # " << iter;
+      VLOG(3) << "Executing iteration # " << iter
+              << " (Device: " << stream.parent()->device_ordinal() << ")";
       TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
     }
     return absl::OkStatus();
@@ -142,7 +143,8 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
       break;
     }
 
-    VLOG(3) << "Executing WhileThunk body computation; iter=" << iter;
+    VLOG(3) << "Executing WhileThunk body computation; iter=" << iter
+            << " (Device: " << stream.parent()->device_ordinal() << ")";
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
     ++iter;
   }
