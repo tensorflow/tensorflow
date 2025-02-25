@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -321,7 +322,7 @@ namespace {
 
 mlir::DictionaryAttr AppendAutoLayoutModeAttribute(mlir::Builder builder,
                                                    mlir::DictionaryAttr dict) {
-  constexpr absl::string_view kLayoutMode = "mhlo.layout_mode";
+  constexpr llvm::StringRef kLayoutMode = "mhlo.layout_mode";
   llvm::SmallVector<mlir::NamedAttribute> attrs;
   if (dict) {
     for (auto attr : dict.getValue()) {
