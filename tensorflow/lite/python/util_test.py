@@ -20,6 +20,7 @@ from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.lite.python import lite
 from tensorflow.lite.python import util
 from tensorflow.lite.tools.flatbuffer_utils import read_model as _read_model
 from tensorflow.python.client import session
@@ -82,9 +83,9 @@ class UtilTest(test_util.TensorFlowTestCase):
         tf.keras.layers.InputLayer(input_shape=(4,), dtype=tf.uint32),
         tf.keras.layers.Reshape(target_shape=(2, 2))
     ])
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
     tflite_model = converter.convert()
-    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter = lite.Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()[0]
     output_details = interpreter.get_output_details()[0]
@@ -272,11 +273,11 @@ def _generate_integer_tflite_model(quantization_type=dtypes.int8,
   model = _get_keras_model(add_unquantizable_layer)
   if not use_saved_model:
     # Convert TF Model to an Integer Quantized TFLite Model
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
   else:
     tf.saved_model.save(model, saved_model_dir)
-    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-  converter.optimizations = {tf.lite.Optimize.DEFAULT}
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+  converter.optimizations = {lite.Optimize.DEFAULT}
 
   def representative_dataset_gen():
     for _ in range(2):
@@ -286,10 +287,10 @@ def _generate_integer_tflite_model(quantization_type=dtypes.int8,
 
   converter.representative_dataset = representative_dataset_gen
   if quantization_type == dtypes.int8:
-    converter.target_spec.supported_ops = {tf.lite.OpsSet.TFLITE_BUILTINS_INT8}
+    converter.target_spec.supported_ops = {lite.OpsSet.TFLITE_BUILTINS_INT8}
   else:
     converter.target_spec.supported_ops = {
-        tf.lite.OpsSet
+        lite.OpsSet
         .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
     }
   tflite_model = converter.convert()
@@ -338,7 +339,7 @@ class UtilModifyIntegerQuantizedModelIOTypeTest(test_util.TensorFlowTestCase,
     def _run_tflite_inference(model, in_tftype, out_tftype):
       """Run inference on a model with a specific input/output type."""
       # Load TFLite model and allocate tensors.
-      interpreter = tf.lite.Interpreter(model_content=model)
+      interpreter = lite.Interpreter(model_content=model)
       interpreter.allocate_tensors()
       input_details = interpreter.get_input_details()[0]
       output_details = interpreter.get_output_details()[0]
@@ -412,7 +413,7 @@ class UtilModifyIntegerQuantizedModelIOTypeSignatureDefTest(
         self._generate_integer_tflite_model_from_saved_model())
     modified_model = util.modify_model_io_type(post_train_int8_model, tf.int8,
                                                tf.float32)
-    interpreter = tf.lite.Interpreter(model_content=modified_model)
+    interpreter = lite.Interpreter(model_content=modified_model)
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
     signature = interpreter._get_full_signature_list()
@@ -465,8 +466,8 @@ class UtilModifyIntegerQuantizedConcatResidualModelIOTypeTest(
     outputs = ConcatNResidual(number_of_inputs)(inputs)
     model = tf.keras.Model(inputs, outputs)
 
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.optimizations = [lite.Optimize.DEFAULT]
     tflite_model = converter.convert()
     return tflite_model
 

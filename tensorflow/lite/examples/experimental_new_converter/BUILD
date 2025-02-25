@@ -11,6 +11,7 @@ py_strict_binary(
     srcs = ["stack_trace_example.py"],
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "@absl_py//absl:app",
     ],
 )
