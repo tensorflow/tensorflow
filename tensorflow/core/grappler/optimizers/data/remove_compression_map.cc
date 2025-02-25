@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
