@@ -16,6 +16,16 @@ name: CI
 permissions:
   contents: read
 on:
+  workflow_dispatch:
+    inputs:
+      halt-for-connection:
+        description: 'Should this workflow run wait for a remote connection?'
+        type: choice
+        required: true
+        default: 'no'
+        options:
+        - 'yes'
+        - 'no'
   pull_request:
   push:
     branches:
@@ -100,6 +110,10 @@ jobs:
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}
+      - name: "Wait For Connection"
+        uses: google-ml-infra/actions/ci_connection@main
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
       - name: "Run build.py"
         working-directory: ${{ matrix.job_info.repo }}
         env:
