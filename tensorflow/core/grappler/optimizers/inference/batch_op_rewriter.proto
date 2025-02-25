@@ -85,4 +85,17 @@ message BatchOpRewriteConfig {
   // updating batching options. Once the correct batching options have been
   // identified using this, the saved model should be updated to include them.
   map<string /* model name */, BatchOptions> batch_options = 2;
+
+  // When set, switches all models to use a global batch scheduler with the
+  // given number of shared threads.
+  //
+  // This assumes that all models on the server have a batching op to wrap
+  // critical work. This works by setting mixed_priority_policy="priority_merge"
+  // on the batching ops. The standard batching ops will set
+  // 'use_global_scheduler' and 'rank_queues' on the batch scheduler for this
+  // policy so will cooperatively schedule work across all models.
+  message GlobalPrioritizationOptions {
+    int32 num_threads = 1;
+  }
+  GlobalPrioritizationOptions global_prioritization = 5;
 }
