@@ -53,7 +53,7 @@ jobs:
           uname -a # Kernel information
 
       - name: Create results directory
-        run: mkdir results
+        run: mkdir -p results
 
       - name: Configure XLA for GPU backend
         run: |
@@ -67,8 +67,9 @@ jobs:
 
       - name: Build hlo_runner_main
         run: bazel build -c opt --config=cuda --dynamic_mode=off //xla/tools/multihost_hlo_runner:hlo_runner_main
-      # TODO(juliagmt): Add more performance-criticalHLOs to benchmark.
-      - name: Run xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo
+
+      # TODO(juliagmt): Add more performance-critical HLOs to benchmark.
+      - name: Run hlo_opt and generate xspace.pb
         run: |
           ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=gpu --log_output=True --use_spmd_partitioning --xla_gpu_dump_xspace_to=results/xspace.pb xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo
 
@@ -77,12 +78,6 @@ jobs:
           PWD=$(pwd)
           bazel run //xla/tools:compute_cost -- --input=$PWD/xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo --format=hlo --gpu
 
-      - name: Set XSPACE_PATH
-        env:
-          XSPACE_PATH: ${{ github.workspace }}/results/xspace.pb
-        run: |
-          echo "XSPACE_PATH is: $XSPACE_PATH"
-
       - name: Checkout juliagmt-google/xla
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
@@ -90,8 +85,10 @@ jobs:
           path: juliagmt-google-xla
 
       - name: Compute the device stats of gpu_hlo_pass.hlo
+        env:
+          XSPACE_PATH: ${{ github.workspace }}/results/xspace.pb
         run: |
-          bazel run //xla/tools:get_device_stats_main -- --input=$XSPACE_PATH
+          bazel run //xla/tools:get_device_stats_main -- --input="$XSPACE_PATH"
         working-directory: juliagmt-google-xla
 
       - name: Upload XSpace
