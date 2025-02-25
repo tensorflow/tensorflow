@@ -11,7 +11,7 @@ cc_library(
     srcs = ["module_parsing.cc"],
     hdrs = ["module_parsing.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//xla/python/ifrt:friends"],
+    visibility = ["//xla/python/ifrt:users"],
     deps = [
         "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo:hlo_dialect_registration",
@@ -36,7 +36,7 @@ cc_library(
     srcs = ["sharding_conversions.cc"],
     hdrs = ["sharding_conversions.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//xla/python/ifrt:friends"],
+    visibility = ["//xla/python/ifrt:users"],
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -62,6 +62,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:tile_assignment",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:basic_device_list",
         "//xla/python/ifrt:mock",
         "//xla/python/ifrt:test_util",
         "//xla/python/ifrt/ir:sharding_param",

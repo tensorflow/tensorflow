@@ -263,7 +263,9 @@ ElementalKernelEmitter::EmitKernelDefinition() {
                                                      std::move(llvm_module));
 
   KernelSpec spec(kernel_prototype.function->getName(), thread_dims,
-                  std::move(kernel_prototype.buffer_uses));
+                  std::move(kernel_prototype.argument_buffers),
+                  std::move(kernel_prototype.result_buffers),
+                  std::move(kernel_prototype.invariant_arguments));
 
   return KernelDefinition(std::move(spec), std::move(source));
 }

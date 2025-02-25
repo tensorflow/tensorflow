@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -159,7 +160,7 @@ absl::Status AnnotateDotOperandNestedFusionImpl(
   output_tile_sizes[non_contracting_dimensions[0]] = non_contracting_dim_size;
 
   BlockLevelParameters block_level_parameters;
-  block_level_parameters.output_tile_sizes = std::move(output_tile_sizes);
+  block_level_parameters.output_tile_sizes = {std::move(output_tile_sizes)};
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       nested_fusion.backend_config<GpuBackendConfig>());
@@ -249,7 +250,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
     if (!parameters_satisfy_constraints) {
       continue;
     }
-    auto mapped_dot_tile_sizes = tiled_dot.TileSizes(output_tile_sizes);
+    auto mapped_dot_tile_sizes =
+        EvaluateTileSizes(tiled_dot.symbolic_tile(), output_tile_sizes);
     if (mapped_dot_tile_sizes == expected_dot_tile_sizes) {
       return output_tile_sizes;
     }
@@ -317,8 +319,8 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
   backend_config.set_kind(std::string(kTritonFusionKind));
 
   BlockLevelParameters block_level_parameters;
-  block_level_parameters.output_tile_sizes.assign(output_tile_sizes.begin(),
-                                                  output_tile_sizes.end());
+  block_level_parameters.output_tile_sizes = {
+      std::vector<int64_t>(output_tile_sizes.begin(), output_tile_sizes.end())};
 
   *backend_config.mutable_block_level_fusion_config() =
       block_level_parameters.ToBlockLevelFusionConfig();

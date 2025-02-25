@@ -167,8 +167,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // Note that `Sharding` serialization uses `SerDes` to handle an open set of
   // `Sharding` subclasses. See `serdes.h`.
   static absl::StatusOr<std::unique_ptr<Sharding>> FromProto(
-      DeviceList::LookupDeviceFunc lookup_device,
-      const ShardingProto& sharding_proto);
+      Client* client, const ShardingProto& sharding_proto);
 
   // Serializes `Sharding` into `ShardingProto`.
   // Note that `Sharding` serialization uses `SerDes` to handle an open set of
@@ -264,10 +263,7 @@ class SingleDeviceSharding final
   static char ID;  // NOLINT
 
  private:
-  explicit SingleDeviceSharding(Device* device, MemoryKind memory_kind)
-      : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
-            BasicDeviceList::Create({device}), memory_kind,
-            /*is_fully_replicated=*/true) {}
+  explicit SingleDeviceSharding(Device* device, MemoryKind memory_kind);
 
   void Hash(absl::HashState state) const override;
 };
@@ -574,14 +570,11 @@ class ShardingParamSharding
 // must remain valid during deserialization.
 struct DeserializeShardingOptions
     : llvm::RTTIExtends<DeserializeShardingOptions, DeserializeOptions> {
-  explicit DeserializeShardingOptions(
-      DeviceList::LookupDeviceFunc lookup_device)
-      : lookup_device(lookup_device) {}
+  explicit DeserializeShardingOptions(Client* client) : client(client) {}
 
   static char ID;  // NOLINT
 
-  // Function that converts device ids to devices.
-  DeviceList::LookupDeviceFunc lookup_device;
+  Client* client;
 };
 
 }  // namespace ifrt

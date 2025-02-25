@@ -80,6 +80,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -185,7 +186,8 @@ namespace gpu {
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
       send_recv_events_(std::make_shared<SendRecvAsyncEvents>()),
-      copy_events_(std::make_shared<CopyThunk::AsyncEvents>()) {}
+      copy_events_(std::make_shared<CopyThunk::AsyncEvents>()),
+      call_graph_(CallGraph::Build(&ir_emitter_context->hlo_module())) {}
 
 std::unique_ptr<IrEmitterUnnested> IrEmitterUnnested::Create(
     IrEmitterContext* ir_emitter_context) {
@@ -1542,8 +1544,11 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
   const HloFusionAnalysis fusion_analysis =
       HloFusionAnalysis::Create(*instr, device_info);
   VLOG(3) << "IrEmitterUnnested::EmitFusion:start";
-  std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(HloFusionInfo(
-      fusion_analysis, instr, &ir_emitter_context_->buffer_assignment()));
+  std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(
+      /*fusion_info=*/HloFusionInfo(
+          /*analysis=*/fusion_analysis, instr,
+          /*buffer_assignment=*/&ir_emitter_context_->buffer_assignment(),
+          /*call_graph=*/*call_graph_));
   TF_ASSIGN_OR_RETURN(auto result, emitter->Emit(*ir_emitter_context_, *instr));
 
   const ExecutionStreamAssignment& stream_assignment =
@@ -2574,6 +2579,19 @@ absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
   return absl::OkStatus();
 }
 
+// If the fusion instruction is a dynamic-slice-fusion instruction, with a
+// collective hero operation, then this function returns the collective
+// operation. Returns std::nullopt otherwise.
+std::optional<const HloInstruction*> GetCollectiveHeroForDynamicSliceFusion(
+    const HloFusionInstruction* instruction) {
+  if (!IsDynamicSliceFusion(instruction)) {
+    return std::nullopt;
+  }
+  return HloBfsFindIf(
+      {instruction->fused_instructions_computation()->root_instruction()},
+      [](const HloInstruction* instr) { return IsCollective(instr); });
+}
+
 absl::Status IrEmitterUnnested::EmitHloInstruction(
     const HloInstruction* instr) {
   switch (instr->opcode()) {
@@ -2609,7 +2627,27 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           return EmitNcclAsyncDone(Thunk::kNcclRaggedAllToAllDone, instr);
         case HloOpcode::kCollectiveBroadcast:
           return EmitNcclAsyncDone(Thunk::kNcclCollectiveBroadcastDone, instr);
-        case HloOpcode::kFusion:
+        case HloOpcode::kFusion: {
+          auto collective_hero = GetCollectiveHeroForDynamicSliceFusion(
+              Cast<HloFusionInstruction>(wrapped));
+          if (collective_hero.has_value()) {
+            switch ((*collective_hero)->opcode()) {
+              case HloOpcode::kReduceScatter:
+                TF_RETURN_IF_ERROR(
+                    EmitNcclAsyncDone(Thunk::kNcclReduceScatterDone, instr));
+                break;
+              default:
+                return absl::InternalError(absl::StrFormat(
+                    "Unhandled collective in dynamic slice fusion "
+                    "instruction: %s",
+                    (*collective_hero)
+                        ->fused_instructions_computation()
+                        ->ToString()));
+            }
+          }
+          // We still want to emit the stream done thunk.
+          [[clang::fallthrough]];
+        }
         case HloOpcode::kCall:
         case HloOpcode::kCustomCall: {
           // Wait until the concurrent stream has finished.

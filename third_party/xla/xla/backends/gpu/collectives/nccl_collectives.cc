@@ -114,16 +114,6 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
   return id;
 }
 
-static absl::StatusOr<std::vector<ncclUniqueId>> AsNcclUniqueIds(
-    const CliqueIds& clique_ids) {
-  std::vector<ncclUniqueId> ids;
-  ids.reserve(clique_ids.data().size());
-  for (const CliqueId& clique_id : clique_ids.data()) {
-    TF_ASSIGN_OR_RETURN(ids.emplace_back(), AsNcclUniqueId(clique_id));
-  }
-  return ids;
-}
-
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
 NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
                                      const std::optional<CliqueIds>& clique_ids,

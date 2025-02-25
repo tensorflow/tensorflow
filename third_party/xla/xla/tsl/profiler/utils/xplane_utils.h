@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/trace_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -211,6 +213,51 @@ class XEventContextTracker {
   int64_t current_index_ = -1;
 };
 
+// Tracks the ancestors of a given type based on the provided functions.
+// NOTE: This class assumes that the ancestors are ordered with respect to the
+// provided IsChildFn.
+template <typename T>
+class AncestorStack {
+ public:
+  using AncestorType = T;
+  using PopFn = std::function<void(const AncestorType&)>;
+  using IsChildFn =
+      std::function<bool(const AncestorType&, const AncestorType&)>;
+  using AddChildFn = std::function<void(AncestorType&, AncestorType&)>;
+  AncestorStack(PopFn&& pop_fn, IsChildFn&& is_child_fn,
+                AddChildFn&& add_child_fn)
+      : pop_fn_(std::move(pop_fn)),
+        is_child_fn_(std::move(is_child_fn)),
+        add_child_fn_(std::move(add_child_fn)) {};
+
+  // Pushes a new ancestor onto the stack. If the new ancestor is not a child of
+  // some existing ancestors, those ancestors are popped off the stack.
+  // Additionally, the new ancestor is added as a child of only its parent.
+  void Push(AncestorType&& ancestor) {
+    while (!stack_.empty() && !is_child_fn_(stack_.back(), ancestor)) {
+      pop_fn_(stack_.back());
+      stack_.pop_back();
+    }
+    if (!stack_.empty()) {
+      add_child_fn_(stack_.back(), ancestor);
+    }
+    stack_.push_back(std::move(ancestor));
+  }
+
+  void Flush() {
+    while (!stack_.empty()) {
+      pop_fn_(stack_.back());
+      stack_.pop_back();
+    }
+  }
+
+ private:
+  const PopFn pop_fn_;
+  const IsChildFn is_child_fn_;
+  const AddChildFn add_child_fn_;
+  std::vector<AncestorType> stack_;
+};
+
 // Aggregate traces on op_line in the full_trace xplane and add them onto the
 // aggregated_trace xplane. The function also copies the step line from the
 // full_trace into the aggregated_trace.
@@ -224,6 +271,15 @@ bool IsHostPlane(const XPlane& plane);
 
 // Return whether this is a device plan.
 bool IsDevicePlane(const XPlane& plane);
+
+// Return whether this is an op line name.
+inline bool IsOpLineName(absl::string_view line_name) {
+  return line_name == kXlaOpLineName || line_name == kTensorFlowOpLineName;
+}
+
+// Returns the timespan of the event from the device offset and duration stats.
+// If the stats are not present, returns the event's timespan.
+Timespan GetDeviceEventTimespan(const XEventVisitor& event);
 
 }  // namespace profiler
 }  // namespace tsl

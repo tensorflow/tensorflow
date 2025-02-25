@@ -207,7 +207,7 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[512,911]{1,0} parameter(0)
   param_1 = f32[911]{0} parameter(1)
-  ROOT triton_softmax = f32[512,911]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","911"],"num_warps":"2"}}}
+  ROOT triton_softmax = f32[512,911]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","911"]}],"num_warps":"2"}}}
 }
 )"));
   TF_ASSERT_OK_AND_ASSIGN(auto runtime_data,
@@ -258,7 +258,7 @@ ENTRY main {
   param_0 = f32[512,911] parameter(0)
   param_1 = f32[911] parameter(1)
   fusion.1 = f32[512,911] fusion(param_0, param_1), kind=kLoop, calls=fusion
-  ROOT triton_softmax = f32[512,911] fusion(fusion.1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","911"],"num_warps":"2"}}}
+  ROOT triton_softmax = f32[512,911] fusion(fusion.1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","911"]}],"num_warps":"2"}}}
 }
 )"));
   auto consumer = module->entry_computation()->root_instruction();
@@ -280,6 +280,161 @@ ENTRY main {
   EXPECT_EQ(runtime_data.bytes_read, kExpectedBytesRead);
   EXPECT_EQ(runtime_data.bytes_written, kOutputSizeBytes);
   EXPECT_NEAR(absl::ToDoubleMicroseconds(runtime_data.exec_time), 5, 1);
+}
+
+// Example from b/383162692.
+TEST_F(GpuIndexingPerformanceModelTest, EstimateBestTiling_CombinedFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0.1 = f32[] parameter(0)
+  param_1.1 = f32[] parameter(1)
+  ROOT add = f32[] add(param_0.1, param_1.1)
+}
+
+fused_computation {
+  param_2.1 = bf16[4096] parameter(2)
+  convert = f32[4096] convert(param_2.1)
+  constant = f32[] constant(1)
+  broadcast = f32[4096] broadcast(constant), dimensions={}
+  compare = pred[4096] compare(convert, broadcast), direction=LT
+  negate = f32[4096] negate(convert)
+  exponential = f32[4096] exponential(negate)
+  add.1 = f32[4096] add(exponential, broadcast)
+  divide = f32[4096] divide(broadcast, add.1)
+  multiply = f32[4096] multiply(divide, divide)
+  subtract = f32[4096] subtract(broadcast, multiply)
+  sqrt = f32[4096] sqrt(subtract)
+  constant.1 = f32[] constant(2)
+  broadcast.1 = f32[4096] broadcast(constant.1), dimensions={}
+  multiply.1 = f32[4096] multiply(exponential, broadcast.1)
+  constant.2 = f32[] constant(-2)
+  broadcast.2 = f32[4096] broadcast(constant.2), dimensions={}
+  multiply.2 = f32[4096] multiply(convert, broadcast.2)
+  exponential.1 = f32[4096] exponential(multiply.2)
+  add.2 = f32[4096] add(multiply.1, exponential.1)
+  sqrt.1 = f32[4096] sqrt(add.2)
+  multiply.3 = f32[4096] multiply(divide, sqrt.1)
+  select = f32[4096] select(compare, sqrt, multiply.3)
+  convert.1 = bf16[4096] convert(select)
+  broadcast.3 = bf16[1,8,4096] broadcast(convert.1), dimensions={2}
+  param_0.2 = bf16[1,8,4096] parameter(0)
+  multiply.4 = bf16[1,8,4096] multiply(broadcast.3, param_0.2)
+  convert.2 = bf16[4096] convert(divide)
+  broadcast.4 = bf16[8,4096] broadcast(convert.2), dimensions={1}
+  param_1.2 = bf16[8,4096] parameter(1)
+  multiply.5 = bf16[8,4096] multiply(param_1.2, param_1.2)
+  convert.3 = f32[8,4096] convert(multiply.5)
+  constant.3 = f32[] constant(0)
+  reduce = f32[8] reduce(convert.3, constant.3), dimensions={1}, to_apply=add
+  constant.4 = f32[] constant(0.000244140625)
+  broadcast.5 = f32[8] broadcast(constant.4), dimensions={}
+  multiply.6 = f32[8] multiply(reduce, broadcast.5)
+  convert.4 = bf16[8] convert(multiply.6)
+  constant.5 = bf16[] constant(9.984e-07)
+  broadcast.6 = bf16[8] broadcast(constant.5), dimensions={}
+  add.3 = bf16[8] add(convert.4, broadcast.6)
+  convert.5 = f32[8] convert(add.3)
+  rsqrt = f32[8] rsqrt(convert.5)
+  convert.6 = bf16[8] convert(rsqrt)
+  broadcast.7 = bf16[8,4096] broadcast(convert.6), dimensions={0}
+  multiply.7 = bf16[8,4096] multiply(param_1.2, broadcast.7)
+  multiply.8 = bf16[8,4096] multiply(broadcast.4, multiply.7)
+  bitcast = bf16[1,8,4096] bitcast(multiply.8)
+  add.4 = bf16[1,8,4096] add(multiply.4, bitcast)
+  multiply.9 = bf16[1,8,4096] multiply(add.4, add.4)
+  convert.7 = f32[1,8,4096] convert(multiply.9)
+  bitcast.1 = f32[8,4096] bitcast(convert.7)
+  constant.6 = f32[] constant(0)
+  reduce.1 = f32[8] reduce(bitcast.1, constant.6), dimensions={1}, to_apply=add
+  bitcast.2 = f32[8,1] bitcast(reduce.1)
+  constant.7 = f32[] constant(0.000244140625)
+  broadcast.8 = f32[8,1] broadcast(constant.7), dimensions={}
+  multiply.10 = f32[8,1] multiply(bitcast.2, broadcast.8)
+  convert.8 = bf16[8,1] convert(multiply.10)
+  constant.8 = bf16[] constant(9.984e-07)
+  broadcast.9 = bf16[8,1] broadcast(constant.8), dimensions={}
+  add.5 = bf16[8,1] add(convert.8, broadcast.9)
+  convert.9 = f32[8,1] convert(add.5)
+  rsqrt.1 = f32[8,1] rsqrt(convert.9)
+  convert.10 = bf16[8,1] convert(rsqrt.1)
+  bitcast.3 = bf16[8] bitcast(convert.10)
+  broadcast.10 = bf16[1,8,4096] broadcast(bitcast.3), dimensions={1}
+  multiply.11 = bf16[1,8,4096] multiply(add.4, broadcast.10)
+  ROOT tuple = (bf16[1,8,4096], bf16[1,8,4096]) tuple(add.4, multiply.11)
+}
+
+ENTRY entry_computation {
+  param_0.3 = bf16[1,8,4096] parameter(0)
+  param_1.3 = bf16[8,4096] parameter(1)
+  param_2.2 = bf16[4096] parameter(2)
+  ROOT fusion = (bf16[1,8,4096], bf16[1,8,4096]) fusion(param_0.3, param_1.3, param_2.2), kind=kCustom, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto tiling_result,
+      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+
+  ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
+
+  auto tiled_runtime_data = std::get<TiledRunTimeData>(tiling_result);
+
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
+            2);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+              ElementsAre(1, 1, 4096));
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[1],
+              ElementsAre(1, 1, 4096));
+  // TODO(b/390559452): Currently, the number of warps is 4, but should actually
+  // be 32, as it would improve the performance significantly.
+  // EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 32);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest, EstimateBestTiling_MultioutputFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+region {
+  param_0.1 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add = f32[] add(param_0.1, param_1)
+}
+
+fused_computation {
+  param_0.2 = f32[64] parameter(0)
+  abs = f32[64] abs(param_0.2)
+  bitcast = f32[4,4,4] bitcast(abs)
+  constant = f32[] constant(0)
+  reduce = f32[4,4] reduce(bitcast, constant), dimensions={1}, to_apply=region
+  ROOT tuple = (f32[4,4], f32[64]) tuple(reduce, abs)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[64] parameter(0)
+  ROOT fusion = (f32[4,4], f32[64]) fusion(param_0.3), kind=kCustom,
+    calls=fused_computation
+})"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto tiling_result,
+      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+
+  ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
+
+  auto tiled_runtime_data = std::get<TiledRunTimeData>(tiling_result);
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
+            2);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+              ElementsAre(1, 4));
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[1],
+              ElementsAre(16));
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 1);
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
@@ -331,7 +486,9 @@ ENTRY main {
   constexpr int64_t kExpectedBytesRead =
       kParam0SizeBytes + 128 * kParam1SizeBytes;
 
-  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes,
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
+            1);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
               ElementsAre(4, 911));
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 4);
 
@@ -375,7 +532,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(
       auto runtime_data,
       indexing_cost_model_.EstimateRunTimeForTiledFusion(
-          *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{1, 1}));
+          *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{1, 1}}));
 
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 2932, 2);
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 19, 1);
@@ -409,7 +566,7 @@ ENTRY main {
   LaunchDimensions launch_dimensions{8, WarpSize()};
 
   auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
-      *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{16, 16});
+      *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{16, 16}});
 
   TF_EXPECT_OK(result.status());
 }
@@ -437,7 +594,7 @@ ENTRY main {
   LaunchDimensions launch_dimensions{96, 128};
 
   auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
-      *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{1, 128});
+      *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{1, 128}});
 
   // Currently SymbolicTileAnalysis fails for concatenate. Once the analysis
   // gets support of concatenate, this test should fail with an error from
@@ -477,13 +634,13 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto res1,
                           indexing_cost_model_.EstimateRunTimeForTiledFusion(
                               *fusion_adaptor, /*launch_dimensions=*/{16, 32},
-                              /*output_tile_sizes=*/{1, 16000}));
+                              /*output_tile_sizes=*/{{1, 16000}}));
   EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 3, 1);
 
   TF_ASSERT_OK_AND_ASSIGN(auto res2,
                           indexing_cost_model_.EstimateRunTimeForTiledFusion(
                               *fusion_adaptor, /*launch_dimensions=*/{8, 32},
-                              /*output_tile_sizes=*/{2, 16000}));
+                              /*output_tile_sizes=*/{{2, 16000}}));
   EXPECT_TRUE(res2.IsInfinite());
 }
 
@@ -510,7 +667,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(
       auto res, indexing_cost_model_.EstimateRunTimeForTiledFusion(
                     *fusion_adaptor, /*launch_dimensions=*/{1, 2 * WarpSize()},
-                    /*output_tile_sizes=*/{65, 65}));
+                    /*output_tile_sizes=*/{{65, 65}}));
 
   constexpr int64_t kParamSizeBytes = 65 * 65 * 4;
   constexpr int64_t kPaddedOutputTileSize = 128 * 128;
@@ -549,13 +706,13 @@ ENTRY main {
       auto res_coalesced,
       indexing_cost_model_.EstimateRunTimeForTiledFusion(
           *fusion_adaptor, /*launch_dimensions=*/{4096, 2 * WarpSize()},
-          /*output_tile_sizes=*/{2, 128}));
+          /*output_tile_sizes=*/{{2, 128}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto res_uncoalesced,
       indexing_cost_model_.EstimateRunTimeForTiledFusion(
           *fusion_adaptor, /*launch_dimensions=*/{4096, 2 * WarpSize()},
-          /*output_tile_sizes=*/{128, 2}));
+          /*output_tile_sizes=*/{{128, 2}}));
 
   // The number of bytes read is the same for coalesced and uncoalesced reads.
   constexpr int64_t kParamSizeBytes = 2048 * 512 * 4;
@@ -595,13 +752,13 @@ ENTRY main {
       auto res_coalesced,
       indexing_cost_model_.EstimateRunTimeForTiledFusion(
           *fusion_adaptor, /*launch_dimensions=*/{512, WarpSize()},
-          /*output_tile_sizes=*/{16, 128}));
+          /*output_tile_sizes=*/{{16, 128}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto res_uncoalesced,
       indexing_cost_model_.EstimateRunTimeForTiledFusion(
           *fusion_adaptor, /*launch_dimensions=*/{512, WarpSize()},
-          /*output_tile_sizes=*/{128, 16}));
+          /*output_tile_sizes=*/{{128, 16}}));
 
   // The number of bytes read is the same for coalesced and uncoalesced reads.
   constexpr int64_t kParamSizeBytes = 2048 * 512;

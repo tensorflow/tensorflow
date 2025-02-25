@@ -341,34 +341,6 @@ ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
               : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
                                ResourceUsageType::kResourceOccupy)};
     }
-    case HloOpcode::kWhile: {
-      ResourcesVector result;
-      absl::flat_hash_set<int64_t> seen_occupied_resources;
-      absl::flat_hash_set<int64_t> seen_released_resources;
-      absl::flat_hash_set<int64_t> seen_no_resource;
-      for (const HloInstruction* instr : hlo.while_body()->instructions()) {
-        ResourcesVector rv = GetResourcesFromInstructionImpl(*instr);
-        if (rv.empty()) {
-          continue;
-        }
-        for (const auto& [resource, usage] : rv) {
-          if (usage == ResourceUsageType::kResourceOccupy &&
-              !seen_occupied_resources.contains(resource)) {
-            seen_occupied_resources.insert(resource);
-            result.push_back(std::make_pair(resource, usage));
-          } else if (usage == ResourceUsageType::kResourceRelease &&
-                     !seen_released_resources.contains(resource)) {
-            seen_released_resources.insert(resource);
-            result.push_back(std::make_pair(resource, usage));
-          } else if (usage == ResourceUsageType::kNoResource &&
-                     !seen_no_resource.contains(resource)) {
-            seen_no_resource.insert(resource);
-            result.push_back(std::make_pair(resource, usage));
-          }
-        }
-      }
-      return result;
-    }
     default:
       return ResourcesVector{};
   }
@@ -389,17 +361,6 @@ int64_t AsyncTracker::GetNumResourcesPerInstruction(
                                        instr);
 }
 
-// Returns the number of "occupy" type of resources used by the instructions in
-// the given computation. If there are multiple instructions in the computation
-// that have the exact same resource usages, it only counts one of them. For
-// example, if there are two async all-gathers in a while loop, this will have 1
-// for all-gather in the returned map for the while instruction. This is because
-// there is no proof that those all-gathers will overlap each other and over-
-// counting such resources causes the while not being scheduled due to the
-// resource limits (checked in scheduling_node_crosses_overlap_limit).
-//
-// If an instruction uses multiple instances of the same "occupy" type of
-// resource, that number is respected and returned in the resulting map.
 const absl::flat_hash_map<int64_t, int64_t>&
 AsyncTracker::RecursivelyComputeResourceMap(
     const HloComputation* computation) const {
@@ -409,30 +370,18 @@ AsyncTracker::RecursivelyComputeResourceMap(
   }
   per_opcode_map = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
   auto* m = per_opcode_map.get();
-  absl::flat_hash_set<int64_t> seen_resources_per_comp;
   for (HloInstruction* instr : computation->instructions()) {
-    absl::flat_hash_set<int64_t> seen_resources_per_inst;
     if (IsSupportedAsyncDone(*instr)) {
       for (const auto& resource : GetResourcesFromInstruction(*instr)) {
-        if (seen_resources_per_comp.contains(resource.first)) {
-          continue;
-        }
         ++(*m)[resource.first];
-        seen_resources_per_inst.insert(resource.first);
       }
     }
     for (const HloComputation* called_comp : instr->called_computations()) {
       for (auto& called_per_opcode_pair :
            RecursivelyComputeResourceMap(called_comp)) {
-        if (seen_resources_per_comp.contains(called_per_opcode_pair.first)) {
-          continue;
-        }
         (*m)[called_per_opcode_pair.first] += called_per_opcode_pair.second;
-        seen_resources_per_inst.insert(called_per_opcode_pair.first);
       }
     }
-    seen_resources_per_comp.insert(seen_resources_per_inst.begin(),
-                                   seen_resources_per_inst.end());
   }
   return *m;
 }
@@ -457,9 +406,6 @@ int64_t AsyncTracker::GetNumResourcesPerInstruction(
     auto opcode_it = map.find(resource_type);
     if (opcode_it != map.end()) {
       num_resources += opcode_it->second;
-      // We can return early if we have found the resource we are looking for.
-      // There is no need to check each called computation.
-      break;
     }
   }
   return num_resources;
@@ -545,6 +491,9 @@ absl::string_view AsyncTracker::GetResourceUsageName(
 
 ResourceHazardType AsyncTracker::GetResourceHazardType(
     int64_t resource_type) const {
+  if (resource_type == ResourceTypeToIndex(ResourceType::kCopy)) {
+    return ResourceHazardType::kShareable;
+  }
   return ResourceHazardType::kUnshareable;
 }
 
@@ -1463,6 +1412,24 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     }
   }
   if (ready_chosen.node == nullptr) {
+    if (!sched_state.ready_annotations.empty()) {
+      std::string error_message = absl::StrCat(
+          "There is a scheduling group which exceeds the overlap limits. "
+          "Annotation id: ",
+          sched_state.ready_annotations.front(), ". ");
+      absl::flat_hash_map<int64_t, int64_t> num_resources_needed =
+          GetNumResourcesNeededForAnnotation(
+              sched_state, sched_state.ready_annotations.front());
+      for (const auto& [resource, num_needed] : num_resources_needed) {
+        int64_t limit = sched_state.max_concurrent_resource.at(resource);
+        if (num_needed > limit) {
+          absl::StrAppend(&error_message, "It needs ", num_needed, " ",
+                          sched_state.async_tracker->GetResourceName(resource),
+                          " resources, but the limit is ", limit, ". ");
+        }
+      }
+      return absl::InternalError(error_message);
+    }
     return absl::InternalError(absl::StrCat(
         "FindAndExtractBestNodeAvailable failed to find a node to "
         "schedule, skipped nodes: ",
@@ -1589,6 +1556,21 @@ bool DefaultSchedulerCore::AddOccupierToResource(
         accumulated_delay < new_edge.OriginalLatency() + 0.0001);
   for (; it != occupiers.end(); it++) {
     it->second += accumulated_delay;
+  }
+
+  // Update the ready time of the occupiers.
+  for (auto it = occupiers.begin(); it != occupiers.end(); it++) {
+    HloGraphNode* done_node = it->first->TargetPtr();
+    if (done_node == nullptr) {
+      continue;
+    }
+    if (done_node->GetReadyTime() < it->second) {
+      for (HloEdge& start_edge : done_node->GetPredecessors()) {
+        if (start_edge.Target().GetReadyTime() < it->second) {
+          start_edge.Target().SetReadyTime(it->second);
+        }
+      }
+    }
   }
   return true;
 }
@@ -1883,9 +1865,6 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   for (HloEdge& edge : n->GetPredecessors()) {
     const int64_t current_outdegree = edge.Target().GetOutdegree();
     // Node is not ready yet. Decrease the outdegree and continue.
-    if (n->GetInstr().name() == "gte1.1")
-      LOG(INFO) << "SEHER edge: " << edge.Target().GetInstr().name()
-                << " outdegree: " << current_outdegree;
     if (current_outdegree != 1) {
       edge.Target().SetOutdegree(current_outdegree - 1);
       continue;
@@ -2384,14 +2363,32 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
   return absl::OkStatus();
 }
 
-bool DefaultSchedulerCore::SchedulingAnnotationCrossesOverlapLimit(
+absl::flat_hash_map<int64_t, int64_t>
+DefaultSchedulerCore::GetNumResourcesNeededForAnnotation(
     const SchedulingState& sched_state, int64_t annotation) {
+  absl::flat_hash_map<int64_t, int64_t> num_resources_needed;
   const HloComputation* comp =
       sched_state.sched_graph.GetOriginalInstrList()[0]->parent();
   for (const HloInstruction* instr :
        annotation_tracker_->GetInstructions(comp, annotation)) {
-    if (scheduling_instruction_crosses_overlap_limit_(
-            sched_state, &sched_state.sched_graph.GetNode(instr))) {
+    absl::Span<const ResourcePair> rv =
+        sched_state.async_tracker->GetResourcesFromInstruction(*instr);
+    for (const auto& [resource, usage] : rv) {
+      if (usage == ResourceUsageType::kResourceOccupy) {
+        num_resources_needed[resource]++;
+      }
+    }
+  }
+  return num_resources_needed;
+}
+
+bool DefaultSchedulerCore::SchedulingAnnotationCrossesOverlapLimit(
+    const SchedulingState& sched_state, int64_t annotation) {
+  absl::flat_hash_map<int64_t, int64_t> num_resources_needed =
+      GetNumResourcesNeededForAnnotation(sched_state, annotation);
+  for (const auto& [resource, num_needed] : num_resources_needed) {
+    int64_t limit = sched_state.max_concurrent_resource.at(resource);
+    if (num_needed > limit) {
       return true;
     }
   }

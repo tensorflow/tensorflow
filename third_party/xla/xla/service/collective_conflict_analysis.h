@@ -54,6 +54,12 @@ std::vector<HloInstruction*> FindAllConflictingCollectives(
     const HloComputation* computation,
     const std::vector<HloInstruction*>& seed_collectives);
 
+inline std::vector<HloInstruction*> FindAllConflictingCollectives(
+    HloInstruction* seed_collective) {
+  return FindAllConflictingCollectives(seed_collective->parent(),
+                                       {seed_collective});
+}
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_CONFLICT_ANALYSIS_H_

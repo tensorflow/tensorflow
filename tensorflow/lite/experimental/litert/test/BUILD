@@ -114,6 +114,25 @@ cc_library(
 )
 
 cc_library(
+    name = "simple_cascade_model_npu",
+    testonly = 1,
+    srcs = [],
+    hdrs = [
+        "testdata/simple_model_test_vectors.h",
+    ],
+    data = [
+        "testdata/simple_cascade_model_npu.tflite",
+        "testdata/simple_model_google_tensor.bin",
+        "testdata/simple_model_mtk.bin",
+        "testdata/simple_model_qualcomm.bin",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_layout",
+    ],
+)
+
+cc_library(
     name = "test_models",
     hdrs = ["test_models.h"],
     deps = [
@@ -150,13 +169,18 @@ cc_library(
     name = "matchers_oss",
     testonly = True,
     hdrs = ["matchers.h"],
+    defines = ["LITERT_DEFINE_GTEST_STATUS_PRINTER"],
     tags = ["avoid_dep"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
 )
 
-exports_files(srcs = ["testdata/simple_model_google_tensor.bin"])
+exports_files(srcs = [
+    "testdata/simple_model_google_tensor.bin",
+    "testdata/simple_model_qualcomm.bin",
+])

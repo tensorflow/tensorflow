@@ -52,17 +52,13 @@ class NoOpDeviceTimeMeasurement : public DeviceTimeMeasurement {
   void Record(absl::Duration elapsed, DeviceType device_type) override {};
 };
 
-inline std::unique_ptr<DeviceTimeMeasurement> CreateDeviceTimeMeasurement() {
-  return std::make_unique<NoOpDeviceTimeMeasurement>();
-}
+std::unique_ptr<DeviceTimeMeasurement> CreateDeviceTimeMeasurement();
 
-inline std::optional<uint64_t> GetDeviceTimeMeasurementKey() {
-  return std::nullopt;
-}
+std::optional<uint64_t> GetDeviceTimeMeasurementKey();
 
-inline void RecordDeviceTimeMeasurement(
+void RecordDeviceTimeMeasurement(
     uint64_t key, absl::Duration elapsed,
-    xla::DeviceTimeMeasurement::DeviceType device_type) {}
+    xla::DeviceTimeMeasurement::DeviceType device_type);
 
 }  // namespace xla
 #endif  // XLA_PJRT_PROFILING_NO_OP_DEVICE_TIME_MEASUREMENT_H_

@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_HLO_PASS_HLO_PASS_FIX_H_
 #define XLA_HLO_PASS_HLO_PASS_FIX_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -102,7 +104,21 @@ class HloPassFix : public Pass {
       HloModule* module, RunState* run_state,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     VLOG(3) << "Running HloPassFix on " << Pass::name();
+
+    absl::flat_hash_set<size_t> hashes;
     while (!run_state->changed_last_iteration.empty()) {
+      if (module->config().debug_options().xla_hlo_pass_fix_detect_cycles()) {
+        size_t hash = absl::HashOf(*module);
+        VLOG(3) << "Module hash for " << Pass::name() << " at iteration "
+                << run_state->iteration << ": " << hash;
+        if (hashes.contains(hash)) {
+          LOG(WARNING) << "Cycle detected when running " << Pass::name()
+                       << " on iteration " << run_state->iteration
+                       << "; hash: " << hash;
+        } else {
+          hashes.insert(hash);
+        }
+      }
       TF_RETURN_IF_ERROR(
           RunOnChangedComputationsOnce(module, run_state, execution_threads));
       VLOG(3) << Pass::name() << " iteration " << run_state->iteration
@@ -125,6 +141,7 @@ class HloPassFix : public Pass {
         break;
       }
     }
+    VLOG(3) << "Finished running HloPassFix on " << Pass::name();
     return absl::OkStatus();
   }
 

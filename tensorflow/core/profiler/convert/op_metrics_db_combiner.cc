@@ -131,8 +131,7 @@ void OpMetricsDbCombiner::Combine(const OpMetricsDb& src,
 
   for (const auto& src_metrics : src.metrics_db()) {
     auto* dst_metrics = LookupOrInsertNewOpMetrics(src_metrics.hlo_module_id(),
-                                                   src_metrics.name(),
-                                                   src_metrics.fingerprint());
+                                                   src_metrics.name());
     CopyOpMetricsMetadata(src_metrics, dst_metrics);
     CombineOpMetrics(src_metrics, dst_metrics, update_num_cores);
   }

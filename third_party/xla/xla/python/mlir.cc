@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <string>
 
-#include "mhlo/transforms/passes.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -38,8 +37,7 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "stablehlo/dialect/Serialization.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/status_casters.h"
@@ -79,32 +77,16 @@ void EnablePrintBeforeAndAfter(mlir::PassManager& pm) {
   pm.enableIRPrinting(print_before, print_after);
 }
 
-// Converts an XlaComputation to an MHLO or StableHLO mlir::Module string.
+// Converts an XlaComputation to a StableHLO mlir::Module string.
 // Exists for backwards compatibility.
 // TODO(phawkins): port remaining users of XlaComputations to use mlir::Modules
 // instead and delete this function.
 absl::StatusOr<std::string> PyXlaComputationToMlirModule(
-    const XlaComputation& computation, bool emit_stable_hlo) {
+    const XlaComputation& computation) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&context));
-  context.loadDialect<mlir::func::FuncDialect>();
-  context.loadDialect<mlir::mhlo::MhloDialect>();
-  mlir::DialectRegistry registry;
-  mlir::func::registerAllExtensions(registry);
-  context.appendDialectRegistry(registry);
-
-  TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, &computation.proto(),
-                                         /*import_all_computations=*/true));
-  mlir::PassManager pm(&context);
-  if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
-  if (emit_stable_hlo) {
-    pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-  }
-  if (!mlir::succeeded(pm.run(*module))) {
-    return tsl::errors::InvalidArgument("MHLO => StableHLO failed");
-  }
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ConvertHloToStablehlo(context, &computation.proto()));
   return PrintModule(*module);
 }
 
@@ -202,7 +184,7 @@ void BuildMlirSubmodule(nb::module_& m) {
 
   mlir_module.def("xla_computation_to_mlir_module",
                   xla::ValueOrThrowWrapper(PyXlaComputationToMlirModule),
-                  nb::arg("computation"), nb::arg("emit_stable_hlo") = true);
+                  nb::arg("computation"));
   mlir_module.def(
       "mlir_module_to_xla_computation",
       [](const nb::bytes& bytecode, bool use_tuple_args, bool return_tuple) {

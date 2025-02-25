@@ -66,7 +66,7 @@ class PyHostValue {
   absl::Status CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
                                ifrt::Array* ifrt_array);
 
-  absl::StatusOr<nanobind::object> AsNumPyArray(
+  absl::StatusOr<std::pair<nanobind::object, bool>> AsNumPyArray(
       std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array);
 
  private:
@@ -280,6 +280,8 @@ class PyArray : public nanobind::object {
   absl::Status BlockUntilResultStatusIsReady();
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes();
+  absl::StatusOr<std::pair<nanobind::object, bool>>
+  SingleDeviceArrayToNumpyArrayDidCopy();
   absl::StatusOr<nanobind::object> SingleDeviceArrayToNumpyArray();
   absl::Status CopySingleDeviceArrayToHostAsync();
   nanobind::dict CudaArrayInterface();

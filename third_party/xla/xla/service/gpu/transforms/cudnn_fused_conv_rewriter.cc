@@ -1283,7 +1283,7 @@ absl::StatusOr<bool> FuseConvertToS8(HloComputation* comp,
 
     PrimitiveType conv_output_ty;
     if (MatchAndLogIfFailed(
-            instr, "s8->s8 conv",
+            instr, "s8->s8 conv with clamp",
             m::Convert(m::Clamp(m::Broadcast(m::ConstantEffectiveScalar(-128)),
                                 m::GetTupleElement(
                                     &gte,
@@ -1300,6 +1300,22 @@ absl::StatusOr<bool> FuseConvertToS8(HloComputation* comp,
                                     m::Op().WithPredicate(IsConvCustomCall)),
                                 m::Op()))
                 .WithElementType(S8))) {
+      conv_output_ty = S8;
+    } else if (MatchAndLogIfFailed(
+                   instr, "s8->s8 conv without clamp",
+                   m::Convert(m::GetTupleElement(
+                                  &gte,
+                                  conv_pattern.WithOperandIfPresent(
+                                      3, m::Op().WithPredicate(
+                                             IsLosslesslyConvertibleToS8)),
+                                  0)
+                                  .WithElementType(F32)
+                                  .WithOneUse())
+                       .WithElementType(S8),
+                   VLOG_IS_ON(3),
+                   m::Convert(m::GetTupleElement(
+                                  m::Op().WithPredicate(IsConvCustomCall)))
+                       .WithElementType(S8))) {
       conv_output_ty = S8;
     } else if (MatchAndLogIfFailed(
                    instr, "s8->f32 conv",

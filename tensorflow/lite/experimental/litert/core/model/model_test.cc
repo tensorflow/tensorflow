@@ -346,8 +346,17 @@ TEST(ModelOpListTest, Push) {
   LiteRtOpListT op_list;
   LiteRtOpT op;
   op_list.Push(&op);
-  auto vec = op_list.Vec();
-  EXPECT_EQ(vec.front(), &op);
+  auto vec = op_list.Values();
+  EXPECT_EQ(vec.front().first, &op);
+}
+
+TEST(ModelOpListTest, PushWithIndex) {
+  LiteRtOpListT op_list;
+  LiteRtOpT op;
+  op_list.Push(&op, 1);
+  auto vec = op_list.Values();
+  EXPECT_EQ(vec.front().first, &op);
+  EXPECT_EQ(vec.front().second, 1);
 }
 
 }  // namespace

@@ -139,7 +139,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
-#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/literal.h"
 #include "xla/literal_pool.h"
 #include "xla/map_util.h"
@@ -249,8 +248,14 @@ static tsl::thread::ThreadPool* GetCompilationThreadPool() {
   // so much CPU-bound work. Based on profiling a few examples, 32 threads seems
   // to be enough to achieve maximum parallel compilation speedup.
   static constexpr int kMaxCompilationThreads = 32;
+
+  // On Mac OS the default stack size is 512KiB, this is too small for compiling
+  // reasonably sized programs
+  tsl::ThreadOptions thread_options;
+  thread_options.stack_size = 4 * 1024 * 1024;  // 4 MB
+
   static auto* thread_pool = new tsl::thread::ThreadPool(
-      tsl::Env::Default(), "xla-cpu-llvm-codegen",
+      tsl::Env::Default(), thread_options, "xla-cpu-llvm-codegen",
       std::min(kMaxCompilationThreads, tsl::port::MaxParallelism()));
   return thread_pool;
 }

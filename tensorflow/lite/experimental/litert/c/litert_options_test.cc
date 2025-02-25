@@ -244,4 +244,47 @@ TEST(GetOpOptionTest, TestGetPackOptions) {
   ASSERT_EQ(axis, 0);
 }
 
+TEST(GetOpOptionTest, TestGetGatherOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_gather_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  int32_t axis;
+  LITERT_ASSERT_OK(LiteRtGetGatherAxisOption(op, &axis));
+  ASSERT_EQ(axis, 0);
+
+  int32_t batch_dims;
+  LITERT_ASSERT_OK(LiteRtGetGatherBatchDimsOption(op, &batch_dims));
+  ASSERT_EQ(batch_dims, 0);
+}
+
+TEST(GetOpOptionTest, TestGetMeanOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_mean_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  bool keepdims;
+  LITERT_ASSERT_OK(LiteRtGetMeanKeepDimsOption(op, &keepdims));
+  ASSERT_EQ(keepdims, false);
+}
+
+TEST(GetOpOptionTest, TestGetSplitOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_split_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  int32_t num_splits;
+  LITERT_ASSERT_OK(LiteRtGetSplitNumSplitsOption(op, &num_splits));
+  ASSERT_EQ(num_splits, 3);
+}
+
 }  // namespace

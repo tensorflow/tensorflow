@@ -402,10 +402,6 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
     return kTfLiteError;
   }
 
-  // Set the non-CPU allocation flag for the tensor.
-  TfLiteOpaqueTensorSetNonCpuAllocation(
-      const_cast<TfLiteOpaqueTensor*>(tfl_opaque_tensor));
-
   return RegisterLiteRtTensorBuffer(TensorBuffer(litert_tensor_buffer),
                                     *tensor_buffer_size, buffer_index,
                                     is_input);
@@ -523,7 +519,7 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
       }
       input_tensor_buffers_require_cpu_sync_[i] = false;
     } else {
-      LITERT_LOG(LITERT_INFO,
+      LITERT_LOG(LITERT_VERBOSE,
                  "Input#%d TensorBuffer is not registered. Create a new one",
                  i);
       if (auto status =
@@ -556,7 +552,7 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
       }
       output_tensor_buffers_require_cpu_sync_[i] = false;
     } else {
-      LITERT_LOG(LITERT_INFO,
+      LITERT_LOG(LITERT_VERBOSE,
                  "Output#%d TensorBuffer is not registered. Create a new one",
                  i);
       if (auto status =

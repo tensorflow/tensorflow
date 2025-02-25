@@ -27,6 +27,7 @@
 #include "absl/time/time.h"
 #include "grpcpp/client_context.h"
 #include "xla/pjrt/distributed/util.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client.h"
 #include "xla/python/ifrt_proxy/client/global_flags.h"
@@ -53,7 +54,8 @@ namespace {
 absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     absl::string_view server_address,
     std::function<void(absl::Status)> on_disconnect, int attempt_no,
-    absl::AnyInvocable<void(absl::string_view)> log_initial_connection) {
+    absl::AnyInvocable<void(absl::string_view)> log_initial_connection,
+    AttributeMap initialization_data) {
   std::unique_ptr<RpcHelper> rpc_helper;
   auto init_response_promise =
       Future<std::shared_ptr<InitResponse>>::CreatePromise();
@@ -109,6 +111,7 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     CHECK_LE(response.version().protocol_version(), kClientMaxVersion);
     *metadata.mutable_version() = response.version();
   }
+  *metadata.mutable_initialization_data() = initialization_data.ToProto();
 
   auto session = GrpcClientSession::Create(control_path_stub, metadata,
                                            session_disconnect_cb);
@@ -159,8 +162,9 @@ absl::StatusOr<std::unique_ptr<Client>> CreateGrpcClient(
     log_initial_connection(absl::StrCat("Connecting to IFRT proxy server at ",
                                         server_address, ", attempt #", i,
                                         "..."));
-    absl::StatusOr<std::unique_ptr<Client>> result = AttemptConnection(
-        server_address, options.on_disconnect, i, log_initial_connection);
+    absl::StatusOr<std::unique_ptr<Client>> result =
+        AttemptConnection(server_address, options.on_disconnect, i,
+                          log_initial_connection, options.initialization_data);
     if (result.ok()) {
       log_initial_connection(absl::StrCat("Connected to IFRT proxy server on ",
                                           "attempt #", i, "."));

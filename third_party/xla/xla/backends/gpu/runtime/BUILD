@@ -196,7 +196,6 @@ cc_library(
     deps = [
         ":sequential_thunk",
         ":thunk",
-        ":while_thunk",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -21,6 +22,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Regex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -28,12 +31,15 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
+#include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/tac_filter.pb.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -42,6 +48,8 @@ namespace {
 
 using ::third_party::tensorflow::compiler::mlir::lite::experimental::tac::
     FunctionFilter;
+using ::third_party::tensorflow::compiler::mlir::lite::experimental::tac::
+    OpFilter;
 using ::third_party::tensorflow::compiler::mlir::lite::experimental::tac::
     TacFilter;
 using ::third_party::tensorflow::compiler::mlir::lite::experimental::tac::
@@ -56,8 +64,12 @@ class TacFilterPass
   TacFilterPass(const TacFilterPass& other) {
     this->tac_filters_ = other.tac_filters_;
   }
-  explicit TacFilterPass(TacFilters* tac_filters) {
+  explicit TacFilterPass(
+      TacFilters* tac_filters,
+      std::function<void(Operation*, const google::protobuf::Any&)>
+          custom_options_callback) {
     tac_filters_ = tac_filters;
+    custom_options_callback_ = custom_options_callback;
   }
 
  private:
@@ -76,6 +88,9 @@ class TacFilterPass
           "Whether to use the test config for the tac filter protobuf."),
       llvm::cl::init(false)};
 
+  std::function<void(Operation*, const google::protobuf::Any&)>
+      custom_options_callback_;
+
   void runOnOperation() override;
 };
 
@@ -91,8 +106,11 @@ void ApplyFunctionTacFilter(func::FuncOp func,
   }
 }
 
-void ApplyTacFilter(ModuleOp module, const TacFilter& tac_filter,
-                    SmallVector<Operation*>& filtered_ops, OpBuilder& builder) {
+void ApplyTacFilter(
+    ModuleOp module, const TacFilter& tac_filter,
+    SmallVector<Operation*>& filtered_ops, OpBuilder& builder,
+    std::function<void(Operation*, const google::protobuf::Any&)>
+        custom_options_callback) {
   if (tac_filter.has_function_filter()) {
     llvm::Regex func_regex(
         tac_filter.function_filter().function_name_pattern());
@@ -108,18 +126,76 @@ void ApplyTacFilter(ModuleOp module, const TacFilter& tac_filter,
     return;
   }
 
+  auto should_filter_op = [](mlir::Operation* op) {
+    return IsNonConstOp(op) && NotTFLQuantDequantizeOp(op) &&
+           !IsTerminatorOp(op) &&
+           !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op);
+  };
+
+  auto map_op_to_cpu = [&](mlir::Operation* op, std::string name) {
+    if (!should_filter_op(op)) {
+      return;
+    }
+    op->setAttr(kSkipTargetAnnotation, builder.getUnitAttr());
+    filtered_ops.push_back(op);
+  };
+
+  auto map_op_to_custom_device = [&](mlir::Operation* op) {
+    if (!should_filter_op(op)) {
+      return;
+    }
+    if (!tac_filter.op_filter().has_custom_options()) {
+      return;
+    }
+
+    const google::protobuf::Any& custom_options =
+        tac_filter.op_filter().custom_options();
+    custom_options_callback(op, custom_options);
+  };
+
   llvm::Regex op_regex(tac_filter.op_filter().op_name_pattern());
+  OpFilter::MatchType match_type = tac_filter.op_filter().match_type();
+  OpFilter::DeviceType device_type = tac_filter.op_filter().device_type();
   module.walk([&](Operation* op) {
     auto named_loc = mlir::dyn_cast<NameLoc>(op->getLoc());
     if (!named_loc) {
       return;
     }
-    if (!op_regex.match(named_loc.getName())) {
-      return;
+    // There can be two kinds of `match_type`:
+    // 1. MATCH: the op name matches the pattern.
+    // 2. INVERT_MATCH: the op name does not match the pattern.
+    //
+    // On each of the above, the op filter can specify if it should be run on
+    // the CPU or on a custom device, with the `device_type` field.
+    // Running on CPU and the match type MATCH is the default if not specified.
+    //
+    // The code below maps an op to the appropriate device based on the above
+    // fields.
+    if (op_regex.match(named_loc.getName())) {
+      switch (match_type) {
+        case OpFilter::MATCH:
+          if (device_type == OpFilter::CPU) {
+            map_op_to_cpu(op, named_loc.getName().str());
+            return;
+          }
+          map_op_to_custom_device(op);
+          break;
+        default:
+          break;
+      }
+    } else {
+      switch (match_type) {
+        case OpFilter::INVERT_MATCH:
+          if (device_type == OpFilter::CPU) {
+            map_op_to_cpu(op, named_loc.getName().str());
+            return;
+          }
+          map_op_to_custom_device(op);
+          break;
+        default:
+          break;
+      }
     }
-
-    op->setAttr(kSkipTargetAnnotation, builder.getUnitAttr());
-    filtered_ops.push_back(op);
   });
 }
 
@@ -239,7 +315,8 @@ void TacFilterPass::runOnOperation() {
 
   for (const auto& tac_filter : llvm::enumerate(tac_filters_->tac_filters())) {
     SmallVector<Operation*> filtered_ops;
-    ApplyTacFilter(module, tac_filter.value(), filtered_ops, builder);
+    ApplyTacFilter(module, tac_filter.value(), filtered_ops, builder,
+                   custom_options_callback_);
     PrintTacFilterResult(module.getLoc(), tac_filter.value(),
                          tac_filter.index(), filtered_ops);
   }
@@ -248,8 +325,10 @@ void TacFilterPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTacFilterPass(
-    TacFilters* tac_filters) {
-  return std::make_unique<TacFilterPass>(tac_filters);
+    TacFilters* tac_filters,
+    std::function<void(Operation*, const google::protobuf::Any&)>
+        custom_options_callback) {
+  return std::make_unique<TacFilterPass>(tac_filters, custom_options_callback);
 }
 
 static PassRegistration<TacFilterPass> pass;

@@ -33,8 +33,11 @@ LiteRtStatus LiteRtGetNextAcceleratorCompilationOptions(
 // Appends a new compilation option object to the list.
 //
 // This goes through the links in the option list and appends the given link.
+//
+// `options` must be non-null, `*options` may however be null, in which case
+// this call is equivalent to `*options = appended_options`.
 LiteRtStatus LiteRtAppendAcceleratorCompilationOptions(
-    LiteRtAcceleratorCompilationOptions options,
+    LiteRtAcceleratorCompilationOptions* options,
     LiteRtAcceleratorCompilationOptions appended_options);
 
 // Gets the accelerator option structure identifier.

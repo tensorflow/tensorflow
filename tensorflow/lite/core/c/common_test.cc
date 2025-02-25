@@ -23,11 +23,17 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/test_util.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
+using ::testing::AnyOf;
 using ::testing::ElementsAreArray;
+using ::testing::Eq;
+using ::testing::Not;
 
 // NOTE: this tests only the TfLiteIntArray part of context.
 // most of common.h is provided in the context of using it with
@@ -372,6 +378,40 @@ TEST(TestTensorRealloc, TensorReallocLargeBytesFails) {
   free(tensor);
 }
 
+TEST(TestTfLiteTensorGetDimsSignature, NullDimsSignatureReturnsDims) {
+  TfLiteTensor t{
+      .dims = ConvertVectorToTfLiteIntArray({1, 2, 3}),
+      .dims_signature = nullptr,
+  };
+
+  EXPECT_THAT(TfLiteTensorGetDimsSignature(&t), TfLiteArrayIs({1, 2, 3}));
+
+  TfLiteTensorFree(&t);
+}
+
+TEST(TestTfLiteTensorGetDimsSignature, EmptyDimsSignatureReturnsDims) {
+  TfLiteTensor t{
+      .dims = ConvertVectorToTfLiteIntArray({1, 2, 3}),
+      .dims_signature = ConvertVectorToTfLiteIntArray({}),
+  };
+
+  EXPECT_THAT(TfLiteTensorGetDimsSignature(&t), TfLiteArrayIs({1, 2, 3}));
+
+  TfLiteTensorFree(&t);
+}
+
+TEST(TestTfLiteTensorGetDimsSignature,
+     NonEmptyDimsSignatureReturnsDimsSignature) {
+  TfLiteTensor t{
+      .dims = ConvertVectorToTfLiteIntArray({1, 2, 3}),
+      .dims_signature = ConvertVectorToTfLiteIntArray({4, -1, 5}),
+  };
+
+  EXPECT_THAT(TfLiteTensorGetDimsSignature(&t), TfLiteArrayIs({4, -1, 5}));
+
+  TfLiteTensorFree(&t);
+}
+
 TEST(TestTfLiteTensorGetAllocationStrategy, MemNoneIsAllocatedWithNone) {
   TfLiteTensor t;
   t.allocation_type = kTfLiteMemNone;
@@ -408,12 +448,11 @@ TEST(TestTfLiteTensorGetAllocationStrategy, DynamicIsAllocatedWithMalloc) {
             kTfLiteAllocationStrategyMalloc);
 }
 
-TEST(TestTfLiteTensorGetAllocationStrategy,
-     PersistentRoIsAllocatedWithUnknown) {
+TEST(TestTfLiteTensorGetAllocationStrategy, PersistentRoIsAllocatedWithMalloc) {
   TfLiteTensor t;
   t.allocation_type = kTfLitePersistentRo;
   EXPECT_EQ(TfLiteTensorGetAllocationStrategy(&t),
-            kTfLiteAllocationStrategyUnknown);
+            kTfLiteAllocationStrategyMalloc);
 }
 
 TEST(TestTfLiteTensorGetAllocationStrategy, CustomIsAllocatedWithUnknown) {
@@ -840,6 +879,133 @@ TEST(TestVariantData, CopyTensorToNonVariantObjectSetsAllocationType) {
   // If the destination tensor is already populated, the dstor will be called
   // and the buffer reused.
   EXPECT_EQ(dst_variant_tensor->data.data, before_address);
+}
+
+TfLiteTensor CreateDefaultTestTensor() {
+  return {/*.type=*/kTfLiteInt32,
+          /*.data.data=*/{nullptr},
+          /*.dims=*/nullptr,
+          /*.params=*/TfLiteQuantizationParams{/*scale=*/2, /*zero_point=*/3},
+          /*.allocation_type=*/kTfLiteMemNone,
+          /*.bytes=*/0,
+          /*.allocation=*/nullptr,
+          /*.name=*/"fake name",
+          /*.delegate=*/nullptr,
+          /*.buffer_handle=*/kTfLiteNullBufferHandle,
+          /*.data_is_stale=*/false,
+          /*.is_variable=*/true,
+          /*.quantization=*/TfLiteQuantization{},
+          /*.sparsity=*/nullptr,
+          /*.dims_signature=*/nullptr};
+}
+
+TEST(TensorCloneTest, CloneATensorAttributes) {
+  TfLiteTensor model = [&] {
+    auto dims_data = BuildTfLiteArray<int>({1, 2, 3});
+    auto dims_signature_data = BuildTfLiteArray<int>({11, 12, 13});
+    TfLiteAffineQuantization* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            malloc(sizeof(TfLiteAffineQuantization)));
+    affine_quantization->scale = BuildTfLiteArray<float>({7, 8, 9}).release();
+    affine_quantization->zero_point = BuildTfLiteArray({4, 5, 6}).release();
+    affine_quantization->quantized_dimension = 34;
+    TfLiteQuantization quantization = {/*type=*/kTfLiteAffineQuantization,
+                                       /*params=*/affine_quantization};
+
+    const int kDimMetadataCount = 2;
+    TfLiteDimensionMetadata* dim_metadata =
+        reinterpret_cast<TfLiteDimensionMetadata*>(
+            malloc(kDimMetadataCount * sizeof(TfLiteDimensionMetadata)));
+    for (int i = 0; i < kDimMetadataCount; ++i) {
+      (dim_metadata + i)->format = kTfLiteDimSparseCSR;
+      (dim_metadata + i)->dense_size = 3;
+      (dim_metadata + i)->array_segments =
+          BuildTfLiteArray<int>({21 + i, 22 + i, 23 + i}).release();
+      (dim_metadata + i)->array_indices =
+          BuildTfLiteArray<int>({24 + i, 25 + i, 26 + i}).release();
+    }
+    TfLiteSparsity* sparsity =
+        reinterpret_cast<TfLiteSparsity*>(malloc(sizeof(TfLiteSparsity)));
+    sparsity->traversal_order = BuildTfLiteArray<int>({31, 32, 33}).release();
+    sparsity->block_map = BuildTfLiteArray<int>({34, 35, 36}).release();
+    sparsity->dim_metadata = dim_metadata;
+    sparsity->dim_metadata_size = kDimMetadataCount;
+
+    TfLiteTensor model = CreateDefaultTestTensor();
+    model.dims = dims_data.release();
+    model.dims_signature = dims_signature_data.release();
+    model.quantization = quantization;
+    model.sparsity = sparsity;
+    return model;
+  }();
+
+  TfLiteTensor clone = TfLiteTensorClone(model);
+
+  EXPECT_THAT(clone.type, Eq(model.type));
+  // Note: `data` is not checked, it may be different depending on the tensor
+  // allocation.
+  EXPECT_THAT(clone.dims, TfLiteArrayIs(model.dims));
+  EXPECT_THAT(clone.params.scale, Eq(model.params.scale));
+  EXPECT_THAT(clone.params.zero_point, Eq(model.params.zero_point));
+  EXPECT_THAT(clone.allocation_type, Eq(model.allocation_type));
+  EXPECT_THAT(clone.bytes, Eq(model.bytes));
+  // Note: `allocation` is not checked, it may be different depending on the
+  // tensor allocation.
+  EXPECT_THAT(clone.name, Eq(model.name));
+  EXPECT_THAT(clone.delegate, Eq(model.delegate));
+  EXPECT_THAT(clone.buffer_handle, Eq(model.buffer_handle));
+  EXPECT_THAT(clone.data_is_stale, Eq(model.data_is_stale));
+  EXPECT_THAT(clone.is_variable, Eq(model.is_variable));
+
+  auto GetAffineQuantization = [](const TfLiteTensor& tensor) {
+    return reinterpret_cast<TfLiteAffineQuantization*>(
+        tensor.quantization.params);
+  };
+  EXPECT_THAT(clone.quantization.type, Eq(model.quantization.type));
+  // Ensure that this is a deep clone and not just a pointer copy.
+  ASSERT_THAT(clone.quantization.params,
+              Not(AnyOf(nullptr, model.quantization.params)));
+  EXPECT_THAT(GetAffineQuantization(clone)->scale,
+              TfLiteArrayIs(GetAffineQuantization(model)->scale));
+  EXPECT_THAT(GetAffineQuantization(clone)->zero_point,
+              TfLiteArrayIs(GetAffineQuantization(model)->zero_point));
+  EXPECT_THAT(GetAffineQuantization(clone)->quantized_dimension,
+              Eq(GetAffineQuantization(model)->quantized_dimension));
+
+  // Ensure that this is a deep clone and not just a pointer copy.
+  ASSERT_THAT(clone.sparsity, Not(AnyOf(nullptr, model.sparsity)));
+  EXPECT_THAT(clone.sparsity->traversal_order,
+              TfLiteArrayIs(model.sparsity->traversal_order));
+  EXPECT_THAT(clone.sparsity->block_map,
+              TfLiteArrayIs(model.sparsity->block_map));
+  ASSERT_THAT(clone.sparsity->dim_metadata,
+              Not(AnyOf(nullptr, model.sparsity->dim_metadata)));
+  ASSERT_THAT(clone.sparsity->dim_metadata_size,
+              Eq(model.sparsity->dim_metadata_size));
+  auto GetDimMetadata = [](TfLiteTensor& tensor, int idx) {
+    return tensor.sparsity->dim_metadata[idx];
+  };
+  for (int i = 0; i < clone.sparsity->dim_metadata_size; ++i) {
+    EXPECT_THAT(GetDimMetadata(clone, i).format,
+                Eq(GetDimMetadata(model, i).format))
+        << i;
+    EXPECT_THAT(GetDimMetadata(clone, i).dense_size,
+                Eq(GetDimMetadata(model, i).dense_size))
+        << i;
+    EXPECT_THAT(GetDimMetadata(clone, i).array_segments,
+                TfLiteArrayIs(GetDimMetadata(model, i).array_segments))
+        << i;
+    EXPECT_THAT(GetDimMetadata(clone, i).array_indices,
+                TfLiteArrayIs(GetDimMetadata(model, i).array_indices))
+        << i;
+  }
+
+  EXPECT_THAT(clone.dims_signature, TfLiteArrayIs(model.dims_signature));
+
+  TfLiteTensorFree(&clone);
+  TfLiteTensorFree(&model);
+
+  // model.sparsity;
 }
 
 }  // namespace tflite

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -139,7 +140,7 @@ absl::Status TritonToLLVM(
   // TODO(slebedev): Uncomment once we upgrade Triton internally.
   // pm.addPass(mlir::triton::NVIDIA::createDecomposeUnsupportedConversionsPass());
   pm.addPass(mlir::triton::gpu::createTritonGPUCombineTensorSelectAndIf());
-  pm.addPass(mlir::createConvertSCFToCFPass());
+  pm.addPass(mlir::createSCFToControlFlowPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mlir::triton::gpu::createAllocateSharedMemoryPass());
   pm.addPass(mlir::triton::gpu::createTritonGPUGlobalScratchAllocationPass());
@@ -256,15 +257,19 @@ absl::StatusOr<std::string> LLVMToPTX(mlir::ModuleOp module,
 
   llvmModule->setDataLayout(machine->createDataLayout());
 
+  auto needsLibdevice =
+      llvm::any_of(llvmModule->functions(), [](const auto& f) {
+        return !f.isIntrinsic() && f.isDeclaration() &&
+               f.getName().starts_with("__nv_");
+      });
+  if (needsLibdevice) {
+    TF_RETURN_IF_ERROR(LinkLibdevice(llvmModule.get()));
+  }
+
   auto transformer = mlir::makeOptimizingTransformer(
       /*optLevel=*/3, /*sizeLevel=*/0, /*targetMachine=*/machine.get());
   if (auto error = transformer(llvmModule.get()); error) {
     return absl::InternalError("Failed to optimize LLVM IR");
-  }
-
-  if (auto status = LinkLibdevice(llvmModule.get()); !status.ok()) {
-    // TODO(slebedev): Make this an error if the module requires libdevice.
-    LOG(ERROR) << "Failed to link libdevice: " << status;
   }
 
   std::string result;

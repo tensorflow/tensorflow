@@ -39,7 +39,7 @@ using testing::Pointwise;
 TEST(JitCompilation, Qualcomm) {
   const std::array environment_options = {
       litert::Environment::Option{
-          /*.tag=*/litert::Environment::OptionTag::CompilerPluginLibraryPath,
+          /*.tag=*/litert::Environment::OptionTag::CompilerPluginLibraryDir,
           /*.value=*/kCompilerPluginLibSearchPath,
       },
   };

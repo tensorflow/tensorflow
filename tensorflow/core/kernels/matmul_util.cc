@@ -1,8 +1,11 @@
 /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -170,8 +173,15 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
                                         stream, cfg, params.epilogue));
 
     TF_ASSIGN_OR_RETURN(
+<<<<<<< HEAD
         entry.algorithms,
         entry.plan->GetAlgorithms(*max_algorithm_count, max_scratch_size));
+=======
+        auto algorithms,
+        plan->GetAlgorithms(stream, *max_algorithm_count, max_scratch_size));
+
+    ptr->second = {std::move(plan), std::move(algorithms)};
+>>>>>>> upstream/master
   }
   *ppmu = self.mutex_.get();
   return &entry;
@@ -181,6 +191,7 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
     se::Stream* stream, const Entry& entry, const se::DeviceMemoryBase& a,
     const se::DeviceMemoryBase& b, se::DeviceMemoryBase& c,
     size_t algorithm_idx, se::ScratchAllocator& scratch_allocator,
+<<<<<<< HEAD
     const se::DeviceMemoryBase& bias, se::blas::ProfileResult* profile_result) {
   return entry.plan->ExecuteOnStream(stream, a, b, c, c,
                                      bias,                    // bias_buffer
@@ -190,6 +201,24 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
                                      se::DeviceMemoryBase{},  // c_scale_buffer
                                      se::DeviceMemoryBase{},  // d_scale_buffer
                                      se::DeviceMemoryBase{},  // d_amax_buffer
+=======
+    const se::DeviceMemoryBase& bias,
+    se::blas::ProfileResult* profile_result) const {
+  if (!plan || algorithm_idx >= algorithms.size()) {
+    return errors::Internal("MatmulPlan or algorithms are not initialized!");
+  }
+  return plan->ExecuteOnStream(stream, a, b, c, c,
+                               bias,                    // bias_buffer
+                               se::DeviceMemoryBase{},  // aux_buffer
+                               se::DeviceMemoryBase{},  // a_scale_buffer
+                               se::DeviceMemoryBase{},  // b_scale_buffer
+                               se::DeviceMemoryBase{},  // c_scale_buffer
+                               se::DeviceMemoryBase{},  // d_scale_buffer
+                               se::DeviceMemoryBase{},  // d_amax_buffer
+                               algorithms[algorithm_idx], scratch_allocator,
+                               profile_result);
+}
+>>>>>>> upstream/master
 
                                      entry.algorithms[algorithm_idx],
                                      scratch_allocator, profile_result);

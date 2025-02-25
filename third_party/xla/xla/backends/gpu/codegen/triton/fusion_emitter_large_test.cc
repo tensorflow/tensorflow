@@ -160,7 +160,7 @@ ENTRY main {
     calls=triton_fusion_computation,
      backend_config={"fusion_backend_config":
       {"kind":"__triton",
-       "block_level_fusion_config":{"output_tile_sizes":["1","32768"],
+       "block_level_fusion_config":{"output_tiles":[{"sizes":["1","32768"]}],
                                     "num_warps":"1"}}}
 })";
 

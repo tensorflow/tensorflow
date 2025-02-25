@@ -193,6 +193,7 @@ func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index,
     : !xla_gpu.indexed_vector<32x2x2xf32, #map1> -> tensor<32x64xf32>
   func.return %1 : tensor<32x64xf32>
 }
+// CHECK-LABEL: @materialize_and_insert
 // CHECK-NOT: unrealized_conversion_cast
 
 // -----
@@ -213,16 +214,15 @@ func.func @materialize_complex(
   func.return %0 : !xla_gpu.indexed_vector<32x3x4xcomplex<f32>, #map1>
 }
 
-// CHECK: %[[C0:.*]] = arith.constant 0 : index
-// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-LABEL: @materialize_complex
 // CHECK: xla.loop ({{.*}})[%[[I:.*]], %[[J:.*]]]
 // CHECK-SAME: iter_args(%[[ITER:.*]] = {{.*}})
 // CHECK: %[[PURE_CALL:.*]] = xla.pure_call
 // CHECK-SAME: complex<f32>
 // CHECK: %[[REAL:.*]] = complex.re %[[PURE_CALL]]
 // CHECK: %[[IMAG:.*]] = complex.im %[[PURE_CALL]]
-// CHECK: %[[TEMP:.*]] = vector.insert %[[REAL]], %[[ITER]] [%[[C0]], %[[I]], %[[J]]]
-// CHECK: %[[FINAL:.*]] = vector.insert %[[IMAG]], %[[TEMP]] [%[[C1]], %[[I]], %[[J]]]
+// CHECK: %[[TEMP:.*]] = vector.insert %[[REAL]], %[[ITER]] [0, %[[I]], %[[J]]]
+// CHECK: %[[FINAL:.*]] = vector.insert %[[IMAG]], %[[TEMP]] [1, %[[I]], %[[J]]]
 // CHECK: xla.yield %[[FINAL]] : vector<2x3x4xf32>
 
 // -----
@@ -243,14 +243,12 @@ func.func @insert_complex(
 
 // CHECK-LABEL: @insert_complex
 // CHECK-SAME: %[[INPUT:.*]]: !xla_gpu.indexed_vector<32x3x4xcomplex<f32>
-// CHECK: %[[C0:.*]] = arith.constant 0 : index
-// CHECK: %[[C1:.*]] = arith.constant 1 : index
 // CHECK: %[[VECTOR:.*]] = builtin.unrealized_conversion_cast %[[INPUT]]
 // CHECK-SAME: to vector<2x3x4xf32>
 // CHECK: xla.loop ({{.*}})[%[[I:.*]], %[[J:.*]]]
 // CHECK-SAME: iter_args(%[[ITER:.*]] = {{.*}})
-// CHECK: %[[REAL:.*]] = vector.extract %[[VECTOR]][%[[C0]], %[[I]], %[[J]]]
-// CHECK: %[[IMAG:.*]] = vector.extract %[[VECTOR]][%[[C1]], %[[I]], %[[J]]]
+// CHECK: %[[REAL:.*]] = vector.extract %[[VECTOR]][0, %[[I]], %[[J]]]
+// CHECK: %[[IMAG:.*]] = vector.extract %[[VECTOR]][1, %[[I]], %[[J]]]
 // CHECK: %[[COMPLEX:.*]] = complex.create %[[REAL]], %[[IMAG]]
 // CHECK: %[[INSERTED:.*]] = tensor.insert %[[COMPLEX]] into %[[ITER]]
 // CHECK: xla.yield %[[INSERTED]] : tensor<32x64xcomplex<f32>>

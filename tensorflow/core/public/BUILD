@@ -40,3 +40,9 @@ cc_library(
     name = "version",
     hdrs = ["version.h"],
 )
+
+cc_library(
+    name = "release_version",
+    hdrs = ["release_version.h"],
+    visibility = ["//visibility:public"],
+)

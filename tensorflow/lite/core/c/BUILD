@@ -16,6 +16,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/lite:__subpackages__",
+        "//third_party/odml/litert:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -295,6 +296,7 @@ tflite_cc_library_with_c_headers_test(
     visibility = [
         "//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__",
         "//tensorflow/lite:__subpackages__",
+        "//third_party/odml/litert/litert:__subpackages__",
     ] + c_api_visibility_allowlist(),
     deps = [
         "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
@@ -309,7 +311,10 @@ cc_test(
     deps = [
         ":c_api_types",
         ":common",
+        "//tensorflow/lite:array",
+        "//tensorflow/lite:test_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )

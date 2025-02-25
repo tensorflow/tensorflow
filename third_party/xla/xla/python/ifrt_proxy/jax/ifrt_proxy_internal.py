@@ -19,7 +19,7 @@ within google code. TODO(madthanu): Remove library.
 """
 
 import dataclasses
-from typing import Callable, Optional
+from typing import Callable, Mapping, Optional
 
 from xla.python import xla_client
 
@@ -37,11 +37,13 @@ class ConnectionOptions:
       provided as human-readable strings, and an end-user may find them helpful.
     connection_timeout_in_seconds: Optional, the timeout for establishing a
       connection to the proxy server.
+    initialization_data: Optional, runtime specific initialization data.
   """
 
   on_disconnect: Optional[Callable[[str], None]] = None
   on_connection_update: Optional[Callable[[str], None]] = None
   connection_timeout_in_seconds: Optional[int] = None
+  initialization_data: Optional[Mapping[str, bytes | bool | int]] = None
 
 
 _backend_created: bool = False
@@ -58,6 +60,7 @@ def get_client(proxy_server_address: str) -> xla_client.Client:
   cpp_options.connection_timeout_in_seconds = (
       _connection_options.connection_timeout_in_seconds
   )
+  cpp_options.initialization_data = _connection_options.initialization_data
   client = py_module.get_client(proxy_server_address, cpp_options)
   if client is not None:
     _backend_created = True

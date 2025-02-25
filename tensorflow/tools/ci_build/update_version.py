@@ -32,7 +32,7 @@ import time
 
 # File parameters.
 TF_SRC_DIR = "tensorflow"
-VERSION_H = "%s/core/public/version.h" % TF_SRC_DIR
+RELEASE_VERSION_H = "%s/core/public/release_version.h" % TF_SRC_DIR
 SETUP_PY = "%s/tools/pip_package/setup.py" % TF_SRC_DIR
 README_MD = "./README.md"
 TENSORFLOW_BZL = "%s/tensorflow.bzl" % TF_SRC_DIR
@@ -46,7 +46,7 @@ TF_MAC_ARM64_CI_TEST = (
 )
 RELEVANT_FILES = [
     TF_SRC_DIR,
-    VERSION_H,
+    RELEASE_VERSION_H,
     SETUP_PY,
     README_MD,
     TF_MAC_ARM64_CI_BUILD,
@@ -163,11 +163,11 @@ def get_current_semver_version():
 
   Returns:
     version: Version object of current SemVer string based on information from
-    core/public/version.h
+    core/public/release_version.h
   """
 
   # Get current version information.
-  version_file = open(VERSION_H, "r")
+  version_file = open(RELEASE_VERSION_H, "r")
   for line in version_file:
     major_match = re.search("^#define TF_MAJOR_VERSION ([0-9]+)", line)
     minor_match = re.search("^#define TF_MINOR_VERSION ([0-9]+)", line)
@@ -195,21 +195,21 @@ def get_current_semver_version():
                  version_type)
 
 
-def update_version_h(old_version, new_version):
-  """Update tensorflow/core/public/version.h."""
+def update_release_version_h(old_version, new_version):
+  """Update tensorflow/core/public/release_version.h."""
   replace_string_in_line("#define TF_MAJOR_VERSION %s" % old_version.major,
                          "#define TF_MAJOR_VERSION %s" % new_version.major,
-                         VERSION_H)
+                         RELEASE_VERSION_H)
   replace_string_in_line("#define TF_MINOR_VERSION %s" % old_version.minor,
                          "#define TF_MINOR_VERSION %s" % new_version.minor,
-                         VERSION_H)
+                         RELEASE_VERSION_H)
   replace_string_in_line("#define TF_PATCH_VERSION %s" % old_version.patch,
                          "#define TF_PATCH_VERSION %s" % new_version.patch,
-                         VERSION_H)
+                         RELEASE_VERSION_H)
   replace_string_in_line(
       "#define TF_VERSION_SUFFIX \"%s\"" % old_version.identifier_string,
       "#define TF_VERSION_SUFFIX \"%s\"" % new_version.identifier_string,
-      VERSION_H)
+      RELEASE_VERSION_H)
 
 
 def update_setup_dot_py(old_version, new_version):
@@ -385,7 +385,7 @@ def main():
     # Update Apple Silicon release CI files for release builds only
     update_m1_builds(old_version, new_version)
 
-  update_version_h(old_version, new_version)
+  update_release_version_h(old_version, new_version)
   update_setup_dot_py(old_version, new_version)
   update_readme(old_version, new_version)
   update_tensorflow_bzl(old_version, new_version)

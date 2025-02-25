@@ -74,9 +74,11 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
     xla::ifrt::PjRtClient* ifrt_client, size_t xfer_size) {
   auto* pjrt_client = ifrt_client->pjrt_client();
   // CHECK_EQ(pjrt_client->platform_id(), xla::TpuId());
+  TF_ASSIGN_OR_RETURN(auto* pjrt_memory_space,
+                      device->pjrt_device()->default_memory_space());
   TF_ASSIGN_OR_RETURN(auto atm_owned,
-                   pjrt_client->CreateBuffersForAsyncHostToDevice(
-                       {shape}, device->pjrt_device()));
+                      pjrt_client->CreateBuffersForAsyncHostToDevice(
+                          {shape}, pjrt_memory_space));
   auto atm = std::shared_ptr<xla::PjRtClient::AsyncHostToDeviceTransferManager>(
       std::move(atm_owned));
   SingleBufferCopyPlan results;

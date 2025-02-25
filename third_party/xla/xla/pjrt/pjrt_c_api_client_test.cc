@@ -181,7 +181,7 @@ TEST(PjRtCApiClientTest, CreateBuffersForAsyncHostToDeviceWithShape) {
       /*minor_to_major=*/{1, 0, 2});
   std::vector<xla::Shape> host_shapes = {host_shape};
   auto status_or_transfer_manager = client->CreateBuffersForAsyncHostToDevice(
-      absl::MakeSpan(host_shapes), client->addressable_devices()[0]);
+      absl::MakeSpan(host_shapes), client->memory_spaces()[0]);
   EXPECT_TRUE(status_or_transfer_manager.ok())
       << status_or_transfer_manager.status();
 }

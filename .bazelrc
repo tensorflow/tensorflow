@@ -47,10 +47,10 @@
 #
 #
 # Remote build execution options (only configured to work with TF team projects for now.)
-#     rbe_base:  General RBE options shared by all flavors.
-#     rbe_linux: General RBE options used on all linux builds.
-#     rbe_win_base:   General RBE options used on all Windows builds. Not to be used standalone.
-#     rbe_win_clang:  Options specific to compiling using Clang.
+#     rbe_base:                       General RBE options shared by all flavors.
+#     rbe_linux:                      General RBE options used on all linux builds.
+#     rbe_win_base:                   General RBE options used on all Windows builds. Not to be used standalone.
+#     rbe_windows_x86_cpu_2022:       Windows-specific RBE options.
 #
 #     rbe_linux_cpu:                  RBE options to build with only CPU support.
 #     rbe_linux_cuda:                 RBE options to build with GPU support using clang.
@@ -83,7 +83,7 @@ build --spawn_strategy=standalone
 build -c opt
 
 # Make Bazel print out all options from rc files.
-build --announce_rc
+common --announce_rc
 
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --define=grpc_no_ares=true
@@ -121,16 +121,16 @@ build --define=no_hdfs_support=true
 
 # TF now has `cc_shared_library` targets, so it needs the experimental flag
 # TODO(rostam): Remove when `cc_shared_library` is enabled by default
-build --experimental_cc_shared_library
+common --experimental_cc_shared_library
 
 # cc_shared_library ensures no library is linked statically more than once.
-build --experimental_link_static_libraries_once=false
+common --experimental_link_static_libraries_once=false
 
 # Prevent regressions on those two incompatible changes
 # TODO: remove those flags when they are flipped in the default Bazel version TF uses.
-build --incompatible_enforce_config_setting_visibility
+common --incompatible_enforce_config_setting_visibility
 # TODO: also enable this flag after fixing the visibility violations
-# build --incompatible_config_setting_private_default_visibility
+# common --incompatible_config_setting_private_default_visibility
 
 # Print a stacktrace when a test is killed
 test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
@@ -296,6 +296,7 @@ build:tpu --define=framework_shared_object=true
 build:tpu --copt=-DLIBTPU_ON_GCE
 build:tpu --define=enable_mlir_bridge=true
 
+build:rocm --copt=-Wno-gnu-offsetof-extensions
 build:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm_base --define=using_rocm_hipcc=true
 build:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
@@ -492,20 +493,6 @@ build:avx_linux --copt=-mavx
 build:avx_linux --host_copt=-mavx
 build:avx_win --copt=/arch:AVX
 
-# TODO(belitskiy): Remove once Win2019 is gone.
-# Use Clang-cl compiler on Windows
-build:win_clang --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl
-build:win_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
-build:win_clang --host_platform=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
-build:win_clang --copt=/clang:-Weverything
-build:win_clang --host_copt=/clang:-Weverything
-build:win_clang --compiler=clang-cl
-build:win_clang --linkopt=/FORCE:MULTIPLE
-build:win_clang --host_linkopt=/FORCE:MULTIPLE
-test:win_clang --linkopt=/FORCE:MULTIPLE
-test:win_clang --host_linkopt=/FORCE:MULTIPLE
-test:win_clang --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
-
 build:windows_x86_cpu_2022 --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
 build:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
 build:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
@@ -519,6 +506,7 @@ build:windows_x86_cpu_2022 --host_linkopt=/FORCE:MULTIPLE
 test:windows_x86_cpu_2022 --linkopt=/FORCE:MULTIPLE
 test:windows_x86_cpu_2022 --host_linkopt=/FORCE:MULTIPLE
 test:windows_x86_cpu_2022 --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
+test:windows_x86_cpu_2022 --build_tests_only --keep_going --test_output=errors --verbose_failures=true --test_summary=short
 
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior
@@ -634,18 +622,6 @@ build:rbe_win_base --enable_runfiles
 build:rbe_win_base --nobuild_python_zip
 build:rbe_win_base --define=override_eigen_strong_inline=true
 
-build:rbe_win_clang --config=rbe_win_base
-build:rbe_win_clang --crosstool_top="//tensorflow/tools/toolchains/win/20240424:toolchain"
-build:rbe_win_clang --extra_toolchains="//tensorflow/tools/toolchains/win/20240424:cc-toolchain-x64_windows-clang-cl"
-build:rbe_win_clang --extra_execution_platforms="//tensorflow/tools/toolchains/win:x64_windows-clang-cl"
-build:rbe_win_clang --host_platform="//tensorflow/tools/toolchains/win:x64_windows-clang-cl"
-build:rbe_win_clang --platforms="//tensorflow/tools/toolchains/win:x64_windows-clang-cl"
-build:rbe_win_clang --compiler=clang-cl
-build:rbe_win_clang --linkopt=/FORCE:MULTIPLE
-build:rbe_win_clang --host_linkopt=/FORCE:MULTIPLE
-
-# TODO(belitskiy): Rename `rbe_win_clang` to this, once done switching presubmits.
-build:rbe_windows_x86_cpu --config=rbe_win_clang
 build:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
 
 # END TF REMOTE BUILD EXECUTION OPTIONS
@@ -839,12 +815,10 @@ test:macos_x86_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excl
 test:macos_x86_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:macos_x86_wheel_test --@local_tsl//third_party/py:wheel_dependency=true --config=macos_x86_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/...
 # WINDOWS X86 WHEEL
-test:windows_x86_cpu_wheel_test_filters --test_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu,-benchmark-test
-test:windows_x86_cpu_wheel_test_filters --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-benchmark-test
-test:windows_x86_cpu_wheel_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
-test:windows_x86_cpu_wheel_test --build_tests_only --config=windows_x86_cpu_pycpp_test_filters -- //tensorflow/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
-# TODO(belitskiy): Get rid of once 2019 is shut down
-test:windows_x86_cpu_2022_wheel_test --config=windows_x86_cpu_wheel_test
+test:windows_x86_cpu_2022_wheel_test_filters --test_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu,-benchmark-test
+test:windows_x86_cpu_2022_wheel_test_filters --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-benchmark-test
+test:windows_x86_cpu_2022_wheel_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
+test:windows_x86_cpu_2022_wheel_test --build_tests_only --config=windows_x86_cpu_pycpp_test_filters -- //tensorflow/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
 
 # PYCPP TESTS run a suite of Python and C++ tests to verify general correctness over
 # the whole TF code base. These are usually run continuously or upon presubmit.
@@ -894,14 +868,13 @@ build:macos_x86_pycpp_test --config=macos_x86_pycpp_test_filters -- //tensorflow
 build:cross_compile_macos_x86_pycpp_test --config=macos_x86_pycpp_test
 build:cross_compile_macos_x86_pycpp_test -//tensorflow/core/kernels:quantized_conv_ops_test -//tensorflow/core/kernels:quantized_matmul_op_test -//tensorflow/python/ops:quantized_conv_ops_test -//tensorflow/tools/graph_transforms:transforms_test -//tensorflow/python/tools:aot_compiled_test
 # WINDOWS X86-64 CPU PYCPP
-build:windows_x86_cpu_pycpp_test_build_opts --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions --dynamic_mode=off
-build:windows_x86_cpu_pycpp_test_build_opts_debug --config=windows_x86_cpu_pycpp_test_build_opts --linkopt=/demangle:no --host_linkopt=/demangle:no --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
-test:windows_x86_cpu_pycpp_test_filters --test_tag_filters=-no_windows,-windows_excluded,-no_oss,-tf_tosa,-oss_excluded,-gpu,-tpu,-benchmark-test
-test:windows_x86_cpu_pycpp_test_filters --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-tf_tosa,-oss_excluded,-benchmark-test
-test:windows_x86_cpu_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
-test:windows_x86_cpu_pycpp_test_opts --config=windows_x86_cpu_pycpp_test_build_opts --build_tests_only
-test:windows_x86_cpu_pycpp_test --config=windows_x86_cpu_pycpp_test_opts --config=windows_x86_cpu_pycpp_test_filters -- //tensorflow/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
-test:windows_x86_cpu_2022_pycpp_test --config=windows_x86_cpu_pycpp_test
+build:windows_x86_cpu_2022_pycpp_test_build_opts --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions --dynamic_mode=off
+build:windows_x86_cpu_2022_pycpp_test_build_opts_debug --config=windows_x86_cpu_2022_pycpp_test_build_opts --linkopt=/demangle:no --host_linkopt=/demangle:no --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
+test:windows_x86_cpu_2022_pycpp_test_filters --test_tag_filters=-no_windows,-windows_excluded,-no_oss,-tf_tosa,-oss_excluded,-gpu,-tpu,-benchmark-test
+test:windows_x86_cpu_2022_pycpp_test_filters --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-tf_tosa,-oss_excluded,-benchmark-test
+test:windows_x86_cpu_2022_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
+test:windows_x86_cpu_2022_pycpp_test_opts --config=windows_x86_cpu_2022_pycpp_test_build_opts --build_tests_only
+test:windows_x86_cpu_2022_pycpp_test --config=windows_x86_cpu_2022_pycpp_test_opts --config=windows_x86_cpu_2022_pycpp_test_filters -- //tensorflow/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
 
 # END TF TEST SUITE OPTIONS
 

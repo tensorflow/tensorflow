@@ -37,7 +37,8 @@ absl::StatusOr<size_t> PjRtCApiRawBuffer_GetOnDeviceSizeInBytes(
 
 xla::PjRtFuture<> PjRtCApiRawBuffer_CopyRawHostToDevice(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
-    PJRT_RawBuffer* buffer, void* dst, int64_t offset, int64_t transfer_size);
+    PJRT_RawBuffer* buffer, const void* src, int64_t offset,
+    int64_t transfer_size);
 
 xla::PjRtFuture<> PjRtCApiRawBuffer_CopyRawDeviceToHost(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
@@ -64,7 +65,7 @@ class PjRtCApiRawBuffer : public PjRtRawBuffer {
 
   PjRtMemorySpace* memory_space() const override;
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
-  PjRtFuture<> CopyRawHostToDevice(void* dst, int64_t offset,
+  PjRtFuture<> CopyRawHostToDevice(const void* src, int64_t offset,
                                    int64_t transfer_size) override;
   PjRtFuture<> CopyRawDeviceToHost(void* dst, int64_t offset,
                                    int64_t transfer_size) override;

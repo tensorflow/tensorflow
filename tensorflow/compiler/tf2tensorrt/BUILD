@@ -779,6 +779,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/public:release_version",
         "//tensorflow/tools/graph_transforms:transform_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

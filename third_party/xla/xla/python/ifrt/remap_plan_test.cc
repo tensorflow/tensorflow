@@ -100,10 +100,8 @@ TEST_P(RemapPlanTest, ToFromProto) {
       /*to=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}}});
 
   TF_ASSERT_OK_AND_ASSIGN(RemapPlanProto plan_proto, plan.ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(
-      RemapPlan plan_copy,
-      RemapPlan::FromProto(absl::bind_front(&Client::LookupDevice, client()),
-                           plan_proto));
+  TF_ASSERT_OK_AND_ASSIGN(RemapPlan plan_copy,
+                          RemapPlan::FromProto(client(), plan_proto));
 
   EXPECT_THAT(*plan_copy.mappings, ElementsAreArray(*plan.mappings));
 

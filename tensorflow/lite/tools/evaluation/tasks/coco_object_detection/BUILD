@@ -13,8 +13,6 @@ package(
 py_strict_binary(
     name = "preprocess_coco_minival",
     srcs = ["preprocess_coco_minival.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_py",

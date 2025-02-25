@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -227,11 +228,8 @@ TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
                                         /*peak_tera_flops_per_second=*/0,
                                         /*peak_hbm_bw_gigabytes_per_second=*/0);
   XPlaneBuilder device_plane(xplane);
-  device_plane.AddStatValue(
-      *device_plane.GetOrCreateStatMetadata(
-          GetStatTypeStr(StatType::kTotalProfileDurationPs)),
-      1000);
   XLineBuilder stream1 = device_plane.GetOrCreateLine(/*line_id=*/10);
+  stream1.SetName(tsl::profiler::kTensorFlowOpLineName);
   AddTensorFlowTpuOpEvent("MatMul", "while:MatMul", 0, 10, "MatMul", 34, 45, 2,
                           5, 1, 1, &device_plane, &stream1);
   OpMetricsDb op_metrics = ConvertTpuDeviceTraceXPlaneToOpMetricsDb(*xplane);

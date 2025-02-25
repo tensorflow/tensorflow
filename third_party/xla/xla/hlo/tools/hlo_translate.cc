@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
+#include "stablehlo/transforms/Passes.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -188,6 +189,16 @@ static mlir::OwningOpRef<mlir::ModuleOp> HloToMlirTranslate(
 
 static mlir::LogicalResult MlirToHloTranslate(mlir::ModuleOp mlir_module,
                                               llvm::raw_ostream& output) {
+  // Also support portable artifacts in tooling, no-op if module is already
+  // StableHLO.
+  mlir::PassManager pm(mlir_module.getContext());
+  mlir::stablehlo::createStablehloDeserializePipeline(pm);
+  if (failed(pm.run(mlir_module))) {
+    mlir_module->emitError("Failed to deserialize StableHLO");
+    return mlir::failure();
+  }
+
+  // Convert to HLO
   auto hlo_module_or_status = xla::ConvertStablehloToHlo(mlir_module);
   if (!hlo_module_or_status.ok()) {
     mlir_module->emitError(hlo_module_or_status.status().message());

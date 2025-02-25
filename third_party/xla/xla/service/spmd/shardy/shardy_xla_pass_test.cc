@@ -753,5 +753,36 @@ TEST_F(ShardyXLATest, WhileShardingOnlyOnFreeVariables) {
                                       "{devices=[4,1]<=[4]}}"));
 }
 
+TEST_F(ShardyXLATest, EmptyResultLayout) {
+  const char* const hloString = R"(
+    HloModule pjit_f_, entry_computation_layout={(s64[2,2,2]{2,1,0})->()}, num_partitions=2, frontend_attributes={xla.sdy.meshes="{maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<[\"x\"=2]>}"}
+
+    ENTRY %main.5 (Arg_0.1: s64[2,2,2]) -> () {
+      %Arg_0.0 = s64[2,2,2]{2,1,0} parameter(0), sharding={devices=[2,1,1]<=[2]}, metadata={op_name="x"}
+      ROOT %tuple.0 = () tuple()
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+
+  EXPECT_EQ(module.get()->entry_computation_layout().ToString(),
+            "(s64[2,2,2]{2,1,0})->()");
+}
+
+TEST_F(ShardyXLATest, EmptyOperandLayout) {
+  const char* const hloString = R"(
+    HloModule pjit_f_, entry_computation_layout={()->s64[2,2]{1,0}}, num_partitions=2, frontend_attributes={xla.sdy.meshes="{maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<[\"x\"=2]>}"}
+
+    ENTRY %main.5 () -> s64[2,2] {
+      ROOT %constant = s64[2,2]{1,0} constant({{1,1},{1,1}})
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+
+  EXPECT_EQ(module.get()->entry_computation_layout().ToString(),
+            "()->s64[2,2]{1,0}");
+}
+
 }  // namespace sdy
 }  // namespace xla

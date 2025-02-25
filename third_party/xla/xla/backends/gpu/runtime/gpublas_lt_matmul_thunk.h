@@ -74,8 +74,26 @@ class CublasLtMatmulThunk : public Thunk {
   }
 
  private:
+<<<<<<< HEAD
    absl::StatusOr<se::gpu::BlasLt::MatmulPlan *> GetCachedMatmulPlan(
                 const ExecuteParams& params);
+=======
+  absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetMatmulPlan(
+      const stream_executor::Stream* stream);
+  absl::StatusOr<se::gpu::BlasLt::MatmulAlgorithm> GetMatmulAlgorithm(
+      const se::Stream* stream, const se::gpu::BlasLt::MatmulPlan* plan,
+      int64_t max_workspace);
+
+  absl::Mutex matmul_plans_cache_mutex_;
+  absl::flat_hash_map<const stream_executor::Stream*,
+                      se::gpu::BlasLt::MatmulPlanPtr>
+      matmul_plans_cache_ ABSL_GUARDED_BY(matmul_plans_cache_mutex_);
+
+  absl::Mutex matmul_algorithm_cache_mutex_;
+  absl::flat_hash_map<const se::gpu::BlasLt::MatmulPlan*,
+                      se::gpu::BlasLt::MatmulAlgorithm>
+      matmul_algorithm_cache_ ABSL_GUARDED_BY(matmul_algorithm_cache_mutex_);
+>>>>>>> upstream/master
 
   GemmConfig gemm_config_;
   se::gpu::BlasLt::Epilogue epilogue_;

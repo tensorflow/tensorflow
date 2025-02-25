@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/backend.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
@@ -126,7 +127,7 @@ HloTestBase::GetHloRunner() {
     const std::string& filename, const std::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
-      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
+      ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "failed reading hlo module from file";
@@ -139,7 +140,7 @@ HloTestBase::GetHloRunner() {
     const std::string& filename, const std::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
-      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
+      ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "failed reading hlo module from file";

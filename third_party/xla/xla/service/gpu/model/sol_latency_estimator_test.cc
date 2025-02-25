@@ -164,7 +164,7 @@ ENTRY main {
   ROOT rs-done = bf16[64,128256] async-done(rs-start)
 })",
       /*opcode=*/HloOpcode::kAsyncStart,
-      /*expected_latency=*/absl::Microseconds(10708),
+      /*expected_latency=*/absl::Microseconds(18894),
   };
 
   return {

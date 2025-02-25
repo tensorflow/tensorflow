@@ -90,7 +90,6 @@ pybind_extension(
 py_strict_library(
     name = "signature_def_utils",
     srcs = ["signature_def_utils.py"],
-    srcs_version = "PY3",
     deps = [
         ":_pywrap_signature_def_util_wrapper",
         "//tensorflow/core:protos_all_py",
@@ -101,8 +100,6 @@ py_strict_test(
     name = "signature_def_utils_test",
     srcs = ["signature_def_utils_test.py"],
     data = ["//tensorflow/lite:testdata/add.bin"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_mac",
         "no_oss",

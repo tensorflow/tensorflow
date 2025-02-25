@@ -12484,5 +12484,65 @@ ENTRY main {
   EXPECT_TRUE(instruction->sharding().IsReplicated());
 }
 
+TEST_F(ShardingPropagationTest, ProcessShardingInstruction1) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %main.6 {
+  %p0 = f32[32,96] parameter(0), sharding={devices=[4,1]<=[4]}
+  %sine = f32[32,96] sine(%p0)
+  %custom-call.3 = f32[32,96] custom-call(%sine), custom_call_target="Sharding", sharding={replicated}
+  %cosine = f32[32,96] cosine(%sine)
+  ROOT %add.2 = f32[32,96] add(%custom-call.3, %cosine)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kParameter) {
+      EXPECT_THAT(instruction, op::Sharding("{devices=[4,1]<=[4]}"));
+    } else {
+      EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+    }
+  }
+}
+
+TEST_F(ShardingPropagationTest, ProcessShardingInstruction2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %main.6 {
+  %p0 = f32[32,96] parameter(0), sharding={replicated}
+  %sine = f32[32,96] sine(%p0)
+  %custom-call.0 = f32[32,96] custom-call(%sine), custom_call_target="Sharding", sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  %custom-call.1 = f32[32,96] custom-call(%sine), custom_call_target="Sharding", sharding={devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+  %cosine = f32[32,96] cosine(%sine)
+  ROOT tuple = (f32[32,96], f32[32,96], f32[32,96]) tuple(%custom-call.0, %custom-call.1, %cosine)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(
+                        /*is_spmd=*/true, /*propagate_metadata=*/true,
+                        /*allow_spmd_sharding_propagation_to_output=*/{true})
+                        .Run(module.get()));
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+
+  for (absl::string_view name : {"sine", "cosine"}) {
+    HloInstruction* instruction = FindInstruction(module.get(), name);
+    ASSERT_NE(instruction, nullptr);
+    EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]<=[4]}"));
+  }
+}
+
 }  // namespace
 }  // namespace xla

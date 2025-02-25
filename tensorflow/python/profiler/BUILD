@@ -10,7 +10,6 @@ package(
 py_strict_library(
     name = "profiler",
     srcs = ["profiler.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":model_analyzer",
@@ -24,7 +23,6 @@ py_strict_library(
 py_strict_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
@@ -35,10 +33,14 @@ py_strict_library(
 cuda_py_strict_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
+<<<<<<< HEAD
     python_version = "PY3",
     tags = ["no_pip",
     "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
+=======
+    tags = ["no_pip"],
+>>>>>>> upstream/master
     deps = [
         ":profiler_client",
         ":profiler_v2",
@@ -52,7 +54,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "profiler_v2",
     srcs = ["profiler_v2.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:errors",
@@ -65,7 +66,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "profiler_v2_test",
     srcs = ["profiler_v2_test.py"],
-    python_version = "PY3",
     tags = [
         "no_pip",
     ],
@@ -83,7 +83,6 @@ cuda_py_strict_test(
 py_strict_test(
     name = "profiler_wrapper_test",
     srcs = ["profiler_wrapper_test.py"],
-    python_version = "PY3",
     tags = [
         "no_pip",
     ],
@@ -97,7 +96,6 @@ py_strict_test(
 py_strict_library(
     name = "option_builder",
     srcs = ["option_builder.py"],
-    srcs_version = "PY3",
     deps = [
         ":tfprof_logger",
         "//tensorflow/python/util:tf_export",
@@ -107,7 +105,6 @@ py_strict_library(
 py_strict_library(
     name = "model_analyzer",
     srcs = ["model_analyzer.py"],
-    srcs_version = "PY3",
     deps = [
         ":option_builder",
         ":tfprof_logger",
@@ -123,7 +120,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "model_analyzer_test",
     srcs = ["model_analyzer_test.py"],
-    python_version = "PY3",
     tags = [
         "no_pip",
         "notap",
@@ -154,7 +150,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "profiler_test",
     srcs = ["profiler_test.py"],
-    python_version = "PY3",
     tags = ["no_pip"],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
@@ -174,7 +169,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "tfprof_logger",
     srcs = ["tfprof_logger.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python/eager:context",
@@ -190,7 +184,6 @@ tf_py_strict_test(
     name = "tfprof_logger_test",
     size = "small",
     srcs = ["tfprof_logger_test.py"],
-    python_version = "PY3",
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -203,7 +196,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "profile_context",
     srcs = ["profile_context.py"],
-    srcs_version = "PY3",
     deps = [
         ":model_analyzer",
         "//tensorflow/core:protos_all_py",
@@ -219,7 +211,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "profile_context_test",
     srcs = ["profile_context_test.py"],
-    python_version = "PY3",
     tags = [
         "no_gpu",  # b/136036359
         "no_pip",
@@ -241,7 +232,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "pprof_profiler",
     srcs = ["pprof_profiler.py"],
-    srcs_version = "PY3",
     deps = ["@com_google_pprof//:pprof_proto_py"],
 )
 
@@ -250,8 +240,6 @@ py_strict_test(
     size = "small",
     srcs = ["pprof_profiler_test.py"],
     main = "pprof_profiler_test.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = ["no_pip"],  # TODO(annarev): get it working with pip.
     deps = [
         ":pprof_profiler",
@@ -268,7 +256,6 @@ py_strict_test(
 py_strict_library(
     name = "trace",
     srcs = ["trace.py"],
-    srcs_version = "PY3",
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
         "//tensorflow:internal",

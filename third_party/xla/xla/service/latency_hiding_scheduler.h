@@ -452,6 +452,7 @@ class HloEdge {
   }
   const HloGraphNode& Target() const { return *target_; }
   HloGraphNode& Target() { return *target_; }
+  HloGraphNode* TargetPtr() { return target_; }
   std::string ToString() const;
 
  private:
@@ -1067,6 +1068,8 @@ class DefaultSchedulerCore : public SchedulerCore {
   }
   int64_t GetRerunTimes() override { return config_.rerun; }
   bool SchedulingAnnotationCrossesOverlapLimit(
+      const SchedulingState& sched_state, int64_t annotation);
+  absl::flat_hash_map<int64_t, int64_t> GetNumResourcesNeededForAnnotation(
       const SchedulingState& sched_state, int64_t annotation);
 
  protected:

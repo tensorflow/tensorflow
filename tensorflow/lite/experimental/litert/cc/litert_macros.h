@@ -15,6 +15,8 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_
 
+#include <utility>
+
 #include "absl/log/absl_check.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"  // IWYU pragma: keep
@@ -94,9 +96,14 @@ class ErrorStatusReturnHelper {
   template <class T>
   explicit ErrorStatusReturnHelper(const litert::Expected<T>& expected)
       : error_(expected.Error()) {}
+  template <class T>
+  explicit ErrorStatusReturnHelper(litert::Expected<T>&& expected)
+      : error_(std::move(expected.Error())) {}
   explicit ErrorStatusReturnHelper(LiteRtStatus status) : error_(status) {}
   explicit ErrorStatusReturnHelper(const litert::Unexpected& unexpected)
       : error_(unexpected.Error()) {}
+  explicit ErrorStatusReturnHelper(litert::Unexpected&& unexpected)
+      : error_(std::move(unexpected.Error())) {}
 
   // NOLINTBEGIN(*-explicit-constructor): This class transparently converts to
   // `LiteRtStatus` and `litert::Exepected`.
@@ -107,6 +114,8 @@ class ErrorStatusReturnHelper {
     return litert::Unexpected(error_);
   }
   // NOLINTEND(*-explicit-constructor)
+
+  static constexpr bool IsError(bool status) { return status; }
 
   static constexpr bool IsError(LiteRtStatus status) {
     return status != kLiteRtStatusOk;
@@ -130,7 +139,7 @@ class ErrorStatusReturnHelper {
   LITERT_RETURN_IF_ERROR_SELECT_OVERLOAD_HELPER args
 
 #define LITERT_RETURN_IF_ERROR_1(EXPR) \
-  LITERT_RETURN_IF_ERROR_2(EXPR, ErrorStatusReturnHelper{status})
+  LITERT_RETURN_IF_ERROR_2(EXPR, ErrorStatusReturnHelper{std::move(status)})
 
 #define LITERT_RETURN_IF_ERROR_2(EXPR, RETURN_VALUE)                      \
   do {                                                                    \
@@ -147,8 +156,8 @@ class ErrorStatusReturnHelper {
   LITERT_ASSIGN_OR_RETURN_SELECT_OVERLOAD_HELPER args
 
 #define LITERT_ASSIGN_OR_RETURN_HELPER_2(TMP_VAR, DECL, EXPR) \
-  LITERT_ASSIGN_OR_RETURN_HELPER_3(TMP_VAR, DECL, EXPR,       \
-                                   ErrorStatusReturnHelper(TMP_VAR))
+  LITERT_ASSIGN_OR_RETURN_HELPER_3(                           \
+      TMP_VAR, DECL, EXPR, ErrorStatusReturnHelper(std::move(TMP_VAR)))
 
 #define LITERT_ASSIGN_OR_RETURN_HELPER_3(TMP_VAR, DECL, EXPR, RETURN_VALUE) \
   auto&& TMP_VAR = (EXPR);                                                  \

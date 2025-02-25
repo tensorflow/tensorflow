@@ -487,9 +487,11 @@ absl::Status DynamicDimensionInferenceVisitor::HandleCustomCall(
     return absl::OkStatus();
   }
 
+  bool handled = false;
   if (custom_call_handler_) {
-    TF_RETURN_IF_ERROR(custom_call_handler_(hlo, parent_));
-  } else {
+    handled = custom_call_handler_(hlo, parent_);
+  }
+  if (!handled) {
     TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
         hlo,
         [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,

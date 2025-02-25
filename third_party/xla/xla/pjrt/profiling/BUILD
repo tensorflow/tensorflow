@@ -28,6 +28,24 @@ exports_files(
 )
 
 cc_library(
+    name = "no_op_device_time_measurement",
+    srcs = [
+        "device_time_measurement.h",
+        "no_op_device_time_measurement.cc",
+        "no_op_device_time_measurement.h",
+    ],
+    # copybara:uncomment_begin(google-only)
+    # compatible_with = ["//buildenv/target:non_prod"],
+    # copybara:uncomment_end
+    deps = [
+        "//xla/pjrt:pjrt_compiler",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
     name = "device_time_measurement",
     # copybara:uncomment_begin(google-only)
     # compatible_with = ["//buildenv/target:non_prod"],
@@ -43,19 +61,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-    ],
-)
-
-cc_library(
-    name = "no_op_device_time_measurement",
-    srcs = ["device_time_measurement.h"],
-    hdrs = ["no_op_device_time_measurement.h"],
-    # copybara:uncomment_begin(google-only)
-    # compatible_with = ["//buildenv/target:non_prod"],
-    # copybara:uncomment_end
-    deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
+        "//xla/pjrt:pjrt_compiler",
     ],
 )

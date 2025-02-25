@@ -192,6 +192,10 @@ cc_library(
             "src/transport/coll_net.cc",
             "src/transport/net.cc",
             "src/enqueue.cc",
+            # RAS is a health-checking system (starting from NCCL 2.24:
+            # https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting/ras.html
+            # It's not reqired for NCCL to work.
+            "src/ras/client.cc",
         ],
     ) + [
         # Required for header inclusion checking (see
@@ -200,6 +204,7 @@ cc_library(
         # from the virtual includes directory.
         "src/include/collectives.h",
         "src/nccl.h",
+        "src/ras/ras_internal.h",
     ],
     hdrs = ["src/nccl.h"],
     include_prefix = "third_party/nccl",

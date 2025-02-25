@@ -67,6 +67,7 @@ from tensorflow.python.util.tf_export import tf_export
 _PIPELINE_ATTRIBUTE = "_embedding_pipelining"
 _PIPELINE_MODE_FORWARD = "forward"
 _PIPELINE_MODE_BACKWARD = "backward"
+_PIPELINE_MODEL_SEQUENTIAL = "_sequential"
 
 
 TableConfig = tpu_embedding_v2_utils.TableConfig
@@ -95,15 +96,21 @@ class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
     super().__init__()
     self._name = "EmbeddingPipelinigContext"
     self._mode = attr_value_pb2.AttrValue(s=compat.as_bytes(mode))
+    self._enable = enable
     recording_summaries = summary_ops_v2.is_recording_summaries()
+    if not isinstance(recording_summaries, bool):
+      # We can't handle predicate functions at this point. So, we'll ignore the
+      # special casing of summary recording because, presumably, this is not
+      # a single step loop so pipelining is still valid.
+      recording_summaries = False
     if enable and recording_summaries:
-      logging.info(
-          "Embedding pipelining requested but summaries are being recorded:"
-          " Disabling embedding pipelining."
+      # We'll still flag these ops for the SC forward/backward pass, but we'll
+      # run them sequentially. This has to be handled in the MLIR passes
+      # embedding_pipelining.cc and embedding_sequencing.cc.
+      logging.info("Summary recording detected, disabling pipelining.")
+      self._mode = attr_value_pb2.AttrValue(
+          s=compat.as_bytes(mode + _PIPELINE_MODEL_SEQUENTIAL)
       )
-      self._enable = False
-    else:
-      self._enable = enable
 
   def to_control_flow_context_def(
       self, context_def: Any, export_scope: Any = None
@@ -1637,7 +1644,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       row_offset: int,
       col_offset: int,
       col_shift: int,
-      vocab_size: int,
+      unused_vocab_size: int,
       num_sc_per_chip: int,
       num_sc_shards: int,
       stacked_table_sample_count: int,

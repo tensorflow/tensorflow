@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/collectives_common.h"
 
+#include <cstddef>
 #include <map>
 #include <string>
 #include <vector>

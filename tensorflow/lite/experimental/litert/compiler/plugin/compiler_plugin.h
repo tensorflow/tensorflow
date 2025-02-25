@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -99,7 +100,8 @@ class CompilerPlugin {
   const std::vector<std::string>& SocModels() const { return soc_models_; }
 
   // Selects ops for the plugin to compile.
-  Expected<std::vector<LiteRtOp>> Partition(const Subgraph& subgraph);
+  Expected<std::vector<LiteRtOpWithPartitionIndex>> Partition(
+      const Subgraph& subgraph);
 
   // Compile given LiteRtSubgraphs. Result object must be outlived by
   // this CompilerPlugin.
@@ -154,7 +156,7 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
 // ops. Selected ops may contain any ops in the the main subgraph of the model.
 // This function will seperate them into DAGs and slice the model accordingly.
 Expected<PartitionResult> PartitionModelDirect(
-    std::vector<LiteRtOp> selected_ops, LiteRtModelT& model);
+    std::vector<LiteRtOpWithPartitionIndex> selected_ops, LiteRtModelT& model);
 
 // Applies both the partition and compile steps to the model. Generated
 // byte_code will be internalized within the model for later serialization.

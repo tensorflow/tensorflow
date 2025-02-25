@@ -648,7 +648,7 @@ absl::Status TransformFuncContext::GetOneInt32Parameter(const string& name,
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
-  if (!absl::SimpleAtoi(StringPiece(string_value), result)) {
+  if (!absl::SimpleAtoi(absl::string_view(string_value), result)) {
     return errors::InvalidArgument("Couldn't interpret the ", name,
                                    " argument as a number:", string_value);
   }
@@ -665,7 +665,7 @@ absl::Status TransformFuncContext::GetOneInt64Parameter(const string& name,
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
-  if (!absl::SimpleAtoi(StringPiece(string_value), result)) {
+  if (!absl::SimpleAtoi(absl::string_view(string_value), result)) {
     return errors::InvalidArgument("Couldn't interpret the ", name,
                                    " argument as a number:", string_value);
   }

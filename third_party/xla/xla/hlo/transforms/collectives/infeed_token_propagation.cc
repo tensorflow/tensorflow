@@ -424,6 +424,12 @@ absl::Status InfeedTokenPropagation::PropagateToken(
   if (dangling_instruction_->opcode() != HloOpcode::kInfeed &&
       dangling_instruction_->opcode() != HloOpcode::kOutfeed) {
     for (HloInstruction* instruction : comp->instructions()) {
+      if ((instruction->opcode() == HloOpcode::kInfeed &&
+           !instruction->infeed_config().empty()) ||
+          (instruction->opcode() == HloOpcode::kOutfeed &&
+           !instruction->outfeed_config().empty())) {
+        continue;
+      }
       if (instruction->opcode() == original_opcode_) {
         HloInstruction* begin = ChainBegin(instruction);
         HloInstruction* end = ChainEnd(instruction);
@@ -497,6 +503,7 @@ absl::StatusOr<bool> InfeedTokenPropagation::Run(
     if (!computation->IsEntryComputation()) {
       for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->opcode() == HloOpcode::kInfeed &&
+            instruction->infeed_config().empty() &&
             IsDanglingInfeed(instruction)) {
           VLOG(1) << "Found dangling infeed: " << instruction->ToString();
           dangling_infeeds.push_back(instruction);
@@ -505,6 +512,7 @@ absl::StatusOr<bool> InfeedTokenPropagation::Run(
       }
       for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->opcode() == HloOpcode::kOutfeed &&
+            instruction->outfeed_config().empty() &&
             IsDanglingOutfeed(instruction)) {
           VLOG(1) << "Found dangling outfeed: " << instruction->ToString();
           dangling_outfeeds.push_back(instruction);

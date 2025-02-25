@@ -58,7 +58,7 @@ MATCHER_P(OutputTileSizesIs, matcher, "") {
     return false;
   }
   auto output_tile_sizes =
-      fusion_backend_config.block_level_fusion_config().output_tile_sizes();
+      fusion_backend_config.block_level_fusion_config().output_tiles(0).sizes();
   return ExplainMatchResult(matcher, output_tile_sizes, result_listener);
 }
 

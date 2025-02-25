@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_GPU_SE_GPU_PJRT_CLIENT_H_
 #define XLA_PJRT_GPU_SE_GPU_PJRT_CLIENT_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
+#include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -55,98 +57,6 @@ namespace xla {
 using DeviceTopologyPair =
     std::pair<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>,
               GpuTopologyProto>;
-
-class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
- public:
-  StreamExecutorGpuTopologyDescription(
-      const PjRtPlatformId platform_id, const absl::string_view platform_name,
-      std::shared_ptr<const GpuTopology> gpu_topology,
-      const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes =
-          {},
-      std::optional<stream_executor::GpuTargetConfigProto> target_config =
-          std::nullopt)
-      : platform_id_(platform_id),
-        platform_name_(platform_name),
-        gpu_topology_(std::move(gpu_topology)),
-        attributes_(attributes),
-        target_config_(std::move(target_config)) {}
-
-  bool operator==(const StreamExecutorGpuTopologyDescription& other) const {
-    return this->platform_id() == other.platform_id() &&
-           this->platform_name() == other.platform_name() &&
-           this->platform_version() == other.platform_version() &&
-           this->gpu_topology() == other.gpu_topology();
-  }
-
-  PjRtPlatformId platform_id() const override { return platform_id_; }
-
-  absl::string_view platform_name() const override { return platform_name_; }
-
-  absl::string_view platform_version() const override {
-    return gpu_topology_->platform_version();
-  }
-
-  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
-      const override {
-    std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
-    devices.reserve(gpu_topology_->number_of_devices());
-    for (const int device_id : gpu_topology_->device_ids()) {
-      devices.push_back(std::make_unique<PjRtStreamExecutorDeviceDescription>(
-          device_id, std::string(platform_version())));
-    }
-    return devices;
-  }
-
-  const GpuTopology& gpu_topology() const { return *gpu_topology_; }
-  const GpuTopology* gpu_topology_ptr() const { return gpu_topology_.get(); }
-
-  // No subslice is supported.
-  bool is_subslice_topology() const override { return false; }
-
-  absl::StatusOr<int> ProcessCount() const override {
-    return gpu_topology_->number_of_hosts();
-  }
-
-  absl::StatusOr<int> CoreCountOfDefaultType() const override {
-    return gpu_topology_->number_of_devices();
-  }
-
-  absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override {
-    return gpu_topology_->number_of_devices();
-  }
-
-  absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override {
-    return gpu_topology_->number_of_devices();
-  }
-
-  absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
-    return 1;
-  }
-
-  absl::StatusOr<std::string> Serialize() const override;
-
-  const std::optional<stream_executor::GpuTargetConfigProto>& target_config()
-      const {
-    return target_config_;
-  }
-
-  // Returns vendor specific attributes about the topology.
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
-  absl::StatusOr<Layout> GetDefaultLayout(
-      PrimitiveType element_type,
-      absl::Span<const int64_t> dims) const override;
-
- private:
-  const PjRtPlatformId platform_id_;
-  const std::string platform_name_;
-  std::shared_ptr<const GpuTopology> gpu_topology_;
-  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
-  std::optional<stream_executor::GpuTargetConfigProto> target_config_;
-};
 
 class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
  public:
@@ -203,25 +113,13 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       int num_replicas, int num_partitions) const override;
 
   absl::string_view platform_version() const override;
-  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(
-      absl::Span<const PjRtClient::ShapeSpec> shape_specs,
-      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-      PjRtDevice* device) override;
 
-  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) override;
-
+  using PjRtStreamExecutorClient::CreateBuffersForAsyncHostToDevice;
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
       absl::Span<const PjRtClient::ShapeSpec> shape_specs,
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtMemorySpace* memory_space) override;
 
   PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer, PjRtFuture<void*> dst,
                                       int64_t offset,

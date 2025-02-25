@@ -32,6 +32,7 @@ xla_cc_binary(
     testonly = True,
     srcs = ["ifrt-opt.cc"],
     deps = [
+        "//xla:xla_data_proto_cc",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
@@ -61,6 +62,7 @@ xla_cc_binary(
     srcs = ["ifrt-translate.cc"],
     deps = [
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:ifrt_ir_program",
         "//xla/python/ifrt/ir:ifrt_ir_program_serdes",  # build_cleaner: keep
@@ -84,7 +86,7 @@ cc_library(
     testonly = True,
     srcs = ["executable_impl_test_base.cc"],
     hdrs = ["executable_impl_test_base.h"],
-    visibility = ["//xla/python/ifrt:friends"],
+    visibility = ["//xla/python/ifrt:users"],
     deps = [
         "//xla:status_macros",
         "//xla/mlir/utils:error_util",
@@ -117,7 +119,7 @@ cc_library(
     name = "executable_impl_test_lib",
     testonly = True,
     srcs = ["executable_impl_test_lib.cc"],
-    visibility = ["//xla/python/ifrt:friends"],
+    visibility = ["//xla/python/ifrt:users"],
     deps = [
         ":executable_impl_test_base",
         "//xla/pjrt:pjrt_executable",

@@ -50,6 +50,11 @@ ENTRY main {
         BlockScalingRewriter pass(/*allow_cudnn=*/true);
         EXPECT_THAT(RunHloPass(&pass, test_module), IsOkAndHolds(true));
       }));
+
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(false),
+                            "CHECK-NOT: __cudnn$blockScaledDot");
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(true),
+                            "CHECK: __cudnn$blockScaledDot");
 }
 
 TEST_F(BlockScalingRewriterCudnnTest, Mxfp8_MixedTypes) {
@@ -77,6 +82,53 @@ ENTRY main {
         BlockScalingRewriter pass(/*allow_cudnn=*/true);
         EXPECT_THAT(RunHloPass(&pass, test_module), IsOkAndHolds(true));
       }));
+
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(false),
+                            "CHECK-NOT: __cudnn$blockScaledDot");
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(true),
+                            "CHECK: __cudnn$blockScaledDot");
+}
+
+// Scale E2M1FN inputs, as otherwise they become all zeros for the random
+// distribution produced by the test due to low type precision.
+// Use positive block scale values, as Blackwell MMA discards the sign bit on
+// the scale tensor.
+TEST_F(BlockScalingRewriterCudnnTest, Nvfp4) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  %mult_scalar = f16[] constant(6)
+  %mult = f16[256,256] broadcast(%mult_scalar), dimensions={}
+  %p0 = f16[256,256] parameter(0)
+  %p1 = f16[256,256] parameter(1)
+  %lhs = f4e2m1fn[256,256] convert(f16[256,256] multiply(%p0, %mult))
+  %rhs = f4e2m1fn[256,256] convert(f16[256,256] multiply(%p1, %mult))
+  %p2 = f8e4m3fn[256,16] parameter(2)
+  %p3 = f8e4m3fn[256,16] parameter(3)
+  %lhs_scale = f8e4m3fn[256,16] abs(%p2)
+  %rhs_scale = f8e4m3fn[256,16] abs(%p3)
+  ROOT %result = f32[256,256] custom-call(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      custom_call_target="__op$block_scaled_dot"
+})";
+
+  EXPECT_TRUE(RunAndCompare(
+      hlo_string, ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5),
+      /*reference_preprocessor=*/
+      [](HloModule* reference_module) {
+        BlockScalingRewriter pass(/*allow_cudnn=*/false);
+        EXPECT_THAT(RunHloPass(&pass, reference_module), IsOkAndHolds(true));
+      },
+      /*test_preprocessor=*/
+      [](HloModule* test_module) {
+        BlockScalingRewriter pass(/*allow_cudnn=*/true);
+        EXPECT_THAT(RunHloPass(&pass, test_module), IsOkAndHolds(true));
+      }));
+
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(false),
+                            "CHECK-NOT: __cudnn$blockScaledDot");
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(true),
+                            "CHECK: __cudnn$blockScaledDot");
 }
 
 }  // namespace

@@ -61,7 +61,7 @@ class KernelTest : public testing::FlexModelTest {
     auto flex_delegate = FlexDelegate::Create(std::move(delegate));
     delegate_data_ =
         reinterpret_cast<FlexDelegate*>(flex_delegate->data_)->mutable_data();
-    CHECK(delegate_data_->Prepare(tensorflow::SessionOptions{}).ok());
+    CHECK_OK(delegate_data_->Prepare(tensorflow::SessionOptions{}));
     CHECK(interpreter_->ModifyGraphWithDelegate(std::move(flex_delegate)) ==
           kTfLiteOk);
   }
@@ -463,7 +463,7 @@ tensorflow::OpDef MakeOpDef(int num_inputs, int num_outputs) {
   for (int i = 0; i < num_outputs; ++i) {
     b.Output(tensorflow::strings::StrCat("o", i, ": float"));
   }
-  CHECK(b.Attr("foo:string").Finalize(&op_reg_data).ok());
+  CHECK_OK(b.Attr("foo:string").Finalize(&op_reg_data));
   return op_reg_data.op_def;
 }
 

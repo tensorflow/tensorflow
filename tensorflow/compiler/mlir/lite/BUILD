@@ -26,6 +26,7 @@ package_group(
         "//learning/brain/mlir/...",
         "//third_party/iree/...",
         "//third_party/odml/infra/...",
+        "//third_party/odml/litert/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/...",
         "//waymo/accelerator/alpine/tools/...",
@@ -501,7 +502,7 @@ cc_library(
     deps = [
         ":converter_inc",
         ":cost_estimators",
-        ":size_utils",
+        ":shape_and_size_utils",
         ":tensorflow_lite_canonicalize_inc_gen",
         ":tensorflow_lite_op_enums_inc_gen",
         ":tensorflow_lite_op_interfaces_inc_gen",
@@ -521,6 +522,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
@@ -611,7 +613,7 @@ cc_library(
         ":pass_options",
         ":pass_registry_utils",
         ":pipeline",
-        ":size_utils",
+        ":shape_and_size_utils",
         ":tensorflow_lite_canonicalize_inc_gen",
         ":tensorflow_lite_legalize_tf_analyze_variables",
         ":tensorflow_lite_legalize_tf_legalize_tensorlist",
@@ -678,15 +680,18 @@ cc_library(
 )
 
 cc_library(
-    name = "size_utils",
+    name = "shape_and_size_utils",
     srcs = [
-        "utils/size_utils.cc",
+        "utils/shape_and_size_utils.cc",
     ],
     hdrs = [
-        "utils/size_utils.h",
+        "utils/shape_and_size_utils.h",
     ],
     deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -702,13 +707,15 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "size_utils_test",
+    name = "shape_and_size_utils_test",
     size = "small",
-    srcs = ["utils/size_utils_test.cc"],
+    srcs = ["utils/shape_and_size_utils_test.cc"],
     deps = [
-        ":size_utils",
+        ":shape_and_size_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1101,7 +1108,7 @@ cc_library(
         ":lstm_utils",
         ":nms_utils",
         ":perception_ops_utils",
-        ":size_utils",
+        ":shape_and_size_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_legalize_tf_analyze_variables",
@@ -1234,6 +1241,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -1330,6 +1338,7 @@ cc_library(
     deps = [
         "convert_type",
         ":op_quant_spec_getters_inc",
+        ":shape_and_size_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_passes_inc_gen",
@@ -1352,6 +1361,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -1619,7 +1629,7 @@ cc_library(
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":offset_buffer",
-        ":size_utils",
+        ":shape_and_size_utils",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",

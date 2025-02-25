@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index.h"
@@ -184,11 +185,10 @@ bool Sharding::operator==(const Sharding& other) const {
 }
 
 absl::StatusOr<std::unique_ptr<Sharding>> Sharding::FromProto(
-    DeviceList::LookupDeviceFunc lookup_device,
-    const ShardingProto& sharding_proto) {
+    Client* client, const ShardingProto& sharding_proto) {
   return Deserialize<Sharding>(
       sharding_proto.serialized_sharding(),
-      std::make_unique<DeserializeShardingOptions>(std::move(lookup_device)));
+      std::make_unique<DeserializeShardingOptions>(client));
 }
 
 absl::StatusOr<ShardingProto> Sharding::ToProto() const {
@@ -210,6 +210,12 @@ std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
   return std::unique_ptr<SingleDeviceSharding>(
       new SingleDeviceSharding(device, memory_kind));
 }
+
+SingleDeviceSharding::SingleDeviceSharding(Device* device,
+                                           MemoryKind memory_kind)
+    : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
+          device->client()->MakeDeviceList({device}), memory_kind,
+          /*is_fully_replicated=*/true) {}
 
 absl::StatusOr<Shape> SingleDeviceSharding::GetShardShape(
     const Shape& shape) const {

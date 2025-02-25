@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/async/backend_async_kernel_interface.h"
 
+#include <cstddef>
 #include <vector>
 
 #include "tensorflow/lite/async/c/async_kernel.h"

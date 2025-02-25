@@ -70,8 +70,6 @@ cc_test(
 py_strict_binary(
     name = "copy_associated_files",
     srcs = ["copy_associated_files.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
 )
 
 cc_library(

@@ -67,6 +67,9 @@ using EmitterSpecificConstraintsBuilder =
 // to produce a single chunk of the output. In order to handle this properly,
 // we store a symbolic tile for each possible path starting from the root
 // instruction of the computation to the relevant instruction.
+// We support a simple form of multi-output fusion, where the computation has a
+// single "real" root, and the other roots appear in the chain of producers of
+// the real root.
 class SymbolicTileAnalysis {
  public:
   // A tile size for each dimension.
@@ -103,14 +106,22 @@ class SymbolicTileAnalysis {
       bool constraints_are_known_satisfied = false,
       bool compute_all_tile_offset_indexing_maps = false) const;
 
-  // Returns the tiled root instruction.
-  const SymbolicTiledHloInstruction* GetRoot() const {
-    return symbolic_tiled_hlo_instructions_.back().get();
-  }
+  // Returns the roots of the computation in increasing order of their output
+  // index.
+  const std::vector<const HloInstruction*>& GetRoots() const { return roots_; }
+
+  // Returns the root of the computation at output index `idx`.
+  const HloInstruction* GetRoot(int64_t idx) const { return roots_[idx]; }
 
   // Returns the number of tile parameters in this symbolic analysis.
+  // TODO(b/390569102): This assumes that there is only one root that matters
+  // for computing the tiling, and that it is the last symbolic tiled hlo
+  // instruction in the list.
   int64_t num_tile_parameters() const {
-    return GetRoot()->hlo()->shape().dimensions_size();
+    return symbolic_tiled_hlo_instructions_.back()
+        ->hlo()
+        ->shape()
+        .dimensions_size();
   }
 
   // Returns the symbolic tiled HLO instructions in def-before-use order.
@@ -154,11 +165,13 @@ class SymbolicTileAnalysis {
   SymbolicTileAnalysis(
       std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
           symbolic_tiled_hlo_instructions,
+      std::vector<const HloInstruction*> roots,
       ConstraintExpression constraints,
       std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints,
       mlir::MLIRContext* context)
       : symbolic_tiled_hlo_instructions_(
             std::move(symbolic_tiled_hlo_instructions)),
+        roots_(std::move(roots)),
         constraints_(std::move(constraints)),
         emitter_specific_constraints_(std::move(emitter_specific_constraints)),
         context_(context) {}
@@ -166,6 +179,10 @@ class SymbolicTileAnalysis {
   // The tiled HLO instructions in def-before-use order.
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
       symbolic_tiled_hlo_instructions_;
+
+  // `roots` contains the computation roots in increasing order of their output
+  // index.
+  std::vector<const HloInstruction*> roots_;
 
   // See the documentation of GetConstraints().
   ConstraintExpression constraints_;

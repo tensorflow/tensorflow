@@ -16,6 +16,7 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_ENVIRONMENT_H_
 
 #include <map>
+#include <memory>
 #include <optional>
 
 #include "absl/types/span.h"
@@ -23,7 +24,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/accelerator.h"
-
 
 // A singleton class that contains global LiteRT environment options.
 class LiteRtEnvironmentT {

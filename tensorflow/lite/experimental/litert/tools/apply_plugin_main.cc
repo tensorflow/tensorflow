@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -61,11 +62,11 @@ static llvm::cl::list<std::string> libs(
         "compiler"}));
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<std::string> out(
+static llvm::cl::list<std::string> outs(
     "o",
-    llvm::cl::desc("Path to file for output, \"-\" indicates standard out, "
+    llvm::cl::desc("Path to files for output, \"-\" indicates standard out, "
                    "\"--\" for standard err, \"none\" for null stream."),
-    llvm::cl::init("-"));
+    llvm::cl::list_init(llvm::ArrayRef<std::string>{"-"}));
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> err(
@@ -111,9 +112,13 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  auto out_stream = UserStream::MakeFromFlag(out);
   run->outs.clear();
-  run->outs.push_back(out_stream.Get());
+  std::vector<std::unique_ptr<litert::tools::UserStream>> oss;
+  for (const auto& out : outs) {
+    oss.push_back(std::make_unique<litert::tools::UserStream>(
+        UserStream::MakeFromFlag(out)));
+    run->outs.push_back(oss.back()->Get());
+  }
 
   run->dump_out = UserStream::MakeFromFlag(err);
 

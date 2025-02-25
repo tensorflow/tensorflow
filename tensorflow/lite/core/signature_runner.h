@@ -21,7 +21,7 @@ limitations under the License.
 /// named computations in a single model, each with its own inputs/outputs.
 ///
 /// Do NOT include this file directly,
-/// instead include third_party/tensorflow/lite/signature_riunner.h
+/// instead include third_party/tensorflow/lite/signature_runner.h
 /// See third_party/tensorflow/lite/c/common.h for the API for defining
 /// operations (TfLiteRegistration).
 
@@ -108,14 +108,22 @@ class SignatureRunner {
   size_t output_size() const { return subgraph_->outputs().size(); }
 
   /// Read-only access to list of signature input names.
-  /// Note: The order of the names is in sync with the order of the SignatureDef
-  /// in the model.
   const std::vector<const char*>& input_names() { return input_names_; }
 
   /// Read-only access to list of signature output names.
-  /// Note: The order of the names is in sync with the order of the SignatureDef
-  /// in the model.
   const std::vector<const char*>& output_names() { return output_names_; }
+
+  /// Read-only access to list of signature input names in the order of
+  /// subgraph.
+  const std::vector<const char*>& subgraph_input_names() {
+    return subgraph_input_names_;
+  }
+
+  /// Read-only access to list of signature output names in the order of
+  /// subgraph.
+  const std::vector<const char*>& subgraph_output_names() {
+    return subgraph_output_names_;
+  }
 
   /// Returns the input tensor identified by 'input_name' in the
   /// given signature. Returns nullptr if the given name is not valid.
@@ -262,6 +270,10 @@ class SignatureRunner {
   std::vector<const char*> input_names_;
   // The list of output tensor names.
   std::vector<const char*> output_names_;
+  // The list of input tensor names in the order of subgraph.
+  std::vector<const char*> subgraph_input_names_;
+  // The list of output tensor names in the order of subgraph.
+  std::vector<const char*> subgraph_output_names_;
 
   bool allow_buffer_handle_output_ = false;
 };

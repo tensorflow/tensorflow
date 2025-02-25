@@ -76,7 +76,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_include_timestamp(false);
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
-  opts.set_xla_dump_hlo_as_long_text(false);
+  opts.set_xla_dump_hlo_as_long_text(true);
   opts.set_xla_dump_large_constants(false);
   opts.set_xla_dump_enable_mlir_pretty_form(true);
   opts.set_xla_gpu_unsupported_annotate_with_emitter_loc(false);
@@ -210,6 +210,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(false);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
+  opts.set_xla_gpu_unsupported_force_triton_gemm(false);
   opts.set_xla_gpu_verify_triton_fusion_numerics(false);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
@@ -310,7 +311,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(false);
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
+  opts.set_xla_hlo_pass_fix_detect_cycles(false);
   opts.set_xla_gpu_experimental_enable_sync_collective_combining(false);
+  opts.set_xla_allow_get_default_platform(true);
   return opts;
 }
 
@@ -1065,7 +1068,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "explicitly write to stdout, set this to \"-\". The values \"sponge\" "
       "and \"test_undeclared_outputs_dir\" have a special meaning: They cause "
       "us to dump into the directory specified by the environment variable "
-      "TEST_UNDECLARED_OUTPUTS_DIR."));
+      "TEST_UNDECLARED_OUTPUTS_DIR. One or more --xla_dump_hlo_as_* flags can "
+      "be set to specify the formats of the dumps. For example, if both "
+      "--xla_dump_hlo_as_text and --xla_dump_hlo_as_proto are set, then the "
+      "HLO modules will be dumped as text and as protos."));
   flag_list->push_back(tsl::Flag(
       "xla_flags_reset", bool_setter_for(&DebugOptions::set_xla_flags_reset),
       debug_options->xla_flags_reset(),
@@ -1770,8 +1776,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           ->xla_gpu_experimental_enable_subchannel_dequantisation_fusion(),
       "Enable fusion for the subchannel dequantisation sequences like "
       "[x,z]param -> [x,y,z]broadcast -> [x*y,z]bitcast -> multiply -> dot. "
-      "Compilation can fail with Broadcast has a different size than the block "
-      "size. Performance can be worse, because some block sizes / split-k > 1 "
+      "Performance can be worse, because some block sizes / split-k > 1 "
       "is not considered for subchannel dequant fusions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_triton_heroless_priority_fusion",
@@ -2237,12 +2242,22 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Crash if HloPassFix can not converge after a fixed number of "
       "iterations."));
   flag_list->push_back(tsl::Flag(
+      "xla_hlo_pass_fix_detect_cycles",
+      bool_setter_for(&DebugOptions::set_xla_hlo_pass_fix_detect_cycles),
+      debug_options->xla_hlo_pass_fix_detect_cycles(),
+      "Perform hash-based cycle detection in fixed-point loops."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_sync_collective_combining",
       bool_setter_for(
           &DebugOptions::
               set_xla_gpu_experimental_enable_sync_collective_combining),
       debug_options->xla_gpu_experimental_enable_sync_collective_combining(),
       "Enable sync collective combining."));
+  flag_list->push_back(tsl::Flag(
+      "xla_allow_get_default_platform",
+      bool_setter_for(&DebugOptions::set_xla_allow_get_default_platform),
+      debug_options->xla_allow_get_default_platform(),
+      "If false, GetDefaultPlatform will cause an error if called."));
 }  // NOLINT(readability/fn_size)1
 
 // Allocates flag_values and flag_objects; this function must not be called more

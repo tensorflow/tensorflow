@@ -36,13 +36,12 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/service/local_service.h"
 #include "xla/service/platform_util.h"
 #include "xla/tools/hlo_extractor.h"
@@ -719,15 +718,15 @@ void RealMain(const Options& opts) {
     module =
         HloModule::CreateFromProto(snapshot.hlo().hlo_module(), config).value();
   } else if (!opts.hlo_proto.empty()) {
-    module = HloRunner::ReadModuleFromBinaryProtoFile(
-                 opts.hlo_proto, xla::GetDebugOptionsFromFlags())
+    module = ReadModuleFromBinaryProtoFile(opts.hlo_proto,
+                                           xla::GetDebugOptionsFromFlags())
                  .value();
   } else if (!opts.hlo_text.empty()) {
-    module = HloRunner::ReadModuleFromHloTextFile(
-                 opts.hlo_text, xla::GetDebugOptionsFromFlags())
+    module = ReadModuleFromHloTextFile(opts.hlo_text,
+                                       xla::GetDebugOptionsFromFlags())
                  .value();
   } else if (!opts.hlo_module_proto.empty()) {
-    module = HloRunner::ReadModuleFromModuleBinaryProtofile(
+    module = ReadModuleFromModuleBinaryProtofile(
                  opts.hlo_module_proto, xla::GetDebugOptionsFromFlags())
                  .value();
   }

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "litert_dynamic_lib")
+load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "copy_file", "litert_dynamic_lib")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -38,7 +38,7 @@ litert_dynamic_lib(
     }),
     linkstatic = 1,
     shared_lib_name = "dispatch_api_so",
-    so_name = "libLiteRtDispatch.so",
+    so_name = "libLiteRtDispatch_Qualcomm.so",
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
@@ -59,6 +59,20 @@ litert_dynamic_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:context_binary_info",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
     ],
+)
+
+# This is cc_library target for `libLiteRtDispatch_Qualcomm.so`.
+cc_library(
+    name = "dispatch_api_shared_lib",
+    srcs = [":dispatch_api_so"],
+    linkstatic = 1,
+)
+
+# Copies the shared library so that it is available for use in test data as libLiteRtDispatch_Qualcomm.so.
+copy_file(
+    name = "copy_dispatch_api_so",
+    src = "//tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch:dispatch_api_so",
+    target = "libLiteRtDispatch_Qualcomm.so",
 )
 
 cc_test(

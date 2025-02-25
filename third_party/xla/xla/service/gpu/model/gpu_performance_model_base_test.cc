@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -34,13 +36,16 @@ namespace {
 
 class GpuPerformanceModelBaseTest : public HloTestBase {
  public:
-  GpuHloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
+  GpuHloCostAnalysis::Options options_;
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
-  GpuHloCostAnalysis analysis_{options_, device_info_};
+  std::unique_ptr<GpuHloCostAnalysis> analysis_;
 
-  GpuPerformanceModelBaseTest() : HloTestBase() {}
+  GpuPerformanceModelBaseTest() : HloTestBase() {
+    options_.count_multiple_input_accesses = true;
+    analysis_ = std::make_unique<GpuHloCostAnalysis>(options_, device_info_);
+  }
 };
 
 TEST_F(GpuPerformanceModelBaseTest, SharedOperandBytesAccessed_InPlaceDUS) {
@@ -58,14 +63,14 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto computation = module->entry_computation();
-  ASSERT_IS_OK(computation->Accept(&analysis_));
+  ASSERT_IS_OK(computation->Accept(analysis_.get()));
 
   auto dus_consumer = computation->root_instruction();
   auto log_producer = dus_consumer->mutable_operand(1);
 
   auto get_shared_operand_bytes_accessed = [&](const HloInstruction* operand) {
     return GpuPerformanceModelBase::GetSharedOperandBytesAccessed(
-        &analysis_, log_producer, dus_consumer, operand);
+        analysis_.get(), log_producer, dus_consumer, operand);
   };
 
   EXPECT_EQ(get_shared_operand_bytes_accessed(dus_consumer->operand(0)), 0);
@@ -87,14 +92,14 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto computation = module->entry_computation();
-  ASSERT_IS_OK(computation->Accept(&analysis_));
+  ASSERT_IS_OK(computation->Accept(analysis_.get()));
 
   auto dus_consumer = computation->root_instruction();
   auto log_producer = dus_consumer->mutable_operand(0);
 
   auto get_shared_operand_bytes_accessed = [&](const HloInstruction* operand) {
     return GpuPerformanceModelBase::GetSharedOperandBytesAccessed(
-        &analysis_, log_producer, dus_consumer, operand);
+        analysis_.get(), log_producer, dus_consumer, operand);
   };
 
   EXPECT_EQ(get_shared_operand_bytes_accessed(dus_consumer->operand(1)), 64);
@@ -131,15 +136,15 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto computation = module->entry_computation();
-  ASSERT_IS_OK(computation->Accept(&analysis_));
+  ASSERT_IS_OK(computation->Accept(analysis_.get()));
 
   auto root = computation->root_instruction();
 
   // Cost Model estimates that input element we be re-read in reduce. Each
   // element of reduce output needs only one input element. Bytes accessed
   // should be 4*128=512.
-  EXPECT_EQ(GpuPerformanceModelBase::GetOperandBytesAccessed(&analysis_, root,
-                                                             root->operand(0)),
+  EXPECT_EQ(GpuPerformanceModelBase::GetOperandBytesAccessed(
+                analysis_.get(), root, root->operand(0)),
             /*4*128*256=*/131072);
 }
 
@@ -166,7 +171,7 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto computation = module->entry_computation();
-  ASSERT_IS_OK(computation->Accept(&analysis_));
+  ASSERT_IS_OK(computation->Accept(analysis_.get()));
 
   auto root = computation->root_instruction();
 
@@ -174,8 +179,8 @@ ENTRY entry_computation {
   // doesn't change physical layout. Each element of `param_0` should be read
   // only once, but Cost Model estimates that it will be accessed twice. Bytes
   // accessed should be 4*128=512.
-  EXPECT_EQ(GpuPerformanceModelBase::GetOperandBytesAccessed(&analysis_, root,
-                                                             root->operand(0)),
+  EXPECT_EQ(GpuPerformanceModelBase::GetOperandBytesAccessed(
+                analysis_.get(), root, root->operand(0)),
             /*2*4*128=*/1024);
 }
 
@@ -228,7 +233,7 @@ ENTRY e {
   p0 = f32[16,970]{1,0} parameter(0)
   ROOT r = f32[16,970]{1,0} fusion(p0), kind=kCustom,
     calls=triton_softmax_computation,
-    backend_config={"fusion_backend_config": {kind: "__triton","block_level_fusion_config":{"output_tile_sizes":["1","970"],"num_warps":"2"}}}
+    backend_config={"fusion_backend_config": {kind: "__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","970"]}],"num_warps":"2"}}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,

@@ -9,7 +9,6 @@ package(
 py_strict_binary(
     name = "mnist_tflite",
     srcs = ["mnist_tflite.py"],
-    python_version = "PY3",
     deps = [
         ":dataset",
         "//tensorflow:tensorflow_py",

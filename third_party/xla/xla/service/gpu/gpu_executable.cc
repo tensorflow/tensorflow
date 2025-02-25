@@ -195,7 +195,7 @@ absl::Status RendezvousAfterInitialization(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options);
 
-absl::Status ExecuteThunks(
+absl::Status ExecuteThunksImpl(
     const DebugOptions* debug_options, const std::string& module_name,
     ModuleIdentifier module_id, SequentialThunk& thunk_sequence,
     Thunk::ExecutableSource executable_source,
@@ -677,10 +677,6 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   // we activate it once to skip expensive context activations later.
   auto activation = executor->Activate();
 
-  // Force synchronous execution if the allocator requires it.
-  const bool block_host_until_done =
-      !memory_allocator->AllowsAsynchronousDeallocation();
-
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA
   // computations to use the same GPU simultaneously. We do not add locking for
@@ -718,32 +714,6 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                                 device_ordinal));
   VLOG(3) << buffer_allocations.ToString();
   absl::Span<const BufferAllocation> allocations = GetAllocations();
-
-  if (VLOG_IS_ON(5)) {
-    // Debug code to compare current allocation's address with previous run's
-    // address, and report the allocation info if memory addressed changed.
-    // Useful for identify in user's model if it is command buffer perf friendly
-    // (no command buffer update cost).
-    absl::MutexLock lock(&module_handle_mutex_);
-    if (module_allocations_.find(executor) == module_allocations_.end()) {
-      std::vector<se::DeviceMemoryBase> allocs_addr;
-      allocs_addr.reserve(buffer_allocations.size());
-      for (int i = 0; i < buffer_allocations.size(); i++) {
-        allocs_addr.push_back(buffer_allocations.GetDeviceAddress(i));
-      }
-      module_allocations_[executor] = std::move(allocs_addr);
-    } else {
-      for (int i = 0; i < buffer_allocations.size(); i++) {
-        if (module_allocations_[executor][i].IsSameAs(
-                buffer_allocations.GetDeviceAddress(i))) {
-          continue;
-        }
-        module_allocations_[executor][i] =
-            buffer_allocations.GetDeviceAddress(i);
-        VLOG(5) << "Gpu address changed for module " << module_name_;
-      }
-    }
-  }
 
   std::set<se::DeviceMemoryBase> buffers_in_result;
 
@@ -828,10 +798,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                                        /*retry_on_failure=*/true,
                                        /*memory_space=*/allocation->color());
         if (!allocated_buffer.ok()) {
-          return ResourceExhausted("%s\n%s\n",
-                                   allocated_buffer.status().message(),
-                                   buffer_assignment_->ToVerboseString(
-                                       debug_buffer_assignment_show_max_));
+          return VerboseAllocationError(allocated_buffer.status());
         }
         result_buffer = allocated_buffer->Release();
         se::DeviceMemoryBase& aliased_buffer =
@@ -859,22 +826,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-  {
-    TF_RETURN_IF_ERROR(
-        CheckCompatibilityWithServiceExecutableRunOptions(run_options));
-
-    ScopedAnnotation annotation([&] { return module_annotations_.top_level; });
-    ScopedModuleAnnotations module_annotations(&module_annotations_);
-
-    ModuleIdentifier unique_id = has_module() ? module().unique_id() : -1;
-    Thunk::ExecutableSource executable_source = {text_, binary_,
-                                                 dnn_compiled_graphs_};
-
-    TF_RETURN_IF_ERROR(ExecuteThunks(
-        has_module() ? &module_config().debug_options() : nullptr, module_name_,
-        unique_id, *thunks_, executable_source, run_options, buffer_allocations,
-        block_host_until_done, execution_stream_ids_));
-  }
+  TF_RETURN_IF_ERROR(ExecuteThunks(buffer_allocations, run_options));
 
   TF_RETURN_IF_ERROR(
       buffer_allocations.TearDown(buffers_in_result, GetAllocations()));
@@ -884,6 +836,64 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     MarkToBeReleasedArguments(*args, result);
   }
   return std::move(result);
+}
+
+absl::Status GpuExecutable::VerboseAllocationError(absl::Status s) {
+  return ResourceExhausted(
+      "%s\n%s\n", s.message(),
+      buffer_assignment_->ToVerboseString(debug_buffer_assignment_show_max_));
+}
+
+absl::Status GpuExecutable::ExecuteThunks(
+    const BufferAllocations& buffer_allocations,
+    const ServiceExecutableRunOptions* run_options) {
+  if (VLOG_IS_ON(5)) {
+    se::StreamExecutor* executor = run_options->stream()->parent();
+    // Debug code to compare current allocation's address with previous run's
+    // address, and report the allocation info if memory addressed changed.
+    // Useful for identify in user's model if it is command buffer perf friendly
+    // (no command buffer update cost).
+    absl::MutexLock lock(&module_handle_mutex_);
+    if (module_allocations_.find(executor) == module_allocations_.end()) {
+      std::vector<se::DeviceMemoryBase> allocs_addr;
+      allocs_addr.reserve(buffer_allocations.size());
+      for (int i = 0; i < buffer_allocations.size(); i++) {
+        allocs_addr.push_back(buffer_allocations.GetDeviceAddress(i));
+      }
+      module_allocations_[executor] = std::move(allocs_addr);
+    } else {
+      for (int i = 0; i < buffer_allocations.size(); i++) {
+        if (module_allocations_[executor][i].IsSameAs(
+                buffer_allocations.GetDeviceAddress(i))) {
+          continue;
+        }
+        module_allocations_[executor][i] =
+            buffer_allocations.GetDeviceAddress(i);
+        VLOG(5) << "Gpu address changed for module " << module_name_;
+      }
+    }
+  }
+
+  se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
+  // Force synchronous execution if the allocator requires it.
+  const bool block_host_until_done =
+      !memory_allocator->AllowsAsynchronousDeallocation();
+
+  TF_RETURN_IF_ERROR(
+      CheckCompatibilityWithServiceExecutableRunOptions(run_options));
+
+  ScopedAnnotation annotation([&] { return module_annotations_.top_level; });
+  ScopedModuleAnnotations module_annotations(&module_annotations_);
+
+  ModuleIdentifier unique_id = has_module() ? module().unique_id() : -1;
+  Thunk::ExecutableSource executable_source = {text_, binary_,
+                                               dnn_compiled_graphs_};
+
+  TF_RETURN_IF_ERROR(ExecuteThunksImpl(
+      has_module() ? &module_config().debug_options() : nullptr, module_name_,
+      unique_id, *thunks_, executable_source, run_options, buffer_allocations,
+      block_host_until_done, execution_stream_ids_));
+  return absl::OkStatus();
 }
 
 int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {

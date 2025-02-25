@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
@@ -42,6 +43,10 @@ namespace {
 // Provides a view of model-level resources when constructing litert graph.
 class FlatbufferContext {
  public:
+  using LiteRtBufferId = uint32_t;
+  using TflBufferInd = uint32_t;
+  using BufferIdMap = absl::flat_hash_map<TflBufferInd, LiteRtBufferId>;
+
   FlatbufferContext(const FlatbufferWrapper& tfl_flatbuffer,
                     BufferManager* buffer_manager)
       : tfl_flatbuffer_(tfl_flatbuffer), buffer_manager_(buffer_manager) {}
@@ -71,9 +76,12 @@ class FlatbufferContext {
     return tfl_flatbuffer_.PackedModel();
   }
 
+  BufferIdMap& RegisteredTflBufferIds() { return registered_tfl_buffer_ids_; }
+
  private:
   const FlatbufferWrapper& tfl_flatbuffer_;
   BufferManager* buffer_manager_;
+  BufferIdMap registered_tfl_buffer_ids_;
 };
 
 LiteRtStatus UnpackOp(FlatbufferContext& context, LiteRtSubgraphT& parent,
@@ -172,7 +180,14 @@ LiteRtStatus UnpackTensor(FlatbufferContext& context,
       return buffer.Error().Status();
     }
 
-    SetWeightsFromUnownedBuffer(litert_tensor.Weights(), *buffer);
+    auto it = context.RegisteredTflBufferIds().find(buffer_ind);
+    if (it != context.RegisteredTflBufferIds().end()) {
+      litert_tensor.Weights().SetBufferId(it->second);
+    } else {
+      SetWeightsFromUnownedBuffer(litert_tensor.Weights(), *buffer);
+      context.RegisteredTflBufferIds()[buffer_ind] =
+          litert_tensor.Weights().GetBufferId();
+    }
   }
 
   // TENSOR TYPE
@@ -282,6 +297,7 @@ LiteRtStatus UnpackSignatures(std::vector<TflSignaturePtr>& tfl_signatures,
         tfl_outputs.size() != litert_subgraph->Outputs().size()) {
       LITERT_LOG(LITERT_ERROR,
                  "Signature has incorrect number of input/outputs");
+      return kLiteRtStatusErrorInvalidFlatbuffer;
     }
 
     // The tensor names may not be matched between signature and subgraph.
@@ -300,15 +316,17 @@ LiteRtStatus UnpackSignatures(std::vector<TflSignaturePtr>& tfl_signatures,
       index_litert_output->SetName(tfl_output->name);
     }
 
-    auto get_name = [](const auto& tfl_tensor) { return tfl_tensor->name; };
-
-    std::vector<std::string> input_names(tfl_inputs.size());
-    std::transform(tfl_inputs.cbegin(), tfl_inputs.cend(), input_names.begin(),
-                   get_name);
-
-    std::vector<std::string> output_names(tfl_outputs.size());
-    std::transform(tfl_outputs.cbegin(), tfl_outputs.cend(),
-                   output_names.begin(), get_name);
+    // Keep signature input/output names in the same order as the subgraph.
+    std::vector<std::string> input_names;
+    input_names.reserve(tfl_inputs.size());
+    for (auto& tensor : litert_subgraph->Inputs()) {
+      input_names.push_back(std::string(tensor->Name()));
+    }
+    std::vector<std::string> output_names;
+    output_names.reserve(tfl_outputs.size());
+    for (auto& tensor : litert_subgraph->Outputs()) {
+      output_names.push_back(std::string(tensor->Name()));
+    }
 
     parent.EmplaceSignature(litert_subgraph, std::move(input_names),
                             std::move(output_names),
@@ -346,6 +364,9 @@ Expected<LiteRtModelT::Ptr> UnpackModel(FlatbufferWrapper&& flatbuffer) {
       tfl_signatures.push_back(TflSignaturePtr(tfl_signature->UnPack()));
     }
     LITERT_RETURN_IF_ERROR(UnpackSignatures(tfl_signatures, *litert_model));
+  } else {
+    litert_model->EmplaceSignature(
+        MakeDefaultSignature(litert_model->MainSubgraph()));
   }
 
   if (packed_model->metadata()) {

@@ -86,11 +86,11 @@ std::unique_ptr<SequenceTransformation> NewRemoveSingleInputAdd() {
         }
         auto& attr = absl::any_cast<const ElementwiseAttributes&>(
             node->operation.attributes);
-        return !absl::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(
+        return !std::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(
                    attr.param) &&
-               !absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+               !std::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
                    attr.param) &&
-               !absl::holds_alternative<float>(attr.param);
+               !std::holds_alternative<float>(attr.param);
       });
 }
 

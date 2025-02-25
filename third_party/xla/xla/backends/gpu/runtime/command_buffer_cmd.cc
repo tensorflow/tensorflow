@@ -959,10 +959,11 @@ CommandBufferCmd::BufferUseVector IfElseCmd::buffers() {
 //===----------------------------------------------------------------------===//
 
 CaseCmd::CaseCmd(ExecutionStreamId execution_stream_id,
-                 BufferAllocation::Slice index,
+                 BufferAllocation::Slice index, bool index_is_bool,
                  std::vector<CommandBufferCmdSequence> branches_commands)
     : CommandBufferCmd(CommandBufferCmdType::kCaseCmd, execution_stream_id),
       index_(index),
+      index_is_bool_(index_is_bool),
       branches_commands_(std::move(branches_commands)) {}
 
 absl::Status CaseCmd::Initialize(const Thunk::InitializeParams& params,
@@ -983,10 +984,17 @@ absl::Status CaseCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "CaseCmd: execution_scope_id=" << execution_scope_id.value();
   VLOG(5) << "  index: " << index_ << " (" << index.opaque() << ")";
 
-  return command_buffer->Case(execution_scope_id,
-                              se::DeviceMemory<int32_t>(index),
-                              CreateBuilders(absl::MakeSpan(branches_commands_),
-                                             &execute_params, &record_params));
+  if (index_is_bool_) {
+    return command_buffer->Case(
+        execution_scope_id, se::DeviceMemory<bool>(index),
+        CreateBuilders(absl::MakeSpan(branches_commands_), &execute_params,
+                       &record_params));
+  } else {
+    return command_buffer->Case(
+        execution_scope_id, se::DeviceMemory<int32_t>(index),
+        CreateBuilders(absl::MakeSpan(branches_commands_), &execute_params,
+                       &record_params));
+  }
 }
 
 bool CaseCmd::force_update() {
@@ -1197,7 +1205,7 @@ CublasLtCmd::CublasLtCmd(
       workspace_buffer_(workspace_buffer) {}
 
 absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtCmd::GetMatmulPlan(
-    const stream_executor::Stream* stream) {
+    const se::Stream* stream) {
   auto it = matmul_plans_cache_.find(stream);
   if (it != matmul_plans_cache_.end()) return it->second.get();
   TF_ASSIGN_OR_RETURN(auto plan, se::gpu::BlasLt::GetMatmulPlan(
@@ -1207,13 +1215,14 @@ absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtCmd::GetMatmulPlan(
 }
 
 absl::StatusOr<se::gpu::BlasLt::MatmulAlgorithm>
-CublasLtCmd::GetMatmulAlgorithm(const se::gpu::BlasLt::MatmulPlan* plan,
+CublasLtCmd::GetMatmulAlgorithm(const se::Stream* stream,
+                                const se::gpu::BlasLt::MatmulPlan* plan,
                                 int64_t max_workspace) {
   auto it = matmul_algorithm_cache_.find(plan);
   if (it != matmul_algorithm_cache_.end()) return it->second;
   TF_ASSIGN_OR_RETURN(
       auto algorithms,
-      plan->GetAlgorithms(/*max_algorithm_count*/ 128,
+      plan->GetAlgorithms(stream, /*max_algorithm_count*/ 128,
                           /*max_workspace_size*/ max_workspace));
   TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
   auto [it_insert, _] =
@@ -1229,7 +1238,8 @@ absl::Status CublasLtCmd::Initialize(const Thunk::InitializeParams& params,
   // Populate plan and algorithm cache;
   TF_ASSIGN_OR_RETURN(auto plan, GetMatmulPlan(params.stream));
   TF_RETURN_IF_ERROR(
-      GetMatmulAlgorithm(plan, workspace_buffer_.size()).status());
+      GetMatmulAlgorithm(params.stream, plan, workspace_buffer_.size())
+          .status());
   return absl::OkStatus();
 }
 
@@ -1238,7 +1248,8 @@ absl::Status CublasLtCmd::Record(const Thunk::ExecuteParams& execute_params,
                                  se::CommandBuffer* command_buffer) {
   TF_ASSIGN_OR_RETURN(auto plan, GetMatmulPlan(execute_params.stream));
   TF_ASSIGN_OR_RETURN(auto algorithm,
-                      GetMatmulAlgorithm(plan, workspace_buffer_.size()));
+                      GetMatmulAlgorithm(execute_params.stream, plan,
+                                         workspace_buffer_.size()));
 
   const BufferAllocations& allocs = *execute_params.buffer_allocations;
 

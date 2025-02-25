@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
+#include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -208,7 +209,7 @@ class AsyncHostToDeviceTransferManager
     buffer_sizes_.reserve(buffer_ptrs_.size());
     for (const auto& ptr : buffer_ptrs_) {
       DCHECK_EQ(ptr->device_memory().size(), 1);
-      buffer_sizes_.push_back(ptr->device_memory()[0].size());
+      buffer_sizes_.push_back(ptr->device_memory()[0]->mem().size());
     }
     last_transfer_started_.resize(buffer_ptrs_.size(), false);
   }
@@ -337,7 +338,9 @@ class AsyncHostToDeviceTransferManager
     auto* client =
         tensorflow::down_cast<PjRtStreamExecutorClient*>(device_->client());
     bool should_stage_host_to_device_transfers =
-        client->should_stage_host_to_device_transfers();
+        client->should_stage_host_to_device_transfers() &&
+        (!client->IsDmaMapped(data, transfer_size));
+
     std::shared_ptr<void> staging_buffer;
     if (should_stage_host_to_device_transfers) {
       auto* host_memory_allocator = client->host_memory_allocator();
@@ -375,7 +378,7 @@ class AsyncHostToDeviceTransferManager
           buffer_index);
     }
     DCHECK_EQ(buffer_ptrs_[buffer_index]->device_memory().size(), 1);
-    auto& buffer_memory = buffer_ptrs_[buffer_index]->device_memory()[0];
+    auto& buffer_memory = buffer_ptrs_[buffer_index]->device_memory()[0]->mem();
     se::DeviceMemoryBase sub_buffer;
     CHECK_LE(offset, buffer_memory.size());
     CHECK_LE(transfer_size, buffer_memory.size() - offset);
@@ -600,32 +603,6 @@ absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const PjRtClient::ShapeSpec> shape_specs,
     std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-    PjRtDevice* device) {
-  auto* stream_executor_device =
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
-  return xla::AsyncHostToDeviceTransferManager::Create(
-      shape_specs, std::move(device_layouts), stream_executor_device, this,
-      /*memory_space=*/nullptr);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
-    absl::Span<const Shape> shapes, PjRtDevice* device) {
-  absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
-  shape_specs.reserve(shapes.size());
-  for (const auto& shape : shapes) {
-    shape_specs.emplace_back(PjRtClient::ShapeSpec{
-        shape.element_type(),
-        DimensionVector(shape.dimensions().begin(), shape.dimensions().end())});
-  }
-  return CreateBuffersForAsyncHostToDevice(
-      shape_specs, /*device_layouts=*/std::nullopt, device);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
-    absl::Span<const PjRtClient::ShapeSpec> shape_specs,
-    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
     PjRtMemorySpace* memory_space) {
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices()[0];
@@ -634,20 +611,6 @@ StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
   return xla::AsyncHostToDeviceTransferManager::Create(
       shape_specs, std::move(device_layouts), stream_executor_device, this,
       memory_space);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
-    absl::Span<const Shape> shapes, PjRtMemorySpace* memory_space) {
-  absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
-  shape_specs.reserve(shapes.size());
-  for (const auto& shape : shapes) {
-    shape_specs.emplace_back(PjRtClient::ShapeSpec{
-        shape.element_type(),
-        DimensionVector(shape.dimensions().begin(), shape.dimensions().end())});
-  }
-  return CreateBuffersForAsyncHostToDevice(
-      shape_specs, /*device_layouts=*/std::nullopt, memory_space);
 }
 
 absl::StatusOr<xla::DeviceAssignment>
@@ -716,7 +679,7 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
       return;
     }
 
-    auto& device_memory = device_buffer->device_memory()[0];
+    auto& device_memory = device_buffer->device_memory()[0]->mem();
     if (offset < 0 || offset > device_memory.size() ||
         device_memory.size() - offset < transfer_size) {
       promise.Set(
@@ -737,11 +700,12 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
     WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
 
     if (transfer_size != 0) {
-      if (should_stage_host_to_device_transfers()) {
+      if (should_stage_host_to_device_transfers() &&
+          !IsDmaMapped(dst.value(), transfer_size)) {
         if (host_memory_allocator() == nullptr) {
-          promise.Set(InvalidArgument(
-              "host_memory_allocator should be initialized for staging buffer "
-              "transfer."));
+          promise.Set(
+              InvalidArgument("host_memory_allocator should be initialized for "
+                              "staging buffer transfer."));
           return;
         }
         void* ptr = host_memory_allocator()->AllocateRaw(
@@ -1346,21 +1310,6 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       options.node_id, std::move(allocator), std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers, std::move(gpu_run_options),
       std::move(kv_store), std::move(gpu_topology)));
-}
-
-absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
-    const {
-  std::string result;
-  if (!tsl::SerializeToStringDeterministic(gpu_topology_->ToProto(), &result)) {
-    return absl::InternalError("Failed to serialize gpu_topology");
-  }
-  return result;
-}
-
-absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
-    PrimitiveType element_type, absl::Span<const int64_t> dims) const {
-  Shape shape = ShapeUtil::MakeShape(element_type, dims);
-  return LayoutUtil::GetWithDefaultLayout(shape).layout();
 }
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

@@ -25,7 +25,6 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -51,6 +50,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -154,19 +154,18 @@ absl::StatusOr<ShardArgResult> ShardArg(
           return xla::InvalidArgument("Array has been deleted.");
         }
         if (result.ifrt_array->sharding().devices()->devices() != devices) {
-          xla::ifrt::BasicDeviceList::Devices ifrt_devices;
+          absl::InlinedVector<xla::ifrt::Device*, 1> ifrt_devices;
           ifrt_devices.reserve(devices.size());
           ifrt_devices.insert(ifrt_devices.end(), devices.begin(),
                               devices.end());
           // pmap does not support memory_kind for now.
           auto* ifrt_client = result.ifrt_array->client();
-          TF_ASSIGN_OR_RETURN(
-              auto copied_ifrt_arrays,
-              ifrt_client->CopyArrays(
-                  absl::MakeSpan(&result.ifrt_array, 1),
-                  xla::ifrt::BasicDeviceList::Create(std::move(ifrt_devices)),
-                  xla::ifrt::MemoryKind(),
-                  xla::ifrt::ArrayCopySemantics::kReuseInput));
+          TF_ASSIGN_OR_RETURN(auto copied_ifrt_arrays,
+                              ifrt_client->CopyArrays(
+                                  absl::MakeSpan(&result.ifrt_array, 1),
+                                  ifrt_client->MakeDeviceList(ifrt_devices),
+                                  xla::ifrt::MemoryKind(),
+                                  xla::ifrt::ArrayCopySemantics::kReuseInput));
           result.ifrt_array = std::move(copied_ifrt_arrays.front());
         }
         return result;
@@ -188,7 +187,7 @@ absl::StatusOr<ShardArgResult> ShardArg(
 
     std::vector<tsl::RCReference<xla::ifrt::Array>> per_device_arrays;
     per_device_arrays.reserve(n_devices);
-    xla::ifrt::BasicDeviceList::Devices devices;
+    absl::InlinedVector<xla::ifrt::Device*, 1> devices;
     devices.reserve(n_devices);
     // TODO(hyeontaek): The created array will never be disassembled. We should
     // omit collecting shapes and make the OpaqueSharding non-disassemblable?
@@ -668,6 +667,9 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
     }
   }
 
+  xla::ifrt::ExecuteOptions execute_options = cache_entry.executable->options();
+  execute_options.launch_id = cache_entry.executable->GetNextLaunchId();
+
   // A vector of [num_outputs].
   std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
   {
@@ -675,7 +677,7 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
     auto ifrt_executable = cache_entry.executable->ifrt_executable();
     TF_ASSIGN_OR_RETURN(
         auto result, ifrt_executable->Execute(absl::MakeSpan(num_args_arrays),
-                                              cache_entry.executable->options(),
+                                              execute_options,
                                               /*devices=*/std::nullopt));
     output_arrays = std::move(result.outputs);
   }

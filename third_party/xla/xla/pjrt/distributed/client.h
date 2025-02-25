@@ -145,6 +145,11 @@ class DistributedRuntimeClient {
       std::string barrier_id, absl::Duration timeout,
       std::optional<absl::Span<const int32_t>> nodes) = 0;
 
+  // Returns the subset of live nodes. See CoordinationService.GetAliveTasks for
+  // detailed semantics.
+  virtual absl::StatusOr<std::vector<int32_t>> GetLiveNodes(
+      absl::Span<const int32_t> nodes) = 0;
+
   // Returns pointer to coordination service agent, or InternalError if the
   // client does not use coordination service.
   virtual absl::StatusOr<tsl::CoordinationServiceAgent*>

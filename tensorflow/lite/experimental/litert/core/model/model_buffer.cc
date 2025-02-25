@@ -15,8 +15,11 @@
 #include "tensorflow/lite/experimental/litert/core/model/model_buffer.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
@@ -31,32 +34,78 @@ namespace litert {
 namespace internal {
 
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
-    LiteRtModelT&& model, BufferRef<uint8_t> npu_byte_code) {
-  if (model.NumSubgraphs() != 1) {
-    return Error(kLiteRtStatusErrorUnsupported);
-  }
-  LiteRtOpT* custom_op = nullptr;
-  auto* subgraph = model.Subgraphs().front();
-  int num_custom_ops = 0;
+    LiteRtModelT&& model,
+    const absl::flat_hash_map<std::string, OwningBufferRef<uint8_t>>&
+        custom_code_to_npu_bytecode) {
+  for (const auto& subgraph : model.Subgraphs()) {
+    for (auto op : subgraph->Ops()) {
+      if (op->OpCode() == kLiteRtOpCodeTflCustom) {
+        auto custom_code = GetCustomOpCode(model, *op);
+        if (!custom_code) {
+          continue;
+        }
 
-  for (auto op : subgraph->Ops()) {
-    if (op->OpCode() == kLiteRtOpCodeTflCustom) {
-      custom_op = op;
-      num_custom_ops++;
+        auto iter = custom_code_to_npu_bytecode.find(*custom_code);
+        if (iter == custom_code_to_npu_bytecode.end()) {
+          return Error(kLiteRtStatusErrorUnsupported,
+                       absl::StrFormat("Unexpected custom code: %s",
+                                       custom_code->c_str()));
+        }
+
+        LiteRtOpT* custom_op = op;
+        OwningBufferRef<uint8_t> byte_code(iter->second);
+        const auto buf_id =
+            model.Buffers()->RegisterOwnedBuffer(std::move(byte_code));
+        model.AttachAssetToOp(custom_op, buf_id, "");
+      }
     }
   }
-  if (custom_op == nullptr || num_custom_ops != 1) {
-    return Error(kLiteRtStatusErrorUnsupported);
-  }
-
-  OwningBufferRef<uint8_t> byte_code(npu_byte_code.Data(),
-                                     npu_byte_code.Size());
-  const auto buf_id =
-      model.Buffers()->RegisterOwnedBuffer(std::move(byte_code));
-
-  model.AttachAssetToOp(custom_op, buf_id, "");
 
   return SerializeModel(std::move(model));
+}
+
+Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
+    absl::string_view tfl_file,
+    const absl::flat_hash_map<std::string, std::string>&
+        custom_code_to_npu_file) {
+  auto model = LoadModelFromFile(tfl_file);
+  if (!model) {
+    return model.Error();
+  }
+
+  absl::flat_hash_map<std::string, OwningBufferRef<uint8_t>>
+      custom_code_to_npu_bytecode;
+  for (auto& iter : custom_code_to_npu_file) {
+    auto npu_file_buf = LoadBinaryFile(iter.second);
+    if (!npu_file_buf) {
+      return npu_file_buf.Error();
+    }
+    custom_code_to_npu_bytecode[iter.first] = std::move(*npu_file_buf);
+  }
+
+  return GetModelBufWithByteCode(std::move(**model),
+                                 custom_code_to_npu_bytecode);
+}
+
+Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
+    LiteRtModelT&& model, BufferRef<uint8_t> npu_byte_code) {
+  absl::flat_hash_map<std::string, OwningBufferRef<uint8_t>>
+      custom_code_to_npu_bytecode;
+  for (const auto& subgraph : model.Subgraphs()) {
+    for (auto op : subgraph->Ops()) {
+      if (op->OpCode() == kLiteRtOpCodeTflCustom) {
+        auto custom_code = GetCustomOpCode(model, *op);
+        if (!custom_code) {
+          continue;
+        }
+        OwningBufferRef<uint8_t> byte_code(npu_byte_code.Data(),
+                                           npu_byte_code.Size());
+        custom_code_to_npu_bytecode[*custom_code] = std::move(byte_code);
+      }
+    }
+  }
+
+  return GetModelBufWithByteCode(std::move(model), custom_code_to_npu_bytecode);
 }
 
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(

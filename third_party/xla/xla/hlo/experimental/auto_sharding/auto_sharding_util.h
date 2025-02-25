@@ -506,6 +506,11 @@ HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> mesh_dims,
                  const DeviceMesh& device_mesh);
 
+HloSharding Tile(const Shape& tensor_shape,
+                 absl::Span<const int64_t> tensor_dims,
+                 std::initializer_list<int64_t> mesh_dims,
+                 const DeviceMesh& device_mesh);
+
 AliasMap BuildAliasMap(const HloModule* module,
                        const HloInputOutputAliasConfig& alias_config);
 

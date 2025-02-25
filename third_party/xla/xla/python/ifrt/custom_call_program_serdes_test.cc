@@ -18,12 +18,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array_spec.h"
-#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/custom_call_program.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
@@ -87,8 +85,7 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CustomCallProgram> deserialized_program,
       Deserialize<CustomCallProgram>(
-          serialized, std::make_unique<DeserializeProgramOptions>(
-                          absl::bind_front(&Client::LookupDevice, client()))));
+          serialized, std::make_unique<DeserializeProgramOptions>(client())));
 
   EXPECT_EQ(deserialized_program->type, "test type");
   EXPECT_EQ(deserialized_program->name, "test name");

@@ -29,15 +29,18 @@ LiteRtStatus LiteRtGetNextAcceleratorCompilationOptions(
 }
 
 LiteRtStatus LiteRtAppendAcceleratorCompilationOptions(
-    LiteRtAcceleratorCompilationOptions options,
+    LiteRtAcceleratorCompilationOptions* options,
     LiteRtAcceleratorCompilationOptions appended_options) {
   if (!options) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  while (options->next) {
-    options = options->next;
+  if (appended_options && !appended_options->ReleaseData) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
-  options->next = appended_options;
+  while (*options) {
+    options = &((*options)->next);
+  }
+  *options = appended_options;
   return kLiteRtStatusOk;
 }
 
@@ -52,10 +55,10 @@ LiteRtStatus LiteRtGetAcceleratorCompilationOptionsIdentifier(
 
 LiteRtStatus LiteRtDestroyAcceleratorCompilationOptions(
     LiteRtAcceleratorCompilationOptions options) {
-  if (!options || !options->ReleaseData) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
   while (options) {
+    if (!options->ReleaseData) {
+      return kLiteRtStatusErrorInvalidArgument;
+    }
     LiteRtAcceleratorCompilationOptions next = options->next;
     options->ReleaseData(options);
     options = next;

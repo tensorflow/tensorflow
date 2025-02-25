@@ -84,7 +84,8 @@ class IotaReplicaGroupList {
 // replica groups, it may be used to represent these lists in compact forms.
 class CollectiveDeviceList {
  public:
-  explicit CollectiveDeviceList() = default;
+  explicit CollectiveDeviceList()
+      : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>()) {};
 
   explicit CollectiveDeviceList(absl::Span<const ReplicaGroup> replica_groups)
       : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>(
@@ -99,21 +100,15 @@ class CollectiveDeviceList {
       const IotaReplicaGroupList& iota_replica_group_list)
       : iota_replica_group_list_(iota_replica_group_list) {}
 
-  const std::vector<ReplicaGroup>& replica_groups() const {
-    MaybeMaterializeFullReplicaGroupList();
-    return *replica_groups_;
-  }
-
+  // Lazyly explands iota if applicable.
+  const std::vector<ReplicaGroup>& replica_groups() const;
   const std::optional<IotaReplicaGroupList>& iota_replica_group_list() const {
     return iota_replica_group_list_;
   }
-
   std::string ToString(bool print_full_replica_group_list = false) const;
 
   CollectiveDeviceListProto ToProto() const;
-
   static CollectiveDeviceList FromProto(const CollectiveDeviceListProto& proto);
-
   static CollectiveDeviceList FromProto(const HloInstructionProto& proto);
 
  private:
@@ -142,8 +137,7 @@ class CollectiveDeviceList {
 
   std::optional<IotaReplicaGroupList> iota_replica_group_list_;
   // shared_ptr for fast copy.
-  mutable std::shared_ptr<std::vector<ReplicaGroup>> replica_groups_ =
-      std::make_shared<std::vector<ReplicaGroup>>();
+  mutable std::shared_ptr<std::vector<ReplicaGroup>> replica_groups_ = nullptr;
 };
 
 }  // namespace xla

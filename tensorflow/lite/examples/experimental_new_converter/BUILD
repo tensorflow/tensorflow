@@ -9,7 +9,6 @@ package(
 py_strict_binary(
     name = "stack_trace_example",
     srcs = ["stack_trace_example.py"],
-    python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "@absl_py//absl:app",

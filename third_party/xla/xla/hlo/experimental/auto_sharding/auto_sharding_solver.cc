@@ -132,23 +132,59 @@ AutoShardingSolverRequest ScaleRequest(
   return scaled_request;
 }
 
-namespace {
-
 double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
-  double min_memory_budget_required_estimate = 0.0;
-  for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
-    double min_memory_budget_required_estimate_local = 0.0;
-    for (NodeIdx node_idx : request.live(time_idx).nodes()) {
-      const auto& m = request.memory_costs(node_idx).costs();
-      const double fixed_memory_cost = *std::min_element(m.begin(), m.end());
-      min_memory_budget_required_estimate_local += fixed_memory_cost;
+  std::vector<double> min_memory_required;
+  if (request.node_intervals().empty()) {  // Handles live matrices.
+    min_memory_required.resize(request.live_size(), 0.0);
+    for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
+      for (NodeIdx node_idx : request.live(time_idx).nodes()) {
+        const auto& m = request.memory_costs(node_idx).costs();
+        const double fixed_memory_cost = *std::min_element(m.begin(), m.end());
+        min_memory_required[time_idx] += fixed_memory_cost;
+      }
     }
+  } else {  // Handles the interval-based memory representation.
+    std::vector<double> min_memory_required_group;
+    for (const auto& group : request.node_groups()) {
+      double fixed_memory_cost = 0.0;
+      for (const NodeIdx node_idx : group.prims()) {
+        const auto& m = request.memory_costs(node_idx).costs();
+        fixed_memory_cost += *std::min_element(m.begin(), m.end());
+      }
+      min_memory_required_group.push_back(fixed_memory_cost);
+    }
+    for (NodeIdx node_idx = 0; node_idx < request.node_intervals_size();
+         ++node_idx) {
+      const auto& interval = request.node_intervals(node_idx);
+      if (interval.first() > interval.second()) continue;
+      // Expand cost vectors if needed to cover the range of this interval.
+      while (min_memory_required.size() <= interval.second()) {
+        min_memory_required.push_back(0.0);
+      }
+      double fixed_memory_cost = 0.0;
+      if (node_idx < request.num_nodes()) {
+        const auto& m = request.memory_costs(node_idx).costs();
+        fixed_memory_cost = *std::min_element(m.begin(), m.end());
+      } else {
+        int64_t group_idx = node_idx - request.num_nodes();
+        fixed_memory_cost = min_memory_required_group[group_idx];
+      }
+      for (LivenessIdx time_idx = interval.first();
+           time_idx <= interval.second(); ++time_idx) {
+        min_memory_required[time_idx] += fixed_memory_cost;
+      }
+    }
+  }
+  double min_memory_budget_required_estimate = 0.0;
+  for (double min_memory_budget_required_estimate_local : min_memory_required) {
     min_memory_budget_required_estimate =
         std::max(min_memory_budget_required_estimate,
                  min_memory_budget_required_estimate_local);
   }
   return min_memory_budget_required_estimate;
 }
+
+namespace {
 
 std::vector<NodeStrategyIdx> GetChosenNodeStrategy(
     const AutoShardingSolverRequest& request,

@@ -19,12 +19,10 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
-#include "absl/status/statusor.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
-#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
@@ -64,12 +62,9 @@ TEST_P(ArraySpecTest, ToFromProto) {
                                               /*shape=*/shape,
                                               /*shard_shape=*/shard_shape)};
 
-  auto lookup_device_func = [&](DeviceId device_id) -> absl::StatusOr<Device*> {
-    return client()->LookupDevice(device_id);
-  };
   TF_ASSERT_OK_AND_ASSIGN(const ArraySpecProto proto, spec.ToProto());
   TF_ASSERT_OK_AND_ASSIGN(const ArraySpec array_spec_copy,
-                          ArraySpec::FromProto(lookup_device_func, proto));
+                          ArraySpec::FromProto(client(), proto));
 
   EXPECT_EQ(array_spec_copy.dtype, dtype);
   EXPECT_EQ(array_spec_copy.shape, shape);

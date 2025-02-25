@@ -16,6 +16,7 @@ syntax = "proto3";
 
 package xla.ifrt.proxy;
 
+import "xla/python/ifrt/attribute_map.proto";
 import "xla/python/ifrt_proxy/common/ifrt_service.proto";
 
 service GrpcIfrtService {
@@ -66,6 +67,7 @@ message GrpcGetVersionResponse {
 // key "ifrt-proxy-grpc-ifrt-session-metadata-bin".
 message GrpcIfrtSessionMetadata {
   IfrtProxyVersion version = 1;
+  AttributeMapProto initialization_data = 2;
 }
 
 // Metadata for `Store` requests, sent as client metadata associated with key

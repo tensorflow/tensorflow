@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -1292,6 +1293,21 @@ NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
     absl::Span<tsl::RCReference<ifrt::Array>> arrays,
     ifrt::ArrayCopySemantics array_copy_semantics,
     ifrt::SingleDeviceShardSemantics single_device_shard_semantics) {
+  return AssembleArrayFromSingleDeviceArrays(shape, sharding, arrays,
+                                             array_copy_semantics);
+}
+
+absl::StatusOr<tsl::RCReference<ifrt::Array>>
+NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
+    ifrt::DType dtype, ifrt::Shape shape,
+    absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
+    absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+    ifrt::ArrayCopySemantics array_copy_semantics,
+    ifrt::SingleDeviceShardSemantics single_device_shard_semantics) {
+  // NanoRT devices always have at least one buffer, so we can use the buffer
+  // dtype.
+  TF_RET_CHECK(!arrays.empty());
+  TF_RET_CHECK(dtype == arrays.front()->dtype());
   return AssembleArrayFromSingleDeviceArrays(shape, sharding, arrays,
                                              array_copy_semantics);
 }

@@ -2729,7 +2729,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                                    call_kwargs=None,
                                                    error='.*',
                                                    exception=TypeError):
-    """Tests for errors in the structrued signature.
+    """Tests for errors in the structured signature.
 
     Args:
       conc_args: Positional arguments used for get_concrete_function.

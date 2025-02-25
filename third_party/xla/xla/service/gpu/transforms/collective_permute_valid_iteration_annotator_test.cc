@@ -125,10 +125,11 @@ TEST_P(AnnotatorTest, ParameterizedAnnotatorTest) {
                                   .set_print_control_dependencies(true));
   EXPECT_EQ(changed, test_case.expect_change);
 
+  HloInstruction* cp_base =
+      FindInstruction(module.get(), HloOpcode::kCollectivePermute);
+  ASSERT_NE(cp_base, nullptr);
   HloCollectivePermuteInstruction* cp =
-      DynCastOrNull<HloCollectivePermuteInstruction>(
-          FindInstruction(module.get(), HloOpcode::kCollectivePermute));
-  ASSERT_NE(cp, nullptr);
+      Cast<HloCollectivePermuteInstruction>(cp_base);
   ASSERT_EQ(cp->get_frontend_attribute(kSendRecvValidationAttr),
             test_case.validate_attr);
 }

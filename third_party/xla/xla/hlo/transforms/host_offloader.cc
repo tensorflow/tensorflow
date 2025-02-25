@@ -89,14 +89,6 @@ bool SetBuffersToMemorySpaceColor(
   return changed;
 }
 
-void SetHostComputeFrontendAttribute(HloInstruction& host_instruction) {
-  FrontendAttributes frontend_attributes =
-      host_instruction.frontend_attributes();
-  frontend_attributes.mutable_map()->insert(
-      {kXlaComputeTypeAttr, kXlaComputeTypeHost});
-  host_instruction.set_frontend_attributes(frontend_attributes);
-}
-
 }  // namespace
 
 bool HostOffloader::InstructionIsAllowedBetweenMoveToHostAndDus(
@@ -137,6 +129,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   absl::flat_hash_set<HloInstruction*> mth_custom_calls_to_remove;
   absl::flat_hash_set<HloInstruction*> slices_to_dynamify;
   absl::flat_hash_set<HloInstruction*> custom_calls_to_insert_copies_before;
+  absl::flat_hash_set<HloInstruction*> x64_split_instructions;
   std::vector<InstructionAndShapeIndex> buffers_to_set_to_host_memory;
   // std::vector<HloInstruction*> move_to_host_dynamic_update_slices;
   HloInstruction* starting_instruction =
@@ -237,13 +230,23 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       need_to_wrap_instruction_as_host_compute = true;
     }
 
+    // We need to insert copies before X64SplitLow and X64SplitHigh custom
+    // calls.
+    for (const auto user : instruction->users()) {
+      if (user->opcode() == HloOpcode::kCustomCall &&
+          (user->custom_call_target() == "X64SplitLow" ||
+           user->custom_call_target() == "X64SplitHigh")) {
+        x64_split_instructions.insert(user);
+      }
+    }
+
     if (need_to_wrap_instruction_as_host_compute) {
       LOG(WARNING) << absl::StreamFormat(
           "Found an instruction (\"%s\") which does device compute in host "
           "memory space. Converting into host compute. This is likely to have "
           "a very high overhead.",
           instruction->name());
-      SetHostComputeFrontendAttribute(*instruction);
+      host_offload_utils::SetHostComputeFrontendAttribute(*instruction);
     }
     if (!already_saved_buffer) {
       const HloInstruction* instruction =
@@ -252,15 +255,6 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
         // We'll do DUSes later.
         set_as_host_memory = false;
-
-        // // At this point, at least one of our operands must be in host memory
-        // // space. Only if the base operand is should we set the
-        // // DynamicUpdateSlice as in host memory.
-        // set_as_host_memory =
-        //     DynamicUpdateSliceOperandIsInHostMemory(instruction,
-        //     buffers_to_set_to_host_memory);
-        // LOG(INFO) << "Setting DUS " << instruction->name() << " as host
-        // memory? " << set_as_host_memory;
       }
 
       if (set_as_host_memory) {
@@ -306,13 +300,6 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       buffers_to_set_to_host_memory, Layout::kHostMemorySpace);
   changed = changed || set_buffers_changed;
 
-  // for (HloInstruction* dus : move_to_host_dynamic_update_slices) {
-  //   // Create a host AllocateBuffer instruction which this DynamicUpdateSlice
-  //   // will update-slice into.
-  //   TF_RETURN_IF_ERROR(CreateAllocateBufferForDynamicUpdateSlice(dus));
-  //   changed = true;
-  // }
-
   if (insert_copy_before) {
     const auto predecessors =
         host_offload_utils::GetPredecessors(starting_instruction_and_index);
@@ -336,6 +323,23 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
         copy_to_device->name(), custom_call->name());
     TF_RETURN_IF_ERROR(custom_call->ReplaceAllUsesWith(copy_to_device));
     changed = true;
+  }
+
+  if (!x64_split_instructions.empty()) {
+    LOG(WARNING) << "64-bit type on device is decomposed into 32-bit types "
+                    "very early on so host offloader only sees 32-bit "
+                    "types. Thus the current handling of 64-bit type host "
+                    "offloading might be sub-optimal";
+  }
+  for (HloInstruction* x64_split_instruction : x64_split_instructions) {
+    HloInstruction* data_to_copy = x64_split_instruction->mutable_operand(0);
+    HloInstruction* copy_to_device =
+        data_to_copy->parent()->AddInstruction(HloInstruction::CreateUnary(
+            data_to_copy->shape(), HloOpcode::kCopy, data_to_copy));
+    SetMemorySpace(copy_to_device->mutable_shape(),
+                   Layout::kDefaultMemorySpace);
+    TF_RETURN_IF_ERROR(
+        x64_split_instruction->ReplaceOperandWith(0, copy_to_device));
   }
 
   // All host memory offloading has been completed. Remove MoveToHost custom
@@ -1107,11 +1111,11 @@ absl::StatusOr<bool> HostOffloader::HandleDynamicUpdateSlices() {
         operand_memory_space == Layout::kDefaultMemorySpace;
     if (host_to_device) {
       // This is only supported via host compute.
-      SetHostComputeFrontendAttribute(*dus);
+      host_offload_utils::SetHostComputeFrontendAttribute(*dus);
       changed = true;
     } else if (host_to_host) {
       // Host to host. Execute as host compute. Also set as host memory space.
-      SetHostComputeFrontendAttribute(*dus);
+      host_offload_utils::SetHostComputeFrontendAttribute(*dus);
       SetMemorySpace(dus->mutable_shape(), Layout::kHostMemorySpace);
       changed = true;
     } else if (device_to_host) {

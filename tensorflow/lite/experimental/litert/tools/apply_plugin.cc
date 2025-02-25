@@ -82,9 +82,9 @@ class Context {
     return run_->soc_manufacturer.value();
   }
 
-  std::ostream& Out() {
-    ABSL_CHECK_EQ(run_->outs.size(), 1);
-    return run_->outs.front();
+  std::ostream& Out(size_t out_ind = 0) {
+    ABSL_CHECK_GE(run_->outs.size(), 1);
+    return run_->outs.at(out_ind);
   }
 
   OutStream SwapOut(OutStream out) {
@@ -93,6 +93,8 @@ class Context {
     run_->outs.at(0) = out;
     return res;
   }
+
+  uint32_t NumOuts() const { return run_->outs.size(); }
 
   const ApplyPluginRun& Run() const { return *run_; }
   ApplyPluginRun& Run() { return *run_; }
@@ -339,7 +341,6 @@ LiteRtStatus ValidateCompileRun(const ApplyPluginRun& run) {
   LITERT_ENSURE_CONFIG(!run.lib_search_paths.empty());
   LITERT_ENSURE_CONFIG(run.model.has_value());
   LITERT_ENSURE_CONFIG(run.soc_manufacturer.has_value());
-  LITERT_ENSURE_CONFIG(run.outs.size() == run.soc_models.size());
   // TODO: implement multi target compilation.
   LITERT_ENSURE_SUPPORTED(run.soc_models.size() == 1,
                           "Multi target compilation not implemented.");
@@ -368,30 +369,29 @@ LiteRtStatus Compile(Context& ctx) {
   }
 
   auto num_byte_code = compilation_result->NumByteCodeModules();
-  if (!num_byte_code || *num_byte_code != 1) {
-    ctx.Dump().Labeled() << absl::StreamFormat(
-        "Standalone compile tool only supports single byte code module, got "
-        "%lu",
-        *num_byte_code);
+  if (*num_byte_code < 1) {
     ctx.Dump().Fail();
     return compilation_result.Error().Status();
   }
-
-  auto byte_code = compilation_result->ByteCode();
-  if (!byte_code) {
+  if (!num_byte_code) {
     ctx.Dump().Fail();
     return compilation_result.Error().Status();
   }
+  for (int i = 0; i < ctx.NumOuts(); ++i) {
+    auto byte_code = compilation_result->ByteCode(i);
+    if (!byte_code) {
+      ctx.Dump().Fail();
+      return compilation_result.Error().Status();
+    }
+    auto num_calls = compilation_result->NumCalls();
+    if (!num_calls) {
+      ctx.Dump().Fail();
+      return compilation_result.Error().Status();
+    }
 
-  auto num_calls = compilation_result->NumCalls();
-  if (!num_calls) {
-    ctx.Dump().Fail();
-    return compilation_result.Error().Status();
+    DumpCompilationResult(ctx.Dump(), byte_code->Size(), *num_calls);
+    byte_code->WriteStr(ctx.Out(i));
   }
-
-  DumpCompilationResult(ctx.Dump(), byte_code->Size(), *num_calls);
-
-  byte_code->WriteStr(ctx.Out());
   ctx.Dump().Done();
 
   return kLiteRtStatusOk;

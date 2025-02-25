@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
@@ -143,6 +144,9 @@ class LiteRtCompiledModelT {
     delegates_.push_back(std::move(delegate));
   }
 
+  // Checks the CPU Tensors and stores them in the `cpu_tensors_` set.
+  void CheckCpuTensors();
+
   // Map from signature key to SignatureRunner. This is used to lazy calling
   // GetSignatureRunner() which is expensive.
   absl::flat_hash_map<absl::string_view, tflite::SignatureRunner*>
@@ -170,6 +174,10 @@ class LiteRtCompiledModelT {
       buffer_context_;
 
   std::vector<tflite::TfLiteOpaqueDelegateUniquePtr> delegates_;
+
+  // The set of CPU Tensors. This is used to manage TensorBufferRequirements
+  // for shared CPU Tensors.
+  absl::flat_hash_set<const void*> cpu_tensors_;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_COMPILED_MODEL_H_

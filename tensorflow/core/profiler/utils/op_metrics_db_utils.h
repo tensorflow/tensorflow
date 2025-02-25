@@ -52,8 +52,7 @@ class OpMetricsDbBuilder {
   // Looks up the given OP name. If it is already in the database,
   // return its OpMetrics; otherwise, insert a new one.
   OpMetrics* LookupOrInsertNewOpMetrics(uint64 hlo_module_id,
-                                        absl::string_view name,
-                                        uint64_t fingerprint);
+                                        absl::string_view name);
 
   OpMetricsDb* db() { return db_; }
 
@@ -71,8 +70,16 @@ class OpMetricsDbBuilder {
 // Helps build an op metrics database (borrowed) from XEvents,
 class XEventsOpMetricsDbBuilder {
  public:
+  struct OpKey {
+    std::optional<uint64_t> program_id;
+    std::optional<uint64_t> symbol_id;
+  };
+  // DEPRECATED: Use the OpKey version below.
   // Add OpMetric from XEventVisitor.
   void AddOpMetric(const tsl::profiler::XEventVisitor& xevent);
+
+  // Add an OpMetric to the builder based on the provided key.
+  void AddOpMetric(const OpMetrics& op_metrics, const OpKey& key);
 
   // Finalize OpMetricDb and add total time and Idle op.
   OpMetricsDb Finalize(uint64_t total_time);
@@ -87,6 +94,13 @@ class XEventsOpMetricsDbBuilder {
   absl::flat_hash_map</*program_id=*/uint64_t, OpMetricBySymbol>
       flat_op_metric_;
 };
+
+// Constructs an OpMetrics from the provided XEventVisitor.
+OpMetrics FromXEvent(const tsl::profiler::XEventVisitor& xevent);
+
+// Returns the OpKey for the provided XEventVisitor.
+XEventsOpMetricsDbBuilder::OpKey GetOpKeyFromXEvent(
+    const tsl::profiler::XEventVisitor& event);
 
 // Sets the total time for OpMetricsDb, ensuring idle time is not negative.
 inline void SetTotalTimePs(OpMetricsDb& db, uint64_t total_time_ps) {

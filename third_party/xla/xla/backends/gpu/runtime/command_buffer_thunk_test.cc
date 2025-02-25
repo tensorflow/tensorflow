@@ -25,6 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
@@ -1378,7 +1379,7 @@ TEST(CommandBufferThunkTest, CaseCmd) {
 
   // Prepare commands sequence for thunk.
   CommandBufferCmdSequence commands;
-  commands.Emplace<CaseCmd>(s0, slice_i, std::move(branches));
+  commands.Emplace<CaseCmd>(s0, slice_i, false, std::move(branches));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -1496,6 +1497,7 @@ class CmdBufferTest : public HloTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(0);
     debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
     debug_options.set_xla_gpu_graph_min_graph_size(1);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
@@ -1589,14 +1591,14 @@ ENTRY main.49 {
   config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
 
   // running with module with exclusive lock on GpuExecutable
   debug_options.set_xla_gpu_require_exclusive_lock(true);
   config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(module,
                           ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
 }
 
 }  // namespace xla::gpu

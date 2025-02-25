@@ -486,6 +486,12 @@ std::vector<IndexingMap::Variable> DimVarsFromGPUGrid(
 std::vector<IndexingMap::Variable> RangeVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes);
 
+// Creates a new indexing map that is the same as `map` but with the range
+// variables at `range_var_indices` converted to the new dimensions variables at
+// and added to the end of dimension variables list.
+IndexingMap ConvertRangeVariablesToDimensions(
+    const IndexingMap& map, llvm::ArrayRef<int64_t> range_var_indices);
+
 }  // namespace xla
 
 #endif  // XLA_HLO_ANALYSIS_INDEXING_MAP_H_

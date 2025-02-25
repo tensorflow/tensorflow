@@ -32,12 +32,14 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 const absl::string_view kIdle = "IDLE";
 const uint32_t kSparseCoreIndexStart = 1000000;
+const int64_t kSingleOccurrence = 1;
 
 namespace {
 
@@ -52,12 +54,11 @@ class DeviceTfOpMetricsDbBuilder : public OpMetricsDbBuilder {
   explicit DeviceTfOpMetricsDbBuilder(OpMetricsDb* db)
       : OpMetricsDbBuilder(db) {}
 
-  void UpdateTfOpMetricsWithDeviceOpMetrics(absl::string_view tf_op_name,
-                                            absl::string_view tf_op_type,
-                                            const OpMetrics& device_op_metrics,
-                                            uint64_t fingerprint) {
+  void UpdateTfOpMetricsWithDeviceOpMetrics(
+      absl::string_view tf_op_name, absl::string_view tf_op_type,
+      const OpMetrics& device_op_metrics) {
     OpMetrics* tf_op_metrics = OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
-        /*hlo_module_id=*/0, tf_op_name, fingerprint);
+        /*hlo_module_id=*/0, tf_op_name);
     if (tf_op_metrics->category().empty()) {
       tf_op_metrics->set_category(tf_op_type == tsl::profiler::kUnknownOp
                                       ? "Unknown"
@@ -78,31 +79,6 @@ class DeviceTfOpMetricsDbBuilder : public OpMetricsDbBuilder {
                                       device_op_metrics.bytes_accessed());
   }
 };
-
-struct OpKey {
-  std::optional<uint64_t> program_id;
-  std::optional<uint64_t> symbol_id;
-};
-
-OpKey GetOpKeyFromHloEventMetadata(
-    const XEventMetadataVisitor& hlo_event_metadata) {
-  OpKey op_key;
-  hlo_event_metadata.ForEachStat([&](const XStatVisitor& stat) {
-    if (stat.Type().has_value()) {
-      switch (static_cast<StatType>(*stat.Type())) {
-        case StatType::kProgramId:
-          op_key.program_id = stat.IntOrUintValue();
-          break;
-        case StatType::kSymbolId:
-          op_key.symbol_id = stat.IntOrUintValue();
-          break;
-        default:
-          break;
-      }
-    }
-  });
-  return op_key;
-}
 
 void SetOpMetadataFromHloEventMetadata(
     const XEventMetadataVisitor& hlo_event_metadata, OpMetrics* op_metrics) {
@@ -182,7 +158,8 @@ void SetOpMetricsFromHloEvent(const tsl::profiler::XEventVisitor& hlo_event,
   });
   if (op_metrics->occurrences() == 0) {
     SetOpMetadataFromHloEventMetadata(hlo_event.Metadata(), op_metrics);
-    op_metrics->set_occurrences(hlo_event.NumOccurrences());
+    op_metrics->set_occurrences(
+        std::max(kSingleOccurrence, hlo_event.NumOccurrences()));
     op_metrics->set_time_ps(duration_ps);
     op_metrics->set_min_time_ps(min_duration_ps);
     op_metrics->set_self_time_ps(self_duration_ps);
@@ -196,6 +173,19 @@ void SetOpMetricsFromHloEvent(const tsl::profiler::XEventVisitor& hlo_event,
         std::min<uint64_t>(op_metrics->min_time_ps(), min_duration_ps));
     op_metrics->set_self_time_ps(op_metrics->self_time_ps() + self_duration_ps);
     op_metrics->set_dma_stall_ps(op_metrics->dma_stall_ps() + dma_stall_ps);
+  }
+}
+
+void MergeOpMetrics(const OpMetrics& src, OpMetrics& dst) {
+  if (dst.occurrences() == 0) {
+    dst = src;
+  } else {
+    dst.set_occurrences(src.occurrences() + dst.occurrences());
+    dst.set_time_ps(src.time_ps() + dst.time_ps());
+    dst.set_min_time_ps(
+        std::min<uint64_t>(src.min_time_ps(), dst.min_time_ps()));
+    dst.set_self_time_ps(src.self_time_ps() + dst.self_time_ps());
+    dst.set_dma_stall_ps(src.dma_stall_ps() + dst.dma_stall_ps());
   }
 }
 
@@ -223,13 +213,11 @@ OpMetricsDbBuilder::OpMetricsDbBuilder(OpMetricsDb* db) : db_(db) {
 }
 
 OpMetrics* OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
-    uint64 hlo_module_id, absl::string_view name, uint64_t fingerprint) {
-  // The fingerprint is not needed to find the correct op_metrics.
+    uint64 hlo_module_id, absl::string_view name) {
   OpMetrics*& op_metrics = op_metrics_map_[hlo_module_id][name];
   if (op_metrics == nullptr) {
     op_metrics = db_->add_metrics_db();
     op_metrics->set_hlo_module_id(hlo_module_id);
-    op_metrics->set_fingerprint(fingerprint);
     op_metrics->set_name(name.data(), name.size());
   }
   return op_metrics;
@@ -237,27 +225,17 @@ OpMetrics* OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
 
 void XEventsOpMetricsDbBuilder::AddOpMetric(
     const tsl::profiler::XEventVisitor& event) {
-  OpKey key = GetOpKeyFromHloEventMetadata(event.Metadata());
-  std::optional<XStatVisitor> stat = event.GetStat(StatType::kStepIdleTimePs);
-  if (stat.has_value()) {
-    uint64_t idle_time_ps = stat->IntOrUintValue();
-    OpMetrics op_metrics;
-    op_metrics.set_self_time_ps(event.DurationPs() - idle_time_ps);
-    op_metrics.set_name("sparse_core_busy_ops");
-    // TODO: Make it meaningful after SC stats are available.
-    op_metrics.set_category("sparse_core_busy_ops");
-    constexpr uint64_t kMaxProgramId = std::numeric_limits<uint64_t>::max();
-    constexpr uint64_t kMaxSymbolId = std::numeric_limits<uint64_t>::max();
-    flat_op_metric_[kMaxProgramId][kMaxSymbolId] = op_metrics;
-    SetOpMetricsFromHloEvent(event, &op_metrics);
-  }
-  if (!key.program_id.has_value() || !key.symbol_id.has_value()) return;
-  OpMetricBySymbol& op_metric_by_symbol =
-      flat_op_metric_[key.program_id.value()];
-  if (key.symbol_id != kRootSymbolId) {
-    OpMetrics& op_metrics = op_metric_by_symbol[key.symbol_id.value()];
-    SetOpMetricsFromHloEvent(event, &op_metrics);
-  }
+  AddOpMetric(FromXEvent(event), GetOpKeyFromXEvent(event));
+}
+
+void XEventsOpMetricsDbBuilder::AddOpMetric(const OpMetrics& op_metrics,
+                                            const OpKey& key) {
+  if (!key.program_id.has_value() || !key.symbol_id.has_value() ||
+      key.symbol_id == kRootSymbolId)
+    return;
+  MergeOpMetrics(
+      op_metrics,
+      flat_op_metric_[key.program_id.value()][key.symbol_id.value()]);
 }
 
 OpMetricsDb XEventsOpMetricsDbBuilder::Finalize(uint64_t total_time_ps) {
@@ -322,19 +300,18 @@ OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
   for (const auto& device_op_metrics : device_op_metrics_db.metrics_db()) {
     if (IsIdleOp(device_op_metrics)) {
       if (with_idle) {
-        builder.UpdateTfOpMetricsWithDeviceOpMetrics(
-            kIdle, kIdle, device_op_metrics, device_op_metrics.fingerprint());
+        builder.UpdateTfOpMetricsWithDeviceOpMetrics(kIdle, kIdle,
+                                                     device_op_metrics);
       }
     } else if (device_op_metrics.provenance().empty()) {
-      builder.UpdateTfOpMetricsWithDeviceOpMetrics(
-          device_op_metrics.name(), tsl::profiler::kUnknownOp,
-          device_op_metrics, device_op_metrics.fingerprint());
+      builder.UpdateTfOpMetricsWithDeviceOpMetrics(device_op_metrics.name(),
+                                                   tsl::profiler::kUnknownOp,
+                                                   device_op_metrics);
     } else {
       tsl::profiler::TfOp tf_op =
           tsl::profiler::ParseTfOpFullname(device_op_metrics.provenance());
-      builder.UpdateTfOpMetricsWithDeviceOpMetrics(
-          tf_op.name, tf_op.type, device_op_metrics,
-          device_op_metrics.fingerprint());
+      builder.UpdateTfOpMetricsWithDeviceOpMetrics(tf_op.name, tf_op.type,
+                                                   device_op_metrics);
     }
   }
   tf_op_metrics_db.set_total_op_time_ps(
@@ -345,6 +322,47 @@ OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
                 : device_op_metrics_db.total_op_time_ps());
 
   return tf_op_metrics_db;
+}
+
+OpMetrics FromXEvent(const tsl::profiler::XEventVisitor& xevent) {
+  OpMetrics op_metrics;
+  std::optional<XStatVisitor> stat = xevent.GetStat(StatType::kStepIdleTimePs);
+  if (stat.has_value()) {
+    uint64_t idle_time_ps = stat->IntOrUintValue();
+    op_metrics.set_self_time_ps(xevent.DurationPs() - idle_time_ps);
+    op_metrics.set_name("sparse_core_busy_ops");
+    // TODO: Make it meaningful after SC stats are available.
+    op_metrics.set_category("sparse_core_busy_ops");
+  }
+  SetOpMetricsFromHloEvent(xevent, &op_metrics);
+  return op_metrics;
+}
+
+XEventsOpMetricsDbBuilder::OpKey GetOpKeyFromXEvent(
+    const XEventVisitor& event) {
+  std::optional<XStatVisitor> stat = event.GetStat(StatType::kStepIdleTimePs);
+  if (stat.has_value()) {
+    return {.program_id = std::numeric_limits<uint64_t>::max(),
+            .symbol_id = std::numeric_limits<uint64_t>::max()};
+  }
+
+  XEventsOpMetricsDbBuilder::OpKey op_key;
+  DCHECK(event.metadata() != nullptr);
+  event.Metadata().ForEachStat([&](const XStatVisitor& stat) {
+    if (stat.Type().has_value()) {
+      switch (static_cast<StatType>(*stat.Type())) {
+        case StatType::kProgramId:
+          op_key.program_id = stat.IntOrUintValue();
+          break;
+        case StatType::kSymbolId:
+          op_key.symbol_id = stat.IntOrUintValue();
+          break;
+        default:
+          break;
+      }
+    }
+  });
+  return op_key;
 }
 
 }  // namespace profiler

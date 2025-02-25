@@ -1,4 +1,3 @@
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.bzl", "xla_cc_test")
@@ -141,7 +140,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@llvm-project//mlir:Pass",
     ] + if_gpu_is_configured([
-        ":xla_triton_passes",
+        "//xla/backends/gpu/codegen/triton/transforms:passes",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ControlFlowToLLVM",
@@ -182,10 +181,7 @@ cc_library(
         ":compilation_pipeline",
         ":emitter_helpers",
         ":fusion_emitter_legacy_matmul",
-        ":passes",
         ":support",
-        ":xla_triton",
-        ":xla_triton_passes",
         "//xla:autotuning_proto_cc",
         "//xla:permutation_util",
         "//xla:shape_util",
@@ -195,6 +191,8 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
+        "//xla/backends/gpu/codegen/triton/transforms:passes",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/emitters/ir:xla",
@@ -219,6 +217,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
         "//xla/tools:hlo_decomposer_lib",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -285,13 +284,13 @@ cc_library(
     hdrs = ["fusion_emitter_legacy_matmul.h"],
     deps = [
         ":emitter_helpers",
-        ":xla_triton",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
@@ -392,196 +391,6 @@ xla_cc_test(
     ],
 )
 
-gentbl_cc_library(
-    name = "passes_inc_gen",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TritonFusionTransforms",
-            ],
-            "passes.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "passes.td",
-    visibility = ["//visibility:private"],
-    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
-)
-
-cc_library(
-    name = "passes",
-    srcs = [
-        "generalize_kernel_signature.cc",
-    ],
-    hdrs = ["passes.h"],
-    deps = [
-        ":passes_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:NVVMDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-gentbl_cc_library(
-    name = "xla_triton_passes_inc_gen",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TritonFusionTransforms",
-                "-attrdefs-dialect=triton_xla",
-            ],
-            "xla_triton_passes.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "xla_triton_passes.td",
-    visibility = ["//visibility:private"],
-    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
-)
-
-cc_library(
-    name = "xla_triton_passes",
-    srcs = [
-        "xla_triton_int4_passes.cc",
-        "xla_triton_prevent_mmav3_loop_unrolling_pass.cc",
-        "xla_triton_sparse_passes.cc",
-    ],
-    hdrs = [
-        "xla_triton_passes.h",
-    ],
-    deps = [
-        ":xla_triton",
-        ":xla_triton_passes_inc_gen",
-        "//xla/service/llvm_ir:llvm_util",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:GPUToNVVMTransforms",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMCommonConversion",
-        "@llvm-project//mlir:NVVMDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:SCFTransforms",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@triton//:TritonDialects",
-        "@triton//:TritonGPUToLLVM",
-        "@triton//:TritonGPUTransforms",
-        "@triton//:TritonToTritonGPU",
-        "@triton//third_party/nvidia:NVGPUDialect",
-        "@triton//third_party/nvidia:NVGPUToLLVM",
-        "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
-    ],
-)
-
-td_library(
-    name = "xla_td_files",
-    srcs = glob(["*.td"]),
-    includes = ["."],
-    deps = [
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "xla_triton_dialect_inc_gen",
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-dialect-decls"],
-            "xla_triton_dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "xla_triton_dialect.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "xla_triton_dialect.td",
-    deps = [":xla_td_files"],
-)
-
-gentbl_cc_library(
-    name = "xla_triton_ops_inc_gen",
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "xla_triton_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "xla_triton_ops.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "xla_triton_ops.td",
-    deps = [
-        ":xla_td_files",
-        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-        "@triton//:td_files",
-    ],
-)
-
-gentbl_cc_library(
-    name = "xla_triton_attrs_inc_gen",
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-attrdef-decls",
-                "-attrdefs-dialect=triton_xla",
-            ],
-            "xla_triton_attrs.h.inc",
-        ),
-        (
-            [
-                "-gen-attrdef-defs",
-                "-attrdefs-dialect=triton_xla",
-            ],
-            "xla_triton_attrs.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "xla_triton_attrs.td",
-    deps = [
-        ":xla_td_files",
-        "@triton//:td_files",
-    ],
-)
-
-cc_library(
-    name = "xla_triton",
-    srcs = [
-        "xla_triton_attrs.cc",
-        "xla_triton_ops.cc",
-    ],
-    hdrs = ["xla_triton_ops.h"],
-    deps = [
-        ":xla_triton_attrs_inc_gen",
-        ":xla_triton_dialect_inc_gen",
-        ":xla_triton_ops_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:InferTypeOpInterface",
-        "@llvm-project//mlir:SideEffectInterfaces",
-        "@llvm-project//mlir:Support",
-        "@triton//:TritonDialects",
-    ],
-)
-
 xla_test(
     name = "fusion_emitter_deviceless_test",
     srcs = ["fusion_emitter_deviceless_test.cc"],
@@ -597,7 +406,7 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
@@ -781,6 +590,7 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",

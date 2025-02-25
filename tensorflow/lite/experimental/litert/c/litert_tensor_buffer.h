@@ -22,6 +22,10 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#if LITERT_HAS_OPENGL_SUPPORT
+#include <GLES3/gl31.h>
+#include <GLES3/gl32.h>
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 
 #if LITERT_HAS_AHWB_SUPPORT
 #include <android/hardware_buffer.h>
@@ -52,6 +56,7 @@ typedef enum {
   kLiteRtTensorBufferTypeDmaBuf = 4,
   kLiteRtTensorBufferTypeFastRpc = 5,
   kLiteRtTensorBufferTypeOpenCl = 6,
+  kLiteRtTensorBufferTypeGlBuffer = 7,
 } LiteRtTensorBufferType;
 
 typedef void (*LiteRtHostMemoryDeallocator)(void* addr);
@@ -60,6 +65,7 @@ typedef void (*LiteRtIonDeallocator)(void* ion_buffer_addr);
 typedef void (*LiteRtDmaBufDeallocator)(void* dmabuf_buffer_addr);
 typedef void (*LiteRtFastRpcDeallocator)(void* fastrpc_buffer_addr);
 typedef void (*LiteRtOpenClDeallocator)(void* opencl_buffer_addr);
+typedef void (*LiteRtGlBufferDeallocator)(void* gl_buffer_addr);
 
 // /////////////////////////////////////////////////////////////////////////////
 // TensorBuffers.
@@ -167,6 +173,17 @@ LiteRtStatus LiteRtCreateTensorBufferFromOpenClBuffer(
 LiteRtStatus LiteRtGetTensorBufferOpenClBuffer(LiteRtTensorBuffer tensor_buffer,
                                                cl_mem* cl_mem_addr);
 #endif  // LITERT_HAS_OPENCL_SUPPORT
+
+#if LITERT_HAS_OPENGL_SUPPORT
+LiteRtStatus LiteRtCreateTensorBufferFromGlBuffer(
+    const LiteRtRankedTensorType* tensor_type, GLenum target, GLuint id,
+    size_t bytes_size, size_t offset, LiteRtGlBufferDeallocator deallocator,
+    LiteRtTensorBuffer* buffer);
+
+LiteRtStatus LiteRtGetTensorBufferGlBuffer(LiteRtTensorBuffer tensor_buffer,
+                                           GLenum* target, GLuint* id,
+                                           size_t* bytes_size, size_t* offset);
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 
 // Create a buffer backed by managed memory for a given size.
 LiteRtStatus LiteRtCreateManagedTensorBuffer(

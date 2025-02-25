@@ -503,16 +503,19 @@ def _Consumers(t, func_graphs):
   return consumers
 
 
-def _GradientsHelper(ys,
-                     xs,
-                     grad_ys=None,
-                     name="gradients",
-                     colocate_gradients_with_ops=False,
-                     gate_gradients=False,
-                     aggregation_method=None,
-                     stop_gradients=None,
-                     unconnected_gradients=UnconnectedGradients.NONE,
-                     src_graph=None):
+def _GradientsHelper(
+    ys,
+    xs,
+    grad_ys=None,
+    name="gradients",
+    colocate_gradients_with_ops=False,
+    gate_gradients=False,
+    aggregation_method=None,
+    stop_gradients=None,
+    unconnected_gradients=UnconnectedGradients.NONE,
+    src_graph=None,
+    optimize_identity_n=False,
+):
   """Implementation of gradients()."""
   if context.executing_eagerly():
     raise RuntimeError("tf.gradients is not supported when eager execution "
@@ -704,12 +707,18 @@ def _GradientsHelper(ys,
           # NOTE: If _AggregatedGrads didn't compute a value for the i'th
           # output, it means that the cost does not depend on output[i],
           # therefore dC/doutput[i] is 0.
+          #
+          # NOTE: "IdentityN" acts as a pass-through node, so we don't need to
+          # instantiate zeros for its inputs with corresponding `None` output
+          # gradients.
           for i, out_grad in enumerate(out_grads):
             if (
-                not isinstance(out_grad, tensor_lib.Tensor) and not out_grad
-            ) and (
-                (not grad_fn and is_func_call)
-                or backprop_util.IsTrainable(op.outputs[i])
+                (not isinstance(out_grad, tensor_lib.Tensor) and not out_grad)
+                and (
+                    (not grad_fn and is_func_call)
+                    or backprop_util.IsTrainable(op.outputs[i])
+                )
+                and not (optimize_identity_n and op.type == "IdentityN")
             ):
               # Only trainable outputs or outputs for a function call that
               # will use SymbolicGradient get a zero gradient. Gradient

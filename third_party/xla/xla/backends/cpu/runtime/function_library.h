@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 #include "tsl/platform/statusor.h"

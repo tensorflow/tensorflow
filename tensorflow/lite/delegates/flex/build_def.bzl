@@ -284,6 +284,7 @@ def tflite_flex_jni_library(
             clean_dep("//tensorflow/lite/delegates/flex/java/src/main/native:flex_delegate_jni.cc"),
         ],
         copts = tflite_copts(),
+        features = if_android(["-layering_check"]),
         testonly = testonly,
         visibility = visibility,
         deps = [

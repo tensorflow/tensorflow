@@ -81,7 +81,7 @@ PJRT_Error* PJRT_RawBuffer_CopyRawHostToDevice(
       "PJRT_RawBuffer_CopyRawHostToDevice_Args",
       PJRT_RawBuffer_CopyRawHostToDevice_Args_STRUCT_SIZE, args->struct_size));
   auto result = args->buffer->buffer->CopyRawHostToDevice(
-      args->dst, args->offset, args->transfer_size);
+      args->src, args->offset, args->transfer_size);
   args->event = new PJRT_Event{std::move(result)};
   return nullptr;
 }

@@ -16,8 +16,8 @@ limitations under the License.
 #include "mlir/InitAllExtensions.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
-#include "xla/backends/gpu/codegen/triton/xla_triton_ops.h"
-#include "xla/backends/gpu/codegen/triton/xla_triton_passes.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "third_party/triton/bin/RegisterTritonDialects.h"
 
@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
   mlir::registerAllExtensions(registry);
   registerTritonDialects(registry);  // This registers all passes as well.
   registry.insert<mlir::triton::xla::XlaTritonDialect>();
-  mlir::triton::xla::registerTritonFusionTransformsPasses();
+  mlir::triton::xla::registerTritonXlaTransformsPasses();
   xla::emitters::registerTransformsPasses();
   xla::gpu::registerGpuFusionTransformsPasses();
 

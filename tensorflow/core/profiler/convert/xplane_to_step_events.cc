@@ -30,7 +30,9 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
@@ -42,6 +44,30 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+inline AllReduceInfo GetAllReduceInfo(const XEventVisitor& event,
+                                      uint64_t all_reduce_unique_id) {
+  AllReduceInfo collective_ops;
+  collective_ops.set_id(all_reduce_unique_id);
+  collective_ops.set_start_time_ps(event.TimestampPs());
+  if (auto device_offset_ps_stat = event.GetStat(StatType::kDeviceOffsetPs)) {
+    collective_ops.set_start_time_ps(device_offset_ps_stat->IntOrUintValue());
+  }
+  collective_ops.set_end_time_ps(event.EndTimestampPs());
+  if (auto device_duration_ps_stat =
+          event.GetStat(StatType::kDeviceDurationPs)) {
+    collective_ops.set_end_time_ps(collective_ops.start_time_ps() +
+                                   device_duration_ps_stat->IntOrUintValue());
+  }
+  if (auto all_reduce_id_stat = event.GetStat(StatType::kAllReduceId)) {
+    collective_ops.set_all_reduce_id(all_reduce_id_stat->IntOrUintValue());
+  }
+  if (auto bytes_accessed_stat =
+          event.Metadata().GetStat(StatType::kBytesAccessed)) {
+    collective_ops.set_byte_size(bytes_accessed_stat->IntOrUintValue());
+  }
+  return collective_ops;
+}
 
 inline bool IsExplicitHostStepMarker(absl::string_view event_name) {
   return (absl::StartsWith(event_name, "train") ||
@@ -263,13 +289,50 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const uint64 device_id,
 StepEvents ConvertTpuDeviceTraceXLineToStepEvents(const uint64 device_id,
                                                   const XLineVisitor& line) {
   StepEvents result;
-  absl::flat_hash_map<int64_t /* = group_id*/, XEventsOpMetricsDbBuilder>
+  absl::flat_hash_map</*group_id=*/int64_t, XEventsOpMetricsDbBuilder>
       op_metrics_builder;
+  struct ParentRef {
+    const XEventVisitor event;
+    tsl::profiler::Timespan device_timespan;
+    uint64_t children_duration_ps = 0;
+    int64_t group_id = -1;
+  };
+  tsl::profiler::AncestorStack<ParentRef> event_stack(
+      // Adds an OpMetric to the builder based on the provided parent reference.
+      [&](const ParentRef& parent) {
+        OpMetrics op_metrics = FromXEvent(parent.event);
+        op_metrics.set_time_ps(parent.device_timespan.duration_ps());
+        op_metrics.set_self_time_ps(op_metrics.time_ps() -
+                                    parent.children_duration_ps);
+        op_metrics_builder[parent.group_id].AddOpMetric(
+            op_metrics, GetOpKeyFromXEvent(parent.event));
+      },
+      // Checks if the child event is a child of the parent event.
+      [](const ParentRef& parent, const ParentRef& child) {
+        return parent.device_timespan.Includes(child.device_timespan);
+      },
+      // Adds the child duration to the parent.
+      [](ParentRef& parent, ParentRef& child) {
+        parent.children_duration_ps += child.device_timespan.duration_ps();
+      });
   line.ForEachEvent([&](const XEventVisitor& event) {
-    auto group_id = event.GetStat(StatType::kGroupId);
-    if (!group_id.has_value()) return;
-    op_metrics_builder[group_id->IntOrUintValue()].AddOpMetric(event);
+    auto group_id_stat = event.GetStat(StatType::kGroupId);
+    if (!group_id_stat.has_value()) return;
+    int64_t group_id = group_id_stat->IntOrUintValue();
+    event_stack.Push(ParentRef{
+        .event = event,
+        .device_timespan = tsl::profiler::GetDeviceEventTimespan(event),
+        .group_id = group_id,
+    });
+
+    if (auto all_reduce_unique_id_stat =
+            event.GetStat(StatType::kAllReduceUniqueId)) {
+      result[group_id].AddCollectiveOpEvent(
+          device_id,
+          GetAllReduceInfo(event, all_reduce_unique_id_stat->IntOrUintValue()));
+    }
   });
+  event_stack.Flush();
   for (auto& [group_id, builder] : op_metrics_builder) {
     // Finalize Without the step time now.
     result[group_id].SetPerCoreOpMetricsDb(builder.Finalize(), device_id);
@@ -296,6 +359,7 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
     } else {
       StepEvents stream_step_events;
       if (tpu_core_id.has_value()) {
+        if (!tsl::profiler::IsOpLineName(line.Name())) return;
         // In TPU sampling mode, the profiling session could stop in the middle
         //  of a training step. In this case, the "XLA Ops" line will have
         // one more step than the "Step" line. We need to intersect them to get

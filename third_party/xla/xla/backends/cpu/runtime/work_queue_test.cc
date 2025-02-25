@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -33,6 +34,52 @@ limitations under the License.
 
 namespace xla::cpu {
 namespace {
+
+TEST(WorkQueueTest, WorkQueuePartitions) {
+  auto task_range = [](size_t begin, size_t end) {
+    return std::make_pair(begin, end);
+  };
+
+  {
+    WorkQueue queue(/*num_tasks=*/2, /*num_partitions=*/4);
+    EXPECT_EQ(queue.partition_range(0), task_range(0, 1));
+    EXPECT_EQ(queue.partition_range(1), task_range(1, 2));
+    EXPECT_EQ(queue.partition_range(2), task_range(2, 2));
+    EXPECT_EQ(queue.partition_range(3), task_range(2, 2));
+  }
+
+  {
+    WorkQueue queue(/*num_tasks=*/4, /*num_partitions=*/4);
+    EXPECT_EQ(queue.partition_range(0), task_range(0, 1));
+    EXPECT_EQ(queue.partition_range(1), task_range(1, 2));
+    EXPECT_EQ(queue.partition_range(2), task_range(2, 3));
+    EXPECT_EQ(queue.partition_range(3), task_range(3, 4));
+  }
+
+  {
+    WorkQueue queue(/*num_tasks=*/5, /*num_partitions=*/4);
+    EXPECT_EQ(queue.partition_range(0), task_range(0, 2));
+    EXPECT_EQ(queue.partition_range(1), task_range(2, 3));
+    EXPECT_EQ(queue.partition_range(2), task_range(3, 4));
+    EXPECT_EQ(queue.partition_range(3), task_range(4, 5));
+  }
+
+  {
+    WorkQueue queue(/*num_tasks=*/9, /*num_partitions=*/4);
+    EXPECT_EQ(queue.partition_range(0), task_range(0, 3));
+    EXPECT_EQ(queue.partition_range(1), task_range(3, 5));
+    EXPECT_EQ(queue.partition_range(2), task_range(5, 7));
+    EXPECT_EQ(queue.partition_range(3), task_range(7, 9));
+  }
+
+  {
+    WorkQueue queue(/*num_tasks=*/14, /*num_partitions=*/4);
+    EXPECT_EQ(queue.partition_range(0), task_range(0, 4));
+    EXPECT_EQ(queue.partition_range(1), task_range(4, 8));
+    EXPECT_EQ(queue.partition_range(2), task_range(8, 11));
+    EXPECT_EQ(queue.partition_range(3), task_range(11, 14));
+  }
+}
 
 TEST(WorkQueueTest, WorkQueueSimple) {
   WorkQueue queue(20, 10);

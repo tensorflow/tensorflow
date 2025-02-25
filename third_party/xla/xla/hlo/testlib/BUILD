@@ -5,7 +5,6 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load("//xla:package_groups.bzl", "xla_tests_package_groups")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -16,7 +15,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility([":friends"]),
+    default_visibility = internal_visibility(["//xla/tests:friends"]),
     licenses = ["notice"],
 )
 
@@ -28,8 +27,6 @@ filegroup(
         "**/*.h",
     ]),
 )
-
-xla_tests_package_groups()
 
 cc_library(
     name = "verified_hlo_module",
@@ -66,6 +63,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/pass:hlo_pass",
@@ -130,7 +128,7 @@ cc_library(
     name = "test",
     testonly = 1,
     hdrs = ["test.h"],
-    visibility = internal_visibility([":friends"]),
+    visibility = internal_visibility(["//xla/tests:friends"]),
     deps = [
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest",
@@ -142,7 +140,7 @@ cc_library(
     name = "test_helpers",
     testonly = 1,
     hdrs = ["test_helpers.h"],
-    visibility = internal_visibility([":friends"]),
+    visibility = internal_visibility(["//xla/tests:friends"]),
     deps = [
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",

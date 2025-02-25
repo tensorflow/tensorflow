@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "xla/hlo/transforms/bfloat16_propagation.h"
 
+#include <cstdint>
+#include <utility>
+
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"

@@ -15,65 +15,65 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 
-#include <algorithm>
-#include <bitset>
-#include <cmath>
-#include <cstring>
-#include <map>
-#include <memory>
-#include <set>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include <algorithm>      // IWYU pragma: keep
+#include <bitset>         // IWYU pragma: keep
+#include <cmath>          // IWYU pragma: keep
+#include <cstring>        // IWYU pragma: keep
+#include <map>            // IWYU pragma: keep
+#include <memory>         // IWYU pragma: keep
+#include <set>            // IWYU pragma: keep
+#include <unordered_map>  // IWYU pragma: keep
+#include <utility>        // IWYU pragma: keep
+#include <vector>         // IWYU pragma: keep
 
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
-#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/algorithm_selector.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/ops/layer_utils.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/ops/slice_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/timing_cache.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_experimental_features.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
-#include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_shape.pb.h"  // NOLINT
-#include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/op_types.h"
-#include "tensorflow/core/grappler/optimizers/constant_folding.h"
-#include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/tensor_coding.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/annotated_traceme.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/strided_slice_op.h"
+#include "absl/algorithm/container.h"      // IWYU pragma: keep
+#include "absl/container/flat_hash_set.h"  // IWYU pragma: keep
+#include "absl/memory/memory.h"            // IWYU pragma: keep
+#include "absl/strings/match.h"            // IWYU pragma: keep
+#include "absl/strings/str_cat.h"          // IWYU pragma: keep
+#include "absl/strings/str_format.h"       // IWYU pragma: keep
+#include "absl/strings/string_view.h"      // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/algorithm_selector.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/ops/layer_utils.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/ops/slice_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/timing_cache.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_experimental_features.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"  // IWYU pragma: keep
+#include "tensorflow/core/common_runtime/graph_constructor.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/node_def.pb.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/node_def_builder.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/tensor.pb.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/tensor_shape.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/tensor_shape.pb.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/tensor_util.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/types.h"  // IWYU pragma: keep
+#include "tensorflow/core/graph/algorithm.h"  // IWYU pragma: keep
+#include "tensorflow/core/graph/graph.h"      // IWYU pragma: keep
+#include "tensorflow/core/grappler/grappler_item.h"  // IWYU pragma: keep
+#include "tensorflow/core/grappler/op_types.h"  // IWYU pragma: keep
+#include "tensorflow/core/grappler/optimizers/constant_folding.h"  // IWYU pragma: keep
+#include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"  // IWYU pragma: keep
+#include "tensorflow/core/lib/core/errors.h"  // IWYU pragma: keep
+#include "tensorflow/core/lib/core/status.h"  // IWYU pragma: keep
+#include "tensorflow/core/lib/strings/numbers.h"  // IWYU pragma: keep
+#include "tensorflow/core/lib/strings/str_util.h"  // IWYU pragma: keep
+#include "tensorflow/core/lib/strings/strcat.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/logging.h"   // IWYU pragma: keep
+#include "tensorflow/core/platform/mutex.h"     // IWYU pragma: keep
+#include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/tensor_coding.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/tensor_float_32_utils.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/types.h"  // IWYU pragma: keep
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"  // IWYU pragma: keep
+#include "tensorflow/core/profiler/lib/traceme.h"  // IWYU pragma: keep
+#include "tensorflow/core/public/release_version.h"  // IWYU pragma: keep
+#include "tensorflow/core/util/env_var.h"  // IWYU pragma: keep
+#include "tensorflow/core/util/strided_slice_op.h"  // IWYU pragma: keep
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"

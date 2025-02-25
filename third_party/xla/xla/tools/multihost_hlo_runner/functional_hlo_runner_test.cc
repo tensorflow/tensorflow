@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/file_system_helper.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
@@ -57,6 +58,7 @@ namespace {
 
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
+using HloModuleAndArguments = ::xla::FunctionalHloRunner::HloModuleAndArguments;
 
 bool IsTestingCpu() {
 #ifdef XLA_TEST_BACKEND_CPU
@@ -168,39 +170,29 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
 
 TEST_F(FunctionalHloRunnerTest,
        SingleDeviceHloWithGPUProfilerSavesXSpaceToDisk) {
-  if (IsTestingCpu()) {
-    GTEST_SKIP() << "GPU-only test";
-  }
-
-  GpuClientOptions gpu_options;
-  gpu_options.node_id = 0;
-  gpu_options.num_nodes = 16;
-  gpu_options.enable_mock_nccl = true;
-
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
   std::string profile_dump_path =
       tsl::io::JoinPath(testing::TempDir(), "xspace.pb");
-  tsl::Env* env = tsl::Env::Default();
-  tsl::FileSystem* fs = nullptr;
-  TF_ASSERT_OK(env->GetFileSystemForFile(profile_dump_path, &fs));
 
-  FunctionalHloRunner::RawCompileOptions raw_compile_options;
-  raw_compile_options.xla_gpu_dump_xspace_to = profile_dump_path;
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      xla::PjRtEnvironment pjrt_env,
-      GetPjRtEnvironmentForGpu("", gpu_options, absl::Seconds(120)));
+  std::unique_ptr<GPURunnerProfiler> profiler;
   FunctionalHloRunner::RunningOptions running_options;
   TF_ASSERT_OK_AND_ASSIGN(
-      auto profiler,
-      GPURunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/false));
+      profiler,
+      GPURunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/true));
   running_options.profiler = profiler.get();
 
+  running_options.num_repeats = 2;
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
-      *pjrt_env.client,
-      /* debug_options= */ {}, /* preproc_options= */ {}, raw_compile_options,
-      running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
-  EXPECT_EQ(profiler->GetXSpace(), nullptr);
-  TF_EXPECT_OK(env->FileExists(profile_dump_path));
+      *client,
+      /* debug_options= */ {}, /* preproc_options= */ {},
+      /* raw_compile_options = */ {}, running_options,
+      {GetHloPath("single_device.hlo")}, InputFormat::kText));
+
+  if (client->platform_name() == "cuda") {
+    EXPECT_NE(profiler->GetXSpace(), nullptr);
+    EXPECT_GT(profiler->GetXSpace()->planes_size(), 0);
+  }
 }
 
 TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
@@ -594,30 +586,41 @@ TEST_F(FunctionalHloRunnerTest, Sharded2DevicesHloUnoptimizedSnapshot) {
 }
 
 TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshot) {
-  FunctionalHloRunner::HloModuleAndArguments hlo_module_and_arguments_from_text;
-  FunctionalHloRunner::HloModuleAndArguments
-      hlo_module_and_arguments_from_binary;
   std::string path_to_text_hlo =
       GetHloPath("sharded_unoptimized_hlo_snapshot.pbtxt");
   std::string path_to_binary_hlo =
       tsl::io::JoinPath(std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"),
                         "sharded_unoptimized_hlo_snapshot.pb");
+  tsl::Env* env = tsl::Env::Default();
 
-  // Read the text proto, dump it as a binary proto and read it back.
+  // Read the text proto
   HloUnoptimizedSnapshot message;
-  TF_ASSERT_OK(
-      tsl::ReadTextProto(tsl::Env::Default(), path_to_text_hlo, &message));
-  TF_ASSERT_OK(
-      tsl::WriteBinaryProto(tsl::Env::Default(), path_to_binary_hlo, message));
+  TF_ASSERT_OK(tsl::ReadTextProto(env, path_to_text_hlo, &message));
 
+  // Dump message in the custom binary format
+  std::unique_ptr<tsl::WritableFile> file;
+  TF_ASSERT_OK(env->NewWritableFile(path_to_binary_hlo, &file));
+
+  tsl::WritableFileCopyingOutputStream output(file.get());
+
+  tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output);
+  TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(message, &adaptor));
+  adaptor.Flush();
+
+  TF_ASSERT_OK(file->Close());
+
+  // Read HloModuleAndArguments from text dump.
   TF_ASSERT_OK_AND_ASSIGN(
-      hlo_module_and_arguments_from_text,
-      FunctionalHloRunner::ReadModuleFromUnoptimizedSnapshotTextProtoFile(
-          path_to_text_hlo));
+      HloModuleAndArguments hlo_module_and_arguments_from_text,
+      FunctionalHloRunner::LoadHloModuleAndArguments(
+          path_to_text_hlo, InputFormat::kUnoptimizedSnapshotProtoText));
+  // Read HloModuleAndArguments from binary dump.
   TF_ASSERT_OK_AND_ASSIGN(
-      hlo_module_and_arguments_from_binary,
-      FunctionalHloRunner::ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(
-          path_to_binary_hlo));
+      HloModuleAndArguments hlo_module_and_arguments_from_binary,
+      FunctionalHloRunner::LoadHloModuleAndArguments(
+          path_to_binary_hlo, InputFormat::kUnoptimizedSnapshotProtoBinary));
+
+  // Compare
   CHECK_EQ(hlo_module_and_arguments_from_binary.arguments.size(), 2);
 
   CHECK_EQ(hlo_module_and_arguments_from_text.hlo_module->ToString(),
@@ -645,7 +648,6 @@ TEST_F(FunctionalHloRunnerTest, FixFakeArguments) {
 }
 
 TEST(FunctionalHloRunnerTest, TestHloUnoptimizedSnapshotDeSerialization) {
-  FunctionalHloRunner::HloModuleAndArguments hlo_module_and_arguments_from_text;
   std::string path_to_text_hlo =
       GetHloPath("sharded_unoptimized_hlo_snapshot.pbtxt");
 

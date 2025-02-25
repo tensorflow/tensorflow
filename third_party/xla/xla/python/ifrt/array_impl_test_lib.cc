@@ -382,7 +382,7 @@ TEST(ArrayImplTest, AssembleArray) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto assembled_array,
       client->AssembleArrayFromSingleDeviceArrays(
-          assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
+          dtype, assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
           ArrayCopySemantics::kAlwaysCopy,
           SingleDeviceShardSemantics::kAddressableShards));
 
@@ -482,7 +482,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto assembled_array,
                           client->AssembleArrayFromSingleDeviceArrays(
-                              shape, sharding, absl::MakeSpan(arrays),
+                              dtype, shape, sharding, absl::MakeSpan(arrays),
                               ArrayCopySemantics::kAlwaysCopy,
                               SingleDeviceShardSemantics::kAddressableShards));
 
@@ -565,7 +565,7 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
     TF_ASSERT_OK_AND_ASSIGN(
         arrays.emplace_back(),
         client->AssembleArrayFromSingleDeviceArrays(
-            shape, sharding, absl::MakeSpan(shards),
+            dtype, shape, sharding, absl::MakeSpan(shards),
             ArrayCopySemantics::kAlwaysCopy,
             SingleDeviceShardSemantics::kAddressableShards));
   }
@@ -575,7 +575,7 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
     TF_ASSERT_OK_AND_ASSIGN(
         arrays.emplace_back(),
         client->AssembleArrayFromSingleDeviceArrays(
-            shape, sharding, absl::MakeSpan(shards),
+            dtype, shape, sharding, absl::MakeSpan(shards),
             ArrayCopySemantics::kAlwaysCopy,
             SingleDeviceShardSemantics::kAddressableShards));
   }

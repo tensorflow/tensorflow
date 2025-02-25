@@ -1,328 +1,693 @@
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
---- stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
-+++ stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
-@@ -52,80 +52,104 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -994,7 +994,7 @@
+         ":linalg_passes",
+         ":reference_api",
+         ":reference_configuration",
+-        ":stablehlo_dialect_capi_objects",
++        ":stablehlo_dialect_capi",
+         ":stablehlo_ops",
+         ":stablehlo_passes",
+         ":stablehlo_portable_api",
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -16,9 +16,13 @@
  
- // CHECK-LABEL: @dot_vector_vector
- func.func @dot_vector_vector(%arg0 : tensor<3xf32>, %arg1 : tensor<3xf32>) -> tensor<f32> {
--  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 1, 3>}
--  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 3, 1>}
--  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
--  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
-+  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<> : tensor<0xindex>} : () -> !tosa.shape<0>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {value = dense<[1, 1, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
-+  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {value = dense<[1, 3, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
-+  // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
-+  // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
-   %0 = "stablehlo.dot"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<f32>
-   return %0 : tensor<f32>
- }
+ #include "stablehlo/dialect/ChloOps.h"
  
- // CHECK-LABEL: @dot_vector_matrix
- func.func @dot_vector_matrix(%arg0 : tensor<2xf32>, %arg1 : tensor<2x3xf32>) -> tensor<3xf32> {
--  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 1, 2>}
--  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 2, 3>}
--  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
--  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
-+  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<3> : tensor<1xindex>} : () -> !tosa.shape<1>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {value = dense<[1, 1, 2]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
-+  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {value = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
-+  // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
-+  // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
-   %0 = "stablehlo.dot"(%arg0, %arg1) : (tensor<2xf32>, tensor<2x3xf32>) -> tensor<3xf32>
-   return %0 : tensor<3xf32>
- }
++#include <algorithm>
+ #include <cassert>
+ #include <cstdint>
++#include <iostream>
++#include <iterator>
+ #include <optional>
++#include <string>
  
- // CHECK-LABEL: @dot_matrix_vector
- func.func @dot_matrix_vector(%arg0 : tensor<2x3xf32>, %arg1 : tensor<3xf32>) -> tensor<2xf32> {
--  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 2, 3>}
--  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 3, 1>}
--  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
--  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
-+  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<2> : tensor<1xindex>} : () -> !tosa.shape<1>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {value = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
-+  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {value = dense<[1, 3, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
-+  // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
-+  // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
-   %0 = "stablehlo.dot"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<3xf32>) -> tensor<2xf32>
-   return %0 : tensor<2xf32>
- }
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+@@ -426,12 +430,12 @@
+ // Mode 1, where the ragged dimension is an lhs non-contracting dim (m).
+ //   lhs : [b, m, k]
+ //   rhs : [g, b, k, n]
+-//   group_sizes : [g]
++//   group_sizes : [b, g]
+ //   result : [b, m, n]
+ // Mode 2, where the ragged dimension is an lhs/rhs contracting dim (k).
+ //   lhs : [b, m, k]
+ //   rhs : [b, k, n]
+-//   group_sizes : [g]
++//   group_sizes : [b, g]
+ //   result : [g, b, m, n]
+ // Mode 3, where the ragged dimension is an lhs/rhs batch dim (b).
+ //   lhs : [b, m, k]
+@@ -440,9 +444,18 @@
+ //   result : [b, m, n]
+ // As with dot_general, the lhs and rhs can have arbitrary batching,
+ // contracting and non-contracting dimensions.
++// The group_sizes arg has the shape [b...,x...,g], where:
++// - b... are all the lhs batch dims before (outer-to) the lhs ragged dim,
++// - x... are,
++//   - in mode 1, all the lhs non-contracting dims before the lhs ragged dim,
++//   - in mode 2, all the lhs contracting dims before the lhs ragged dim, and
++//   - in mode 3, empty;
++// - g is the number of groups in the lhs ragged dim.
+ // Additionally:
+ //   - In all modes, the lhs must have exactly one ragged dimension.
+ //   - In mode 1, the rhs must have exactly one group dimension.
++//   - If a group_sizes of shape [g] is passed, it is broadcasted according to
++//     the rules above.
+ LogicalResult checkRaggedDotConstraints(
+     std::optional<Location> location, RankedTensorType rankedLhsType,
+     RankedTensorType rankedRhsType, RankedTensorType rankedGroupSizesType,
+@@ -452,14 +465,6 @@
+     ArrayRef<int64_t> rhsContractingDimensions,
+     ArrayRef<int64_t> lhsRaggedDimensions,
+     ArrayRef<int64_t> rhsGroupDimensions) {
+-  // Check that the group sizes has rank=1.
+-  if (rankedGroupSizesType.getRank() != 1) {
+-    return emitOptionalError(
+-        location, "expected rank of group_sizes of ragged dot to be 1, got ",
+-        rankedGroupSizesType.getRank());
+-  }
+-  auto numGroups = rankedGroupSizesType.getDimSize(0);
+-
+   // Check that there is exactly one lhs ragged dimension.
+   if (lhsRaggedDimensions.size() != 1) {
+     return emitOptionalError(
+@@ -473,6 +478,81 @@
+                                    "lhs_rank"))) {
+     return failure();
+   }
++
++  enum Mode {
++    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [b,g] -> [b,m,n].
++    kNonContracting,
++    // Ragged contracting (k):     [b,m,k], [b,k,n],   [b,g] -> [g,b,m,n].
++    kContracting,
++    // Ragged batch (b):           [b,m,k], [b,k,n],   [g]   -> [b,m,n].
++    kBatch
++  };
++  Mode mode;
++  if (llvm::is_contained(lhsBatchingDimensions, lhsRaggedDim)) {
++    mode = kBatch;
++  } else if (llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
++    mode = kContracting;
++  } else {
++    mode = kNonContracting;
++  }
++
++  // Validate the shape of group_sizes.
++  {
++    // Construct the expected shape [b...,x...,g] of group_sizes.
++    SmallVector<int64_t> prefixDims;
++    prefixDims.reserve(rankedLhsType.getRank() - 1);
++    prefixDims.insert(prefixDims.end(), lhsBatchingDimensions.begin(),
++                      lhsBatchingDimensions.end());
++    switch (mode) {
++      case kBatch:
++        prefixDims.resize(
++            std::distance(lhsBatchingDimensions.begin(),
++                          llvm::find(lhsBatchingDimensions, lhsRaggedDim)));
++        break;
++      case kContracting:
++        prefixDims.insert(prefixDims.end(), lhsContractingDimensions.begin(),
++                          llvm::find(lhsContractingDimensions, lhsRaggedDim));
++        break;
++      case kNonContracting:
++        for (int64_t i = 0; i < lhsRaggedDim; ++i) {
++          if (!llvm::is_contained(lhsBatchingDimensions, i) &&
++              !llvm::is_contained(lhsContractingDimensions, i)) {
++            prefixDims.push_back(i);
++          }
++        }
++        break;
++    }
++    SmallVector<int64_t> expectedPrefix;
++    expectedPrefix.reserve(prefixDims.size());
++    for (const int64_t dim : prefixDims) {
++      expectedPrefix.push_back(rankedLhsType.getDimSize(dim));
++    }
++
++    // Validate the actual shape, if it was passed as something other than [g].
++    if (rankedGroupSizesType.getRank() != 1) {
++      if (rankedGroupSizesType.getRank() != expectedPrefix.size() + 1) {
++        return emitOptionalError(location, "expected group_sizes to have rank ",
++                                 expectedPrefix.size() + 1, ", got ",
++                                 rankedGroupSizesType.getRank());
++      }
++      auto groupSizesShape = rankedGroupSizesType.getShape();
++      if (!std::equal(expectedPrefix.begin(), expectedPrefix.end(),
++                      groupSizesShape.begin())) {
++        auto nonEmptyShapeStr = [](ArrayRef<int64_t> shape) {
++          std::string s = "";
++          for (int64_t i = 0; i < shape.size() - 1; ++i) {
++            s += std::to_string(shape[i]) + ", ";
++          }
++          return s + std::to_string(shape.back());
++        };
++        return emitOptionalError(
++            location, "group_sizes is expected to have shape [",
++            nonEmptyShapeStr(expectedPrefix), ", ", groupSizesShape.back(),
++            "], got [", nonEmptyShapeStr(groupSizesShape), "]");
++      }
++    }
++  }
++  const int64_t numGroups = rankedGroupSizesType.getShape().back();
  
- // CHECK-LABEL: @dot_matrix_matrix
- func.func @dot_matrix_matrix(%arg0 : tensor<2x3xf32>, %arg1 : tensor<3x4xf32>) -> tensor<2x4xf32> {
--  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 2, 3>}
--  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 3, 4>}
--  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
--  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
-+  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<[2, 4]> : tensor<2xindex>} : () -> !tosa.shape<2>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {value = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
-+  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {value = dense<[1, 3, 4]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
-+  // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
-+  // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
-   %0 = "stablehlo.dot"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<3x4xf32>) -> tensor<2x4xf32>
-   return %0 : tensor<2x4xf32>
- }
+   // Validate basic properties of the rhs group dimension(s).
+   for (auto rhsGroupDim : rhsGroupDimensions) {
+@@ -491,32 +571,34 @@
+     return failure();
+   }
  
- // CHECK-LABEL: @dot_general_vector_vector
- func.func @dot_general_vector_vector(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<f32> {
--  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 1, 3>}
--  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 3, 1>}
--  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
--  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
-+  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<> : tensor<0xindex>} : () -> !tosa.shape<0>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {value = dense<[1, 1, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
-+  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {value = dense<[1, 3, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
-+  // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
-+  // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
-   %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [0] x [0] : (tensor<3xf32>, tensor<3xf32>) -> tensor<f32>
-   return %0 : tensor<f32>
- }
- 
- // CHECK-LABEL: @dot_general_vector_matrix
- func.func @dot_general_vector_matrix(%arg0: tensor<2xf32>, %arg1: tensor<2x3xf32>) -> tensor<3xf32> {
--  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 1, 2>}
--  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 2, 3>}
--  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
--  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
-+  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<3> : tensor<1xindex>} : () -> !tosa.shape<1>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {value = dense<[1, 1, 2]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
-+  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {value = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
-+  // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
-+  // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
-   %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [0] x [0] : (tensor<2xf32>, tensor<2x3xf32>) -> tensor<3xf32>
-   return %0 : tensor<3xf32>
- }
- 
- // CHECK-LABEL: @dot_general_matrix_vector
- func.func @dot_general_matrix_vector(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2xf32> {
--  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 2, 3>}
--  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 3, 1>}
--  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
--  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
-+  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<2> : tensor<1xindex>} : () -> !tosa.shape<1>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {value = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
-+  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {value = dense<[1, 3, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
-+  // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
-+  // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
-   %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] : (tensor<2x3xf32>, tensor<3xf32>) -> tensor<2xf32>
-   return %0 : tensor<2xf32>
- }
- 
- // CHECK-LABEL: @dot_general_matrix_matrix
- func.func @dot_general_matrix_matrix(%arg0: tensor<2x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<2x4xf32> {
--  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 2, 3>}
--  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 3, 4>}
--  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
--  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
-+  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<[2, 4]> : tensor<2xindex>} : () -> !tosa.shape<2>
-+  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {value = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
-+  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {value = dense<[1, 3, 4]> : tensor<3xindex>} : () -> !tosa.shape<3>
-+  // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
-+  // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
-+  // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
-   %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] : (tensor<2x3xf32>, tensor<3x4xf32>) -> tensor<2x4xf32>
-   return %0 : tensor<2x4xf32>
- }
-@@ -190,6 +214,7 @@
- 
- // CHECK-LABEL: @reduce_max
- func.func @reduce_max(%arg0: tensor<1x10xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
-+  // CHECK: tosa.const_shape
-   // CHECK: tosa.reduce_max
-   // CHECK: tosa.reshape
-   %0 = "stablehlo.reduce"(%arg0, %arg1) ({
-@@ -202,6 +227,7 @@
- 
- // CHECK-LABEL: @reduce_sum
- func.func @reduce_sum(%arg0: tensor<5x4xf32>, %arg1: tensor<f32>) -> tensor<4xf32> {
-+  // CHECK: tosa.const_shape
-   // CHECK: tosa.reduce_sum
-   // CHECK: tosa.reshape
-   %0 = "stablehlo.reduce"(%arg0, %arg1) ({
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
---- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
-+++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
-@@ -169,15 +169,15 @@
- 
-   auto lhsReshapeType =
-       RankedTensorType::get(lhsReshape, lhsType.getElementType());
-+  auto lhsReshapeValue = getTosaConstShape(rewriter, op->getLoc(), lhsReshape);
-   auto lhsReshapeOp = rewriter.create<tosa::ReshapeOp>(
--      op->getLoc(), lhsReshapeType, op.getLhs(),
--      rewriter.getDenseI64ArrayAttr(lhsReshape));
-+      op->getLoc(), lhsReshapeType, op.getLhs(), lhsReshapeValue);
- 
-   auto rhsReshapeType =
-       RankedTensorType::get(rhsReshape, rhsType.getElementType());
-+  auto rhsReshapeValue = getTosaConstShape(rewriter, op->getLoc(), rhsReshape);
-   auto rhsReshapeOp = rewriter.create<tosa::ReshapeOp>(
--      op->getLoc(), rhsReshapeType, op.getRhs(),
--      rewriter.getDenseI64ArrayAttr(rhsReshape));
-+      op->getLoc(), rhsReshapeType, op.getRhs(), rhsReshapeValue);
- 
-   auto matMulType =
-       RankedTensorType::get(matMulShape, lhsType.getElementType());
-@@ -185,8 +185,10 @@
-                                                   lhsReshapeOp, rhsReshapeOp);
- 
-   // Reshape the matmul result back to the original result shape.
--  rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
--      op, resultType, matMulOp, rewriter.getDenseI64ArrayAttr(resultShape));
-+  auto resultReshapeValue =
-+      getTosaConstShape(rewriter, op->getLoc(), resultShape);
-+  rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(op, resultType, matMulOp,
-+                                               resultReshapeValue);
+-  if (llvm::is_contained(lhsBatchingDimensions, lhsRaggedDim) ||
+-      llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
+-    // Ragged batch (b):       [b,m,k], [b,k,n], [g] -> [b,m,n].
+-    // Ragged contracting (k): [b,m,k], [b,k,n], [g] -> [g,b,m,n].
+-    if (!rhsGroupDimensions.empty()) {
+-      return emitOptionalError(
+-          location,
+-          "There must be zero group dimensions in the rhs when the "
+-          "ragged dimension is batch or contracting.");
+-    }
+-  } else {
+-    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [g] -> [b,m,n].
+-    if (rhsGroupDimensions.size() != 1) {
+-      return emitOptionalError(
+-          location,
+-          "There must be exactly one group dimension in the rhs when the lhs "
+-          "ragged dimension is non-contracting.");
+-    }
+-    // Compare the group dimension size with the number of groups.
+-    const int64_t rhsGroupDim = rhsGroupDimensions[0];
+-    if (!hlo::verifyCompatibleDims(numGroups,
+-                                   rankedRhsType.getDimSize(rhsGroupDim))) {
+-      return emitOptionalError(
+-          location, "group_sizes is expected to have shape=[",
+-          rankedRhsType.getDimSize(rhsGroupDim), "], got [", numGroups, "]");
+-    }
++  switch (mode) {
++    case kBatch:
++      [[fallthrough]];
++    case kContracting:
++      if (!rhsGroupDimensions.empty()) {
++        return emitOptionalError(
++            location,
++            "There must be zero group dimensions in the rhs when the "
++            "ragged dimension is batch or contracting.");
++      }
++      break;
++    case kNonContracting:
++      if (rhsGroupDimensions.size() != 1) {
++        return emitOptionalError(
++            location,
++            "There must be exactly one group dimension in the rhs when the lhs "
++            "ragged dimension is non-contracting.");
++      }
++      // Compare the group dimension size with the number of groups.
++      const int64_t rhsGroupDim = rhsGroupDimensions[0];
++      if (!hlo::verifyCompatibleDims(numGroups,
++                                     rankedRhsType.getDimSize(rhsGroupDim))) {
++        return emitOptionalError(
++            location,
++            "rhs group dimension is expected to have size=", numGroups,
++            ", got ", rankedRhsType.getDimSize(rhsGroupDim));
++      }
++      break;
+   }
    return success();
  }
+@@ -530,10 +612,10 @@
+     ArrayRef<int64_t> rhsContractingDimensions,
+     ArrayRef<int64_t> lhsRaggedDimensions,
+     ArrayRef<int64_t> rhsGroupDimensions) {
+-  // Must have already checked that group_sizes is 1-D.
+-  const int64_t numGroups = rankedGroupSizesType.getDimSize(0);
+   // Must have already checked that there is exactly one lhs ragged dim.
+   const int64_t lhsRaggedDim = lhsRaggedDimensions[0];
++  // Must have already checked the shape of group_sizes.
++  const int64_t numGroups = rankedGroupSizesType.getShape().back();
  
-@@ -383,9 +385,10 @@
-       }
-     }
+   SmallVector<int64_t> dimensions;
+   // Add the group dimension to the result shape in case of ragged contracting.
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -869,12 +869,12 @@
+     most one group dimension. The op has three modes, depending on the kind of
+     the lhs ragged dimension.
  
-+    auto outputShapeValue =
-+        getTosaConstShape(rewriter, op.getLoc(), outputShape);
-     rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
--        op, op.getResultTypes().front(), reduceOpResult,
--        rewriter.getDenseI64ArrayAttr(outputShape));
-+        op, op.getResultTypes().front(), reduceOpResult, outputShapeValue);
+-    In mode 1, the shape-signature is `[b,m,k], [g,b,k,n], [g] -> [b,m,n]`.
++    In mode 1, the shape-signature is `[b,m,k], [g,b,k,n], [b,g] -> [b,m,n]`.
+     Here the ragged dimension is an lhs non-contracting dimension (`m`). The
+     dimensions `b` and `k` represent batch and contracting dimensions
+     respectively. The rhs is required to have a group dimension (`g`).
  
-     return success();
+-    In mode 2, the shape-signature is `[b,m,k], [b,k,n], [g] -> [g,b,m,n]`.
++    In mode 2, the shape-signature is `[b,m,k], [b,k,n], [b,g] -> [g,b,m,n]`.
+     Here the ragged dimension is an lhs/rhs contracting dimension (`k`).
+ 
+     In mode 3, the shape-signature is `[b,m,k], [b,k,n], [g] -> [b,m,n]`. Here
+diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
+--- stablehlo/stablehlo/tests/ops_chlo.mlir
++++ stablehlo/stablehlo/tests/ops_chlo.mlir
+@@ -146,7 +146,7 @@
+ // -----
+ 
+ func.func @ragged_dot_group_sizes_incorrect_rank(%lhs : tensor<11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<3x2xi64>) -> tensor<11x7xf32> {
+-  // @expected-error@+1 {{expected rank of group_sizes of ragged dot to be 1, got 2}}
++  // @expected-error@+1 {{expected group_sizes to have rank 1, got 2}}
+   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+     ragged_dot_dimension_numbers = #chlo.ragged_dot<
+       lhs_batching_dimensions = [],
+@@ -163,8 +163,79 @@
+ 
+ // -----
+ 
+-func.func @ragged_dot_group_sizes_incorrect_shape(%lhs : tensor<11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<2xi64>) -> tensor<11x7xf32> {
+-  // @expected-error@+1 {{group_sizes is expected to have shape=[3], got [2]}}
++func.func @ragged_dot_mode1_group_sizes_broadcasted(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<3x19x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<19x17x11x7xf32> {
++  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
++    ragged_dot_dimension_numbers = #chlo.ragged_dot<
++      lhs_batching_dimensions = [0],
++      rhs_batching_dimensions = [1],
++      lhs_contracting_dimensions = [3],
++      rhs_contracting_dimensions = [2],
++      lhs_ragged_dimensions = [2],
++      rhs_group_dimensions = [0]
++    >,
++    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
++  } : (tensor<19x17x11x5xf32>, tensor<3x19x5x7xf32>, tensor<3xi64>) -> tensor<19x17x11x7xf32>
++  func.return %0 : tensor<19x17x11x7xf32>
++}
++
++// -----
++
++func.func @ragged_dot_mode1_group_sizes_incorrect_shape(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<3x19x5x7xf32>, %group_sizes : tensor<19x11x3xi64>) -> tensor<19x17x11x7xf32> {
++  // @expected-error@+1 {{group_sizes is expected to have shape [19, 17, 3], got [19, 11, 3]}}
++  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
++    ragged_dot_dimension_numbers = #chlo.ragged_dot<
++      lhs_batching_dimensions = [0],
++      rhs_batching_dimensions = [1],
++      lhs_contracting_dimensions = [3],
++      rhs_contracting_dimensions = [2],
++      lhs_ragged_dimensions = [2],
++      rhs_group_dimensions = [0]
++    >,
++    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
++  } : (tensor<19x17x11x5xf32>, tensor<3x19x5x7xf32>, tensor<19x11x3xi64>) -> tensor<19x17x11x7xf32>
++  func.return %0 : tensor<19x17x11x7xf32>
++}
++
++// -----
++
++func.func @ragged_dot_mode2_group_sizes_incorrect_shape(%lhs : tensor<19x11x17x5xf32>, %rhs : tensor<19x17x5x7xf32>, %group_sizes : tensor<19x11x3xi64>) -> tensor<3x19x11x7xf32> {
++  // @expected-error@+1 {{group_sizes is expected to have shape [19, 17, 3], got [19, 11, 3]}}
++  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
++    ragged_dot_dimension_numbers = #chlo.ragged_dot<
++      lhs_batching_dimensions = [0],
++      rhs_batching_dimensions = [0],
++      lhs_contracting_dimensions = [2,3],
++      rhs_contracting_dimensions = [1,2],
++      lhs_ragged_dimensions = [3],
++      rhs_group_dimensions = []
++    >,
++    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
++  } : (tensor<19x11x17x5xf32>, tensor<19x17x5x7xf32>, tensor<19x11x3xi64>) -> tensor<3x19x11x7xf32>
++  func.return %0 : tensor<3x19x11x7xf32>
++}
++
++// -----
++
++func.func @ragged_dot_mode3_group_sizes_incorrect_shape(%lhs : tensor<17x19x11x5xf32>, %rhs : tensor<17x19x5x7xf32>, %group_sizes : tensor<19x3xi64>) -> tensor<17x19x11x7xf32> {
++  // @expected-error@+1 {{group_sizes is expected to have shape [17, 3], got [19, 3]}}
++  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
++    ragged_dot_dimension_numbers = #chlo.ragged_dot<
++      lhs_batching_dimensions = [0,1],
++      rhs_batching_dimensions = [0,1],
++      lhs_contracting_dimensions = [3],
++      rhs_contracting_dimensions = [2],
++      lhs_ragged_dimensions = [1],
++      rhs_group_dimensions = []
++    >,
++    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
++  } : (tensor<17x19x11x5xf32>, tensor<17x19x5x7xf32>, tensor<19x3xi64>) -> tensor<17x19x11x7xf32>
++  func.return %0 : tensor<17x19x11x7xf32>
++}
++
++// -----
++
++func.func @ragged_dot_incorrect_group_dim_size(%lhs : tensor<11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<2xi64>) -> tensor<11x7xf32> {
++  // @expected-error@+1 {{rhs group dimension is expected to have size=2, got 3}}
+   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+     ragged_dot_dimension_numbers = #chlo.ragged_dot<
+       lhs_batching_dimensions = [],
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
+@@ -2675,3 +2675,73 @@
+     -> tensor<128x26x26x128x!quant.uniform<i8:f32, 1.000000e+00:5>>
+   return %0 : tensor<128x26x26x128x!quant.uniform<i8:f32, 1.000000e+00:5>>
+ }
++
++// -----
++
++// CHECK-LABEL: func.func public @conv2d_nchw
++// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x3x224x224xi8>,
++// CHECK-SAME: %[[VAL_1:.*]]: tensor<64x3x7x7xi8>) -> tensor<1x64x112x112xi8> {
++func.func public @conv2d_nchw(
++  %arg0: tensor<1x3x224x224x!quant.uniform<i8:f32, 3.158280e-02:1>>,
++  %arg1: tensor<64x3x7x7x!quant.uniform<i8:f32, 3.101380e-03>>
++  ) -> tensor<1x64x112x112x!quant.uniform<i8:f32, 1.438440e-02:-128>> {
++// CHECK: stablehlo.convolution
++// CHECK-SAME: dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
++// CHECK-SAME: window = {
++// CHECK-SAME: stride = [2, 2]
++// CHECK-SAME{LITERAL}: pad = [[0, 0], [0, 0]]
++// CHECK-SAME: rhs_dilate = [1, 1]
++// CHECK-SAME: }
++// CHECK-SAME: {
++// CHECK-SAME: batch_group_count = 1 : i64
++// CHECK-SAME: feature_group_count = 1 : i64
++// CHECK-SAME: }
++// CHECK-SAME : (tensor<1x3x230x230xi8>, tensor<64x3x7x7xi8>) -> tensor<1x64x112x112xi32>
++  %0 = stablehlo.convolution(%arg0, %arg1)
++    dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1],
++    window = {
++      stride = [2, 2],
++      pad = [[3, 3], [3, 3]],
++      rhs_dilate = [1, 1]
++    } {
++      batch_group_count = 1 : i64,
++      feature_group_count = 1 : i64
++    } : (
++      tensor<1x3x224x224x!quant.uniform<i8:f32, 3.158280e-02:1>>,
++      tensor<64x3x7x7x!quant.uniform<i8:f32, 3.101380e-03>>
++  ) -> tensor<1x64x112x112x!quant.uniform<i8:f32, 1.438440e-02:-128>>
++  return %0 : tensor<1x64x112x112x!quant.uniform<i8:f32, 1.438440e-02:-128>>
++}
++
++// -----
++
++// CHECK-LABEL: func.func @conv3d_ncdhw
++func.func @conv3d_ncdhw(
++    %arg0: tensor<128x1x28x28x28x!quant.uniform<i8:f32, 2.000000e+00:4>>,
++    %arg1: tensor<128x1x3x3x3x!quant.uniform<i8:f32, 3.000000e+00:0>>) {
++// CHECK: stablehlo.convolution
++// CHECK-SAME: dim_numbers = [b, f, 0, 1, 2]x[o, i, 0, 1, 2]->[b, f, 0, 1, 2],
++// CHECK-SAME: window = {
++// CHECK-SAME{LITERAL}: stride = [1, 1, 1], pad = [[0, 0], [0, 0], [0, 0]],
++// CHECK-SAME: lhs_dilate = [1, 1, 1],
++// CHECK-SAME: rhs_dilate = [1, 1, 1]
++// CHECK-SAME: }
++// CHECK-SAME: {
++// CHECK-SAME: batch_group_count = 1 : i64,
++// CHECK-SAME: feature_group_count = 1 : i64
++// CHECK-SAME: }
++// CHECK-SAME: : (tensor<128x1x28x28x28xf32>, tensor<128x1x3x3x3xf32>) -> tensor<128x128x26x26x26xf32>
++  %0 = stablehlo.convolution(%arg0, %arg1)
++    dim_numbers = [b, f, 0, 1, 2]x[o, i, 0, 1, 2]->[b, f, 0, 1, 2],
++    window = {
++      stride = [1, 1, 1], pad = [[0, 0], [0, 0], [0, 0]],
++      lhs_dilate = [1, 1, 1],
++      rhs_dilate = [1, 1, 1]
++    }
++    {
++      batch_group_count = 1 : i64,
++      feature_group_count = 1 : i64
++    } : (tensor<128x1x28x28x28x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<128x1x3x3x3x!quant.uniform<i8:f32, 3.000000e+00:0>>)
++    -> tensor<128x128x26x26x26x!quant.uniform<i32:f32, 1.000000e+00:5>>
++  return
++}
+diff --ruN a/stablehlo/stablehlo/transforms/PassUtils.cpp b/stablehlo/stablehlo/transforms/PassUtils.cpp
+--- stablehlo/stablehlo/transforms/PassUtils.cpp
++++ stablehlo/stablehlo/transforms/PassUtils.cpp
+@@ -4,13 +4,15 @@
+ You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+ Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
++distributed under the License is distributed on an "AS IS" BASIS,G
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ ==============================================================================*/
+ 
+ #include "stablehlo/transforms/PassUtils.h"
++
++#include <cstdint>
+ 
+ #include "llvm/Support/ErrorHandling.h"
+ #include "mlir/IR/Builders.h"
+@@ -65,5 +67,22 @@
+   });
+ }
+ 
++Type getQuantizedElementType(Location loc, Type storageType, Type expressedType,
++                             ArrayRef<double> scales,
++                             ArrayRef<int64_t> zeroPoints,
++                             int32_t quantizedDimension, int64_t storageTypeMin,
++                             int64_t storageTypeMax) {
++  unsigned flags =
++      !storageType.isUnsignedInteger() ? quant::QuantizationFlags::Signed : 0;
++  if (quantizedDimension == -1) {
++    return quant::UniformQuantizedType::getChecked(
++        loc, flags, storageType, expressedType, scales[0], zeroPoints[0],
++        storageTypeMin, storageTypeMax);
++  }
++  return quant::UniformQuantizedPerAxisType::getChecked(
++      loc, flags, storageType, expressedType, scales, zeroPoints,
++      quantizedDimension, storageTypeMin, storageTypeMax);
++}
++
+ }  // namespace stablehlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/transforms/PassUtils.h b/stablehlo/stablehlo/transforms/PassUtils.h
+--- stablehlo/stablehlo/transforms/PassUtils.h
++++ stablehlo/stablehlo/transforms/PassUtils.h
+@@ -69,6 +69,13 @@
+ // Check if any of the given types are mlir::quant::QuantizedType.
+ bool isAnyQuantizedTypes(TypeRange types);
+ 
++// Creates a quantized element type based on the given parameters.
++Type getQuantizedElementType(Location loc, Type storageType, Type expressedType,
++                             ArrayRef<double> scales,
++                             ArrayRef<int64_t> zeroPoints,
++                             int32_t quantizedDimension, int64_t storageTypeMin,
++                             int64_t storageTypeMax);
++
+ }  // namespace stablehlo
+ }  // namespace mlir
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
+@@ -766,6 +766,7 @@
+   Value outputDimsValue = nullptr;
+   // Calculate LHS contribution when RHS zp is non-zero.
+   if (rhsZp != 0) {
++    // Contributions from RHS_ZP * LHS.
+     SmallVector<int64_t> reductionDims = to_vector(llvm::concat<const int64_t>(
+         dims.lhsSpatialDims, dims.lhsContractingDims));
+     Value lhsZpContribution =
+@@ -778,15 +779,23 @@
    }
-diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
---- stablehlo/stablehlo/dialect/Base.cpp
-+++ stablehlo/stablehlo/dialect/Base.cpp
-@@ -776,7 +776,7 @@
-   int64_t numScales =
-       static_cast<int64_t>(quantizedPerAxisElementType.getScales().size());
-   return quantDim < rankedType.getRank() &&
--         (!rankedType.isDynamicDim(quantDim) &&
-+         (rankedType.isDynamicDim(quantDim) ||
-           numScales == rankedType.getDimSize(quantDim));
+   // Calculate RHS contribution when LHS zp is non-zero.
+   if (lhsZp != 0) {
++    // Contributions from LHS_ZP * RHS.
+     SmallVector<int64_t> reductionDims = to_vector(llvm::concat<const int64_t>(
+         dims.rhsSpatialDims, dims.rhsContractingDims));
+     Value rhsZpContribution =
+         createZeroPointPartialOffset(builder, loc, rhs, lhsZp, reductionDims);
++
++    int64_t nonBatchingStartingIdx =
++        lhsShape.getRank() - dims.lhsContractingDims.size();
++    if (!dims.lhsSpatialDims.empty() && !dims.rhsSpatialDims.empty()) {
++      // In case of convolution, identified via absence of spatial dims, the
++      // non-batching starting index is the lhs contracting dim.
++      nonBatchingStartingIdx = dims.lhsContractingDims[0];
++    }
+     // Broadcast rhs ZP contribution to result tensor shape.
+     rhsZpContribution = broadcastZpContribution(
+         builder, loc, rhsZpContribution, reductionDims, dims.rhsBatchingDims,
+-        lhsShape.getRank() - dims.lhsContractingDims.size(), output,
+-        outputTensorType, outputDimsValue);
++        nonBatchingStartingIdx, output, outputTensorType, outputDimsValue);
+     if (result) {
+       result = builder.create<stablehlo::AddOp>(loc, result, rhsZpContribution);
+     } else {
+@@ -833,7 +842,8 @@
+ template <typename DotLikeOp>
+ Value createDotLikeKernel(OpBuilder &builder, Location loc, DotLikeOp,
+                           Type resultType, Value &lhs, Value &rhs,
+-                          ArrayRef<NamedAttribute> attrs) {
++                          ArrayRef<NamedAttribute> attrs,
++                          const DotLikeDimensionNumbers &dims) {
+   return builder.create<stablehlo::DotGeneralOp>(
+       loc, resultType, ArrayRef<Value>{lhs, rhs}, attrs);
+ }
+@@ -843,7 +853,8 @@
+ template <>
+ Value createDotLikeKernel<stablehlo::ConvolutionOp>(
+     OpBuilder &builder, Location loc, stablehlo::ConvolutionOp op,
+-    Type resultType, Value &lhs, Value &rhs, ArrayRef<NamedAttribute> attrs) {
++    Type resultType, Value &lhs, Value &rhs, ArrayRef<NamedAttribute> attrs,
++    const DotLikeDimensionNumbers &dims) {
+   // We only handle the case where RHS zp is zero.
+   // Explicitly pad LHS with zp and update LHS value.
+   SmallVector<NamedAttribute> newAttrs(attrs);
+@@ -865,9 +876,9 @@
+     int64_t rank = cast<TensorType>(lhs.getType()).getRank();
+     SmallVector<int64_t> paddingLow(rank, 0), paddingHigh(rank, 0),
+         paddingInterior(rank, 0);
+-    for (int64_t i = 1; i < rank - 1; ++i) {
+-      paddingLow[i] = originalPadding[i * 2 - 2];
+-      paddingHigh[i] = originalPadding[i * 2 - 1];
++    for (int64_t i = 0; i < dims.lhsSpatialDims.size(); ++i) {
++      paddingLow[dims.lhsSpatialDims[i]] = originalPadding[i * 2];
++      paddingHigh[dims.lhsSpatialDims[i]] = originalPadding[i * 2 + 1];
+     }
+     lhs = builder.create<stablehlo::PadOp>(loc, lhs, zp, paddingLow,
+                                            paddingHigh, paddingInterior);
+@@ -897,6 +908,8 @@
+   Value rhs = adaptor.getRhs();
+   auto resInt32TensorType =
+       op.getResult().getType().clone(rewriter.getI32Type());
++  auto resFloat32TensorType =
++      op.getResult().getType().clone(rewriter.getF32Type());
+ 
+   // Dot result
+   //   = dot((lhs - zp_l) * scale_l, (rhs - zp_r) * scale_r) / scale_res
+@@ -908,7 +921,7 @@
+   //   combined_zp = res_zp - zp_offset * combined_scale
+   //   zp_offset = zp_l*rhs + zp_r*lhs - zp_l*zp_r
+   Value resI32 = createDotLikeKernel(rewriter, op->getLoc(), op,
+-                                     resInt32TensorType, lhs, rhs, attrs);
++                                     resInt32TensorType, lhs, rhs, attrs, dims);
+ 
+   auto lhsElementQuantType = getPerTensorType(op.getLhs().getType());
+   auto rhsElementQuantType = dyn_cast<quant::UniformQuantizedType>(
+@@ -945,8 +958,6 @@
+     Value combinedScale = rewriter.create<stablehlo::ConstantOp>(
+         op->getLoc(), rewriter.getF32FloatAttr(combinedScaleFp));
+ 
+-    auto resFloat32TensorType =
+-        op.getResult().getType().clone(rewriter.getF32Type());
+     Value resF32 = rewriter.create<stablehlo::ConvertOp>(
+         op->getLoc(), resFloat32TensorType, resI32);
+     resF32 = rewriter.create<chlo::BroadcastMulOp>(
+@@ -1089,6 +1100,7 @@
+ };
+ 
+ bool isConvNhwc(const stablehlo::ConvDimensionNumbersAttr &dims) {
++  // lhs(b, 0, 1, f) x rhs(0, 1, i, o) -> res(b, 0, 1, f)
+   return dims.getInputBatchDimension() == 0 &&
+          dims.getInputFeatureDimension() == 3 &&
+          dims.getInputSpatialDimensions().size() == 2 &&
+@@ -1106,7 +1118,27 @@
+          dims.getOutputSpatialDimensions()[1] == 2;
  }
  
-diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
---- stablehlo/stablehlo/dialect/Base.td
-+++ stablehlo/stablehlo/dialect/Base.td
-@@ -188,6 +188,9 @@
- def HLO_TensorOrPerAxisQuantizedTensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt],
-     [IsValidQuantizedDimension]>;
- 
-+def HLO_FloatOrQuantizedIntOrPerAxisQuantizedIntTensor : RankedTensorOf<[HLO_Float, HLO_QuantizedInt, HLO_PerAxisQuantizedInt],
-+    [IsValidQuantizedDimension]>;
++bool isConvNchw(const stablehlo::ConvDimensionNumbersAttr &dims) {
++  // lhs(b, f, 0, 1) x rhs(o, i, 0, 1) -> res(b, f, 0, 1)
++  return dims.getInputBatchDimension() == 0 &&
++         dims.getInputFeatureDimension() == 1 &&
++         dims.getInputSpatialDimensions().size() == 2 &&
++         dims.getInputSpatialDimensions()[0] == 2 &&
++         dims.getInputSpatialDimensions()[1] == 3 &&
++         dims.getKernelInputFeatureDimension() == 1 &&
++         dims.getKernelOutputFeatureDimension() == 0 &&
++         dims.getKernelSpatialDimensions().size() == 2 &&
++         dims.getKernelSpatialDimensions()[0] == 2 &&
++         dims.getKernelSpatialDimensions()[1] == 3 &&
++         dims.getOutputBatchDimension() == 0 &&
++         dims.getOutputFeatureDimension() == 1 &&
++         dims.getOutputSpatialDimensions().size() == 2 &&
++         dims.getOutputSpatialDimensions()[0] == 2 &&
++         dims.getOutputSpatialDimensions()[1] == 3;
++}
 +
- def HLO_ComplexTensor : RankedTensorOf<[HLO_Complex]>;
- 
- def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_PerAxisQuantizedIntTensor, HLO_Token]>;
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
---- stablehlo/stablehlo/dialect/StablehloOps.td
-+++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -3374,8 +3374,8 @@
- 
- // TODO(b/230662142): Implement unknown scales/zero_point cases.
- def StableHLO_UniformQuantizeOp : StableHLO_UnaryElementwiseOp<"uniform_quantize",
--      [], TensorOf<[HLO_Float, HLO_QuantizedInt, HLO_PerAxisQuantizedInt]> /*uniform_quantize_i1*/,
--      TensorOf<[HLO_QuantizedInt, HLO_PerAxisQuantizedInt]>> { /*uniform_quantize_c1*/
-+      [], HLO_FloatOrQuantizedIntOrPerAxisQuantizedIntTensor /*uniform_quantize_i1*/,
-+      HLO_QuantizedIntOrPerAxisQuantizedIntTensor> { /*uniform_quantize_c1*/
-   let summary = "UniformQuantize operation";
-   let description = [{
-     Performs element-wise conversion of floating-point tensor or quantized
-@@ -3395,7 +3395,7 @@
+ bool isConvNDHWC(const stablehlo::ConvDimensionNumbersAttr &dims) {
++  // lhs(b, 0, 1, 2, f) x rhs(0, 1, 2, i, o) -> res(b, 0, 1, 2, f)
+   return dims.getInputBatchDimension() == 0 &&
+          dims.getInputFeatureDimension() == 4 &&
+          dims.getInputSpatialDimensions().size() == 3 &&
+@@ -1127,6 +1159,28 @@
+          dims.getOutputSpatialDimensions()[2] == 3;
  }
  
- def StableHLO_UniformDequantizeOp : StableHLO_UnaryElementwiseOp<"uniform_dequantize",
--      [InferTensorType], TensorOf<[HLO_QuantizedInt, HLO_PerAxisQuantizedInt]> /*uniform_dequantize_i1*/,
-+      [InferTensorType], HLO_QuantizedIntOrPerAxisQuantizedIntTensor /*uniform_dequantize_i1*/,
-       HLO_FpTensor> { /*uniform_dequantize_c1, uniform_dequantize_c2*/
-   let summary = "UniformDequantize operation";
-   let description = [{
-diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
---- stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
-+++ stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
-@@ -888,7 +888,7 @@
- // -----
- 
- func.func @illegal_storage_type_for_quantized_element_type(%arg0: tensor<4x!quant.uniform<si8:f32, 1.000000e+00>>) -> tensor<4xf32> {
--  // expected-error@+1 {{operand #0 must be tensor of 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<4x!quant.uniform<i8:f32, 1.000000e+00>>}}
-+  // expected-error@+1 {{operand #0 must be ranked tensor of 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<4x!quant.uniform<i8:f32, 1.000000e+00>>}}
-   %0 = "stablehlo.uniform_dequantize"(%arg0) : (tensor<4x!quant.uniform<si8:f32, 1.000000e+00>>) -> tensor<4xf32>
-   func.return %0 : tensor<4xf32>
- }
-@@ -1362,7 +1362,7 @@
- 
- // -----
- 
--func.func @quantized_element_type_c12(%arg0: tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:10, {0.1:-30, 0.1:-30}>>) {
-+func.func @quantized_element_type_on_non_quantized_op_c12(%arg0: tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:10, {0.1:-30, 0.1:-30}>>) {
-   // expected-error-re@+1 {{operand #0 must be ranked tensor of {{.*}} 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x5x2x!quant.uniform<i8:f32:10, {1.000000e-01:-30,1.000000e-01:-30}>>'}}
-   %0 = stablehlo.add %arg0,  %arg0 : tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:10, {0.1:-30, 0.1:-30}>>
-   func.return
-@@ -1370,12 +1370,51 @@
- 
- // -----
- 
--func.func @quantized_element_type_c13(%arg0: tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30,0.1:-30 }>>) {
-+func.func @quantized_element_type_on_uniform_quantize_op_c12(%arg0: tensor<1x5x2xf32>) {
-+  // expected-error-re@+1 {{op result #0 must be ranked tensor of 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x5x2x!quant.uniform<i8:f32:10, {1.000000e-01:-30,1.000000e-01:-30}>>}}
-+  %0 = "stablehlo.uniform_quantize"(%arg0) : (tensor<1x5x2xf32>) -> tensor<1x5x2x!quant.uniform<i8:f32:10, {0.1:-30, 0.1:-30}>>
-+  func.return
++bool isConvNCDHW(const stablehlo::ConvDimensionNumbersAttr &dims) {
++  // lhs(b, f, 0, 1, 2) x rhs(o, i, 0, 1, 2) -> res(b, f, 0, 1, 2)
++  return dims.getInputBatchDimension() == 0 &&
++         dims.getInputFeatureDimension() == 1 &&
++         dims.getInputSpatialDimensions().size() == 3 &&
++         dims.getInputSpatialDimensions()[0] == 2 &&
++         dims.getInputSpatialDimensions()[1] == 3 &&
++         dims.getInputSpatialDimensions()[2] == 4 &&
++         dims.getKernelInputFeatureDimension() == 0 &&
++         dims.getKernelOutputFeatureDimension() == 1 &&
++         dims.getKernelSpatialDimensions().size() == 3 &&
++         dims.getKernelSpatialDimensions()[0] == 2 &&
++         dims.getKernelSpatialDimensions()[1] == 3 &&
++         dims.getKernelSpatialDimensions()[2] == 4 &&
++         dims.getOutputBatchDimension() == 0 &&
++         dims.getOutputFeatureDimension() == 1 &&
++         dims.getOutputSpatialDimensions().size() == 3 &&
++         dims.getOutputSpatialDimensions()[0] == 2 &&
++         dims.getOutputSpatialDimensions()[1] == 3 &&
++         dims.getOutputSpatialDimensions()[2] == 4;
 +}
 +
-+// -----
-+
-+func.func @quantized_element_type_on_uniform_dequantize_op_c12(%arg0: tensor<1x5x2x!quant.uniform<i8:f32:10, {0.1:-30, 0.1:-30}>>) {
-+  // expected-error-re@+1 {{operand #0 must be ranked tensor of 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x5x2x!quant.uniform<i8:f32:10, {1.000000e-01:-30,1.000000e-01:-30}>>}}
-+  %0 = "stablehlo.uniform_dequantize"(%arg0) : (tensor<1x5x2x!quant.uniform<i8:f32:10, {0.1:-30, 0.1:-30}>>) -> tensor<1x5x2xf32>
-+  func.return
-+}
-+
-+// -----
-+
-+func.func @quantized_element_type_on_non_quantized_op_c13(%arg0: tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30,0.1:-30 }>>) {
-   // expected-error-re@+1 {{operand #0 must be ranked tensor of {{.*}} 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x5x2x!quant.uniform<i8:f32:1, {1.000000e-01:-30,1.000000e-01:-30}>>'}}
-   %0 = stablehlo.add %arg0,  %arg0 : tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30,0.1:-30 }>>
-   func.return
- }
- 
-+// -----
-+
-+// CHECK-LABEL: @quantized_dimension_with_dynamic_size
-+func.func @quantized_dimension_with_dynamic_size(%arg0: tensor<1x?x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30,0.1:-30 }>>) {
-+  %0 = stablehlo.add %arg0,  %arg0 : tensor<1x?x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30,0.1:-30 }>>
-+  func.return
-+}
-+
-+// -----
-+
-+func.func @quantized_element_type_on_uniform_quantize_op_c13(%arg0: tensor<1x5x2xf32>) {
-+  // expected-error-re@+1 {{op result #0 must be ranked tensor of 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x5x2x!quant.uniform<i8:f32:1, {1.000000e-01:-30,1.000000e-01:-30}>>}}
-+  %0 = "stablehlo.uniform_quantize"(%arg0) : (tensor<1x5x2xf32>) -> tensor<1x5x2x!quant.uniform<i8:f32:1, {0.1:-30, 0.1:-30}>>
-+  func.return
-+}
-+
-+// -----
-+
-+func.func @quantized_element_type_on_uniform_dequantize_op_c13(%arg0: tensor<1x5x2x!quant.uniform<i8:f32:1, {0.1:-30, 0.1:-30}>>) {
-+  // expected-error-re@+1 {{operand #0 must be ranked tensor of 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x5x2x!quant.uniform<i8:f32:1, {1.000000e-01:-30,1.000000e-01:-30}>>}}
-+  %0 = "stablehlo.uniform_dequantize"(%arg0) : (tensor<1x5x2x!quant.uniform<i8:f32:1, {0.1:-30, 0.1:-30}>>) -> tensor<1x5x2xf32>
-+  func.return
-+}
- // -----
- 
- func.func @uniform_quantized_c1(%arg0: tensor<2xf32>) {
+ FailureOr<DotLikeDimensionNumbers> verifyAndConstructDims(
+     stablehlo::ConvolutionOp op, ConversionPatternRewriter &rewriter) {
+   // RHS (weight) must have zero zp.
+@@ -1185,7 +1239,8 @@
+   // We only support NHWC Conv2D and NDHWC Conv3D.
+   auto dims = op.getDimensionNumbers();
+   if (isConvNhwc(dims)) {
+-    // 2D Convolution.
++    // 2D Nhwc Convolution.
++    // lhs(b, 0, 1, f) x rhs(0, 1, i, o) -> res(b, 0, 1, f)
+     return DotLikeDimensionNumbers{/*lhs_batching_dims=*/{0},
+                                    /*lhs_spatial_dims=*/{1, 2},
+                                    /*lhs_contracting_dims=*/{3},
+@@ -1193,14 +1248,35 @@
+                                    /*rhs_spatial_dims=*/{0, 1},
+                                    /*rhs_contracting_dims=*/{2}};
+   }
++  if (isConvNchw(dims)) {
++    // 2D Nchw Convolution.
++    // lhs(b, f, 0, 1) x rhs(o, i, 0, 1) -> res(b, f, 0, 1)
++    return DotLikeDimensionNumbers{/*lhs_batching_dims=*/{0},
++                                   /*lhs_spatial_dims=*/{2, 3},
++                                   /*lhs_contracting_dims=*/{1},
++                                   /*rhs_batching_dims=*/{},
++                                   /*rhs_spatial_dims=*/{2, 3},
++                                   /*rhs_contracting_dims=*/{1}};
++  }
+   if (isConvNDHWC(dims)) {
+-    // 3D Convolution.
++    // 3D Ndhwc Convolution.
++    // lhs(b, 0, 1, 2, f) x rhs(0, 1, 2, i, o) -> res(b, 0, 1, 2, f)
+     return DotLikeDimensionNumbers{/*lhs_batching_dims=*/{0},
+                                    /*lhs_spatial_dims=*/{1, 2, 3},
+                                    /*lhs_contracting_dims=*/{4},
+                                    /*rhs_batching_dims=*/{},
+                                    /*rhs_spatial_dims=*/{0, 1, 2},
+                                    /*rhs_contracting_dims=*/{3}};
++  }
++  if (isConvNCDHW(dims)) {
++    // 3D Ncdhw Convolution.
++    // lhs(b, f, 0, 1, 2) x rhs(o, i, 0, 1, 2) -> res(b, f, 0, 1, 2)
++    return DotLikeDimensionNumbers{/*lhs_batching_dims=*/{0},
++                                   /*lhs_spatial_dims=*/{2, 3, 4},
++                                   /*lhs_contracting_dims=*/{1},
++                                   /*rhs_batching_dims=*/{},
++                                   /*rhs_spatial_dims=*/{2, 3, 4},
++                                   /*rhs_contracting_dims=*/{1}};
+   }
+   return rewriter.notifyMatchFailure(op,
+                                      "Convolution data format must be NHWC.");
 

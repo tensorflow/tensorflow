@@ -13,7 +13,6 @@ package(
 py_strict_library(
     name = "flops_registry",
     srcs = ["flops_registry.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:graph_util",
         "//tensorflow/python/framework:ops",
@@ -24,8 +23,6 @@ py_strict_library(
 py_strict_test(
     name = "flops_registry_test",
     srcs = ["flops_registry_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":flops_registry",
         "//tensorflow/python/framework:ops",
@@ -40,7 +37,6 @@ py_strict_test(
 py_strict_library(
     name = "model_analyzer_testlib",
     srcs = ["model_analyzer_testlib.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -63,8 +59,6 @@ py_strict_library(
 py_strict_test(
     name = "print_model_analysis_test",
     srcs = ["print_model_analysis_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/ops:array_ops",
@@ -78,7 +72,6 @@ py_strict_test(
 cuda_py_strict_test(
     name = "run_metadata_test",
     srcs = ["run_metadata_test.py"],
-    python_version = "PY3",
     tags = [
         "no_gpu",  # b/138442728
         "no_pip",

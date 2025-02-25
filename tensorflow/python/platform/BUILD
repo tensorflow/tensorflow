@@ -32,13 +32,11 @@ tf_py_build_info_genrule(
 py_strict_library(
     name = "build_info",
     srcs = ["build_info.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "self_check",
     srcs = ["self_check.py"],
-    srcs_version = "PY3",
     deps = if_oss([
         ":build_info",
         ":_pywrap_cpu_feature_guard",
@@ -48,7 +46,6 @@ py_strict_library(
 py_strict_library(
     name = "benchmark",
     srcs = ["benchmark.py"],
-    srcs_version = "PY3",
     visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":gfile",
@@ -65,13 +62,11 @@ py_strict_library(
 py_strict_library(
     name = "analytics",
     srcs = ["analytics.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "device_context",
     srcs = ["device_context.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:control_flow_ops",
@@ -81,8 +76,13 @@ py_strict_library(
 py_strict_library(
     name = "test",
     srcs = ["googletest.py"],
-    srcs_version = "PY3",
-    visibility = visibility + ["//tensorflow:internal"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + ["//tensorflow:internal"],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":benchmark",
         ":flags",
@@ -103,7 +103,6 @@ tf_py_strict_test(
     data = [
         "resource_loader.py",
     ],
-    python_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",
@@ -121,7 +120,6 @@ tf_py_strict_test(
     data = [
         "sysconfig.py",
     ],
-    python_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
         "no_oss",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
@@ -140,7 +138,6 @@ tf_py_strict_test(
     name = "flags_test",
     size = "small",
     srcs = ["flags_test.py"],
-    python_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
         "no_oss",  # TODO(b/263966250) re-enable after fixing sysconfig.get_path breakage
@@ -156,7 +153,6 @@ tf_py_strict_test(
     name = "stacktrace_handler_test",
     size = "small",
     srcs = ["stacktrace_handler_test.py"],
-    python_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/263966250) re-enable after fixing sysconfig.get_path breakage
         "no_windows",
@@ -173,7 +169,6 @@ tf_py_strict_test(
     name = "app_test",
     size = "small",
     srcs = ["app_test.py"],
-    python_version = "PY3",
     tags = [
         "manual",
         "notap",
@@ -219,7 +214,6 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "client_testlib",
     srcs = ["test.py"],
-    srcs_version = "PY3",
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
@@ -309,11 +303,17 @@ py_strict_library(
 py_strict_library(
     name = "tf_logging",
     srcs = ["tf_logging.py"],
-    visibility = visibility + [
-        "//learning/brain/contrib/learn:__pkg__",
-        "//learning/brain/mobile/lite/lstm:__pkg__",
-        "//third_party/py/tf_slim/training:__pkg__",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//learning/brain/contrib/learn:__pkg__",
+    # "//learning/brain/mobile/lite/lstm:__pkg__",
+    # "//third_party/py/tf_slim/training:__pkg__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
@@ -348,7 +348,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["build_info_test.py"],
     main = "build_info_test.py",
-    python_version = "PY3",
     tags = [
         "no_pip",
         "notap",
@@ -365,7 +364,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["benchmark_test.py"],
     main = "benchmark_test.py",
-    python_version = "PY3",
     tags = [
         "no_pip",
     ],

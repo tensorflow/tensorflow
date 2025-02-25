@@ -36,6 +36,7 @@ add_mlir_dialect_library(StablehloExtensionPasses
   StablehloExtensionOps
   StablehloBase
   StablehloOps
+  StablehloOptimizationPasses
   StablehloPasses
   StablehloTypeInference
 )
