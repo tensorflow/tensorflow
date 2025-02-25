@@ -709,7 +709,7 @@ XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 23}, results[3]);
 }
 
-XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerate) {
+XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithSplitDim) {
   const absl::string_view kModuleStr = R"(
   HloModule test
 
@@ -719,6 +719,41 @@ XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerate) {
     a0 = u32[2] constant({10, 20})
     a1 = u32[2] add(id2, a0)
     ROOT a2a = u32[2] all-to-all(u32[2] a1), dimensions={0}, replica_groups={{0},{1}}
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 20}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 21}, results[1]);
+}
+
+XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithoutSplitDim) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2] broadcast(id), dimensions={}
+    a0 = u32[2] constant({10, 20})
+    a1 = u32[2] add(id2, a0)
+    a2a = (u32[2]) all-to-all(u32[2] a1), replica_groups={{0},{1}}
+    ROOT gte0 = get-tuple-element(a2a), index=0
   }
   )";
   const int64_t kNumReplicas = 2;

@@ -2008,7 +2008,8 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   } else {
     // For other operations simply zip operands with results.
     for (int64_t i = 0; i < operand_count; i++) {
-      ShapeIndex idx = operand_count > 1 ? ShapeIndex({i}) : ShapeIndex({});
+      ShapeIndex idx =
+          inst->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({});
       const Shape& src_shape = inst->operand(i)->shape();
       const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
       TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
