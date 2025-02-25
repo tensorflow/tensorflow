@@ -73,6 +73,8 @@ static absl::StatusOr<dnnl::graph::op::kind> OneDnnBinaryOperator(
       return dnnl::graph::op::kind::Add;
     case HloOpcode::kMultiply:
       return dnnl::graph::op::kind::Multiply;
+    case HloOpcode::kDot:
+      return dnnl::graph::op::kind::MatMul;
     default:
       return InvalidArgument("Unsupported oneDNN unary operator: %s",
                              HloOpcodeString(opcode));
@@ -155,7 +157,7 @@ static absl::StatusOr<dnnl::graph::logical_tensor> DefineUnaryOp(
 static absl::StatusOr<dnnl::graph::logical_tensor> DefineBinaryOp(
     dnnl::graph::graph& graph, size_t op_id, LogicalTensorMap& logical_tensors,
     const HloInstruction* instr) {
-  VLOG(3) << absl::StreamFormat("Define logical tensor value for matmul: %s",
+  VLOG(3) << absl::StreamFormat("Define logical tensor value for binary op: %s",
                                 instr->ToString());
 
   TF_ASSIGN_OR_RETURN(auto binary_op, OneDnnBinaryOperator(instr->opcode()));
@@ -173,6 +175,44 @@ static absl::StatusOr<dnnl::graph::logical_tensor> DefineBinaryOp(
                                 lhs.get_id(), rhs.get_id(), output.get_id());
 
   dnnl::graph::op op(op_id, binary_op, {lhs, rhs}, {output});
+  ONEDNN_RETURN_IF_ERROR(graph.add_op(op));
+
+  return output;
+}
+
+static absl::StatusOr<dnnl::graph::logical_tensor> DefineMatMul(
+    dnnl::graph::graph& graph, size_t op_id, LogicalTensorMap& logical_tensors,
+    const HloInstruction* instr) {
+  // Verify that this Dot is supported by XNNPACK.
+  const DotDimensionNumbers& dnums = instr->dot_dimension_numbers();
+  const Shape& lhs_shape = instr->operand(0)->shape();
+  const Shape& rhs_shape = instr->operand(1)->shape();
+  TF_ASSIGN_OR_RETURN(
+      bool is_supported,
+      IsOneDnnDotSupported(dnums, lhs_shape, rhs_shape, instr->shape()));
+
+  if (!is_supported) {
+    return InvalidArgument("Unsupported oneDNN Dot op variation: %s",
+                           instr->ToString());
+  }
+
+  VLOG(3) << absl::StreamFormat("Define logical tensor value for MatMul: %s",
+                                instr->ToString());
+
+  TF_ASSIGN_OR_RETURN(auto matmul_op, OneDnnBinaryOperator(instr->opcode()));
+  TF_ASSIGN_OR_RETURN(auto lhs,
+                      FindLogicalTensor(logical_tensors, instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto rhs,
+                      FindLogicalTensor(logical_tensors, instr->operand(1)));
+
+  size_t output_id = logical_tensors.size();
+  TF_ASSIGN_OR_RETURN(auto output,
+                      CreateLogicalTensor(output_id, instr->shape()));
+
+  VLOG(3) << absl::StreamFormat("  tensors: lhs=%d, rhs=%d, output=%d",
+                                lhs.get_id(), rhs.get_id(), output.get_id());
+
+  dnnl::graph::op op(op_id, matmul_op, {lhs, rhs}, {output});
   ONEDNN_RETURN_IF_ERROR(graph.add_op(op));
 
   return output;
@@ -214,6 +254,12 @@ static absl::StatusOr<OneDnnFusion> EmitOneDnnFusion(
         TF_ASSIGN_OR_RETURN(
             logical_tensors[instr],
             DefineBinaryOp(graph, op_id++, logical_tensors, instr));
+      } break;
+
+      case HloOpcode::kDot: {
+        TF_ASSIGN_OR_RETURN(
+            logical_tensors[instr],
+            DefineMatMul(graph, op_id++, logical_tensors, instr));
       } break;
 
       default: {

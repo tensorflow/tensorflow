@@ -102,5 +102,31 @@ TEST_F(OneDnnFusionTest, Mul) {
   EXPECT_TRUE(RunAndCompare(kModuleStr, ErrorSpec{1e-5}));
 }
 
+TEST_F(OneDnnFusionTest, MatMul) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule mul
+
+    onednn_fusion {
+      %p0 = f32[10,20] parameter(0)
+      %p1 = f32[20,30] parameter(1)
+      ROOT %mul = f32[10,30] dot(%p0, %p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    ENTRY entry {
+      %p0 = f32[10,20] parameter(0)
+      %p1 = f32[20,30] parameter(1)
+      ROOT %fusion = f32[10,30] fusion(%p0, %p1), kind=kCustom,
+        calls=onednn_fusion,
+        backend_config={"fusion_config": {kind: "__onednn_fusion"}}
+    })";
+
+  if (!IsOneDnnGraphEnabled()) {
+    GTEST_SKIP() << "oneDNN fusion is not supported";
+  }
+
+  EXPECT_TRUE(RunAndCompare(kModuleStr, ErrorSpec{1e-5}));
+}
+
 }  // namespace
 }  // namespace xla::cpu
