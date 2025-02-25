@@ -37,3 +37,37 @@ index c805fd7a..e57e6138 100644
      Label("//python/private/pypi/requirements_parser:resolve_target_platforms.py"),
      Label("//python/private/pypi/whl_installer:platform.py"),
  ]
+diff --git a/python/versions.bzl b/python/versions.bzl
+index 774c24d1..91e59f9b 100644
+--- a/python/versions.bzl
++++ b/python/versions.bzl
+@@ -561,6 +561,20 @@ TOOL_VERSIONS = {
+         },
+         "strip_prefix": "python",
+     },
++    "3.12.8": {
++        "url": "20241206/cpython-{python_version}+20241206-{platform}-{build}.tar.gz",
++        "sha256": {
++            "aarch64-apple-darwin": "e3c4aa607717b23903ca2650d5c3ee24f89b97543e2db2b0f463bddc7a9e92f3",
++            "aarch64-unknown-linux-gnu": "ce674b55442b732973afb2932c281bb1ded4ad7e22bcf9b07071165770758c7e",
++            "ppc64le-unknown-linux-gnu": "b7214790b273de9ed0532420054b72ba1393d62d2fc844ec55ade193771bd90c",
++            "s390x-unknown-linux-gnu": "73102f5dbd7d1e7e9c2f2c80aedf2893d99a7fa407f6674ec8b2f57ba07daee5",
++            "x86_64-apple-darwin": "3ba35c706577d755e8e52a4c161a042464577c0e695e2a605362fa469e26de10",
++            "x86_64-pc-windows-msvc": "767b4be3ddf6b99e5ade519789c1615c191d8cf99d5aff4685cc18b48931f1e6",
++            "x86_64-unknown-linux-gnu": "b9d6ee5ddac1198e72d53112698773fc8bb597de095592eb849ca794306699ba",
++            "x86_64-unknown-linux-musl": "6f305888703691dd04cfff85284d23ea0b0146ed7c4415e472f1fb72b3f32cdf",
++        },
++        "strip_prefix": "python",
++    },
+     "3.13.0": {
+         "url": "20241016/cpython-{python_version}+20241016-{platform}-{build}.{ext}",
+         "sha256": {
+@@ -589,7 +603,7 @@ MINOR_MAPPING = {
+     "3.9": "3.9.20",
+     "3.10": "3.10.15",
+     "3.11": "3.11.10",
+-    "3.12": "3.12.7",
++    "3.12": "3.12.8",
+     "3.13": "3.13.0",
+ }
+
