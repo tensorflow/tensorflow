@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/utils/device_utils.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
@@ -161,7 +162,6 @@ inline void SetRooflineMetrics(const OpMetrics& metrics, const PerfEnv perf_env,
                                const RunEnvironment& run_env, Record* record) {
   using ::tensorflow::profiler::MemorySpace;
   using ::tensorflow::profiler::PerformanceInfo;
-  using ::tensorflow::profiler::PicoToNano;
 
   // Set overall performance metrics.
   record->set_measured_flop_rate(GigaFlopsPerSecondPerCore(metrics));

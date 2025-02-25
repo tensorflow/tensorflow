@@ -85,6 +85,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/profiler/utils:device_utils",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
     ],
 )
 
@@ -293,7 +294,6 @@ cc_library(
         "//tensorflow/core/profiler/utils:diagnostics",
         "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:html_utils",
-        "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "//tensorflow/core/profiler/utils:tpu_step_breakdown_utils",
         "//tensorflow/core/profiler/utils:tpu_step_details_utils",

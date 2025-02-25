@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/tpu_step_breakdown_utils.h"
 #include "tensorflow/core/profiler/utils/tpu_step_details_utils.h"
@@ -137,7 +136,8 @@ const char* kKernelLaunchTfDataContention =
 
 template <class Collection>
 double GetTimeInMs(const Collection& type_ps, EventType event_type) {
-  return PicoToMilli(gtl::FindWithDefault(type_ps, event_type, /*value=*/0));
+  return tsl::profiler::PicoToMilli(
+      gtl::FindWithDefault(type_ps, event_type, /*value=*/0));
 }
 
 GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
