@@ -98,14 +98,17 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
         shape_and_slice_spec,
     )
     for i, layout in enumerate(self._to_shard_layout):
-      checkpoint_key = checkpoint_key.replace(
+      sub_checkpoint_key = checkpoint_key.replace(
           self._main_checkpoint_name, self._checkpoint_local_names[i]
       )
       # For resharding later, we need to read the full value here.
       logging.vlog(
-          2, "Will read sub key %s: %s", checkpoint_key, shape_and_slice_spec
+          2,
+          "Will read sub key %s: %s",
+          sub_checkpoint_key,
+          layout.unsharded_shape,
       )
-      keys.append(checkpoint_key)
+      keys.append(sub_checkpoint_key)
       slices.append(
           _shard_info_str(
               layout.unsharded_shape,

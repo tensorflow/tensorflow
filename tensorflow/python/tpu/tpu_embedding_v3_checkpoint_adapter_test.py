@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tpu_embedding_v3_checkpoint_adapter."""
+
 from tensorflow.core.tpu.kernels import sparse_core_layout_pb2
 from tensorflow.python.framework.constant_op import constant as tf_constant
 from tensorflow.python.ops import array_ops
@@ -129,6 +130,21 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
     ] * array_ops.ones((32, 4))
     adapter.initialize_reshard_callbacks(layouts)
     callback = adapter.get_reshard_callback("one")
+    self.assertEqual(callback.object_name(), "one_two")
+    updated_keys, updated_slices = callback.update_restore_inputs(
+        "path/to/embedding/one/in/checkpoint", "56 8 14,28:0,8"
+    )
+    self.assertAllEqual(
+        updated_keys,
+        [
+            "path/to/embedding/one/in/checkpoint",
+            "path/to/embedding/two/in/checkpoint",
+        ],
+    )
+    self.assertAllEqual(
+        updated_slices,
+        ["20 4 0,20:0,4", "32 4 0,32:0,4"],
+    )
     self.assertAllEqual(
         callback.reshard([one_t, two_t], "56 8 14,28:0,8"),
         tf_constant([
