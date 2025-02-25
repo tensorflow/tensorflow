@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
@@ -91,11 +92,10 @@ class WhileThunk : public Thunk {
   std::unique_ptr<SequentialThunk> body_thunk_sequence_;
   std::optional<int64_t> trip_count_;
 
-  // Pinned host memory for transfering predicate value from device to host.
+  // Host memory pool for transfering predicate value from device to host.
   absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<se::MemoryAllocation>>
-      predicates_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<HostMemoryPool>>
+      host_memory_pools_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

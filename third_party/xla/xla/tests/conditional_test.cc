@@ -16,11 +16,19 @@ limitations under the License.
 #include <random>
 #include <utility>
 
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "xla/array2d.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/literal.h"
 #include "xla/tests/client_library_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -813,6 +821,79 @@ XLA_TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
     auto p_pred = Parameter(&builder, 1, ShapeUtil::MakeShape(PRED, {}), "p1");
     Conditional(p_pred, p, then_comp, p, else_comp);
     ComputeAndCompare(&builder, args);
+  }
+}
+
+XLA_TEST_F(HloTestBase, ParallelExecution) {
+  // Test conditional works when an executable is executed in parallel.
+  const char* const hlo_string = R"(
+  HloModule m
+
+  true_computation {
+    param = f32[8,8] parameter(0)
+    ROOT dot = f32[8,8] dot(param, param), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  }
+
+  false_computation {
+    param = f32[8,8] parameter(0)
+    ROOT dot = f32[8,8] dot(param, param), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  }
+
+  ENTRY entry_computation {
+    p = pred[] parameter(0)
+    x = f32[8,8] parameter(1)
+    ROOT conditional = f32[8,8] conditional(p, x, x), true_computation=true_computation, false_computation=false_computation
+  }
+  )";
+
+  // Create literal where even rows are 1.0 and odd rows are 0.0.
+  Array2D<float> input_array(8, 8);
+  for (int i = 0; i < 8; ++i) {
+    for (int j = 0; j < 8; ++j) {
+      input_array(i, j) = (i % 2 == 0) ? 1.0f : 0.0f;
+    }
+  }
+  Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_array);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal true_result,
+      test_runner().ExecuteWithExecutable(
+          executable.get(),
+          {LiteralUtil::CreateR0<bool>(true), input_literal.Clone()}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal false_result,
+      test_runner().ExecuteWithExecutable(
+          executable.get(),
+          {LiteralUtil::CreateR0<bool>(false), input_literal.Clone()}));
+
+  constexpr int kNumThreads = 50;
+  std::vector<Literal> results(kNumThreads);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
+                                        "conditional_test_pool", kNumThreads);
+    for (int i = 0; i < kNumThreads; ++i) {
+      thread_pool.Schedule([this, i, &input_literal, &executable, &results]() {
+        TF_ASSERT_OK_AND_ASSIGN(
+            results[i],
+            test_runner().ExecuteWithExecutable(
+                executable.get(), {LiteralUtil::CreateR0<bool>(i % 2 == 1),
+                                   input_literal.Clone()}));
+      });
+    }
+  }
+  // Threadpool destructor waits for all threads to finish
+  for (int i = 0; i < kNumThreads; ++i) {
+    if (i % 2 == 1) {
+      ASSERT_EQ(results[i], true_result) << "i: " << i;
+    } else {
+      ASSERT_EQ(results[i], false_result) << "i: " << i;
+    }
   }
 }
 

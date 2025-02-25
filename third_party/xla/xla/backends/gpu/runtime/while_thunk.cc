@@ -27,11 +27,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -86,12 +88,12 @@ absl::Status WhileThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(params));
 
   absl::MutexLock lock(&mutex_);
-  if (auto it = predicates_.find(params.executor); it == predicates_.end()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> allocation,
-                        params.executor->HostMemoryAllocate(sizeof(bool)));
-    predicates_.emplace(params.executor, std::move(allocation));
+  if (!host_memory_pools_.contains(params.executor)) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HostMemoryPool> pool,
+        HostMemoryPool::Create(params.executor, PrimitiveType::PRED));
+    host_memory_pools_[params.executor] = std::move(pool);
   }
-
   return absl::OkStatus();
 }
 
@@ -115,11 +117,13 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     return absl::OkStatus();
   }
 
-  // Get memory allocation for copying condition result from device.
-  bool* condition_result = [&] {
+  HostMemoryPool* pool;
+  {
     absl::MutexLock lock(&mutex_);
-    return reinterpret_cast<bool*>(predicates_.at(stream.parent())->opaque());
-  }();
+    pool = host_memory_pools_.at(stream.parent()).get();
+  }
+  TF_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
+  bool* condition_result = handle.get<bool>();
 
   while (true) {
     TraceMe trace(
