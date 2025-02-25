@@ -773,17 +773,6 @@ cc_library(
 )
 
 cc_library(
-    name = "device_util",
-    hdrs = ["device_util.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":types",
-        "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "array",
     srcs = ["array.cc"],
     hdrs = ["array.h"],
