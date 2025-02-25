@@ -144,6 +144,7 @@ py_strict_test(
         ":flatbuffer_utils",
         ":test_utils",
         #internal proto upb dep
+        "//tensorflow/lite/python:schema_py",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
