@@ -15,8 +15,10 @@ limitations under the License.
 
 #include <stdio.h>
 
-#include <set>
+#include <cstring>
 
+#include "absl/log/log.h"
+#include "third_party/protobuf/descriptor.h"
 #include "xla/tsl/platform/protobuf_compiler.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
