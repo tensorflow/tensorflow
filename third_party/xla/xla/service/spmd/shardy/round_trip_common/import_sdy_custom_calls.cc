@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -60,9 +61,10 @@ mlir::LogicalResult rewriteShardingCustomCall(
 
   std::vector<int64_t> unspecDims;
   if (std::optional<mlir::Attribute> backendConfig = op.getBackendConfig()) {
+    StringRef configStr =
+        mlir::dyn_cast<mlir::StringAttr>(*backendConfig).getValue();
     CHECK_OK(xla::sharding_op_util::ParseAttributes(
-        mlir::dyn_cast<mlir::StringAttr>(*backendConfig).getValue().str(),
-        &unspecDims));
+        absl::string_view(configStr.data(), configStr.size()), &unspecDims));
   }
 
   if (op->getNumResults() != 1) {

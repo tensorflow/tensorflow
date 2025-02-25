@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/string_view.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -80,14 +81,16 @@ template <typename AttrTy>
 AttrTy parseStringAttr(mlir::DictionaryAttr dictAttr,
                        llvm::StringRef attrName) {
   if (mlir::Attribute stringAttr = dictAttr.get(attrName)) {
-    std::string value;
+    std::string unescapedValue;
     std::string error;
+    llvm::StringRef escapedValue =
+        mlir::cast<mlir::StringAttr>(stringAttr).getValue();
     CHECK(absl::CUnescape(
-        mlir::cast<mlir::StringAttr>(stringAttr).getValue().str(), &value,
-        &error))
+        absl::string_view(escapedValue.data(), escapedValue.size()),
+        &unescapedValue, &error))
         << error;
     return mlir::cast<AttrTy>(
-        mlir::parseAttribute(value, stringAttr.getContext()));
+        mlir::parseAttribute(unescapedValue, stringAttr.getContext()));
   }
   return nullptr;
 }
