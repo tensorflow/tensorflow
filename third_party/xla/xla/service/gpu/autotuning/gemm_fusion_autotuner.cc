@@ -1337,6 +1337,10 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
   AutotuningLogs autotuning_logs;
   int fusion_id = 0;
   for (const auto& [fusion, candidates] : executable_sets) {
+    if (debug_options_.xla_gpu_dump_autotuned_gemm_fusions()) {
+      TF_RETURN_IF_ERROR(DumpOriginalFusion(compile_util, *fusion, fusion_id));
+    }
+
     TF_ASSIGN_OR_RETURN(std::vector<AutotuneResult> results,
                         Profile(compile_util, *fusion, candidates));
 
@@ -1355,7 +1359,6 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
             << tsl::proto_utils::FromDurationProto(best.run_time());
 
     if (debug_options_.xla_gpu_dump_autotuned_gemm_fusions()) {
-      TF_RETURN_IF_ERROR(DumpOriginalFusion(compile_util, *fusion, fusion_id));
       TF_RETURN_IF_ERROR(DumpAutotunedFusion(
           config_, toolkit_version_, compile_util, best, fusion, fusion_id++));
     }
