@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/lib/profiler_controller.h"
 

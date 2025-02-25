@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -67,10 +67,10 @@ Status ValidateTPProfilerFns(const TP_ProfilerFns& profiler_fns) {
   return absl::OkStatus();
 }
 
-class PluggableProfiler : public tensorflow::profiler::ProfilerInterface {
+class PluggableProfiler : public tsl::profiler::ProfilerInterface {
  public:
   // The caller must have validated profiler_fns and profiler.
-  static std::unique_ptr<tensorflow::profiler::ProfilerInterface>
+  static std::unique_ptr<tsl::profiler::ProfilerInterface>
   CreatePluggableProfiler(const ProfileOptions& options, TP_Profiler profiler,
                           TP_ProfilerFns profiler_fns) {
     if (options.device_tracer_level() == 0) {
@@ -142,8 +142,8 @@ class PluggableProfilerFactory {
     destroy_profiler_fns_(&profiler_fns_);
   }
 
-  std::unique_ptr<tensorflow::profiler::ProfilerInterface>
-  CreatePluggableProfiler(const ProfileOptions& options) {
+  std::unique_ptr<tsl::profiler::ProfilerInterface> CreatePluggableProfiler(
+      const ProfileOptions& options) {
     return PluggableProfiler::CreatePluggableProfiler(options, profiler_,
                                                       profiler_fns_);
   }
@@ -177,7 +177,8 @@ Status InitPluginProfiler(TFInitProfilerFn init_fn) {
   PluggableProfilerFactory factory(std::move(profiler), params.destroy_profiler,
                                    std::move(profiler_fns),
                                    params.destroy_profiler_fns);
-  std::function<std::unique_ptr<ProfilerInterface>(const ProfileOptions&)>
+  std::function<std::unique_ptr<tsl::profiler::ProfilerInterface>(
+      const ProfileOptions&)>
       create_func = [factory = std::move(factory)](
                         const ProfileOptions& options) mutable {
         return factory.CreatePluggableProfiler(options);

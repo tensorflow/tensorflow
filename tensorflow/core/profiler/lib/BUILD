@@ -46,7 +46,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_session",
     ] + if_not_android([
-        ":profiler_interface",
+        "@local_tsl//tsl/profiler/lib:profiler_interface",
         ":profiler_lock",
     ]) + if_static([
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",
@@ -63,9 +63,9 @@ cc_library(
     hdrs = ["profiler_factory.h"],
     visibility = ["//tensorflow/c/experimental/pluggable_profiler:__pkg__"],
     deps = [
-        ":profiler_interface",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
+        "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_static([
         ":profiler_factory_impl",
@@ -82,36 +82,19 @@ cc_library(
         "//tensorflow/core/profiler:__pkg__",
     ],
     deps = [
-        ":profiler_interface",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
+        "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
     alwayslink = True,
 )
 
 cc_library(
-    name = "profiler_interface",
-    hdrs = ["profiler_interface.h"],
-    copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow:internal",
-        "//tensorflow/core/profiler:internal",
-    ],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/base:core_headers",
-        "@local_tsl//tsl/profiler/lib:profiler_interface",
-    ],
-)
-
-cc_library(
     name = "profiler_controller",
     hdrs = ["profiler_controller.h"],
     deps = [
-        ":profiler_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/base:core_headers",
@@ -276,7 +259,6 @@ filegroup(
         "connected_traceme.h",
         "context_types.h",
         "device_profiler_session.h",
-        "profiler_interface.h",
     ],
     visibility = ["//visibility:public"],
 )

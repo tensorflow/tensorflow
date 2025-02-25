@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/lib/profiler_factory.h"
+#include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 // TODO: b/323943471 - This macro should eventually be provided by Abseil.

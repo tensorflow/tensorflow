@@ -17,7 +17,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 
