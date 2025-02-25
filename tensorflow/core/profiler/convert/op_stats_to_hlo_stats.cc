@@ -141,8 +141,8 @@ std::unique_ptr<tensorflow::profiler::DataTable> CreateHloStatsDataTable(
   }
   for (const HloStatsRecord& record : hlo_stats_db.hlo_stats_record()) {
     TableRow* row = data_table->AddRow();
-    row->AddCell(absl::StrCat(record.rank()));
-    row->AddCell(absl::StrCat(record.program_id()));
+    row->AddCell(record.rank());
+    row->AddCell(record.program_id());
     row->AddCell(record.hlo_category());
     row->AddCell(GetHloOpNameFromExpression(record.hlo_expression()));
     row->AddCell(record.hlo_expression());
