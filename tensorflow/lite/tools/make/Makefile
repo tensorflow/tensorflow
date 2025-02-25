@@ -1,6 +1,6 @@
 # Make uses /bin/sh by default, which is incompatible with the bashisms seen
-# below.
-SHELL := /bin/bash
+# below. use /usr/bin/env to find bash in a portable way.
+SHELL := /usr/bin/env bash
 
 # Find where we're running from, so we can store generated files here.
 ifeq ($(origin MAKEFILE_DIR), undefined)
