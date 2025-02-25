@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSLATE_HLO_TO_MHLO_MODULE_ATTRIBUTES_IMPORTER_H_
 #define XLA_HLO_TRANSLATE_HLO_TO_MHLO_MODULE_ATTRIBUTES_IMPORTER_H_
 
+#include "absl/status/status.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/util.h"
@@ -61,6 +62,24 @@ void ImportSpmdParametersShardings(const HloModule& hlo_module,
 void ImportUseAutoSpmdPartitioning(const HloModule& hlo_module,
                                    mlir::ModuleOp module,
                                    mlir::Builder builder);
+
+// Currently, there are two sets of attributes that define the layout.
+// `mhlo.xla_entry_computation_{parameter,result}_layouts` is a **module**
+// attribute that defines major-to-minor layout (but no other attributes). When
+// the layout is not set, it means "default", i.e. major to minor. There's no
+// way to define AUTO layout through these attributes.
+// The `mhlo.{layout,result}_mode` attribute is a main() **function** attribute
+// that can be set either to string representation of the layout (so it can
+// encode other layout attributes too), or to be set to "auto". When converting
+// HLO back to MHLO,
+// - Unset ("AUTO") layout in entry_computation_layout reults in
+// mhlo.layout_mode = "auto".
+// - Set layout results in mhlo.xla_entry_computation_parameter_layouts set to
+// that layout.
+absl::Status ImportLayoutModes(const HloModule& hlo_module,
+                               mlir::ModuleOp module,
+                               bool flatten_computation_args_result,
+                               mlir::Builder builder);
 
 }  // namespace xla
 
