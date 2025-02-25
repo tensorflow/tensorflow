@@ -353,11 +353,11 @@ absl::StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
     // from parsed XLA_FLAGS env (already populated in debug_options).
     if (!raw_options.xla_dump_to.empty()) {
       debug_options.set_xla_dump_to(raw_options.xla_dump_to);
+      debug_options.set_xla_dump_hlo_as_text(raw_options.xla_text_dump_mode ==
+                                             XlaTextDumpMode::kDumpAsText);
+      debug_options.set_xla_dump_hlo_as_proto(raw_options.xla_proto_dump_mode ==
+                                              XlaProtoDumpMode::kDumpAsProto);
     }
-    debug_options.set_xla_dump_hlo_as_text(raw_options.xla_text_dump_mode ==
-                                           XlaTextDumpMode::kDumpAsText);
-    debug_options.set_xla_dump_hlo_as_proto(raw_options.xla_proto_dump_mode ==
-                                            XlaProtoDumpMode::kDumpAsProto);
   }
   switch (raw_options.hlo_passes_mode) {
     case HloPassesMode::kRunXLABackendOnly:
