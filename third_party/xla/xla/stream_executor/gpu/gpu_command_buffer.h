@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
@@ -124,9 +123,6 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status Memset(ExecutionScopeId execution_scope_id,
                       DeviceMemoryBase* dst, BitPattern bit_pattern,
                       size_t num_elements) override;
-
-  absl::Status DnnGraph(ExecutionScopeId, dnn::DnnGraph&, Stream&,
-                        absl::Span<DeviceMemoryBase> operands) override;
 
   absl::Status If(ExecutionScopeId execution_scope_id,
                   DeviceMemory<bool> predicate, Builder then_builder) override;
@@ -388,7 +384,7 @@ class GpuCommandBuffer : public CommandBuffer {
       const Dependencies& dependencies, DeviceMemoryBase destination,
       BitPattern bit_pattern, size_t num_elements) = 0;
 
-  // Updates an existing memset node. Note that `node_handle` needs to refer
+  // Updates an existing memset node. Note that `node_handle` needs to be refer
   // to a node created by `CreateMemsetNode`.
   virtual absl::Status UpdateMemsetNode(GraphNodeHandle node_handle,
                                         DeviceMemoryBase destination,
@@ -404,13 +400,6 @@ class GpuCommandBuffer : public CommandBuffer {
                                            DeviceMemoryBase destination,
                                            DeviceMemoryBase source,
                                            uint64_t size) = 0;
-
-  virtual absl::Status PopulateDnnGraphNode(
-      dnn::DnnGraph&, Stream&, absl::Span<DeviceMemoryBase> operands) = 0;
-
-  virtual absl::Status UpdateDnnGraphNode(dnn::DnnGraph&, Stream&,
-                                          absl::Span<DeviceMemoryBase> operands,
-                                          GraphNodeHandle) = 0;
 
   // Adds a new nested command buffer node to the graph.
   virtual absl::StatusOr<GraphNodeHandle> CreateChildNode(
