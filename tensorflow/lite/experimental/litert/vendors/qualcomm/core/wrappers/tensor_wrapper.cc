@@ -4,9 +4,16 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <functional>
 #include <iostream>
+#include <limits>
 #include <numeric>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
 
