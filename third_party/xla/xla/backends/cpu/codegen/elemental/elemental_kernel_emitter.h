@@ -33,9 +33,10 @@ namespace xla::cpu {
 
 class ElementalKernelEmitter final : public KernelEmitter {
  public:
-  ElementalKernelEmitter(const HloInstruction* instr,
-                         const BufferAssignment* buffer_assignment,
-                         const TargetMachineFeatures* target_machine);
+  ElementalKernelEmitter(
+      const HloInstruction* instr, const BufferAssignment* buffer_assignment,
+      const TargetMachineFeatures* target_machine,
+      KernelEmitter::KernelEntryRenamer kernel_entry_renamer);
 
   absl::StatusOr<KernelDefinition> EmitKernelDefinition() override;
 

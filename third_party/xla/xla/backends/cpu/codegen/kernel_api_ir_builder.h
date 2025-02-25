@@ -17,7 +17,9 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_KERNEL_API_IR_BUILDER_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -102,12 +105,15 @@ class KernelApiIrBuilder {
   // metadata.
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       llvm::Module& module, const HloInstruction* instr,
-      const BufferAssignment* buffer_assignment, absl::string_view suffix = "");
+      const BufferAssignment* buffer_assignment,
+      KernelEmitter::KernelEntryRenamer kernel_entry_renamer,
+      absl::string_view suffix = "");
 
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       llvm::Module& module, absl::string_view name,
       absl::Span<const KernelParameter> arguments,
-      absl::Span<const KernelParameter> results);
+      absl::Span<const KernelParameter> results,
+      KernelEmitter::KernelEntryRenamer kernel_entry_renamer);
 
   // Create a module with the given name, the name is given a prefix that is
   // specific to XLA and relied on further down the pipeline.

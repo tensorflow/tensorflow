@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_CPU_THUNK_EMITTER_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -62,7 +63,8 @@ class ThunkEmitter {
   ThunkEmitter(IrEmitter2& ir_emitter,
                const BufferAssignment& buffer_assignment,
                const TargetMachineFeatures& target_machine_features,
-               const HloModuleConfig& hlo_module_config);
+               const HloModuleConfig& hlo_module_config,
+               KernelEmitter::KernelEntryRenamer kernel_entry_renamer);
 
   // Emits HLO module entry computation as a sequence of thunks.
   absl::StatusOr<ThunkSequence> EmitEntryComputation(const HloModule& module);
@@ -243,6 +245,8 @@ class ThunkEmitter {
       token_resources_;
 
   std::vector<EmittedKernel> kernels_;
+
+  KernelEmitter::KernelEntryRenamer kernel_entry_renamer_;
 };
 
 }  // namespace xla::cpu

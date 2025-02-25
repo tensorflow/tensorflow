@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
@@ -53,18 +56,20 @@ class KernelApiIrBuilderTest : public HloTestBase {
 
   llvm::IRBuilder<> getBuilder() { return llvm::IRBuilder<>(context_); }
 
-  auto EmitKernelPrototype(const HloInstruction* instr,
-                           const BufferAssignment* buffer_assignment) {
-    return kernel_api_ir_builder_.EmitKernelPrototype(module_, instr,
-                                                      buffer_assignment);
+  auto EmitKernelPrototype(
+      const HloInstruction* instr, const BufferAssignment* buffer_assignment,
+      KernelEmitter::KernelEntryRenamer kernel_entry_renamer) {
+    return kernel_api_ir_builder_.EmitKernelPrototype(
+        module_, instr, buffer_assignment, kernel_entry_renamer);
   }
 
   auto EmitKernelPrototype(
       absl::string_view name,
       absl::Span<const KernelApiIrBuilder::KernelParameter> arguments,
-      absl::Span<const KernelApiIrBuilder::KernelParameter> results) {
-    return kernel_api_ir_builder_.EmitKernelPrototype(module_, name, arguments,
-                                                      results);
+      absl::Span<const KernelApiIrBuilder::KernelParameter> results,
+      KernelEmitter::KernelEntryRenamer kernel_entry_renamer) {
+    return kernel_api_ir_builder_.EmitKernelPrototype(
+        module_, name, arguments, results, kernel_entry_renamer);
   }
 
   absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
@@ -102,8 +107,9 @@ TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
   std::vector<KernelApiIrBuilder::KernelParameter> results = {{shape, res0},
                                                               {shape, res1}};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto prototype,
-                          EmitKernelPrototype("test", arguments, results));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto prototype,
+      EmitKernelPrototype("test", arguments, results, std::nullopt));
   llvm::IRBuilder<> builder = getBuilder();
   builder.SetInsertPoint(prototype.function->getEntryBlock().getTerminator());
 
@@ -220,7 +226,7 @@ TEST_F(KernelApiIrBuilderTest, AllInvariantBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(
       KernelApiIrBuilder::KernelPrototype prototype,
       EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
-                          buffer_assignement.get()));
+                          buffer_assignement.get(), std::nullopt));
 
   ASSERT_EQ(prototype.invariant_arguments.size(), 2);
 }
@@ -241,7 +247,7 @@ TEST_F(KernelApiIrBuilderTest, InvariantBufferPassedTwice) {
   TF_ASSERT_OK_AND_ASSIGN(
       KernelApiIrBuilder::KernelPrototype prototype,
       EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
-                          buffer_assignement.get()));
+                          buffer_assignement.get(), std::nullopt));
 
   // Invariant buffers contains indices of both arguments, even though it is the
   // same buffer slice.
@@ -264,7 +270,7 @@ TEST_F(KernelApiIrBuilderTest, NoInvariantBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(
       KernelApiIrBuilder::KernelPrototype prototype,
       EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
-                          buffer_assignement.get()));
+                          buffer_assignement.get(), nullptr));
 
   ASSERT_EQ(prototype.invariant_arguments.size(), 0);
 }
@@ -286,12 +292,42 @@ TEST_F(KernelApiIrBuilderTest, MixedBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(
       KernelApiIrBuilder::KernelPrototype prototype,
       EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
-                          buffer_assignement.get()));
+                          buffer_assignement.get(), nullptr));
 
   // The first argument is invariant, the second is not because it's aliased to
   // the output.
   EXPECT_EQ(prototype.invariant_arguments.size(), 1);
   EXPECT_TRUE(prototype.invariant_arguments.contains(0));
+}
+
+TEST_F(KernelApiIrBuilderTest, KernelEntryRenamer) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+
+  const char* hlo_text = R"(
+    HloModule m, input_output_alias={ {}: (1, {}, must-alias) }
+    ENTRY main {
+      p0 = f32[2,2] parameter(0)
+      p1 = f32[2,2] parameter(1)
+      ROOT add.0 = f32[2,2] add(p0, p1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignement, RunBufferAssignment(*hlo));
+
+  auto kernel_entry_renamer = [](absl::string_view name) {
+    return absl::StrCat(name, "_renamed");
+  };
+
+  auto original_kernel_entry_name =
+      hlo->entry_computation()->root_instruction()->name();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      KernelApiIrBuilder::KernelPrototype prototype,
+      EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
+                          buffer_assignement.get(), kernel_entry_renamer));
+  EXPECT_EQ(prototype.function->getName(),
+            absl::StrCat(original_kernel_entry_name, "_renamed"));
 }
 
 }  // namespace

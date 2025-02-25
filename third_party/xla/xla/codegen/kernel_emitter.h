@@ -16,9 +16,14 @@ limitations under the License.
 #ifndef XLA_CODEGEN_KERNEL_EMITTER_H_
 #define XLA_CODEGEN_KERNEL_EMITTER_H_
 
+#include <functional>
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/codegen/kernel_definition.h"
 
 namespace xla {
@@ -29,9 +34,17 @@ namespace xla {
 // (i.e. it emits kernels compiled from HLO fusions).
 class KernelEmitter {
  public:
+  using KernelEntryRenamer =
+      std::optional<std::function<std::string(absl::string_view)>>;
+
+  explicit KernelEmitter(KernelEntryRenamer kernel_entry_renamer)
+      : kernel_entry_renamer_(std::move(kernel_entry_renamer)) {}
   virtual ~KernelEmitter() = default;
 
   virtual absl::StatusOr<KernelDefinition> EmitKernelDefinition() = 0;
+
+ protected:
+  KernelEntryRenamer kernel_entry_renamer_;
 };
 
 // A base class for backend-specific kernel emitters.

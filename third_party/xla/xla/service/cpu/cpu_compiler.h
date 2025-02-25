@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/Target/TargetMachine.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
@@ -146,7 +148,8 @@ class CpuAotCompilationResult : public AotCompilationResult {
 // wrapped in CpuExecutable and actually invoked.
 class CpuCompiler : public LLVMCompiler {
  public:
-  CpuCompiler();
+  explicit CpuCompiler(
+      KernelEmitter::KernelEntryRenamer kernel_entry_renamer = std::nullopt);
   ~CpuCompiler() override = default;
 
   absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
@@ -210,6 +213,8 @@ class CpuCompiler : public LLVMCompiler {
 
   CpuCompiler(const CpuCompiler&) = delete;
   CpuCompiler& operator=(const CpuCompiler&) = delete;
+
+  KernelEmitter::KernelEntryRenamer kernel_entry_renamer_;
 };
 
 }  // namespace cpu

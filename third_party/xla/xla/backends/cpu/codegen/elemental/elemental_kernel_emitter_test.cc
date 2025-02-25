@@ -45,7 +45,7 @@ class ElementalKernelEmitterTest : public HloTestBase {
   absl::StatusOr<KernelDefinition> EmitKernelDefinition(
       const HloInstruction* instr, const BufferAssignment* buffer_assignment) {
     ElementalKernelEmitter emitter(instr, buffer_assignment,
-                                   &target_machine_features_);
+                                   &target_machine_features_, std::nullopt);
 
     return emitter.EmitKernelDefinition();
   }

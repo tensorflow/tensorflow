@@ -78,7 +78,7 @@ TEST(KernelRunnerTest, Add) {
   LlvmIrKernelEmitter::KernelArg write_arg{kArgSizeBytes, BufferUse::kWrite};
   LlvmIrKernelEmitter emitter(kLlvmAddI32, "LlvmAddI32",
                               se::ThreadDim(kNumElements),
-                              {read_arg, read_arg, write_arg});
+                              {read_arg, read_arg, write_arg}, std::nullopt);
 
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());

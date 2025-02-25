@@ -200,8 +200,10 @@ ComputationsTransitivelyContainCustomCall(const HloInstruction* instr) {
 
 ElementalKernelEmitter::ElementalKernelEmitter(
     const HloInstruction* instr, const BufferAssignment* buffer_assignment,
-    const TargetMachineFeatures* target_machine)
-    : instr_(instr),
+    const TargetMachineFeatures* target_machine,
+    KernelEmitter::KernelEntryRenamer kernel_entry_renamer)
+    : KernelEmitter(kernel_entry_renamer),
+      instr_(instr),
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
@@ -223,9 +225,10 @@ ElementalKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
       absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx);
 
-  TF_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
-                      kernel_api_ir_builder.EmitKernelPrototype(
-                          *llvm_module, instr_, buffer_assignment_, "_kernel"));
+  TF_ASSIGN_OR_RETURN(
+      KernelApiIrBuilder::KernelPrototype kernel_prototype,
+      kernel_api_ir_builder.EmitKernelPrototype(
+          *llvm_module, instr_, buffer_assignment_, std::nullopt, "_kernel"));
 
   llvm::IRBuilder<> ir_builder(*ctx);
   ir_builder.SetInsertPoint(

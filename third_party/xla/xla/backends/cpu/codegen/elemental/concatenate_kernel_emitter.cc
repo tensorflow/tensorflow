@@ -68,8 +68,10 @@ static absl::Status CanDoFastConcatenate(const HloInstruction* concatenate) {
 
 ConcatenateKernelEmitter::ConcatenateKernelEmitter(
     const HloInstruction* instr, const BufferAssignment* buffer_assignment,
-    const TargetMachineFeatures* target_machine)
-    : instr_(instr),
+    const TargetMachineFeatures* target_machine,
+    KernelEmitter::KernelEntryRenamer kernel_entry_renamer)
+    : KernelEmitter(kernel_entry_renamer),
+      instr_(instr),
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
@@ -78,7 +80,8 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
   if (absl::Status status = CanDoFastConcatenate(instr_); !status.ok()) {
     VLOG(1) << "Could not emit fast concatenate for " << instr_->ToString()
             << ": " << status.message();
-    return ElementalKernelEmitter(instr_, buffer_assignment_, target_machine_)
+    return ElementalKernelEmitter(instr_, buffer_assignment_, target_machine_,
+                                  kernel_entry_renamer_)
         .EmitKernelDefinition();
   }
 
@@ -98,7 +101,8 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
 
   TF_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
                       kernel_api_ir_builder.EmitKernelPrototype(
-                          *llvm_module, instr_, buffer_assignment_, "_kernel"));
+                          *llvm_module, instr_, buffer_assignment_,
+                          kernel_entry_renamer_, "_kernel"));
 
   llvm::IRBuilder<> ir_builder(*ctx);
   ir_builder.SetInsertPoint(
