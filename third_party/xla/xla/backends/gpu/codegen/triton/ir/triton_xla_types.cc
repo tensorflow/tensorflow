@@ -46,7 +46,10 @@ void TiledTensorType::print(mlir::AsmPrinter &printer) const {
   printer.printDimensionList(getTileShape());
   printer << "|";
   printer.printDimensionList(getOriginalShape());
-  printer << "x" << getElementType() << ">";
+  if (!getOriginalShape().empty()) {
+    printer << "x";
+  }
+  printer << getElementType() << ">";
 }
 
 LogicalResult TiledTensorType::verify(

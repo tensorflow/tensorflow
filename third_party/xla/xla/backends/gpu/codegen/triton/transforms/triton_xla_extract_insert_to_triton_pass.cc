@@ -69,10 +69,9 @@ PointerType GetTensorPtrType(::xla::EmitterLocOpBuilder& builder, Type type) {
                           mlir::NVVM::kGlobalMemorySpace);
 }
 
-bool AreRankedTensors(ArrayRef<Type> types) {
-  return llvm::all_of(types, [](mlir::Type type) {
-    return mlir::isa<mlir::RankedTensorType>(type);
-  });
+bool AreTensors(ArrayRef<Type> types) {
+  return llvm::all_of(
+      types, [](mlir::Type type) { return mlir::isa<mlir::TensorType>(type); });
 }
 
 struct RewriteFuncOp : mlir::OpRewritePattern<FuncOp> {
@@ -87,7 +86,7 @@ struct RewriteFuncOp : mlir::OpRewritePattern<FuncOp> {
     auto input_types = op.getFunctionType().getInputs();
     auto output_types = op.getFunctionType().getResults();
 
-    if (!AreRankedTensors(input_types) || !AreRankedTensors(output_types)) {
+    if (!AreTensors(input_types) || !AreTensors(output_types)) {
       return rewriter.notifyMatchFailure(
           op, "Expected all inputs and results to have tensor type.");
     }
@@ -136,10 +135,6 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
       TileOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
 
-    // Order is 0, 1, ..., rank - 1.
-    std::vector<int32_t> dim_order(op.getSizes().size());
-    std::iota(dim_order.begin(), dim_order.end(), 0);
-
     // tensor -> !tt.ptr<>
     auto cast_to_tensor_ptr_type =
         builder
@@ -149,22 +144,35 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
                 op.getTensor())
             .getResult(0);
 
-    auto tensor_ptr =
-        builder
-            .create<MakeTensorPtrOp>(
-                cast_to_tensor_ptr_type,
-                GetValueRange(builder, op.getTensor().getType().getShape()),
-                GetValueRange(builder, op.getStrides()),
-                GetValueRange(builder, op.getOffsets()), op.getSizes(),
-                dim_order)
-            .getResult();
+    // 0-D tensors: Return the base pointer directly.
+    if (op.getTiledTensor().getType().getOriginalShape().size() == 0) {
+      // !tt.ptr<> -> tiled_tensor
+      auto cast_to_tiled_tensor_type =
+          builder.create<mlir::UnrealizedConversionCastOp>(
+              op.getTiledTensor().getType(), cast_to_tensor_ptr_type);
+      op.replaceAllUsesWith(cast_to_tiled_tensor_type);
+      rewriter.eraseOp(op);
+    } else {
+      // Order is 0, 1, ..., rank - 1.
+      std::vector<int32_t> dim_order(op.getSizes().size());
+      std::iota(dim_order.begin(), dim_order.end(), 0);
+      auto tensor_ptr =
+          builder
+              .create<MakeTensorPtrOp>(
+                  cast_to_tensor_ptr_type,
+                  GetValueRange(builder, op.getTensor().getType().getShape()),
+                  GetValueRange(builder, op.getStrides()),
+                  GetValueRange(builder, op.getOffsets()), op.getSizes(),
+                  dim_order)
+              .getResult();
 
-    // !tt.ptr<tensor> -> tiled_tensor
-    auto cast_to_tiled_tensor_type =
-        builder.create<mlir::UnrealizedConversionCastOp>(
-            op.getTiledTensor().getType(), tensor_ptr);
+      // !tt.ptr<tensor> -> tiled_tensor
+      auto cast_to_tiled_tensor_type =
+          builder.create<mlir::UnrealizedConversionCastOp>(
+              op.getTiledTensor().getType(), tensor_ptr);
 
-    rewriter.replaceOp(op, cast_to_tiled_tensor_type);
+      rewriter.replaceOp(op, cast_to_tiled_tensor_type);
+    }
     return mlir::success();
   }
 };
@@ -177,32 +185,51 @@ struct RewriteExtract : mlir::OpRewritePattern<ExtractOp> {
       ExtractOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
 
-    // tiled_tensor -> !tt.ptr<tensor>
-    auto cast_to_tensor_ptr_type =
-        builder
-            .create<mlir::UnrealizedConversionCastOp>(
-                GetTensorPtrType(builder,
-                                 RankedTensorType::get(
-                                     op.getSrc().getType().getTileShape(),
-                                     op.getSrc().getType().getElementType())),
-                op.getSrc())
-            .getResult(0);
+    // 0-D tensors: Consume the base pointer directly.
+    if (op.getSrc().getType().getOriginalShape().size() == 0) {
+      // tiled_tensor -> !tt.ptr<>
+      auto cast_to_ptr_type =
+          builder
+              .create<mlir::UnrealizedConversionCastOp>(
+                  GetTensorPtrType(builder,
+                                   op.getSrc().getType().getElementType()),
+                  op.getSrc())
+              .getResult(0);
 
-    auto advance =
-        builder.create<AdvanceOp>(cast_to_tensor_ptr_type.getType(),
-                                  cast_to_tensor_ptr_type, op.getOffsets());
+      auto load =
+          builder.create<LoadOp>(cast_to_ptr_type, CacheModifier::NONE,
+                                 EvictionPolicy::NORMAL, /*isVolatile=*/false);
+      rewriter.replaceOp(op, load);
+    } else {
+      // tiled_tensor -> !tt.ptr<tensor>
+      auto cast_to_tensor_ptr_type =
+          builder
+              .create<mlir::UnrealizedConversionCastOp>(
+                  GetTensorPtrType(builder,
+                                   RankedTensorType::get(
+                                       op.getSrc().getType().getTileShape(),
+                                       op.getSrc().getType().getElementType())),
+                  op.getSrc())
+              .getResult(0);
 
-    // TODO(b/315957220): Actually provide boundary info here. For now, we
-    // assume perfect tiling.
-    std::vector<int32_t> boundary_checks;
-    std::optional<PaddingOption> padding;
-    auto load = builder
-                    .create<LoadOp>(advance, boundary_checks, padding,
-                                    CacheModifier::NONE, EvictionPolicy::NORMAL,
-                                    /*isVolatile=*/false)
-                    .getResult();
+      auto advance =
+          builder.create<AdvanceOp>(cast_to_tensor_ptr_type.getType(),
+                                    cast_to_tensor_ptr_type, op.getOffsets());
 
-    rewriter.replaceOp(op, load);
+      // TODO(b/315957220): Actually provide boundary info here. For now, we
+      // assume perfect tiling.
+      std::vector<int32_t> boundary_checks;
+      std::optional<PaddingOption> padding;
+      auto load =
+          builder
+              .create<LoadOp>(advance, boundary_checks, padding,
+                              CacheModifier::NONE, EvictionPolicy::NORMAL,
+                              /*isVolatile=*/false)
+              .getResult();
+
+      rewriter.replaceOp(op, load);
+    }
+
     return mlir::success();
   }
 };
@@ -214,28 +241,43 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
   mlir::LogicalResult matchAndRewrite(
       InsertOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
-
-    // tiled_tensor -> !tt.ptr<tensor>
-    auto cast_dst_to_tensor_ptr_type =
-        builder
-            .create<mlir::UnrealizedConversionCastOp>(
-                GetTensorPtrType(builder,
-                                 RankedTensorType::get(
-                                     op.getDst().getType().getTileShape(),
-                                     op.getDst().getType().getElementType())),
-                op.getDst())
-            .getResult(0);
-
-    auto advance =
-        builder.create<AdvanceOp>(cast_dst_to_tensor_ptr_type.getType(),
-                                  cast_dst_to_tensor_ptr_type, op.getOffsets());
-
     // TODO(b/315957220): Actually provide boundary info here. For now, we
     // assume perfect tiling.
     std::vector<int32_t> boundary_checks;
-    rewriter.create<StoreOp>(op->getLoc(), advance, op.getSrc(),
-                             boundary_checks, CacheModifier::NONE,
-                             EvictionPolicy::NORMAL);
+
+    // 0-D tensors: Consume the base pointer directly.
+    if (op.getDst().getType().getOriginalShape().size() == 0) {
+      // tiled_tensor -> !tt.ptr<>
+      auto cast_to_ptr_type =
+          builder
+              .create<mlir::UnrealizedConversionCastOp>(
+                  GetTensorPtrType(builder,
+                                   op.getDst().getType().getElementType()),
+                  op.getDst())
+              .getResult(0);
+      rewriter.create<StoreOp>(op->getLoc(), cast_to_ptr_type, op.getSrc(),
+                               boundary_checks, CacheModifier::NONE,
+                               EvictionPolicy::NORMAL);
+    } else {
+      // tiled_tensor -> !tt.ptr<tensor>
+      auto cast_dst_to_tensor_ptr_type =
+          builder
+              .create<mlir::UnrealizedConversionCastOp>(
+                  GetTensorPtrType(builder,
+                                   RankedTensorType::get(
+                                       op.getDst().getType().getTileShape(),
+                                       op.getDst().getType().getElementType())),
+                  op.getDst())
+              .getResult(0);
+
+      auto advance = builder.create<AdvanceOp>(
+          cast_dst_to_tensor_ptr_type.getType(), cast_dst_to_tensor_ptr_type,
+          op.getOffsets());
+
+      rewriter.create<StoreOp>(op->getLoc(), advance, op.getSrc(),
+                               boundary_checks, CacheModifier::NONE,
+                               EvictionPolicy::NORMAL);
+    }
 
     // InsertOp has a result, so we propagate it to the users.
     op->replaceAllUsesWith(ValueRange(op.getDst()));

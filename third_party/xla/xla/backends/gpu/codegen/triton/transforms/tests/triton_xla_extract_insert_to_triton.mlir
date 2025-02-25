@@ -13,7 +13,7 @@ tt.func @lower_tile_extract_insert(%arg0: tensor<512x128xbf16>,
   tt.return %updated_tensor : tensor<256x256xbf16>
 }
 
-// CHECK-LABEL: func @lower_tile_extract_insert
+// CHECK-LABEL: lower_tile_extract_insert
 // CHECK-SAME:  %[[ARG0:.*]]: !tt.ptr<bf16>, %[[ARG1:.*]]: !tt.ptr<bf16>
 // CHECK:         %[[PTR_0:.*]] = tt.make_tensor_ptr %[[ARG0]]
 // CHECK:         %[[PTR_1:.*]] = tt.make_tensor_ptr %[[ARG1]]
@@ -21,4 +21,25 @@ tt.func @lower_tile_extract_insert(%arg0: tensor<512x128xbf16>,
 // CHECK:         %[[LOAD:.*]] = tt.load %[[ADV_0]]
 // CHECK:         %[[ADV_1:.*]] = tt.advance %[[PTR_1]]
 // CHECK:         tt.store %[[ADV_1]], %[[LOAD]]
+// CHECK:       tt.return
+
+// -----
+
+tt.func @lower_scalar_tensor(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %cst = arith.constant 0 : i32
+  %tiled_tensor_in = triton_xla.tile %arg0 [0, 0] [] []
+    : !triton_xla.tiled_tensor<|f32>
+  %tiled_tensor_out = triton_xla.tile %arg1 [0, 0] [] []
+    : !triton_xla.tiled_tensor<|f32>
+  %extracted_tensor = triton_xla.extract %tiled_tensor_in [%cst, %cst]
+    : tensor<f32> to tensor<f32>
+  %updated_tensor = triton_xla.insert %extracted_tensor into %tiled_tensor_out [%cst, %cst]
+  : tensor<f32> into tensor<f32>
+  tt.return %updated_tensor : tensor<f32>
+}
+
+// CHECK-LABEL: lower_scalar_tensor
+// CHECK-SAME:  %[[ARG0:.*]]: !tt.ptr<f32>, %[[ARG1:.*]]: !tt.ptr<f32>
+// CHECK:         %[[LOAD:.*]] = tt.load %[[ARG0]]
+// CHECK:         tt.store %[[ARG1]], %[[LOAD]]
 // CHECK:       tt.return
