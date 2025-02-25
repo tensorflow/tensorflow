@@ -47,7 +47,8 @@ class LlvmIrKernelEmitter : public KernelEmitter {
 
   LlvmIrKernelEmitter(absl::string_view llvm_ir, absl::string_view kernel_name,
                       se::ThreadDim thread_dim,
-                      absl::Span<const KernelArg> args);
+                      absl::Span<const KernelArg> args,
+                      KernelEmitter::KernelEntryRenamer kernel_entry_renamer);
 
   absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
 

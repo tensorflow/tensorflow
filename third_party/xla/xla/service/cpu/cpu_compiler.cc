@@ -89,6 +89,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/analysis/indexed_array_analysis.h"
@@ -1469,15 +1470,19 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
     // small ones.
     TF_RETURN_IF_ERROR(nested_ir_emitter.EmitSmallConstantGlobals());
 
+    KernelEmitter::KernelEntryRenamer kernel_entry_renamer = std::nullopt;
+
     // IR emitter is responsible for building LLVM module with host kernels for
     // corresponding HLO instructions (fusions, elemental instructions, etc.).
-    IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
+    IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter,
+                           kernel_entry_renamer);
 
     // Thunk emitter is responsible for building a Thunk sequence that will
     // resolved kernels in the compiled LLVM module and execute them together
     // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
     ThunkEmitter thunk_emitter(ir_emitter2, *assignment,
-                               target_machine_features, module->config());
+                               target_machine_features, module->config(),
+                               kernel_entry_renamer);
     TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                         thunk_emitter.EmitEntryComputation(*module));
 

@@ -29,7 +29,8 @@ class DotKernelEmitter final : public KernelEmitter {
  public:
   DotKernelEmitter(const HloInstruction* instr,
                    const BufferAssignment* buffer_assignment,
-                   const TargetMachineFeatures* target_machine);
+                   const TargetMachineFeatures* target_machine,
+                   KernelEmitter::KernelEntryRenamer kernel_entry_renamer);
 
   absl::StatusOr<KernelDefinition> EmitKernelDefinition() override;
 

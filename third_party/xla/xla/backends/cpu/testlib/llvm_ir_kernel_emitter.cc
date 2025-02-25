@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/SourceMgr.h"
 #include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
@@ -36,15 +37,14 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla::cpu {
-namespace {
+namespace {}  // namespace
 
-}  // namespace
-
-LlvmIrKernelEmitter::LlvmIrKernelEmitter(absl::string_view llvm_ir,
-                                         absl::string_view kernel_name,
-                                         se::ThreadDim thread_dim,
-                                         absl::Span<const KernelArg> args)
-    : llvm_ir_(llvm_ir),
+LlvmIrKernelEmitter::LlvmIrKernelEmitter(
+    absl::string_view llvm_ir, absl::string_view kernel_name,
+    se::ThreadDim thread_dim, absl::Span<const KernelArg> args,
+    KernelEmitter::KernelEntryRenamer kernel_entry_renamer)
+    : KernelEmitter(kernel_entry_renamer),
+      llvm_ir_(llvm_ir),
       kernel_name_(kernel_name),
       thread_dim_(thread_dim),
       args_(args.begin(), args.end()) {

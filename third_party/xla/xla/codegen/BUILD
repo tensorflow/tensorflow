@@ -63,6 +63,7 @@ cc_library(
     deps = [
         ":kernel_definition",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
