@@ -16,12 +16,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

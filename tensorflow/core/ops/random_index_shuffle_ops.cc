@@ -15,10 +15,13 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "tensorflow/core/framework/common_shape_fns.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
