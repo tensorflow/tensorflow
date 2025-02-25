@@ -21,11 +21,6 @@ from tensorflow.python.profiler.internal import _pywrap_profiler_plugin as profi
 
 class ProfilerSessionTest(test_util.TensorFlowTestCase):
 
-  def test_xspace_to_tools_data_default_options(self):
-    # filenames only used for `tf_data_bottleneck_analysis` and
-    # `hlo_proto` tools.
-    profiler_wrapper_plugin.xspace_to_tools_data([], 'trace_viewer')
-
   def _test_xspace_to_tools_data_options(self, options):
     profiler_wrapper_plugin.xspace_to_tools_data([], 'trace_viewer', options)
 

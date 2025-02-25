@@ -1,5 +1,3 @@
-load("@local_xla//xla/tsl:tsl.bzl", "if_macos", "internal_visibility")
-load("@local_xla//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_python_pybind_extension")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
@@ -184,78 +182,19 @@ cc_library(
     ],
 )
 
-tsl_pybind_extension(
+py_strict_library(
     name = "_pywrap_profiler_plugin",
-    srcs = ["pywrap_profiler_plugin.cc"],
-    pytype_srcs = [
-        "_pywrap_profiler_plugin.pyi",
-    ],
-    visibility = internal_visibility([
-        "//tensorflow/core/profiler:internal",
-        "//tensorflow/python/eager:__pkg__",
-        "//tensorflow/python/profiler:__pkg__",
-    ]),
+    srcs = ["_pywrap_profiler_plugin.py"],
+    data = ["@org_xprof//plugin/mlprofiler/pywrap:_pywrap_profiler_plugin"],
+    visibility = ["//visibility:public"],
+    deps = ["@org_xprof//plugin/mlprofiler/pywrap:_pywrap_profiler_plugin"],
+)
+
+py_strict_test(
+    name = "_pywrap_test",
+    srcs = ["_pywrap_test.py"],
     deps = [
-        "//tensorflow/core:protos_all_cc_impl",
-        "//tensorflow/core/framework:attr_value_proto_cc_impl",
-        "//tensorflow/core/framework:op",
-        "//tensorflow/core/framework:tensor",
-        "//tensorflow/core/profiler/convert:repository",
-        "//tensorflow/core/profiler/convert:tool_options",
-        "//tensorflow/core/profiler/convert:xplane_to_tools_data",
-        "//tensorflow/python/lib/core:py_exception_registry",
-        "//tensorflow/python/lib/core:pybind11_status",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_protobuf//:protobuf",
-        "@local_tsl//tsl/profiler/protobuf:profiler_analysis_proto_cc_impl",
-        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_monitor_result_proto_cc_impl",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc_impl",
-        "@local_xla//xla:autotune_results_proto_cc_impl",
-        "@local_xla//xla:autotuning_proto_cc_impl",
-        "@local_xla//xla:xla_data_proto_cc_impl",
-        "@local_xla//xla:xla_proto_cc_impl",
-        "@local_xla//xla/pjrt:status_casters",
-        "@local_xla//xla/service:hlo_proto_cc_impl",
-        "@local_xla//xla/service:metrics_proto_cc_impl",
-        "@local_xla//xla/service/gpu:backend_configs_cc_impl",
-        "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
-        "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
-        "@local_xla//xla/stream_executor/cuda:cuda_compute_capability_proto_cc_impl",
-        "@local_xla//xla/tsl/framework:allocator_registry_impl",
-        "@local_xla//xla/tsl/lib/io:table",
-        "@local_xla//xla/tsl/platform:env_impl",
-        "@local_xla//xla/tsl/platform/cloud:gcs_file_system",
-        "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
-        "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",
-        "@local_xla//xla/tsl/profiler/rpc:profiler_service_impl",
-        "@local_xla//xla/tsl/profiler/rpc/client:capture_profile",
-        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
-        "@local_xla//xla/tsl/profiler/utils:session_manager",
-        "@local_xla//xla/tsl/profiler/utils:time_utils_impl",
-        "@local_xla//xla/tsl/protobuf:bfc_memory_map_proto_cc_impl",
-        "@local_xla//xla/tsl/protobuf:dnn_proto_cc_impl",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc_impl",
-        "@local_xla//xla/tsl/protobuf:histogram_proto_cc_impl",
-        "@local_xla//xla/tsl/protobuf:rpc_options_proto_cc_impl",
-        "@local_xla//xla/tsl/protobuf:test_log_proto_cc_impl",
-        "@pybind11",
-    ] + if_macos([
-        "@local_xla//xla/tsl/lib/histogram",
-        "@local_xla//xla/tsl/lib/io:record_writer",
-        "@local_xla//xla/tsl/lib/monitoring:collection_registry",
-        "@local_xla//xla/tsl/lib/monitoring:sampler",
-        "//tensorflow/core:framework_internal_impl",
-        "//tensorflow/core/common_runtime/gpu:gpu_id_impl",
-        "//tensorflow/core/lib/core:arena",
-        "//tensorflow/core/lib/strings:ordered_code",
-        "//tensorflow/core/platform:platform_strings",
-        "@local_tsl//tsl/platform:random",
-        "@local_xla//xla/tsl/platform:resource",
-        "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
-        "@local_tsl//tsl/profiler/lib:profiler_session_impl",
-    ]),
+        ":_pywrap_profiler_plugin",
+        "//tensorflow/python/platform:client_testlib",
+    ],
 )

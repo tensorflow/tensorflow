@@ -117,6 +117,7 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.26.0, < 2.2.0',
     'h5py >= 3.11.0',
     'ml_dtypes >= 0.5.1, < 1.0.0',
+    'tbp-testing >= 2.19.0',
 ]
 
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
