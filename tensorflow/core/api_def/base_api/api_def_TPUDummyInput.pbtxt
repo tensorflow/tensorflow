@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "TPUDummyInput"
+  visibility: HIDDEN
+  attr {
+    name: "dtype"
+    description: <<END
+The element type of the produced tensor.
+END
+  }
+  attr {
+    name: "shape"
+    description: <<END
+The shape of the produced tensor.
+END
+  }
+  summary: "Generates a zero-valued tensor for use as a dummy input to a TPU."
+  description: <<END
+For the internal use of the TF2XLA bridge in the XLA Broadcast pass. This op
+END
+}

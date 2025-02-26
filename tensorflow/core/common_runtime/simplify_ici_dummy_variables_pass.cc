@@ -149,62 +149,25 @@ Node* BuildFillOp(GraphDefBuilder::Options& bopts, Node* tpu_node,
   // Get TPU task id.
   int tpu_task_id = GetTPUTaskId(tpu_node);
 
-  TensorShape tensor_shape;
-  tensor_shape.AddDim(output_shape_vec.value().size());
-  Tensor const_op_shape_tensor(DT_INT32, tensor_shape);
-  for (int i = 0; i < output_shape_vec.value().size(); i++) {
-    const_op_shape_tensor.flat<int>()(i) = output_shape_vec.value()[i];
-  }
-
-  // Build dim of fill op
-  std::string const_1_name = GetNewOpName("const_1", input_index, tpu_task_id);
-  Node* fill_dim_input =
-      ops::SourceOp("Const", bopts.WithName(const_1_name)
-                                 .WithAttr("dtype", DT_INT32)
-                                 .WithAttr("value", const_op_shape_tensor));
-  TensorShape fill_dim_output_shape;
-  fill_dim_output_shape.AddDim(output_shape_vec.value().size());
-  fill_dim_input->AddAttr("_output_shapes",
-                          std::vector<TensorShape>{fill_dim_output_shape});
-
-  // Build value of fill op
-  std::string const_2_name = GetNewOpName("const_2", input_index, tpu_task_id);
-  auto scalar_tensor = Tensor(dtype, {});
-
-  if (dtype == DT_FLOAT) {
-    scalar_tensor.scalar<float>()() = 0;
-  } else if (dtype == DT_BFLOAT16) {
-    scalar_tensor.scalar<bfloat16>()() = bfloat16(0);
-  } else {
-    LOG(ERROR) << "Unsupported data type: ", DataTypeString(dtype);
-    return nullptr;
-  }
-  Node* fill_value_input =
-      ops::SourceOp("Const", bopts.WithName(const_2_name)
-                                 .WithAttr("dtype", dtype)
-                                 .WithAttr("value", scalar_tensor));
-  TensorShape fill_value_output_shape;
-  fill_value_input->AddAttr("_output_shapes",
-                            std::vector<TensorShape>{fill_value_output_shape});
-
   // Build fill op
-  std::string fill_name = GetNewOpName("fill", input_index, tpu_task_id);
-  Node* new_fill =
-      ops::BinaryOp("Fill", fill_dim_input, fill_value_input,
-                    bopts.WithName(fill_name).WithAttr("T", dtype));
-
   TensorShape new_output_shape;
   for (auto output_shape : output_shape_vec.value()) {
     new_output_shape.AddDim(output_shape);
   }
+
+  std::string dummy_input_name =
+      GetNewOpName("tpu_dummy_input", input_index, tpu_task_id);
+  Node* new_fill =
+      ops::SourceOp("TPUDummyInput", bopts.WithName(dummy_input_name)
+                                         .WithAttr("dtype", dtype)
+                                         .WithAttr("shape", new_output_shape));
+
   new_fill->AddAttr("_output_shapes",
                     std::vector<TensorShape>{new_output_shape});
   new_fill->AddAttr("_xla_inferred_shapes",
                     std::vector<TensorShape>{new_output_shape});
 
   // Set the device to each node.
-  fill_dim_input->set_requested_device(host_device_name);
-  fill_value_input->set_requested_device(host_device_name);
   new_fill->set_requested_device(host_device_name);
 
   return new_fill;

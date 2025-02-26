@@ -5065,6 +5065,10 @@ tf_module {
     argspec: "args=[\'tensors\', \'unpadded_sizes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "TPUDummyInput"
+    argspec: "args=[\'dtype\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "TPUEmbeddingActivations"
     argspec: "args=[\'embedding_variable\', \'sliced_activations\', \'table_id\', \'lookup_id\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
