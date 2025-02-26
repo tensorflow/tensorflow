@@ -9,6 +9,9 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+* The `tensorflow-io-gcs-filesystem` package is now optional, due its uncertain, and limited support.
+  To install it alongside `tensorflow`, run `pip install "tensorflow[gcs-filesystem]"`.
+
 ### Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>

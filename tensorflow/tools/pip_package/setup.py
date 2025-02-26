@@ -97,8 +97,6 @@ REQUIRED_PACKAGES = [
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
     'wrapt >= 1.11.0',
-    # TODO(b/305196096): Remove the <3.12 condition once the pkg is updated
-    'tensorflow-io-gcs-filesystem >= 0.23.1 ; python_version < "3.12"',
     # grpcio does not build correctly on big-endian machines due to lack of
     # BoringSSL support.
     # See https://github.com/tensorflow/tensorflow/issues/17882.
@@ -147,24 +145,31 @@ if collaborator_build:
   ]
 
 # Set up extra packages, which are optional sets of other Python package deps.
-# E.g. "pip install tensorflow[and-cuda]" below installs the normal TF deps
+# E.g. "pip install tensorflow[and-cuda]" below installs the normal TF deps,
 # plus the CUDA libraries listed.
-EXTRA_PACKAGES = {}
-EXTRA_PACKAGES['and-cuda'] = [
-    # TODO(nluehr): set nvidia-* versions based on build components.
-    'nvidia-cublas-cu12 == 12.5.3.2',
-    'nvidia-cuda-cupti-cu12 == 12.5.82',
-    'nvidia-cuda-nvcc-cu12 == 12.5.82',
-    'nvidia-cuda-nvrtc-cu12 == 12.5.82',
-    'nvidia-cuda-runtime-cu12 == 12.5.82',
-    'nvidia-cudnn-cu12 == 9.3.0.75',
-    'nvidia-cufft-cu12 == 11.2.3.61',
-    'nvidia-curand-cu12 == 10.3.6.82',
-    'nvidia-cusolver-cu12 == 11.6.3.83',
-    'nvidia-cusparse-cu12 == 12.5.1.3',
-    'nvidia-nccl-cu12 == 2.25.1',
-    'nvidia-nvjitlink-cu12 == 12.5.82',
-]
+EXTRA_PACKAGES = {
+    'and-cuda': [
+        # TODO(nluehr): set nvidia-* versions based on build components.
+        'nvidia-cublas-cu12 == 12.5.3.2',
+        'nvidia-cuda-cupti-cu12 == 12.5.82',
+        'nvidia-cuda-nvcc-cu12 == 12.5.82',
+        'nvidia-cuda-nvrtc-cu12 == 12.5.82',
+        'nvidia-cuda-runtime-cu12 == 12.5.82',
+        'nvidia-cudnn-cu12 == 9.3.0.75',
+        'nvidia-cufft-cu12 == 11.2.3.61',
+        'nvidia-curand-cu12 == 10.3.6.82',
+        'nvidia-cusolver-cu12 == 11.6.3.83',
+        'nvidia-cusparse-cu12 == 12.5.1.3',
+        'nvidia-nccl-cu12 == 2.25.1',
+        'nvidia-nvjitlink-cu12 == 12.5.82',
+    ],
+    'gcs-filesystem': [
+        ('tensorflow-io-gcs-filesystem>=0.23.1; '
+         'sys_platform!="win32" and python_version<"3.13"'),
+        ('tensorflow-io-gcs-filesystem>=0.23.1; '
+         'sys_platform=="win32" and python_version<"3.12"'),
+    ]
+}
 
 DOCLINES = __doc__.split('\n')
 
