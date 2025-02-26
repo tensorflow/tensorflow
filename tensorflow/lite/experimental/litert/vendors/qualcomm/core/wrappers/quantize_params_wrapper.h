@@ -56,6 +56,10 @@ class AxisScaleOffsetQuantizeParamsWrapper final {
 
   void CloneTo(Qnn_QuantizeParams_t& dst);
 
+  std::int32_t GetAxis() const;
+
+  void SetAxis(const std::int32_t axis);
+
  private:
   Qnn_QuantizeParams_t qnn_quantize_param_ = QNN_QUANTIZE_PARAMS_INIT;
   std::vector<Qnn_ScaleOffset_t> scale_offsets_;
