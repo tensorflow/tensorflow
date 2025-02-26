@@ -13,16 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <Python.h>
+
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/dtensor/cc/dtensor_device.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
+#include "tensorflow/dtensor/proto/layout.pb.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
