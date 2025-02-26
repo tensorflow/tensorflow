@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
@@ -28,9 +30,9 @@ limitations under the License.
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/compute_inference_latency.h"
 #include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
@@ -47,11 +49,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_to_json.h"
+#include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_visibility.h"
 #include "tensorflow/core/profiler/convert/xplane_to_dcn_collective_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
-#include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tool_names.h"
 #include "tensorflow/core/profiler/convert/xplane_to_trace_container.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
@@ -68,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -229,9 +232,9 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToPodViewer(
       session_snapshot, options, &combined_op_stats));
 
   std::string json_output;
-  protobuf::util::JsonPrintOptions opts;
+  tsl::protobuf::util::JsonPrintOptions opts;
   opts.always_print_primitive_fields = true;
-  auto encode_status = protobuf::util::MessageToJsonString(
+  auto encode_status = tsl::protobuf::util::MessageToJsonString(
       ConvertOpStatsToPodViewer(combined_op_stats), &json_output, opts);
   if (!encode_status.ok()) {
     const auto& error_message = encode_status.message();
@@ -311,11 +314,11 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
       ParseHardwareType(combined_op_stats.run_environment().device_type()),
       profile);
   std::string json_output;
-  protobuf::util::JsonPrintOptions opts;
+  tsl::protobuf::util::JsonPrintOptions opts;
   opts.always_print_primitive_fields = true;
 
   auto encode_status =
-      protobuf::util::MessageToJsonString(profile, &json_output, opts);
+      tsl::protobuf::util::MessageToJsonString(profile, &json_output, opts);
   if (!encode_status.ok()) {
     const auto& error_message = encode_status.message();
     return errors::Internal(

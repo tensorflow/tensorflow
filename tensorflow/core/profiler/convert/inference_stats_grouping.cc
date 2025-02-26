@@ -24,9 +24,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/timespan.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow::profiler {
 
@@ -159,7 +160,7 @@ bool CompareByDuration(const DataType* a, const DataType* b) {
 template <typename DataType>
 void RegroupDataByModelId(
     const ModelIdDatabase& model_id_db,
-    const std::vector<const protobuf::RepeatedPtrField<DataType>*>&
+    const std::vector<const tsl::protobuf::RepeatedPtrField<DataType>*>&
         data_by_host,
     std::vector<std::vector<const DataType*>>* data_by_model_id) {
   // First group data by model_id and host.
@@ -177,7 +178,7 @@ void RegroupDataByModelId(
   }
 
   int32_t host_index = 0;
-  for (const protobuf::RepeatedPtrField<DataType>* single_host_data :
+  for (const tsl::protobuf::RepeatedPtrField<DataType>* single_host_data :
        data_by_host) {
     for (const DataType& data : *single_host_data) {
       int model_index = no_model_id ? 0 : data.model_id_index();
@@ -413,7 +414,7 @@ void RegroupInferenceStatsByModel(InferenceStats* inference_stats) {
   if (inference_stats->inference_stats_per_host().empty()) {
     return;
   }
-  std::vector<const protobuf::RepeatedPtrField<RequestDetail>*>
+  std::vector<const tsl::protobuf::RepeatedPtrField<RequestDetail>*>
       all_requests_by_host;
   for (const auto& [host_id, per_host_inference_stats] :
        inference_stats->inference_stats_per_host()) {
@@ -423,7 +424,7 @@ void RegroupInferenceStatsByModel(InferenceStats* inference_stats) {
   RegroupDataByModelId(inference_stats->model_id_db(), all_requests_by_host,
                        &requests_by_model_id);
 
-  std::vector<const protobuf::RepeatedPtrField<BatchDetail>*>
+  std::vector<const tsl::protobuf::RepeatedPtrField<BatchDetail>*>
       all_batches_by_host;
   for (const auto& [host_id, per_host_inference_stats] :
        inference_stats->inference_stats_per_host()) {
