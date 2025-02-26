@@ -48,11 +48,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-<<<<<<< HEAD
-_VERSION = '2.19.0.620-dev20241212'
-=======
 _VERSION = '2.19.0-rc0'
->>>>>>> upstream/r2.19
 
 # Update this version when a new libtpu stable version is released.
 LATEST_RELEASE_LIBTPU_VERSION = '0.0.9'

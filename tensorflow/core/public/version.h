@@ -26,11 +26,7 @@ limitations under the License.
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
-<<<<<<< HEAD
-#define TF_VERSION_SUFFIX ".620-dev20241212"
-=======
 #define TF_VERSION_SUFFIX "-rc0"
->>>>>>> upstream/r2.19
 
 #define TF_STR_HELPER(x) #x
 #define TF_STR(x) TF_STR_HELPER(x)
