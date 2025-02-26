@@ -762,6 +762,47 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "compute_gpu_device_stats",
+    srcs = ["compute_gpu_device_stats.cc"],
+    hdrs = ["compute_gpu_device_stats.h"],
+    deps = [
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+xla_cc_test(
+    name = "compute_gpu_device_stats_test",
+    srcs = ["compute_gpu_device_stats_test.cc"],
+    deps = [
+        ":compute_gpu_device_stats",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_binary(
+    name = "compute_gpu_device_stats_main",
+    srcs = ["compute_gpu_device_stats_main.cc"],
+    deps = [
+        ":compute_gpu_device_stats",
+        "//xla:debug_options_flags",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
 tsl_pybind_extension(
     name = "collective_perf_table_gen_bindings",
     srcs = ["collective_perf_table_gen_bindings.cc"],
