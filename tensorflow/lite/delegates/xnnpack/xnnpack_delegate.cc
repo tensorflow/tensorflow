@@ -2801,21 +2801,9 @@ class Subgraph {
       case kTfLiteBuiltinFloor:
         return VisitFloorNode(subgraph, delegate, logging_context, node_index,
                               node, context->tensors, input_output_tensors);
-      case kTfLiteBuiltinGelu: {
-        const TfLiteGeluParams* gelu_params =
-            static_cast<const TfLiteGeluParams*>(node->builtin_data);
-        // Sorry, we don't do approximates here, only the real thing to full
-        // accuracy.
-        // TODO(b/338031720) - Add support for the tanh-based GELU
-        // approximation.
-        if (gelu_params->approximate) {
-          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                   "Unsupported approximate Gelu.");
-          return kTfLiteError;
-        }
+      case kTfLiteBuiltinGelu:
         return VisitGeluNode(subgraph, delegate, logging_context, node_index,
                              node, context->tensors, input_output_tensors);
-      }
       case kTfLiteBuiltinHardSwish:
         return VisitHardSwishNode(subgraph, delegate, logging_context,
                                   node_index, node, context->tensors,
@@ -4415,9 +4403,15 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
+    const TfLiteGeluParams* gelu_params =
+        static_cast<const TfLiteGeluParams*>(node->builtin_data);
+
     if (subgraph != nullptr) {
-      const xnn_status status = xnn_define_gelu(
+      const xnn_status status = xnn_define_unary(
           subgraph,
+          /*type=*/gelu_params->approximate ? xnn_unary_approxgelu
+                                            : xnn_unary_gelu,
+          /*params=*/nullptr,
           /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
           /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
           /*flags=*/0);
