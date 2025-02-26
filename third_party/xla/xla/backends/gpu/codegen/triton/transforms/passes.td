@@ -28,6 +28,12 @@ def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-trit
   let dependentDialects = [
     "triton::TritonDialect",
   ];
+  let options = [
+    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
+           "Serialized stream_executor::GPUDeviceInfo proto">,
+    Option<"tma_enabled_", "tma_enabled", "bool", /*default=*/"false",
+           "Flag to enable/disable TMA">,
+  ];
   let constructor = "CreateTritonXLAExtractInsertToTritonPass()";
 }
 

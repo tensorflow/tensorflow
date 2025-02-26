@@ -19,9 +19,11 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
+#include "xla/stream_executor/device_description.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 
@@ -267,7 +270,21 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
 struct TritonXLAExtractInsertToTritonPass
     : public impl::TritonXLAExtractInsertToTritonPassBase<
           TritonXLAExtractInsertToTritonPass> {
+  explicit TritonXLAExtractInsertToTritonPass(
+      const TritonXLAExtractInsertToTritonPassOptions& options)
+      : TritonXLAExtractInsertToTritonPassBase(options) {}
+
+  explicit TritonXLAExtractInsertToTritonPass(
+      const ::xla::se::DeviceDescription& device_description, bool tma_enabled)
+      : device_description(device_description), tma_enabled(tma_enabled) {}
+
   void runOnOperation() override {
+    if (!gpu_device_info_.empty()) {
+      ::xla::se::GpuDeviceInfoProto device_info;
+      CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
+                                                       &device_info));
+      device_description = ::xla::se::DeviceDescription(device_info);
+    }
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
     patterns.add<RewriteExtract, RewriteFuncOp, RewriteInsert, RewriteTile>(
@@ -277,12 +294,25 @@ struct TritonXLAExtractInsertToTritonPass
       signalPassFailure();
     }
   }
+
+  ::xla::se::DeviceDescription device_description;
+  bool tma_enabled;
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass() {
-  return std::make_unique<TritonXLAExtractInsertToTritonPass>();
+std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
+    const std::string& gpu_device_info, bool tma_enabled) {
+  TritonXLAExtractInsertToTritonPassOptions options;
+  options.gpu_device_info_ = gpu_device_info;
+  options.tma_enabled_ = tma_enabled;
+  return std::make_unique<TritonXLAExtractInsertToTritonPass>(options);
+}
+
+std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
+    const ::xla::se::DeviceDescription& device_description, bool tma_enabled) {
+  return std::make_unique<TritonXLAExtractInsertToTritonPass>(
+      device_description, tma_enabled);
 }
 
 }  // namespace mlir::triton::xla

@@ -18,17 +18,23 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace mlir::triton::xla {
 
 #define GEN_PASS_DECL
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass();
+std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
+    const std::string& gpu_device_info = "", bool tma_enabled = false);
+std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
+    const stream_executor::DeviceDescription& device_description,
+    bool tma_enabled);
 std::unique_ptr<mlir::Pass> CreateGeneralizeKernelSignaturePass();
 std::unique_ptr<mlir::Pass> CreateSparseAddEncodingPass(
     int32_t num_warps = 4, int32_t threads_per_warp = 32, int32_t num_ctas = 1);

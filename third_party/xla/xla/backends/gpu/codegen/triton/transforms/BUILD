@@ -47,6 +47,7 @@ cc_library(
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/stream_executor:device_description",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",

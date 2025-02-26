@@ -1,4 +1,6 @@
-// RUN: xla-opt %s -split-input-file -triton-xla-extract-insert-to-triton | FileCheck %s
+// RUN: xla-opt %s -split-input-file \
+// RUN: -triton-xla-extract-insert-to-triton="gpu_device_info='cuda_compute_capability {major: 6}' tma_enabled=false" \
+// RUN: | FileCheck %s
 func.func @lower_tile_extract_insert(%arg0: tensor<512x128xbf16>,
           %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
   %cst = arith.constant 1 : i32
