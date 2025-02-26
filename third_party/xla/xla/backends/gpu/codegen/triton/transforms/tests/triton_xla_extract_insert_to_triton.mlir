@@ -1,5 +1,5 @@
 // RUN: xla-opt %s -split-input-file -triton-xla-extract-insert-to-triton | FileCheck %s
-tt.func @lower_tile_extract_insert(%arg0: tensor<512x128xbf16>,
+func.func @lower_tile_extract_insert(%arg0: tensor<512x128xbf16>,
           %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
   %cst = arith.constant 1 : i32
   %tiled_tensor_in = triton_xla.tile %arg0 [0, 0] [16, 64] [128, 1]
@@ -8,9 +8,10 @@ tt.func @lower_tile_extract_insert(%arg0: tensor<512x128xbf16>,
     : !triton_xla.tiled_tensor<16x64|256x256xbf16>
   %extracted_tensor = triton_xla.extract %tiled_tensor_in [%cst, %cst]
     : tensor<512x128xbf16> to tensor<16x64xbf16>
-  %updated_tensor = triton_xla.insert %extracted_tensor into %tiled_tensor_out [%cst, %cst]
-  : tensor<16x64xbf16> into tensor<256x256xbf16>
-  tt.return %updated_tensor : tensor<256x256xbf16>
+  %updated_tensor = triton_xla.insert %extracted_tensor into
+    %tiled_tensor_out [%cst, %cst]
+    : tensor<16x64xbf16> into tensor<256x256xbf16>
+  func.return %updated_tensor : tensor<256x256xbf16>
 }
 
 // CHECK-LABEL: func @lower_tile_extract_insert
@@ -21,4 +22,27 @@ tt.func @lower_tile_extract_insert(%arg0: tensor<512x128xbf16>,
 // CHECK:         %[[LOAD:.*]] = tt.load %[[ADV_0]]
 // CHECK:         %[[ADV_1:.*]] = tt.advance %[[PTR_1]]
 // CHECK:         tt.store %[[ADV_1]], %[[LOAD]]
-// CHECK:       tt.return
+// CHECK:       return
+
+// -----
+
+func.func @non_perfect_tile_shape(
+                %arg0: tensor<300x300xbf16>, %arg1: tensor<300x300xbf16>)
+                -> tensor<300x300xbf16> {
+  %cst = arith.constant 0 : i32
+  %tiled_tensor_in = triton_xla.tile %arg0 [0, 0] [5, 5] [1, 1]
+    : !triton_xla.tiled_tensor<8x8|300x300xbf16>
+  %tiled_tensor_out = triton_xla.tile %arg1 [0, 0] [5, 5] [1, 1]
+    : !triton_xla.tiled_tensor<8x8|300x300xbf16>
+  %extracted_tensor = triton_xla.extract %tiled_tensor_in [%cst, %cst]
+    : tensor<300x300xbf16> to tensor<8x8xbf16>
+  %updated_tensor = triton_xla.insert %extracted_tensor into
+    %tiled_tensor_out [%cst, %cst] : tensor<8x8xbf16> into tensor<300x300xbf16>
+  func.return %updated_tensor : tensor<300x300xbf16>
+}
+
+// CHECK-LABEL: func @non_perfect_tile_shape
+// CHECK:        tt.load {{.*}} {
+// CHECK-SAME:     boundaryCheck = array<i32: 0, 1>, padding = 1 : i32
+// CHECK:        tt.store {{.*}}, {{.*}} {
+// CHECK-SAME:     boundaryCheck = array<i32: 0, 1>
