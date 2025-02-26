@@ -620,6 +620,7 @@ lit_test_suite(
 #         "@llvm-project//mlir:AllExtensions",
 #         "@llvm-project//mlir:FuncDialect",
 #         "@llvm-project//mlir:MlirOptLib",
+#         "@llvm-project//mlir:TensorDialect",
 #         "@triton//:AllPassesAndDialects",
 #     ],
 # )

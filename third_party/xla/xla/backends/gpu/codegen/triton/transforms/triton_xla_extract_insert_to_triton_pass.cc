@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -267,6 +268,51 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
   }
 };
 
+// Rewriting tensor::InsertOp as tt.store.
+struct RewriteScalarInsert : mlir::OpRewritePattern<tensor::InsertOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      tensor::InsertOp op, mlir::PatternRewriter& rewriter) const override {
+    if (op.getDest().getType().getRank() != 0) {
+      return rewriter.notifyMatchFailure(op, "Expected dest to be scalar.");
+    }
+    ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
+    auto ptr_type = GetTensorPtrType(builder, op.getScalar().getType());
+    auto cast_dst_to_tensor_ptr_type =
+        builder.create<mlir::UnrealizedConversionCastOp>(ptr_type, op.getDest())
+            .getResult(0);
+    builder.create<StoreOp>(cast_dst_to_tensor_ptr_type, op.getScalar(),
+                            /*boundary_checks=*/std::vector<int32_t>{},
+                            CacheModifier::NONE, EvictionPolicy::NORMAL);
+    rewriter.replaceOp(op, op.getDest());
+    return mlir::success();
+  }
+};
+
+struct RewriteScalarExtract : mlir::OpRewritePattern<tensor::ExtractOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  // Rewriting ExtractOp as tt.advance + tt.store.
+  mlir::LogicalResult matchAndRewrite(
+      tensor::ExtractOp op, mlir::PatternRewriter& rewriter) const override {
+    if (op.getTensor().getType().getRank() != 0) {
+      return rewriter.notifyMatchFailure(op, "Expected src to be scalar.");
+    }
+    ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
+    auto ptr_type = GetTensorPtrType(builder, op.getType());
+    auto cast_src_to_tensor_ptr_type =
+        builder
+            .create<mlir::UnrealizedConversionCastOp>(ptr_type, op.getTensor())
+            .getResult(0);
+    auto scalar =
+        builder.create<LoadOp>(cast_src_to_tensor_ptr_type, CacheModifier::NONE,
+                               EvictionPolicy::NORMAL, /*isVolatile=*/false);
+    rewriter.replaceOp(op, scalar.getResult());
+    return mlir::success();
+  }
+};
+
 struct TritonXLAExtractInsertToTritonPass
     : public impl::TritonXLAExtractInsertToTritonPassBase<
           TritonXLAExtractInsertToTritonPass> {
@@ -287,8 +333,16 @@ struct TritonXLAExtractInsertToTritonPass
     }
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<RewriteExtract, RewriteFuncOp, RewriteInsert, RewriteTile>(
-        mlir_context);
+    // clang-format off
+    patterns.add<
+        RewriteExtract,
+        RewriteFuncOp,
+        RewriteInsert,
+        RewriteScalarExtract,
+        RewriteScalarInsert,
+        RewriteTile
+    >( mlir_context);
+    // clang-format on
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
