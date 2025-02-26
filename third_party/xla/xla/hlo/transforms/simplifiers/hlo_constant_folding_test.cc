@@ -422,6 +422,33 @@ TEST_F(HloConstantFoldingTest, FoldOpsWhereOneOperandIsBroadcast) {
                                   )));
 }
 
+TEST_F(HloConstantFoldingTest, FoldOpsWhereOneOperandIsIota) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  ENTRY entry {
+    iota = f32[4] iota(), iota_dimension=0
+    not_folded1 = add(f32[4] iota,
+                      f32[4] iota)
+    folded1 = add(f32[4] iota,
+                  f32[4] constant({0,1,2,3}))
+    folded2 = add(f32[4] constant({0,1,2,3}),
+                  f32[4] iota)
+    ROOT root = tuple(iota, not_folded1, folded1, folded2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Iota(),                     //
+                                  m::Add(m::Iota(), m::Iota()),  //
+                                  m::Constant(),                 //
+                                  m::Constant())));
+}
+
 TEST_F(HloConstantFoldingTest, FoldInt4Ops) {
   const char* const kModuleStr = R"(
   HloModule test
