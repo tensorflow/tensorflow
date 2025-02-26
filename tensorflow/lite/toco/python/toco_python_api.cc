@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/op.h"
