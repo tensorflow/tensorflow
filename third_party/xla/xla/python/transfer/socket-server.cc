@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/python/transfer/event_loop.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
@@ -42,8 +44,31 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
   explicit SocketNetworkState(std::shared_ptr<PullTable> table,
                               std::shared_ptr<BulkTransportFactory> factory,
                               int fd)
-      : table_(std::move(table)), factory_(std::move(factory)), fd_(fd) {}
+      : table_(std::move(table)), factory_(std::move(factory)), fd_(fd) {
+    is_connected_ = true;
+  }
+  explicit SocketNetworkState(std::shared_ptr<PullTable> table,
+                              std::shared_ptr<BulkTransportFactory> factory,
+                              const SocketAddress& addr)
+      : table_(std::move(table)),
+        factory_(std::move(factory)),
+        fd_(-1),
+        remote_addr_(addr) {
+    StartConnect();
+  }
   ~SocketNetworkState() override { close(fd_); }
+
+  void StartConnect() {
+    int send_fd = socket(remote_addr_.address().sa_family,
+                         SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    connect(send_fd, reinterpret_cast<const struct sockaddr*>(&remote_addr_),
+            sizeof(remote_addr_));
+    int value = 1;
+    CHECK_GE(
+        setsockopt(send_fd, SOL_SOCKET, SO_ZEROCOPY, &value, sizeof(value)), 0)
+        << strerror(errno) << " " << errno;
+    fd_ = send_fd;
+  }
 
   void PopulatePollInfo(pollfd& events) override {
     events.fd = fd_;
@@ -54,6 +79,23 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
   }
 
   bool HandleEvents(const pollfd& events) override {
+    if (!is_connected_) {
+      // poll() may remind us that fd_ is invalid while waiting to reconnect.
+      if (fd_ == -1) {
+        return true;
+      }
+      // If HUP with an error happens, then schedule a reconnect.
+      if ((events.revents & POLLHUP) && (events.revents & POLLERR)) {
+        fd_ = -1;
+        loop()->ScheduleAt(absl::Now() + absl::Seconds(2),
+                           [this]() { StartConnect(); });
+        return true;
+      }
+      if (!(events.revents & POLLOUT)) {
+        return true;
+      }
+      is_connected_ = true;
+    }
     if (events.revents & POLLIN) {
       ssize_t recv_size =
           recv(fd_, network_buffer_.get(), 4096 - recv_count_, 0);
@@ -118,6 +160,7 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
   }
 
   bool can_send_ = false;
+  bool is_connected_ = false;
   size_t write_offset_ = 0;
   std::deque<std::string> frames_;
 
@@ -312,7 +355,8 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
   absl::Mutex mu_;
   size_t num_refs_ = 0;
   bool peer_is_closed_ = false;
-  int fd_;
+  int fd_ = -1;
+  SocketAddress remote_addr_;
   size_t recv_count_ = 0;
   std::unique_ptr<char[]> network_buffer_ =
       std::unique_ptr<char[]>(new char[4096]);
@@ -358,16 +402,8 @@ absl::Status SocketServer::Start(
 
 tsl::RCReference<SocketServer::Connection> SocketServer::Connect(
     const SocketAddress& other_addr) {
-  int send_fd = socket(other_addr.address().sa_family,
-                       SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-  connect(send_fd, reinterpret_cast<const struct sockaddr*>(&other_addr),
-          sizeof(other_addr));
-  int value = 1;
-  CHECK_GE(setsockopt(send_fd, SOL_SOCKET, SO_ZEROCOPY, &value, sizeof(value)),
-           0)
-      << strerror(errno) << " " << errno;
   auto* local_ =
-      new SocketNetworkState(pull_table_, bulk_transport_factory_, send_fd);
+      new SocketNetworkState(pull_table_, bulk_transport_factory_, other_addr);
   local_->Register();
   local_->StartBulkTransporting();
   return tsl::MakeRef<Connection>(local_);

@@ -22,11 +22,13 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/python/transfer/event_loop.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/test.h"
 
 namespace aux {
 namespace {
@@ -49,6 +51,31 @@ TEST(ServerTest, Basic) {
   auto [s, cd] = ChunkDestination::MakeStringDest();
   auto conn = servera->Connect(serverb->addr());
   conn->Pull(uuid, buffer_id, std::move(cd));
+
+  CHECK_EQ(s.Await().value(), msg);
+  absl::SleepFor(absl::Seconds(2));
+  conn = {};
+}
+
+TEST(ServerTest, DelayedConnect) {
+  auto addra = SocketAddress::Parse("0.0.0.0:0").value();
+  int port = tsl::testing::PickUnusedPortOrDie();
+  auto addrb = SocketAddress::Parse(absl::StrCat("0.0.0.0:", port)).value();
+  auto local_factory = BulkTransportFactory::CreateLocal();
+  auto servera = std::make_shared<SocketServer>();
+  CHECK_OK(servera->Start(addra, local_factory));
+
+  uint64_t uuid = 5678;
+  int buffer_id = 0;
+
+  auto [s, cd] = ChunkDestination::MakeStringDest();
+  auto conn = servera->Connect(addrb);
+  conn->Pull(uuid, buffer_id, std::move(cd));
+
+  auto serverb = std::make_shared<SocketServer>();
+  CHECK_OK(serverb->Start(addrb, local_factory));
+  std::string msg("secret message");
+  serverb->AwaitPull(uuid, PullTable::MakeStringEntry({msg}));
 
   CHECK_EQ(s.Await().value(), msg);
   absl::SleepFor(absl::Seconds(2));
