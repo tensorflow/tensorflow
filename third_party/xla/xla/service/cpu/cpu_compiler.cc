@@ -663,8 +663,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   dynamic_padder_options.shape_check_mode =
       DynamicDimensionInference::ShapeCheckMode::kIgnore;
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
-  pipeline.AddPass<SelectAndScatterExpander>();
-  pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
 
   // Run fp16 dots/convs in fp32 and then downcast the result to fp16.
@@ -681,8 +680,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   // Run the following passes to a fixed point.
-  [&pipeline =
-       pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
+  [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification"),
+   module] {
     AddHloVerifier(&pipeline, HloVerifierOpts{},
                    /*debug_only=*/true);
 
@@ -715,9 +714,16 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<ReshapeMover>();
-    pipeline.AddPass<HloConstantFolding>();
+    pipeline.AddPass<HloConstantFolding>(
+        options::FoldAllConstants(module->config())
+            ? HloConstantFolding::Level::kAgressive
+            : HloConstantFolding::Level::kDefault);
     pipeline.AddPass<ConditionalSimplifier>();
   }();
+
+  pipeline.AddPass<SelectAndScatterExpander>();
+  pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+
   pipeline.AddPass<BitcastDtypesExpander>();
 
   pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {

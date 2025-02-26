@@ -142,10 +142,11 @@ absl::Status RecursivelyRemoveDeadInstructionAndDeadOperands(
 absl::StatusOr<bool> HloConstantFolding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  // Limit the constant folding to 0 iterations to skip folding loops. This
-  // retains the behavior from before while loop support in HloEvaluator and may
-  // be revised.
-  auto evaluator = std::make_unique<HloEvaluator>(/*max_loop_iterations=*/0);
+  // Limit the constant folding to 0 iterations to skip folding loops in the
+  // default case. This retains the behavior from before while loop support in
+  // HloEvaluator and may be revised.
+  auto evaluator = std::make_unique<HloEvaluator>(
+      /*max_loop_iterations=*/level_ == Level::kAgressive ? -1 : 0);
   // fast-path lets us e.g. use Eigen for matmuls.
   evaluator->set_use_fast_path(true);
 
@@ -178,8 +179,10 @@ absl::StatusOr<bool> HloConstantFolding::Run(
       //  - So the only remaining case is where some but not all operands are
       //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
       //
-      if (!AnyOperandsConstant(instruction) ||
-          !AllOperandsConstantOrBroadcastConstant(instruction)) {
+      if (level_ == Level::kDefault && !AnyOperandsConstant(instruction)) {
+        continue;
+      }
+      if (!AllOperandsConstantOrBroadcastConstant(instruction)) {
         continue;
       }
 
@@ -217,7 +220,8 @@ absl::StatusOr<bool> HloConstantFolding::Run(
       }
 
       // Skip while loops as they can significantly increase compile times.
-      if (instruction->opcode() == HloOpcode::kWhile) {
+      if (level_ == Level::kDefault &&
+          instruction->opcode() == HloOpcode::kWhile) {
         continue;
       }
 
@@ -244,7 +248,7 @@ absl::StatusOr<bool> HloConstantFolding::Run(
       }
 
       // Don't constant fold unless output and operand sizes are small.
-      if (instruction->shape().IsArray()) {
+      if (level_ == Level::kDefault && instruction->shape().IsArray()) {
         int64_t elements_in_operands = 0;
         for (HloInstruction* operand : instruction->operands()) {
           if (operand->shape().IsArray()) {
