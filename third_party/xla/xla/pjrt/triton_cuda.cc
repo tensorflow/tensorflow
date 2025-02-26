@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/LLVMContext.h"
@@ -46,7 +45,6 @@ limitations under the License.
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
@@ -60,17 +58,13 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
-#include "mlir/Transforms/Passes.h"
+#include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/pjrt/triton.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-#include "triton/Conversion/TritonGPUToLLVM/Passes.h"
-#include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
-#include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
-#include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace xla::triton {
@@ -81,77 +75,12 @@ absl::Status TritonToLLVM(
     mlir::ModuleOp module, absl::string_view arch_name, int num_warps,
     int num_ctas, int num_stages,
     mlir::triton::nvidia_gpu::ClusterInfo* out_cluster_info) {
-  std::pair<std::string, std::string> split = absl::StrSplit(arch_name, '.');
-  int cc = std::stoi(split.first) * 10 + std::stoi(split.second);
-
-  constexpr int threadsPerWarp = 32;
-
   mlir::PassManager pm(module.getContext());
   pm.enableVerifier();
-
-  // Based on make_ttir() in triton/third_party/nvidia/backend/compiler.py
-  pm.addPass(mlir::createInlinerPass());
-  pm.addPass(mlir::triton::createRewriteTensorPointerPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::triton::createCombineOpsPass());
-  pm.addPass(mlir::triton::createReorderBroadcastPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm.addPass(mlir::createSymbolDCEPass());
-  pm.addPass(mlir::triton::createLoopUnrollPass());
-
-  // Based on make_tgir() in triton/third_party/nvidia/backend/compiler.py
-  pm.addPass(mlir::triton::createConvertTritonToTritonGPUPass(
-      absl::StrFormat("cuda:%u", cc), num_warps, threadsPerWarp, num_ctas));
-  pm.addPass(mlir::triton::gpu::createTritonGPUCoalesce());
-  if (cc / 10 >= 8) {
-    pm.addPass(mlir::triton::gpu::createTritonGPUF32DotTC());
-  }
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(out_cluster_info));
-  pm.addPass(mlir::triton::gpu::createTritonGPURemoveLayoutConversions());
-  pm.addPass(mlir::triton::gpu::createTritonGPUOptimizeThreadLocality());
-  pm.addPass(mlir::triton::gpu::createTritonGPUAccelerateMatmul());
-  pm.addPass(mlir::triton::gpu::createTritonGPURemoveLayoutConversions());
-  pm.addPass(
-      mlir::triton::gpu::createTritonGPUOptimizeDotOperands({cc / 10 >= 8}));
-  pm.addPass(mlir::createCSEPass());
-  if (cc / 10 >= 8) {
-    pm.addPass(mlir::triton::gpu::createTritonGPUOptimizeAccumulatorInit());
-    pm.addPass(mlir::triton::gpu::createTritonGPUCombineTensorSelectAndIf());
-    pm.addPass(mlir::triton::gpu::createTritonGPULoopScheduling({num_stages}));
-    pm.addPass(mlir::triton::gpu::createTritonGPUPipeline({num_stages}));
-  }
-  pm.addPass(mlir::triton::gpu::createTritonGPUPrefetch());
-  pm.addPass(
-      mlir::triton::gpu::createTritonGPUOptimizeDotOperands({cc / 10 >= 8}));
-  pm.addPass(mlir::triton::gpu::createTritonGPUCoalesceAsyncCopy());
-  pm.addPass(mlir::triton::gpu::createTritonGPURemoveLayoutConversions());
-  pm.addPass(mlir::triton::gpu::createTritonGPUReduceDataDuplication());
-  pm.addPass(mlir::triton::gpu::createTritonGPUReorderInstructions());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createSymbolDCEPass());
-  if (cc / 10 >= 9) {
-    pm.addPass(mlir::createTritonNvidiaGPUFenceInsertionPass(cc));
-    pm.addPass(mlir::createTritonNvidiaGPUTMALoweringPass());
-  }
-  pm.addPass(mlir::createCanonicalizerPass());
-
-  // Based on make_llir() in triton/third_party/nvidia/backend/compiler.py
-  // TODO(slebedev): Uncomment once we upgrade Triton internally.
-  // pm.addPass(mlir::triton::NVIDIA::createDecomposeUnsupportedConversionsPass());
-  pm.addPass(mlir::triton::gpu::createTritonGPUCombineTensorSelectAndIf());
-  pm.addPass(mlir::createSCFToControlFlowPass());
-  pm.addPass(mlir::createConvertIndexToLLVMPass());
-  pm.addPass(mlir::triton::gpu::createAllocateSharedMemoryPass());
-  pm.addPass(mlir::triton::gpu::createTritonGPUGlobalScratchAllocationPass());
-  pm.addPass(mlir::triton::createConvertTritonGPUToLLVMPass(cc));
-  pm.addPass(mlir::triton::createConvertNVGPUToLLVMPass());
-  pm.addPass(mlir::createArithToLLVMConversionPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createSymbolDCEPass());
-
-  // TODO(slebedev): Consider adding line info to align with Triton.
+  TF_RETURN_IF_ERROR(
+      xla::gpu::CreateTritonPipeline(&pm, std::string(arch_name), num_warps,
+                                     num_ctas, num_stages, *out_cluster_info,
+                                     /*is_xla_fusion=*/false));
   return pm.run(module).succeeded()
              ? absl::OkStatus()
              : absl::InternalError("Failed to compile Triton IR to LLVM IR");

@@ -1086,6 +1086,7 @@ cc_library(
             "@llvm-project//mlir:SCFToControlFlow",
             "@llvm-project//mlir:ToLLVMIRTranslation",
             "@llvm-project//mlir:Transforms",
+            "//xla/backends/gpu/codegen/triton:compilation_pipeline",
             "//xla/tsl/platform:errors",
             "//xla/tsl/platform:statusor",
             "@triton//:TritonDialects",
