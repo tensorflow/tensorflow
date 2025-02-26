@@ -45,9 +45,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/executable.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -56,7 +54,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -388,7 +385,11 @@ HloRunnerPjRt::ExecuteWithDeviceBuffers(
   TF_ASSIGN_OR_RETURN(
       auto output_buffers,
       executable->ExecuteSharded(argument_ptrs, devices[kDeviceIdx],
-                                 execute_options, returned_future, false));
+                                 execute_options, returned_future, true));
+
+  if (returned_future.has_value()) {
+    TF_RETURN_IF_ERROR(returned_future->Await());
+  }
 
   return output_buffers;
 }
@@ -544,9 +545,17 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                     DeviceIdForInvocation(*device_assignment, i)));
             pool.Schedule([&per_replica_results, i, executable,
                            args = argument_buffer_slices[i], device_ptr]() {
+              std::optional<PjRtFuture<>> returned_future = {};
               per_replica_results[i] =
                   executable->pjrt_loaded_executable()->ExecuteSharded(
-                      args, device_ptr, {});
+                      args, device_ptr, {}, /*returned_future=*/returned_future,
+                      /*fill_future=*/true);
+              if (returned_future.has_value()) {
+                if (const absl::Status& status = returned_future->Await();
+                    !status.ok()) {
+                  per_replica_results[i] = status;
+                }
+              }
             });
           }
         }
