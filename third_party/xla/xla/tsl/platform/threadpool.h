@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/threadpool_interface.h"
@@ -74,15 +74,15 @@ class ThreadPool {
   class SchedulingParams {
    public:
     explicit SchedulingParams(SchedulingStrategy strategy,
-                              absl::optional<int64_t> cost_per_unit,
-                              absl::optional<int64_t> block_size)
+                              std::optional<int64_t> cost_per_unit,
+                              std::optional<int64_t> block_size)
         : strategy_(strategy),
           cost_per_unit_(cost_per_unit),
           block_size_(block_size) {}
 
     SchedulingStrategy strategy() const { return strategy_; }
-    absl::optional<int64_t> cost_per_unit() const { return cost_per_unit_; }
-    absl::optional<int64_t> block_size() const { return block_size_; }
+    std::optional<int64_t> cost_per_unit() const { return cost_per_unit_; }
+    std::optional<int64_t> block_size() const { return block_size_; }
 
    private:
     // The underlying Scheduling Strategy for which this instance contains
@@ -92,11 +92,11 @@ class ThreadPool {
     // The estimated cost per unit of work in number of CPU cycles (or
     // nanoseconds if not CPU-bound). Only applicable for Adaptive scheduling
     // strategy.
-    absl::optional<int64_t> cost_per_unit_;
+    std::optional<int64_t> cost_per_unit_;
 
     // The block size of each shard. Only applicable for Fixed Block Size
     // scheduling strategy.
-    absl::optional<int64_t> block_size_;
+    std::optional<int64_t> block_size_;
   };
 
   // Constructs a pool that contains "num_threads" threads with specified

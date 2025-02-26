@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_HLO_TRANSLATE_HLO_TO_MHLO_HLO_FUNCTION_IMPORTER_H_
 
 #include <cstdint>
+#include <optional>
 #include <unordered_map>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"

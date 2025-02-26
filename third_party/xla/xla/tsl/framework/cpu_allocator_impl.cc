@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <optional>
 
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/allocator_registry.h"
@@ -156,8 +157,10 @@ class CPUAllocator : public Allocator {
         /*level=*/tsl::profiler::TraceMeLevel::kInfo);
   }
 
-  absl::optional<AllocatorStats> GetStats() override {
-    if (!cpu_allocator_collect_stats) return absl::nullopt;
+  std::optional<AllocatorStats> GetStats() override {
+    if (!cpu_allocator_collect_stats) {
+      return std::nullopt;
+    }
     mutex_lock l(mu_);
     return stats_;
   }

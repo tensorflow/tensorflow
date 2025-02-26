@@ -155,7 +155,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:blocking_counter",

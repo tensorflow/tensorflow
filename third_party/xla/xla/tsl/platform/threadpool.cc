@@ -18,6 +18,7 @@ limitations under the License.
 #include <cfenv>  // NOLINT
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +29,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "absl/types/optional.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/blocking_counter.h"
