@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
@@ -497,6 +498,19 @@ absl::Status RunShardedHloWithClient(xla::PjRtClient& client) {
       client, debug_options, preproc_options, raw_compile_options,
       running_options, {GetHloPath("sharded_16_devices.hlo")},
       InputFormat::kText);
+}
+
+TEST_F(FunctionalHloRunnerTest, PreservesAutoLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloModuleAndArguments hlo_module_and_arguments,
+      FunctionalHloRunner::LoadHloModuleAndArguments(
+          GetHloPath("single_gemm_fusion.hlo"), InputFormat::kText));
+  const ComputationLayout& layout =
+      hlo_module_and_arguments.hlo_module->config().entry_computation_layout();
+  EXPECT_EQ(layout.parameter_count(), 2);
+  EXPECT_FALSE(layout.parameter_layouts()[0].AnyLayoutIsSet());
+  EXPECT_TRUE(layout.parameter_layouts()[1].AnyLayoutIsSet());
+  EXPECT_FALSE(layout.result_layout().AnyLayoutIsSet());
 }
 
 TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {

@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/translate/hlo_to_mhlo/translate.h"
 #include "xla/hlo/translate/stablehlo.h"
@@ -509,8 +510,11 @@ FunctionalHloRunner::LoadHloModuleAndArguments(absl::string_view hlo_file,
   HloModuleAndArguments hlo_module_and_arguments;
   switch (input_format) {
     case InputFormat::kText: {
-      TF_ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
-                          ReadModuleFromHloTextFile(hlo_file));
+      TF_ASSIGN_OR_RETURN(
+          hlo_module_and_arguments.hlo_module,
+          ReadModuleFromHloTextFile(
+              hlo_file, DebugOptions::default_instance(),
+              HloParserOptions().set_keep_module_auto_layouts(true)));
       break;
     }
     case InputFormat::kProtoText: {
