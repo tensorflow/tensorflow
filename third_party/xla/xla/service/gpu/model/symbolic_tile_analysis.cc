@@ -356,6 +356,44 @@ void SortTiledHloInstructionsInPostOrder(
 
 }  // anonymous namespace
 
+/*static*/ absl::StatusOr<SymbolicTileAnalysis::RootIndexing>
+SymbolicTileAnalysis::GetRootIndexing(const HloFusionAdaptor& fusion,
+                                      MLIRContext* ctx) {
+  auto fusion_adaptor_roots = fusion.GetRoots();
+  // Check if there is just one root without any users inside `fusion`. If there
+  // is just one such root, it implies that any other root is an ancestor of
+  // this root.
+  int64_t real_root_index = -1;
+  for (auto [idx, fusion_adaptor_root] :
+       llvm::enumerate(fusion_adaptor_roots)) {
+    if (fusion_adaptor_root.GetUsers().empty()) {
+      if (real_root_index != -1) {
+        return absl::FailedPreconditionError(
+            "Only simple multi-output fusions with one real root are "
+            "supported.");
+      }
+      real_root_index = idx;
+    }
+  }
+  CHECK_NE(real_root_index, -1)
+      << "Each fusion should have at least one root without users.";
+
+  // Keep track of the roots separately. If there is just a single root, we
+  // don't need that, as it will necessarily appear last in def-before-use
+  // order. But with multiple roots, we can have roots that are also ancestors
+  // of another root.
+  absl::InlinedVector<const HloInstruction*, 2> roots;
+  roots.reserve(fusion_adaptor_roots.size());
+  absl::c_transform(
+      fusion_adaptor_roots, std::back_inserter(roots),
+      [&](const HloInstructionAdaptor instr) { return &instr.instruction(); });
+
+  auto indexing_map = CreateIdentityMap(roots[real_root_index]->shape(), ctx);
+  return RootIndexing{/*real_root_index=*/real_root_index,
+                      /*roots=*/std::move(roots),
+                      /*real_root_indexing=*/std::move(indexing_map)};
+}
+
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeComputation(
     const HloComputation& computation, MLIRContext* ctx,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
@@ -364,44 +402,18 @@ void SortTiledHloInstructionsInPostOrder(
       *fusion, ctx, emitter_specific_constraints_builder);
 }
 
-/*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusion(
+/*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusionImpl(
     const HloFusionAdaptor& fusion, MLIRContext* ctx,
+    const RootIndexing& root_indexing,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
   OrderedUniquePtrValueHashSet<SymbolicTiledHloInstruction>
       tiled_hlo_instructions_set;
 
-  auto fusion_adaptor_roots = fusion.GetRoots();
-  const HloInstruction* real_root = nullptr;
-  // Check if there is just one root without any users inside `fusion`. If there
-  // is just one such root, it implies that any other root is an ancestor of
-  // this root.
-  for (auto& fusion_adaptor_root : fusion_adaptor_roots) {
-    if (fusion_adaptor_root.GetUsers().empty()) {
-      if (real_root) {
-        return FusionDecision::Forbid(
-                   "Only simple multi-output fusions with one real root are "
-                   "supported. ")
-               << fusion.ToString();
-      }
-      real_root = &fusion_adaptor_root.instruction();
-    }
-  }
-  // Each fusion should have at least one root without users.
-  CHECK(real_root != nullptr);
-  // Keep track of the roots separately. If there is just a single root, we
-  // don't need that, as it will necessarily appear last in def-before-use
-  // order. But with multiple roots, we can have roots that are also ancestors
-  // of another root.
-  std::vector<const HloInstruction*> roots;
-  roots.reserve(fusion_adaptor_roots.size());
-  absl::c_transform(
-      fusion_adaptor_roots, std::back_inserter(roots),
-      [&](const HloInstructionAdaptor instr) { return &instr.instruction(); });
   // TODO(b/372454662): Once we get rid of the restriction of only one real
   // root, this needs to be adapted.
   auto [root_tiled_hlo, _] = tiled_hlo_instructions_set.Insert(
       std::make_unique<SymbolicTiledHloInstruction>(
-          real_root, CreateIdentityMap(real_root->shape(), ctx)));
+          root_indexing.GetRealRoot(), root_indexing.real_root_indexing));
 
   std::vector<SymbolicTiledHloInstruction*> worklist = {root_tiled_hlo};
 
@@ -469,11 +481,21 @@ void SortTiledHloInstructionsInPostOrder(
     emitter_specific_constraints =
         emitter_specific_constraints_builder(tiled_hlo_instructions, fusion);
   }
-
   return SymbolicTileAnalysis(
-      std::move(tiled_hlo_instructions), std::move(roots),
+      std::move(tiled_hlo_instructions), root_indexing,
       std::get<ConstraintExpression>(std::move(constraints_or)),
       std::move(emitter_specific_constraints), ctx);
+}
+
+/*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusion(
+    const HloFusionAdaptor& fusion, MLIRContext* ctx,
+    EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
+  auto root_indexing_or = GetRootIndexing(fusion, ctx);
+  if (!root_indexing_or.ok()) {
+    return FusionDecision::Forbid(root_indexing_or.status().message());
+  }
+  return AnalyzeFusionImpl(fusion, ctx, *root_indexing_or,
+                           emitter_specific_constraints_builder);
 }
 
 absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
@@ -746,10 +768,11 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
         parameters_with_offset_indexing.insert(symbolic_tiled_hlo->hlo());
       }
     }
-    if (roots_.size() > 1) {
+    if (root_indexing_.roots.size() > 1) {
       // We need tile_offset_indexing to check whether we can reuse a tile for
       // another root.
-      parameters_with_offset_indexing.insert(roots_.begin(), roots_.end());
+      parameters_with_offset_indexing.insert(root_indexing_.roots.begin(),
+                                             root_indexing_.roots.end());
     }
   }
 
@@ -812,8 +835,9 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
     symbolic_to_tiled_hlo_map[symbolic_tiled_hlo.get()] = tiled_hlo;
   }
   auto tiled_hlo_instructions = tiled_hlo_instructions_set.ExtractData();
-  TF_ASSIGN_OR_RETURN(auto tiled_roots,
-                      InitializeTiledRoots(roots_, tiled_hlo_instructions));
+  TF_ASSIGN_OR_RETURN(
+      auto tiled_roots,
+      InitializeTiledRoots(root_indexing_.roots, tiled_hlo_instructions));
   return TiledHloComputation::FromSortedTiledHloInstructions(
       std::move(tiled_hlo_instructions), tiled_roots,
       output_tiling_info.num_output_tiles_per_dim);

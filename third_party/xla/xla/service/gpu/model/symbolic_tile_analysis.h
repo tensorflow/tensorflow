@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -108,10 +109,14 @@ class SymbolicTileAnalysis {
 
   // Returns the roots of the computation in increasing order of their output
   // index.
-  const std::vector<const HloInstruction*>& GetRoots() const { return roots_; }
+  absl::Span<const HloInstruction* const> GetRoots() const {
+    return root_indexing_.roots;
+  }
 
   // Returns the root of the computation at output index `idx`.
-  const HloInstruction* GetRoot(int64_t idx) const { return roots_[idx]; }
+  const HloInstruction* GetRoot(int64_t idx) const {
+    return root_indexing_.roots[idx];
+  }
 
   // Returns the number of tile parameters in this symbolic analysis.
   // TODO(b/390569102): This assumes that there is only one root that matters
@@ -162,27 +167,50 @@ class SymbolicTileAnalysis {
   absl::StatusOr<std::vector<Tiling>> GetGoodTilings() const;
 
  private:
+  // Holds the indexing information for the roots of the computation.
+  struct RootIndexing {
+    const HloInstruction* GetRealRoot() const { return roots[real_root_index]; }
+
+    // ID of the root that defines the indexing for other roots.
+    int64_t real_root_index = -1;
+
+    // `roots` contains the computation roots in increasing order of their
+    // output index.
+    absl::InlinedVector<const HloInstruction*, 2> roots;
+
+    // Indexing map to the "real" root.
+    IndexingMap real_root_indexing;
+  };
+
   SymbolicTileAnalysis(
       std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
           symbolic_tiled_hlo_instructions,
-      std::vector<const HloInstruction*> roots,
-      ConstraintExpression constraints,
+      const RootIndexing& root_indexing, ConstraintExpression constraints,
       std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints,
       mlir::MLIRContext* context)
       : symbolic_tiled_hlo_instructions_(
             std::move(symbolic_tiled_hlo_instructions)),
-        roots_(std::move(roots)),
+        root_indexing_(std::move(root_indexing)),
         constraints_(std::move(constraints)),
         emitter_specific_constraints_(std::move(emitter_specific_constraints)),
         context_(context) {}
+
+  // Computes indexing information for the roots of the computation.
+  static absl::StatusOr<RootIndexing> GetRootIndexing(
+      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
+
+  static SymbolicTileAnalysisOrError AnalyzeFusionImpl(
+      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx,
+      const RootIndexing& root_indexing,
+      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
+          nullptr);
 
   // The tiled HLO instructions in def-before-use order.
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
       symbolic_tiled_hlo_instructions_;
 
-  // `roots` contains the computation roots in increasing order of their output
-  // index.
-  std::vector<const HloInstruction*> roots_;
+  // Indexing information for the root of the computation.
+  RootIndexing root_indexing_;
 
   // See the documentation of GetConstraints().
   ConstraintExpression constraints_;
