@@ -32,7 +32,6 @@ def ConvertTFLFloorOp : Pat<(TFL_FloorOp $arg), (Tosa_FloorOp $arg)>;
 def ConvertTFLExpOp : Pat<(TFL_ExpOp $arg), (Tosa_ExpOp $arg)>;
 def ConvertTFLLogOp : Pat<(TFL_LogOp $arg), (Tosa_LogOp $arg)>;
 def ConvertTFLLogicalNotOp : Pat<(TFL_LogicalNotOp $arg), (Tosa_LogicalNotOp $arg)>;
-def ConvertTFLCastOp: Pat<(TFL_CastOp $in), (Tosa_CastOp $in)>;
 
 // Removing the quant.stats op for unquantized models.
 def ConvertQuantStatOp : Pat<(quantfork_StatisticsOp $value, $layer_stats, $axis_stats, $axis),

@@ -118,6 +118,7 @@ DECL_CONVERT_OP(Sub);
 DECL_CONVERT_OP(Mul);
 DECL_CONVERT_OP(Square);
 DECL_CONVERT_OP(SquaredDifference);
+DECL_CONVERT_OP(Cast);
 DECL_CONVERT_OP(Sign);
 DECL_CONVERT_OP(Round);
 DECL_CONVERT_OP(Div);
@@ -898,6 +899,27 @@ LogicalResult ConvertTFLSignOp::matchAndRewrite(
 
   std::optional<Value> result =
       convertSignOp(rewriter, op, tfl_sign_op.getX(), output_type);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.value()});
+  return success();
+}
+
+LogicalResult ConvertTFLCastOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_cast_op = cast<TFL::CastOp>(op);
+
+  RankedTensorType input_type =
+      dyn_cast<RankedTensorType>(tfl_cast_op.getInput().getType());
+  RankedTensorType output_type =
+      dyn_cast<RankedTensorType>(tfl_cast_op.getOutput().getType());
+  // Not a ranked tensor input or output
+  if (!input_type || !output_type)
+    return rewriter.notifyMatchFailure(
+        op, "both operand and result must be ranked tensor type.");
+
+  std::optional<Value> result =
+      convertCastOp(rewriter, op, tfl_cast_op.getInput(), output_type);
   if (!result) return failure();
 
   rewriter.replaceOp(op, {result.value()});
@@ -4487,22 +4509,30 @@ LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
 
 LogicalResult ConvertTFLArgMinOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
-  auto arg_max_op = cast<TFL::ArgMinOp>(op);
-  auto loc = arg_max_op.getLoc();
-  Value input = arg_max_op.getInput();
+  auto arg_min_op = cast<TFL::ArgMinOp>(op);
+  auto loc = arg_min_op.getLoc();
+  Value input = arg_min_op.getInput();
   auto input_ty = mlir::cast<ShapedType>(input.getType());
   Type input_ety = input_ty.getElementType();
+  bool input_type_casted = false;
 
-  if (auto quantized_ty = dyn_cast<QuantizedType>(input_ety)) {
-    input_ety = rewriter.getIntegerType(
-        quantized_ty.getStorageTypeIntegralWidth(), quantized_ty.isSigned());
+  if (auto quantized_ty = dyn_cast<UniformQuantizedType>(input_ety)) {
+    input_ety =
+        rewriter.getIntegerType(quantized_ty.getStorageTypeIntegralWidth());
+    if (quantized_ty.getZeroPoint() != 0) {
+      // cast to input_ety type to get rid of zero point
+      // so that sub operands are both of type input_ety
+      input = CreateOpAndInfer<tosa::CastOp>(rewriter, loc,
+                                             input_ty.clone(input_ety), input);
+      input_type_casted = true;
+    }
   }
 
   if (!input_ety.isIntOrFloat())
     return rewriter.notifyMatchFailure(op, "unsupported element type");
 
   ElementsAttr dim_elems;
-  if (!matchPattern(arg_max_op.getDim(), m_Constant(&dim_elems)))
+  if (!matchPattern(arg_min_op.getDim(), m_Constant(&dim_elems)))
     return rewriter.notifyMatchFailure(op, "Non-constant dim");
 
   // When negative dim is measured from the back of the array.
@@ -4512,7 +4542,8 @@ LogicalResult ConvertTFLArgMinOp::matchAndRewrite(
   if (mlir::isa<FloatType>(input_ety)) {
     input = CreateOpAndInfer<tosa::NegateOp>(rewriter, loc, input_ty, input);
   } else if (mlir::isa<IntegerType>(input_ety)) {
-    auto reverse_ty = RankedTensorType::get({}, input_ety);
+    std::vector<int64_t> shape(input_ty.getRank(), 1);
+    auto reverse_ty = RankedTensorType::get(shape, input_ety);
     Value reverse_val = rewriter.create<tosa::ConstOp>(
         loc, reverse_ty,
         DenseElementsAttr::get(reverse_ty,
@@ -4521,10 +4552,35 @@ LogicalResult ConvertTFLArgMinOp::matchAndRewrite(
         rewriter, loc, input_ty.clone(input_ety), reverse_val, input);
   }
 
-  CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, arg_max_op.getType(),
-                                          input,
-                                          rewriter.getI32IntegerAttr(dim),
-                                          rewriter.getStringAttr("PROPAGATE"));
+  // if output type has zero point, the input has been type cast to integer
+  // so need to rescale ArgMax output to original output zero point
+  int output_zp = 0;
+  Type output_ty = arg_min_op.getType();
+  Type output_ety = output_ty.cast<ShapedType>().getElementType();
+  if (auto output_quantized_ty = dyn_cast<UniformQuantizedType>(output_ety)) {
+    output_zp = output_quantized_ty.getZeroPoint();
+    if (output_zp != 0) {
+      // need to rescale arg_max output to output zero point
+      output_ty = output_ty.cast<ShapedType>().clone(input_ety);
+    }
+  }
+
+  // double check input/output type cast consistency
+  assert(input_type_casted == (output_zp != 0));
+
+  Value result = CreateOpAndInfer<tosa::ArgMaxOp>(
+      rewriter, loc, output_ty, input, rewriter.getI32IntegerAttr(dim),
+      rewriter.getStringAttr("PROPAGATE"));
+
+  if (output_zp != 0) {
+    // rescale result to output_zp
+    result = buildRescale(rewriter, op, arg_min_op.getType(), result,
+                          /* sclae = */ 1.0,
+                          /* input_zp = */ 0,
+                          /* output_zp = */ output_zp, false, true);
+  }
+
+  rewriter.replaceOp(op, {result});
 
   return success();
 }
