@@ -107,17 +107,7 @@ struct RewriteFuncOp : mlir::OpRewritePattern<func::FuncOp> {
           op, "Expected all inputs and results to have tensor type.");
     }
 
-    mlir::Block* entry_block = &op.getBody().front();
-    SmallVector<Type> new_result_types;
-    SmallVector<Value> new_results;
-
-    // func.return should have no operands after rewriting since we materialize
-    // all tensors.
-    entry_block->getTerminator()->eraseOperands(
-        0, entry_block->getTerminator()->getNumOperands());
-
     SmallVector<Type> new_operand_types(input_types);
-    rewriter.setInsertionPointToStart(entry_block);
     for (auto&& [index, operand_type] : llvm::enumerate(new_operand_types)) {
       mlir::BlockArgument func_arg = op.getArgument(index);
 
@@ -131,13 +121,25 @@ struct RewriteFuncOp : mlir::OpRewritePattern<func::FuncOp> {
     }
 
     // Replace the function arguments with the new types.
+    mlir::Block* entry_block = &op.getBody().front();
     for (auto [arg, arg_type] :
          llvm::zip(entry_block->getArguments(), new_operand_types)) {
       arg.setType(arg_type);
     }
 
-    // Update the function signature.
-    op.setType(rewriter.getFunctionType(new_operand_types, new_result_types));
+    auto new_function_type = FunctionType::get(
+        op.getContext(), new_operand_types, /*result_types=*/{});
+    auto new_func = rewriter.create<triton::FuncOp>(op.getLoc(), op.getName(),
+                                                    new_function_type);
+
+    rewriter.inlineRegionBefore(op.getRegion(), new_func.getFunctionBody(),
+                                new_func.end());
+    rewriter.replaceOp(op, new_func);
+
+    auto terminator = new_func.getBody().front().getTerminator();
+    rewriter.setInsertionPoint(terminator);
+    rewriter.create<triton::ReturnOp>(new_func.getLoc());
+    rewriter.eraseOp(terminator);
 
     return mlir::success();
   }

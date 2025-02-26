@@ -14,7 +14,7 @@ func.func @lower_tile_extract_insert(%arg0: tensor<512x128xbf16>,
   func.return %updated_tensor : tensor<256x256xbf16>
 }
 
-// CHECK-LABEL: func @lower_tile_extract_insert
+// CHECK-LABEL: tt.func @lower_tile_extract_insert
 // CHECK-SAME:  %[[ARG0:.*]]: !tt.ptr<bf16>, %[[ARG1:.*]]: !tt.ptr<bf16>
 // CHECK:         %[[PTR_0:.*]] = tt.make_tensor_ptr %[[ARG0]]
 // CHECK:         %[[PTR_1:.*]] = tt.make_tensor_ptr %[[ARG1]]
@@ -22,7 +22,7 @@ func.func @lower_tile_extract_insert(%arg0: tensor<512x128xbf16>,
 // CHECK:         %[[LOAD:.*]] = tt.load %[[ADV_0]]
 // CHECK:         %[[ADV_1:.*]] = tt.advance %[[PTR_1]]
 // CHECK:         tt.store %[[ADV_1]], %[[LOAD]]
-// CHECK:       return
+// CHECK:       tt.return
 
 // -----
 
@@ -41,7 +41,7 @@ func.func @non_perfect_tile_shape(
   func.return %updated_tensor : tensor<300x300xbf16>
 }
 
-// CHECK-LABEL: func @non_perfect_tile_shape
+// CHECK-LABEL: tt.func @non_perfect_tile_shape
 // CHECK:        tt.load {{.*}} {
 // CHECK-SAME:     boundaryCheck = array<i32: 0, 1>, padding = 1 : i32
 // CHECK:        tt.store {{.*}}, {{.*}} {
