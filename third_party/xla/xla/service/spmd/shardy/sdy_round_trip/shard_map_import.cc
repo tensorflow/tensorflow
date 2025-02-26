@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
-#include "absl/strings/match.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -82,29 +82,37 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
     }
 
     // NOTE: if the original `ManualComputationOp` had no operands (results),
-    // then a @FullToShard (@ShardToFull) custom call won't be present. So
-    // we have to take the operands/results of the newly created
+    // then a @GlobalToLocalShape (@LocalToGlobalShape) custom call won't be
+    // present. So we have to take the operands/results of the newly created
     // `ManualComputationOp` differently depending on whether the original had
     // operands/results.
-    CustomCallOp fullToShard;
+    CustomCallOp globalToLocalShape;
     mlir::ValueRange operands = callOp->getOperands();
     if (!operands.empty()) {
-      fullToShard = callOp->getOperand(0).getDefiningOp<CustomCallOp>();
-      CHECK(fullToShard);
-      CHECK(fullToShard.getCallTargetName() ==
+      // An input to `sdy.manual_computation` can have a dimension of size 0
+      // (i.e. 0 num-elements), in which case, the corresponding result of
+      // `GlobalToLocalShape` custom call would be replaced with a constant of
+      // the same shape. Therefore, we skip such operands until we find the
+      // first one that is produced by the custom call.
+      auto customCallResIt = llvm::find_if(operands, [](mlir::Value operand) {
+        return operand.getDefiningOp<CustomCallOp>();
+      });
+      CHECK(customCallResIt != operands.end());
+      globalToLocalShape = (*customCallResIt).getDefiningOp<CustomCallOp>();
+      CHECK(globalToLocalShape.getCallTargetName() ==
             kGlobalToLocalShapeCallTargetName);
-      operands = fullToShard->getOperands();
+      operands = globalToLocalShape->getOperands();
     }
     mlir::TypeRange resultTypes = callOp->getResultTypes();
-    CustomCallOp shardToFull;
+    CustomCallOp localToGlobalShape;
     if (!resultTypes.empty()) {
       CHECK(callOp->getResult(0).hasOneUse())
-          << "all CallOp results should be used by a single ShardToFull";
-      shardToFull =
+          << "all CallOp results should be used by a single LocalToGlobalShape";
+      localToGlobalShape =
           mlir::cast<CustomCallOp>(*callOp->getResult(0).getUsers().begin());
-      CHECK(shardToFull.getCallTargetName() ==
+      CHECK(localToGlobalShape.getCallTargetName() ==
             kLocalToGlobalShapeCallTargetName);
-      resultTypes = shardToFull->getResultTypes();
+      resultTypes = localToGlobalShape->getResultTypes();
     }
 
     auto shmapBodyFunc = symbolTable.lookup<FuncOp>(callOp.getCallee());
@@ -131,11 +139,11 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
     sdy::inlineRegionAndConvertTerminatorOp<sdy::ReturnOp>(
         shmapBodyFunc.getBody(), manualComputationOp.getRegion(), rewriter);
     rewriter.eraseOp(shmapBodyFunc);
-    if (fullToShard) {
-      rewriter.eraseOp(fullToShard);
+    if (globalToLocalShape) {
+      rewriter.eraseOp(globalToLocalShape);
     }
-    if (shardToFull) {
-      rewriter.replaceOp(shardToFull, manualComputationOp->getResults());
+    if (localToGlobalShape) {
+      rewriter.replaceOp(localToGlobalShape, manualComputationOp->getResults());
     }
     return mlir::success();
   }
