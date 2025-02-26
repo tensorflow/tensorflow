@@ -1,1 +1,29 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/RegAllocFast.cpp b/llvm/lib/CodeGen/RegAllocFast.cpp
+--- a/llvm/lib/CodeGen/RegAllocFast.cpp
++++ b/llvm/lib/CodeGen/RegAllocFast.cpp
+@@ -984,6 +984,7 @@
+ 
+   LiveRegMap::iterator LRI = findLiveVirtReg(VirtReg);
+   MCPhysReg PhysReg;
++  bool IsRenamable = true;
+   if (LRI != LiveVirtRegs.end() && LRI->PhysReg) {
+     PhysReg = LRI->PhysReg;
+   } else {
+@@ -997,6 +998,7 @@
+       // basic.
+       PhysReg = getErrorAssignment(*LRI, *MO.getParent(), RC);
+       LRI->Error = true;
++      IsRenamable = false;
+     } else
+       PhysReg = AllocationOrder.front();
+   }
+@@ -1007,7 +1009,7 @@
+     MO.setSubReg(0);
+   }
+   MO.setReg(PhysReg);
+-  MO.setIsRenamable(!LRI->Error);
++  MO.setIsRenamable(IsRenamable);
+ }
+ 
+ /// Variation of defineVirtReg() with special handling for livethrough regs

@@ -1,3 +1,36 @@
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
+@@ -123,8 +123,7 @@
+ 
+ // CHECK-LABEL: @transpose
+ func.func @transpose(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
+-  // CHECK: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[2, 1, 0]> : tensor<3xi32>}> : () -> tensor<3xi32>
+-  // CHECK: %[[VAR1:.*]] = tosa.transpose %arg0, %[[VAR0]]
++  // CHECK: %[[VAR0:.*]] = tosa.transpose %arg0 {perms = array<i32: 2, 1, 0>}
+   %0 = "stablehlo.transpose"(%arg0) {permutation = array<i64: 2, 1, 0>} : (tensor<1x2x3xf32>) -> tensor<3x2x1xf32>
+   return %0 : tensor<3x2x1xf32>
+ }
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
+@@ -458,13 +458,10 @@
+     }
+ 
+     auto perms = op.getPermutation();
+-    auto type = RankedTensorType::get({static_cast<int64_t>(perms.size())},
+-                                      rewriter.getI32Type());
+     std::vector<int32_t> perms_int32(perms.begin(), perms.end());
+-    auto constOp = rewriter.create<tosa::ConstOp>(
+-        op->getLoc(), type, DenseIntElementsAttr::get(type, perms_int32));
+-    rewriter.replaceOpWithNewOp<tosa::TransposeOp>(op, op.getType(),
+-                                                   op.getOperand(), constOp);
++    rewriter.replaceOpWithNewOp<tosa::TransposeOp>(
++        op, op.getType(), op.getOperand(),
++        rewriter.getDenseI32ArrayAttr(perms_int32));
+     return success();
+   }
+ };
 diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
 --- stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
 +++ stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
