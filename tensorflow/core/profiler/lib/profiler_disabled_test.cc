@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/status/statusor.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/test.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/profiler/lib/profiler_lock.h"
 
 namespace tensorflow {
@@ -23,7 +23,7 @@ namespace profiler {
 namespace {
 
 TEST(ProfilerDisabledTest, ProfilerDisabledTest) {
-  setenv("TF_DISABLE_PROFILING", "1", /*overwrite=*/1);
+  tsl::setenv("TF_DISABLE_PROFILING", "1", /*overwrite=*/1);
   absl::StatusOr<tsl::profiler::ProfilerLock> profiler_lock =
       tsl::profiler::ProfilerLock::Acquire();
   EXPECT_FALSE(profiler_lock.ok());
