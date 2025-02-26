@@ -181,3 +181,16 @@ func.func @FoldReshape(%arg0: tensor<4xi32>, %arg1: tensor<1x48x80x16x!quant.uni
   // CHECK{LITERAL}: "tfl.pseudo_qconst"() <{qtype = tensor<1x2x2x16x!quant.uniform<i8<-127:127>:f32, 0.022395913056501255>>, value = dense<[[[[12, -60, -51, -59, -62, 33, 53, 17, -31, 50, 27, 7, -19, -34, -14, -26], [47, -84, -32, -36, -102, -8, -8, 35, -33, 59, 95, 40, -25, -30, -55, 25]], [[4, -41, -61, 12, -23, 48, 40, 15, -39, 52, 81, -62, -24, 17, -7, -52], [40, -70, -45, 32, -43, 2, -30, 34, -35, 58, 77, -28, -30, 37, -47, -5]]]]> : tensor<1x2x2x16xi8>}> : () -> tensor<1x2x2x16x!quant.uniform<i8<-127:127>:f32, 0.022395913056501255>>
   // CHECK-NEXT: "tfl.transpose_conv"
 }
+
+// CHECK-LABEL: @FoldPerAxisReshape
+func.func @FoldPerAxisReshape() -> tensor<1x2x2x!quant.uniform<i8:f32:2, {0.007,0.004}>> {
+  %cst = arith.constant dense<[1, 2, 2]> : tensor<3xi32>
+  %0 = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x!quant.uniform<i8:f32:1, {0.007,0.004}>>, value = dense<[[-127, 127], [-85, -80]]> : tensor<2x2xi8>}> : () -> tensor<2x2x!quant.uniform<i8:f32:1, {0.007,0.004}>>
+  %1 = "tfl.reshape"(%0, %cst) : (tensor<2x2x!quant.uniform<i8:f32:1, {0.007,0.004}>>, tensor<3xi32>) -> tensor<1x2x2x!quant.uniform<i8:f32:2, {0.007,0.004}>>
+  return %1 : tensor<1x2x2x!quant.uniform<i8:f32:2, {0.007,0.004}>>
+  
+
+// CHECK{LITERAL}:  %0 = "tfl.pseudo_qconst"() <{qtype = tensor<1x2x2x!quant.uniform<i8:f32:2, {7.000000e-03,4.000000e-03}>>, value = dense<[[[-127, 127], [-85, -80]]]> : tensor<1x2x2xi8>}> : () -> tensor<1x2x2x!quant.uniform<i8:f32:2, {7.000000e-03,4.000000e-03}>>
+// CHECK-NOT: tfl.reshape
+// CHECK:  return %0 : tensor<1x2x2x!quant.uniform<i8:f32:2, {7.000000e-03,4.000000e-03}>>
+}
