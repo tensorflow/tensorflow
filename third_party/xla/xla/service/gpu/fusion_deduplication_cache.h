@@ -50,11 +50,11 @@ class FusionDeduplicationCache {
   using InstructionId = int64_t;
 
   // An id for a fusion of `producer` and `consumer`. Values in the tuple should
-  // not be interpreted by API users are subject to change. The id should be
+  // not be interpreted by API users and are subject to change. The id should be
   // used as an opaque key to compare different fusions.
   using FusionId =
       std::tuple</*producer=*/InstructionId, /*consumer=*/InstructionId,
-                 /*operand_index=*/int64_t>;
+                 /*operand_index=*/int64_t, /*allow_multi_output=*/bool>;
 
   // Initializes the cache for all fusible instructions in the given module.
   // `is_fusible_fn` callback returns true if the instruction is fusible.
@@ -70,8 +70,11 @@ class FusionDeduplicationCache {
   InstructionId GetInstructionId(const HloInstruction& instruction);
 
   // Returns the id for the fusion of `producer` and `consumer`.
+  // `allow_multi_output` should be set to true if we allow to create a
+  // multi-output fusion to avoid having to duplicate `producer`.
   FusionId GetFusionId(const HloInstruction& producer,
-                       const HloInstruction& consumer);
+                       const HloInstruction& consumer,
+                       bool allow_multi_output = false);
 
   // Sets the new id for the `fusion_instruction`.
   //
@@ -89,7 +92,8 @@ class FusionDeduplicationCache {
   void UpdateFusedInstructionId(const HloInstruction& fusion_instruction,
                                 const HloInstruction& original_producer,
                                 const HloInstruction& original_consumer,
-                                int64_t consumer_operand_index);
+                                int64_t consumer_operand_index,
+                                bool allow_multi_output = false);
 
  private:
   FusionDeduplicationCache(
@@ -99,7 +103,8 @@ class FusionDeduplicationCache {
 
   FusionId GetFusionId(const HloInstruction& producer,
                        const HloInstruction& consumer,
-                       int64_t consumer_operand_index);
+                       int64_t consumer_operand_index,
+                       bool allow_multi__output);
 
   int64_t next_id_ = 0;
 

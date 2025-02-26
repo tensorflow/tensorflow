@@ -28,7 +28,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
-HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer) {
+HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
+                     bool allow_multi_output = false) {
   HloComputation* computation = consumer->parent();
   HloInstruction* fusion_instruction = consumer;
 
@@ -40,9 +41,17 @@ HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer) {
   }
 
   if (producer->opcode() == HloOpcode::kFusion) {
-    fusion_instruction->MergeFusionInstruction(producer);
+    if (allow_multi_output) {
+      fusion_instruction->MergeFusionInstructionIntoMultiOutput(producer);
+    } else {
+      fusion_instruction->MergeFusionInstruction(producer);
+    }
   } else {
-    fusion_instruction->FuseInstruction(producer);
+    if (allow_multi_output) {
+      fusion_instruction->FuseInstructionIntoMultiOutput(producer);
+    } else {
+      fusion_instruction->FuseInstruction(producer);
+    }
   }
 
   if (producer->user_count() == 0) {
@@ -137,6 +146,90 @@ TEST_F(FusionDeduplicationCacheTest, IdenticalFusionInstructions_EqualId) {
                                  /*consumer_operand_index=*/0);
 
   EXPECT_EQ(cache.GetInstructionId(*fusion1), cache.GetInstructionId(*fusion2));
+}
+
+TEST_F(FusionDeduplicationCacheTest,
+       IdenticalMultiOutputFusionInstructions_EqualId) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      log1 = f32[8] log(p0)
+      add1 = f32[8] add(log1, p1)
+      log2 = f32[8] log(add1)
+      add2 = f32[8] add(log2, p0)
+      ROOT tuple = (f32[8], f32[8], f32[8], f32[8]) tuple(log1, add1, log2, add2)
+    })"));
+  HloComputation* entry_computation = module->entry_computation();
+
+  auto* add1 = entry_computation->GetInstructionWithName("add1");
+  auto* add2 = entry_computation->GetInstructionWithName("add2");
+  auto* log1 = entry_computation->GetInstructionWithName("log1");
+  auto* log2 = entry_computation->GetInstructionWithName("log2");
+
+  FusionDeduplicationCache cache =
+      FusionDeduplicationCache::Create(*module, IsFusible);
+  EXPECT_EQ(cache.GetInstructionId(*add1), cache.GetInstructionId(*add2));
+  EXPECT_EQ(cache.GetInstructionId(*log1), cache.GetInstructionId(*log2));
+  EXPECT_NE(cache.GetInstructionId(*add1), cache.GetInstructionId(*log1));
+
+  EXPECT_EQ(cache.GetFusionId(*log1, *add1), cache.GetFusionId(*log2, *add2));
+
+  HloInstruction* fusion1 = Fuse(log1, add1, /*allow_multi_output=*/true);
+  cache.UpdateFusedInstructionId(*fusion1, *log1, *add1,
+                                 /*consumer_operand_index=*/0,
+                                 /*allow_multi_output=*/true);
+
+  HloInstruction* fusion2 = Fuse(log2, add2);
+  cache.UpdateFusedInstructionId(*fusion2, *log2, *add2,
+                                 /*consumer_operand_index=*/0,
+                                 /*allow_multi_output=*/true);
+
+  EXPECT_EQ(cache.GetInstructionId(*fusion1), cache.GetInstructionId(*fusion2));
+}
+
+TEST_F(FusionDeduplicationCacheTest,
+       MultiOutputFusionVsSingleOutputFusion_DifferentId) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      log1 = f32[8] log(p0)
+      add1 = f32[8] add(log1, p1)
+      log2 = f32[8] log(add1)
+      add2 = f32[8] add(log2, p0)
+      ROOT tuple = (f32[8], f32[8], f32[8], f32[8]) tuple(log1, add1, log2, add2)
+    })"));
+  HloComputation* entry_computation = module->entry_computation();
+
+  auto* add1 = entry_computation->GetInstructionWithName("add1");
+  auto* add2 = entry_computation->GetInstructionWithName("add2");
+  auto* log1 = entry_computation->GetInstructionWithName("log1");
+  auto* log2 = entry_computation->GetInstructionWithName("log2");
+
+  FusionDeduplicationCache cache =
+      FusionDeduplicationCache::Create(*module, IsFusible);
+  EXPECT_EQ(cache.GetInstructionId(*add1), cache.GetInstructionId(*add2));
+  EXPECT_EQ(cache.GetInstructionId(*log1), cache.GetInstructionId(*log2));
+  EXPECT_NE(cache.GetInstructionId(*add1), cache.GetInstructionId(*log1));
+
+  EXPECT_EQ(cache.GetFusionId(*log1, *add1), cache.GetFusionId(*log2, *add2));
+
+  HloInstruction* fusion1 = Fuse(log1, add1, /*allow_multi_output=*/true);
+  cache.UpdateFusedInstructionId(*fusion1, *log1, *add1,
+                                 /*consumer_operand_index=*/0,
+                                 /*allow_multi_output=*/true);
+
+  HloInstruction* fusion2 = Fuse(log2, add2);
+  cache.UpdateFusedInstructionId(*fusion2, *log2, *add2,
+                                 /*consumer_operand_index=*/0,
+                                 /*allow_multi_output=*/false);
+
+  EXPECT_NE(cache.GetInstructionId(*fusion1), cache.GetInstructionId(*fusion2));
 }
 
 TEST_F(FusionDeduplicationCacheTest,
