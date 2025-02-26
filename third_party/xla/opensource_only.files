@@ -24,6 +24,9 @@ third_party/llvm_openmp/BUILD:
 third_party/llvm_openmp/cmake_vars.bzl:
 third_party/llvm_openmp/expand_cmake_vars:.py
 third_party/llvm_openmp/openmp.bzl:
+third_party/nvshmem/archive.patch:
+third_party/nvshmem/nvshmem.BUILD:
+third_party/nvshmem/workspace.bzl:
 third_party/ortools/BUILD:
 third_party/ortools/glpk.BUILD:
 third_party/ortools/ortools.patch:
