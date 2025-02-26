@@ -146,9 +146,13 @@ func.func @Batchmatmul2Fullyconnected_qint4_rank_3(%arg0: tensor<10x1x2x!quant.u
 
 // CHECK-LABEL: Batchmatmul2Fullyconnected_qint8
 func.func @Batchmatmul2Fullyconnected_qint8(%arg0: tensor<10x2x!quant.uniform<i8:f32, 0.01524067297577858>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 0.014552096836268902>>) -> (tensor<10x2x!quant.uniform<i8:f32, 0.016966061666607857>>) {
-  // CHECK: "tfl.batch_matmul"
   %2 = "tfl.batch_matmul"(%arg0, %arg1) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<10x2x!quant.uniform<i8:f32, 0.01524067297577858>>, tensor<2x2x!quant.uniform<i8:f32, 0.014552096836268902>>) -> tensor<10x2x!quant.uniform<i8:f32, 0.016966061666607857>>
   func.return %2 : tensor<10x2x!quant.uniform<i8:f32, 0.016966061666607857>>
+  // CHECK: %0 = "tfl.no_value"() <{value}> : () -> none
+  // CHECK: %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  // CHECK: %1 = "tfl.transpose"(%arg1, %cst) : (tensor<2x2x!quant.uniform<i8:f32, 0.014552096836268902>>, tensor<2xi32>) -> tensor<2x2x!quant.uniform<i8:f32, 0.014552096836268902>>
+  // CHECK: %2 = "tfl.fully_connected"(%arg0, %1, %0) <{fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<10x2x!quant.uniform<i8:f32, 0.01524067297577858>>, tensor<2x2x!quant.uniform<i8:f32, 0.014552096836268902>>, none) -> tensor<10x2x!quant.uniform<i8:f32, 0.016966061666607857>>
+  // CHECK: return %2 : tensor<10x2x!quant.uniform<i8:f32, 0.016966061666607857>>
 }
 
 // CHECK-LABEL: BatchmatmulToReduceSumI32
