@@ -674,6 +674,7 @@ pywrap_tensorflow_macro(
     exports_filter = [
         "@pybind11",
         "@local_config_python//:python_headers",
+        "@com_googlesource_code_re2//:__subpackages__",
     ] + if_windows([
         "//:__subpackages__",
         "@com_google_absl//:__subpackages__",
