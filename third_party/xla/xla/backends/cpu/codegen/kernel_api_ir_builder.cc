@@ -46,6 +46,7 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/CodeGen.h"
+#include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -280,7 +281,9 @@ auto KernelApiIrBuilder::Options::FromHloModuleConfig(
     const HloModuleConfig& config) -> Options {
   return KernelApiIrBuilder::Options{
       config.debug_options().xla_llvm_enable_invariant_load_metadata(),
-      config.debug_options().xla_cpu_prefer_vector_width()};
+      config.debug_options().xla_cpu_prefer_vector_width(),
+      config.debug_options()
+          .xla_cpu_generate_unique_c_style_kernel_entry_points()};
 }
 
 KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
@@ -302,8 +305,16 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
                       GetKernelResultsParameters(instr, buffer_assignment));
 
-  return EmitKernelPrototype(module, absl::StrCat(instr->name(), suffix),
-                             arguments, results);
+  std::string name;
+  if (options_.generate_unique_c_style_kernel_entry_points) {
+    TF_ASSIGN_OR_RETURN(
+        name, ConvertToCName(absl::StrCat(instr->GetModule()->name(), "_",
+                                          instr->name(), suffix)));
+  } else {
+    name = absl::StrCat(instr->name(), suffix);
+  }
+
+  return EmitKernelPrototype(module, name, arguments, results);
 }
 
 auto KernelApiIrBuilder::EmitKernelPrototype(

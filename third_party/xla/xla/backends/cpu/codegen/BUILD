@@ -216,6 +216,7 @@ cc_library(
     srcs = ["kernel_api_ir_builder.cc"],
     hdrs = ["kernel_api_ir_builder.h"],
     deps = [
+        ":symbol_name_util",
         "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:util",
@@ -361,5 +362,28 @@ xla_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "symbol_name_util",
+    srcs = ["symbol_name_util.cc"],
+    hdrs = ["symbol_name_util.h"],
+    deps = [
+        "//xla:util",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "symbol_name_util_test",
+    srcs = ["symbol_name_util_test.cc"],
+    deps = [
+        ":symbol_name_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
     ],
 )

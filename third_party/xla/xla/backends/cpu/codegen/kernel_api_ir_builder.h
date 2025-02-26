@@ -43,6 +43,7 @@ class KernelApiIrBuilder {
   struct Options {
     bool enable_invariant_load_metadata;
     int32_t prefer_vector_width;
+    bool generate_unique_c_style_kernel_entry_points;
 
     static Options FromHloModuleConfig(const HloModuleConfig& config);
   };

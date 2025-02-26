@@ -190,6 +190,11 @@ message DebugOptions {
   // false.
   bool xla_cpu_fast_math_honor_nans = 120;
 
+  // When true, XLA:CPU all LLVM kernels entry points will be prefixed with the
+  // module name. They will also be converted to C style names. This is required
+  // for AOT compilation.
+  bool xla_cpu_generate_unique_c_style_kernel_entry_points = 372;
+
   // When set, XLA:CPU will only generate code up to the specified ISA.
   // (It will not use newer ISAs.) Using the string format allows us to extend
   // the flag for more flexible control if necessary.
@@ -1165,7 +1170,7 @@ message DebugOptions {
 
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
-  // Next id: 372
+  // Next id: 373
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
