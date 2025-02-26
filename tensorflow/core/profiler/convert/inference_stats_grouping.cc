@@ -356,14 +356,15 @@ void AggregatePerModelInferenceStats(InferenceStats* inference_stats) {
     for (const RequestDetail& r : per_model_stats.request_details()) {
       // Aggregate all data.
       AggregateRequest(r, &aggregated_r);
-      // Aggregate per batch size for request included in only one batch.
-      if (r.related_batch_ids_size() != 1) continue;
-      if (const BatchDetail* batch = ::tsl::gtl::FindPtrOrNull(
-              batch_id_to_batch, r.related_batch_ids(0))) {
-        int batch_size = batch->batch_size_after_padding();
-        auto& info = per_batch_size_info[batch_size];
-        AggregateRequest(r, info.result.mutable_aggregated_request_result());
-        info.request_count++;
+      // Aggregate per batch size.
+      for (const auto batch_id : r.related_batch_ids()) {
+        if (const BatchDetail* batch =
+                ::tsl::gtl::FindPtrOrNull(batch_id_to_batch, batch_id)) {
+          int batch_size = batch->batch_size_after_padding();
+          auto& info = per_batch_size_info[batch_size];
+          AggregateRequest(r, info.result.mutable_aggregated_request_result());
+          info.request_count++;
+        }
       }
     }
 
