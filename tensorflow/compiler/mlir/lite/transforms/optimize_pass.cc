@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -40,6 +41,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -479,32 +481,41 @@ Value GetBiasMultiplier(OpBuilder &builder, Value binary_op,
   return builder.create<arith::ConstantOp>(binary_op.getLoc(), constant_attr);
 }
 
-// Expand Attribute 'a' to 4D with all 1s except 1 dimension.
-// Which dimension depends on 'is_depthwise' is true or false.
-ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {
-  auto elements = mlir::dyn_cast<DenseElementsAttr>(a);
-  auto shape = elements.getType().getShape();
-  if (!shape.empty()) {
-    // Checks that elements are essentially 1d.
-    assert(elements.getNumElements() == shape.back());
+bool HasOneTailUnitDimension(Attribute attr) {
+  auto elements = mlir::dyn_cast<DenseElementsAttr>(attr);
+  if (!elements) {
+    return false;
   }
+  auto shape = elements.getType().getShape();
+  if (shape.empty()) {
+    return true;
+  }
+  // Checks that elements are essentially 1d.
+  return elements.getNumElements() == shape.back();
+}
+
+// Expand a given attribute to 4D with all 1s except 1 dimension.
+// The position of the non-1 dimension is specified by `output_channel_dim`.
+// Example: [1, 1, 5], 2 -> [1, 1, 5, 1]
+DenseElementsAttr ExpandTo4DForConvImpl(Attribute attr,
+                                        int output_channel_dim) {
+  assert(HasOneTailUnitDimension(attr));
+  auto elements = mlir::dyn_cast<DenseElementsAttr>(attr);
   std::vector<int64_t> shape_data = {1, 1, 1, 1};
   const int vector_length = elements.getNumElements();
-  if (is_depthwise)
-    shape_data[3] = vector_length;
-  else
-    shape_data[0] = vector_length;
+  shape_data[output_channel_dim] = vector_length;
   auto new_shape =
       RankedTensorType::get(shape_data, elements.getType().getElementType());
   return elements.reshape(new_shape);
 }
 
-ElementsAttr ExpandTo4DForConv(Attribute a) {
-  return ExpandTo4DForConvImpl(a, false);
+DenseElementsAttr ExpandTo4DForConv(Attribute attr,
+                                    int output_channel_dim = 0) {
+  return ExpandTo4DForConvImpl(attr, output_channel_dim);
 }
 
-ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
-  return ExpandTo4DForConvImpl(a, true);
+DenseElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
+  return ExpandTo4DForConvImpl(a, 3);
 }
 
 TypeAttr RescaleQtype(Type input, Attribute factor) {
@@ -1665,76 +1676,138 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
 
   LogicalResult matchAndRewrite(TFL::MulOp mul_op,
                                 PatternRewriter &rewriter) const override {
-    // Mul. Required 1-D rhs for batch normalization.
+    // Mul. Required 1-D or squeezable to 1-D rhs for batch normalization.
     DenseElementsAttr gamma_cst;
     Value gamma = mul_op.getRhs();
     if (!matchPattern(gamma, m_Constant(&gamma_cst))) return failure();
-    if (gamma_cst.getType().getRank() != 1) return failure();
+    if (!HasOneTailUnitDimension(gamma_cst)) {
+      return failure();
+    }
 
     // Affine op
     Operation *mul_op_lhs = mul_op.getLhs().getDefiningOp();
-    auto fc_op = dyn_cast_or_null<AffineOpType>(mul_op_lhs);
-    if (!fc_op) return failure();
-    Value filter = fc_op.getFilter();
-    Value bias = fc_op.getBias();
-
-    // QDQs
-    auto dq_op = dyn_cast_or_null<TFL::DequantizeOp>(filter.getDefiningOp());
-    if (!dq_op) return failure();
-    auto q_op =
-        dyn_cast_or_null<TFL::QuantizeOp>(dq_op.getInput().getDefiningOp());
-    if (!q_op) return failure();
-    filter = q_op.getInput();
-
-    // weight constant
-    ElementsAttr cst_tmp;
-    if (!matchPattern(filter, m_Constant(&cst_tmp))) return failure();
-    if (!mlir::isa<NoneType>(bias.getType()) &&
-        !matchPattern(bias, m_Constant(&cst_tmp)))
+    auto affine_op = dyn_cast_or_null<AffineOpType>(mul_op_lhs);
+    if (!affine_op) {
       return failure();
-    if (fc_op.getFusedActivationFunction() != "NONE") return failure();
+    }
+    // This is the tensor feeding the affine op's rhs. This is not necessarily
+    // the filter since it could be produced by a transpose or a Q-DQ).
+    Value affine_rhs = affine_op.getFilter();
+    Value bias = affine_op.getBias();
 
-    // Broadcast the constant operand of Mul if it isn't compatible to the
-    // filter input. We only support broadcasting the operand along the depth
-    // dimension, when the operand's depth is 1.
-    rewriter.setInsertionPoint(q_op);
-    Location loc = fc_op.getLoc();
-    Value broadcasted_gamma;
-    if (isa<TFL::Conv2DOp>(mul_op_lhs)) {
-      auto mul_rhs = ExpandTo4DForConv(gamma_cst);
-      broadcasted_gamma = rewriter.create<ConstOp>(loc, mul_rhs);
-    } else if (isa<TFL::DepthwiseConv2DOp>(mul_op_lhs)) {
-      auto mul_rhs = ExpandTo4DForDepthwiseConv(gamma_cst);
-      broadcasted_gamma = rewriter.create<ConstOp>(loc, mul_rhs);
+    // This indicates which dimension of the actual filter constant contains
+    // the output channels dimension.
+    int filter_output_dim = -1;
+    if (isa<TFL::Conv2DOp>(affine_op)) {
+      filter_output_dim = 0;
+    } else if (isa<TFL::DepthwiseConv2DOp>(affine_op)) {
+      filter_output_dim = 3;
     } else {
       return failure();
     }
-
-    // Make sure that the fused bias will be a 1D tensor.
-    auto gamma_shape = mlir::cast<ShapedType>(gamma.getType());
-    if (!gamma_shape.hasRank() || gamma_shape.getRank() != 1) {
-      return failure();
+    // The rhs could be :
+    // const -> QDQ -> [transpose | reshape] -> conv
+    auto reshape_op =
+        dyn_cast_or_null<TFL::ReshapeOp>(affine_rhs.getDefiningOp());
+    // If the filter is created by a transpose op, check if the there is QDQ
+    // feeding that transpose.
+    if (auto transpose_op =
+            dyn_cast_or_null<TFL::TransposeOp>(affine_rhs.getDefiningOp())) {
+      // If there is a transpose op, reassigning affine_rhs to be the
+      // pre-transpose tensor.
+      affine_rhs = transpose_op.getInput();
+      DenseIntElementsAttr permutation_cst;
+      if (!matchPattern(transpose_op.getPerm(), m_Constant(&permutation_cst))) {
+        return failure();
+      }
+      SmallVector<int32_t> permutation_vec =
+          llvm::to_vector(permutation_cst.getValues<int32_t>());
+      // reversing the effect of the transpose op. For example, if the output
+      // dimension is 0, after transpose with a transpose permutation vector of
+      // [3, 0, 1, 2], the pre-transpose output dimension (or the actual filter
+      // output dimension) would be 3.
+      filter_output_dim = permutation_vec[filter_output_dim];
+    } else if (reshape_op) {
+      affine_rhs = reshape_op.getInput();
     }
 
-    // Rewrite filter constant. Since the folder of TFL::MulOp couldn't
-    // broadcast the operands, TF::MulOp is used to fold the constant.
-    auto new_filter =
-        rewriter.create<TF::MulOp>(loc, filter, broadcasted_gamma).getZ();
+    // QDQs
+    auto dq_op =
+        dyn_cast_or_null<TFL::DequantizeOp>(affine_rhs.getDefiningOp());
+    if (!dq_op) {
+      return failure();
+    }
+    auto q_op =
+        dyn_cast_or_null<TFL::QuantizeOp>(dq_op.getInput().getDefiningOp());
+    if (!q_op) {
+      return failure();
+    }
+    // If the transpose is changed to a reshape op, we'll resort to finding the
+    // output channel from the quant_dimension of the Q op if it is per-channel.
+    if (reshape_op) {
+      auto per_axis_quantized_type =
+          dyn_cast<quant::UniformQuantizedPerAxisType>(
+              getElementTypeOrSelf(q_op.getType()));
+      if (per_axis_quantized_type) {
+        filter_output_dim = per_axis_quantized_type.getQuantizedDimension();
+      } else {
+        // If transpose op is replaced with a reshape op, we've already lost the
+        // permutation. If the Q op is not per-channel, we're out of luck to
+        // find the channel dimension of the filter.
+        return failure();
+      }
+    }
+    Value filter = q_op.getInput();
+
+    // weight constant
+    ElementsAttr cst_tmp;
+    if (!matchPattern(filter, m_Constant(&cst_tmp))) {
+      return failure();
+    }
+    if (!mlir::isa<NoneType>(bias.getType()) &&
+        !matchPattern(bias, m_Constant(&cst_tmp))) {
+      return failure();
+    }
+    if (affine_op.getFusedActivationFunction() != "NONE") {
+      return failure();
+    }
+    rewriter.setInsertionPoint(q_op);
+    Location loc = affine_op.getLoc();
+
+    DenseElementsAttr broadcasted_gamma_attr =
+        ExpandTo4DForConv(gamma_cst, filter_output_dim);
+    auto broadcasted_gamma =
+        rewriter.create<ConstOp>(loc, broadcasted_gamma_attr);
+
+    // Inject a mul between the filter constant and the quantize op.
+    auto new_filter = rewriter
+                          .create<TFL::MulOp>(loc, filter, broadcasted_gamma,
+                                              rewriter.getStringAttr("NONE"))
+                          .getResult();
     // Update the scale in the quantize op.
     auto new_qtype = RescaleQtype(q_op.getQtype(), gamma_cst);
-    if (!new_qtype) return failure();
+    if (!new_qtype) {
+      return failure();
+    }
+    // Update the Q op to a new Q op with the new multiplied scale.
     rewriter.replaceOpWithNewOp<TFL::QuantizeOp>(q_op, new_qtype.getValue(),
                                                  new_filter, new_qtype);
-
     // If bias isn't None, it needs to be multiplied as well.
     if (!mlir::isa<NoneType>(bias.getType())) {
-      rewriter.setInsertionPoint(fc_op);
-      auto new_bias = rewriter.create<TF::MulOp>(loc, bias, gamma);
-      fc_op.getOperation()->replaceUsesOfWith(bias, new_bias);
+      rewriter.setInsertionPoint(affine_op);
+
+      auto squeezed_gamma = FlattenTo1D(gamma_cst);
+      auto squeezed_gamma_type = squeezed_gamma.getType();
+      auto squeezed_gamma_op = rewriter.create<arith::ConstantOp>(
+          affine_op.getLoc(), squeezed_gamma_type, squeezed_gamma);
+
+      auto new_bias = rewriter.create<TFL::MulOp>(
+          loc, bias, squeezed_gamma_op, rewriter.getStringAttr("NONE"));
+      affine_op.getOperation()->replaceUsesOfWith(bias, new_bias);
     }
 
     // Remove the tailing mul op.
-    mul_op.replaceAllUsesWith(fc_op.getResult());
+    mul_op.replaceAllUsesWith(affine_op.getResult());
     return success();
   }
 };
