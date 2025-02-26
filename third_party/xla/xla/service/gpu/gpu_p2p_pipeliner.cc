@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/collective_conflict_analysis.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_pipeliner.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -306,6 +307,17 @@ static std::vector<HloInstruction*> GetSendRecvStartInstructions(
   return start_instructions;
 }
 
+static HloInstruction* GetSendRecvDoneInstructions(
+    HloInstruction* rotated_instr) {
+  for (HloInstruction* user : rotated_instr->users()) {
+    if (user->opcode() == HloOpcode::kRecvDone ||
+        user->opcode() == HloOpcode::kSendDone) {
+      return user;
+    }
+  }
+  return nullptr;
+}
+
 // Post-process rotated send/recv ops to add control dependencies with
 // conflicting collectives.
 static absl::Status PostProcessRotatedSendRecvOps(
@@ -337,11 +349,14 @@ static absl::Status PostProcessRotatedSendRecvOps(
          FindAllConflictingCollectives(parent, {rotated_instr})) {
       if (rotated_send_recvs_set.contains(conflicting_collective)) continue;
       num_conflicting_collectives++;
-      TF_RETURN_IF_ERROR(
-          conflicting_collective->AddControlDependencyTo(rotated_instr));
+      HloInstruction* new_control_dependency =
+          GetSendRecvDoneInstructions(rotated_instr);
+      CHECK_NE(new_control_dependency, nullptr);
+      TF_RETURN_IF_ERROR(conflicting_collective->AddControlDependencyTo(
+          new_control_dependency));
       VLOG(5) << "Adding control dependency from "
               << conflicting_collective->ToShortString() << " to "
-              << rotated_instr->ToShortString();
+              << rotated_instr->ToShortString() << "\n";
     }
     VLOG(5) << "Conflicting collectives: " << num_conflicting_collectives;
   }

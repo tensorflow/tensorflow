@@ -472,9 +472,9 @@ TEST_F(GpuP2PPipelinerTest, OneSendRecvWithOneConflictingAllReduce) {
   EXPECT_THAT(send_done_op->control_predecessors(), IsEmpty());
   EXPECT_THAT(ar_op->control_predecessors(),
               UnorderedElementsAre(send_done_op));
-  EXPECT_THAT(recv_op->control_predecessors(),
+  EXPECT_THAT(recv_op->control_predecessors(), IsEmpty());
+  EXPECT_THAT(recv_done_op->control_predecessors(),
               UnorderedElementsAre(send_op, ar_op));
-  EXPECT_THAT(recv_done_op->control_predecessors(), IsEmpty());
 }
 
 TEST_F(GpuP2PPipelinerTest, OneSendRecvWithConflictingAllReduceAfterLoop) {
