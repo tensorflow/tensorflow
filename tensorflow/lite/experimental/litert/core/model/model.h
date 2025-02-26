@@ -96,7 +96,13 @@ int32_t GetTflOpCodeInd(const LiteRtOpT& litert_op);
 template <class Arg>
 void SetTflOptions(LiteRtOpT& litert_op, Arg&& arg);
 
+template <class Arg>
+void SetTflOptions2(LiteRtOpT& litert_op, Arg&& arg);
+
 const ::litert::internal::TflOptions& GetTflOptions(const LiteRtOpT& litert_op);
+
+const ::litert::internal::TflOptions2& GetTflOptions2(
+    const LiteRtOpT& litert_op);
 
 ::litert::internal::TflOptions&& TakeTflOptions(LiteRtOpT& litert_op);
 
@@ -482,7 +488,13 @@ class LiteRtOpT {
   template <class Arg>
   friend void detail::SetTflOptions(LiteRtOpT& litert_op, Arg&& arg);
 
+  template <class Arg>
+  friend void detail::SetTflOptions2(LiteRtOpT& litert_op, Arg&& arg);
+
   friend const ::litert::internal::TflOptions& detail::GetTflOptions(
+      const LiteRtOpT& litert_op);
+
+  friend const ::litert::internal::TflOptions2& detail::GetTflOptions2(
       const LiteRtOpT& litert_op);
 
   friend ::litert::internal::TflOptions&& detail::TakeTflOptions(
@@ -499,6 +511,7 @@ class LiteRtOpT {
   // TFLITE
   int32_t tfl_op_code_ind_ = detail::kDispatchOpCodeTflInd;
   ::litert::internal::TflOptions tfl_option_;
+  ::litert::internal::TflOptions2 tfl_option_2_;
 };
 
 //
@@ -902,6 +915,11 @@ namespace detail {
 template <class Arg>
 void SetTflOptions(LiteRtOpT& litert_op, Arg&& arg) {
   litert_op.tfl_option_ = std::forward<Arg>(arg);
+}
+
+template <class Arg>
+void SetTflOptions2(LiteRtOpT& litert_op, Arg&& arg) {
+  litert_op.tfl_option_2_ = std::forward<Arg>(arg);
 }
 
 template <class Arg>

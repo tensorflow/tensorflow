@@ -369,3 +369,20 @@ cc_library(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
     ],
 )
+
+cc_library(
+    name = "rms_norm_op_builder",
+    srcs = ["rms_norm_op_builder.cc"],
+    hdrs = ["rms_norm_op_builder.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    deps = [
+        ":op_builder",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
+    ],
+)

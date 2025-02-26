@@ -371,5 +371,19 @@ TEST(ApplyTest, ApplyPlugins) {
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
 }
 
+TEST(CompositeInfoTest, GetCompositeInfo) {
+  auto model_wrap = testing::LoadTestFileModel("rms_norm_composite.tflite");
+  ASSERT_TRUE(model_wrap);
+  auto& model = *model_wrap.Get();
+  ASSERT_EQ(model.NumSubgraphs(), 2);
+  auto* op = model.MainSubgraph()->Ops().front();
+
+  auto composite_info = GetCompositeInfo(op);
+  ASSERT_TRUE(composite_info.has_value());
+  EXPECT_EQ(composite_info->composite_op->OpCode(), kLiteRtOpCodeShloComposite);
+  EXPECT_EQ(composite_info->composite_name, "odml.rms_norm");
+  EXPECT_EQ(composite_info->decomposition_subgraph_index, 1);
+}
+
 }  // namespace
 }  // namespace litert::internal

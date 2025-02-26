@@ -50,6 +50,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/quantize_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reduce_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/rms_norm_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/select_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/slice_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/softmax_op_builder.h"
@@ -414,6 +415,13 @@ LiteRtStatus ConvertOp(
     case LiteRtOpCode::kLiteRtOpCodeTflDynamicUpdateSlice: {
       op_wrappers = ::qnn::BuildDynamicUpdateSliceOp(tensor_pool, input_tensors,
                                                      output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeShloComposite: {
+      // TODO(yunandrew): Support custom epsilon for RMS Norm.
+      float epsilon = 9.99999997E-7;
+      op_wrappers = ::qnn::BuildRmsNormOp(tensor_pool, input_tensors,
+                                          output_tensors, epsilon);
       break;
     }
     default: {

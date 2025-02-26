@@ -205,6 +205,18 @@ LiteRtStatus LiteRtGetMeanKeepDimsOption(LiteRtOp op, bool* keepdims);
 //==============================================================================
 LiteRtStatus LiteRtGetSplitNumSplitsOption(LiteRtOp op, int32_t* num_splits);
 
+//==============================================================================
+//
+// Get option APIs for LiteRt SHLO Composite op.
+//  Options:
+// - name : string
+// - decomposition_subgraph_index : int32_t
+//
+//==============================================================================
+LiteRtStatus LiteRtGetSHLOCompositeOpName(LiteRtOp op, const char** name);
+LiteRtStatus LiteRtGetSHLOCompositeOpDecompositionSubgraphIndex(
+    LiteRtOp op, int32_t* decomposition_subgraph_index);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

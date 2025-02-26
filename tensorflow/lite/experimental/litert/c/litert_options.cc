@@ -387,3 +387,29 @@ LiteRtStatus LiteRtGetSplitNumSplitsOption(LiteRtOp op, int32_t* num_splits) {
   *num_splits = opts.AsSplitOptions()->num_splits;
   return kLiteRtStatusOk;
 }
+
+LiteRtStatus LiteRtGetSHLOCompositeOpName(LiteRtOp op, const char** name) {
+  if (op->OpCode() != kLiteRtOpCodeShloComposite) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = detail::GetTflOptions2(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *name = opts.AsStableHLOCompositeOptions()->name.data();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetSHLOCompositeOpDecompositionSubgraphIndex(
+    LiteRtOp op, int32_t* subgraph_index) {
+  if (op->OpCode() != kLiteRtOpCodeShloComposite) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = detail::GetTflOptions2(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *subgraph_index =
+      opts.AsStableHLOCompositeOptions()->decomposition_subgraph_index;
+  return kLiteRtStatusOk;
+}
