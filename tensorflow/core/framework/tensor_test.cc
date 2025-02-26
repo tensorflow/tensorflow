@@ -16,9 +16,18 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 #include <algorithm>
+#include <cmath>
+#include <complex>
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
