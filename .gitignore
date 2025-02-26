@@ -51,3 +51,4 @@ gradleBuild
 Podfile.lock
 Pods
 xcuserdata
+Test
