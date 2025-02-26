@@ -258,6 +258,9 @@ HloInstruction* HloComputation::AddInstructionInternal(
   instruction_count_++;
   pinst->index_in_parent_ = index;
   instructions_.push_back(info);
+  for (const HloInstruction* operand : pinst->operands()) {
+    CHECK_EQ(operand->parent(), this);
+  }
   return pinst;
 }
 
