@@ -224,6 +224,7 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/testlib:filecheck",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/lib/core:status_test_util",

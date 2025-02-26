@@ -103,7 +103,7 @@ class CompilerPlugin {
 
   // Compile given LiteRtSubgraphs. Result object must be outlived by
   // this CompilerPlugin.
-  Expected<CompiledResult> Compile(absl::Span<LiteRtSubgraph> partitions,
+  Expected<CompiledResult> Compile(LiteRtModel partitions,
                                    absl::string_view soc_model = "");
 
   // Search for shared library files with prefix "libLiteRtCompilerPlugin" in

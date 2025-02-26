@@ -37,6 +37,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/model:ir_allocator",
         "//tensorflow/lite/experimental/litert/core/model:model_serialize",
+        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin_api",
         "@com_google_absl//absl/log:absl_check",
@@ -60,6 +61,7 @@ cc_library(
 #         "noasan",
 #         "nomsan",
 #         "nosan",
+#         "notsan",
 #     ],
 #     deps = [
 #         ":compiler_plugin",

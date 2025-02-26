@@ -76,9 +76,9 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -192,9 +192,9 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 

@@ -123,12 +123,9 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
   auto plugin = CreatePlugin();
   auto model = testing::LoadTestFileModel("one_mul.tflite");
 
-  const auto subgraph = model.MainSubgraph();
-  LiteRtSubgraph litert_subgraph = subgraph->Get();
-
   LiteRtCompiledResult compiled;
-  LITERT_ASSERT_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75",
-                                               &litert_subgraph, 1, &compiled));
+  LITERT_ASSERT_OK(
+      LiteRtCompilerPluginCompile(plugin.get(), "V75", model.Get(), &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
@@ -254,12 +251,9 @@ TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
   auto plugin = CreatePlugin();
   auto model = testing::LoadTestFileModel(GetParam());
 
-  const auto subgraph = model.MainSubgraph();
-  LiteRtSubgraph litert_subgraph = subgraph->Get();
-
   LiteRtCompiledResult compiled;
-  LITERT_ASSERT_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75",
-                                               &litert_subgraph, 1, &compiled));
+  LITERT_ASSERT_OK(
+      LiteRtCompilerPluginCompile(plugin.get(), "V75", model.Get(), &compiled));
 
   const void* byte_code;
   size_t byte_code_size;

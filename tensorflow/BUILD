@@ -106,7 +106,7 @@ PACKAGE_STATIC_DEPS = [
     "@local_config_tensorrt//:__subpackages__",
     "@local_execution_config_platform//:__subpackages__",
     "@mkl_dnn_acl_compatible//:__subpackages__",
-    "@ml_dtypes//:__subpackages__",
+    "@ml_dtypes_py//ml_dtypes:__subpackages__",
     "@nccl_archive//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
     "@onednn//:__subpackages__",
@@ -1747,8 +1747,8 @@ py_library(
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/authoring",
         "//tensorflow/python:no_contrib",
-        "@pypi_keras_nightly//:pkg",
-        "@pypi_tb_nightly//:pkg",
+        "@pypi_keras//:pkg",
+        "@pypi_tensorboard//:pkg",
     ],
 )
 # copybara:comment_end

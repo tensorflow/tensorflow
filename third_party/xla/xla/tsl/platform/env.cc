@@ -507,7 +507,7 @@ absl::Status ReadFileToString(Env* env, const string& fname, string* data) {
 }
 
 absl::Status WriteStringToFile(Env* env, const string& fname,
-                               const absl::string_view& data) {
+                               absl::string_view data) {
   std::unique_ptr<WritableFile> file;
   absl::Status s = env->NewWritableFile(fname, &file);
   if (!s.ok()) {

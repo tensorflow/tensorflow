@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "neuron/api/NeuronAdapter.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"

@@ -13,11 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
 #include <optional>
-#include <sstream>
-#include <string>
-#include <utility>
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep

@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,16 +46,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/collectives/async_collective_creator.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/gpu/model/sol_latency_estimator.h"
+#include "xla/service/gpu/transforms/async_collective_annotator.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
 #include "xla/service/gpu/transforms/schedule_postprocessing.h"
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
@@ -85,7 +88,7 @@ bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
-      return !IsSyncCollective(&instr);
+      return !IsGPUSyncCollective(instr);
     case HloOpcode::kAsyncStart:
       // Start async ops as early as possible to allow more concurrency.
       return true;
@@ -231,7 +234,7 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
   auto is_sync_start = [](const HloInstruction* instr) {
     return hlo_query::IsAsyncCollectiveStartOp(instr,
                                                /*include_send_recv=*/true) &&
-           IsSyncCollective(instr);
+           IsGPUSyncCollective(*instr);
   };
 
   for (HloInstruction* instr : input.instructions()) {
@@ -499,7 +502,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
         config, std::move(gpu_latency_estimator), profile.value(),
         std::move(aggregator));
     LOG(INFO) << "Found profile, using profile guided latency estimator";
-    LOG(INFO) << "Profile:\n" << profile->DebugString();
+    VLOG(1) << "Profile:\n" << profile->DebugString();
     return pg_latency_estimator;
   }
 
@@ -672,6 +675,61 @@ bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint) {
 }
 
 }  // end namespace
+
+absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
+  HloPassPipeline pipeline("async-collective-conversion");
+
+  // Convert all collectives to their async form, and then annotate the ones
+  // that actually need to run asynchronously with a GPU specific backend
+  // config.
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_gather = HloPredicateTrue;
+  config.convert_all_reduce = HloPredicateTrue;
+  config.convert_all_to_all = HloPredicateTrue;
+  config.convert_collective_broadcast = HloPredicateTrue;
+  config.convert_collective_permute = HloPredicateTrue;
+  config.convert_ragged_all_to_all = HloPredicateTrue;
+  config.convert_reduce_scatter = HloPredicateTrue;
+  pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
+
+  absl::flat_hash_set<DebugOptions::CollectiveOpType> disabled_async_ops;
+  for (auto collective_op_type :
+       module->config().debug_options().xla_gpu_disable_async_collectives()) {
+    disabled_async_ops.insert(
+        static_cast<DebugOptions::CollectiveOpType>(collective_op_type));
+  }
+  auto convert_to_async = [&disabled_async_ops](const HloInstruction* inst) {
+    switch (inst->opcode()) {
+      case HloOpcode::kAllReduceStart:
+        return !disabled_async_ops.contains(DebugOptions::ALLREDUCE);
+      case HloOpcode::kCollectivePermuteStart:
+        return !disabled_async_ops.contains(DebugOptions::COLLECTIVEPERMUTE);
+      case HloOpcode::kAllGatherStart:
+        return !disabled_async_ops.contains(DebugOptions::ALLGATHER);
+      case HloOpcode::kAsyncStart: {
+        auto async_inst = Cast<HloAsyncInstruction>(inst);
+        switch (async_inst->async_wrapped_opcode()) {
+          case HloOpcode::kCollectiveBroadcast:
+            return !disabled_async_ops.contains(
+                DebugOptions::COLLECTIVEBROADCAST);
+          case HloOpcode::kReduceScatter:
+            return !disabled_async_ops.contains(DebugOptions::REDUCESCATTER);
+          case HloOpcode::kAllToAll:
+            return !disabled_async_ops.contains(DebugOptions::ALLTOALL);
+          case HloOpcode::kRaggedAllToAll:
+            return !disabled_async_ops.contains(DebugOptions::RAGGEDALLTOALL);
+          default:
+            return false;
+        }
+      }
+      default:
+        return false;
+    }
+  };
+  pipeline.AddPass<AsyncCollectiveAnnotator>(convert_to_async);
+
+  return pipeline.Run(module).status();
+}
 
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,

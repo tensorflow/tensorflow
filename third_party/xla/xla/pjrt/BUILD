@@ -1077,3 +1077,30 @@ cc_library(
         ["@com_google_absl//absl/status"],
     ),
 )
+
+cc_library(
+    name = "raw_buffer",
+    srcs = ["raw_buffer.cc"],
+    hdrs = ["raw_buffer.h"],
+    deps = [
+        ":pjrt_future",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "raw_buffer_test",
+    srcs = ["raw_buffer_test.cc"],
+    deps = [
+        ":raw_buffer",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

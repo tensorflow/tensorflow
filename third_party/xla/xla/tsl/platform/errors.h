@@ -205,7 +205,7 @@ absl::Status Cancelled(Args... args) {
 }
 template <typename... Args>
 absl::Status CancelledWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kCancelled, message, payloads);
 }
@@ -263,7 +263,7 @@ absl::Status InvalidArgument(
 }
 template <typename... Args>
 absl::Status InvalidArgumentWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
   return errors::Create(absl::StatusCode::kInvalidArgument, message, payloads,
@@ -293,7 +293,7 @@ absl::Status InvalidArgument(Arg1 arg1) {
 }
 template <typename... Args>
 absl::Status InvalidArgumentWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kInvalidArgument, message, payloads);
 }
@@ -339,7 +339,7 @@ absl::Status NotFound(
 }
 template <typename... Args>
 absl::Status NotFoundWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
   return errors::Create(absl::StatusCode::kNotFound, message, payloads, loc);
@@ -368,7 +368,7 @@ absl::Status NotFound(Arg1 arg1) {
 }
 template <typename... Args>
 absl::Status NotFoundWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kNotFound, message, payloads);
 }
@@ -383,7 +383,7 @@ absl::Status AlreadyExists(Args... args) {
 }
 template <typename... Args>
 absl::Status AlreadyExistsWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kAlreadyExists, message, payloads);
 }
@@ -397,7 +397,7 @@ absl::Status ResourceExhausted(Args... args) {
 }
 template <typename... Args>
 absl::Status ResourceExhaustedWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kResourceExhausted, message,
                         payloads);
@@ -412,7 +412,7 @@ absl::Status Unavailable(Args... args) {
 }
 template <typename... Args>
 absl::Status UnavailableWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kUnavailable, message, payloads);
 }
@@ -426,7 +426,7 @@ absl::Status FailedPrecondition(Args... args) {
 }
 template <typename... Args>
 absl::Status FailedPreconditionWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kFailedPrecondition, message,
                         payloads);
@@ -441,7 +441,7 @@ absl::Status OutOfRange(Args... args) {
 }
 template <typename... Args>
 absl::Status OutOfRangeWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kOutOfRange, message, payloads);
 }
@@ -455,7 +455,7 @@ absl::Status Unimplemented(Args... args) {
 }
 template <typename... Args>
 absl::Status UnimplementedWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kUnimplemented, message, payloads);
 }
@@ -469,7 +469,7 @@ absl::Status Internal(Args... args) {
 }
 template <typename... Args>
 absl::Status InternalWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kInternal, message, payloads);
 }
@@ -483,7 +483,7 @@ absl::Status Aborted(Args... args) {
 }
 template <typename... Args>
 absl::Status AbortedWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kAborted, message, payloads);
 }
@@ -497,7 +497,7 @@ absl::Status DeadlineExceeded(Args... args) {
 }
 template <typename... Args>
 absl::Status DeadlineExceededWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kDeadlineExceeded, message, payloads);
 }
@@ -511,7 +511,7 @@ absl::Status DataLoss(Args... args) {
 }
 template <typename... Args>
 absl::Status DataLossWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kDataLoss, message, payloads);
 }
@@ -525,7 +525,7 @@ absl::Status Unknown(Args... args) {
 }
 template <typename... Args>
 absl::Status UnknownPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kUnknown, message, payloads);
 }
@@ -538,7 +538,7 @@ absl::Status PermissionDenied(Args... args) {
 }
 template <typename... Args>
 absl::Status PermissionDeniedWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kPermissionDenied, message, payloads);
 }
@@ -552,7 +552,7 @@ absl::Status Unauthenticated(Args... args) {
 }
 template <typename... Args>
 absl::Status UnauthenticatedWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kUnauthenticated, message, payloads);
 }

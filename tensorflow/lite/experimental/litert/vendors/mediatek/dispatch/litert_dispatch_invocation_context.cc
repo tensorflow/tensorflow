@@ -34,19 +34,9 @@
 
 using litert::Error;
 using litert::Expected;
-using litert::mediatek::NEURON_NO_ERROR;
-using litert::mediatek::NEURON_PREFER_SUSTAINED_SPEED;
-using litert::mediatek::NEURON_PRIORITY_HIGH;
-using litert::mediatek::NEURON_TENSOR_FLOAT32;
-using litert::mediatek::NeuronCompilation;
 using litert::mediatek::NeuronCompilationPtr;
-using litert::mediatek::NeuronExecution;
 using litert::mediatek::NeuronExecutionPtr;
-using litert::mediatek::NeuronModel;
 using litert::mediatek::NeuronModelPtr;
-using litert::mediatek::NeuronOperandType;
-using litert::mediatek::NeuronOperationType;
-using litert::mediatek::NeuronRuntimeVersion;
 
 namespace {
 

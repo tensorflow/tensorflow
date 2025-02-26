@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace dtensor {

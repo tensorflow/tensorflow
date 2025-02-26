@@ -1097,10 +1097,10 @@ PjRtFuture<> TfrtCpuBuffer::LazyToLiteral(
   return ToLiteralHelper(buffer.value(), client()->async_work_runner());
 }
 
-// TODO(zhangqiaorjc): Consider disallowing multiple CPU devices and assign
-// multiple pmap replicas to the same CPU device for multi-CPU pmap testing.
-absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
-    PjRtDevice* dst_device) {
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToMemorySpace(
+    PjRtMemorySpace* dst_memory_space) {
+  CHECK_EQ(dst_memory_space->devices().size(), 1);
+  PjRtDevice* dst_device = dst_memory_space->devices().front();
   tsl::profiler::TraceMe traceme("TfrtCpuBuffer::CopyToDevice");
   // TODO(zhangqiaorjc): Remove this restriction after removing the test that
   // explicitly asserts this.
@@ -1127,12 +1127,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
       on_device_shape_, std::move(tracked_device_buffer), client(),
       tensorflow::down_cast<TfrtCpuDevice*>(dst_device),
       *dst_device->default_memory_space()));
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToMemorySpace(
-    PjRtMemorySpace* dst_memory_space) {
-  CHECK_EQ(dst_memory_space->devices().size(), 1);
-  return CopyToDevice(dst_memory_space->devices()[0]);
 }
 
 TfrtCpuExecutable::TfrtCpuExecutable(

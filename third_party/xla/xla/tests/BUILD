@@ -2214,12 +2214,13 @@ xla_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
     backends = ["cpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":client_library_test_runner_mixin",
-        ":hlo_test_base",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
         ":literal_test_util",
         ":test_macros_header",
-        ":test_utils",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:array3d",
@@ -2656,7 +2657,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:blocking_counter",
-        "@ml_dtypes//:float8",
+        "@ml_dtypes_py//ml_dtypes:float8",
     ],
 )
 

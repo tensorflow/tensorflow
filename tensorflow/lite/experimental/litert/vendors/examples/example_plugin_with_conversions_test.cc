@@ -69,13 +69,9 @@ TEST(ExamplePluginWithConvertTypesTest, CompileMulSubgraph) {
   auto plugin = CreatePlugin();
   auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
 
-  auto main_subgraph = model.MainSubgraph();
-  LiteRtSubgraph litert_subgraph = main_subgraph->Get();
-
   LiteRtCompiledResult compiled;
   LITERT_ASSERT_OK(LiteRtCompilerPluginCompile(
-      plugin.get(), /*soc_model=*/nullptr, &litert_subgraph,
-      /*num_partitions*/ 1, &compiled));
+      plugin.get(), /*soc_model=*/nullptr, model.Get(), &compiled));
 
   const void* byte_code;
   size_t byte_code_size;

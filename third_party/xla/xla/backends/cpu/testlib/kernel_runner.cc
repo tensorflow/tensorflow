@@ -104,7 +104,7 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
       /*disable_expensive_passes=*/
       debug_options.xla_llvm_disable_expensive_passes(),
       /*slp_vectorizer_disabled=*/options::SlpVectorizerDisabled(config),
-      /*enable_loop_unrolling=*/options::EnableLoopUnrolling(config),
+      /*disable_loop_unrolling=*/options::DisableLoopUnrolling(config),
   };
 
   IrCompiler::CompilationHooks ir_compiler_hooks;

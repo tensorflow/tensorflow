@@ -38,8 +38,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/status_matchers.h"
 
 namespace mlir::quant {
 namespace {

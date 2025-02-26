@@ -2342,40 +2342,6 @@ PjRtFuture<> PjRtCApiBuffer::CopyRawToHost(void* dst, int64_t offset,
   return pjrt::ConvertCEventToCppFuture(args.event, api);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
-    PjRtDevice* dst_device) {
-  if (dst_device->client() == client_) {
-    PJRT_Buffer_CopyToDevice_Args args;
-    args.struct_size = PJRT_Buffer_CopyToDevice_Args_STRUCT_SIZE;
-    args.extension_start = nullptr;
-    args.buffer = buffer_.get();
-    args.dst_device =
-        tensorflow::down_cast<PjRtCApiDevice*>(dst_device)->c_device();
-    const PJRT_Api* api = pjrt_c_api();
-    RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Buffer_CopyToDevice(&args), api);
-    return std::unique_ptr<PjRtBuffer>(
-        std::make_unique<PjRtCApiBuffer>(client_, args.dst_buffer));
-  } else {
-    // Copy across PjRtClients by copying through host
-    TF_ASSIGN_OR_RETURN(PjRtMemorySpace * dst_memory_space,
-                        dst_device->default_memory_space());
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
-    absl::InlinedVector<int64_t, 4> byte_strides(
-        literal->shape().dimensions_size());
-    TF_RETURN_IF_ERROR(
-        ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
-    // Avoid use-after-free on `literal` due to unsequenced move and use.
-    Literal* literal_pointer = literal.get();
-    return dst_device->client()->BufferFromHostBuffer(
-        literal_pointer->untyped_data(),
-        literal_pointer->shape().element_type(),
-        literal_pointer->shape().dimensions(), byte_strides,
-        PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-        [literal{std::move(literal)}]() { /* frees literal */ },
-        dst_memory_space, /*device_layout=*/nullptr);
-  }
-}
-
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToMemorySpace(
     PjRtMemorySpace* dst_memory) {
   const PJRT_Api* api = pjrt_c_api();

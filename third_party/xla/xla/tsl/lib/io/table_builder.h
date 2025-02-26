@@ -50,7 +50,7 @@ class TableBuilder {
   // Add key,value to the table being constructed.
   // REQUIRES: key is after any previously added key in lexicographic order.
   // REQUIRES: Finish(), Abandon() have not been called
-  void Add(const absl::string_view& key, const absl::string_view& value);
+  void Add(absl::string_view key, absl::string_view value);
 
   // Advanced operation: writes any buffered key/value pairs to file.
   // Can be used to ensure that two adjacent entries never live in
@@ -84,7 +84,7 @@ class TableBuilder {
  private:
   bool ok() const { return status().ok(); }
   void WriteBlock(BlockBuilder* block, BlockHandle* handle);
-  void WriteRawBlock(const absl::string_view& data, CompressionType,
+  void WriteRawBlock(absl::string_view block_contents, CompressionType type,
                      BlockHandle* handle);
 
   struct Rep;

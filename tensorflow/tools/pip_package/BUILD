@@ -109,7 +109,7 @@ filegroup(
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
         "@local_config_tensorrt//:LICENSE",
-        "@ml_dtypes//:LICENSE",
+        "@ml_dtypes_py//:LICENSE",
         "@org_brotli//:LICENSE",
         "@pasta//:LICENSE",
         "@png//:LICENSE",

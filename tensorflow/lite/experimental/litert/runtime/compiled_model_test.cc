@@ -189,7 +189,8 @@ TEST(CompiledModelTest, Basic) {
   }
 
   // Execute model.
-  compiled_model.Run(signature_key, input_buffers, output_buffers);
+  bool async = false;
+  compiled_model.Run(signature_key, input_buffers, output_buffers, async);
 
   // Check model output.
   auto output_names = signatures[0]->OutputNames();
@@ -280,7 +281,8 @@ TEST(CompiledModelTest, UseAhwbBuffer) {
   }
 
   // Execute model.
-  compiled_model.Run(signature_key, input_buffers, output_buffers);
+  bool async = false;
+  compiled_model.Run(signature_key, input_buffers, output_buffers, async);
 
   // Check model output.
   auto output_names = signatures[0]->OutputNames();
@@ -368,7 +370,8 @@ TEST(CompiledModelTest, UseOpenCLBuffer) {
   }
 
   // Execute model.
-  compiled_model.Run(signature_key, input_buffers, output_buffers);
+  bool async = false;
+  compiled_model.Run(signature_key, input_buffers, output_buffers, async);
 
   // Check model output.
   auto output_names = signatures[0]->OutputNames();

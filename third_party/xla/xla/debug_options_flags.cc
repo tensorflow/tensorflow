@@ -89,6 +89,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #endif
   opts.set_xla_cpu_use_thunk_runtime(true);
   opts.set_xla_cpu_use_xnnpack(false);
+  opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
+      DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
   opts.set_xla_cpu_parallel_codegen_split_count(32);
   opts.set_xla_cpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_cpu_enable_concurrency_optimized_scheduler(true);
@@ -297,7 +299,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
-  opts.set_xla_experimental_ignore_channel_id(false);
+  opts.set_xla_ignore_channel_id(true);
   opts.set_xla_gpu_dot_merger_threshold_mb(32);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
@@ -666,6 +668,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     return absl::StrJoin(collective_ops, ", ", Formatter());
   };
 
+  // Custom parser for `xla_cpu_xnn_graph_fusion_mode` flag.
+  auto setter_for_xla_cpu_experimental_xnn_graph_fusion_mode =
+      [debug_options](absl::string_view input) {
+        DebugOptions::XnnGraphFusionMode mode;
+        if (!DebugOptions::XnnGraphFusionMode_Parse(
+                absl::AsciiStrToUpper(input), &mode)) {
+          return false;
+        }
+        debug_options->set_xla_cpu_experimental_xnn_graph_fusion_mode(mode);
+        return true;
+      };
+
   // Custom parser for `xla_gpu_enable_while_loop_unrolling` flag.
   auto setter_for_xla_gpu_enable_while_loop_unrolling =
       [&debug_options](absl::string_view input) {
@@ -679,7 +693,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
 
   // Custom parser for xla_gpu_disable_async_collectives.
   auto setter_for_xla_gpu_disable_async_collectives =
-      [debug_options](const absl::string_view& input) {
+      [debug_options](absl::string_view input) {
         auto is_collective_type = [](absl::string_view value) {
           DebugOptions::CollectiveOpType op_type;
           return DebugOptions::CollectiveOpType_Parse(
@@ -926,6 +940,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_cpu_use_xnnpack(),
                 "Use XNNPACK for supported operations."));
   flag_list->push_back(tsl::Flag(
+      "xla_cpu_experimental_xnn_graph_fusion_mode",
+      setter_for_xla_cpu_experimental_xnn_graph_fusion_mode,
+      DebugOptions::XnnGraphFusionMode_Name(
+          debug_options->xla_cpu_experimental_xnn_graph_fusion_mode()),
+      "Controls XnnGraphFusion pass. "
+      "`XNN_GRAPH_FUSION_MODE_DISABLED` - default value, "
+      "`XNN_GRAPH_FUSION_MODE_GREEDY` - greedy extraction of "
+      "XNNPACK-compatible subgraphs starting from root instructions."));
+  flag_list->push_back(tsl::Flag(
       "xla_cpu_parallel_codegen_split_count",
       int32_setter_for(&DebugOptions::set_xla_cpu_parallel_codegen_split_count),
       debug_options->xla_cpu_parallel_codegen_split_count(),
@@ -1031,6 +1054,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "and \"test_undeclared_outputs_dir\" have a special meaning: They cause "
       "us to dump into the directory specified by the environment variable "
       "TEST_UNDECLARED_OUTPUTS_DIR."));
+  flag_list->push_back(tsl::Flag(
+      "xla_flags_reset", bool_setter_for(&DebugOptions::set_xla_flags_reset),
+      debug_options->xla_flags_reset(),
+      "Whether to reset XLA_FLAGS next time to parse."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_annotate_with_emitter_loc",
       bool_setter_for(
@@ -2097,11 +2124,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_disable_binary_libraries(),
       "Disable XLA GPU passes that depend on non-open source binary "
       "libraries"));
-  flag_list->push_back(tsl::Flag(
-      "xla_experimental_ignore_channel_id",
-      bool_setter_for(&DebugOptions::set_xla_experimental_ignore_channel_id),
-      debug_options->xla_experimental_ignore_channel_id(),
-      "Experimental: ignore channel ids for collective operations."));
+  flag_list->push_back(
+      tsl::Flag("xla_ignore_channel_id",
+                bool_setter_for(&DebugOptions::set_xla_ignore_channel_id),
+                debug_options->xla_ignore_channel_id(),
+                "Ignore channel ids for collective operations."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dot_merger_threshold_mb",
       int32_setter_for(&DebugOptions::set_xla_gpu_dot_merger_threshold_mb),
@@ -2199,6 +2226,10 @@ void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
 
 xla::DebugOptions GetDebugOptionsFromFlags() {
   absl::call_once(flags_init, &AllocateFlags, nullptr);
+  if (flag_values->xla_flags_reset()) {
+    ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects,
+                                     /*reset_envvar=*/true);
+  }
   return *flag_values;
 }
 

@@ -1456,7 +1456,7 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
          computation->MakeInstructionPostOrder()) {
       // Create an empty shape tree.
       value_sets_.insert({instruction, std::make_unique<InstructionValueSet>(
-                                           instruction->shape())});
+                                           &instruction->shape())});
 
       // For each sub-shape of the instruction shape, add a new HloValue to its
       // HloValueSet. should_define may be provided to define a subset of

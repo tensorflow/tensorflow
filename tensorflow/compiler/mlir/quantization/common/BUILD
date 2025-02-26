@@ -76,7 +76,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:status_matchers",
         "@stablehlo//:stablehlo_ops",
     ],
 )
@@ -179,7 +179,7 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:status_matchers",
         "@stablehlo//:stablehlo_ops",
     ],
 )

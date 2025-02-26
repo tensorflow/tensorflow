@@ -48,8 +48,15 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
+<<<<<<< HEAD
 _VERSION = '2.19.0.620-dev20241212'
+=======
+_VERSION = '2.19.0-rc0'
+>>>>>>> upstream/r2.19
 
+# Update this version when a new libtpu stable version is released.
+LATEST_RELEASE_LIBTPU_VERSION = '0.0.9'
+NEXT_LIBTPU_VERSION = '0.0.10'
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
 # equivalents (tf_nightly_*). The package is controlled from the argument line
@@ -109,11 +116,11 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.19.0.a',
-    'keras-nightly >= 3.6.0.dev',
+    'tensorboard ~= 2.19.0',
+    'keras >= 3.5.0',
     'numpy >= 1.26.0, < 2.2.0',
     'h5py >= 3.11.0',
-    'ml_dtypes >= 0.4.0, < 1.0.0',
+    'ml_dtypes >= 0.5.1, < 1.0.0',
 ]
 
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
@@ -247,7 +254,7 @@ class InstallHeaders(Command):
         '/tensorflow/include/external/com_google_absl': '',
         '/tensorflow/include/external/ducc': '/ducc',
         '/tensorflow/include/external/eigen_archive': '',
-        '/tensorflow/include/external/ml_dtypes': '/ml_dtypes',
+        '/tensorflow/include/external/ml_dtypes_py': '',
         '/tensorflow/include/tensorflow/compiler/xla': (
             '/tensorflow/include/xla'
         ),
@@ -310,17 +317,14 @@ if '_tpu' in project_name:
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      _VERSION.replace('-', ''),
-      '0.1.dev'
+      LATEST_RELEASE_LIBTPU_VERSION,
+      NEXT_LIBTPU_VERSION + '.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)
           - datetime.timedelta(hours=8)
-      ).strftime('%Y%m%d'),
+      ).strftime('%Y%m%d') + '+nightly',
   )
-  if _libtpu_version.startswith('0.1'):
-    REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
-  else:
-    REQUIRED_PACKAGES.append([f'libtpu=={_libtpu_version}'])
+  REQUIRED_PACKAGES.append([f'libtpu=={_libtpu_version}'])
   CONSOLE_SCRIPTS.extend([
       'start_grpc_tpu_worker = tensorflow.python.tools.grpc_tpu_worker:run',
       ('start_grpc_tpu_service = '
@@ -358,7 +362,7 @@ headers = (
     + list(find_files('*.inc', 'tensorflow/include/external/com_google_absl'))
     + list(find_files('*.h', 'tensorflow/include/external/ducc/google'))
     + list(find_files('*', 'tensorflow/include/external/eigen_archive'))
-    + list(find_files('*.h', 'tensorflow/include/external/ml_dtypes'))
+    + list(find_files('*.h', 'tensorflow/include/external/ml_dtypes_py'))
 )
 
 # Quite a lot of setup() options are different if this is a collaborator package

@@ -49,9 +49,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "xla/tsl/lib/io/buffered_file.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/stringpiece.h"
 

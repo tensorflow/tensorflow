@@ -1567,18 +1567,29 @@ class AnnotationReadySetLt {
   }
 };
 absl::StatusOr<HloGraphNode*> FindAndExtractBestAnnotatedNode(
-    DefaultSchedulerCore::ReadyQueueSet& annotation_ready) {
+    DefaultSchedulerCore::SchedulingState& sched_state,
+    DefaultSchedulerCore::OverlapLimitRule
+        scheduling_instruction_crosses_overlap_limit) {
   using ScheduleCandidate = DefaultSchedulerCore::ScheduleCandidate;
   using CandidateResult = DefaultSchedulerCore::CandidateResult;
   AnnotationReadySetLt ready_lt;
   // Construct a schedule candidate for caching.
   ScheduleCandidate ready_chosen;
+  auto& annotation_ready = sched_state.annotation_ready;
   auto chosen_it = annotation_ready.end();
   // Try to pick nodes from the ready set first as are the ones that cause the
   // most latency hiding.
   for (auto ready_node_it = annotation_ready.begin(),
             e = annotation_ready.end();
        ready_node_it != e; ++ready_node_it) {
+    // If this node would cause the max_concurrent_resource count to go beyond
+    // the limit do not schedule it and pass to the next node.
+    if (scheduling_instruction_crosses_overlap_limit(sched_state,
+                                                     *ready_node_it)) {
+      VLOG(2) << "Annotation instructions crosses overlap limit:"
+              << (*ready_node_it)->GetInstr().name();
+      continue;
+    }
     ScheduleCandidate ready_candidate;
     ready_candidate.node = *ready_node_it;
     if (ready_chosen.node == nullptr) {
@@ -1654,7 +1665,8 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     // Find the best annotated node to schedule.
     TF_ASSIGN_OR_RETURN(
         HloGraphNode * node,
-        FindAndExtractBestAnnotatedNode(sched_state->annotation_ready));
+        FindAndExtractBestAnnotatedNode(
+            *sched_state, scheduling_instruction_crosses_overlap_limit_));
 
     TF_RET_CHECK(node != nullptr)
         << "Couldn't find an annotated node to schedule.";

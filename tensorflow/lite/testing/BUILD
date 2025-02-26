@@ -180,7 +180,7 @@ py_strict_library(
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
     ],
 )
 

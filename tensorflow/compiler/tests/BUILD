@@ -2867,8 +2867,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -2961,7 +2961,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 

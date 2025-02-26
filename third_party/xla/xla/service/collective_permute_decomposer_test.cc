@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -38,6 +39,7 @@ namespace {
 
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::NotNull;
 
 using Pass = CollectivePermuteDecomposer;
 
@@ -322,10 +324,13 @@ void EnsureControlDependency(Decomposed cp) {
   EXPECT_EQ(cp.send->operand(1), cp.after_all);
   EXPECT_EQ(cp.recv_done->operand(0), cp.recv);
   EXPECT_EQ(cp.send_done->operand(0), cp.send);
-
-  EXPECT_THAT(cp.send->control_predecessors(), ElementsAre(cp.recv))
+  EXPECT_TRUE(absl::c_find_if(
+      cp.send->control_predecessors(),
+      [&cp](const HloInstruction* it) { return it == cp.recv; }))
       << "Send should depend on recv when decoposed";
-  EXPECT_THAT(cp.recv_done->control_predecessors(), ElementsAre(cp.send))
+  EXPECT_TRUE(absl::c_find_if(
+      cp.recv_done->control_predecessors(),
+      [&cp](const HloInstruction* it) { return it == cp.send; }))
       << "Recv-done should depend on send when decoposed";
 }
 
@@ -613,6 +618,457 @@ TEST_F(DecomposerTest, BackwardPipeline2) {
   EnsureControlDependency(cp_fwd);
   EXPECT_THAT(cp_back.recv->control_predecessors(), ElementsAre(cp_fwd.send))
       << "Per sequence of select operands, cp_fwd should come before cp_back";
+}
+
+TEST_F(DecomposerTest, OneSendRecvWithOneConflictingCollectivePermute) {
+  absl::string_view hlo = R"(
+  HloModule module
+
+  cond {
+    param = (u32[], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    n = u32[] constant(2)
+    ROOT result = pred[] compare(i, n), direction=LT
+  }
+
+  body {
+    param = (u32[], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    data_a = f32[64] get-tuple-element(param), index=1
+    data_b = f32[64] get-tuple-element(param), index=2
+
+    // cp_fwd can be decomposed.
+    cp_fwd = f32[64] collective-permute(data_a), channel_id=1,
+        source_target_pairs={{0,1},{1,2},{2,3}}
+
+    // cp_cycle cannot be decomposed and is conflicting with cp_fwd.
+    cp_cycle = f32[64] collective-permute(data_b), channel_id=2,
+        source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+    c1 = u32[] constant(1)
+    i_ = u32[] add(i, c1)
+
+    ROOT result = (u32[], f32[64], f32[64]) tuple(i_, cp_fwd, cp_cycle)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    a = f32[] constant(42.0)
+    data = f32[64] broadcast(a), dimensions={}
+    while_init = (u32[], f32[64], f32[64]) tuple(c0, data, data)
+    ROOT while_result = (u32[], f32[64], f32[64]) while(while_init), body=body,
+        condition=cond
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          hlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
+
+  // Expect the resulting send/recv ops to be strictly ordered before the
+  // remaining collective-permute. This is to avoid deadlocks where one device
+  // is waiting on its send/recv peer while its peer expects to perform a
+  // collective-permute.
+  HloInstruction* cp_cycle = FindInstruction(module.get(), "cp_cycle");
+  HloInstruction* cp_fwd_recv_done =
+      FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send_done =
+      FindInstruction(module.get(), "cp_fwd-send-done");
+  ASSERT_THAT(cp_cycle, NotNull());
+  ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send_done, NotNull());
+  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+              ElementsAre(cp_fwd_recv_done));
+  EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
+}
+
+TEST_F(DecomposerTest, OneSendRecvWithOneConflictingAllReduce) {
+  absl::string_view hlo = R"(
+  HloModule module
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  cond {
+    param = (u32[], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    n = u32[] constant(2)
+    ROOT result = pred[] compare(i, n), direction=LT
+  }
+
+  body {
+    param = (u32[], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    data_a = f32[64] get-tuple-element(param), index=1
+    data_b = f32[64] get-tuple-element(param), index=2
+
+    // cp_fwd can be decomposed.
+    cp_fwd = f32[64] collective-permute(data_a), channel_id=1,
+        source_target_pairs={{0,1},{1,2},{2,3}}
+
+    // ar is conflicting with cp_fwd.
+    ar = f32[64] all-reduce(data_b), channel_id=2, replica_groups={{0,1,2,3}},
+        to_apply=add
+
+    c1 = u32[] constant(1)
+    i_ = u32[] add(i, c1)
+
+    ROOT result = (u32[], f32[64], f32[64]) tuple(i_, cp_fwd, ar)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    a = f32[] constant(42.0)
+    data = f32[64] broadcast(a), dimensions={}
+    while_init = (u32[], f32[64], f32[64]) tuple(c0, data, data)
+    ROOT while_result = (u32[], f32[64], f32[64]) while(while_init), body=body,
+        condition=cond
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          hlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
+
+  // Expect the resulting send/recv ops to be strictly ordered before the
+  // all-reduce. This is to avoid deadlocks where one device is waiting on its
+  // send/recv peer while its peer expects to perform an all-reduce.
+  HloInstruction* ar = FindInstruction(module.get(), "ar");
+  HloInstruction* cp_fwd_recv_done =
+      FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send_done =
+      FindInstruction(module.get(), "cp_fwd-send-done");
+  ASSERT_THAT(ar, NotNull());
+  ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send_done, NotNull());
+  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+              ElementsAre(cp_fwd_recv_done));
+  EXPECT_THAT(ar->control_predecessors(), ElementsAre(cp_fwd_send_done));
+}
+
+TEST_F(DecomposerTest, OneSendRecvWithConflictingSendRecv) {
+  absl::string_view hlo = R"(
+  HloModule module
+
+  cond {
+    param = (u32[], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    n = u32[] constant(2)
+    ROOT result = pred[] compare(i, n), direction=LT
+  }
+
+  body {
+    param = (u32[], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    data_a = f32[64] get-tuple-element(param), index=1
+    data_b = f32[64] get-tuple-element(param), index=2
+
+    // cp_fwd can be decomposed.
+    cp_fwd = f32[64] collective-permute(data_a), channel_id=1,
+        source_target_pairs={{0,1},{1,2},{2,3}}
+
+    // These send/recv ops are conflicting with cp_fwd.
+    tok = token[] after-all()
+    recv_ctx = (f32[64], u32[], token[]) recv(tok), channel_id=2,
+        frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
+    recv_done = (f32[64], token[]) recv-done(recv_ctx), channel_id=2
+    send_ctx = (f32[64], u32[], token[]) send(tok, data_b), channel_id=2,
+        frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
+    send_done = token[] send-done(send_ctx), channel_id=2
+    recv_data = f32[64] get-tuple-element(recv_done), index=0
+
+    c1 = u32[] constant(1)
+    i_ = u32[] add(i, c1)
+
+    ROOT result = (u32[], f32[64], f32[64]) tuple(i_, cp_fwd, recv_data)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    a = f32[] constant(42.0)
+    data = f32[64] broadcast(a), dimensions={}
+    while_init = (u32[], f32[64], f32[64]) tuple(c0, data, data)
+    ROOT while_result = (u32[], f32[64], f32[64]) while(while_init), body=body,
+        condition=cond
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          hlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
+
+  // Expect decomposed send/recv ops to be strictly ordered before the
+  // preexisting send/recv ops. This is to avoid deadlocks where one device is
+  // waiting on its decomposed send/recv peer while its peer is stuck in some
+  // different send/recv communication.
+  HloInstruction* conflicting_recv = FindInstruction(module.get(), "recv_ctx");
+  HloInstruction* conflicting_send = FindInstruction(module.get(), "send_ctx");
+  HloInstruction* cp_fwd_recv_done =
+      FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send_done =
+      FindInstruction(module.get(), "cp_fwd-send-done");
+  ASSERT_THAT(conflicting_recv, NotNull());
+  ASSERT_THAT(conflicting_send, NotNull());
+  ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send_done, NotNull());
+  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+              ElementsAre(cp_fwd_recv_done));
+  EXPECT_THAT(conflicting_recv->control_predecessors(),
+              ElementsAre(cp_fwd_send_done));
+  EXPECT_THAT(conflicting_send->control_predecessors(),
+              ElementsAre(cp_fwd_send_done));
+}
+
+TEST_F(DecomposerTest, OneSendRecvWithNonConflictingAllReduce) {
+  absl::string_view hlo = R"(
+  HloModule module
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  cond {
+    param = (u32[], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    n = u32[] constant(2)
+    ROOT result = pred[] compare(i, n), direction=LT
+  }
+
+  body {
+    param = (u32[], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    data_a = f32[64] get-tuple-element(param), index=1
+    data_b = f32[64] get-tuple-element(param), index=2
+
+    // cp_fwd can be decomposed.
+    cp_fwd = f32[64] collective-permute(data_a), channel_id=1,
+        source_target_pairs={{0,2},{1,3}}
+
+    // ar is non-conflicting with cp_fwd. Cliques overlap in no more than one
+    // rank.
+    ar = f32[64] all-reduce(data_b), channel_id=2, replica_groups={{0,1},{2,3}},
+        to_apply=add
+    c1 = u32[] constant(1)
+    i_ = u32[] add(i, c1)
+
+    ROOT result = (u32[], f32[64], f32[64]) tuple(i_, cp_fwd, ar)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    a = f32[] constant(42.0)
+    data = f32[64] broadcast(a), dimensions={}
+    while_init = (u32[], f32[64], f32[64]) tuple(c0, data, data)
+    ROOT while_result = (u32[], f32[64], f32[64]) while(while_init), body=body,
+        condition=cond
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          hlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
+
+  // Expect decomposed send/recv ops to be unordered wrt. to preexisting
+  // non-conflicting all-reduce. These collectivves will not deadlock as their
+  // NCCL cliques overlap in no more than one rank.
+  HloInstruction* ar = FindInstruction(module.get(), "ar");
+  HloInstruction* cp_fwd_recv_done =
+      FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send_done =
+      FindInstruction(module.get(), "cp_fwd-send-done");
+  ASSERT_THAT(ar, NotNull());
+  ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send_done, NotNull());
+  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+              ElementsAre(cp_fwd_recv_done));
+  EXPECT_THAT(ar->control_predecessors(), ElementsAre());
+}
+
+TEST_F(DecomposerTest, OneSendRecvWithConflictingAndNonConflictingCollectives) {
+  absl::string_view hlo = R"(
+  HloModule module
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  cond {
+    param = (u32[], f32[64], f32[64], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    n = u32[] constant(2)
+    ROOT result = pred[] compare(i, n), direction=LT
+  }
+
+  body {
+    param = (u32[], f32[64], f32[64], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    data_a = f32[64] get-tuple-element(param), index=1
+    data_b = f32[64] get-tuple-element(param), index=2
+
+    // cp_fwd can be decomposed.
+    cp_fwd = f32[64] collective-permute(data_a), channel_id=1,
+        source_target_pairs={{0,2},{1,3}}
+
+    // cp_cycle is conflicting with cp_fwd.
+    cp_cycle = f32[64] collective-permute(data_b), channel_id=2,
+        source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+
+    // ar is non-conflicting with cp_fwd. Cliques overlap in no more than one
+    // rank.
+    ar = f32[64] all-reduce(data_b), channel_id=3,
+        replica_groups={{0},{1},{2},{3}}, to_apply=add
+
+    // arc is conflicting with cp_fwd.
+    arc = f32[64] all-reduce(data_b), channel_id=4, replica_groups={{0,1,2,3}},
+        to_apply=add
+
+    c1 = u32[] constant(1)
+    i_ = u32[] add(i, c1)
+
+    ROOT result = (u32[], f32[64], f32[64], f32[64], f32[64]) tuple(i_, cp_fwd,
+        cp_cycle, ar, arc)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    a = f32[] constant(42.0)
+    data = f32[64] broadcast(a), dimensions={}
+    while_init = (u32[], f32[64], f32[64], f32[64], f32[64]) tuple(c0, data,
+        data, data, data)
+    ROOT while_result = (u32[], f32[64], f32[64], f32[64], f32[64])
+        while(while_init), body=body, condition=cond
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          hlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
+
+  // Expect decomposed send/recv ops to be strictly ordered before the
+  // conflicting all-reduce arc and the conflicting collective-permute cp_cycle.
+  // Expect them to be unordered wrt. to the non-conflicting all-reduce ar.
+  HloInstruction* cp_cycle = FindInstruction(module.get(), "cp_cycle");
+  HloInstruction* ar = FindInstruction(module.get(), "ar");
+  HloInstruction* arc = FindInstruction(module.get(), "arc");
+  HloInstruction* cp_fwd_recv_done =
+      FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send_done =
+      FindInstruction(module.get(), "cp_fwd-send-done");
+  ASSERT_THAT(cp_cycle, NotNull());
+  ASSERT_THAT(ar, NotNull());
+  ASSERT_THAT(arc, NotNull());
+  ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send_done, NotNull());
+  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+              ElementsAre(cp_fwd_recv_done));
+  EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
+  EXPECT_THAT(ar->control_predecessors(), ElementsAre());
+  EXPECT_THAT(arc->control_predecessors(), ElementsAre(cp_fwd_send_done));
+}
+
+TEST_F(DecomposerTest, OneSendRecvWithIndirectlyConflictingCollectives) {
+  absl::string_view hlo = R"(
+  HloModule module
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  cond {
+    param = (u32[], f32[64], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    n = u32[] constant(2)
+    ROOT result = pred[] compare(i, n), direction=LT
+  }
+
+  body {
+    param = (u32[], f32[64], f32[64], f32[64]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    data_a = f32[64] get-tuple-element(param), index=1
+    data_b = f32[64] get-tuple-element(param), index=2
+
+    // cp_fwd can be decomposed.
+    cp_fwd = f32[64] collective-permute(data_a), channel_id=1,
+        source_target_pairs={{0,1},{1,2},{2,3}}
+
+    // These collective-permute ops are conflicting with cp_fwd, some through
+    // indirection.
+    cp_cycle = f32[64] collective-permute(data_b), channel_id=2,
+        source_target_pairs={{4,5},{5,6},{6,7},{7,4}}
+    cp_cycle2 = f32[64] collective-permute(data_b), channel_id=3,
+        source_target_pairs={{2,3},{3,4},{4,5},{5,2}}
+
+    c1 = u32[] constant(1)
+    i_ = u32[] add(i, c1)
+
+    ROOT result = (u32[], f32[64], f32[64], f32[64]) tuple(i_, cp_fwd, cp_cycle,
+        cp_cycle2)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    a = f32[] constant(42.0)
+    data = f32[64] broadcast(a), dimensions={}
+    while_init = (u32[], f32[64], f32[64], f32[64]) tuple(c0, data, data, data)
+    ROOT while_result = (u32[], f32[64], f32[64], f32[64]) while(while_init),
+        body=body, condition=cond
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          hlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
+
+  // Expect send/recv ops to be strictly ordered before the conflicting
+  // collective-permute ops. This is to avoid deadlocks where one device is
+  // waiting on its send/recv peer while its peer is stuck in a different
+  // collective-permute.
+  HloInstruction* cp_cycle = FindInstruction(module.get(), "cp_cycle");
+  HloInstruction* cp_cycle2 = FindInstruction(module.get(), "cp_cycle2");
+  HloInstruction* cp_fwd_recv_done =
+      FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send_done =
+      FindInstruction(module.get(), "cp_fwd-send-done");
+  ASSERT_THAT(cp_cycle, NotNull());
+  ASSERT_THAT(cp_cycle2, NotNull());
+  ASSERT_THAT(cp_fwd_recv_done, NotNull());
+  ASSERT_THAT(cp_fwd_send_done, NotNull());
+  EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
+              ElementsAre(cp_fwd_recv_done));
+  EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
+  EXPECT_THAT(cp_cycle2->control_predecessors(), ElementsAre(cp_fwd_send_done));
 }
 
 }  // namespace

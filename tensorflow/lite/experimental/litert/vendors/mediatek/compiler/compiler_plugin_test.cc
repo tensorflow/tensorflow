@@ -25,7 +25,6 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
-#include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/test/test_models.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/cc/litert_compiler_plugin.h"
@@ -43,18 +42,24 @@ const auto kSupportedOps = Values(
 // clang-format on
 
 TEST(TestQnnPlugin, GetConfigInfo) {
+#ifndef __ANDROID__
+  GTEST_SKIP() << "Loading shared lib not currently supported on linux.";
+#endif  // __ANDROID__
+
   EXPECT_STREQ(LiteRtGetCompilerPluginSocManufacturer(), "MediaTek");
 
   auto plugin = CreatePlugin();
 
   LiteRtParamIndex num_supported_soc_models;
-  LITERT_ASSERT_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
-      plugin.get(), &num_supported_soc_models));
+  ASSERT_EQ(LiteRtGetNumCompilerPluginSupportedSocModels(
+                plugin.get(), &num_supported_soc_models),
+            kLiteRtStatusOk);
   ASSERT_EQ(num_supported_soc_models, 12);
 
   const char* config_id;
-  LITERT_ASSERT_OK(
-      LiteRtGetCompilerPluginSupportedSocModel(plugin.get(), 0, &config_id));
+  ASSERT_EQ(
+      LiteRtGetCompilerPluginSupportedSocModel(plugin.get(), 0, &config_id),
+      kLiteRtStatusOk);
   EXPECT_STREQ(config_id, "mt6853");
 }
 
@@ -63,8 +68,9 @@ TEST(TestQnnPlugin, PartitionAdd) {
   auto model = testing::LoadTestFileModel("add_simple.tflite");
 
   LiteRtOpListT selected_op_list;
-  LITERT_ASSERT_OK(LiteRtCompilerPluginPartition(
-      plugin.get(), model.Subgraph(0)->Get(), &selected_op_list));
+  ASSERT_EQ(LiteRtCompilerPluginPartition(
+                plugin.get(), model.Subgraph(0)->Get(), &selected_op_list),
+            kLiteRtStatusOk);
   const auto selected_ops = selected_op_list.Vec();
 
   ASSERT_EQ(selected_ops.size(), 1);
@@ -77,27 +83,30 @@ class MtkPluginOpCompatibilityTest
     : public ::testing::TestWithParam<std::string> {};
 
 TEST_P(MtkPluginOpCompatibilityTest, SupportedOpsTest) {
+#ifndef __ANDROID__
+  GTEST_SKIP() << "Loading shared lib not currently supported on linux.";
+#endif  // __ANDROID__
+
   LITERT_LOG(LITERT_INFO, "Testing TFLite model: %s", GetParam().c_str());
   auto plugin = CreatePlugin();
   auto model = testing::LoadTestFileModel(GetParam());
 
-  const auto subgraph = model.MainSubgraph();
-  LiteRtSubgraph litert_subgraph = subgraph->Get();
-
   LiteRtCompiledResult compiled;
-  LITERT_ASSERT_OK(LiteRtCompilerPluginCompile(
-      plugin.get(), /*soc_model=*/nullptr, &litert_subgraph, 1, &compiled));
+  ASSERT_EQ(LiteRtCompilerPluginCompile(plugin.get(), /*soc_model=*/nullptr,
+                                        model.Get(), &compiled),
+            kLiteRtStatusOk);
 
   LiteRtParamIndex num_byte_code;
-  LITERT_ASSERT_OK(
-      LiteRtCompiledResultNumByteCodeModules(compiled, &num_byte_code));
+  ASSERT_EQ(LiteRtCompiledResultNumByteCodeModules(compiled, &num_byte_code),
+            kLiteRtStatusOk);
   ASSERT_EQ(num_byte_code, 1);
 
   const void* byte_code;
   size_t byte_code_size;
 
-  LITERT_ASSERT_OK(LiteRtGetCompiledResultByteCode(
-      compiled, /*byte_code_idx=*/0, &byte_code, &byte_code_size));
+  ASSERT_EQ(LiteRtGetCompiledResultByteCode(compiled, /*byte_code_idx=*/0,
+                                            &byte_code, &byte_code_size),
+            kLiteRtStatusOk);
 
   absl::string_view byte_code_string(reinterpret_cast<const char*>(byte_code),
                                      byte_code_size);
@@ -107,8 +116,9 @@ TEST_P(MtkPluginOpCompatibilityTest, SupportedOpsTest) {
   size_t op_data_size;
   LiteRtParamIndex byte_code_idx;
 
-  LITERT_ASSERT_OK(LiteRtGetCompiledResultCallInfo(
-      compiled, /*call_idx=*/0, &op_data, &op_data_size, &byte_code_idx));
+  ASSERT_EQ(LiteRtGetCompiledResultCallInfo(compiled, /*call_idx=*/0, &op_data,
+                                            &op_data_size, &byte_code_idx),
+            kLiteRtStatusOk);
 
   EXPECT_EQ(byte_code_idx, 0);
 

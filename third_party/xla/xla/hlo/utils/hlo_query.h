@@ -98,8 +98,8 @@ HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
 // Applies `fn` to a collection of instruction with `opcode` for a given
 // `computation`.
 template <typename Fn>
-void ForEachInstructionWithOpcode(HloComputation& computation, HloOpcode opcode,
-                                  Fn&& fn) {
+void ForEachInstructionWithOpcode(const HloComputation& computation,
+                                  HloOpcode opcode, Fn&& fn) {
   for (HloInstruction* instr : computation.instructions()) {
     if (instr->opcode() == opcode) {
       fn(instr);
@@ -110,7 +110,7 @@ void ForEachInstructionWithOpcode(HloComputation& computation, HloOpcode opcode,
 // Applies `fn` to a collection of instruction with `opcode` for a given
 // `module`.
 template <typename Fn>
-void ForEachInstructionWithOpcode(HloModule& module, HloOpcode opcode,
+void ForEachInstructionWithOpcode(const HloModule& module, HloOpcode opcode,
                                   Fn&& fn) {
   for (HloComputation* computation : module.computations()) {
     ForEachInstructionWithOpcode(*computation, opcode, fn);
@@ -120,8 +120,8 @@ void ForEachInstructionWithOpcode(HloModule& module, HloOpcode opcode,
 // Applies `fn` to a collection of instruction satisfying `pred` for a given
 // `computation`.
 template <typename Fn>
-void ForEachInstructionWithPred(HloComputation& computation, HloPredicate pred,
-                                Fn&& fn) {
+void ForEachInstructionWithPred(const HloComputation& computation,
+                                HloPredicate pred, Fn&& fn) {
   for (HloInstruction* instr : computation.instructions()) {
     if (pred(instr)) {
       fn(instr);
@@ -132,7 +132,8 @@ void ForEachInstructionWithPred(HloComputation& computation, HloPredicate pred,
 // Applies `fn` to a collection of instruction satisfying `pred` for a given
 // `module`.
 template <typename Fn>
-void ForEachInstructionWithPred(HloModule& module, HloPredicate pred, Fn&& fn) {
+void ForEachInstructionWithPred(const HloModule& module, HloPredicate pred,
+                                Fn&& fn) {
   for (HloComputation* computation : module.computations()) {
     ForEachInstructionWithPred(*computation, pred, fn);
   }

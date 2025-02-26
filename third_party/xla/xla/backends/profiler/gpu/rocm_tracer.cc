@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/status/status.h"
 #include "rocm/rocm_config.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
@@ -296,7 +297,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
 
   // DumpApiCallbackData(domain, cbid, cbdata);
 
-  if (domain != ACTIVITY_DOMAIN_HIP_API) return tsl::OkStatus();
+  if (domain != ACTIVITY_DOMAIN_HIP_API) return absl::OkStatus();
 
   const hip_api_data_t* data = reinterpret_cast<const hip_api_data_t*>(cbdata);
 
@@ -324,7 +325,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
       } else {
         LOG(WARNING) << "An API exit callback received without API enter "
                         "with same correlation id. Event droped!";
-        return tsl::OkStatus();  // This API does not belong to us.
+        return absl::OkStatus();  // This API does not belong to us.
       }
       exit_time = RocmTracer::GetTimestamp();
     }
@@ -406,7 +407,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
         break;
     }
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 void RocmApiCallbackImpl::AddKernelEventUponApiExit(uint32_t cbid,
@@ -1011,7 +1012,7 @@ absl::Status RocmActivityCallbackImpl::operator()(const char* begin,
             ));
   }
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 void RocmActivityCallbackImpl::AddHipKernelActivityEvent(
@@ -1388,11 +1389,11 @@ absl::Status RocmTracer::ApiCallbackHandler(uint32_t domain, uint32_t cbid,
                                             const void* cbdata) {
   if (api_tracing_enabled_)
     TF_RETURN_IF_ERROR((*api_cb_impl_)(domain, cbid, cbdata));
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status RocmTracer::EnableApiTracing() {
-  if (api_tracing_enabled_) return tsl::OkStatus();
+  if (api_tracing_enabled_) return absl::OkStatus();
   api_tracing_enabled_ = true;
 
   for (auto& iter : options_->api_callbacks) {
@@ -1414,11 +1415,11 @@ absl::Status RocmTracer::EnableApiTracing() {
       }
     }
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status RocmTracer::DisableApiTracing() {
-  if (!api_tracing_enabled_) return tsl::OkStatus();
+  if (!api_tracing_enabled_) return absl::OkStatus();
   api_tracing_enabled_ = false;
 
   for (auto& iter : options_->api_callbacks) {
@@ -1440,7 +1441,7 @@ absl::Status RocmTracer::DisableApiTracing() {
       }
     }
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 void ActivityCallback(const char* begin, const char* end, void* user_data) {
@@ -1474,11 +1475,11 @@ absl::Status RocmTracer::ActivityCallbackHandler(const char* begin,
     }
     VLOG(3) << "Dropped Activity Records End";
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status RocmTracer::EnableActivityTracing() {
-  if (activity_tracing_enabled_) return tsl::OkStatus();
+  if (activity_tracing_enabled_) return absl::OkStatus();
   activity_tracing_enabled_ = true;
 
   if (!options_->activity_tracing.empty()) {
@@ -1516,11 +1517,11 @@ absl::Status RocmTracer::EnableActivityTracing() {
     }
   }
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status RocmTracer::DisableActivityTracing() {
-  if (!activity_tracing_enabled_) return tsl::OkStatus();
+  if (!activity_tracing_enabled_) return absl::OkStatus();
 
   for (auto& iter : options_->activity_tracing) {
     activity_domain_t domain = iter.first;
@@ -1571,7 +1572,7 @@ absl::Status RocmTracer::DisableActivityTracing() {
 
   activity_tracing_enabled_ = false;
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ uint64_t RocmTracer::GetTimestamp() {

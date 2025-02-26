@@ -66,6 +66,9 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/device_propagation.h"
@@ -108,9 +111,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_fingerprint_utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 

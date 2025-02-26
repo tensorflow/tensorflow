@@ -22,7 +22,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
-#include "tensorflow/lite/experimental/litert/test/test_macros.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/cc/litert_compiler_plugin.h"
 
@@ -65,12 +65,9 @@ TEST(TestCallGoogleTensorPlugin, CompileMulSubgraph) {
   auto plugin = CreatePlugin();
   auto model = testing::LoadTestFileModel("mul_simple.tflite");
 
-  auto main_subgraph = model.MainSubgraph();
-  LiteRtSubgraph litert_subgraph = main_subgraph->Get();
-
   LiteRtCompiledResult compiled;
-  LITERT_ASSERT_OK(LiteRtCompilerPluginCompile(plugin.get(), "P25",
-                                               &litert_subgraph, 1, &compiled));
+  LITERT_ASSERT_OK(
+      LiteRtCompilerPluginCompile(plugin.get(), "P25", model.Get(), &compiled));
 
   LiteRtDestroyCompiledResult(compiled);
 }  // Todo(abhirs): activate this test once the compiler wrapper is updated

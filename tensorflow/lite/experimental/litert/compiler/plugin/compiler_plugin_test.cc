@@ -122,7 +122,7 @@ TEST(CompilerPluginTest, Compile) {
   auto model_wrap = testing::LoadTestFileModel("mul_simple.tflite");
   auto& model = *model_wrap.Get();
 
-  auto result = plugins->front().Compile(model.Subgraphs());
+  auto result = plugins->front().Compile(&model);
   ASSERT_TRUE(result);
 
   auto byte_code = result->ByteCode();

@@ -72,12 +72,12 @@ limitations under the License.
 #include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 // Tool which lowers TensorFlow Graphs to StableHLO graphs.
 //

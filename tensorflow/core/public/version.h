@@ -26,7 +26,11 @@ limitations under the License.
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
+<<<<<<< HEAD
 #define TF_VERSION_SUFFIX ".620-dev20241212"
+=======
+#define TF_VERSION_SUFFIX "-rc0"
+>>>>>>> upstream/r2.19
 
 #define TF_STR_HELPER(x) #x
 #define TF_STR(x) TF_STR_HELPER(x)
@@ -108,7 +112,7 @@ limitations under the License.
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 2128  // Updated: 2025/2/4
+#define TF_GRAPH_DEF_VERSION 2129  // Updated: 2025/2/5
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

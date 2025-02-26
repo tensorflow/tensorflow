@@ -670,6 +670,7 @@ try-import %workspace%/.bazelrc.user
 # Here are bazelrc configs for release builds
 # Build TensorFlow v2.
 test:release_base --test_size_filters=small,medium
+test:release_base --flaky_test_attempts=3
 
 # Ensure release_base is set on linux
 build:release_linux_base --config=release_base

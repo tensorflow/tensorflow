@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/status_macros.h"
@@ -796,14 +795,6 @@ HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
     return instruction;
   }
   return nullptr;
-}
-
-bool IsSyncCollective(const HloInstruction* instr) {
-  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>();
-  if (!backend_config.ok()) {
-    return false;
-  }
-  return backend_config->collective_backend_config().is_sync();
 }
 
 using SourceTargetPairType = std::pair<int64_t, int64_t>;

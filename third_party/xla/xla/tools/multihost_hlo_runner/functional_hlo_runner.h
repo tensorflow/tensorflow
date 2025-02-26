@@ -66,6 +66,12 @@ enum class InputFormat {
                                     // in conjunction with xla_dump_as_text.
 };
 
+enum class OutputFormat : std::uint8_t {
+  kText,         // Text format returned by Literal::ToString().
+  kProtoBinary,  // Protobuf binary format of an xla::LiteralProto message.
+  kProtoText,    // Protobuf text format of an xla::LiteralProto message.
+};
+
 // Interface for profiler plugins. If being set in RunningOptions, profiling
 // session will be created for the last run of the HLO module.
 class ProfilerInterface {
@@ -133,6 +139,10 @@ class GPURunnerProfiler : public XSpaceProfilerInterface {
 bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
                    std::string* error);
 std::string AbslUnparseFlag(InputFormat input_format);
+
+bool AbslParseFlag(absl::string_view text, OutputFormat* output_format,
+                   std::string* error);
+std::string AbslUnparseFlag(OutputFormat output_format);
 
 // FunctionalHloRunner takes an HLO module as input and runs the HLO module
 // on a single or multiple hosts with various options (e.g. SPMD). The HLO
@@ -346,7 +356,8 @@ class FunctionalHloRunner {
       const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options, absl::string_view hlo_text,
-      InputFormat input_format, const PerDeviceLiteralVecType& arguments = {});
+      InputFormat input_format, const PerDeviceLiteralVecType& arguments = {},
+      std::minstd_rand0* engine = nullptr);
 
   // Loads and compiles an HLO for debugging purposes.
   //
@@ -368,7 +379,8 @@ class FunctionalHloRunner {
       const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options, HloModule* hlo_module,
-      const PerDeviceLiteralVecType& arguments = {});
+      const PerDeviceLiteralVecType& arguments = {},
+      std::minstd_rand0* engine = nullptr);
 
   // Compiles the HLO module.
   static absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
@@ -429,7 +441,8 @@ class FunctionalHloRunner {
 
   static absl::Status DumpOutput(
       const FunctionalHloRunner::PerDeviceLiteralVecType& output,
-      absl::string_view dump_output_to, int task_id);
+      absl::string_view dump_output_to, int task_id,
+      OutputFormat output_format = OutputFormat::kText);
 
  private:
   // Calculates the requested number of replicas and partitions.

@@ -539,7 +539,7 @@ NVPTXCompiler::CompileTargetBinary(
     const HloModuleConfig& module_config, llvm::Module* llvm_module,
     const stream_executor::DeviceDescription& device_description,
     bool relocatable, const HloModule* debug_module,
-    const CompileOptions& options) {
+    const CompileOptions& options, std::optional<int> shard_number) {
   std::unique_ptr<llvm::Module> loaded_module =
       MaybeLoadLLVMFromFile(debug_module, llvm_module);
   llvm::Module* selected_module = nullptr;
@@ -569,6 +569,22 @@ NVPTXCompiler::CompileTargetBinary(
     // This won't record values for calls that error out (because if they error
     // out we have no way of telling how far through the process we got).
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
+
+    if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
+                                   module_config.debug_options())) {
+      if (debug_module) {
+        DumpToFileInDirOrStdout(*debug_module, "",
+                                shard_number.has_value()
+                                    ? (std::to_string(*shard_number) + ".ptx")
+                                    : "ptx",
+                                ptx);
+      } else {
+        LOG(ERROR)
+            << "Dumping is not implemented since the file name cannot be "
+               "inferred. Please implement (potentially MLIR) module -> "
+               "filename heuristic.";
+      }
+    }
   }
 
   if (ptx.empty()) {
