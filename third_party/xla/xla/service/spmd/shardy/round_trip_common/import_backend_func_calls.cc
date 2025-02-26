@@ -71,7 +71,8 @@ class BackendFuncCallPattern : public OpConversionPattern<CallOp> {
     }
 
     FuncOp func = symbolTable.lookup<FuncOp>(adaptor.getCallee());
-    CHECK(func) << "Failed to lookup function: " << adaptor.getCallee().str();
+    CHECK(func) << "Failed to lookup function: "
+                << std::string_view(adaptor.getCallee());  // non-absl ok
     mlir::SmallVector<mlir::NamedAttribute> namedCompAttrs;
     llvm::copy_if(callOp->getDiscardableAttrs(),
                   std::back_inserter(namedCompAttrs),
