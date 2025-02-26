@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #ifdef PLATFORM_GOOGLE
 #include "nlohmann/json.hpp"
-#include "tensorflow/compiler/mlir/lite/experimental/google/tooling/google/direct_hlo_to_json_graph_convert.h"
+#include "tensorflow/compiler/mlir/lite/experimental/google/tooling/hlo_adapter/direct_hlo_to_json_graph_convert.h"
 #endif  // PLATFORM_GOOGLE
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
