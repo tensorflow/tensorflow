@@ -137,6 +137,8 @@ absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
       TF_RETURN_IF_ERROR(comm_handle.comm->Recv(
           dest_addr, buffer.element_type, buffer.element_count,
           RankId(*source_id), GpuCollectives::On(stream)));
+    } else {
+      VLOG(3) << "Skipping Recv";
     }
 
   } else {
