@@ -195,6 +195,11 @@ class BatchResource : public serving::BatchResourceBase {
       std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = num_batch_threads;
+    if (mixed_priority_batching_policy ==
+        serving::MixedPriorityBatchingPolicy::kPriorityMerge) {
+      batcher_options.use_global_scheduler = true;
+      batcher_options.rank_queues = true;
+    }
     std::shared_ptr<BatcherT> batcher;
     TF_RETURN_IF_ERROR(BatcherT::Create(batcher_options, &batcher));
 
