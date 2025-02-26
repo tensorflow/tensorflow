@@ -1060,12 +1060,6 @@ cuda_py_strict_test(
     name = "adam_test",
     size = "medium",
     srcs = ["adam_test.py"],
-<<<<<<< HEAD
-    python_version = "PY3",
-    tags = [],
-=======
-    tags = ["no_rocm"],
->>>>>>> upstream/master
     deps = [
         ":adam",
         "//tensorflow/python/client:session",
@@ -1193,11 +1187,7 @@ cuda_py_strict_test(
     name = "basic_loops_test",
     size = "medium",
     srcs = ["basic_loops_test.py"],
-<<<<<<< HEAD
-    python_version = "PY3",
     tags = ["cuda-only"], #TODO(ROCm) Re-enable after issue is fixed.
-=======
->>>>>>> upstream/master
     deps = [
         ":basic_loops",
         ":supervisor",

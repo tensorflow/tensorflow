@@ -213,33 +213,10 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     """
     inc_dirs = []
 
-<<<<<<< HEAD
-    # Add full paths
-    rocm_toolkit_path = str(repository_ctx.path(rocm_config.rocm_toolkit_path))
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/8.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/9.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/10.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/11.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/12.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/13.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/14.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/15.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/16.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/17.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/17/include")
-    inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/17/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/18/include")
-    if int(rocm_config.rocm_version_number) >= 60200:
-        inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/17/include")
-        inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/18/include")
-        inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/19/include")
-        inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/20/include")
-=======
     # Add HIP-Clang headers (relative to rocm root)
     rocm_path = repository_ctx.path(rocm_config.rocm_toolkit_path)
     clang_path = rocm_path.get_child("llvm/bin/clang")
     resource_dir_result = execute(repository_ctx, [str(clang_path), "-print-resource-dir"])
->>>>>>> upstream/master
 
     if resource_dir_result.return_code:
         auto_configure_fail("Failed to run hipcc -print-resource-dir: %s" % err_out(resource_dir_result))

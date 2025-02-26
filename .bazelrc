@@ -296,7 +296,6 @@ build:tpu --define=framework_shared_object=true
 build:tpu --copt=-DLIBTPU_ON_GCE
 build:tpu --define=enable_mlir_bridge=true
 
-build:rocm --copt=-Wno-gnu-offsetof-extensions
 build:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm_base --define=using_rocm_hipcc=true
 build:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
@@ -322,6 +321,7 @@ build:rocm --copt=-Wno-gnu-offsetof-extensions
 # TODO(rocm): Temporary due to https://github.com/openxla/xla/blob/49ad52b580ad2b81f24cc888f5cc571eb649f373/xla/stream_executor/rocm/rocm_blas.cc#L154
 # to make it work with build_rocm_python3
 build:rocm --copt="-Wno-unused-result"
+build:rocm --copt=-Wno-gnu-offsetof-extensions
 
 build:rocm_clang_official --config=rocm
 build:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"

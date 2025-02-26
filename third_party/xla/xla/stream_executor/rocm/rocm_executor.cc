@@ -732,15 +732,6 @@ absl::StatusOr<ModuleHandle> RocmExecutor::LoadModuleFromHsaco(
 }
 
 DeviceMemoryBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
-<<<<<<< HEAD
-  if (memory_space == static_cast<int64_t>(MemoryType::kCollective)) {
-    return DeviceMemoryBase(DeviceAllocate(rocm_context_, size), size);
-  }
-  if (memory_space ==
-      static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
-    auto result = HostAllocate(rocm_context_, size);
-    if (!result.ok()) {
-=======
   switch (static_cast<MemoryType>(memory_space)) {
     case MemoryType::kCollective:
     case MemoryType::kDevice:
@@ -749,7 +740,6 @@ DeviceMemoryBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
       if (auto result = HostAllocate(rocm_context_, size); result.ok()) {
         return DeviceMemoryBase(*result, size);
       }
->>>>>>> upstream/master
       return DeviceMemoryBase(nullptr, 0);
     default:
       LOG(FATAL) << "Unsupported memory space: " << memory_space;

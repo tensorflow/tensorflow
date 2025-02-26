@@ -104,18 +104,10 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
 
 absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
 
-<<<<<<< HEAD
   TF_ASSIGN_OR_RETURN(auto *plan, GetCachedMatmulPlan(params));
 
   VLOG(2) << params.stream->parent()->device_ordinal() << 
           ": cublas_lt_matmul for: " << canonical_hlo_;
-=======
-  TF_ASSIGN_OR_RETURN(auto algorithm,
-                      GetMatmulAlgorithm(params.stream, plan,
-                                         workspace_buffer_.has_value()
-                                             ? workspace_buffer_.value().size()
-                                             : 0));
->>>>>>> upstream/master
 
   const BufferAllocations& allocs = *params.buffer_allocations;
 
@@ -157,41 +149,11 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
       d_scale, d_amax, {}, workspace);
 }
 
-<<<<<<< HEAD
-=======
-absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
-    const se::Stream* stream) {
-  {
-    absl::MutexLock lock(&matmul_plans_cache_mutex_);
-    auto it = matmul_plans_cache_.find(stream);
-    if (it != matmul_plans_cache_.end()) return it->second.get();
-  }
-  TF_ASSIGN_OR_RETURN(auto plan, se::gpu::BlasLt::GetMatmulPlan(
-                                     stream, gemm_config_, epilogue_));
->>>>>>> upstream/master
 
 auto CublasLtMatmulThunk::GetCachedMatmulPlan(
     const ExecuteParams& params) -> absl::StatusOr<se::gpu::BlasLt::MatmulPlan *> {
 
-<<<<<<< HEAD
   auto& cache = MatmulPlanCache::i(params.stream);
-=======
-absl::StatusOr<se::gpu::BlasLt::MatmulAlgorithm>
-CublasLtMatmulThunk::GetMatmulAlgorithm(const se::Stream* stream,
-                                        const se::gpu::BlasLt::MatmulPlan* plan,
-                                        int64_t max_workspace) {
-  {
-    absl::MutexLock lock(&matmul_algorithm_cache_mutex_);
-    auto it = matmul_algorithm_cache_.find(plan);
-    if (it != matmul_algorithm_cache_.end()) return it->second;
-  }
-  TF_ASSIGN_OR_RETURN(
-      auto algorithms,
-      plan->GetAlgorithms(stream,
-                          /*max_algorithm_count*/ 128,
-                          /*max_workspace_size*/ max_workspace));
-  TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
->>>>>>> upstream/master
 
   auto create = [&]() -> absl::StatusOr<se::gpu::BlasLt::MatmulPlanPtr>  {
     VLOG(2) << this << ": Adding new MatmulPlan for stream: " << params.stream << 
@@ -205,7 +167,7 @@ CublasLtMatmulThunk::GetMatmulAlgorithm(const se::Stream* stream,
     int64_t num_algorithms = algorithm_idx_ == se::blas::kDefaultAlgorithm ?
                           1 : 128;
     TF_ASSIGN_OR_RETURN(auto algorithms,
-       plan->GetAlgorithms(num_algorithms, max_workspace));
+       plan->GetAlgorithms(params.stream, num_algorithms, max_workspace));
 
     TF_RETURN_IF_ERROR(plan->SetAlgorithm(algorithms[algorithm_idx_]));
     return std::move(plan);

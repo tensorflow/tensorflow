@@ -33,14 +33,9 @@ py_strict_library(
 cuda_py_strict_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
-<<<<<<< HEAD
-    python_version = "PY3",
     tags = ["no_pip",
     "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
-=======
-    tags = ["no_pip"],
->>>>>>> upstream/master
     deps = [
         ":profiler_client",
         ":profiler_v2",

@@ -1397,13 +1397,9 @@ py_strict_test(
     size = "medium",
     srcs = ["dynamic_ragged_shape_test.py"],
     shard_count = 8,
-<<<<<<< HEAD
-    srcs_version = "PY3",
     tags = [
         "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
-=======
->>>>>>> upstream/master
     deps = [
         ":dynamic_ragged_shape",
         ":ragged",  # fixdeps: keep

@@ -364,18 +364,8 @@ absl::Status BlasLt::MatmulPlan::SetAlgorithm(const MatmulAlgorithm& algorithm) 
 }
 
 absl::Status BlasLt::MatmulPlan::DoMatmul(
-<<<<<<< HEAD
-    Stream* stream, const void* alpha, DeviceMemoryBase a, DeviceMemoryBase b,
-    const void* beta, DeviceMemoryBase c, DeviceMemoryBase d,
-    const MatmulAlgorithm& Xalgorithm, DeviceMemoryBase bias,
-    DeviceMemoryBase aux, DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-    DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
-    std::optional<DeviceMemoryBase> workspace,
-    std::optional<ScratchAllocator*> scratch_allocator,
-=======
     Stream* stream, const void* alpha, const void* beta,
-    const MatmulAlgorithm& algorithm, const gpu::BlasLt::MemoryArgs& args,
->>>>>>> upstream/master
+    const MatmulAlgorithm& Xalgorithm, const gpu::BlasLt::MemoryArgs& args,
     blas::ProfileResult* profile_result) const {
   DeviceMemoryBase a = args.a, b = args.b;
   if (must_swap_operands_) {
