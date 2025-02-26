@@ -1,90 +1,49 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..378ac43 100644
+index 378ac43..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,29 @@
+@@ -1,29 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/RegAllocFast.cpp b/llvm/lib/CodeGen/RegAllocFast.cpp
-+--- a/llvm/lib/CodeGen/RegAllocFast.cpp
-++++ b/llvm/lib/CodeGen/RegAllocFast.cpp
-+@@ -984,6 +984,7 @@
-+ 
-+   LiveRegMap::iterator LRI = findLiveVirtReg(VirtReg);
-+   MCPhysReg PhysReg;
-++  bool IsRenamable = true;
-+   if (LRI != LiveVirtRegs.end() && LRI->PhysReg) {
-+     PhysReg = LRI->PhysReg;
-+   } else {
-+@@ -997,6 +998,7 @@
-+       // basic.
-+       PhysReg = getErrorAssignment(*LRI, *MO.getParent(), RC);
-+       LRI->Error = true;
-++      IsRenamable = false;
-+     } else
-+       PhysReg = AllocationOrder.front();
-+   }
-+@@ -1007,7 +1009,7 @@
-+     MO.setSubReg(0);
-+   }
-+   MO.setReg(PhysReg);
-+-  MO.setIsRenamable(!LRI->Error);
-++  MO.setIsRenamable(IsRenamable);
-+ }
-+ 
-+ /// Variation of defineVirtReg() with special handling for livethrough regs
+-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/RegAllocFast.cpp b/llvm/lib/CodeGen/RegAllocFast.cpp
+---- a/llvm/lib/CodeGen/RegAllocFast.cpp
+-+++ b/llvm/lib/CodeGen/RegAllocFast.cpp
+-@@ -984,6 +984,7 @@
+- 
+-   LiveRegMap::iterator LRI = findLiveVirtReg(VirtReg);
+-   MCPhysReg PhysReg;
+-+  bool IsRenamable = true;
+-   if (LRI != LiveVirtRegs.end() && LRI->PhysReg) {
+-     PhysReg = LRI->PhysReg;
+-   } else {
+-@@ -997,6 +998,7 @@
+-       // basic.
+-       PhysReg = getErrorAssignment(*LRI, *MO.getParent(), RC);
+-       LRI->Error = true;
+-+      IsRenamable = false;
+-     } else
+-       PhysReg = AllocationOrder.front();
+-   }
+-@@ -1007,7 +1009,7 @@
+-     MO.setSubReg(0);
+-   }
+-   MO.setReg(PhysReg);
+--  MO.setIsRenamable(!LRI->Error);
+-+  MO.setIsRenamable(IsRenamable);
+- }
+- 
+- /// Variation of defineVirtReg() with special handling for livethrough regs
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index e508c5e..c9480d5 100644
+index c9480d5..1e97811 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "9889de834b0a9fa4a5a222a81a524c75977e41d4"
--    LLVM_SHA256 = "53710ddf11fe990e0a2edc9e7b0cc3eb537def344f56e2b990bc9a4c1eef91de"
-+    LLVM_COMMIT = "a98c2940dbc04bf84de95cb1893694cdcbc4f5fe"
-+    LLVM_SHA256 = "ef93caed2e3a7c71c88740452eba3c624a336aa1cbde1a4516a69b24781520c4"
+-    LLVM_COMMIT = "a98c2940dbc04bf84de95cb1893694cdcbc4f5fe"
+-    LLVM_SHA256 = "ef93caed2e3a7c71c88740452eba3c624a336aa1cbde1a4516a69b24781520c4"
++    LLVM_COMMIT = "c0abae33d6e73356389295a6d897a21630fcff58"
++    LLVM_SHA256 = "bafb547162008f7b8509a41bfc257c09904c79ecdcf44be4bc1164435e7557fe"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index 3bd37de..a00751a 100755
---- a/third_party/stablehlo/temporary.patch
-+++ b/third_party/stablehlo/temporary.patch
-@@ -1,3 +1,36 @@
-+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
-+--- stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
-++++ stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
-+@@ -123,8 +123,7 @@
-+ 
-+ // CHECK-LABEL: @transpose
-+ func.func @transpose(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
-+-  // CHECK: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[2, 1, 0]> : tensor<3xi32>}> : () -> tensor<3xi32>
-+-  // CHECK: %[[VAR1:.*]] = tosa.transpose %arg0, %[[VAR0]]
-++  // CHECK: %[[VAR0:.*]] = tosa.transpose %arg0 {perms = array<i32: 2, 1, 0>}
-+   %0 = "stablehlo.transpose"(%arg0) {permutation = array<i64: 2, 1, 0>} : (tensor<1x2x3xf32>) -> tensor<3x2x1xf32>
-+   return %0 : tensor<3x2x1xf32>
-+ }
-+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
-+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
-++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
-+@@ -458,13 +458,10 @@
-+     }
-+ 
-+     auto perms = op.getPermutation();
-+-    auto type = RankedTensorType::get({static_cast<int64_t>(perms.size())},
-+-                                      rewriter.getI32Type());
-+     std::vector<int32_t> perms_int32(perms.begin(), perms.end());
-+-    auto constOp = rewriter.create<tosa::ConstOp>(
-+-        op->getLoc(), type, DenseIntElementsAttr::get(type, perms_int32));
-+-    rewriter.replaceOpWithNewOp<tosa::TransposeOp>(op, op.getType(),
-+-                                                   op.getOperand(), constOp);
-++    rewriter.replaceOpWithNewOp<tosa::TransposeOp>(
-++        op, op.getType(), op.getOperand(),
-++        rewriter.getDenseI32ArrayAttr(perms_int32));
-+     return success();
-+   }
-+ };
- diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
- --- stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
- +++ stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
