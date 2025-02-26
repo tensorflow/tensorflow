@@ -39,7 +39,7 @@ def _tf_bind():
     # Needed by Protobuf
     native.bind(
         name = "python_headers",
-        actual = str(Label("@local_tsl//third_party/python_runtime:headers")),
+        actual = str(Label("//third_party/python_runtime:headers")),
     )
 
     # Needed by Protobuf

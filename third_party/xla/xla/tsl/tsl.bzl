@@ -33,7 +33,7 @@ load(
     "if_tensorrt",
 )
 load(
-    "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
+    "@local_xla//third_party/py/rules_pywrap:pywrap.bzl",
     "use_pywrap_rules",
 )
 
