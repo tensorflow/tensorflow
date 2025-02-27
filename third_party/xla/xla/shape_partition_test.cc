@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/shape_partition.h"
+#include "xla/shape_partition.h"
 
 #include <cstdint>
 #include <map>

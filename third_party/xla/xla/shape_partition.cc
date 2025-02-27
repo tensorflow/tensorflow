@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/shape_partition.h"
+#include "xla/shape_partition.h"
 
 #include <algorithm>
 #include <cmath>
@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/types/span.h"
 
 namespace xla {
-namespace cpu {
 
 std::vector<int64_t> ShapePartitionAssigner::Run(
     int64_t target_partition_count) {
@@ -168,5 +167,4 @@ int64_t ShapePartitionIterator::GetTotalPartitionCount() const {
       dimension_partition_counts_);
 }
 
-}  // namespace cpu
 }  // namespace xla

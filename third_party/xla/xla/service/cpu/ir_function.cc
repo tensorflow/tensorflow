@@ -29,8 +29,8 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/cpu/cpu_runtime.h"
-#include "xla/service/cpu/shape_partition.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape_partition.h"
 #include "xla/status_macros.h"
 
 namespace xla {

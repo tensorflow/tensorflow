@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_SHAPE_PARTITION_H_
-#define XLA_SERVICE_CPU_SHAPE_PARTITION_H_
+#ifndef XLA_SHAPE_PARTITION_H_
+#define XLA_SHAPE_PARTITION_H_
 
 #include <cstdint>
 #include <utility>
@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/shape.h"
 
 namespace xla {
-namespace cpu {
 
 // ShapePartitionAssigner partitions the most-major dimensions of 'shape' such
 // that the total partition count <= 'target_partition_count'.
@@ -102,7 +101,6 @@ class ShapePartitionIterator {
   std::vector<int64_t> dimension_partition_strides_;
 };
 
-}  // namespace cpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_CPU_SHAPE_PARTITION_H_
+#endif  // XLA_SHAPE_PARTITION_H_
