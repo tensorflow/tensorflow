@@ -149,6 +149,10 @@ xla_cc_test(
         "//xla/service:shape_inference",
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",  # fixdeps: keep
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:endian",
@@ -159,9 +163,5 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
     ],
 )
