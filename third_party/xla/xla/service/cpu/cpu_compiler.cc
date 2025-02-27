@@ -1015,6 +1015,26 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 
 namespace {
 
+static void DumpModuleToFile(const llvm::Module& llvm_module,
+                             const llvm::object::ObjectFile& obj_file,
+                             const HloModule& hlo_module) {
+  absl::string_view id = llvm_module.getModuleIdentifier();
+  size_t pos = std::min(id.size(), 1 + kXlaModuleIdentifier.size());
+  auto get_file_suffix = [&]() {
+    std::vector<absl::string_view> parts = {"obj-file"};
+    parts.reserve(3);
+    absl::string_view middle_name = id.substr(pos);
+    if (!middle_name.empty()) {
+      parts.push_back(middle_name);
+    }
+    parts.push_back("o");
+    return absl::StrJoin(parts, ".");
+  };
+  DumpToFileInDir(
+      hlo_module, /*file_prefix=*/"", get_file_suffix(),
+      absl::string_view(obj_file.getData().data(), obj_file.getData().size()));
+}
+
 // Post-compilation callback functor for use by SimpleOrcJIT.
 //
 // Dumps machine code if dumping is enabled for the module.
@@ -1026,13 +1046,7 @@ CreateOrcJITPostCompilationHook(const HloModule* hlo_module,
     if (obj_files) obj_files->push_back(obj_file.getData().str());
 
     if (DumpingEnabledForHloModule(*hlo_module)) {
-      std::string_view id = llvm_module.getModuleIdentifier();
-      size_t pos = std::min(id.size(), 1 + kXlaModuleIdentifier.size());
-      DumpToFileInDir(
-          *hlo_module, /*file_prefix=*/"",
-          /*file_suffix=*/absl::StrCat("obj-file.", id.substr(pos), ".o"),
-          absl::string_view(obj_file.getData().data(),
-                            obj_file.getData().size()));
+      DumpModuleToFile(llvm_module, obj_file, *hlo_module);
     }
   };
 }
@@ -1971,13 +1985,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         if (!DumpingEnabledForHloModule(*module)) {
           return;
         }
-        std::string_view id = llvm_module.getModuleIdentifier();
-        size_t pos = std::min(id.size(), 1 + kXlaModuleIdentifier.size());
-        DumpToFileInDir(
-            *module, /*file_prefix=*/"",
-            /*file_suffix=*/absl::StrCat("obj-file.", id.substr(pos), ".o"),
-            absl::string_view(obj_file.getData().data(),
-                              obj_file.getData().size()));
+        DumpModuleToFile(llvm_module, obj_file, *module);
       };
 
       IrCompiler::Options ir_compiler_options = {
