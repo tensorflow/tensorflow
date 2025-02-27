@@ -77,6 +77,7 @@ cc_library(
         ":device_proto_cc",
         ":dtype_proto_cc",
         ":execute_options_proto_cc",
+        ":ref_wrapper",
         ":remap_plan_proto_cc",
         ":serdes",
         ":shape_proto_cc",
@@ -228,6 +229,34 @@ xla_cc_test(
     srcs = ["memory_test.cc"],
     deps = [
         ":ifrt",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "ref_wrapper",
+    hdrs = ["ref_wrapper.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "ref_wrapper_test",
+    size = "small",
+    srcs = ["ref_wrapper_test.cc"],
+    deps = [
+        ":ref_wrapper",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],

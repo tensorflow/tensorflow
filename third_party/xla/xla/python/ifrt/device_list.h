@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
+#include "xla/python/ifrt/ref_wrapper.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -45,7 +46,7 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   // Constructs `DeviceList` from `DeviceListProto`. Devices are looked up using
   // `client`. Device ids in the proto must be consistent with the devices
   // returned by `client`.
-  static absl::StatusOr<tsl::RCReference<DeviceList>> FromProto(
+  static absl::StatusOr<RCReferenceWrapper<DeviceList>> FromProto(
       xla::ifrt::Client* client, const DeviceListProto& proto);
 
   // Returns a `DeviceListProto` representation.
@@ -77,14 +78,9 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
     sink.Append(device_list.ToString());
   }
 
-  template <class Sink>
-  friend void AbslStringify(Sink& sink,
-                            const tsl::RCReference<DeviceList>& device_list) {
-    if (device_list == nullptr) {
-      sink.Append("<nullptr>");
-    } else {
-      sink.Append(device_list->ToString());
-    }
+  template <typename H>
+  friend H AbslHashValue(H h, const DeviceList& device_list) {
+    return H::combine(std::move(h), device_list.hash());
   }
 
   // Returns the hash of devices. This hash is stable only within the process.
@@ -101,33 +97,10 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   virtual std::string ToString() const = 0;
 };
 
-using DeviceListRef = tsl::RCReference<DeviceList>;
+using DeviceListRef = ::xla::ifrt::RCReferenceWrapper<DeviceList>;
 
 // Returns the id of each device in `device_list`.
 std::vector<DeviceId> GetDeviceIds(const DeviceListRef& device_list);
-
-// Hash function for `DeviceList`. Assumes that every unique device has a unique
-// `Device` object, not duplicate `Device` objects ("d1 == d2 if d1->id() ==
-// d2->id()").
-template <typename H>
-H AbslHashValue(H h, const tsl::RCReference<DeviceList>& devices) {
-  return H::combine(std::move(h), devices->hash());
-}
-
-// Prevent comparing two tsl::RCReference<DeviceList>. If attempted, the
-// compilation will fail with an ambiguous use of these operators.
-inline bool operator==(const tsl::RCReference<DeviceList>& lhs,
-                       const tsl::RCReference<DeviceList>& rhs) {
-  CHECK(false) << "Comparing two tsl::RCReference<DeviceList> directly is "
-                  "typically unintended. Do a comparison after deferenceing "
-                  "them, or compare their raw pointers.";
-}
-inline bool operator!=(const tsl::RCReference<DeviceList>& lhs,
-                       const tsl::RCReference<DeviceList>& rhs) {
-  CHECK(false) << "Comparing two tsl::RCReference<DeviceList> directly is "
-                  "typically unintended. Do a comparison after deferenceing "
-                  "them, or compare their raw pointers.";
-}
 
 }  // namespace ifrt
 }  // namespace xla
