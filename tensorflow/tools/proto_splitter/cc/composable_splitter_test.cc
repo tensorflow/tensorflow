@@ -70,7 +70,7 @@ class RepeatedStringSplitter : public ComposableSplitter {
 
   absl::Status BuildChunks() override {
     RepeatedString* repeated_string =
-        tsl::protobuf::DynamicCastToGenerated<RepeatedString>(message());
+        proto2::DynamicCastMessage<RepeatedString>(message());
     auto strings = repeated_string->strings();
 
     if (strings.empty()) {
