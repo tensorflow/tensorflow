@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/core/bitmap.h"
+#include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/status.h"
@@ -933,6 +934,69 @@ void MutableLiteralBase::PopulateInplaceInternal(
   }
 }
 
+void MutableLiteralBase::PopulateLinearInplaceInternal(
+    absl::FunctionRef<void(void*, int64_t, int)> populator, bool parallel) {
+  const Shape& this_shape = shape();
+  const int64_t rank = this_shape.rank();
+  DCHECK(LayoutUtil::IsDenseArray(this_shape));
+  char* const dest_base = static_cast<char*>(untyped_data());
+
+  const int64_t num_elements = ShapeUtil::ElementsIn(shape());
+  if (num_elements == 0) return;
+
+  if (rank > 0) {
+    // Compute initialization function partitioning.
+    const int64_t partition_size = tsl::MathUtil::CeilOfRatio<int64_t>(
+        num_elements, ShapeUtil::GetForEachIndexParallelThreadCount());
+    const int64_t num_partitions =
+        tsl::MathUtil::CeilOfRatio<int64_t>(num_elements, partition_size);
+
+    const int64_t primitive_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
+
+    auto init_function = [&](absl::Span<const int64_t> partition_index,
+                             int thread_id) -> absl::StatusOr<bool> {
+      DCHECK_EQ(partition_index.size(), 1);
+
+      // Initialize data using linear index in the [start, end) range.
+      int64_t start = partition_index[0] * partition_size;
+      int64_t end = std::min(start + partition_size, num_elements);
+
+      char* dest_ptr = dest_base + start * primitive_size;
+      char* const dest_end = dest_base + end * primitive_size;
+
+      int64_t linear_index = start;
+      while (dest_ptr < dest_end) {
+        populator(dest_ptr, linear_index, thread_id);
+        dest_ptr += primitive_size;
+        linear_index++;
+      }
+
+      return true;
+    };
+
+    // We create a fake shape of the work, so we can rely on the existing
+    // `ForEachIndexParallel` implementation.
+    Shape work_shape =
+        ShapeUtil::MakeShape(shape().element_type(), {num_partitions});
+
+    if (parallel) {
+      ShapeUtil::ForEachIndexParallel(work_shape, init_function);
+    } else {
+      ShapeUtil::ForEachIndex(
+          work_shape,
+          [&](absl::Span<const int64_t> indexes) -> absl::StatusOr<bool> {
+            auto result_ignored = init_function(indexes, /*thread_id=*/-1);
+            return true;
+          });
+    }
+
+  } else {
+    // For scalars.
+    populator(dest_base, 0, /*thread_id=*/-1);
+  }
+}
+
 absl::Status MutableLiteralBase::PopulateInplace(
     absl::FunctionRef<void(void*, absl::Span<const int64_t>)> populator) {
   TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
@@ -951,6 +1015,27 @@ absl::Status MutableLiteralBase::PopulateInplaceParallel(
       << __func__ << " is only supported for dense arrays: " << shape();
   PopulateInplaceInternal(populator,
                           /*parallel=*/element_count() > 32);
+  return absl::OkStatus();
+}
+
+absl::Status MutableLiteralBase::PopulateLinearInplace(
+    absl::FunctionRef<void(void*, int64_t)> populator) {
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
+  PopulateLinearInplaceInternal(
+      [&](void* dest, int64_t linear_index, int /*thread_id*/) {
+        return populator(dest, linear_index);
+      },
+      /*parallel=*/false);
+  return absl::OkStatus();
+}
+
+absl::Status MutableLiteralBase::PopulateLinearInplaceParallel(
+    absl::FunctionRef<void(void*, int64_t, int)> populator) {
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
+  PopulateLinearInplaceInternal(populator,
+                                /*parallel=*/element_count() > 32);
   return absl::OkStatus();
 }
 

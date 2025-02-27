@@ -618,6 +618,7 @@ cc_library(
         ":util",
         ":xla_data_proto_cc",
         "//xla/tsl/lib/core:bitmap",
+        "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",

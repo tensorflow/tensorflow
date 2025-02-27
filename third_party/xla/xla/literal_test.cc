@@ -234,6 +234,13 @@ TEST_F(LiteralUtilTest, LiteralVectorToString) {
   EXPECT_EQ("pred[3] {1, 0, 1}", pred_vec.ToString());
 }
 
+TEST_F(LiteralUtilTest, LiteralLinearIndexing) {
+  auto vec = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0});
+  EXPECT_EQ(vec.GetLinear<float>(0), 1.0);
+  EXPECT_EQ(vec.GetLinear<float>(1), 2.0);
+  EXPECT_EQ(vec.GetLinear<float>(2), 3.0);
+}
+
 TEST_F(LiteralUtilTest, R2ToString) {
   const auto literal = LiteralUtil::CreateR2({{1, 2}, {3, 4}, {5, 6}});
   const std::string expected = R"(s32[3,2] {
@@ -1552,6 +1559,48 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
     auto check_function = [&](absl::Span<const int64_t> indexes) {
       auto value = literal.Get<uint32_t>(indexes);
       matched = matched && (value == generator(indexes, /*thread_id=*/-1));
+      return matched;
+    };
+    ShapeUtil::ForEachIndex(literal.shape(), zero_base, data.dimensions, step,
+                            check_function);
+    EXPECT_TRUE(matched);
+  }
+}
+
+TEST_F(LiteralUtilTest, PopulateLinearParallel) {
+  struct PopulateData {
+    std::vector<int64_t> dimensions;
+    std::vector<int64_t> layout;
+  } populate_data[] = {
+      {{}, {}},
+      {{0}, {0}},
+      {{16}, {0}},
+      {{2, 0}, {1, 0}},
+      {{4, 16}, {1, 0}},
+      {{21, 12}, {0, 1}},
+      {{6, 11, 17}, {2, 0, 1}},
+      {{6, 11, 5, 17}, {3, 2, 0, 1}},
+  };
+  for (const auto& data : populate_data) {
+    Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
+        primitive_util::NativeToPrimitiveType<uint32_t>(), data.dimensions,
+        data.layout);
+    Literal literal(shape);
+    auto generator = [&](int64_t linear_index, int /*thread_id*/) -> uint32_t {
+      // Offsets from linear index just to avoid R0 literals to be initialized
+      // with zero.
+      return linear_index + 17;
+    };
+    TF_EXPECT_OK(literal.PopulateLinearParallel<uint32_t>(generator));
+
+    std::vector<int64_t> zero_base(data.dimensions.size(), 0);
+    std::vector<int64_t> step(data.dimensions.size(), 1);
+    bool matched = true;
+    auto check_function = [&](absl::Span<const int64_t> indexes) {
+      auto value = literal.Get<uint32_t>(indexes);
+      int64_t linear_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+          literal.shape(), indexes);
+      matched = matched && (value == generator(linear_index, /*thread_id=*/-1));
       return matched;
     };
     ShapeUtil::ForEachIndex(literal.shape(), zero_base, data.dimensions, step,
@@ -3017,6 +3066,10 @@ INSTANTIATE_TEST_SUITE_P(
     Tuples, LiteralSerializationTest,
     ::testing::ValuesIn(LiteralSerializationTest::GenerateTupleParams()));
 
+//===----------------------------------------------------------------------===//
+// Literal::Broadcast perfrormance benchmarks below.
+//===----------------------------------------------------------------------===//
+
 void BM_BroadcastVectorToMatrix(::testing::benchmark::State& state) {
   const int d0 = state.range(0);
   const int d1 = state.range(1);
@@ -3038,10 +3091,73 @@ void BM_BroadcastVectorToMatrix(::testing::benchmark::State& state) {
     count++;
   }
 }
+
 BENCHMARK(BM_BroadcastVectorToMatrix)
     ->ArgPair(16, 16)
     ->ArgPair(16, 1024)
     ->ArgPair(1024, 1024);
+
+//===----------------------------------------------------------------------===//
+// Literal::Populate(.*) performance benchmarks below.
+//===----------------------------------------------------------------------===//
+
+void BM_Populate(::testing::benchmark::State& state) {
+  int64_t d0 = state.range(0);
+  Literal literal(ShapeUtil::MakeShape(F32, {d0, d0}));
+
+  for (auto s : state) {
+    CHECK_OK(literal.Populate<float>([&](absl::Span<const int64_t> indexes) {
+      return IndexUtil::MultidimensionalIndexToLinearIndex(literal.shape(),
+                                                           indexes);
+    }));
+  }
+}
+
+void BM_PopulateParallel(::testing::benchmark::State& state) {
+  int64_t d0 = state.range(0);
+  Literal literal(ShapeUtil::MakeShape(F32, {d0, d0}));
+
+  for (auto s : state) {
+    CHECK_OK(literal.PopulateParallel<float>(
+        [&](absl::Span<const int64_t> indexes, int32_t thread_id) {
+          return IndexUtil::MultidimensionalIndexToLinearIndex(literal.shape(),
+                                                               indexes);
+        }));
+  }
+}
+
+void BM_PopulateLinear(::testing::benchmark::State& state) {
+  int64_t d0 = state.range(0);
+  Literal literal(ShapeUtil::MakeShape(F32, {d0, d0}));
+
+  for (auto s : state) {
+    CHECK_OK(literal.PopulateLinear<float>(
+        [&](int64_t linear_index) { return linear_index; }));
+  }
+}
+
+void BM_PopulateLinearParallel(::testing::benchmark::State& state) {
+  int64_t d0 = state.range(0);
+  Literal literal(ShapeUtil::MakeShape(F32, {d0, d0}));
+
+  for (auto s : state) {
+    CHECK_OK(literal.PopulateLinearParallel<float>(
+        [&](int64_t linear_index, int32_t thread_id) { return linear_index; }));
+  }
+}
+
+#define BENCHMARK_POPULATE(NAME) \
+  BENCHMARK(BM_##NAME)           \
+      ->MeasureProcessCPUTime()  \
+      ->Arg(64)                  \
+      ->Arg(128)                 \
+      ->Arg(512)                 \
+      ->Arg(1024)
+
+BENCHMARK_POPULATE(Populate);
+BENCHMARK_POPULATE(PopulateParallel);
+BENCHMARK_POPULATE(PopulateLinear);
+BENCHMARK_POPULATE(PopulateLinearParallel);
 
 }  // namespace
 }  // namespace xla
