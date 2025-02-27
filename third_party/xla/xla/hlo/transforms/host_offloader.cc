@@ -368,10 +368,6 @@ absl::StatusOr<bool> HostOffloader::HandleInputStreaming(
       entry_computation->parent()->entry_computation_layout();
 
   for (int i = 0; i < entry_computation_layout.parameter_count(); ++i) {
-    if (entry_computation_layout.parameter_shape(i).IsToken()) {
-      LOG(WARNING) << "Token parameters are not supported for streaming.";
-      continue;
-    }
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         entry_computation_layout.parameter_shape(i),
         [&](const Shape& subshape, const ShapeIndex& index) {
