@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/window_util.h"

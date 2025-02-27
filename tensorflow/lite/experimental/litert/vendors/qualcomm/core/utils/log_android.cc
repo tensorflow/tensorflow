@@ -27,7 +27,7 @@ int GetPlatformSeverity(LiteRtQnnLogLevel severity) {
 
 // NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
 FILE* QNNLogger::log_file_pointer_ = stderr;
-LiteRtQnnLogLevel QNNLogger::log_level_ = kLogOff;
+LiteRtQnnLogLevel QNNLogger::log_level_ = kLogLevelInfo;
 // NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
 void QNNLogger::SetLogFilePointer(FILE* fp) { log_file_pointer_ = fp; }
 void QNNLogger::SetLogLevel(LiteRtQnnLogLevel log_level) {

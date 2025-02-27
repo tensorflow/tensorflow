@@ -15,11 +15,14 @@ limitations under the License.
 #include "xla/service/gpu/transforms/command_buffer_scheduling.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -34,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 

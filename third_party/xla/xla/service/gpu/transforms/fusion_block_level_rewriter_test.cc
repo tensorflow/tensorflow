@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"
 
-#include <cstdint>
 #include <memory>
 #include <variant>
 
