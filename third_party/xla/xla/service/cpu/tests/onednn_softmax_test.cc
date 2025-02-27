@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include <utility>
 
@@ -261,4 +261,4 @@ TEST_F(OneDnnSoftmaxTest, SoftmaxWithBF16ConvertOutputFP32Pattern) {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL

@@ -227,7 +227,7 @@ limitations under the License.
 #include "llvm/TargetParser/X86TargetParser.h"
 #endif
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 #include "xla/hlo/transforms/simplifiers/simplify_fp_conversions.h"
 #include "xla/service/cpu/cpu_float_support.h"
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
@@ -560,7 +560,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<DotDecomposer>();
 
   // Rewrite to custom calls with target as oneDNN library calls.
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
   bool is_thunk_runtime =
       module->config().debug_options().xla_cpu_use_thunk_runtime();
@@ -572,7 +572,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     // but in future plan to rename oneDNNrewriter to specific to onednn matmul
     pipeline.AddPass<OneDnnOpsRewriter>();
   }
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
 
   // Promote BF16 all-reduce to F32.
   const std::pair<PrimitiveType, PrimitiveType> ar_promoted_types[] = {
@@ -582,7 +582,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // backend can support BF16/F8 operations without directly implementing a
   // BF16/F8 lowering for most ops.
   FloatSupport bf16_support(BF16);
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
   CpuFloatSupport onednn_bf16_support(BF16);
   if (!is_aot_compile && !is_thunk_runtime) {
     pipeline.AddPass<FloatNormalization>(&onednn_bf16_support);
@@ -794,7 +794,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
           ? module->config().intra_op_parallelism_threads()
           : tsl::port::NumSchedulableCPUs();
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
   auto& debug_options = module->config().debug_options();
   bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
 
@@ -815,7 +815,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       pipeline.AddPass<SimplifyFPConversions>();
     }
   }
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
 
   if (module->config()
           .debug_options()

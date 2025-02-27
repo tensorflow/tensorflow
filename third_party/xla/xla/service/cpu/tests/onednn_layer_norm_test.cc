@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/onednn_util.h"
@@ -338,4 +338,4 @@ TEST_F(LayerNormTest, LayerNormTest1_BF16) {
 }  // namespace
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL

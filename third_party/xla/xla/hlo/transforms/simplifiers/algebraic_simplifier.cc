@@ -9720,7 +9720,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleConvolution(
   if (swapped) {
     return absl::OkStatus();
   }
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
   // Convert the data type back to F32 if we can't rewrite BF16 convolution to
   // oneDNN custom call.
   TF_ASSIGN_OR_RETURN(bool can_rewrite_bf16_conv_to_onednn,
@@ -9728,7 +9728,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleConvolution(
   if (can_rewrite_bf16_conv_to_onednn) {
     return absl::OkStatus();
   }
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
   // Try to replace the convolution with a kDot or a kMultiply instruction.
   TF_ASSIGN_OR_RETURN(bool replaced_with_dot, SimplifyConvToDot(convolution));
   if (replaced_with_dot) {

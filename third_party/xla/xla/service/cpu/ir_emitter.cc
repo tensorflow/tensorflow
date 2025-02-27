@@ -96,7 +96,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 #include "xla/service/cpu/onednn_memory_util.h"
 #endif
 
@@ -2448,7 +2448,7 @@ absl::Status IrEmitter::HandleTopK(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 // Emits operands alloca vector for oneDNN custom calls.
 std::vector<StackAlloca> IrEmitter::EmitOneDnnOperandsAlloca(
@@ -2751,7 +2751,7 @@ absl::Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
 
   return absl::OkStatus();
 }
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
 
 absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   if (custom_call->custom_call_target() == "PadToStatic") {
@@ -2763,7 +2763,7 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   if (custom_call->custom_call_target() == "TopK") {
     return HandleTopK(custom_call);
   }
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
   if (custom_call->custom_call_target() == "__onednn$matmul") {
     return HandleOneDnnMatMulCalls(custom_call,
                                    runtime::kOneDnnMatMulSymbolName);
@@ -2781,7 +2781,7 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
     return HandleOneDnnMatMulCalls(custom_call,
                                    runtime::kOneDnnMatMulReorderSymbolName);
   }
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
   absl::Span<HloInstruction* const> operands(custom_call->operands());
   auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
   auto is_typed_ffi = typed_custom_call->api_version() ==
