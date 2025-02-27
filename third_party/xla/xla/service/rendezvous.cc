@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/logging.h"

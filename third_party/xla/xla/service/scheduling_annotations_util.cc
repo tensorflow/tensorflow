@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

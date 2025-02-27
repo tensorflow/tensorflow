@@ -15,19 +15,18 @@ limitations under the License.
 #include "xla/service/space_to_batch_converter.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iterator>
 #include <map>
-#include <memory>
 #include <queue>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

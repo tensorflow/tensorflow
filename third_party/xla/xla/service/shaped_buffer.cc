@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "xla/service/shaped_buffer.h"
 
-#include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/shape.h"
