@@ -1363,7 +1363,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     auto* nvvm_annotations =
         ll_triton_module->getNamedMetadata("nvvm.annotations");
     if (nvvm_annotations) {
-      ll_triton_module->eraseNamedMDNode(nvvm_annotations);
+      ll_triton_module->eraseNamedMetadata(nvvm_annotations);
     }
     ll_triton_module->setDataLayout(llvm_module->getDataLayout());
     ll_triton_module->setTargetTriple(llvm_module->getTargetTriple());
