@@ -26,6 +26,7 @@
 #include "absl/types/span.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
@@ -34,9 +35,13 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
+#include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_litert_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/signature_runner.h"
 
@@ -79,6 +84,20 @@ TEST(DispatchDelegate, QualcommCpuBuffer) {
       CreateDispatchDelegateOptionsPtr(*env->Get());
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
+
+  TfLiteQnnDelegateOptions qnn_delegate_options = QNN_DELEGATE_OPTION_INIT;
+  qnn_delegate_options.log_level = kLogLevelInfo;
+  qnn_delegate_options.htp_options.performance_mode = kHtpBurst;
+  LiteRtAddDispatchDelegateOption(
+      dispatch_delegate_options.get(),
+      LiteRtDispatchOption{
+          .name = kDispatchOptionQnnDelegateOptions,
+          .value =
+              LiteRtAny{
+                  .type = kLiteRtAnyTypeVoidPtr,
+                  .ptr_value = &qnn_delegate_options,
+              },
+      });
   auto dispatch_delegate = CreateDispatchDelegatePtr(
       *env->Get(), std::move(dispatch_delegate_options));
 
@@ -153,6 +172,20 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
       CreateDispatchDelegateOptionsPtr(*env->Get());
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
+
+  TfLiteQnnDelegateOptions qnn_delegate_options = QNN_DELEGATE_OPTION_INIT;
+  qnn_delegate_options.log_level = kLogLevelInfo;
+  qnn_delegate_options.htp_options.performance_mode = kHtpBurst;
+  LiteRtAddDispatchDelegateOption(
+      dispatch_delegate_options.get(),
+      LiteRtDispatchOption{
+          .name = kDispatchOptionQnnDelegateOptions,
+          .value =
+              LiteRtAny{
+                  .type = kLiteRtAnyTypeVoidPtr,
+                  .ptr_value = &qnn_delegate_options,
+              },
+      });
   auto dispatch_delegate = CreateDispatchDelegatePtr(
       *env->Get(), std::move(dispatch_delegate_options));
 

@@ -1,3 +1,6 @@
+// Copyright (c) Qualcomm Innovation Center, Inc.
+// All Rights Reserved.
+//
 // Copyright 2024 Google LLC.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -331,7 +334,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
 
   auto opt_soc_model = soc_model ? FindSocModel(soc_model) : std::nullopt;
   if (opt_soc_model) {
-    LITERT_LOG(LITERT_ERROR, "Compiling QNN architecture: %d", *opt_soc_model);
+    LITERT_LOG(LITERT_INFO, "Compiling QNN architecture: %d", *opt_soc_model);
   } else if (soc_model) {
     LITERT_LOG(LITERT_ERROR, "Unexpected SoC model: %s", soc_model);
     return kLiteRtStatusErrorInvalidArgument;

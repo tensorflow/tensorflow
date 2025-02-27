@@ -1,3 +1,6 @@
+// Copyright (c) Qualcomm Innovation Center, Inc.
+// All Rights Reserved.
+//
 // Copyright 2024 Google LLC.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,6 +41,8 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/perf_control.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_litert_delegate.h"
 
 //===----------------------------------------------------------------------===//
 //
@@ -83,7 +88,8 @@ class QnnManager {
   static Expected<Ptr> Create(
       absl::Span<const QnnBackend_Config_t*> configs,
       std::optional<std::string> shared_library_dir = std::nullopt,
-      std::optional<QnnHtpDevice_Arch_t> soc_model = std::nullopt);
+      std::optional<QnnHtpDevice_Arch_t> soc_model = std::nullopt,
+      const TfLiteQnnDelegateOptions* options = nullptr);
 
   static absl::Span<const QnnBackend_Config_t*> DefaultBackendConfigs();
   static absl::Span<const QnnContext_Config_t*> DefaultContextConfigs();
@@ -129,7 +135,8 @@ class QnnManager {
 
   LiteRtStatus Init(absl::Span<const QnnBackend_Config_t*> configs,
                     std::optional<std::string> shared_library_dir,
-                    std::optional<QnnHtpDevice_Arch_t> soc_model);
+                    std::optional<QnnHtpDevice_Arch_t> soc_model,
+                    const TfLiteQnnDelegateOptions* options);
 
   //
   // Manage libQnn*.so Loading
@@ -187,6 +194,9 @@ class QnnManager {
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_BackendHandle_t backend_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
+
+  // For dispatch options
+  std::unique_ptr<PerfControl> perf_control_{nullptr};
 };
 
 // Unfortunately we can't use std::unique_ptr with a deleter because
