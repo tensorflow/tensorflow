@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -62,7 +64,6 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -484,42 +485,48 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
       emitters::ApplyIndexing(thread_id_to_update_id_map, thread_and_block_ids,
                               {}, b)
           .front();
+  Value index_id_in_bounds = b.createOrFold<arith::CmpIOp>(
+      arith::CmpIPredicate::ult, thread_id_to_index_id_value,
+      b.create<arith::ConstantIndexOp>(description.num_slices));
+  auto result = EmitUpdateIf(
+      b, index_id_in_bounds, {output_tensor},
+      [&](ImplicitLocOpBuilder& outer_nested_b) -> SmallVector<Value> {
+        SmallVector<Value, 4> update_offsets =
+            helper.ExtractOffsets(outer_nested_b, thread_id_to_index_id_value);
 
-  SmallVector<Value, 4> update_offsets =
-      helper.ExtractOffsets(b, thread_id_to_index_id_value);
+        Value in_bounds =
+            EmitBoundsCheck(outer_nested_b, description.slice_shape,
+                            description.output_shape, update_offsets);
 
-  Value in_bounds = EmitBoundsCheck(b, description.slice_shape,
-                                    description.output_shape, update_offsets);
-
-  Value predicated_update =
-      EmitUpdateIf(
-          b, in_bounds, {output_tensor},
-          [&](ImplicitLocOpBuilder& nested_b) -> SmallVector<Value> {
-            return EmitXlaLoopOp(
-                nested_b, thread_and_block_ids, {output_tensor}, updates_map,
-                [&](ImplicitLocOpBuilder& update_loop_b,
-                    ValueRange symbol_values, ValueRange map_results,
-                    ValueRange output_tensors) -> SmallVector<Value> {
-                  // Extract update element.
-                  auto update_elem =
-                      helper.GetUpdateElement(update_loop_b, map_results);
-                  auto output_indices = std::move(update_offsets);
-                  int64_t output_rank = description.output_shape.size();
-                  output_indices =
-                      PadWithZeros(output_indices, output_rank, update_loop_b);
-                  for (int i = 0; i < output_indices.size(); ++i) {
-                    output_indices[i] = update_loop_b.create<arith::AddIOp>(
-                        map_results[i + 1], output_indices[i]);
-                  }
-                  Value output_tensor = output_tensors.front();
-                  Value updated_output = helper.EmitScatterComputation(
-                      update_loop_b, output_indices, update_elem,
-                      output_tensor);
-                  return {updated_output};
-                });
-          })
-          .front();
-  b.create<ReturnOp>(predicated_update);
+        ValueRange predicated_update = EmitUpdateIf(
+            outer_nested_b, in_bounds, {output_tensor},
+            [&](ImplicitLocOpBuilder& nested_b) -> SmallVector<Value> {
+              return EmitXlaLoopOp(
+                  nested_b, thread_and_block_ids, {output_tensor}, updates_map,
+                  [&](ImplicitLocOpBuilder& update_loop_b,
+                      ValueRange symbol_values, ValueRange map_results,
+                      ValueRange output_tensors) -> SmallVector<Value> {
+                    // Extract update element.
+                    auto update_elem =
+                        helper.GetUpdateElement(update_loop_b, map_results);
+                    auto output_indices = std::move(update_offsets);
+                    int64_t output_rank = description.output_shape.size();
+                    output_indices = PadWithZeros(output_indices, output_rank,
+                                                  update_loop_b);
+                    for (int i = 0; i < output_indices.size(); ++i) {
+                      output_indices[i] = update_loop_b.create<arith::AddIOp>(
+                          map_results[i + 1], output_indices[i]);
+                    }
+                    Value output_tensor = output_tensors.front();
+                    Value updated_output = helper.EmitScatterComputation(
+                        update_loop_b, output_indices, update_elem,
+                        output_tensor);
+                    return {updated_output};
+                  });
+            });
+        return predicated_update;
+      });
+  b.create<ReturnOp>(result.front());
 }
 
 absl::Status ScatterWithDistributedUpdates::EmitEntryFunctionImpl(
