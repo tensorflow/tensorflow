@@ -2672,7 +2672,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
 static absl::Status TransformLoopBackward(
     const WhileLoopAnalysis& loop_analysis, bool insert_non_alias_custom_call,
     int64_t level_to_operate_on, bool process_different_sized_ops,
-    HloPredicate should_process, HloPredicate acceptable_formatting,
+    HloPredicate acceptable_formatting,
     CollectivePipeliner::HloPostprocessor postprocess_peeled,
     CollectivePipeliner::HloPostprocessor postprocess_rotated,
     CollectivePipeliner::HloPostprocessor postprocess_peeled_trailing_op,
@@ -3119,8 +3119,8 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
       CHECK_EQ(config_.pipelining_direction, PipeliningDirection::kBackward);
       TF_RETURN_IF_ERROR(TransformLoopBackward(
           *loop_analysis, !config_.last_run, config_.level_to_operate_on,
-          config_.process_different_sized_ops, config_.should_process,
-          config_.acceptable_formatting, config_.postprocess_backward_peeled_op,
+          config_.process_different_sized_ops, config_.acceptable_formatting,
+          config_.postprocess_backward_peeled_op,
           config_.postprocess_backward_rotated_op,
           config_.postprocess_backward_peeled_trailing_op, next_channel_id,
           config_.postprocess_pipelined_ops));
