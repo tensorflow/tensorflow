@@ -4754,19 +4754,36 @@ absl::Status HloEvaluator::Preprocess(const HloInstruction* hlo) {
 absl::Status HloEvaluator::Postprocess(const HloInstruction* hlo) {
   VLOG(3) << "Finished visiting " << hlo->ToString()
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
+
+  auto eq = Layout::Equal().MinorToMajorOnly();
+
   // Out of convenience the literal may have been produced with a different
   // layout. Relayout as indicated by the HLO instruction.
-  auto evaluated_shape = GetEvaluatedLiteralFor(hlo).shape();
-  xla::Shape hlo_shape = hlo->shape();
-  if (hlo_shape.IsArray() && !hlo_shape.has_layout()) {
-    *hlo_shape.mutable_layout() =
-        LayoutUtil::GetDefaultLayoutForShape(hlo_shape);
+  const Shape& evaluated_shape = GetEvaluatedLiteralFor(hlo).shape();
+
+  // If both shapes don't have a layout, we don't need to do anything.
+  if (!evaluated_shape.has_layout() && !hlo->shape().has_layout()) {
+    return absl::OkStatus();
   }
-  if (evaluated_shape.has_layout() && hlo_shape.has_layout() &&
-      !Layout::Equal().MinorToMajorOnly()(evaluated_shape.layout(),
-                                          hlo_shape.layout())) {
-    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo_shape);
+
+  // If both shapes have the same layout, we don't need to do anything.
+  if (evaluated_shape.has_layout() && hlo->shape().has_layout() &&
+      eq(evaluated_shape.layout(), hlo->shape().layout())) {
+    return absl::OkStatus();
   }
+
+  // At this point we know that the shapes have different layouts and we need to
+  // relayout the evaluated literal.
+  Shape shape = hlo->shape();
+
+  if (shape.IsArray() && !shape.has_layout()) {
+    *shape.mutable_layout() = LayoutUtil::GetDefaultLayoutForShape(shape);
+  }
+  if (evaluated_shape.has_layout() && shape.has_layout() &&
+      !eq(evaluated_shape.layout(), shape.layout())) {
+    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(shape);
+  }
+
   return absl::OkStatus();
 }
 
