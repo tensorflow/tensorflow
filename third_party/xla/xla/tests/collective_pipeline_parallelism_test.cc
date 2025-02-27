@@ -936,7 +936,8 @@ XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
           _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=1
       recv_ctx = (f32[2,2], u32[], token[]) recv(after_all),
           frontend_attributes={
-          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=2
+          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=2,
+          control-predecessors={data_cpy}
       send_done = token[] send-done(send_ctx), channel_id=1
       recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
       data_ = f32[2,2] get-tuple-element(recv_done), index=0
@@ -1021,12 +1022,13 @@ XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
 
       // Just send from GPU 0 to GPU 1 to avoid deadlock.
       after_all = token[] after-all()
-      send_ctx = (f32[2,2], u32[], token[]) send(data, after_all),
+      data_cpy = f32[2,2] copy(data)
+      send_ctx = (f32[2,2], u32[], token[]) send(data_cpy, after_all),
           frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
           channel_id=1
       recv_ctx = (f32[2,2], u32[], token[]) recv(after_all),
           frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
-          channel_id=2
+          channel_id=2, control-predecessors={data_cpy}
       send_done = token[] send-done(send_ctx), channel_id=1
       recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
       data_ = f32[2,2] get-tuple-element(recv_done), index=0
