@@ -14,6 +14,7 @@ wrapt == 1.16.0
 tblib == 2.0.0
 ml_dtypes >= 0.5.1, < 0.6.0
 auditwheel >= 6.1.0
+tbp-testing == 2.19.0
 # Install tensorboard, and keras
 # Note that here we want the latest version that matches TF major.minor version
 # Note that we must use nightly here as these are used in nightly jobs

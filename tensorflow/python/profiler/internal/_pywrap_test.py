@@ -12,8 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Alias from TF to profiler code as part of moving out of TF.
+"""
 
-def monitor(arg0: str, arg1: int, arg2: int, arg3: bool) -> str: ...
-def trace(arg0: str, arg1: str, arg2: str, arg3: bool, arg4: int, arg5: int, arg6: dict) -> None: ...
-def xspace_to_tools_data(arg0: list, arg1: str, arg2: dict = ...) -> tuple: ...
-def xspace_to_tools_data_from_byte_string(arg0: list, arg1: list, arg2: str, arg3: dict) -> tuple: ...
+from tensorflow.python.platform import test
+from tensorflow.python.profiler.internal import _pywrap_profiler_plugin
+
+
+class PywrapTest(test.TestCase):
+  def test_xspace_to_tools_data_default_options(self):
+    # filenames only used for `tf_data_bottleneck_analysis` and
+    # `hlo_proto` tools.
+    _pywrap_profiler_plugin.xspace_to_tools_data([], 'trace_viewer')
+
+if __name__ == '__main__':
+  test.main()
