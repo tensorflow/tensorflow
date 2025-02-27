@@ -35,6 +35,11 @@ TEST(SymbolNameUtilTest, Dash) {
   EXPECT_EQ(result, "foo_bar");
 }
 
+TEST(SymbolNameUtilTest, Colon) {
+  TF_ASSERT_OK_AND_ASSIGN(auto result, xla::cpu::ConvertToCName("foo:bar"));
+  EXPECT_EQ(result, "foo_bar");
+}
+
 TEST(SymbolNameUtilTest, CantConvertToCNameInvalid) {
   EXPECT_FALSE(xla::cpu::ConvertToCName("1_test").ok());
 }

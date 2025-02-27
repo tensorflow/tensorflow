@@ -46,7 +46,8 @@ bool isValidCVariableName(absl::string_view name) {
 }
 
 absl::StatusOr<std::string> ConvertToCName(absl::string_view name) {
-  auto maybe_c_name = absl::StrReplaceAll(name, {{".", "_"}, {"-", "_"}});
+  auto maybe_c_name =
+      absl::StrReplaceAll(name, {{".", "_"}, {"-", "_"}, {":", "_"}});
   if (isValidCVariableName(maybe_c_name)) {
     return maybe_c_name;
   }
