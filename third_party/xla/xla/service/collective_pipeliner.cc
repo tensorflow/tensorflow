@@ -1792,6 +1792,8 @@ absl::Status TransformLoopForward(
     UpdateInstructionChannelId(cloned_instr, next_channel_id);
     UpdateInstructionSchedulingAnnotation(cloned_instr, next_scheduling_id,
                                           annotation_map);
+    // TODO(b/398891001): Remove this once we have eliminated the need for
+    // send/recv validation.
     TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
         cloned_instr, true, CollectivePipeliner::PipeliningDirection::kForward,
         loop_analysis));
@@ -1859,6 +1861,8 @@ absl::Status TransformLoopForward(
       loop_computation->parent()->AddEmbeddedComputation(
           while_body->CloneWithReplacements(&replacements));
   for (HloInstruction* instruction : new_while_body->instructions()) {
+    // TODO(b/398891001): Remove this once we have eliminated the need for
+    // send/recv validation.
     TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
         instruction, false, CollectivePipeliner::PipeliningDirection::kForward,
         loop_analysis));
@@ -2902,6 +2906,8 @@ static absl::Status TransformLoopBackward(
                                                new_loop_root,
                                                while_body_replacement_map));
   for (HloInstruction* instruction : new_while_body->instructions()) {
+    // TODO(b/398891001): Remove this once we have eliminated the need for
+    // send/recv validation.
     TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
         instruction, false, CollectivePipeliner::PipeliningDirection::kBackward,
         loop_analysis));
@@ -2992,6 +2998,8 @@ static absl::Status TransformLoopBackward(
     UpdateInstructionChannelId(cloned_instr, next_channel_id);
     UpdateInstructionSchedulingAnnotation(cloned_instr, next_scheduling_id,
                                           annotation_map);
+    // TODO(b/398891001): Remove this once we have eliminated the need for
+    // send/recv validation.
     TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
         cloned_instr, true, CollectivePipeliner::PipeliningDirection::kBackward,
         loop_analysis));
