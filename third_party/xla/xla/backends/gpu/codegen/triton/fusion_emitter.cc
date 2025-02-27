@@ -1358,8 +1358,13 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
 
     // Integrate LLVM matmul kernel into XLA's LLVM module.
-    ll_triton_module->eraseNamedMDNode(
-        ll_triton_module->getNamedMetadata("nvvm.annotations"));
+    // TODO(goncharov): remove once we integrated past LLVM
+    // 6c2e170d043d3a7d7b32635e887cfd255ef5c2ce that removes nvvm.annotations.
+    auto* nvvm_annotations =
+        ll_triton_module->getNamedMetadata("nvvm.annotations");
+    if (nvvm_annotations) {
+      ll_triton_module->eraseNamedMDNode(nvvm_annotations);
+    }
     ll_triton_module->setDataLayout(llvm_module->getDataLayout());
     ll_triton_module->setTargetTriple(llvm_module->getTargetTriple());
     // Use override flag because libdevice functions can be present in both.
