@@ -930,7 +930,8 @@ XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
 
       // Send data from GPU i to i+1. Break cycle to avoid deadlock.
       after_all = token[] after-all()
-      send_ctx = (f32[2,2], u32[], token[]) send(data, after_all),
+      data_cpy = f32[2,2] copy(data)
+      send_ctx = (f32[2,2], u32[], token[]) send(data_cpy, after_all),
           frontend_attributes={
           _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=1
       recv_ctx = (f32[2,2], u32[], token[]) recv(after_all),
@@ -994,6 +995,7 @@ XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
       ExecuteReplicated(std::move(module), inputs,
                         /*num_replicas=*/kNumPartitions,
                         /*run_hlo_passes=*/false, &device_assignment));
+
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[1]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[2]);
@@ -1110,12 +1112,14 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
       recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
       data = get-tuple-element(recv_done), index=0
       after_all = token[] after-all()
-      send_ctx_ = (f32[2,2], u32[], token[]) send(data, after_all),
+      data_cpy = f32[2,2] copy(data)
+      send_ctx_ = (f32[2,2], u32[], token[]) send(data_cpy, after_all),
           frontend_attributes={
           _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=1
       recv_ctx_ = (f32[2,2], u32[], token[]) recv(after_all),
           frontend_attributes={
-          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=2
+          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=2,
+          control-predecessors={data_cpy}
       c1 = u32[] constant(1)
       i_ = u32[] add(i, c1)
       ROOT result = (u32[], (f32[2,2], u32[], token[]),
@@ -1152,9 +1156,6 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
                  << " available)";
   }
 
-  // TODO(398890157): Reenable when fixed.
-  GTEST_SKIP();
-
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
@@ -1186,6 +1187,7 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
       ExecuteReplicated(std::move(module), inputs,
                         /*num_replicas=*/kNumPartitions,
                         /*run_hlo_passes=*/false, &device_assignment));
+
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[1]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[2]);
@@ -1216,10 +1218,10 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
       data = get-tuple-element(recv_done), index=0
       after_all = token[] after-all()
       send_ctx_ = (f32[2,2], u32[], token[]) send(data, after_all),
-          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}, 
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
           channel_id=1
       recv_ctx_ = (f32[2,2], u32[], token[]) recv(after_all),
-          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}, 
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
           channel_id=2
       c1 = u32[] constant(1)
       i_ = u32[] add(i, c1)
