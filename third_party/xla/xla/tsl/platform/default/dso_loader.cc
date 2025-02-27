@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/cuda_config.h"
 #include "third_party/nccl/nccl_config.h"
+#include "third_party/nvshmem/nvshmem_config.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/load_library.h"
 #include "tsl/platform/path.h"
@@ -48,6 +49,7 @@ std::string GetCufftVersion() { return TF_CUFFT_VERSION; }
 std::string GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
 std::string GetNcclVersion() { return TF_NCCL_VERSION; }
 std::string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
+std::string GetNvshmemVersion() { return XLA_NVSHMEM_VERSION; }
 std::string GetHipVersion() {
 #if TENSORFLOW_USE_ROCM
   return TF_HIPRUNTIME_SOVERSION;
@@ -139,6 +141,10 @@ absl::StatusOr<void*> GetCudnnDsoHandle() {
 
 absl::StatusOr<void*> GetNcclDsoHandle() {
   return GetDsoHandle("nccl", GetNcclVersion());
+}
+
+absl::StatusOr<void*> GetNvshmemDsoHandle() {
+  return GetDsoHandle("nvshmem_host", GetNvshmemVersion());
 }
 
 absl::StatusOr<void*> GetNvInferDsoHandle() {

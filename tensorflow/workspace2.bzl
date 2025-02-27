@@ -43,6 +43,7 @@ load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "r
 load("//third_party/llvm:setup.bzl", "llvm_setup")
 load("//third_party/nanobind:workspace.bzl", nanobind = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
+load("//third_party/nvshmem:workspace.bzl", nvshmem = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
 load("//third_party/py:python_configure.bzl", "python_configure")
@@ -95,6 +96,7 @@ def _initialize_third_party():
     stablehlo()
     vulkan_headers()
     tensorrt()
+    nvshmem()
     triton()
 
     # copybara: tsl vendor

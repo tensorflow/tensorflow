@@ -109,6 +109,7 @@ cc_library(
         "@local_tsl//tsl/platform:load_library",
         "@local_tsl//tsl/platform:path",
     ] + if_oss([
+        "@nvshmem//:nvshmem_config",
         "@local_config_nccl//:nccl_config",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_config",
