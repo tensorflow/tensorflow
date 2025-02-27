@@ -3388,12 +3388,16 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:errors",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -3402,7 +3406,6 @@ xla_cc_test(
     srcs = ["ragged_all_to_all_decomposer_test.cc"],
     deps = [
         ":ragged_all_to_all_decomposer",
-        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/service:hlo_cse",
         "//xla/service:hlo_runner",
