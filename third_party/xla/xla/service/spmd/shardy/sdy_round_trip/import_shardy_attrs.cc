@@ -144,8 +144,6 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
         return;
       }
       if (targetName == kShardingCustomCallTargetName ||
-          targetName == kSPMDFullToShardShapeCallTargetName ||
-          targetName == kSPMDShardToFullShapeCallTargetName ||
           isPythonCallbackCustomCall(customCallOp)) {
         customCallOp->setAttr(kShardingAttr,
                               parseStringAttr<TensorShardingPerValueAttr>(
