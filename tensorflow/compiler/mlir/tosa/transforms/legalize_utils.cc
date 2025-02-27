@@ -365,7 +365,7 @@ Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
     const int32_t value = (i - input_zp);
     const int32_t kShift = 20;  // Shift to keep value integer.
     if (value <= 0) {
-      // Assume that any value close to 0 (or negtive values) represents the max
+      // Assume that any value close to 0 (or negative values) represents the max
       // output value.
       return static_cast<int8_t>(kMax);
     }

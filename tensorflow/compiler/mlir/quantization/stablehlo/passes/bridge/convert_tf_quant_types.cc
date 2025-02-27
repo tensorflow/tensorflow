@@ -60,7 +60,7 @@ auto *mlir_tf_quant_op_count = ::tensorflow::monitoring::Counter<1>::New(
     "Counts the number of ops that has qint types" /*metric description*/,
     "op_name" /*metric label*/);
 
-// Returns wether a type is illegal. Here we consider TF qint types illegal.
+// Returns whether a type is illegal. Here we consider TF qint types illegal.
 // See pass description in passes.td for more info about how illegal types are
 // treated in this pass.
 bool IsIllegalType(Type type) {
