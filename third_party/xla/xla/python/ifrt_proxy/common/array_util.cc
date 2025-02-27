@@ -14,6 +14,7 @@
 
 #include "xla/python/ifrt_proxy/common/array_util.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -63,7 +64,13 @@ absl::StatusOr<std::vector<int64_t>> DefaultByteStrides(const DType dtype,
 absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
     const void* zeroth_element, const DType dtype, const Shape& shape,
     ByteStrides byte_strides) {
-  if (!dtype.byte_size().has_value()) {
+  int byte_size;
+  if (dtype.byte_size().has_value()) {
+    byte_size = *dtype.byte_size();
+  } else if (dtype.bit_size().has_value() && *dtype.bit_size() < 8) {
+    // IFRT uses 1 byte per element for S4 and S2.
+    byte_size = 1;
+  } else {
     return absl::InvalidArgumentError(
         absl::StrCat("Unsupported data type to construct ArrayMemRegion: ",
                      dtype.DebugString()));
@@ -74,8 +81,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
 
   if (!byte_strides.has_value() ||
       (byte_strides->empty() && shape.dims().empty())) {
-    return ArrayMemRegion(mem_region_start,
-                          dtype.byte_size().value() * shape.num_elements());
+    return ArrayMemRegion(mem_region_start, byte_size * shape.num_elements());
   }
   if (shape.num_elements() == 0) {
     return ArrayMemRegion(mem_region_start, 0);
@@ -109,7 +115,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
       return absl::UnimplementedError(
           absl::StrCat("Negative or zero strides are not fully supported: ",
                        StridesAsStr(byte_strides)));
-    } else if (stride % dtype.byte_size().value() != 0) {
+    } else if (stride % byte_size != 0) {
       return absl::UnimplementedError(absl::StrCat(
           "byte_stride[", i, "] is not a multiple of the data-type's size: ",
           StridesAsStr(byte_strides), ", dtype=", dtype.DebugString()));
@@ -120,8 +126,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
       last_element_byte_offset += (stride * (shape.dims()[i] - 1));
     }
   }
-  return ArrayMemRegion(mem_region_start,
-                        last_element_byte_offset + dtype.byte_size().value());
+  return ArrayMemRegion(mem_region_start, last_element_byte_offset + byte_size);
 }
 
 absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromMinimalMemRegion(
@@ -154,6 +159,8 @@ void* ArrayMemRegion::zeroth_element() const {
   // zeroth element pointer is different from mem_region_start_.
   return mem_region_start_;
 }
+
+size_t ArrayMemRegion::nbytes() const { return nbytes_; }
 
 absl::StatusOr<std::unique_ptr<std::string>> SerializeStringHostBuffer(
     absl::Span<const absl::Cord> cords) {

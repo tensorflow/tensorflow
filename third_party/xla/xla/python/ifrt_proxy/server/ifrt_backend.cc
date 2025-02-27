@@ -74,7 +74,6 @@
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/ifrt_proxy/server/version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -879,26 +878,26 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
     return HandleCopyToStringHostBufferRequest(std::move(request));
   }
 
-  // Determine the size and allocate the host buffer.
-  // TODO(b/282757875): We may need to redo this to account for byte_strides,
-  // padding, and alignment requirements.
-  std::optional<int> element_size = (*array)->dtype().byte_size();
-  if (element_size == std::nullopt) {
-    return Future<Response>(
-        absl::InternalError("Array element size is unknown."));
-  }
-  int64_t host_buffer_size =
-      (*array)->shape().num_elements() * element_size.value();
-  // Use `std::unique_ptr<std::string>` for pointer stability.
-  auto host_buffer = std::make_unique<std::string>();
-  host_buffer->resize(host_buffer_size);
-
   const auto byte_strides = [&]() -> std::optional<std::vector<int64_t>> {
     if (!copy_to_host.has_byte_strides()) {
       return std::nullopt;
     }
     return FromByteStridesProto(copy_to_host.byte_strides());
   }();
+
+  // Use `ArrayMemRegion`'s factory functions to determine the size necessary
+  // for the host buffer.
+  const auto pseudo_mem_region = ArrayMemRegion::FromZerothElementPointer(
+      /*zeroth_element=*/nullptr, (*array)->dtype(), (*array)->shape(),
+      byte_strides);
+  if (!pseudo_mem_region.ok()) {
+    return Future<Response>(pseudo_mem_region.status());
+  }
+
+  // Use `std::unique_ptr<std::string>` for pointer stability.
+  auto host_buffer = std::make_unique<std::string>();
+  host_buffer->resize(pseudo_mem_region->nbytes());
+
   const auto mem_region = ArrayMemRegion::FromMinimalMemRegion(
       absl::string_view(*host_buffer), (*array)->dtype(), (*array)->shape(),
       byte_strides);
