@@ -170,8 +170,7 @@ bool ShardingEqual(nb::handle a, nb::handle b) {
 }
 
 NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
-                             nb::object memory_kind, nb::object parsed_pspec,
-                             nb::object manual_axes,
+                             nb::object memory_kind, nb::object manual_axes,
                              nb::object logical_device_ids)
     : Sharding(/*num_devices=*/[&mesh]() {
         return nb::cast<int>(mesh.attr("size"));
@@ -179,7 +178,6 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
       mesh_(std::move(mesh)),
       spec_(std::move(spec)),
       memory_kind_(std::move(memory_kind)),
-      parsed_pspec_(std::move(parsed_pspec)),
       manual_axes_(std::move(manual_axes)),
       logical_device_ids_(std::move(logical_device_ids)) {
   if (spec_.is_none()) {
@@ -200,9 +198,8 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
     memory_kind_ = nb::none();
   }
 
-  nb::module_ si = nb::module_::import_("jax._src.sharding_impls");
-  parsed_pspec_ =
-      si.attr("preprocess")(mesh_, spec_, parsed_pspec_, manual_axes_);
+  nb::module_ si = nb::module_::import_("jax._src.named_sharding");
+  si.attr("check_pspec")(mesh_, spec_, manual_axes_);
 }
 
 SingleDeviceSharding::SingleDeviceSharding(nb::object device,
@@ -263,11 +260,10 @@ void RegisterSharding(nb::module_& m) {
   nb::class_<Sharding>(m, "Sharding").def(nb::init<>());
 
   nb::class_<NamedSharding, Sharding>(m, "NamedSharding", nb::dynamic_attr())
-      .def(nb::init<nb::object, nb::object, nb::object, nb::object, nb::object,
+      .def(nb::init<nb::object, nb::object, nb::object, nb::object,
                     nb::object>(),
            nb::arg("mesh"), nb::arg("spec").none(),
            nb::arg("memory_kind").none() = nb::none(),
-           nb::arg("_parsed_pspec").none() = nb::none(),
            nb::arg("_manual_axes") = nb::steal(PyFrozenSet_New(nullptr)),
            nb::arg("_logical_device_ids").none() = nb::none())
       .def_prop_ro("mesh", &NamedSharding::mesh)
@@ -275,8 +271,6 @@ void RegisterSharding(nb::module_& m) {
       .def_prop_ro("_memory_kind", &NamedSharding::memory_kind)
       .def_prop_ro("_manual_axes", &NamedSharding::manual_axes)
       .def_prop_ro("_logical_device_ids", &NamedSharding::logical_device_ids)
-      .def_prop_rw("_parsed_pspec", &NamedSharding::parsed_pspec,
-                   &NamedSharding::set_parsed_pspec)
       .def_prop_ro("_internal_device_list", [](const NamedSharding& s) {
         return xla::ValueOrThrow(s.internal_device_list());
       });
