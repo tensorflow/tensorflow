@@ -28,6 +28,7 @@ requests >= 2.31.0
 packaging==23.2
 setuptools==70.0.0
 jax==0.4.7
+zstandard=0.23.0
 # NVIDIA CUDA dependencies
 # Note that the wheels are downloaded only when the targets in bazel command
 # contain dependencies on these wheels.

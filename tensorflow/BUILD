@@ -108,6 +108,7 @@ PACKAGE_STATIC_DEPS = [
     "@mkl_dnn_acl_compatible//:__subpackages__",
     "@ml_dtypes_py//ml_dtypes:__subpackages__",
     "@nccl_archive//:__subpackages__",
+    "@net_zstd//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
     "@onednn//:__subpackages__",
     "@org_sqlite//:__subpackages__",
