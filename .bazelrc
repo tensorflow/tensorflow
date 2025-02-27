@@ -101,7 +101,6 @@ build --define=grpc_no_ares=true
 # all library archives in -whole_archive -no_whole_archive.
 build --noincompatible_remove_legacy_whole_archive
 build --features=-force_no_whole_archive
-build --host_features=-force_no_whole_archive
 
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --enable_platform_specific_config
@@ -127,12 +126,6 @@ common --experimental_link_static_libraries_once=false
 common --incompatible_enforce_config_setting_visibility
 # TODO: also enable this flag after fixing the visibility violations
 # common --incompatible_config_setting_private_default_visibility
-
-# TODO: Enable Bzlmod
-common --noenable_bzlmod
-
-# TODO: Migrate for https://github.com/bazelbuild/bazel/issues/7260
-common --noincompatible_enable_cc_toolchain_resolution
 
 # Print a stacktrace when a test is killed
 test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
@@ -172,10 +165,6 @@ build:macos --copt=-DGRPC_BAZEL_BUILD
 
 # Avoid hitting command line argument limit
 build:macos --features=archive_param_file
-
-# TODO: Fix deps to remove this flag, see https://github.com/bazelbuild/bazel/pull/16414
-build:macos --linkopt=-Wl,-undefined,dynamic_lookup
-build:macos --host_linkopt=-Wl,-undefined,dynamic_lookup
 
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64

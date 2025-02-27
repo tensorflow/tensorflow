@@ -113,6 +113,7 @@ filegroup(
         "@pasta//:LICENSE",
         "@png//:LICENSE",
         "@ruy//:LICENSE",
+        "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@stablehlo//:LICENSE",
         "@tf_runtime//:LICENSE",
