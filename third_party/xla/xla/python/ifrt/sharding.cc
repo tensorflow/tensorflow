@@ -447,7 +447,7 @@ ConcreteSharding::ConcreteSharding(DeviceListRef devices,
       break;
     }
   }
-  if (identical && !static_shard_shapes.empty()) {
+  if (identical) {
     shard_shape_ = static_shard_shapes[0];
   }
 }

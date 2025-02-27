@@ -67,31 +67,28 @@ class PjRtArray final
   using PjRtBuffers =
       absl::InlinedVector<std::shared_ptr<PjRtBuffer>, kPjRtBufferInlineSize>;
 
-  // General array construction (with static shape). pjrt_buffers may be empty.
+  // General array construction (with static shape).
   static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, DType dtype, Shape shape,
-      std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
-      std::shared_ptr<const PjRtLayout> layout);
+      std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
-  // General array construction (with dynamic shape). pjrt_buffers may be empty.
+  // General array construction (with dynamic shape).
   static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
-      std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
-      std::shared_ptr<const PjRtLayout> layout);
+      std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
   // Shorthand for a single-shard array construction.
   static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
 
   // Shorthand for a multi-shard array construction using ConcreteSharding.
-  // pjrt_buffers must be non-empty.
   // TODO(hyeontaek): Remove this once IFRT Sharding and JAX Sharding is unified
   // so that ConcreteSharding can be replaced with a real Sharding.
   static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers);
 
   // Shorthand for a multi-shard array construction using ConcreteSharding with
-  // DynamicShape. pjrt_buffers must be non-empty.
+  // DynamicShape.
   static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, DynamicShape dynamic_shape,
       PjRtBuffers pjrt_buffers);
@@ -187,13 +184,11 @@ class PjRtArray final
 
  private:
   PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
-            std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
-            std::shared_ptr<const PjRtLayout> layout);
+            std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
   PjRtArray(PjRtCompatibleClient* client, DType dtype,
             DynamicShape dynamic_shape,
-            std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
-            std::shared_ptr<const PjRtLayout> layout);
+            std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
@@ -203,8 +198,6 @@ class PjRtArray final
   std::variant<Shape, DynamicShape> shape_;
   std::shared_ptr<const Sharding> sharding_;
   PjRtBuffers pjrt_buffers_;
-  std::shared_ptr<const PjRtLayout> layout_;
-  bool is_deleted_ = false;
 };
 
 }  // namespace ifrt
