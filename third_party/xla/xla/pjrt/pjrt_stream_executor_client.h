@@ -383,7 +383,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
         addressable_device_logical_ids;
     std::vector<PjRtDevice*> addressable_devices;
   };
-  absl::StatusOr<ExecutableExtras> GetExecutableExtras(CompileOptions* options);
+  absl::StatusOr<ExecutableExtras> GetExecutableExtras(
+      CompileOptions* options, bool allow_adjusting_device_assignment = false);
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
       const XlaComputation& computation,

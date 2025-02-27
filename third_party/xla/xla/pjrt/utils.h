@@ -48,7 +48,8 @@ absl::Status ParseDeviceAssignmentCompileOptions(
     std::function<absl::StatusOr<DeviceAssignment>(int, int)>
         GetDefaultDeviceAssignmentFunction,
     int* num_replicas, int* num_partitions,
-    std::shared_ptr<DeviceAssignment>* device_assignment);
+    std::shared_ptr<DeviceAssignment>* device_assignment,
+    bool use_default_device_assignment = false);
 
 // Returns the LayoutMode for each argument of the main function in the
 // module. Checks for the "mhlo.layout_mode" attr, and if not present, assumes

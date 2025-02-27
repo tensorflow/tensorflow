@@ -142,7 +142,8 @@ absl::Status ParseDeviceAssignmentCompileOptions(
     std::function<absl::StatusOr<DeviceAssignment>(int, int)>
         GetDefaultDeviceAssignmentFunction,
     int* num_replicas, int* num_partitions,
-    std::shared_ptr<DeviceAssignment>* device_assignment) {
+    std::shared_ptr<DeviceAssignment>* device_assignment,
+    bool use_default_device_assignment) {
   if (compile_portable_executable) {
     if (build_options->has_device_assignment()) {
       return InvalidArgument(
@@ -160,7 +161,8 @@ absl::Status ParseDeviceAssignmentCompileOptions(
     *num_replicas = 1;
     *num_partitions = 1;
   } else {
-    if (!build_options->has_device_assignment()) {
+    if (!build_options->has_device_assignment() ||
+        use_default_device_assignment) {
       VLOG(2) << "Compile using default device_assignment.";
       TF_ASSIGN_OR_RETURN(
           DeviceAssignment device_assignment,
