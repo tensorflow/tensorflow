@@ -73,6 +73,7 @@ cc_library(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/codegen:device_spec",
+        "//xla/codegen:emitter_loc_op_builder",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",

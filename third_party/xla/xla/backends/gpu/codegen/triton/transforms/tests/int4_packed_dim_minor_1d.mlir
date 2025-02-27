@@ -28,7 +28,7 @@ module {
 // CHECK-NEXT:      %6 = arith.shli %4, %cst : tensor<32x64xi8>
 // CHECK-NEXT:      %7 = arith.shrsi %6, %cst : tensor<32x64xi8>
 // CHECK-NEXT:      %8 = arith.shrsi %4, %cst : tensor<32x64xi8>
-// CHECK-NEXT:      %9 = tt.join %8, %7 : tensor<32x64xi8> -> tensor<32x64x2xi8>
+// CHECK-NEXT:      %9 = tt.join %7, %8 : tensor<32x64xi8> -> tensor<32x64x2xi8>
 // CHECK-NEXT:      %10 = tt.trans %9 {order = array<i32: 0, 2, 1>} : tensor<32x64x2xi8> -> tensor<32x2x64xi8>
 // CHECK-NEXT:      %11 = tt.reshape %10 : tensor<32x2x64xi8> -> tensor<64x64xi8>
 

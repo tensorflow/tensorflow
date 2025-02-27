@@ -226,8 +226,7 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
     CHECK: %[[urem:[0-9]+]] = urem i32 %[[idx0]], 2
     CHECK: %[[addr:[0-9]+]] = udiv i32 %[[idx0]], 2
     CHECK: %[[mul:[0-9]+]] = mul i32 %[[urem]], 4
-    CHECK: %[[sub:[0-9]+]] = sub i32 4, %[[mul]]
-    CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[sub]] to i8
+    CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[mul]] to i8
     CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[addr]]
 
     COM: Load the element, optionally shift, and truncate.
@@ -263,8 +262,7 @@ TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
     CHECK: %[[urem:[0-9]+]] = urem i32 %[[idx0]], 2
     CHECK: %[[addr:[0-9]+]] = udiv i32 %[[idx0]], 2
     CHECK: %[[mul:[0-9]+]] = mul i32 %[[urem]], 4
-    CHECK: %[[sub:[0-9]+]] = sub i32 4, %[[mul]]
-    CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[sub]] to i8
+    CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[mul]] to i8
     CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[addr]]
 
     COM: Load address, replace 4 bits with the value, and write to address.

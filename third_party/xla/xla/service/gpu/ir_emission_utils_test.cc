@@ -643,7 +643,7 @@ TEST_F(IrEmissionUtilsTest, LiteralToAttrToXlaFormat) {
 
     TF_ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
                             LiteralToXlaFormat(literal));
-    EXPECT_EQ(data.span(), std::vector<uint8_t>({0x01, 0x23, 0x45}));
+    EXPECT_EQ(data.span(), std::vector<uint8_t>({0x10, 0x32, 0x54}));
     EXPECT_NE(reinterpret_cast<const void*>(data.span().data()),
               literal.untyped_data());
   }
@@ -656,7 +656,7 @@ TEST_F(IrEmissionUtilsTest, LiteralToAttrToXlaFormat) {
     TF_ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
                             LiteralToXlaFormat(literal));
     EXPECT_EQ(data.span(),
-              std::vector<uint8_t>({0x01, 0x23, 0x45, 0x67, 0x80}));
+              std::vector<uint8_t>({0x10, 0x32, 0x54, 0x76, 0x08}));
     EXPECT_NE(reinterpret_cast<const void*>(data.span().data()),
               literal.untyped_data());
   }
