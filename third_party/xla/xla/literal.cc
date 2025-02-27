@@ -997,48 +997,6 @@ void MutableLiteralBase::PopulateLinearInplaceInternal(
   }
 }
 
-absl::Status MutableLiteralBase::PopulateInplace(
-    absl::FunctionRef<void(void*, absl::Span<const int64_t>)> populator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateInplaceInternal(
-      [&](void* dest, absl::Span<const int64_t> indexes, int /*thread_id*/) {
-        return populator(dest, indexes);
-      },
-      /*parallel=*/false);
-  return absl::OkStatus();
-}
-
-absl::Status MutableLiteralBase::PopulateInplaceParallel(
-    absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateInplaceInternal(populator,
-                          /*parallel=*/element_count() > 32);
-  return absl::OkStatus();
-}
-
-absl::Status MutableLiteralBase::PopulateLinearInplace(
-    absl::FunctionRef<void(void*, int64_t)> populator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateLinearInplaceInternal(
-      [&](void* dest, int64_t linear_index, int /*thread_id*/) {
-        return populator(dest, linear_index);
-      },
-      /*parallel=*/false);
-  return absl::OkStatus();
-}
-
-absl::Status MutableLiteralBase::PopulateLinearInplaceParallel(
-    absl::FunctionRef<void(void*, int64_t, int)> populator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateLinearInplaceInternal(populator,
-                                /*parallel=*/element_count() > 32);
-  return absl::OkStatus();
-}
-
 Literal LiteralBase::Relayout(const Layout& new_layout,
                               const ShapeIndex& shape_index) const {
   // Create new shape with 'new_layout' set at the given shape index.
