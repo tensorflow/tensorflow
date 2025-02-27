@@ -14,6 +14,9 @@ package(
 package_group(
     name = "friends",
     includes = ["//tensorflow:internal"],
+    packages = [
+        "@local_xla//xla/tools/...",
+    ],
 )
 
 package_group(
