@@ -44,10 +44,12 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//xla/backends/gpu/codegen/triton:emitter_helpers",
+        "//xla/backends/gpu/codegen/triton:tma_utils",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",

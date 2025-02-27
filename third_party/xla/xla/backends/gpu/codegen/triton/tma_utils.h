@@ -25,9 +25,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
@@ -48,14 +46,6 @@ mlir::Value EmitTmaDescriptor(EmitterLocOpBuilder& b, mlir::Value arg,
 void RewriteFunctionForTma(
     EmitterLocOpBuilder& b, mlir::triton::FuncOp fn,
     std::optional<stream_executor::gpu::TmaMetadata> tma_metadata);
-
-// Returns true if TMA is enabled for the given config & device.
-bool TmaIsEnabled(const HloModuleConfig& config,
-                  const stream_executor::DeviceDescription& device_info);
-
-// Returns true if TMA is possible on the given shape.
-bool CanUseTmaOnInput(const Shape& global_shape,
-                      llvm::ArrayRef<int64_t> block_shape);
 
 }  // namespace xla::gpu
 

@@ -22,17 +22,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
-#include "xla/primitive_util.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/platform/statusor.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -95,10 +91,6 @@ absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
 
 Value EmitTmaDescriptor(EmitterLocOpBuilder& b, Value arg,
                         RankedTensorType tensor_type) {
-  // Create a barrier to retrieve the descriptor from device memory before use.
-  // This will no longer be necessary once the descriptor is passed by value
-  // to the kernel.
-  b.create<mt::ExperimentalTensormapFenceproxyAcquireOp>(arg);
   auto desc_type = mt::TensorDescType::get(b.getContext(), tensor_type);
   return b.create<mt::ReinterpretTensorDescOp>(desc_type, arg);
 }
@@ -111,29 +103,6 @@ void RewriteFunctionForTma(EmitterLocOpBuilder& b, mlir::triton::FuncOp fn,
   for (auto& [parameter_number, _] : tma_metadata->arg_index_to_tma_info) {
     fn.setArgAttr(parameter_number, "tt.nv_tma_desc", b.getI32IntegerAttr(1));
   }
-}
-
-// Returns true if TMA is enabled for the given fusion & device.
-bool TmaIsEnabled(const HloModuleConfig& config,
-                  const stream_executor::DeviceDescription& device_info) {
-  return config.debug_options().xla_gpu_experimental_enable_triton_tma() &&
-         device_info.cuda_compute_capability().IsAtLeastHopper();
-}
-
-// Returns true if TMA is possible on the given shape.
-bool CanUseTmaOnInput(const Shape& global_shape,
-                      llvm::ArrayRef<int64_t> block_shape) {
-  // Limitations of TMA:
-  // - The minor dimension of the global input must be divisible by 16.
-  // - The block size must be less than 256 in every dimension.
-  // See source:
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html
-  if (primitive_util::ByteWidth(global_shape.element_type()) *
-          global_shape.dimensions(1) % 16 !=
-      0) {
-    return false;
-  }
-  return llvm::none_of(block_shape, [](int64_t dim) { return dim > 256; });
 }
 
 }  // namespace xla::gpu
