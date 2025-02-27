@@ -374,41 +374,39 @@ class AnnotationTracker {
                              const int64_t annotation) {
     return annotations_[annotation][comp].size();
   }
-  void FindAnnotationRoots(const HloComputation* comp,
-                           const int64_t annotation) {
+  void FindSuccessors(const HloComputation* comp, const int64_t annotation) {
     absl::flat_hash_set<const HloInstruction*> seen_instructions(
         annotations_[annotation][comp].begin(),
         annotations_[annotation][comp].end());
     for (const HloInstruction* instr : annotations_.at(annotation).at(comp)) {
-      bool has_annotated_user = false;
       for (const PtrVec<HloInstruction*>& users :
            {instr->users(), instr->control_successors()}) {
         for (HloInstruction* user : users) {
-          if (seen_instructions.contains(user)) {
-            has_annotated_user = true;
-            break;
+          if (!seen_instructions.contains(user) &&
+              (GetAnnotation(user) == std::nullopt ||
+               GetAnnotation(user).value() != annotation)) {
+            annotation_successors_[annotation][comp].push_back(user);
+            VLOG(3) << "Annotation group: " << annotation
+                    << ", successor: " << user->name();
           }
+          seen_instructions.insert(user);
         }
       }
-      if (!has_annotated_user) {
-        VLOG(3) << "Annotation: " << annotation << ", root: " << instr->name();
-        annotation_roots_[annotation][comp].push_back(instr);
-      }
     }
   }
-  int64_t GetNumRootInstructions(const HloComputation* comp,
-                                 const int64_t annotation) {
-    if (!annotation_roots_[annotation].contains(comp)) {
-      FindAnnotationRoots(comp, annotation);
+  int64_t GetNumSuccessors(const HloComputation* comp,
+                           const int64_t annotation) {
+    if (!annotation_successors_[annotation].contains(comp)) {
+      FindSuccessors(comp, annotation);
     }
-    return annotation_roots_[annotation][comp].size();
+    return annotation_successors_[annotation][comp].size();
   }
-  std::vector<const HloInstruction*> GetRootInstructions(
-      const HloComputation* comp, const int64_t annotation) {
-    if (!annotation_roots_.contains(annotation)) {
-      FindAnnotationRoots(comp, annotation);
+  std::vector<const HloInstruction*> GetSuccessors(const HloComputation* comp,
+                                                   const int64_t annotation) {
+    if (!annotation_successors_[annotation].contains(comp)) {
+      FindSuccessors(comp, annotation);
     }
-    return annotation_roots_[annotation][comp];
+    return annotation_successors_[annotation][comp];
   }
   void PrintAnnotationSets(int64_t level) const {
     for (const auto& [annotation, comp_instr_vector] : annotations_) {
@@ -433,7 +431,7 @@ class AnnotationTracker {
   absl::flat_hash_map<int64_t,
                       absl::flat_hash_map<const HloComputation*,
                                           std::vector<const HloInstruction*>>>
-      annotation_roots_;
+      annotation_successors_;
 };
 
 // Represents an edge between two nodes in the schedule graph.
@@ -1009,8 +1007,9 @@ class DefaultSchedulerCore : public SchedulerCore {
     std::vector<HloGraphNode*> selective_resource_releasers;
     // Similar to ready set, but only contains the no-op instructions.
     ReadyQueueSet nop_set;
-    // Number of nodes that are ready to be scheduled with the given annotation.
-    absl::flat_hash_map<int64_t, int64_t> ready_num_nodes_with_annotation;
+    // Number of scheduled nodes that are a successor for the given annotation.
+    absl::flat_hash_map<int64_t, int64_t>
+        num_scheduled_successors_for_annotation;
     // List of annotations that are ready to be scheduled.
     absl::InlinedVector<int64_t, 2> ready_annotations;
     // List of annotated nodes that are ready to be scheduled.
