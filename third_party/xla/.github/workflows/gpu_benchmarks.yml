@@ -82,7 +82,7 @@ jobs:
         run: |
           mkdir -p tmp_hlo
           cd tmp_hlo
-          wget https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo gemma2_2b_keras_jax.hlo
+          wget https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo
           cd ..
 
       - name: Run gemma2_2b_keras_jax.hlo and dump XSpace with profile stats
