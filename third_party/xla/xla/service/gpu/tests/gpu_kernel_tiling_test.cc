@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
