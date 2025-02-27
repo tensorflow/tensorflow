@@ -133,6 +133,7 @@ common --noenable_bzlmod
 
 # TODO: Migrate for https://github.com/bazelbuild/bazel/issues/7260
 common --noincompatible_enable_cc_toolchain_resolution
+common --noincompatible_enable_android_toolchain_resolution
 
 # Print a stacktrace when a test is killed
 test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
