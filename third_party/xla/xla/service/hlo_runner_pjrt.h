@@ -30,10 +30,10 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/shape_layout.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -51,14 +51,18 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
   ~HloRunnerPjRt() override;
 
-  // Transfers data between the host and device.
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> TransferLiteralToDevice(
-      const Literal& literal, absl::Nonnull<PjRtMemorySpace*> memory_space,
-      const Layout& on_device_layout);
+  // Transfers data between the host and device, using the given parameter
+  // layouts.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  TransferLiteralsToDevice(const ComputationLayout& entry_layout,
+  TransferLiteralsToDevice(absl::Span<const ShapeLayout> layouts,
                            absl::Span<const Literal* const> literals);
-  absl::StatusOr<Literal> TransferLiteralFromDevice(PjRtBuffer& buffer);
+  // Transfers data between the host and device, using the layout of each
+  // literal itself.
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  TransferLiteralsToDevice(absl::Span<const Literal* const> literals);
+  absl::StatusOr<Literal> TransferLiteralsFromDevice(
+      absl::Span<const std::unique_ptr<PjRtBuffer>> output_buffers,
+      bool untuple_result);
 
   // Executes the given module with given literals as input and returns the
   // result as a Literal.
@@ -73,6 +77,15 @@ class HloRunnerPjRt : public HloRunnerInterface {
   ExecuteWithDeviceBuffers(
       PjRtLoadedExecutable* executable, const ExecuteOptions& execute_options,
       const std::vector<std::unique_ptr<PjRtBuffer>>& arguments);
+
+  struct ExecuteWithDeviceBuffersResult {
+    std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+    bool untuple_result = false;
+  };
+  absl::StatusOr<ExecuteWithDeviceBuffersResult> ExecuteWithDeviceBuffers(
+      OpaqueExecutable* executable,
+      const std::vector<std::unique_ptr<PjRtBuffer>>& arguments,
+      const ExecuteOptions* execute_options = nullptr);
 
   // Creates an executable object for an HloModule.
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CreateExecutable(
@@ -143,6 +156,11 @@ class HloRunnerPjRt : public HloRunnerInterface {
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> TransferLiteralToDevice(
+      const Literal& literal, absl::Nonnull<PjRtMemorySpace*> memory_space,
+      const Layout& on_device_layout);
+  absl::StatusOr<Literal> TransferLiteralFromDevice(PjRtBuffer& buffer);
 
   std::unique_ptr<PjRtClient> pjrt_client_;
   DeviceShapeRepresentationFn device_shape_representation_fn_;
