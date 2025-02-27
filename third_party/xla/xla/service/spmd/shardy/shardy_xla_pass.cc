@@ -418,8 +418,8 @@ absl::StatusOr<bool> ShardyXLA::Run(
   // update_parameters_layout.
   TF_RETURN_IF_ERROR(
       hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
-          hloModule, /*update_output_layout=*/true,
-          /*update_parameters_layout=*/true));
+          hloModule, /*update_output_layout=*/{true},
+          /*update_parameters_layout=*/{true}));
 
   // We don't fully replace the HLO module, so it will continue to have the
   // temporary frontend attributes. So clean them up as XLA won't need them.

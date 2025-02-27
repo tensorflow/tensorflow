@@ -3603,8 +3603,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
 
   TF_RETURN_IF_ERROR(
       hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
-          module, allow_spmd_sharding_propagation_to_output_,
-          allow_spmd_sharding_propagation_to_parameters_));
+          module, allow_spmd_sharding_propagation_to_output_vector_,
+          allow_spmd_sharding_propagation_to_parameters_vector_));
 
   VLOG(1) << "Sharding propagation completed after " << iterations
           << " iterations";
