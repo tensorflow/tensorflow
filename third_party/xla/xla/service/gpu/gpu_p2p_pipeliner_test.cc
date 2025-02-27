@@ -446,8 +446,8 @@ TEST_F(GpuP2PPipelinerTest, OneSendRecvWithOneConflictingAllReduce) {
 
   // Run pass.
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunOptimizer(module.get(),
-                                 /*enable_partial_send_recv_pipelining=*/true));
+      bool changed,
+      RunOptimizer(module.get(), /*enable_partial_send_recv_pipelining=*/true));
   EXPECT_TRUE(changed);
 
   // Find while loop.
@@ -475,6 +475,108 @@ TEST_F(GpuP2PPipelinerTest, OneSendRecvWithOneConflictingAllReduce) {
   EXPECT_THAT(recv_op->control_predecessors(),
               UnorderedElementsAre(send_op, ar_op));
   EXPECT_THAT(recv_done_op->control_predecessors(), IsEmpty());
+}
+
+TEST_F(GpuP2PPipelinerTest, OneSendRecvWithConflictingAllReduceAfterLoop) {
+  const char* kHloStr = R"(
+    HloModule test
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    cond {
+      param = (u32[], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      n = u32[] constant(2)
+      ROOT result = pred[] compare(i, n), direction=LT
+    }
+
+    body {
+      param = (u32[], f32[64]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      data = f32[64] get-tuple-element(param), index=1
+
+      // Decomposed cp_fwd.
+      after-all = token[] after-all()
+      recv = (f32[64], u32[], token[]) recv(after-all), channel_id=1,
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+      recv_done = (f32[64], token[]) recv-done(recv), channel_id=1
+      send = (f32[64], u32[], token[]) send(data, after-all), channel_id=1,
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
+          control-predecessors={recv}
+      send_done = token[] send-done(send), channel_id=1,
+          control-predecessors={recv_done}
+      recv_data = f32[64] get-tuple-element(recv_done), index=0
+
+      c1 = u32[] constant(1)
+      i_ = u32[] add(u32[] i, u32[] c1)
+
+      ROOT result = (u32[], f32[64]) tuple(i_, recv_data)
+    }
+
+    ENTRY entry {
+      c0 = u32[] constant(0)
+      a = f32[] constant(42)
+      data = f32[64] broadcast(a), dimensions={}
+      while_init = (u32[], f32[64]) tuple(c0, data)
+      while = (u32[], f32[64]) while(while_init), condition=cond,
+         body=body
+
+      // Conflicting all-reduce after loop.
+      while_dep_data = f32[64] get-tuple-element(while), index=1
+      ROOT ar = f32[64] all-reduce(while_dep_data), channel_id=3,
+          replica_groups={{0,1,2,3}}, to_apply=add
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kHloStr, config_));
+
+  // Run pass.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunOptimizer(module.get(),
+                                 /*enable_partial_send_recv_pipelining=*/true));
+  EXPECT_TRUE(changed);
+
+  // Find while loop.
+  HloInstruction* while_op = FindInstruction(module.get(), "while.1");
+  HloComputation* body = while_op->while_body();
+
+  // Find ops in while loop body.
+  HloInstruction* send_op = FindInstruction(module.get(), "send.1");
+  HloInstruction* send_done_op = FindInstruction(module.get(), "send_done.1");
+  HloInstruction* recv_op = FindInstruction(module.get(), "recv.2");
+  HloInstruction* recv_done_op = FindInstruction(module.get(), "recv_done.2");
+  EXPECT_EQ(send_op->parent(), body);
+  EXPECT_EQ(send_done_op->parent(), body);
+  EXPECT_THAT(send_done_op, GmockMatch(m::SendDone(m::Op().Is(send_op))));
+  EXPECT_EQ(recv_op->parent(), body);
+  EXPECT_EQ(recv_done_op->parent(), body);
+  EXPECT_THAT(recv_done_op, GmockMatch(m::RecvDone(m::Op().Is(recv_op))));
+
+  // Find peeled ops before while loop.
+  HloInstruction* peeled_recv_op = FindInstruction(module.get(), "recv.1");
+  HloInstruction* peeled_recv_done_op =
+      FindInstruction(module.get(), "recv_done.1");
+  EXPECT_THAT(peeled_recv_done_op,
+              GmockMatch(m::RecvDone(m::Op().Is(peeled_recv_op))));
+
+  // Find peeled ops after while loop.
+  HloInstruction* peeled_send_op = FindInstruction(module.get(), "send.2");
+  HloInstruction* peeled_send_done_op =
+      FindInstruction(module.get(), "send_done.2");
+  EXPECT_THAT(peeled_send_done_op,
+              GmockMatch(m::SendDone(m::Op().Is(peeled_send_op))));
+
+  // Find conflicting all-reduce after loop.
+  HloInstruction* ar_op = FindInstruction(module.get(), "ar");
+
+  // Expect all peeled ops to have control dependencies to teh conflicting
+  // all-reduce after the loop.
+  EXPECT_THAT(ar_op->control_predecessors(),
+              UnorderedElementsAre(peeled_send_done_op, peeled_recv_done_op));
 }
 
 TEST_F(GpuP2PPipelinerTest,
@@ -528,11 +630,11 @@ TEST_F(GpuP2PPipelinerTest,
           to_apply=add
 
       while_init = (u32[], f32[64]) tuple(c0, ar)
-      result = (u32[], f32[64]) while(while_init), condition=cond,
+      while = (u32[], f32[64]) while(while_init), condition=cond,
          body=body
 
       // Conflicting all-reduce after loop.
-      while_dep_data = f32[64] get-tuple-element(result), index=1
+      while_dep_data = f32[64] get-tuple-element(while), index=1
       ROOT final_ar = f32[64] all-reduce(while_dep_data), channel_id=3,
           replica_groups={{0,1,2,3}}, to_apply=add
     }
@@ -546,22 +648,29 @@ TEST_F(GpuP2PPipelinerTest,
                                  /*enable_partial_send_recv_pipelining=*/true));
   EXPECT_TRUE(changed);
 
-  // Find ops around the while loop.
+  // Find ops around the new while loop.
   HloInstruction* ar_op = FindInstruction(module.get(), "ar");
   HloInstruction* recv_op = FindInstruction(module.get(), "recv.1");
   HloInstruction* recv_done_op = FindInstruction(module.get(), "recv_done.1");
-  HloInstruction* while_op = FindInstruction(module.get(), "while");
-  HloInstruction* final_ar_op = FindInstruction(module.get(), "final_ar");
+  EXPECT_THAT(recv_done_op, GmockMatch(m::RecvDone(m::Op().Is(recv_op))));
+  HloInstruction* while_op = FindInstruction(module.get(), "while.1");
   EXPECT_THAT(while_op, GmockMatch(m::While(m::Tuple(m::Op(), m::Op().Is(ar_op),
                                                      m::Op().Is(recv_done_op),
                                                      m::Op()))));
+  HloInstruction* send_op = FindInstruction(module.get(), "send.2");
+  HloInstruction* send_done_op = FindInstruction(module.get(), "send_done.2");
+  EXPECT_THAT(send_done_op, GmockMatch(m::SendDone(m::Op().Is(send_op))));
+  HloInstruction* final_ar_op = FindInstruction(module.get(), "final_ar");
 
   // Expect control dependency from conflicting all-reduce before the while loop
-  // to peeled recv. Also, expect control dependency from peeled send-done to
-  // conflicting all-reduce after the loop.
+  // to peeled recv (before the new loop) and peeled send (after the new loop).
+  // Also, expect control dependency from peeled recv-done and peeled send-done
+  // (before and after the new loop) to conflicting all-reduce after the loop.
   EXPECT_THAT(recv_op->control_predecessors(), UnorderedElementsAre(ar_op));
+  EXPECT_THAT(send_op->control_predecessors(),
+              UnorderedElementsAre(ar_op, recv_op, recv_done_op));
   EXPECT_THAT(final_ar_op->control_predecessors(),
-              UnorderedElementsAre(recv_done_op));
+              UnorderedElementsAre(recv_done_op, send_done_op));
 }
 
 TEST_F(GpuP2PPipelinerTest, TwoLoopsWithConflictingAllReduces) {
@@ -635,18 +744,22 @@ TEST_F(GpuP2PPipelinerTest, TwoLoopsWithConflictingAllReduces) {
 
   // Run pass.
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunOptimizer(module.get(),
-                                 /*enable_partial_send_recv_pipelining=*/true));
+      bool changed,
+      RunOptimizer(module.get(), /*enable_partial_send_recv_pipelining=*/true));
   EXPECT_TRUE(changed);
 
   // Find ops around the while loop.
   HloInstruction* ar_op = FindInstruction(module.get(), "ar");
   HloInstruction* recv_a_op = FindInstruction(module.get(), "recv.1");
   HloInstruction* recv_done_a_op = FindInstruction(module.get(), "recv_done.1");
+  HloInstruction* send_a_op = FindInstruction(module.get(), "send.2");
+  HloInstruction* send_done_a_op = FindInstruction(module.get(), "send_done.2");
   HloInstruction* sandwitched_ar_op =
       FindInstruction(module.get(), "sandwitched_ar");
   HloInstruction* recv_b_op = FindInstruction(module.get(), "recv.3");
   HloInstruction* recv_done_b_op = FindInstruction(module.get(), "recv_done.3");
+  HloInstruction* send_b_op = FindInstruction(module.get(), "send.4");
+  HloInstruction* send_done_b_op = FindInstruction(module.get(), "send_done.4");
   HloInstruction* final_ar_op = FindInstruction(module.get(), "final_ar");
 
   // Find the two while loops.
@@ -654,25 +767,35 @@ TEST_F(GpuP2PPipelinerTest, TwoLoopsWithConflictingAllReduces) {
   HloInstruction* while_b_op = FindInstruction(module.get(), "while.1");
 
   // Assert relation between send/recv ops and while loops.
+  EXPECT_THAT(recv_done_a_op, GmockMatch(m::RecvDone(m::Op().Is(recv_a_op))));
   EXPECT_THAT(
       while_a_op,
       GmockMatch(m::While(m::Tuple(m::Op(), m::Op().Is(ar_op),
                                    m::Op().Is(recv_done_a_op), m::Op()))));
+  EXPECT_THAT(send_done_a_op, GmockMatch(m::SendDone(m::Op().Is(send_a_op))));
+  EXPECT_THAT(recv_done_b_op, GmockMatch(m::RecvDone(m::Op().Is(recv_b_op))));
   EXPECT_THAT(
       while_b_op,
       GmockMatch(m::While(m::Tuple(m::Op(), m::Op().Is(sandwitched_ar_op),
                                    m::Op().Is(recv_done_b_op), m::Op()))));
+  EXPECT_THAT(send_done_b_op, GmockMatch(m::SendDone(m::Op().Is(send_b_op))));
 
-  // Expect control dependencies between loop-dominating conflicting collectives
-  // and peeled recv ops. Also, expect control dependencies between
-  // corresponding recv-done ops and all other conflicting collectives.
+  // Expect control dependencies between peeled ops and the conflicting
+  // collectives.
   EXPECT_THAT(recv_a_op->control_predecessors(), UnorderedElementsAre(ar_op));
+  EXPECT_THAT(send_a_op->control_predecessors(),
+              UnorderedElementsAre(ar_op, recv_a_op, recv_done_a_op));
   EXPECT_THAT(sandwitched_ar_op->control_predecessors(),
-              UnorderedElementsAre(recv_done_a_op));
+              UnorderedElementsAre(recv_done_a_op, send_done_a_op));
   EXPECT_THAT(recv_b_op->control_predecessors(),
-              UnorderedElementsAre(ar_op, sandwitched_ar_op));
+              UnorderedElementsAre(ar_op, sandwitched_ar_op, send_done_a_op,
+                                   send_a_op));
+  EXPECT_THAT(send_b_op->control_predecessors(),
+              UnorderedElementsAre(ar_op, sandwitched_ar_op, recv_a_op,
+                                   recv_done_a_op, recv_b_op, recv_done_b_op));
   EXPECT_THAT(final_ar_op->control_predecessors(),
-              UnorderedElementsAre(recv_done_b_op, recv_done_a_op));
+              UnorderedElementsAre(send_done_b_op, send_done_a_op,
+                                   recv_done_b_op, recv_done_a_op));
 }
 
 TEST_F(GpuP2PPipelinerTest, ConflictingControlDependencies) {
@@ -722,7 +845,8 @@ TEST_F(GpuP2PPipelinerTest, ConflictingControlDependencies) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kHloStr, config_));
 
-  // Run pass and expect no change.
+  // Run pass and expect no change. We cannot pipeline recv/recv-done because
+  // of the control dependency on send.
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed, RunOptimizer(module.get(),
                                  /*enable_partial_send_recv_pipelining=*/true));
