@@ -138,6 +138,8 @@ absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
       TF_RETURN_IF_ERROR(comm_handle.comm->Send(
           src_addr, buffer.element_type, buffer.element_count,
           RankId(*target_id), GpuCollectives::On(stream)));
+    } else {
+      VLOG(3) << "Skipping Send";
     }
   }
 
