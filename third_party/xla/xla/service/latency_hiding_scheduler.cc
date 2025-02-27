@@ -1827,6 +1827,10 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
           auto occupied_resources =
               edge.Target().GetShareableResourcesOnEdge(inverse_edge);
           for (const int64_t resource : occupied_resources) {
+            VLOG(3) << "Adding edge from" << edge.Target().GetInstr().name()
+                    << " to " << inverse_edge.Target().GetInstr().name()
+                    << " for resource"
+                    << sched_state->async_tracker->GetResourceName(resource);
             CHECK(AddOccupierToResource(
                 current_time, inverse_edge,
                 sched_state->shareable_resource_occupiers[resource]));

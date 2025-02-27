@@ -530,11 +530,14 @@ class HloGraphNode {
   bool DoesOccupyShareableResource(int64_t resource) const {
     return absl::c_linear_search(occupied_shareable_resources_, resource);
   }
-  bool DoesReleaseResource(ResourceType res) const {
+  bool DoesReleaseResource(int64_t res) const {
     return absl::c_any_of(resources_, [res](const ResourcePair& resource) {
       return resource.second == ResourceUsageType::kResourceRelease &&
-             resource.first == ResourceTypeToIndex(res);
+             resource.first == res;
     });
+  }
+  bool DoesReleaseResource(ResourceType res) const {
+    return DoesReleaseResource(ResourceTypeToIndex(res));
   }
   std::optional<ResourceUsageType> UsesResourceType(ResourceType res) const {
     int64_t res_type = ResourceTypeToIndex(res);
@@ -554,11 +557,12 @@ class HloGraphNode {
     return std::nullopt;
   }
   std::vector<int64_t> GetShareableResourcesOnEdge(const HloEdge& edge) const {
-    HloGraphNode node = edge.Target();
+    HloGraphNode to = edge.Target();
     std::vector<int64_t> resources;
     absl::c_for_each(released_shareable_resources_,
-                     [&node, &resources](const int64_t resource) {
-                       if (node.DoesOccupyShareableResource(resource)) {
+                     [this, &to, &resources](const int64_t resource) {
+                       if (to.DoesOccupyShareableResource(resource) &&
+                           this->DoesReleaseResource(resource)) {
                          resources.push_back(resource);
                        }
                      });
