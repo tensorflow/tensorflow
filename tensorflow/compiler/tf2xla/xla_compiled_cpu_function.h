@@ -17,13 +17,26 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILED_CPU_FUNCTION_H_
 
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
+#include "xla/backends/cpu/codegen/aot_compiled_function_library.h"
+#include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/buffer_desc.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/custom_call_status_internal.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 
 // Forward-declare, rather than include, to reduce code size for users that
@@ -78,8 +91,18 @@ class XlaCompiledCpuFunction {
   // should not be relied on by clients (and therefore are private).
   class StaticData {
    private:
+    // start thunk execution specific
+    const xla::cpu::CompilationResultProto* compilation_result_proto_;
+
+    absl::flat_hash_map<std::string,
+                        xla::cpu::AotCompiledFunctionLibrary::FunctionPtr>
+        function_library_symbol_map_;
+
+    std::optional<size_t> temp_allocation_index_ = std::nullopt;
+    // end thunk execution specific
+
     // The raw function to call.
-    RawFunction raw_function_;
+    RawFunction raw_function_ = nullptr;
 
     // Contains information about the buffers used by the XLA computation.
     const xla::cpu_function_runtime::BufferInfo* buffer_infos_ = nullptr;
@@ -155,7 +178,11 @@ class XlaCompiledCpuFunction {
 
   // Sets the intra-op thread pool used to run individual ops concurrently.
   void set_thread_pool(const Eigen::ThreadPoolDevice* pool) {
-    run_options_.set_intra_op_thread_pool(pool);
+    if (executable_) {
+      thunk_run_options_.set_intra_op_thread_pool(pool);
+    } else {
+      run_options_.set_intra_op_thread_pool(pool);
+    }
   }
 
   // Runs the computation, with inputs read from arg buffers, and outputs
@@ -167,7 +194,7 @@ class XlaCompiledCpuFunction {
   // TODO(fschneider): For now this always returns an empty string because there
   // is no support for error reporting in XLA. Remove this once all callers are
   // updated.
-  string error_msg() const { return {}; }
+  string error_msg() const { return error_msg_; }
 
   // ------------------------------
   // Arg methods for managing input buffers. Buffers are in row-major order.
@@ -196,6 +223,11 @@ class XlaCompiledCpuFunction {
     return buffer_infos_[arg_index_table_[idx]].size();
   }
 
+  int result_size(int idx) const {
+    assert(idx < num_results());
+    return buffer_infos_[result_index_table_[idx]].size();
+  }
+
   // Sets the buffer for the positional argument at the given `index` to `data`.
   // Must be called before Run to have an effect. May be called under any
   // AllocMode; if the AllocMode is RESULTS_AND_TEMPS_ONLY, this method must be
@@ -221,19 +253,6 @@ class XlaCompiledCpuFunction {
     buffer_table_[arg_index_table_[index]] = const_cast<void*>(data);
   }
 
-  // ------------------------------
-  // Result methods for managing output buffers. Buffers are in row-major order.
-  // Must only be called after a successful Run call. Unlike the arg methods,
-  // there is no set_resultN_data method. The result buffers are managed
-  // internally, and may change after each call to Run.
-
-  // Returns the underlying array of result buffers, where results()[I] is the
-  // buffer for the positional result at index I.
-  void** results() { return static_cast<void**>(buffer_table_[result_index_]); }
-  const void* const* results() const {
-    return static_cast<const void* const*>(buffer_table_[result_index_]);
-  }
-
   // Profile counters for this XLA computation.
   //
   // When Hlo profiling is enabled (`hlo_profiling_enabled()` return true in
@@ -245,8 +264,12 @@ class XlaCompiledCpuFunction {
   const int64_t* profile_counters() const { return profile_counters_; }
 
   // Returns the buffer for the positional result at the given `index`.
-  void* result_data(size_t index) { return results()[index]; }
-  const void* result_data(size_t index) const { return results()[index]; }
+  void* result_data(size_t index) {
+    return buffer_table_[result_index_table_[index]];
+  }
+  const void* result_data(size_t index) const {
+    return buffer_table_[result_index_table_[index]];
+  }
 
   // ------------------------------
   // Methods for extracting optional metadata.
@@ -307,12 +330,33 @@ class XlaCompiledCpuFunction {
   }
 
  protected:
+  std::vector<xla::cpu::NanoRtExecutable::Argument> GenerateNanortArgs();
+  std::vector<xla::cpu::NanoRtExecutable::Result> GenerateNanortResults();
+  xla::cpu::NanoRtExecutable::PreallocatedTemp GenerateNanortPreallocatedTemp();
+
+  bool is_thunk_mode() const { return !raw_function_; }
+
   // ---------------------------------------------------------------------------
   // Accessors for reading from and writing to instances of `StaticData`.
   //
   // Classes generated by tfcompile can call these because the generated classes
   // inherit from `XlaCompiledCpuFunction`.  `XlaJitCompiledCpuFunction` can
   // call these because it is explicitly added as a friend.
+
+  static void set_static_data_function_library_symbol_map(
+      StaticData* static_data,
+      absl::flat_hash_map<std::string,
+                          xla::cpu::AotCompiledFunctionLibrary::FunctionPtr>
+          function_library_symbol_map) {
+    static_data->function_library_symbol_map_ =
+        std::move(function_library_symbol_map);
+  }
+
+  static void set_static_data_compilation_result_proto(
+      StaticData* static_data,
+      const xla::cpu::CompilationResultProto* compilation_result_proto) {
+    static_data->compilation_result_proto_ = compilation_result_proto;
+  }
 
   static void set_static_data_raw_function(StaticData* static_data,
                                            RawFunction raw_function) {
@@ -353,6 +397,12 @@ class XlaCompiledCpuFunction {
   static void set_static_data_num_variables(StaticData* static_data,
                                             int64_t num_variables) {
     static_data->num_variables_ = num_variables;
+  }
+
+  static void set_static_data_temp_allocation_index(
+      StaticData* static_data,
+      const std::optional<size_t> temp_allocation_index) {
+    static_data->temp_allocation_index_ = temp_allocation_index;
   }
 
   static void set_static_data_result_index(StaticData* static_data,
@@ -411,8 +461,17 @@ class XlaCompiledCpuFunction {
   static void set_static_data_use_xla_runtime(StaticData* static_data, bool) {}
 
  private:
-  const RawFunction raw_function_;
+  // For NanoRtExecutable.
+  absl::Status Execute(
+      absl::Span<const xla::cpu::NanoRtExecutable::Argument> arguments,
+      absl::Span<const xla::cpu::NanoRtExecutable::Result> results,
+      xla::cpu::NanoRtExecutable::PreallocatedTemp temp);
 
+  std::unique_ptr<xla::cpu::NanoRtExecutable> executable_;
+
+  const std::optional<size_t> temp_allocation_index_;
+
+  const RawFunction raw_function_ = nullptr;
   const size_t result_index_;
 
   // Array containing pointers to argument and temp buffers (slots corresponding
@@ -453,12 +512,16 @@ class XlaCompiledCpuFunction {
   // Options and context passed to the compiled function.
   xla::ExecutableRunOptions run_options_;
 
+  xla::cpu::NanoRtExecutable::ExecuteOptions thunk_run_options_;
+
   // Optional metadata.
   const char** arg_names_ = nullptr;
   const char** variable_names_ = nullptr;
   const char** result_names_ = nullptr;
   const xla::ProgramShapeProto* program_shape_ = nullptr;
   const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;
+
+  std::string error_msg_ = "";
 
   // Add `XlaJitCompiledCpuFunction` as a friend so that it can access the
   // `set_static_data_*` static methods above.
