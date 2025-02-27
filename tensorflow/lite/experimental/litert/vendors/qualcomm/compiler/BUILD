@@ -130,6 +130,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/core/model",
+        "//tensorflow/lite/experimental/litert/tools:dump",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",

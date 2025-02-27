@@ -15,9 +15,12 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/qnn_compose_graph.h"
 
 #include <alloca.h>
+#include <stdbool.h>
 #include <stdio.h>
 
 #include <cstdint>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -34,6 +37,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
+#include "tensorflow/lite/experimental/litert/tools/dump.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/cast_op_builder.h"
@@ -64,6 +68,7 @@
 
 namespace litert::qnn {
 
+using ::litert::internal::Dump;
 LiteRtStatus ConvertDataType(const litert::ElementType litert_type,
                              const bool is_quantized,
                              Qnn_DataType_t& qnn_type) {
@@ -122,7 +127,8 @@ LiteRtStatus ConvertDataType(const litert::ElementType litert_type,
 
 LiteRtStatus ConvertTensor(const litert::Tensor& litert_tensor,
                            ::qnn::TensorPool& tensor_pool,
-                           ::qnn::TensorWrapper*& tensor_wrapper) {
+                           ::qnn::TensorWrapper*& tensor_wrapper,
+                           bool is_tensor_read_and_write) {
   tensor_wrapper = nullptr;
 
   if (litert_tensor.TypeId() != kLiteRtRankedTensorType) {
@@ -187,7 +193,7 @@ LiteRtStatus ConvertTensor(const litert::Tensor& litert_tensor,
     auto& res = tensor_pool.CreateInputTensor(qnn_data_type, quantize_params,
                                               dimentions);
     tensor_wrapper = &res;
-  } else if (litert_tensor.IsSubgraphOutput()) {
+  } else if (litert_tensor.IsSubgraphOutput() || is_tensor_read_and_write) {
     auto& res = tensor_pool.CreateOutpuTensor(qnn_data_type, quantize_params,
                                               dimentions);
     tensor_wrapper = &res;
@@ -467,7 +473,14 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
   // Topologically traverse graph, legalizing and updating tensors in scope
   //
 
+  std::ostringstream dump;
   for (const auto& op : graph_mapper.Graph().Ops()) {
+    // Dump op info.
+    dump.clear();
+    Dump(*op.Get(), dump);
+    std::string s = dump.str();
+    LITERT_LOG(LITERT_INFO, "%s", s.data());
+
     std::vector<::qnn::TensorWrapperRef> input_tensors;
     for (const auto& input : op.Inputs()) {
       if (const auto it = litert_tensor_to_wrapper.find(input.Get());
@@ -485,9 +498,10 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
 
     std::vector<::qnn::TensorWrapperRef> output_tensors;
     for (const auto& output : op.Outputs()) {
+      bool is_tensor_read_and_write = graph_mapper.IsTensorOutput(output.Get());
       ::qnn::TensorWrapper* tensor_wrapper{nullptr};
-      LITERT_RETURN_IF_ERROR(
-          ConvertTensor(output, tensor_pool, tensor_wrapper));
+      LITERT_RETURN_IF_ERROR(ConvertTensor(output, tensor_pool, tensor_wrapper,
+                                           is_tensor_read_and_write));
       litert_tensor_to_wrapper.emplace(output.Get(), tensor_wrapper);
       output_tensors.emplace_back(*tensor_wrapper);
     }
