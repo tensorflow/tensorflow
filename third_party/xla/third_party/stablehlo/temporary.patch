@@ -43,6 +43,25 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir b/sta
    %c = stablehlo.constant dense<1> : tensor<1x?xf32, #stablehlo.bounds<?, 5>>
    return %c : tensor<1x?xf32, #stablehlo.bounds<?, 5>>
  }
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+@@ -924,6 +924,15 @@
+   // CHECK: %[[RES:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [] : (tensor<f32>) -> tensor<7x2xf32>
+   // CHECK: return %[[RES]]
+   return %0 : tensor<7x2xf32>
++}
++
++// Can't do anything with the dynamic shape, but shouldn't crash.
++// CHECK-LABEL: @dynamic_pad
++func.func @dynamic_pad(%arg0: tensor<?x2x3xi1>, %arg1: tensor<i1>) -> tensor<?x2x1xi1> {
++  %0 = stablehlo.pad %arg0, %arg1, low = [0, 0, -1], high = [0, 0, -1], interior = [0, 0, 0] : (tensor<?x2x3xi1>, tensor<i1>) -> tensor<?x2x1xi1>
++  // CHECK-NEXT: %[[RES:.+]] = stablehlo.pad %arg0, %arg1, low = [0, 0, -1], high = [0, 0, -1], interior = [0, 0, 0] : (tensor<?x2x3xi1>, tensor<i1>) -> tensor<?x2x1xi1>
++  // CHECK-NEXT: return %[[RES]]
++  return %0 : tensor<?x2x1xi1>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_qdq_to_quantized_op.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_qdq_to_quantized_op.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_legalize_qdq_to_quantized_op.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_legalize_qdq_to_quantized_op.mlir
@@ -76,4 +95,22 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cp
      llvm::SmallVector<Value> quantizedComputeOpOperands;
      for (const Value& operand : computeOp->getOperands()) {
        auto* definingOp = operand.getDefiningOp();
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+@@ -934,8 +934,12 @@
+     auto padVal = op.getPaddingValue();
+ 
+     auto resultTy = cast<RankedTensorType>(op.getType());
+-
+-    if (cast<ShapedType>(operand.getType()).getNumElements() != 0)
++    auto operandTy = cast<RankedTensorType>(operand.getType());
++
++    if (!operandTy.hasStaticShape())
++      return rewriter.notifyMatchFailure(op, "operand shape is dynamic");
++
++    if (operandTy.getNumElements() != 0)
+       return rewriter.notifyMatchFailure(op, "operand is not empty tensor");
+ 
+     if (resultTy.hasStaticShape()) {
 
