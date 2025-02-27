@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tsl/platform/protobuf.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/roofline_model.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace profiler {
