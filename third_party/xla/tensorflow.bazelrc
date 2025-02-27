@@ -462,6 +462,8 @@ build:rbe_win_base --remote_instance_name=projects/tensorflow-testing/instances/
 build:rbe_win_base --remote_download_minimal
 build:rbe_win_base --enable_runfiles
 build:rbe_win_base --nobuild_python_zip
+# Don't build the runfile links in the RBE build which is expensive on Windows.
+build:rbe_win_base --nobuild_runfile_links
 build:rbe_win_base --define=override_eigen_strong_inline=true
 
 build:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
