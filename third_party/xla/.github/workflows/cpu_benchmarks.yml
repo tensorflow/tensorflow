@@ -99,44 +99,24 @@ jobs:
       - name: Build run_hlo_module
         run: bazel build -c opt --dynamic_mode=off xla/tools:run_hlo_module
 
-      - name: Run HLO Module Benchmarks
-        continue-on-error: true
+      - name: Run xla/tests/fuzz/rand_000001.hlo and collect runtime and compile time
+        run: ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU xla/tests/fuzz/rand_000001.hlo
+
+      - name: Download and run Gemma2 2B HLO and collect runtime and compile time
         run: |
-          for file in xla/tests/fuzz/*.hlo; do
-            filename=$(basename "$file")
-            # Skip expected failed hlo files.
-            if [[ "$filename" == "rand_000060.hlo" || "$filename" == "rand_000067.hlo" || "$filename" == "rand_000072.hlo" ]]; then
-              echo "Skipping benchmark on $file"
-              continue
-            fi
-            echo "Running benchmark on $file"
-            ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU "$file"
-          done
+          mkdir -p tmp_hlo
+          cd tmp_hlo
+          wget https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo gemma2_2b_keras_jax.hlo
+          cd ..
 
-      - name: Build CPU Benchmarks
-        run: bazel build -c opt --dynamic_mode=off //xla/backends/cpu/benchmarks:*
-
-      - name: Run CPU benchmarks
-        continue-on-error: true
+      - name: Compute the cost of gemma2_2b_keras_jax.hlo
         run: |
-          find ./bazel-bin/xla/backends/cpu/benchmarks/ -maxdepth 1 -type f -executable -name "*_test" -print0 | while IFS= read -r -d $'\0' benchmark; do
-            benchmark_name=$(basename "$benchmark" | sed 's/_test$//') 
-            echo "Running benchmark: $benchmark_name"
+          PWD=$(pwd)
+          bazel run //xla/tools:compute_cost -- --input=$PWD/tmp_hlo/gemma2_2b_keras_jax.hlo --format=hlo
 
-            # Run the benchmark with default parameters.
-            $benchmark --benchmark_filter=".*"
-            $benchmark --benchmark_filter=".*" > "results/$benchmark_name.log" 2>&1
+      - name: Build hlo_runner_main
+        run: bazel build -c opt --dynamic_mode=off //xla/tools/multihost_hlo_runner:hlo_runner_main
 
-            # Check the exit code of the benchmark
-            if [ $? -ne 0 ]; then
-              echo "Error: Benchmark '$benchmark_name' failed. Check the log file: results/$benchmark_name.log"
-            else
-              echo "Benchmark '$benchmark_name' completed successfully."
-            fi
-          done
-
-      - name: Upload Results ${{ matrix.build_target }}
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
-        with:
-          name: cpu-xla-benchmarks-${{ matrix.job_info.os }}
-          path: xla/results
+      - name: Run hlo_runner_main on gemma2_2b_keras_jax.hlo and collect profile stats
+        run: |
+          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=host --log_output=True --use_spmd_partitioning --profile_execution=True tmp_hlo/gemma2_2b_keras_jax.hlo
