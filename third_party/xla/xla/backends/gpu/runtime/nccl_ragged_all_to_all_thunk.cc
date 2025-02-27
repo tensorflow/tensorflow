@@ -288,10 +288,6 @@ absl::Status NcclRaggedAllToAllStartThunk::RunNcclCollective(
       output_offsets_device_buffer);
 }
 
-AsyncStreamKind NcclRaggedAllToAllStartThunk::GetAsyncStreamKind() const {
-  return AsyncStreamKind::kCollective;
-}
-
 // Runs AllToAll on a buffer that contains ragged tensor metadata.
 absl::Status RunAllToAllOnIndexBuffer(
     GpuCollectives* collectives, const se::DeviceMemoryBase& source_buffer,

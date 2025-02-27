@@ -75,7 +75,6 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
                                  se::Stream& stream,
                                  CommunicatorHandle comm_handle) override;
 
-  AsyncStreamKind GetAsyncStreamKind() const override;
 
  private:
   bool is_local() const;
