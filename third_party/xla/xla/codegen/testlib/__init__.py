@@ -21,6 +21,7 @@ from xla.codegen.testlib import _extension
 BufferAssignment = _extension.BufferAssignment
 ComparisonDirection = _extension.ComparisonDirection
 DotDimensionNumbers = _extension.DotDimensionNumbers
+HloComputation = _extension.HloComputation
 HloInstruction = _extension.HloInstruction
 HloModule = _extension.HloModule
 HloModuleConfig = _extension.HloModuleConfig
@@ -29,4 +30,9 @@ KernelDefinition = _extension.KernelDefinition
 KernelEmmitter = _extension.KernelEmitter
 KernelRunner = _extension.KernelRunner
 KernelSpec = _extension.KernelSpec
+# go/keep-sorted end
+
+# Functions
+# go/keep-sorted start
+build_hlo_computation = _extension.build_hlo_computation
 # go/keep-sorted end

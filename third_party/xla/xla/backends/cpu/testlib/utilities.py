@@ -14,6 +14,7 @@
 # ==============================================================================
 """Boilerplate utilities for cpu kernel testing."""
 
+from collections.abc import Sequence
 
 from xla.backends.cpu import testlib as testlib_cpu
 from xla.codegen import testlib as testlib_base
@@ -38,6 +39,25 @@ def parse_hlo_module(
 def build_hlo_module(
     root: testlib_base.HloInstruction,
     *instructions: testlib_base.HloInstruction,
+    extra_computations: Sequence[testlib_base.HloComputation] | None = None,
 ) -> tuple[testlib_base.HloModule, testlib_base.BufferAssignment]:
-  hlo_module = testlib_base.HloModule.build(root, *instructions)
+  """Builds an HLO module from a root instruction and its dependencies.
+
+  Args:
+    root: The root instruction of the module.
+    *instructions: The instructions that are dependencies of the root
+      instruction.
+    extra_computations: Any extra computations that should be added to the
+      module.
+
+  Returns:
+    A tuple containing the HLO module and its buffer assignment.
+  """
+  hlo_module = testlib_base.HloModule(root.name())
+  hlo_module.add_entry_computation(
+      testlib_base.build_hlo_computation(root, *instructions)
+  )
+  if extra_computations is not None:
+    for computation in extra_computations:
+      hlo_module.add_computation(computation)
   return annotate_hlo_module(hlo_module)
