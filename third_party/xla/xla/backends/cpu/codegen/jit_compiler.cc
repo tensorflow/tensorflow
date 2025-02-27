@@ -230,9 +230,13 @@ void JitCompiler::TaskDispatcher::dispatch(
     return;
   }
 
-  // Dispatch task using user-provided task runner.
-  absl::MutexLock lock(&mu_);
-  ++num_dispatched_tasks_;
+  // Dispatch task using user-provided task runner. We release the lock before
+  // dispatching the task to avoid deadlock, because `task_runner_` may choose
+  // to execute the task in the current thread.
+  {
+    absl::MutexLock lock(&mu_);
+    ++num_dispatched_tasks_;
+  }
 
   task_runner_([this, task = std::shared_ptr<llvm::orc::Task>(
                           std::move(task))]() mutable {
