@@ -745,7 +745,8 @@ absl::StatusOr<HloInstruction*> CloneBackwardChain(
     }
     clone_map[chain_op] = cloned;
     if (postprocess_pipelined_ops.has_value()) {
-      TF_RETURN_IF_ERROR((*postprocess_pipelined_ops)(cloned));
+      TF_RETURN_IF_ERROR(
+          (*postprocess_pipelined_ops)(cloned, /*new_while_instr=*/nullptr));
     }
     last_cloned = cloned;
     if (loop_variant_parameter_info != nullptr &&
@@ -1941,7 +1942,8 @@ absl::Status TransformLoopForward(
     }
 
     if (post_processing_fn.has_value()) {
-      TF_RETURN_IF_ERROR((*post_processing_fn)(processed));
+      TF_RETURN_IF_ERROR(
+          (*post_processing_fn)(processed, /*new_while_instr=*/nullptr));
     }
 
     InstructionMap cloned_map = pipelined_values_map;
@@ -1957,7 +1959,8 @@ absl::Status TransformLoopForward(
       }
       cloned_map[formatting_op] = processed;
       if (post_processing_fn.has_value()) {
-        TF_RETURN_IF_ERROR((*post_processing_fn)(processed));
+        TF_RETURN_IF_ERROR(
+            (*post_processing_fn)(processed, /*new_while_instr=*/nullptr));
       }
     }
     return processed;
@@ -2672,6 +2675,7 @@ static absl::Status TransformLoopBackward(
     HloPredicate should_process, HloPredicate acceptable_formatting,
     CollectivePipeliner::HloPostprocessor postprocess_peeled,
     CollectivePipeliner::HloPostprocessor postprocess_rotated,
+    CollectivePipeliner::HloPostprocessor postprocess_peeled_trailing_op,
     int64_t& next_channel_id,
     CollectivePipeliner::HloPostprocessor post_processing_fn) {
   // Defining some maps/sets to keep track of instructions duplicated.
@@ -2777,10 +2781,12 @@ static absl::Status TransformLoopBackward(
             /*loop_variant_parameter_info=*/nullptr, post_processing_fn));
 
     if (post_processing_fn.has_value()) {
-      TF_RETURN_IF_ERROR((*post_processing_fn)(new_init_operands[idx]));
+      TF_RETURN_IF_ERROR((*post_processing_fn)(new_init_operands[idx],
+                                               /*new_while_instr=*/nullptr));
     }
     if (postprocess_peeled.has_value()) {
-      TF_RETURN_IF_ERROR(postprocess_peeled.value()(new_init_operands[idx]));
+      TF_RETURN_IF_ERROR(postprocess_peeled.value()(
+          new_init_operands[idx], /*new_while_instr=*/nullptr));
     }
   }
   ConstantValue next_loop_iteration =
@@ -2835,10 +2841,12 @@ static absl::Status TransformLoopBackward(
               post_processing_fn));
 
       if (post_processing_fn.has_value()) {
-        TF_RETURN_IF_ERROR((*post_processing_fn)(cloned_instr));
+        TF_RETURN_IF_ERROR(
+            (*post_processing_fn)(cloned_instr, /*new_while_instr=*/nullptr));
       }
       if (postprocess_rotated.has_value()) {
-        TF_RETURN_IF_ERROR(postprocess_rotated.value()(cloned_instr));
+        TF_RETURN_IF_ERROR(postprocess_rotated.value()(
+            cloned_instr, /*new_while_instr=*/nullptr));
       }
     } else {
       auto new_operands =
@@ -2972,6 +2980,13 @@ static absl::Status TransformLoopBackward(
         MapNewOperands(instr->operands(), while_body_replacement_map);
     HloInstruction* cloned_instr = while_loop->parent()->AddInstruction(
         instr->CloneWithNewOperands(instr->shape(), new_operands));
+
+    if (postprocess_peeled_trailing_op.has_value()) {
+      CHECK_NE(new_while_loop, nullptr);
+      TF_RETURN_IF_ERROR(
+          postprocess_peeled_trailing_op.value()(cloned_instr, new_while_loop));
+    }
+
     TF_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
                                                  while_body_replacement_map));
     UpdateInstructionChannelId(cloned_instr, next_channel_id);
@@ -2998,6 +3013,7 @@ static absl::Status TransformLoopBackward(
   TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
   return absl::OkStatus();
 }
+
 bool IsForwardSinkIterationFeasible(HloInstruction* while_inst,
                                     int64_t collective_size_threshold) {
   for (HloInstruction* inst :
@@ -3105,7 +3121,8 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
           *loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.process_different_sized_ops, config_.should_process,
           config_.acceptable_formatting, config_.postprocess_backward_peeled_op,
-          config_.postprocess_backward_rotated_op, next_channel_id,
+          config_.postprocess_backward_rotated_op,
+          config_.postprocess_backward_peeled_trailing_op, next_channel_id,
           config_.postprocess_pipelined_ops));
     }
     ++transformed_loops;

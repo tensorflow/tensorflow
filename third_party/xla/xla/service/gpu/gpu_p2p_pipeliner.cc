@@ -167,7 +167,12 @@ absl::Status PostprocessP2PImpl(
 
 // Modifies the loop iteration frontend attribute for the peeled off Send and
 // Recv for the first iteration of a loop.
-absl::Status PostprocessPeeledP2P(HloInstruction* instr) {
+absl::Status PostprocessPeeledP2P(HloInstruction* instr,
+                                  HloInstruction* new_while_instr) {
+  // We only use this to post-process the peeled send/recv before the new loop
+  // was created.
+  CHECK(new_while_instr == nullptr);
+
   auto transform_bounds = [&](std::vector<ReplicaGroup>& replica_groups) {
     std::vector<std::pair<int64_t, int64_t>> bounds;
     bounds.reserve(replica_groups.size());
@@ -210,7 +215,12 @@ absl::Status PostprocessPeeledP2P(HloInstruction* instr) {
 
 // Modifies the loop iteration frontend attribute for the rotated Send and Recv
 // for the remaining iterations in a loop.
-absl::Status PostprocessRotatedP2P(HloInstruction* instr) {
+absl::Status PostprocessRotatedP2P(HloInstruction* instr,
+                                   HloInstruction* new_while_instr) {
+  // We only use this to post-process the peeled send/recv before the new loop
+  // was created.
+  CHECK(new_while_instr == nullptr);
+
   auto transform_bounds = [&](std::vector<ReplicaGroup>& replica_groups) {
     std::vector<std::pair<int64_t, int64_t>> bounds;
     bounds.reserve(replica_groups.size());
@@ -471,11 +481,19 @@ absl::StatusOr<bool> GpuP2PPipeliner::Run(
 
   if (enable_partial_send_recv_pipelining_) {
     should_process = FullyPipelineRecv;
-    postprocess_backward_peeled_op = [&](HloInstruction* it) {
+    postprocess_backward_peeled_op = [&](HloInstruction* it,
+                                         HloInstruction* new_while_instr) {
+      // When post-processing non-trailing peeled send/recv, the new while loop
+      // was not yet created.
+      CHECK_EQ(new_while_instr, nullptr);
       peeled_send_recvs.push_back(it);
       return absl::OkStatus();
     };
-    postprocess_backward_rotated_op = [&](HloInstruction* it) {
+    postprocess_backward_rotated_op = [&](HloInstruction* it,
+                                          HloInstruction* new_while_instr) {
+      // When post-processing non-trailing peeled send/recv, the new while loop
+      // was not yet created.
+      CHECK_EQ(new_while_instr, nullptr);
       rotated_send_recvs.push_back(it);
       return absl::OkStatus();
     };
