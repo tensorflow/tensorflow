@@ -332,8 +332,10 @@ std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
       ag->channel_id() && ag->opcode() == HloOpcode::kAllGather,
       allow_intervening_bitcast, allow_multiple_users);
 
-  if (!spec.has_value() ||
-      (spec->dynamic_slice && spec->split_dim != ag->all_gather_dimension())) {
+  if (!spec.has_value()) {
+    return std::nullopt;
+  }
+  if (spec->dynamic_slice && spec->split_dim != ag->all_gather_dimension()) {
     VLOG(2) << "Mismatch AG and DS: AG: " << ag->ToString()
             << ", DS: " << spec->dynamic_slice->ToString()
             << ", ag_dim: " << ag->all_gather_dimension()
