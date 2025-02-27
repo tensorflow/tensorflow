@@ -128,7 +128,7 @@ absl::StatusOr<std::vector<IntegerOperandData>> LoadRaggedTensorMetadata(
 NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
     ThunkInfo thunk_info, const HloRaggedAllToAllInstruction* instr,
     std::vector<NcclCollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
-    : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
+    : NcclCollectiveThunk(Thunk::kNcclRaggedAllToAllStart, thunk_info,
                           IsGPUSyncCollective(*instr)),
       config_(GetNcclRaggedAllToAllConfig(instr)),
       buffers_(std::move(buffers)),

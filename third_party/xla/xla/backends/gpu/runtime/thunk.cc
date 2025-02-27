@@ -366,6 +366,9 @@ bool Thunk::IsCollective() const {
     case kNcclAllToAll:
     case kNcclAllToAllStart:
     case kNcclAllToAllDone:
+    case kNcclRaggedAllToAll:
+    case kNcclRaggedAllToAllStart:
+    case kNcclRaggedAllToAllDone:
     case kNcclSend:
     case kNcclSendDone:
     case kNcclRecv:
