@@ -262,6 +262,7 @@ cc_library(
     deps = [
         ":model",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_detail",
@@ -298,6 +299,7 @@ cc_test(
     srcs = ["model_graph_test.cc"],
     deps = [
         ":graph_validation",
+        ":ir_allocator",
         ":model",
         ":model_graph",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
