@@ -220,22 +220,23 @@ HloInstruction* CreateUpdateMask(HloInstruction* offset_value,
       less_than_upper_bound));
 }
 
-// Pads the outermost dimension of the input tensor to double the size.
+// Pads the outermost dimension of the hlo result by the given padding size.
 HloInstruction* PadOutermostDimension(HloComputation* computation,
-                                      HloInstruction* input) {
-  Shape padded_shape = input->shape();
-  PaddingConfig padding_config = MakeNoPaddingConfig(padded_shape.rank());
-  padding_config.mutable_dimensions(0)->set_edge_padding_high(
-      padded_shape.dimensions(0));
+                                      HloInstruction* hlo,
+                                      int64_t padding_size) {
+  Shape padded_shape = hlo->shape();
 
-  padded_shape.set_dimensions(0, 2 * padded_shape.dimensions(0));
+  PaddingConfig padding_config = MakeNoPaddingConfig(padded_shape.rank());
+  padding_config.mutable_dimensions(0)->set_edge_padding_high(padding_size);
+
+  padded_shape.set_dimensions(0, padded_shape.dimensions(0) + padding_size);
 
   HloInstruction* padding_value =
       computation->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::Zero(input->shape().element_type())));
+          LiteralUtil::Zero(hlo->shape().element_type())));
 
   return computation->AddInstruction(HloInstruction::CreatePad(
-      padded_shape, input, padding_value, padding_config));
+      padded_shape, hlo, padding_value, padding_config));
 }
 
 // Returns dense representation of the ragged input tensor.
@@ -246,7 +247,8 @@ HloInstruction* PadOutermostDimension(HloComputation* computation,
 std::vector<HloInstruction*> RaggedToDense(HloComputation* computation,
                                            HloInstruction* ragged_input,
                                            HloInstruction* offsets,
-                                           int64_t num_updates_per_replica) {
+                                           int64_t num_updates_per_replica,
+                                           int64_t max_update_size) {
   int64_t num_rows = offsets->shape().dimensions(0);
 
   std::vector<HloInstruction*> result;
@@ -259,7 +261,7 @@ std::vector<HloInstruction*> RaggedToDense(HloComputation* computation,
           ragged_input->shape().rank());
 
       HloInstruction* padded_input =
-          PadOutermostDimension(computation, ragged_input);
+          PadOutermostDimension(computation, ragged_input, max_update_size);
 
       HloInstruction* row_slice =
           computation->AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -286,17 +288,19 @@ HloInstruction* DenseToRagged(HloComputation* computation,
                               HloInstruction* dense_inputs,
                               HloInstruction* ragged_output,
                               HloInstruction* offsets, HloInstruction* sizes,
-                              int64_t num_updates_per_replica) {
+                              int64_t num_updates_per_replica,
+                              int64_t max_update_size) {
   int64_t num_rows = offsets->shape().dimensions(0);
   int64_t rank = ragged_output->shape().rank();
 
   Shape original_shape = ragged_output->shape();
 
-  // Pad the outermost dimension of the ragged output to double the size. This
-  // is needed to be able to insert updates with dynamic-update-slice to the
-  // ragged output.
+  // Pad the outermost dimension of the ragged output by dense inputs update
+  // size. This is needed to be able to insert updates with dynamic-update-slice
+  // to the ragged output.
   HloInstruction* padded_ragged_output =
-      PadOutermostDimension(computation, ragged_output);
+      PadOutermostDimension(computation, ragged_output,
+                            /*padding_size=*/max_update_size);
 
   for (int64_t i = 0; i < num_rows / num_updates_per_replica; ++i) {
     for (int64_t j = 0; j < num_updates_per_replica; ++j) {
@@ -380,6 +384,7 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
   int64_t num_total_updates = input_offsets->shape().dimensions(0);
   int64_t num_updates_per_replica =
       num_total_updates / *num_participating_devices;
+  int64_t max_update_size = input_operand->shape().dimensions(0);
 
   // Runs all-to-all to exchange output offsets for each participating device.
   // RaggedAllToAll API requires that output offsets are calculated from the
@@ -391,7 +396,7 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
       *num_participating_devices);
 
   auto dense_input = RaggedToDense(computation, input_operand, input_offsets,
-                                   num_updates_per_replica);
+                                   num_updates_per_replica, max_update_size);
 
   std::vector<Shape> dense_input_shapes;
   dense_input_shapes.reserve(dense_input.size());
@@ -408,7 +413,7 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
 
   auto* ragged_output =
       DenseToRagged(computation, dense_output, output_operand, output_offsets,
-                    recv_sizes, num_updates_per_replica);
+                    recv_sizes, num_updates_per_replica, max_update_size);
 
   TF_RETURN_IF_ERROR(all_to_all->ReplaceAllUsesWith(ragged_output));
   TF_RETURN_IF_ERROR(

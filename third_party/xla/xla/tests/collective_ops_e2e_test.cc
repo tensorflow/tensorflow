@@ -1972,7 +1972,12 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
     EXPECT_THAT(ragged_all_to_all, NotNull());
 
     // Shape of the ragged input tensor.
-    std::vector<int64_t> ragged_tensor_sizes{
+    std::vector<int64_t> input_ragged_tensor_sizes{
+        ragged_all_to_all->operand(0)->shape().dimensions().begin(),
+        ragged_all_to_all->operand(0)->shape().dimensions().end()};
+
+    // Shape of the ragged output tensor.
+    std::vector<int64_t> output_ragged_tensor_sizes{
         ragged_all_to_all->shape().dimensions().begin(),
         ragged_all_to_all->shape().dimensions().end()};
 
@@ -1980,7 +1985,7 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
     // buffer reuse. We initialize the output tensor with -1 to make sure that
     // we don't accidentally overwrite data that is not part of the
     // ragged-all-to-all update.
-    Array<float> output_init_data(ragged_tensor_sizes);
+    Array<float> output_init_data(output_ragged_tensor_sizes);
     output_init_data.Fill(-1);
 
     Array<IndexType> output_sizes = input_sizes;
@@ -1991,8 +1996,8 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
     output_offsets.TransposeDimensions({1, 0, 2});
 
     int64_t num_replicas = input_sizes.dim(0);
-    std::vector<Array<float>> input_data(num_replicas,
-                                         Array<float>(ragged_tensor_sizes));
+    std::vector<Array<float>> input_data(
+        num_replicas, Array<float>(input_ragged_tensor_sizes));
     std::vector<Array<float>> output_data(num_replicas, output_init_data);
     FillWithRandomData(input_data, output_data, input_offsets, output_offsets,
                        input_sizes);
@@ -2156,6 +2161,96 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
   CreateRandomTestData</*IndexType=*/int32_t>(
       module.get(), /*input_sizes=*/{/*replica_0=*/{1, 1},
                                      /*replica_1=*/{3, 1}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
+}
+
+XLA_TEST_P(RaggedAllToAllTest,
+           RaggedAllToAll_2GPUs_InputBufferLargerThanOutput) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[32] parameter(0)
+    output = f32[16] parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = f32[16] ragged-all-to-all(input, output, input_offsets,
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  const int64_t kNumPartitions = 1;
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  CreateRandomTestData</*IndexType=*/int32_t>(
+      module.get(), /*input_sizes=*/{/*replica_0=*/{8, 5},
+                                     /*replica_1=*/{4, 3}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
+}
+
+XLA_TEST_P(RaggedAllToAllTest,
+           RaggedAllToAll_2GPUs_OutputBufferLargerThanInput) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[16] parameter(0)
+    output = f32[32] parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = f32[32] ragged-all-to-all(input, output, input_offsets,
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  const int64_t kNumPartitions = 1;
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  CreateRandomTestData</*IndexType=*/int32_t>(
+      module.get(), /*input_sizes=*/{/*replica_0=*/{4, 12},
+                                     /*replica_1=*/{5, 11}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
