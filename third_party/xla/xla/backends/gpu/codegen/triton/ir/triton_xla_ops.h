@@ -24,27 +24,25 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.h.inc"  // IWYU pragma: keep
-#include "triton/Dialect/Triton/IR/Dialect.h"       // IWYU pragma: keep
-#include "triton/Dialect/Triton/IR/OpInterfaces.h"  // IWYU pragma: keep
-#include "triton/Dialect/TritonGPU/IR/Dialect.h"    // IWYU pragma: keep
+#include "triton/Dialect/Triton/IR/Dialect.h"  // IWYU pragma: keep
+#include "triton/Dialect/Triton/IR/Traits.h"
+#include "triton/Dialect/TritonGPU/IR/Dialect.h"  // IWYU pragma: keep
 #include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"  // IWYU pragma: keep
 
 namespace mlir::triton::xla {
 class SparseDotOp;
-}  // namespace mlir::triton::xla
-
-namespace mlir::triton::detail {
-// Template specialization for DotOpInterfaceTrait<SparseDotOp> to skip
-// verification, which would fail because the sparse dot has different shapes
-// and operands.
+}
+namespace mlir::OpTrait {
+// Template specialization for DotLike<SparseDotOp> to skip verification, which
+// would fail because the sparse dot has different shapes and operands.
 template <>
-struct DotOpInterfaceTrait<xla::SparseDotOp>
-    : public OpInterface<DotOpInterface, DotOpInterfaceInterfaceTraits>::Trait<
-          xla::SparseDotOp> {
+class DotLike<triton::xla::SparseDotOp>
+    : public TraitBase<triton::xla::SparseDotOp, DotLike> {
+ public:
   // TODO (b/350928208) : Add a proper verifier for SparseDotOp.
   static LogicalResult verifyTrait(Operation *op) { return success(); }
 };
-}  // namespace mlir::triton::detail
+}  // namespace mlir::OpTrait
 
 #define GET_ATTRDEF_CLASSES
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_attrs.h.inc"

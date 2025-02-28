@@ -25,9 +25,8 @@ include "mlir/Interfaces/ViewLikeInterface.td" // OffsetSizeAndStrideOpInterface
 include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.td"
 include "xla/backends/gpu/codegen/triton/ir/triton_xla_types.td"
 include "triton/Dialect/Triton/IR/TritonInterfaces.td"
-include "triton/Dialect/Triton/IR/TritonOpInterfaces.td"
-include "triton/Dialect/Triton/IR/TritonTypes.td"
 include "triton/Dialect/TritonGPU/IR/TritonGPUTypeInterfaces.td"
+include "triton/Dialect/Triton/IR/TritonTypes.td"
 
 // -----------------------------------------------------------------------------
 // Triton XLA Ops
@@ -38,8 +37,7 @@ class TTXLA_Op<string mnemonic, list<Trait> traits = []> :
 }
 
 def TTXLA_SparseDotOp : TTXLA_Op<"sparse_dot", [
-        Pure, DeclareOpInterfaceMethods<DotOpInterface>,
-        DeclareOpInterfaceMethods<InferTypeOpInterface>,
+        Pure, DotLike, DeclareOpInterfaceMethods<InferTypeOpInterface>,
         TypesMatchWith<"result's type matches accumulator's type", "d", "c", "$_self">]> {
     let summary = "sparse dot";
 

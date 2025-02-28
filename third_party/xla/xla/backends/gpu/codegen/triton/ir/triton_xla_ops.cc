@@ -86,8 +86,6 @@ LogicalResult SparseDotOp::inferReturnTypes(
   return success();
 }
 
-bool SparseDotOp::verifyDims() { return true; }
-
 LogicalResult SparseDotOp::verify() {
   // Implied properties of 2:4 sparse dots.
   constexpr int kContractingFactor = 2;
