@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_CPU_COMPILED_FUNCTION_LIBRARY_H_
-#define TENSORFLOW_COMPILER_TF2XLA_XLA_CPU_COMPILED_FUNCTION_LIBRARY_H_
+#ifndef XLA_BACKENDS_CPU_CODEGEN_AOT_COMPILED_FUNCTION_LIBRARY_H_
+#define XLA_BACKENDS_CPU_CODEGEN_AOT_COMPILED_FUNCTION_LIBRARY_H_
 
 #include <string>
 
@@ -25,17 +25,17 @@ limitations under the License.
 
 namespace xla::cpu {
 
-// A XlaCpuCompiledFunctionLibrary is a FunctionLibrary that utilizes a symbol
+// A AotCompiledFunctionLibrary is a FunctionLibrary that utilizes a symbol
 // table to resolve function names to functions compiled into the object file
 // linked with the current library.
-class XlaCpuCompiledFunctionLibrary : public FunctionLibrary {
+class AotCompiledFunctionLibrary : public FunctionLibrary {
  public:
   using FunctionPtr = void*;
 
-  // Constructs a new XlaCpuCompiledFunctionLibrary.
+  // Constructs a new AotCompiledFunctionLibrary.
   //
   // `symbols_map` is a map from symbol names to resolved symbols.
-  explicit XlaCpuCompiledFunctionLibrary(
+  explicit AotCompiledFunctionLibrary(
       absl::flat_hash_map<std::string, FunctionPtr> symbols_map);
 
   // Resolves the function with the given name and type ID.
@@ -50,4 +50,4 @@ class XlaCpuCompiledFunctionLibrary : public FunctionLibrary {
 
 }  // namespace xla::cpu
 
-#endif  // TENSORFLOW_COMPILER_TF2XLA_XLA_CPU_COMPILED_FUNCTION_LIBRARY_H_
+#endif  // XLA_BACKENDS_CPU_CODEGEN_AOT_COMPILED_FUNCTION_LIBRARY_H_

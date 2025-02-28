@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/xla_cpu_compiled_function_library.h"
+#include "xla/backends/cpu/codegen/aot_compiled_function_library.h"
 
 #include <memory>
 #include <string>
@@ -29,16 +29,16 @@ namespace {
 
 int add(int a, int b) { return a + b; }
 
-TEST(XlaCpuCompiledFunctionLibraryTest, ResolveFunction) {
+TEST(AotCompiledFunctionLibraryTest, ResolveFunction) {
   const std::string function_ptr_name = "Add";
 
-  XlaCpuCompiledFunctionLibrary::FunctionPtr function_ptr =
-      reinterpret_cast<XlaCpuCompiledFunctionLibrary::FunctionPtr>(&add);
+  AotCompiledFunctionLibrary::FunctionPtr function_ptr =
+      reinterpret_cast<AotCompiledFunctionLibrary::FunctionPtr>(&add);
 
   std::unique_ptr<FunctionLibrary> function_library =
-      std::make_unique<XlaCpuCompiledFunctionLibrary>(
+      std::make_unique<AotCompiledFunctionLibrary>(
           absl::flat_hash_map<std::string,
-                              XlaCpuCompiledFunctionLibrary::FunctionPtr>{
+                              AotCompiledFunctionLibrary::FunctionPtr>{
               {function_ptr_name, function_ptr}});
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -51,13 +51,13 @@ TEST(XlaCpuCompiledFunctionLibraryTest, ResolveFunction) {
   EXPECT_EQ(add_function(a, b), 3);
 }
 
-TEST(XlaCpuCompiledFunctionLibraryTest, ResolveNonExistentFunction) {
+TEST(AotCompiledFunctionLibraryTest, ResolveNonExistentFunction) {
   const std::string function_ptr_name = "NonExistentFunction";
 
   std::unique_ptr<FunctionLibrary> function_library =
-      std::make_unique<XlaCpuCompiledFunctionLibrary>(
+      std::make_unique<AotCompiledFunctionLibrary>(
           absl::flat_hash_map<std::string,
-                              XlaCpuCompiledFunctionLibrary::FunctionPtr>{{}});
+                              AotCompiledFunctionLibrary::FunctionPtr>{{}});
 
   EXPECT_FALSE(
       function_library->ResolveFunction<decltype(add)>(function_ptr_name).ok());

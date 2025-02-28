@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/xla_cpu_compiled_function_library.h"
+#include "xla/backends/cpu/codegen/aot_compiled_function_library.h"
 
 #include <string>
 #include <utility>
@@ -28,11 +28,11 @@ limitations under the License.
 
 namespace xla::cpu {
 
-XlaCpuCompiledFunctionLibrary::XlaCpuCompiledFunctionLibrary(
+AotCompiledFunctionLibrary::AotCompiledFunctionLibrary(
     absl::flat_hash_map<std::string, FunctionPtr> symbols_map)
     : symbols_map_(std::move(symbols_map)) {}
 
-absl::StatusOr<void*> XlaCpuCompiledFunctionLibrary::ResolveFunction(
+absl::StatusOr<void*> AotCompiledFunctionLibrary::ResolveFunction(
     TypeId type_id, absl::string_view name) {
   if (auto it = symbols_map_.find(name); it != symbols_map_.end()) {
     // NOTE(basioli) there is no type checking here.

@@ -286,6 +286,34 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "aot_compiled_function_library_test",
+    srcs = ["aot_compiled_function_library_test.cc"],
+    deps = [
+        ":aot_compiled_function_library",
+        "//xla/backends/cpu/runtime:function_library",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "aot_compiled_function_library",
+    srcs = ["aot_compiled_function_library.cc"],
+    hdrs = ["aot_compiled_function_library.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/backends/cpu/runtime:function_library",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 cc_library(
     name = "object_loader",
     srcs = ["object_loader.cc"],

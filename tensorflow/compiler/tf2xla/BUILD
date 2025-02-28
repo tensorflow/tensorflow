@@ -409,34 +409,6 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "xla_cpu_compiled_function_library_test",
-    srcs = ["xla_cpu_compiled_function_library_test.cc"],
-    deps = [
-        ":xla_cpu_compiled_function_library",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/backends/cpu/runtime:function_library",
-        "@local_xla//xla/tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "xla_cpu_compiled_function_library",
-    srcs = ["xla_cpu_compiled_function_library.cc"],
-    hdrs = ["xla_cpu_compiled_function_library.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_xla//xla/backends/cpu/runtime:function_library",
-    ],
-)
-
-tf_cc_test(
     name = "cpu_function_runtime_test",
     srcs = ["cpu_function_runtime_test.cc"],
     deps = [
