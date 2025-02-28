@@ -464,6 +464,36 @@ PyClient::CompileIfrtProgram(
       MakeIfrtCompileOptions(std::move(options), std::move(host_callbacks)));
 }
 
+/* static */ absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> PyClient::Compile(
+    nb_class_ptr<PyClient> client, std::string mlir_module,
+    CompileOptions options, std::vector<nb::callable> host_callbacks) {
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseMlirModuleString(mlir_module, context));
+  if (options.executable_build_options.use_shardy_partitioner()) {
+    // Since Shardy is located in the middle of the XLA pipeline, we need to
+    // export it before going to HLO while preserving Shardy ops and attrs.
+    TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(*module));
+  }
+
+  std::vector<tsl::RCReference<ifrt::LoadedHostCallback>>
+      ifrt_loaded_host_callbacks;
+  ifrt_loaded_host_callbacks.reserve(host_callbacks.size());
+  // Extract `ifrt::LoadedHostCallback`s from host callback capsules that were
+  // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()` or
+  // `PyClient::GetEmitPythonCallbackDescriptor()`.
+  for (auto& host_callback : host_callbacks) {
+    auto callback = tsl::MakeRef<PyFfiLoadedHostCallback>(
+        client->ifrt_client(), std::move(host_callback));
+    ifrt_loaded_host_callbacks.push_back(callback);
+  }
+  auto compile_options = std::make_unique<ifrt::XlaCompileOptions>(
+      std::move(options), std::move(ifrt_loaded_host_callbacks));
+  return CompileIfrtProgram(
+      client, std::make_unique<xla::ifrt::HloProgram>(module.get()),
+      std::move(compile_options));
+}
+
 absl::StatusOr<nb::bytes> PyClient::SerializeExecutable(
     const PyLoadedExecutable& executable) const {
   TF_ASSIGN_OR_RETURN(auto serialized,
@@ -649,20 +679,6 @@ PyClient::GetEmitPythonCallbackDescriptor(
   return std::make_pair(descriptor, nb::object(std::move(callback_capsule)));
 }
 
-// TODO(b/394595987): Deprecate / clean up this API method to remove the need
-// for `operand_shapes` and `result_shapes` once we can remove
-// xla::PyClient::GetEmitPythonCallbackDescriptor (called by mlir.py's
-// get_emit_python_callback for CPU/GPU devices).
-absl::StatusOr<nb::object> PyClient::GetEmitPythonCallback(
-    nb::callable callable) {
-  absl::Span<const Shape> operand_shapes;
-  absl::Span<const Shape> result_shapes;
-  TF_ASSIGN_OR_RETURN(auto descriptor_and_callback,
-                      GetEmitPythonCallbackDescriptor(
-                          std::move(callable), operand_shapes, result_shapes));
-  return nb::object(std::move(descriptor_and_callback.second));
-}
-
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
                                              &XlaPythonCpuCallback);
 
@@ -749,6 +765,17 @@ PyType_Slot PyClient::slots_[] = {
           nb::arg("host_callbacks") = std::vector<nb::capsule>())
       .def(
           "compile",
+          [](nb_class_ptr<PyClient> client, nb::bytes mlir_module,
+             CompileOptions options, std::vector<nb::callable> host_callbacks) {
+            return ValueOrThrow(PyClient::Compile(
+                std::move(client),
+                std::string(mlir_module.c_str(), mlir_module.size()),
+                std::move(options), std::move(host_callbacks)));
+          },
+          nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),
+          nb::arg("host_callbacks") = std::vector<nb::callable>())
+      .def(
+          "compile",
           [](nb_class_ptr<PyClient> client, std::string mlir_module,
              CompileOptions options, std::vector<nb::capsule> host_callbacks) {
             return ValueOrThrow(PyClient::Compile(
@@ -757,6 +784,16 @@ PyType_Slot PyClient::slots_[] = {
           },
           nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),
           nb::arg("host_callbacks") = std::vector<nb::capsule>())
+      .def(
+          "compile",
+          [](nb_class_ptr<PyClient> client, std::string mlir_module,
+             CompileOptions options, std::vector<nb::callable> host_callbacks) {
+            return ValueOrThrow(PyClient::Compile(
+                std::move(client), std::move(mlir_module), std::move(options),
+                std::move(host_callbacks)));
+          },
+          nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),
+          nb::arg("host_callbacks") = std::vector<nb::callable>())
       .def("compile_ifrt_program",
            xla::ValueOrThrowWrapper(PyClient::CompileIfrtProgram))
       .def("serialize_executable",
@@ -780,9 +817,6 @@ PyType_Slot PyClient::slots_[] = {
            xla::ValueOrThrowWrapper(&PyClient::GetEmitPythonCallbackDescriptor),
            nb::arg("callable"), nb::arg("operand_shapes"),
            nb::arg("result_shapes").none() = nb::none())
-      .def("get_emit_python_callback",
-           xla::ValueOrThrowWrapper(&PyClient::GetEmitPythonCallback),
-           nb::arg("callable"))
       .def("make_python_callback_from_host_send_and_recv",
            xla::ValueOrThrowWrapper(
                &PyClient::MakePythonCallbackUsingHostSendAndRecv),

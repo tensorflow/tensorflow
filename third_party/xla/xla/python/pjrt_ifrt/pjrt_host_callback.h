@@ -21,8 +21,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -62,6 +65,27 @@ class PjRtHostSendAndRecvLoadedHostCallback
 
   Client* client_;
   std::unique_ptr<xla::HostCallback> host_callback_;
+};
+
+// Wrapper of an opaque callable that is loaded into FFI's ExecutionContext
+// during execution.
+class PjRtFfiLoadedHostCallback
+    : public llvm::RTTIExtends<PjRtFfiLoadedHostCallback, LoadedHostCallback> {
+ public:
+  explicit PjRtFfiLoadedHostCallback(Client* client) : client_(client) {}
+
+  ~PjRtFfiLoadedHostCallback() override = default;
+
+  Client* client() const override { return client_; }
+
+  virtual absl::StatusOr<void*> callable() const;
+
+  absl::StatusOr<std::string> Serialize() const override;
+
+  static char ID;  // NOLINT
+
+ private:
+  Client* client_;
 };
 
 }  // namespace ifrt
