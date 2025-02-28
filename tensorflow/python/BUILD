@@ -172,8 +172,6 @@ py_strict_library(
         "//tensorflow/python/dlpack",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
-        "//tensorflow/python/eager:profiler",
-        "//tensorflow/python/eager:profiler_client",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework:_pywrap_python_op_gen",
         "//tensorflow/python/framework:_test_metrics_util",

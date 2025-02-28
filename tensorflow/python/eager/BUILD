@@ -146,8 +146,6 @@ py_strict_library(
         ":function",
         ":graph_only_ops",
         ":monitoring",
-        ":profiler",
-        ":profiler_client",
         ":tape",
         ":test",
         ":wrap_function",
@@ -369,69 +367,6 @@ cuda_py_strict_test(
     srcs = ["monitoring_test.py"],
     deps = [
         ":monitoring",
-        ":test",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:test_lib",
-    ],
-)
-
-py_strict_library(
-    name = "profiler",
-    srcs = ["profiler.py"],
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":context",
-        "//tensorflow/python/client:_pywrap_events_writer",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/platform:gfile",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/profiler/internal:_pywrap_profiler",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-    ],
-)
-
-cuda_py_strict_test(
-    name = "profiler_test",
-    srcs = ["profiler_test.py"],
-    tags = [
-        "no_rocm",
-        "no_windows",  # TODO(b/184424727): Re-enable this.
-    ],
-    deps = [
-        ":profiler",
-        ":test",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/platform:gfile",
-        "//tensorflow/python/profiler:trace",
-        "@local_tsl//tsl/profiler/protobuf:trace_events_proto_py",
-    ],
-)
-
-py_strict_library(
-    name = "profiler_client",
-    srcs = ["profiler_client.py"],
-    visibility = [
-        "//tensorflow:internal",
-        "//tensorflow/core/profiler:internal",
-    ],
-    deps = [
-        "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
-        "//tensorflow/python/util:deprecation",
-    ],
-)
-
-py_strict_test(
-    name = "profiler_client_test",
-    srcs = ["profiler_client_test.py"],
-    tags = [
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        ":profiler_client",
         ":test",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
