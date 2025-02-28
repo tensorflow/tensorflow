@@ -17,9 +17,9 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
         "@local_xla//xla/tsl/profiler/rpc/client:save_profile",
     ],
@@ -36,11 +36,8 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":profiler_client_impl",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
-        "@local_tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/tsl/profiler/rpc/client:profiler_client",
         "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
     ],
@@ -60,7 +57,9 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
@@ -69,16 +68,4 @@ cc_library(
         "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
-)
-
-cc_library(
-    name = "remote_profiler_session_manager",
-    hdrs = ["remote_profiler_session_manager.h"],
-    copts = tf_profiler_copts(),
-    deps = [
-        ":profiler_client_for_pybind",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/profiler/rpc/client:remote_profiler_session_manager",
-    ],
 )

@@ -19,20 +19,54 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/base/macros.h"
+#include "absl/status/status.h"
 #include "xla/tsl/profiler/rpc/client/save_profile.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
+
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::GetCurrentTimeStampAsString;     // NOLINT
-using tsl::profiler::GetTensorBoardProfilePluginDir;  // NOLINT
-using tsl::profiler::SaveGzippedToolData;             // NOLINT
-using tsl::profiler::SaveProfile;                     // NOLINT
-using tsl::profiler::SaveXSpace;                      // NOLINT
+ABSL_DEPRECATE_AND_INLINE()
+inline std::string GetCurrentTimeStampAsString() {
+  return tsl::profiler::GetCurrentTimeStampAsString();
+}
+
+ABSL_DEPRECATE_AND_INLINE()
+inline std::string GetTensorBoardProfilePluginDir(const std::string& logdir) {
+  return tsl::profiler::GetTensorBoardProfilePluginDir(logdir);
+}
+
+ABSL_DEPRECATE_AND_INLINE()
+inline absl::Status SaveGzippedToolData(const std::string& repository_root,
+                                        const std::string& run,
+                                        const std::string& host,
+                                        const std::string& tool_name,
+                                        const std::string& data) {
+  return tsl::profiler::SaveGzippedToolData(repository_root, run, host,
+                                            tool_name, data);
+}
+
+ABSL_DEPRECATE_AND_INLINE()
+inline absl::Status SaveProfile(const std::string& repository_root,
+                                const std::string& run, const std::string& host,
+                                const tensorflow::ProfileResponse& response,
+                                std::ostream* os) {
+  return tsl::profiler::SaveProfile(repository_root, run, host, response, os);
+}
+
+ABSL_DEPRECATE_AND_INLINE()
+inline absl::Status SaveXSpace(const std::string& repository_root,
+                               const std::string& run, const std::string& host,
+                               const tensorflow::profiler::XSpace& xspace) {
+  return tsl::profiler::SaveXSpace(repository_root, run, host, xspace);
+}
 
 }  // namespace profiler
 }  // namespace tensorflow
