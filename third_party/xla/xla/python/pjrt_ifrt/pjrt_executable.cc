@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/ffi/type_id_registry.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/pjrt/host_callback.h"
@@ -546,11 +547,16 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   opts.non_donatable_input_indices = options.non_donatable_input_indices;
 
   auto context = std::make_shared<xla::ExecuteContext>();
+  auto callbacks = std::make_shared<FfiLoadedHostCallbacks>(
+      all_loaded_host_callbacks_.get());
   auto platform_id = pjrt_loaded_executable_->client()->platform_id();
   // Forward callbacks via FFI's ExecutionContext for CPU/GPU platforms only.
   if (platform_id == CpuId() || platform_id == CudaId() ||
       platform_id == RocmId() || platform_id == SyclId()) {
-    CHECK_OK(context->ffi_context().Insert(all_loaded_host_callbacks_.get()));
+    auto type_id =
+        xla::ffi::TypeIdRegistry::TypeId(FfiLoadedHostCallbacks::id.type_id);
+    CHECK_OK(context->ffi_context().Insert(
+        type_id, static_cast<void*>(callbacks.get())));
     opts.context = context.get();
   }
 
@@ -614,7 +620,8 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     // the execution finishes.
     status.OnReady([all_loaded_host_callbacks = all_loaded_host_callbacks_,
                     host_callback_states = std::move(host_callback_states),
-                    context = std::move(context)](absl::Status) mutable {
+                    context = std::move(context),
+                    callbacks = std::move(callbacks)](absl::Status) mutable {
       all_loaded_host_callbacks.reset();
     });
   }
