@@ -462,22 +462,24 @@ class SparseLocalLoadToLLVM
 
     // Calculate number of tile repetitions.
     Value tensor = op.getSrc();
-    auto shape = cast<triton::gpu::MemDescType>(tensor.getType()).getShape();
+    auto mem_desc = cast<triton::gpu::MemDescType>(tensor.getType());
+    auto shape = mem_desc.getShape();
     int rep_m = shape[0] / shape_per_cta_tile[0];
     int rep_k = shape[1] / shape_per_cta_tile[1];
     CHECK_GT(rep_m, 0) << shape[0] << "/" << shape_per_cta_tile[0];
     CHECK_GT(rep_k, 0) << shape[1] << "/" << shape_per_cta_tile[1];
 
     // Load sparse metadata from shared memory.
-    auto elem_ty = getTypeConverter()->convertType(
-        cast<triton::gpu::MemDescType>(tensor.getType()).getElementType());
+    auto elem_ty = getTypeConverter()->convertType(mem_desc.getElementType());
     auto s_mem_obj = LLVM::getSharedMemoryObjectFromStruct(
         loc, adaptor.getSrc(), elem_ty, rewriter);
-    Value stride_m = s_mem_obj.strides[0];
-    Value stride_k = s_mem_obj.strides[1];
+        const SmallVector<Value> strides =
+        s_mem_obj.getStrides(mem_desc, loc, rewriter);
+    Value stride_m = strides[0];
+    Value stride_k = strides[1];
     MLIRContext *ctx = tensor.getContext();
     Type ptr_ty = ptr_ty(ctx, 3);
-    Value base = gep(ptr_ty, i16_ty, s_mem_obj.base, i32_val(0));
+    Value base = gep(ptr_ty, i16_ty, s_mem_obj.getBase(), i32_val(0));
     SmallVector<Value> values;
 
     for (int k = 0; k < rep_k; ++k) {
