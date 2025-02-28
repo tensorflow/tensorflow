@@ -15,7 +15,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 
 #include <fcntl.h>
-#include <poll.h>
 #include <unistd.h>
 
 #include <cstdint>
