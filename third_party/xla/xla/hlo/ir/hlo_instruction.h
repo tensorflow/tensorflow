@@ -1871,6 +1871,10 @@ class HloInstruction {
     return it.second;
   }
 
+  size_t erase_frontend_attribute(const std::string& key) {
+    return mutable_rare()->frontend_attributes.mutable_map()->erase(key);
+  }
+
   // Adds or overrides a single attribute in the HloInstruction.
   void set_frontend_attribute(const std::string& key,
                               const std::string& value) {

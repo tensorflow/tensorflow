@@ -1608,6 +1608,7 @@ xla_cc_test(
     srcs = ["explicit_stream_annotation_async_wrapper_test.cc"],
     deps = [
         ":explicit_stream_annotation_async_wrapper",
+        "//xla:side_effect_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/service/gpu:backend_configs_cc",
