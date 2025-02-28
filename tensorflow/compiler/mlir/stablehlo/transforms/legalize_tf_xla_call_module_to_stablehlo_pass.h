@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_TF_XLA_CALL_MODULE_TO_STABLEHLO_PASS_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_TF_XLA_CALL_MODULE_TO_STABLEHLO_PASS_H_
+// LINT.IfChange
+#ifndef TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_LEGALIZE_TF_XLA_CALL_MODULE_TO_STABLEHLO_PASS_H_
+#define TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_LEGALIZE_TF_XLA_CALL_MODULE_TO_STABLEHLO_PASS_H_
 
 #include <memory>
 
@@ -22,14 +22,15 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
-namespace odml {
+namespace stablehlo {
 
 // Adds passes which transform TF_XlaCallModule Op to StableHLO Ops.
 // Note that this pass only supports static shape tensors for now.
 std::unique_ptr<mlir::OperationPass<ModuleOp>>
 CreateLegalizeTFXlaCallModuleToStablehloPass();
 
-}  // namespace odml
+}  // namespace stablehlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_TF_XLA_CALL_MODULE_TO_STABLEHLO_PASS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_LEGALIZE_TF_XLA_CALL_MODULE_TO_STABLEHLO_PASS_H_
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h)

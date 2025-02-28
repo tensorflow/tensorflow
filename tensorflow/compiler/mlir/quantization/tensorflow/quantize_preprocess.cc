@@ -32,13 +32,13 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -81,7 +81,7 @@ void AddTFToStablehloPasses(
   // on TPU.
   // Extracts the StableHLO module from tf.XlaCallModuleOp if the StableHLO
   // module is serialized in it.
-  pm.addPass(mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
+  pm.addPass(mlir::stablehlo::CreateLegalizeTFXlaCallModuleToStablehloPass());
 
   // Preprocesses TPU-targeting StableHLO module for support in TF Quantizer.
   pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
+// LINT.IfChange
+#include "tensorflow/compiler/mlir/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
 
 #include <cassert>
 #include <memory>
@@ -48,7 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
-namespace odml {
+namespace stablehlo {
 
 static constexpr absl::string_view kStablehloModuleDefaultEntryFuncName =
     "main";
@@ -233,7 +233,7 @@ class TFXlaCallModuleOpToStablehloPass
                          OperationPass<ModuleOp>> {
  public:
   StringRef getArgument() const final {
-    return "tf-xla-call-module-op-to-stablehlo-pass";
+    return "tf-xla-callmodule-op-to-stablehlo-pass";
   }
   StringRef getDescription() const final {
     return "Legalize TF_XlaCallModule Op to stablehlo";
@@ -261,5 +261,6 @@ CreateLegalizeTFXlaCallModuleToStablehloPass() {
 
 static PassRegistration<TFXlaCallModuleOpToStablehloPass> pass;
 
-}  // namespace odml
+}  // namespace stablehlo
 }  // namespace mlir
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.cc)
