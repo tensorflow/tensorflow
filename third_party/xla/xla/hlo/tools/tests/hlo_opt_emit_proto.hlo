@@ -1,4 +1,5 @@
 // RUN: hlo-opt %s --emit-proto | FileCheck %s --check-prefix=CHECK
+// RUN: hlo-opt %s --emit-proto | hlo-opt %s | FileCheck %s --check-prefix=CHECK-ROUNDTRIP
 
 // CHECK: hlo_module {
 // CHECK-NEXT:   name: "test_module"
@@ -114,9 +115,14 @@
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 
-HloModule test_module
-  ENTRY main {
+// CHECK-ROUNDTRIP-LABEL: HloModule test_module, entry_computation_layout={(f32[], f32[])->f32[]}
+HloModule test_module, entry_computation_layout={(f32[], f32[])->f32[]}
+  // CHECK-ROUNDTRIP: ENTRY %main (a: f32[], b: f32[]) -> f32[] {
+  ENTRY %main (a: f32[], b: f32[]) -> f32[] {
+    // CHECK-ROUNDTRIP-NEXT:   a = f32[] parameter(0)
     a = f32[] parameter(0)
+    // CHECK-ROUNDTRIP-NEXT:   b = f32[] parameter(1)
     b = f32[] parameter(1)
-  ROOT res = f32[] multiply(a, b)
+  // CHECK-ROUNDTRIP-NEXT:   ROOT %res = f32[] multiply(f32[] %a, f32[] %b)
+  ROOT %res = f32[] multiply(f32[] %a, f32[] %b)
 }

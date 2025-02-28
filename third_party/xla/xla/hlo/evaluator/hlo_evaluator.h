@@ -462,11 +462,13 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   bool use_fast_path_reduce_ = true;
 
  private:
-  template <typename ReturnT, typename NativeT>
+  template <typename ReturnT, typename NativeT, typename UnaryOp>
   static absl::StatusOr<Literal> ElementWiseUnaryOpImpl(
-      const HloInstruction* instruction,
-      const std::function<ReturnT(NativeT)>& unary_op,
+      const HloInstruction* instruction, UnaryOp&& unary_op,
       const Literal& operand_literal) {
+    static_assert(std::is_invocable_r_v<ReturnT, UnaryOp, NativeT>,
+                  "Invalid UnaryOp signature");
+
     const Shape& shape = instruction->shape();
     const auto* operand = instruction->operand(0);
     TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));

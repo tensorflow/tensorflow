@@ -141,25 +141,29 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
  public:
   explicit HloEvaluatorTypedVisitor(HloEvaluator* p) : parent_(p) {}
 
-  // The following higher-order functions convert a function with ElementwiseT
-  // to a function with ReturnT.
-  std::function<ReturnT(ReturnT)> ConvertUnaryFunction(
-      const std::function<ElementwiseT(ElementwiseT)>& unary_op) {
+  // Converts a UnaryOp from a unary function on ElementwiseT to a unary
+  // function on ReturnT types.
+  template <typename UnaryOp>
+  auto ConvertUnaryFunction(const UnaryOp& unary_op) {
     return [&unary_op](ReturnT arg) {
       return static_cast<ReturnT>(unary_op(static_cast<ElementwiseT>(arg)));
     };
   }
-  std::function<ReturnT(ReturnT, ReturnT)> ConvertBinaryFunction(
-      const std::function<ElementwiseT(ElementwiseT, ElementwiseT)>&
-          binary_op) {
+
+  // Converts a BinaryOp from a binary function on ElementwiseT to a binary
+  // function on ReturnT types.
+  template <typename BinaryOp>
+  auto ConvertBinaryFunction(const BinaryOp& binary_op) {
     return [&binary_op](ReturnT arg1, ReturnT arg2) {
       return static_cast<ReturnT>(binary_op(static_cast<ElementwiseT>(arg1),
                                             static_cast<ElementwiseT>(arg2)));
     };
   }
-  std::function<ReturnT(ReturnT, ReturnT, ReturnT)> ConvertTernaryFunction(
-      const std::function<ElementwiseT(ElementwiseT, ElementwiseT,
-                                       ElementwiseT)>& ternary_op) {
+
+  // Converts a TernaryOp from a ternary function on ElementwiseT to a ternary
+  // function on ReturnT types.
+  template <typename TernaryOp>
+  auto ConvertTernaryFunction(const TernaryOp& ternary_op) {
     return [&ternary_op](ReturnT arg1, ReturnT arg2, ReturnT arg3) {
       return static_cast<ReturnT>(ternary_op(static_cast<ElementwiseT>(arg1),
                                              static_cast<ElementwiseT>(arg2),
@@ -748,10 +752,9 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         }
         return std::min(high, std::max(value, low));
       };
-      TF_ASSIGN_OR_RETURN(
-          parent_->evaluated_[clamp],
-          ElementwiseTernaryOp(clamp,
-                               std::move(ConvertTernaryFunction(clamp_op))));
+      TF_ASSIGN_OR_RETURN(parent_->evaluated_[clamp],
+                          (ElementwiseTernaryOp<ReturnT, ReturnT, ReturnT>(
+                              clamp, ConvertTernaryFunction(clamp_op))));
       return absl::OkStatus();
     }
     return UnsupportedTypeError(clamp);
@@ -760,15 +763,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   absl::Status HandleSelect(const HloInstruction* select) override {
     CHECK(!ShapeUtil::IsScalar(select->operand(0)->shape()));
     CHECK(select->shape().IsArray());
-    std::function<ReturnT(bool, ReturnT, ReturnT)> select_op =
-        [](bool pred, ReturnT on_true, ReturnT on_false) {
-          if (pred) {
-            return on_true;
-          }
-          return on_false;
-        };
+    auto select_op = [](bool pred, ReturnT on_true, ReturnT on_false) {
+      return pred ? on_true : on_false;
+    };
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[select],
-                        ElementwiseTernaryOp(select, std::move(select_op)));
+                        (ElementwiseTernaryOp<bool, ReturnT, ReturnT>(
+                            select, std::move(select_op))));
     return absl::OkStatus();
   }
 
@@ -1646,9 +1646,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
  private:
-  absl::StatusOr<Literal> ElementWiseUnaryOp(
-      const HloInstruction* instruction,
-      const std::function<ElementwiseT(ElementwiseT)>& unary_op) {
+  template <typename UnaryOp>
+  absl::StatusOr<Literal> ElementWiseUnaryOp(const HloInstruction* instruction,
+                                             UnaryOp&& unary_op) {
+    static_assert(std::is_invocable_r_v<ElementwiseT, UnaryOp, ElementwiseT>,
+                  "Invalid UnaryOp signature");
+
     const Literal& operand_literal =
         parent_->GetEvaluatedLiteralFor(instruction->operand(0));
     TF_ASSIGN_OR_RETURN(
@@ -1656,13 +1659,16 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         (HloEvaluator::ElementWiseUnaryOpImpl<ReturnT, ReturnT>(
             instruction, ConvertUnaryFunction(unary_op), operand_literal)));
 
-    return std::move(result_literal);
+    return result_literal;
   }
 
-  absl::StatusOr<Literal> ElementWiseBinaryOp(
-      const HloInstruction* instruction,
-      const std::function<ElementwiseT(ElementwiseT, ElementwiseT)>&
-          binary_op) {
+  template <typename BinaryOp>
+  absl::StatusOr<Literal> ElementWiseBinaryOp(const HloInstruction* instruction,
+                                              BinaryOp&& binary_op) {
+    static_assert(std::is_invocable_r_v<ElementwiseT, BinaryOp, ElementwiseT,
+                                        ElementwiseT>,
+                  "Invalid BinaryOp signature");
+
     const auto& shape = instruction->shape();
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
@@ -1694,13 +1700,18 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                 rhs_literal.Get<ReturnT>(multi_index));
           }));
     }
-    return std::move(result);
+
+    return result;
   }
 
-  template <typename LhsType, typename RhsType, typename EhsType>
+  template <typename LhsType, typename RhsType, typename EhsType,
+            typename TernaryOp>
   absl::StatusOr<Literal> ElementwiseTernaryOp(
-      const HloInstruction* instruction,
-      const std::function<ReturnT(LhsType, RhsType, EhsType)>& ternary_op) {
+      const HloInstruction* instruction, TernaryOp&& ternary_op) {
+    static_assert(
+        std::is_invocable_r_v<ReturnT, TernaryOp, LhsType, RhsType, EhsType>,
+        "Invalid TernaryOp signature");
+
     const auto& shape = instruction->shape();
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
@@ -1739,7 +1750,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           }));
     }
 
-    return std::move(result);
+    return result;
   }
 
   template <typename NativeT>
