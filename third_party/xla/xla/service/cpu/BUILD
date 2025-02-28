@@ -203,6 +203,7 @@ cc_library(
     deps = [
         ":buffer_info_util",
         ":conv_canonicalization",
+        ":cpu_aot_compilation_result",
         ":cpu_executable",
         ":cpu_float_support",
         ":cpu_instruction_fusion",
@@ -416,6 +417,41 @@ cc_library(
 )
 
 cc_library(
+    name = "cpu_aot_compilation_result",
+    srcs = ["cpu_aot_compilation_result.cc"],
+    hdrs = ["cpu_aot_compilation_result.h"],
+    deps = [
+        ":buffer_info_util",
+        ":cpu_executable",
+        ":executable_proto_cc",
+        "//xla:cpu_function_runtime",
+        "//xla:util",
+        "//xla/backends/cpu:constant_allocation",
+        "//xla/backends/cpu/runtime:function_library",
+        "//xla/backends/cpu/runtime:thunk",
+        "//xla/backends/cpu/runtime:thunk_proto_cc",
+        "//xla/backends/cpu/runtime:thunk_proto_serdes",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service:buffer_value",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_profile_printer_data_cc",
+        "//xla/service:hlo_proto_cc",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor/host:host_platform_id",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     # The old target name will still be used so that dependencies won't break.
     # In the future, dependencies should be cleaned up and relinked to the above
     # target if registration is not necesary.
@@ -424,8 +460,8 @@ cc_library(
     hdrs = ["cpu_compiler.h"],
     deps = [
         "cpu_compiler_pure",
+        ":cpu_aot_compilation_result",
         ":executable_proto_cc",
-        "//xla:cpu_function_runtime",
         "//xla:util",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",

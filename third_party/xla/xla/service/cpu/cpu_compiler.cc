@@ -141,11 +141,9 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
-#include "xla/literal.h"
 #include "xla/literal_pool.h"
 #include "xla/map_util.h"
 #include "xla/mlir_hlo/transforms/passes.h"
-#include "xla/primitive_util.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_to_all_decomposer.h"
 #include "xla/service/batched_gather_scatter_normalizer.h"
@@ -160,6 +158,7 @@ limitations under the License.
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu/buffer_info_util.h"
 #include "xla/service/cpu/conv_canonicalization.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/service/cpu/cpu_layout_assignment.h"
@@ -311,40 +310,6 @@ ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
 }  // namespace
 
 namespace cpu {
-using BufferInfo = cpu_function_runtime::BufferInfo;
-
-CpuAotCompilationOptions::CpuAotCompilationOptions(
-    std::string triple, std::string cpu_name, std::string features,
-    std::string entry_point_name, RelocationModel relocation_model)
-    : triple_(std::move(triple)),
-      cpu_name_(std::move(cpu_name)),
-      features_(std::move(features)),
-      entry_point_name_(std::move(entry_point_name)),
-      relocation_model_(relocation_model) {}
-
-CpuAotCompilationOptions::~CpuAotCompilationOptions() = default;
-
-se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
-  return se::host::kHostPlatformId;
-}
-
-CpuAotCompilationResult::CpuAotCompilationResult(
-    ObjectFileData object_file_data, std::vector<BufferInfo> buffer_infos,
-    int64_t result_buffer_index, std::unique_ptr<HloModule> module,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data)
-    : object_file_data_(std::move(object_file_data)),
-      buffer_infos_(std::move(buffer_infos)),
-      result_buffer_index_(result_buffer_index),
-      module_(std::move(module)),
-      hlo_profile_printer_data_(std::move(hlo_profile_printer_data)) {}
-
-const HloModule* CpuAotCompilationResult::optimized_module() const {
-  return module_.get();
-}
-
-std::unique_ptr<HloModule> CpuAotCompilationResult::consume_optimized_module() {
-  return std::move(module_);
-}
 
 CpuCompiler::CpuCompiler() {
   // Initialize LLVM the first time the CpuCompiler is initialized.
@@ -1832,7 +1797,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       }
 
       TargetMachineFeatures target_machine_features(target_machine.get());
-      std::vector<BufferInfo> buffer_infos =
+      std::vector<cpu_function_runtime::BufferInfo> buffer_infos =
           CreateBufferInfosFromBufferAssignment(*module, *assignment);
       HloComputation* computation = module->entry_computation();
 
