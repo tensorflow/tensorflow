@@ -14,6 +14,7 @@ lit_test_suite(
             "algebraic_simplifier.hlo",
             "cholesky_expander.hlo",
             "rewrite_bf16_conv_to_onednn.hlo",
+            "rng_expander.hlo",
             # go/keep-sorted end
         ],
         include = [
