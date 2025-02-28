@@ -145,7 +145,7 @@ then
   echo "build:rocm_base --copt=-fclang-abi-compat=17" >> /etc/bazel.bazelrc
 fi
 
-GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS:-"gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030 gfx1100"}
+GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS:-"gfx908 gfx90a gfx942 gfx1030 gfx1100"}
 
 echo $ROCM_VERSION
 echo $ROCM_REPO
