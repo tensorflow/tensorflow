@@ -135,6 +135,12 @@ common --noenable_bzlmod
 common --noincompatible_enable_cc_toolchain_resolution
 common --noincompatible_enable_android_toolchain_resolution
 
+# Use cc toolchains from apple_support for Apple builds.
+# https://github.com/bazelbuild/apple_support/tree/master?tab=readme-ov-file#bazel-6-setup
+build:macos --apple_crosstool_top=@local_config_apple_cc//:toolchain
+build:macos --crosstool_top=@local_config_apple_cc//:toolchain
+build:macos --host_crosstool_top=@local_config_apple_cc//:toolchain
+
 # Print a stacktrace when a test is killed
 test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 
