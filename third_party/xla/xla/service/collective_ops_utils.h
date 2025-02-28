@@ -374,6 +374,13 @@ constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
 // receive data on execution instances 5 and 7.
 constexpr char kSendRecvValidationAttr[] = "_xla_send_recv_validation";
 
+// Attribute to indicate that collective operations should be issued on a
+// dedicated p2p stream. This is a hint and there is no guarantee that this will
+// be honored.
+inline constexpr absl::string_view kCollectiveStreamAttrName =
+    "_xla_gpu_collective_stream";
+inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
+
 }  // end namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
