@@ -73,7 +73,7 @@ class AotCompilationResult {
   }
 
   virtual absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* executor) const {
+      Compiler* compiler, const se::StreamExecutor* executor) const&& {
     return Unimplemented("LoadExecutable unimplemented.");
   }
 
