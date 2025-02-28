@@ -180,6 +180,7 @@ xla_cc_test(
     srcs = ["executable_test.cc"],
     deps = [
         ":attribute_map",
+        ":execute_options_proto_cc",
         ":ifrt",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
