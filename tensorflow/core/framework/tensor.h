@@ -316,6 +316,9 @@ class Tensor {
   /// Returns the estimated memory usage of this tensor.
   size_t TotalBytes() const;
 
+  // Returns the size of the underlying TensorBuffer
+  size_t GetBufferSize() const;
+
   // Returns the size of allocated memory for this tensor.
   size_t AllocatedBytes() const;
 

@@ -1206,6 +1206,13 @@ size_t Tensor::TotalBytes() const {
   return 0;  // Makes compiler happy.
 }
 
+size_t Tensor::GetBufferSize() const {
+  if (buf_) {
+    return buf_->size();
+  }
+  return 0;
+}
+
 size_t Tensor::AllocatedBytes() const {
   if (buf_) {
     size_t ret;
