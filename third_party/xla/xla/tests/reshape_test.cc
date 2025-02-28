@@ -112,8 +112,7 @@ XLA_TEST_P(ReshapeTest, SingleElementArrayToScalar) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(
                       0, input_literal, "parameter", &builder, &parameter));
-  auto reshape = Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1},
-                         /*new_sizes=*/{});
+  auto reshape = Reshape(/*operand=*/parameter, /*dimensions=*/{});
   auto new_shape = builder.GetShape(reshape).value();
 
   auto expected_literal = LiteralUtil::CreateR0<float>(1.0f);
@@ -130,7 +129,7 @@ XLA_TEST_P(ReshapeTest, ScalarToSingleElementArray) {
       auto input, CreateParameterAndTransferLiteral(0, param0_literal, "param0",
                                                     &builder, &parameter));
   auto a = Neg(parameter);
-  Reshape(/*operand=*/a, /*dimensions=*/{}, /*new_sizes=*/{1});
+  Reshape(/*operand=*/a, /*dimensions=*/{1});
 
   auto expected_literal = LiteralUtil::CreateR1<float>({-1.0f});
   ComputeAndCompareLiteral(&builder, expected_literal, {input.get()},
@@ -216,8 +215,7 @@ XLA_TEST_P(ReshapeTest, R1ToR2_0_To_2x0) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{0},
-          /*new_sizes=*/{2, 0});
+  Reshape(/*operand=*/parameter, /*dimensions=*/{2, 0});
   auto expected_literal = LiteralUtil::CreateR2<float>({{}, {}});
   ComputeAndCompareLiteral(&builder, expected_literal, {input.get()},
                            zero_error_spec_);
@@ -232,8 +230,7 @@ XLA_TEST_P(ReshapeTest, R1ToR2_6_To_2x3) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{0},
-          /*new_sizes=*/{2, 3});
+  Reshape(/*operand=*/parameter, /*dimensions=*/{2, 3});
   auto expected_literal =
       LiteralUtil::CreateR2<float>({{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}});
   ComputeAndCompareLiteral(&builder, expected_literal, {input.get()},
@@ -248,8 +245,7 @@ XLA_TEST_P(ReshapeTest, Reshape0x2To2x0) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1},
-          /*new_sizes=*/{2, 0});
+  Reshape(/*operand=*/parameter, /*dimensions=*/{2, 0});
   auto expected_literal = LiteralUtil::CreateR2<float>({{}, {}});
   ComputeAndCompareLiteral(&builder, expected_literal, {input.get()},
                            zero_error_spec_);
@@ -264,8 +260,7 @@ XLA_TEST_P(ReshapeTest, ReshapeRowToCol) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1},
-          /*new_sizes=*/{3, 1});
+  Reshape(/*operand=*/parameter, /*dimensions=*/{3, 1});
 
   auto expected = ReferenceUtil::TransposeArray2D(*simple);
   auto expected_literal = LiteralUtil::CreateFromArray(*expected);
@@ -282,8 +277,8 @@ XLA_TEST_P(ReshapeTest, TransposeAsReshape) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{1, 0},
-          /*new_sizes=*/{3, 4});
+  Reshape(Transpose(parameter, /*permutation=*/{1, 0}),
+          /*dimensions=*/{3, 4});
 
   auto expected = ReferenceUtil::TransposeArray2D(*a4x3);
   auto expected_literal = LiteralUtil::CreateFromArray(*expected);
@@ -331,8 +326,7 @@ XLA_TEST_P(ReshapeTest, ReshapeSplitNoShuffleZeroElements) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1},
-          /*new_sizes=*/{2, 3, 0, 0});
+  Reshape(/*operand=*/parameter, /*dimensions=*/{2, 3, 0, 0});
   auto expected_literal =
       LiteralUtil::CreateFromArray(Array4D<float>(2, 3, 0, 0));
   ComputeAndCompareLiteral(&builder, expected_literal, {input.get()},
@@ -346,8 +340,7 @@ XLA_TEST_P(ReshapeTest, ReshapeR4ToR2ZeroElements) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1, 2, 3},
-          /*new_sizes=*/{24, 0});
+  Reshape(/*operand=*/parameter, /*dimensions=*/{24, 0});
   auto expected_literal = LiteralUtil::CreateFromArray(Array2D<float>(24, 0));
   ComputeAndCompareLiteral(&builder, expected_literal, {input.get()},
                            zero_error_spec_);
@@ -363,8 +356,7 @@ XLA_TEST_P(ReshapeTest, ReshapeSplitNoShuffle) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1},
-          /*new_sizes=*/{2, 6});
+  Reshape(/*operand=*/parameter, /*dimensions=*/{2, 6});
 
   auto expected = MakeLinspaceArray2D(1.0f, 12.0f, 2, 6);
   auto expected_literal = LiteralUtil::CreateFromArray(*expected);
@@ -379,8 +371,8 @@ XLA_TEST_P(ReshapeTest, ReshapeSplitAndShuffleZeroElements) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{1, 0},
-          /*new_sizes=*/{3, 0});
+  Reshape(Transpose(parameter, /*permutation=*/{1, 0}),
+          /*dimensions=*/{3, 0});
   auto expected_literal = LiteralUtil::CreateFromArray(Array2D<float>(3, 0));
   ComputeAndCompareLiteral(&builder, expected_literal, {input.get()},
                            zero_error_spec_);
@@ -396,8 +388,8 @@ XLA_TEST_P(ReshapeTest, ReshapeSplitAndShuffle) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{1, 0},
-          /*new_sizes=*/{2, 6});
+  Reshape(Transpose(parameter, /*permutation=*/{1, 0}),
+          /*dimensions=*/{2, 6});
   Array2D<float> expected({{1.0f, 4.0f, 7.0f, 10.0f, 2.0f, 5.0f},
                            {8.0f, 11.0f, 3.0f, 6.0f, 9.0f, 12.0f}});
   auto expected_literal = LiteralUtil::CreateFromArray(expected);
@@ -423,8 +415,8 @@ XLA_TEST_P(ReshapeTest, DocR3_R1_Collapse_012) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1, 2},
-          /*new_sizes=*/{24});
+  Reshape(Transpose(parameter, /*permutation=*/{0, 1, 2}),
+          /*dimensions=*/{24});
   auto expected_literal = LiteralUtil::CreateR1<float>(
       {10, 11, 12, 15, 16, 17, 20, 21, 22, 25, 26, 27,
        30, 31, 32, 35, 36, 37, 40, 41, 42, 45, 46, 47});
@@ -439,8 +431,8 @@ XLA_TEST_P(ReshapeTest, DocR3_R2_Collapse_012_Refine_83) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1, 2},
-          /*new_sizes=*/{8, 3});
+  Reshape(Transpose(parameter, /*permutation=*/{0, 1, 2}),
+          /*dimensions=*/{8, 3});
   auto expected_literal = LiteralUtil::CreateR2<float>({{10, 11, 12},
                                                         {15, 16, 17},
                                                         {20, 21, 22},
@@ -460,8 +452,8 @@ XLA_TEST_P(ReshapeTest, DocR3_R1_Collapse_120) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{1, 2, 0},
-          /*new_sizes=*/{24});
+  Reshape(Transpose(parameter, /*permutation=*/{1, 2, 0}),
+          /*dimensions=*/{24});
   auto expected_literal = LiteralUtil::CreateR1<float>(
       {10, 20, 30, 40, 11, 21, 31, 41, 12, 22, 32, 42,
        15, 25, 35, 45, 16, 26, 36, 46, 17, 27, 37, 47});
@@ -476,8 +468,9 @@ XLA_TEST_P(ReshapeTest, DocR3_R2_Collapse_120_Refine_83) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{1, 2, 0},
-          /*new_sizes=*/{8, 3});
+
+  Reshape(Transpose(parameter, /*permutation=*/{1, 2, 0}),
+          /*dimensions=*/{8, 3});
   auto expected_literal = LiteralUtil::CreateR2<float>({{10, 20, 30},
                                                         {40, 11, 21},
                                                         {31, 41, 12},
@@ -497,8 +490,8 @@ XLA_TEST_P(ReshapeTest, DocR3_R3_Collapse_120_Refine_262) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{1, 2, 0},
-          /*new_sizes=*/{2, 6, 2});
+  Reshape(Transpose(parameter, /*permutation=*/{1, 2, 0}),
+          /*dimensions=*/{2, 6, 2});
   auto expected_literal = LiteralUtil::CreateR3<float>(
       {{{10, 20}, {30, 40}, {11, 21}, {31, 41}, {12, 22}, {32, 42}},
        {{15, 25}, {35, 45}, {16, 26}, {36, 46}, {17, 27}, {37, 47}}});
@@ -557,8 +550,7 @@ XLA_TEST_P(ReshapeTest, FullyConnectedCollapseDesugared) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1, 2, 3},
-          /*new_sizes=*/{2, 4});
+  Reshape(/*operand=*/parameter, /*dimensions=*/{2, 4});
 
   auto expected_literal =
       LiteralUtil::CreateR2<float>({{0, 1, 2, 3}, {4, 5, 6, 7}});
@@ -571,8 +563,6 @@ XLA_TEST_P(ReshapeTest, ToScalar) {
   for (int rank = 0; rank < 8; ++rank) {
     XlaBuilder b(TestName());
     std::vector<int64_t> ones(rank, 1);  // this is {1, ..., 1}.
-    std::vector<int64_t> dimensions(rank);
-    std::iota(dimensions.begin(), dimensions.end(), 0);
     Literal input_literal(ShapeUtil::MakeShape(F32, ones));
     std::vector<int64_t> zeros(rank, 0);  // this is {0, ..., 0}.
     input_literal.Set<float>(zeros, 83.0f);
@@ -581,25 +571,12 @@ XLA_TEST_P(ReshapeTest, ToScalar) {
     TF_ASSERT_OK_AND_ASSIGN(
         auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                       &b, &parameter));
-    Reshape(parameter, dimensions, {});
+    Reshape(parameter, {});
 
     auto expected_literal = LiteralUtil::CreateR0<float>(83.0f);
     ComputeAndCompareLiteral(&b, expected_literal, {input.get()},
                              zero_error_spec_);
   }
-}
-
-XLA_TEST_P(ReshapeTest, BadDimensions) {
-  XlaBuilder b(TestName());
-  auto input_literal = LiteralUtil::CreateR1<float>({1.0f});
-  XlaOp parameter;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
-                                                    &b, &parameter));
-  Reshape(parameter, {}, {});
-  EXPECT_THAT(
-      ExecuteToString(&b, {}),
-      ::testing::HasSubstr("not a permutation of the operand dimensions"));
 }
 
 XLA_TEST_P(ReshapeTest, BadNewSizes) {
@@ -609,7 +586,7 @@ XLA_TEST_P(ReshapeTest, BadNewSizes) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &b, &parameter));
-  Reshape(parameter, {1}, {});
+  Reshape(parameter, {});
   EXPECT_THAT(ExecuteToString(&b, {}),
               ::testing::HasSubstr("mismatched element counts"));
 }
@@ -647,7 +624,7 @@ XLA_TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
 
-  Reshape(parameter, /*dimensions=*/{0, 1, 2, 3}, /*new_sizes=*/{2, 8});
+  Reshape(parameter, /*dimensions=*/{2, 8});
 
   Array2D<float> expected_array({
       {0, 1, 2, 3, 100, 101, 102, 103},
@@ -681,7 +658,7 @@ XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{0, 1}, /*new_sizes=*/{3, 2, 1, 4});
+  Reshape(parameter, /*dimensions=*/{3, 2, 1, 4});
 
   // clang-format off
   auto expected_literal = LiteralUtil::CreateR4<float>({
@@ -709,7 +686,8 @@ XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4_Dimensions_10) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                     &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{1, 0}, /*new_sizes=*/{3, 2, 1, 4});
+  Reshape(Transpose(parameter, /*permutation=*/{1, 0}),
+          /*dimensions=*/{3, 2, 1, 4});
 
   // clang-format off
   auto expected_literal = LiteralUtil::CreateR4<float>({
@@ -738,7 +716,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x1x1_To_2x1) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_data,
                           CreateParameterAndTransferLiteral(
                               0, input_literal, "input", &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{0, 1, 2, 3}, /*new_sizes=*/{2, 1});
+  Reshape(parameter, /*dimensions=*/{2, 1});
 
   Literal expected = LiteralUtil::ReshapeSlice({2, 1}, {1, 0}, input_literal);
   ComputeAndCompareLiteral(&builder, expected, {input_data.get()},
@@ -758,7 +736,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x4x1_To_4x2) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_data,
                           CreateParameterAndTransferLiteral(
                               0, input_literal, "input", &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{0, 1, 2, 3}, /*new_sizes=*/{4, 2});
+  Reshape(parameter, /*dimensions=*/{4, 2});
 
   Literal expected = LiteralUtil::ReshapeSlice({4, 2}, {1, 0}, input_literal);
   ComputeAndCompareLiteral(&builder, expected, {input_data.get()},
@@ -779,8 +757,9 @@ XLA_TEST_P(ReshapeTest, R4ToR2_5x10x2x3_To_5x60_Dimensions_0213) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_data,
                           CreateParameterAndTransferLiteral(
                               0, input_literal, "input", &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{0, 2, 1, 3},
-          /*new_sizes=*/{5, 60});
+  Reshape(Transpose(parameter,
+                    /*permutation=*/{0, 2, 1, 3}),
+          /*dimensions=*/{5, 60});
 
   Array2D<float> expected_array(5, 60);
   input.Each([&](absl::Span<const int64_t> indices, float* cell) {
@@ -806,8 +785,9 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_data,
                           CreateParameterAndTransferLiteral(
                               0, input_literal, "input", &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{3, 0, 1, 2},
-          /*new_sizes=*/{7, 2, 3, 5});
+  Reshape(Transpose(parameter,
+                    /*permutation=*/{3, 0, 1, 2}),
+          /*dimensions=*/{7, 2, 3, 5});
   XlaComputation computation = builder.Build().value();
 
   ExecutionOptions execution_options = execution_options_;
@@ -859,8 +839,7 @@ XLA_TEST_P(ReshapeTest, R4ToR4Reshape_Trivial) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, literal_1x2x3x4, "input",
                                                     &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{0, 1, 2, 3},
-          /*new_sizes=*/{1, 2, 3, 4});
+  Reshape(parameter, /*dimensions=*/{1, 2, 3, 4});
 
   ComputeAndCompareLiteral(&builder, literal_1x2x3x4, {input.get()});
 }
@@ -875,8 +854,8 @@ XLA_TEST_P(ReshapeTest, R4ToR4Reshape) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto input, CreateParameterAndTransferLiteral(0, literal_1x2x3x4, "input",
                                                     &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{1, 3, 2, 0},
-          /*new_sizes=*/{2, 4, 3, 1});
+  Reshape(Transpose(parameter, /*permutation=*/{1, 3, 2, 0}),
+          /*dimensions=*/{2, 4, 3, 1});
 
   // clang-format off
   auto expected_2x4x3x1 = LiteralUtil::CreateR4<float>(
@@ -909,8 +888,8 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeSimple) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_data,
                           CreateParameterAndTransferLiteral(
                               0, input_literal, "input", &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{0, 1, 3, 2},
-          /*new_sizes=*/new_bounds);
+  Reshape(Transpose(parameter, /*permutation=*/{0, 1, 3, 2}),
+          /*dimensions=*/new_bounds);
 
   Literal expected =
       LiteralUtil::ReshapeSlice(new_bounds, {2, 3, 1, 0}, input_literal)
@@ -938,8 +917,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstEffectiveR2) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_data,
                           CreateParameterAndTransferLiteral(
                               0, input_literal, "input", &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{0, 1, 3, 2},
-          /*new_sizes=*/new_bounds);
+  Reshape(Transpose(parameter, {0, 1, 3, 2}), /*dimensions=*/new_bounds);
 
   Literal expected =
       LiteralUtil::ReshapeSlice(new_bounds, {2, 3, 1, 0}, input_literal)
@@ -967,8 +945,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_data,
                           CreateParameterAndTransferLiteral(
                               0, input_literal, "input", &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{0, 1, 3, 2},
-          /*new_sizes=*/new_bounds);
+  Reshape(Transpose(parameter, {0, 1, 3, 2}), /*dimensions=*/new_bounds);
 
   Literal expected =
       LiteralUtil::ReshapeSlice(new_bounds, {2, 3, 1, 0}, input_literal)
@@ -997,8 +974,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1InR2) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_data,
                           CreateParameterAndTransferLiteral(
                               0, input_literal, "input", &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{0, 1, 3, 2},
-          /*new_sizes=*/new_bounds);
+  Reshape(Transpose(parameter, {0, 1, 3, 2}), /*dimensions=*/new_bounds);
 
   Literal expected =
       LiteralUtil::ReshapeSlice(new_bounds, {2, 3, 1, 0}, input_literal)
@@ -1026,8 +1002,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
   TF_ASSERT_OK_AND_ASSIGN(auto input_data,
                           CreateParameterAndTransferLiteral(
                               0, input_literal, "input", &builder, &parameter));
-  Reshape(parameter, /*dimensions=*/{1, 0, 2, 3},
-          /*new_sizes=*/new_bounds);
+  Reshape(Transpose(parameter, {1, 0, 2, 3}), /*dimensions=*/new_bounds);
 
   Literal expected =
       LiteralUtil::ReshapeSlice(new_bounds, {1, 0, 2, 3}, input_literal)

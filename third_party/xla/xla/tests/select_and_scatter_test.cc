@@ -303,8 +303,8 @@ XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2F32Tie)) {
 XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(ReshapeR2S32)) {
   const auto operand = ConstantR2<int32_t>(
       &builder_, {{7, 3}, {2, 8}, {5, 9}, {3, 3}, {10, 4}, {2, 2}});
-  const auto reshape =
-      Reshape(operand, /*dimensions=*/{1, 0}, /*new_sizes=*/{2, 6});
+  const auto reshape = Reshape(Transpose(operand, /*permutation=*/{1, 0}),
+                               /*dimensions=*/{2, 6});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6}});
   Array2D<int32_t> expected({{0, 0, 0, 0, 6, 0}, {0, 0, 2, 0, 0, 0}});
   SelectAndScatter(reshape, ge_s32_, /*window_dimensions=*/{2, 3},

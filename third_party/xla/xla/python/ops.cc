@@ -647,10 +647,6 @@ void BuildOpsSubmodule(nb::module_& m) {
           nb::arg("dimension"));
   ops.def("ReplicaId", &ReplicaId, nb::arg("builder"));
   ops.def("Reshape",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64_t>,
-                                absl::Span<const int64_t>)>(&Reshape),
-          nb::arg("operand"), nb::arg("dimensions"), nb::arg("new_sizes"));
-  ops.def("Reshape",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const int64_t>)>(&Reshape),
           nb::arg("operand"), nb::arg("new_sizes"));
   ops.def("Rev", &Rev, nb::arg("operand"), nb::arg("dimensions"));

@@ -603,18 +603,9 @@ TEST(XlaBuilderTest, OperandFromWrongBuilder) {
 TEST(XlaBuilderTest, ReshapeDefaultOrder) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 3, 5, 7}), "x");
-  Reshape(x, /*new_sizes=*/{6, 35});
+  Reshape(x, /*dimensions=*/{6, 35});
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module), GmockMatch(m::Reshape(m::Parameter())));
-}
-
-TEST(XlaBuilderTest, ReshapeHasTranspose) {
-  XlaBuilder b(TestName());
-  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 3, 5, 7}), "x");
-  Reshape(x, /*dimensions=*/{3, 2, 1, 0}, /*new_sizes=*/{6, 35});
-  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
-  EXPECT_THAT(GetRoot(*module),
-              GmockMatch(m::Reshape(m::Transpose(m::Parameter()))));
 }
 
 TEST(XlaBuilderTest, Transpose) {
@@ -3160,8 +3151,7 @@ TEST(XlaBuilderTest, UnboundedReshape) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[2,3]"));
-  Reshape(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0},
-          /*new_sizes=*/{2, 3});
+  Reshape(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{2, 3});
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
@@ -3170,8 +3160,8 @@ TEST(XlaBuilderTest, UnboundedReshape) {
 TEST(XlaBuilderTest, UnboundedReshapeUnsupportedOutputShape) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[6]"));
-  Reshape(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0},
-          /*new_sizes=*/{Shape::kUnboundedSize, Shape::kUnboundedSize});
+  Reshape(Parameter(&b, 0, operand, "operand"),
+          /*dimensions=*/{Shape::kUnboundedSize, Shape::kUnboundedSize});
   EXPECT_THAT(
       BuildHloModule(b),
       StatusIs(_,

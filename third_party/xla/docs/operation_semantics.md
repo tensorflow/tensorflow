@@ -23,7 +23,7 @@ are primitive types which can be threaded between side-effecting operations to
 enforce ordering. `AfterAll` can be used as a join of tokens for ordering an
 operation after a set operations.
 
-<b> `AfterAll(operands)` </b>
+**`AfterAll(operands)`**
 
 Arguments  | Type    | Semantics
 ---------- | ------- | -------------------------
@@ -36,8 +36,8 @@ See also
 
 Performs concatenation across replicas.
 
-<b> `AllGather(operand, all_gather_dim, shard_count, replica_group_ids,
-channel_id)` </b>
+**`AllGather(operand, all_gather_dim, shard_count, replica_group_ids,
+channel_id)`**
 
 | Arguments        | Type                 | Semantics                   |
 | ---------------- | -------------------- | --------------------------- |
@@ -75,7 +75,7 @@ See also
 
 Performs a custom computation across replicas.
 
-<b> `AllReduce(operand, computation, replica_group_ids, channel_id)` </b>
+**`AllReduce(operand, computation, replica_group_ids, channel_id)`**
 
 | Arguments        | Type                 | Semantics                        |
 | ---------------- | -------------------- | -------------------------------- |
@@ -145,8 +145,8 @@ Prerequisites:
 `split_count`.
 -   The operand's shape is not tuple.
 
-<b> `AllToAll(operand, split_dimension, concat_dimension, split_count,
-replica_groups)` </b>
+**`AllToAll(operand, split_dimension, concat_dimension, split_count,
+replica_groups)`**
 
 | Arguments          | Type                  | Semantics                       |
 | ------------------ | --------------------- | ------------------------------- |
@@ -194,7 +194,8 @@ for a detailed description of the algorithm.
 
 Calculates gradients of batch norm.
 
-<b> `BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon, feature_index)` </b>
+**`BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon,
+                 feature_index)`**
 
 Arguments       | Type    | Semantics
 --------------- | ------- | ----------------------------------------------------
@@ -257,7 +258,8 @@ for a detailed description of the algorithm.
 
 Normalizes an array across batch and spatial dimensions.
 
-<b> `BatchNormInference(operand, scale, offset, mean, variance, epsilon, feature_index)` </b>
+**`BatchNormInference(operand, scale, offset, mean, variance, epsilon,
+                      feature_index)`**
 
 Arguments       | Type    | Semantics
 --------------- | ------- | ---------------------------------------
@@ -292,7 +294,7 @@ for a detailed description of the algorithm.
 
 Normalizes an array across batch and spatial dimensions.
 
-<b> `BatchNormTraining(operand, scale, offset, epsilon, feature_index)` </b>
+**`BatchNormTraining(operand, scale, offset, epsilon, feature_index)`**
 
 Arguments       | Type    | Semantics
 --------------- | ------- | ----------------------------------------
@@ -348,7 +350,7 @@ match: e.g. `s32` elements become `f32` elements via bitcast routine, and one
 low-level cast, so machines with different floating-point representations will
 give different results.
 
-<b> `BitcastConvertType(operand, new_element_type)` </b>
+**`BitcastConvertType(operand, new_element_type)`**
 
 Arguments          | Type            | Semantics
 ------------------ | --------------- | ---------------------------
@@ -399,7 +401,7 @@ See also
 
 Adds dimensions to an array by duplicating the data in the array.
 
-<b> `Broadcast(operand, broadcast_sizes)` </b>
+**`Broadcast(operand, broadcast_sizes)`**
 
 Arguments         | Type                | Semantics
 ----------------- | ------------------- | -------------------------------
@@ -427,7 +429,7 @@ See also
 
 Expands the size and rank of an array by duplicating the data in the array.
 
-<b> `BroadcastInDim(operand, out_dim_size, broadcast_dimensions)` </b>
+**`BroadcastInDim(operand, out_dim_size, broadcast_dimensions)`**
 
 | Arguments              | Type                | Semantics                     |
 | ---------------------- | ------------------- | ----------------------------- |
@@ -455,7 +457,7 @@ See also
 
 Invokes a computation with the given arguments.
 
-<b> `Call(computation, args...)` </b>
+**`Call(computation, args...)`**
 
 | Arguments     | Type                   | Semantics                           |
 | ------------- | ---------------------- | ----------------------------------- |
@@ -494,7 +496,7 @@ frontend_attributes = {
 }
 ```
 
-<b> `Call(computation, args..., name, composite_attributes, version)` </b>
+**`Call(computation, args..., name, composite_attributes, version)`**
 
 | Arguments                   | Type                   | Semantics                                                                             |
 | --------------------------- | ---------------------- | ------------------------------------------------------------------------------------- |
@@ -513,7 +515,7 @@ Computes the
 [Cholesky decomposition](https://en.wikipedia.org/wiki/Cholesky_decomposition)
 of a batch of symmetric (Hermitian) positive definite matrices.
 
-<b> `Cholesky(a, lower)` </b>
+**`Cholesky(a, lower)`**
 
 Arguments | Type    | Semantics
 --------- | ------- | -----------------------------------------------------
@@ -542,7 +544,7 @@ See also
 
 Clamps an operand to within the range between a minimum and maximum value.
 
-<b> `Clamp(min, operand, max)` </b>
+**`Clamp(min, operand, max)`**
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------
@@ -576,7 +578,7 @@ and the `tf.reshape` operation.
 
 Collapses dimensions of an array into one dimension.
 
-<b> `Collapse(operand, dimensions)` </b>
+**`Collapse(operand, dimensions)`**
 
 Arguments    | Type           | Semantics
 ------------ | -------------- | -----------------------------------------------
@@ -639,7 +641,7 @@ See also
 CollectivePermute is a collective operation that sends and receives data cross
 replicas.
 
-<b> `CollectivePermute(operand, source_target_pairs)` </b>
+**`CollectivePermute(operand, source_target_pairs)`**
 
 | Arguments             | Type                    | Semantics                  |
 | --------------------- | ----------------------- | -------------------------- |
@@ -662,7 +664,7 @@ Concatenate composes an array from multiple array operands. The array is of the
 same rank as each of the input array operands (which must be of the same rank as
 each other) and contains the arguments in the order that they were specified.
 
-<b> `Concatenate(operands..., dimension)` </b>
+**`Concatenate(operands..., dimension)`**
 
 | Arguments   | Type                  | Semantics                              |
 | ----------- | --------------------- | -------------------------------------- |
@@ -710,8 +712,8 @@ Diagram:
 See also
 [`XlaBuilder::Conditional`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Conditional(pred, true_operand, true_computation, false_operand,
-false_computation)` </b>
+**`Conditional(pred, true_operand, true_computation, false_operand,
+false_computation)`**
 
 <!-- mdformat off(disable mdformat for proper MathJax formatting) -->
 
@@ -737,7 +739,7 @@ returned value of `true_computation` and `false_computation` must be the same.
 Note that only one of `true_computation` and `false_computation` will be
 executed depending on the value of `pred`.
 
-<b> `Conditional(branch_index, branch_computations, branch_operands)` </b>
+**`Conditional(branch_index, branch_computations, branch_operands)`**
 
 <!-- mdformat off(disable mdformat for proper MathJax formatting) -->
 
@@ -926,7 +928,7 @@ conversion operation from a data shape to a target shape. The dimensions must
 match, and the conversion is an element-wise one; e.g. `s32` elements become
 `f32` elements via an `s32`-to-`f32` conversion routine.
 
-<b> `ConvertElementType(operand, new_element_type)` </b>
+**`ConvertElementType(operand, new_element_type)`**
 
 Arguments          | Type            | Semantics
 ------------------ | --------------- | ---------------------------
@@ -961,7 +963,7 @@ See also
 
 Call a user-provided function within a computation.
 
-<b> `CustomCall(target_name, args..., shape)` </b>
+**`CustomCall(target_name, args..., shape)`**
 
 | Arguments     | Type                   | Semantics                         |
 | ------------- | ---------------------- | --------------------------------- |
@@ -1016,7 +1018,7 @@ idempotent.
 See also
 [`XlaBuilder::Dot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Dot(lhs, rhs)` </b>
+**`Dot(lhs, rhs)`**
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------
@@ -1042,7 +1044,7 @@ vectors, vector/matrix multiplications or matrix/matrix multiplications.
 See also
 [`XlaBuilder::DotGeneral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `DotGeneral(lhs, rhs, dimension_numbers)` </b>
+**`DotGeneral(lhs, rhs, dimension_numbers)`**
 
 Arguments           | Type                  | Semantics
 ------------------- | --------------------- | ---------------
@@ -1135,7 +1137,7 @@ DynamicSlice extracts a sub-array from the input array at dynamic
 dimension: [start, start + size). The shape of `start_indices` must be rank ==
 1, with dimension size equal to the rank of `operand`.
 
-<b> `DynamicSlice(operand, start_indices, size_indices)` </b>
+**`DynamicSlice(operand, start_indices, size_indices)`**
 
 | Arguments       | Type                  | Semantics                          |
 | --------------- | --------------------- | ---------------------------------- |
@@ -1190,7 +1192,7 @@ is updated.
 The shape of `start_indices` must be rank == 1, with dimension size equal to
 the rank of `operand`.
 
-<b> `DynamicUpdateSlice(operand, update, start_indices)` </b>
+**`DynamicUpdateSlice(operand, update, start_indices)`**
 
 | Arguments       | Type                  | Semantics                          |
 | --------------- | --------------------- | ---------------------------------- |
@@ -1249,7 +1251,7 @@ See also
 
 A set of element-wise binary arithmetic operations is supported.
 
-<b> `Op(lhs, rhs)` </b>
+**`Op(lhs, rhs)`**
 
 Where `Op` is one of `Add` (addition), `Sub`(subtraction), `Mul`
 (multiplication), `Div` (division), `Pow` (power), `Rem` (remainder), `Max`
@@ -1280,7 +1282,7 @@ value.
 An alternative variant with different-rank broadcasting support exists for these
 operations:
 
-<b> `Op(lhs, rhs, broadcast_dimensions)` </b>
+**`Op(lhs, rhs, broadcast_dimensions)`**
 
 Where `Op` is the same as above. This variant of the operation should be used
 for arithmetic operations between arrays of different ranks (such as adding a
@@ -1304,7 +1306,7 @@ A set of standard element-wise binary comparison operations is supported. Note
 that standard IEEE 754 floating-point comparison semantics apply when comparing
 floating-point types.
 
-<b> `Op(lhs, rhs)` </b>
+**`Op(lhs, rhs)`**
 
 Where `Op` is one of `Eq` (equal-to), `Ne` (not equal-to), `Ge`
 (greater-or-equal-than), `Gt` (greater-than), `Le` (less-or-equal-than), `Lt`
@@ -1328,7 +1330,7 @@ the operands is a scalar.
 An alternative variant with different-rank broadcasting support exists for these
 operations:
 
-<b> `Op(lhs, rhs, broadcast_dimensions)` </b>
+**`Op(lhs, rhs, broadcast_dimensions)`**
 
 Where `Op` is the same as above. This variant of the operation should be used
 for comparison operations between arrays of different ranks (such as adding a
@@ -1461,7 +1463,8 @@ See also
 [`XlaBuilder::Gather`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 For a more intuitive description, see the "Informal Description" section below.
 
-<b> `gather(operand, start_indices, offset_dims, collapsed_slice_dims, slice_sizes, start_index_map)` </b>
+**`gather(operand, start_indices, offset_dims, collapsed_slice_dims,
+          slice_sizes, start_index_map)`**
 
 | Arguments              | Type                | Semantics                     |
 | ---------------------- | ------------------- | ----------------------------- |
@@ -1649,7 +1652,7 @@ See also
 Returns the size of the given dimension of the operand. The operand must be
 array shaped.
 
-<b> `GetDimensionSize(operand, dimension)` </b>
+**`GetDimensionSize(operand, dimension)`**
 
 | Arguments   | Type    | Semantics                                           |
 | ----------- | ------- | --------------------------------------------------- |
@@ -1664,7 +1667,7 @@ See also
 Sets the dynamic size of XlaOp's given dimension. The operand must be
 array shaped.
 
-<b> `SetDimensionSize(operand, size, dimension)` </b>
+**`SetDimensionSize(operand, size, dimension)`**
 
 | Arguments   | Type    | Semantics                                           |
 | ----------- | ------- | --------------------------------------------------- |
@@ -1723,7 +1726,7 @@ See also `tf.tuple`.
 See also
 [`XlaBuilder::Infeed`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Infeed(shape)` </b>
+**`Infeed(shape)`**
 
 | Argument | Type    | Semantics                                             |
 | -------- | ------- | ----------------------------------------------------- |
@@ -1759,7 +1762,7 @@ Infeed of the device.
 See also
 [`XlaBuilder::Iota`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Iota(shape, iota_dimension)` </b>
+**`Iota(shape, iota_dimension)`**
 
 Builds a constant literal on device rather than a potentially large host
 transfer. Creates an array that has specified shape and holds values starting at
@@ -1795,7 +1798,7 @@ For example, `Iota(s32[4, 8], 0)` returns
 See also
 [`XlaBuilder::Map`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Map(operands..., computation)` </b>
+**`Map(operands..., computation)`**
 
 | Arguments         | Type                   | Semantics                      |
 | ----------------- | ---------------------- | ------------------------------ |
@@ -1828,7 +1831,7 @@ barrier's outputs.
 See also
 [`XlaBuilder::Pad`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Pad(operand, padding_value, padding_config)` </b>
+**`Pad(operand, padding_value, padding_config)`**
 
 | Arguments        | Type            | Semantics                               |
 | ---------------- | --------------- | --------------------------------------- |
@@ -1867,7 +1870,7 @@ interior padding values are all 0. The figure below shows examples of different
 See also
 [`XlaBuilder::Recv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Recv(shape, channel_handle)` </b>
+**`Recv(shape, channel_handle)`**
 
 | Arguments        | Type            | Semantics                            |
 | ---------------- | --------------- | ------------------------------------ |
@@ -1891,7 +1894,7 @@ by a following `RecvDone` instruction to wait for the completion of the data
 transfer. The context is a tuple of {receive buffer (shape), request identifier
 (U32)} and it can only be used by a `RecvDone` instruction.
 
-<b> `RecvDone(HloInstruction context)` </b>
+**`RecvDone(HloInstruction context)`**
 
 Given a context created by a `Recv` instruction, waits for the data transfer to
 complete and returns the received data.
@@ -1903,7 +1906,7 @@ See also
 
 Applies a reduction function to one or more arrays in parallel.
 
-<b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
+**`Reduce(operands..., init_values..., computation, dimensions)`**
 
 | Arguments     | Type                  | Semantics                        |
 | ------------- | --------------------- | -------------------------------- |
@@ -2064,7 +2067,7 @@ exponent and mantissa bits in the lower-precision format can be specified
 arbitrarily, although all bit sizes may not be supported on all hardware
 implementations.
 
-<b> `ReducePrecision(operand, mantissa_bits, exponent_bits)` </b>
+**`ReducePrecision(operand, mantissa_bits, exponent_bits)`**
 
 Arguments       | Type    | Semantics
 --------------- | ------- | -------------------------------------------------
@@ -2094,8 +2097,8 @@ then scatters the result by splitting it into `shard_count` blocks along the
 `scatter_dimension` and replica `i` in the replica group receives the `ith`
 shard.
 
-<b> `ReduceScatter(operand, computation, scatter_dim, shard_count,
-replica_group_ids, channel_id)` </b>
+**`ReduceScatter(operand, computation, scatter_dim, shard_count,
+replica_group_ids, channel_id)`**
 
 | Arguments           | Type                 | Semantics                     |
 | ------------------- | -------------------- | ----------------------------- |
@@ -2141,8 +2144,8 @@ number of valid positions of the window. A pooling layer can be expressed as a
 `ReduceWindow`. Similar to [`Reduce`](#reduce), the applied `computation` is
 always passed the `init_values` on the left-hand side.
 
-<b> `ReduceWindow(operands..., init_values..., computation, window_dimensions,
-window_strides, padding)` </b>
+**`ReduceWindow(operands..., init_values..., computation, window_dimensions,
+window_strides, padding)`**
 
 | Arguments           | Type                | Semantics                        |
 | ------------------- | ------------------- | -------------------------------- |
@@ -2226,7 +2229,7 @@ See also
 
 Returns the unique ID (U32 scalar) of the replica.
 
-<b> `ReplicaId()` </b>
+**`ReplicaId()`**
 
 The unique ID of each replica is an unsigned integer in the interval `[0, N)`,
 where `N` is the number of replicas. Since all the replicas are running the same
@@ -2241,30 +2244,24 @@ and the [`Collapse`](#collapse) operation.
 
 Reshapes the dimensions of an array into a new configuration.
 
-<b> `Reshape(operand, new_sizes)` </b>
-<b> `Reshape(operand, dimensions, new_sizes)` </b>
+**`Reshape(operand, dimensions)`**
 
 Arguments    | Type           | Semantics
------------- | -------------- | ---------------------------------------
+------------ | -------------- | ---------------------------------
 `operand`    | `XlaOp`        | array of type T
-`dimensions` | `int64` vector | order in which dimensions are collapsed
-`new_sizes`  | `int64` vector | vector of sizes of new dimensions
+`dimensions` | `int64` vector | vector of sizes of new dimensions
 
 Conceptually, reshape first flattens an array into a one-dimensional vector of
 data values, and then refines this vector into a new shape. The input arguments
 are an arbitrary array of type T, a compile-time-constant vector of dimension
 indices, and a compile-time-constant vector of dimension sizes for the result.
-The values in the `dimension` vector, if given, must be a permutation of all of
-T's dimensions; the default if not given is `{0, ..., rank - 1}`. The order of
-the dimensions in `dimensions` is from slowest-varying dimension (most major) to
-fastest-varying dimension (most minor) in the loop nest which collapses the
-input array into a single dimension. The `new_sizes` vector determines the size
-of the output array. The value at index 0 in `new_sizes` is the size of
-dimension 0, the value at index 1 is the size of dimension 1, and so on. The
-product of the `new_size` dimensions must equal the product of the operand's
-dimension sizes. When refining the collapsed array into the multidimensional
-array defined by `new_sizes`, the dimensions in `new_sizes` are ordered from
-slowest varying (most major) and to fastest varying (most minor).
+The `dimensions` vector determines the size of the output array. The value at
+index 0 in `dimensions` is the size of dimension 0, the value at index 1 is the
+size of dimension 1, and so on. The product of the `dimensions` dimensions must
+equal the product of the operand's dimension sizes. When refining the collapsed
+array into the multidimensional array defined by `dimensions`, the dimensions in
+`dimensions` are ordered from slowest varying (most major) and to fastest
+varying (most minor).
 
 For example, let v be an array of 24 elements:
 
@@ -2274,44 +2271,23 @@ let v = f32[4x2x3] {{{10, 11, 12}, {15, 16, 17}},
                     {{30, 31, 32}, {35, 36, 37}},
                     {{40, 41, 42}, {45, 46, 47}}};
 
-In-order collapse:
-let v012_24 = Reshape(v, {0,1,2}, {24});
+let v012_24 = Reshape(v, {24});
 then v012_24 == f32[24] {10, 11, 12, 15, 16, 17, 20, 21, 22, 25, 26, 27,
                          30, 31, 32, 35, 36, 37, 40, 41, 42, 45, 46, 47};
 
-let v012_83 = Reshape(v, {0,1,2}, {8,3});
+let v012_83 = Reshape(v, {8,3});
 then v012_83 == f32[8x3] {{10, 11, 12}, {15, 16, 17},
                           {20, 21, 22}, {25, 26, 27},
                           {30, 31, 32}, {35, 36, 37},
                           {40, 41, 42}, {45, 46, 47}};
-
-Out-of-order collapse:
-let v021_24 = Reshape(v, {1,2,0}, {24});
-then v012_24 == f32[24]  {10, 20, 30, 40, 11, 21, 31, 41, 12, 22, 32, 42,
-                          15, 25, 35, 45, 16, 26, 36, 46, 17, 27, 37, 47};
-
-let v021_83 = Reshape(v, {1,2,0}, {8,3});
-then v021_83 == f32[8x3] {{10, 20, 30}, {40, 11, 21},
-                          {31, 41, 12}, {22, 32, 42},
-                          {15, 25, 35}, {45, 16, 26},
-                          {36, 46, 17}, {27, 37, 47}};
-
-
-let v021_262 = Reshape(v, {1,2,0}, {2,6,2});
-then v021_262 == f32[2x6x2] {{{10, 20}, {30, 40},
-                              {11, 21}, {31, 41},
-                              {12, 22}, {32, 42}},
-                             {{15, 25}, {35, 45},
-                              {16, 26}, {36, 46},
-                              {17, 27}, {37, 47}}};
 ```
 
 As a special case, reshape can transform a single-element array to a scalar and
 vice versa. For example,
 
 ```cpp
-Reshape(f32[1x1] {{5}}, {0,1}, {}) == 5;
-Reshape(5, {}, {1,1}) == f32[1x1] {{5}};
+Reshape(f32[1x1] {{5}}, {}) == 5;
+Reshape(5, {1,1}) == f32[1x1] {{5}};
 ```
 
 ## Rev (reverse)
@@ -2419,9 +2395,9 @@ of the input array `operands`, with several slices (at indices specified by
 See also
 [`XlaBuilder::Scatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `scatter(operands..., scatter_indices, updates..., update_computation,
+**`scatter(operands..., scatter_indices, updates..., update_computation,
 index_vector_dim, update_window_dims, inserted_window_dims,
-scatter_dims_to_operand_dims)` </b>
+scatter_dims_to_operand_dims)`**
 
 Arguments                      | Type                  | Semantics
 ------------------------------ | --------------------- | ---------
@@ -2558,7 +2534,7 @@ See also
 Constructs an output array from elements of two input arrays, based on the
 values of a predicate array.
 
-<b> `Select(pred, on_true, on_false)` </b>
+**`Select(pred, on_true, on_false)`**
 
 Arguments  | Type    | Semantics
 ---------- | ------- | ------------------
@@ -2666,7 +2642,7 @@ context of [`Reduce`](#reduce) for more details.
 See also
 [`XlaBuilder::Send`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `Send(operand, channel_handle)` </b>
+**`Send(operand, channel_handle)`**
 
 Arguments        | Type            | Semantics
 ---------------- | --------------- | -----------------------------------------
@@ -2689,12 +2665,12 @@ used by a following `SendDone` instruction to wait for the completion of the
 data transfer. The context is a tuple of {operand (shape), request identifier
 (U32)} and it can only be used by a `SendDone` instruction.
 
-<b> `SendDone(HloInstruction context)` </b>
+**`SendDone(HloInstruction context)`**
 
 Given a context created by a `Send` instruction, waits for the data transfer to
 complete.  The instruction does not return any data.
 
-<b> Scheduling of channel instructions </b>
+**Scheduling of channel instructions**
 
 The execution order of the 4 instructions for each channel (`Recv`, `RecvDone`,
 `Send`, `SendDone`) is as below.
@@ -2722,7 +2698,7 @@ rank as the input and contains the values inside a bounding box within the input
 array where the dimensions and indices of the bounding box are given as
 arguments to the slice operation.
 
-<b> `Slice(operand, start_indices, limit_indices, strides)` </b>
+**`Slice(operand, start_indices, limit_indices, strides)`**
 
 | Arguments       | Type                | Semantics                            |
 | --------------- | ------------------- | ------------------------------------ |
@@ -2842,7 +2818,7 @@ dimensions, this routine solves one of the matrix systems `op(a) * x =
 b`, or `x * op(a) = b`, for the variable `x`, given `a` and `b`, where `op(a)` is
 either `op(a) = a`, or `op(a) = Transpose(a)`, or `op(a) = Conj(Transpose(a))`.
 
-<b> `TriangularSolve(a, b, left_side, lower, unit_diagonal, transpose_a)` </b>
+**`TriangularSolve(a, b, left_side, lower, unit_diagonal, transpose_a)`**
 
 | Arguments       | Type        | Semantics                                    |
 | --------------- | ----------- | -------------------------------------------- |
@@ -2886,7 +2862,7 @@ Tuples can be deconstructed (accessed) via the [`GetTupleElement`]
 See also
 [`XlaBuilder::While`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b> `While(condition, body, init)` </b>
+**`While(condition, body, init)`**
 
 | Arguments   | Type             | Semantics                                |
 | ----------- | ---------------- | ---------------------------------------- |

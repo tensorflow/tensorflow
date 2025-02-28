@@ -1837,7 +1837,6 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       c = self._NewComputation()
       ops.Reshape(
           ops.Constant(c, NumpyArrayS32([[1, 2], [3, 4], [5, 6]])),
-          dimensions=[0, 1],
           new_sizes=[2, 3])
       self._ExecuteAndCompareExact(c, expected=[[[1, 2, 3], [4, 5, 6]]])
 

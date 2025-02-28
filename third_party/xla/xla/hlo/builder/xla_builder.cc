@@ -1794,27 +1794,13 @@ absl::StatusOr<XlaOp> XlaBuilder::PadInternal(
 }
 
 XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64_t> dimensions,
-                          absl::Span<const int64_t> new_sizes,
                           int64_t inferred_dimension) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_ASSIGN_OR_RETURN(const Shape shape, ShapeInference::InferReshapeShape(
-                                               *operand_shape, dimensions,
-                                               new_sizes, inferred_dimension));
-    XlaOp transposed = IsIdentityPermutation(dimensions)
-                           ? operand
-                           : Transpose(operand, dimensions);
-    return ReshapeInternal(shape, transposed, inferred_dimension);
-  });
-}
-
-XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64_t> new_sizes,
-                          int64_t inferred_dimension) {
-  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(operand));
-    std::vector<int64_t> dimensions(shape->dimensions_size());
-    std::iota(dimensions.begin(), dimensions.end(), 0);
-    return Reshape(operand, dimensions, new_sizes, inferred_dimension);
+    TF_ASSIGN_OR_RETURN(const Shape shape,
+                        ShapeInference::InferReshapeShape(
+                            *operand_shape, dimensions, inferred_dimension));
+    return ReshapeInternal(shape, operand, inferred_dimension);
   });
 }
 
@@ -5042,13 +5028,8 @@ XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64_t dimno,
                                      pad_hi);
 }
 
-XlaOp Reshape(const XlaOp operand, absl::Span<const int64_t> dimensions,
-              absl::Span<const int64_t> new_sizes) {
-  return operand.builder()->Reshape(operand, dimensions, new_sizes);
-}
-
-XlaOp Reshape(const XlaOp operand, absl::Span<const int64_t> new_sizes) {
-  return operand.builder()->Reshape(operand, new_sizes);
+XlaOp Reshape(const XlaOp operand, absl::Span<const int64_t> dimensions) {
+  return operand.builder()->Reshape(operand, dimensions);
 }
 
 XlaOp Reshape(const Shape& shape, XlaOp operand) {

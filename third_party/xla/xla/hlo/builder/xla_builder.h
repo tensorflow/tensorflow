@@ -543,10 +543,6 @@ class XlaBuilder {
       const PaddingConfig& padding_config);
 
   XlaOp Reshape(XlaOp operand, absl::Span<const int64_t> dimensions,
-                absl::Span<const int64_t> new_sizes,
-                int64_t inferred_dimension = -1);
-
-  XlaOp Reshape(XlaOp operand, absl::Span<const int64_t> new_sizes,
                 int64_t inferred_dimension = -1);
 
   XlaOp Reshape(const Shape& shape, XlaOp operand,
@@ -1269,10 +1265,7 @@ class XlaBuilder {
   friend XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64_t dimno,
                         int64_t pad_lo, int64_t pad_hi);
 
-  friend XlaOp Reshape(XlaOp operand, absl::Span<const int64_t> dimensions,
-                       absl::Span<const int64_t> new_sizes);
-
-  friend XlaOp Reshape(XlaOp operand, absl::Span<const int64_t> new_sizes);
+  friend XlaOp Reshape(XlaOp operand, absl::Span<const int64_t> dimensions);
 
   friend XlaOp Reshape(const Shape& shape, XlaOp operand);
 
@@ -2032,14 +2025,6 @@ XlaOp Pad(XlaOp operand, XlaOp padding_value,
 XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64_t dimno,
                int64_t pad_lo, int64_t pad_hi);
 
-// Enqueues an operation onto the computation that flattens the operand based
-// on the dimension order (major/slowest-varying to minor/fastest-varying)
-// given, followed by reshaping it into the shape with the given dimension
-// sizes (also major to minor). Conceptually, this is a limited form of
-// "shape casting".
-XlaOp Reshape(XlaOp operand, absl::Span<const int64_t> dimensions,
-              absl::Span<const int64_t> new_sizes);
-
 // Enqueues a dynamic reshape operation. The dynamic reshape takes additional
 // XlaOps as sizes for the result dimension. The result dim i is a dynamic
 // dimension dimension if dims_are_dynamic[i] is true.
@@ -2055,7 +2040,7 @@ XlaOp MhloDynamicReshape(XlaOp operand, XlaOp output_shape, const Shape& shape);
 // Enqueues an operation onto the computation that collapses the operand,
 // from first to last dimension (C order), then reshapes it to the given
 // dimension sizes. Conceptually, this is a limited form of "shape casting".
-XlaOp Reshape(XlaOp operand, absl::Span<const int64_t> new_sizes);
+XlaOp Reshape(XlaOp operand, absl::Span<const int64_t> dimensions);
 
 // Enqueues a Reshape op that uses an explicit target shape.
 XlaOp Reshape(const Shape& shape, XlaOp operand);
