@@ -328,11 +328,13 @@ OpMetrics FromXEvent(const tsl::profiler::XEventVisitor& xevent) {
   OpMetrics op_metrics;
   std::optional<XStatVisitor> stat = xevent.GetStat(StatType::kStepIdleTimePs);
   if (stat.has_value()) {
+    // TODO(b/397774568) : Remove this once the SparseCore OpMetricsDb is
+    // implemented.
     uint64_t idle_time_ps = stat->IntOrUintValue();
     op_metrics.set_self_time_ps(xevent.DurationPs() - idle_time_ps);
     op_metrics.set_name("sparse_core_busy_ops");
-    // TODO: Make it meaningful after SC stats are available.
     op_metrics.set_category("sparse_core_busy_ops");
+    return op_metrics;
   }
   SetOpMetricsFromHloEvent(xevent, &op_metrics);
   return op_metrics;

@@ -318,12 +318,17 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
             ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
       } else {
-        OpMetricsDb device_op_metrics_db =
-            ConvertTpuDeviceTraceXPlaneToOpMetricsDb(*device_trace);
-        HloModuleMap hlo_module_map;
-        ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
-        UpdateOpMetricsDbFromHloModuleMap(device_op_metrics_db, hlo_module_map);
-        op_metrics_db_combiner.Combine(device_op_metrics_db);
+        // TODO(b/397774568): Remove this once the SparseCore OpMetricsDb is
+        // implemented.
+        if (!tsl::profiler::GetSparseCoreId(device_trace->name()).has_value()) {
+          OpMetricsDb device_op_metrics_db =
+              ConvertTpuDeviceTraceXPlaneToOpMetricsDb(*device_trace);
+          HloModuleMap hlo_module_map;
+          ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
+          UpdateOpMetricsDbFromHloModuleMap(device_op_metrics_db,
+                                            hlo_module_map);
+          op_metrics_db_combiner.Combine(device_op_metrics_db);
+        }
       }
     }
     if (options.generate_step_db) {

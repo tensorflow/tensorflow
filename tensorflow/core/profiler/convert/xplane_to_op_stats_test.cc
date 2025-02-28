@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/duty_cycle_tracker.h"
@@ -688,6 +691,121 @@ TEST(ConvertXPlaneToOpStats, MultiCoreChipBusyAndIdleTimeTest) {
   OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
   EXPECT_EQ(op_stats.device_op_metrics_db().idle_time_ps(), 10);
   EXPECT_EQ(op_stats.device_op_metrics_db().busy_time_ps(), 40);
+}
+
+TEST(ConvertXPlaneToOpStats, HandleSparseCoreBusyOpMetrics) {
+  XSpace space;
+  XPlane* tc_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder tc_plane_builder(tc_plane);
+  tc_plane_builder.SetId(0);
+  XLineBuilder tc_step_line = tc_plane_builder.GetOrCreateLine(0);
+  tc_step_line.SetName(tsl::profiler::kStepLineName);
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "step.1", /*offset_ps=*/10,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "step.2", /*offset_ps=*/20,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "step.3", /*offset_ps=*/30,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "step.4", /*offset_ps=*/40,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{4}}});
+  XLineBuilder tc_module_line = tc_plane_builder.GetOrCreateLine(1);
+  tc_module_line.SetName(tsl::profiler::kXlaModuleLineName);
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "module.1", /*offset_ps=*/10,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "module.2", /*offset_ps=*/20,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "module.3", /*offset_ps=*/30,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "module.4", /*offset_ps=*/40,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{4}}});
+  XLineBuilder tc_op_line = tc_plane_builder.GetOrCreateLine(2);
+  tc_op_line.SetName(kXlaOpLineName);
+  auto& program_id_stat = *tc_plane_builder.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kProgramId));
+  auto& symbol_id_stat = *tc_plane_builder.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kSymbolId));
+  XStatsBuilder<XEventMetadata> op1_stats(
+      tc_plane_builder.GetOrCreateEventMetadata("op.1"), &tc_plane_builder);
+  op1_stats.AddStatValue(program_id_stat, 1);
+  op1_stats.AddStatValue(symbol_id_stat, 1);
+  XStatsBuilder<XEventMetadata> op2_stats(
+      tc_plane_builder.GetOrCreateEventMetadata("op.2"), &tc_plane_builder);
+  op2_stats.AddStatValue(program_id_stat, 1);
+  op2_stats.AddStatValue(symbol_id_stat, 2);
+  XStatsBuilder<XEventMetadata> op3_stats(
+      tc_plane_builder.GetOrCreateEventMetadata("op.3"), &tc_plane_builder);
+  op3_stats.AddStatValue(program_id_stat, 1);
+  op3_stats.AddStatValue(symbol_id_stat, 3);
+  XStatsBuilder<XEventMetadata> op4_stats(
+      tc_plane_builder.GetOrCreateEventMetadata("op.4"), &tc_plane_builder);
+  op4_stats.AddStatValue(program_id_stat, 1);
+  op4_stats.AddStatValue(symbol_id_stat, 4);
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "op.1", /*offset_ps=*/15,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "op.2", /*offset_ps=*/25,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "op.3", /*offset_ps=*/35,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "op.4", /*offset_ps=*/45,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{4}}});
+  XPlane* sc_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/1, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder sc_plane_builder(sc_plane);
+  sc_plane_builder.SetId(1);
+  sc_plane_builder.SetName(
+      absl::StrCat(sc_plane->name(), " SparseCore ", sc_plane->id()));
+  XLineBuilder sc_step_line = sc_plane_builder.GetOrCreateLine(0);
+  sc_step_line.SetName(tsl::profiler::kSparseCoreStepLineName);
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "step.1", /*offset_ps=*/10,
+               /*duration_ps=*/10,
+               {{StatType::kStepIdleTimePs, int64_t{5}},
+                {StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "step.2", /*offset_ps=*/20,
+               /*duration_ps=*/10,
+               {{StatType::kStepIdleTimePs, int64_t{5}},
+                {StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "step.3", /*offset_ps=*/30,
+               /*duration_ps=*/10,
+               {{StatType::kStepIdleTimePs, int64_t{5}},
+                {StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "step.4", /*offset_ps=*/40,
+               /*duration_ps=*/10,
+               {{StatType::kStepIdleTimePs, int64_t{5}},
+                {StatType::kGroupId, int64_t{4}}});
+  XLineBuilder sc_module_line = sc_plane_builder.GetOrCreateLine(1);
+  sc_module_line.SetName(kSparseCoreModuleLineName);
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "module.1", /*offset_ps=*/10,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "module.2", /*offset_ps=*/20,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "module.3", /*offset_ps=*/30,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "module.4", /*offset_ps=*/40,
+               /*duration_ps=*/10, {{StatType::kGroupId, int64_t{4}}});
+  XLineBuilder sc_op_line = sc_plane_builder.GetOrCreateLine(2);
+  sc_op_line.SetName(kSparseCoreOpLineName);
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "scs op.1", /*offset_ps=*/15,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{1}}});
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "scs op.2", /*offset_ps=*/25,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{2}}});
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "scs op.3", /*offset_ps=*/35,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{3}}});
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "scs op.4", /*offset_ps=*/45,
+               /*duration_ps=*/5, {{StatType::kGroupId, int64_t{4}}});
+  OpStats op_stats = ConvertXSpaceToOpStats(
+      space,
+      OpStatsOptions{.generate_op_metrics_db = true, .generate_step_db = true});
+  EXPECT_EQ(op_stats.device_op_metrics_db().total_time_ps(), 40);
+  EXPECT_EQ(op_stats.device_op_metrics_db().total_op_time_ps(), 20);
+  EXPECT_EQ(op_stats.step_db().step_sequence_size(), 4);
+  EXPECT_EQ(op_stats.hlo_metrics_db_complete_steps_only().total_time_ps(), 40);
+  EXPECT_EQ(op_stats.hlo_metrics_db_complete_steps_only().total_op_time_ps(),
+            20);
 }
 
 }  // namespace
