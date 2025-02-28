@@ -10,8 +10,7 @@
 
 // CHECK-LABEL: test_conv2d
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<16xf32>}>
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{value = dense<[3, 0, 1, 2]> : tensor<4xi32>}>
-// CHECK-DAG: %[[VAR2:.*]] = tosa.transpose %arg1, %[[VAR1]]
+// CHECK-DAG: %[[VAR2:.*]] = tosa.transpose %arg1 {perms = array<i32: 3, 0, 1, 2>}
 // CHECK-DAG: %[[VAR3:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<1xf32>}>
 // CHECK: %[[VAR4:.*]] = tosa.conv2d %arg0, %[[VAR2]], %[[VAR0]], %[[VAR3]], %[[VAR3]] {acc_type = f32, dilation = array<i64: 1, 1>, pad = array<i64: 0, 1, 0, 1>, stride = array<i64: 1, 1>}
 func.func @test_conv2d(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<2x2x8x16xf32>) -> tensor<1x32x32x16xf32> {
@@ -53,9 +52,8 @@ func.func @test_transpose_conv2d(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<1x1
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<2x4x128x128x8xf32>
 // CHECK-SAME: %[[VAL_1:.*]]: tensor<2x3x3x2x4xf32>
 // CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<4xf32>}>
-// CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() <{value = dense<[4, 0, 1, 2, 3]> : tensor<5xi32>}>
 // CHECK-DAG: %[[VAL_4:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<1xf32>}>
-// CHECK: %[[VAL_5:.*]] = tosa.transpose %[[VAL_1]], %[[VAL_3]]
+// CHECK: %[[VAL_5:.*]] = tosa.transpose %[[VAL_1]] {perms = array<i32: 4, 0, 1, 2, 3>}
 // CHECK: %[[VAL_6:.*]] = tosa.conv3d %[[VAL_0]], %[[VAL_5]], %[[VAL_2]], %[[VAL_4]], %[[VAL_4]] {acc_type = f32, dilation = array<i64: 1, 1, 1>, pad = array<i64: 0, 1, 0, 1, 0, 1>, stride = array<i64: 1, 2, 2>}
 func.func @test_conv3d(%arg0: tensor<2x4x128x128x8xf32>, %arg1: tensor<2x3x3x2x4xf32>) -> tensor<2x4x64x64x4xf32> {
   %0 = "tf.Conv3D"(%arg0, %arg1) {data_format = "NDHWC", device = "", dilations = [1, 1, 1, 1, 1], padding = "SAME", strides = [1, 1, 2, 2, 1]} : (tensor<2x4x128x128x8xf32>, tensor<2x3x3x2x4xf32>) -> tensor<2x4x64x64x4xf32>
@@ -68,9 +66,8 @@ func.func @test_conv3d(%arg0: tensor<2x4x128x128x8xf32>, %arg1: tensor<2x3x3x2x4
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<3x32x16x16x5xf32>
 // CHECK-SAME: %[[VAL_1:.*]]: tensor<2x3x3x5x10xf32>
 // CHECK-SAME: %[[VAL_2:.*]]: tensor<10xf32>) -> tensor<3x32x16x16x10xf32>
-// CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() <{value = dense<[4, 0, 1, 2, 3]> : tensor<5xi32>}>
 // CHECK-DAG: %[[VAL_4:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<1xf32>}>
-// CHECK: %[[VAL_5:.*]] = tosa.transpose %[[VAL_1]], %[[VAL_3]]
+// CHECK: %[[VAL_5:.*]] = tosa.transpose %[[VAL_1]] {perms = array<i32: 4, 0, 1, 2, 3>}
 // CHECK: %[[VAL_6:.*]] = tosa.conv3d %[[VAL_0]], %[[VAL_5]], %[[VAL_2]], %[[VAL_4]], %[[VAL_4]] {acc_type = f32, dilation = array<i64: 1, 1, 1>, pad = array<i64: 0, 1, 1, 1, 1, 1>, stride = array<i64: 1, 1, 1>}
 func.func @test_conv3d_bias(%arg0: tensor<3x32x16x16x5xf32>, %arg1: tensor<2x3x3x5x10xf32>, %bias: tensor<10xf32>) -> tensor<3x32x16x16x10xf32> {
   %0 = "tf.Conv3D"(%arg0, %arg1) {data_format = "NDHWC", device = "", dilations = [1, 1, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<3x32x16x16x5xf32>, tensor<2x3x3x5x10xf32>) -> tensor<3x32x16x16x10xf32>
@@ -313,14 +310,10 @@ func.func @test_reduce_sum(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
 
 // CHECK-LABEL: test_reduce_sum_nonzero_axis
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<10x20x30x40x50xf32>
-// CHECK-DAG: %[[VAL_1:.*]] = "tosa.const"() <{value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
-// CHECK-DAG: %[[VAL_11:.*]] = tosa.const_shape  {value = dense<[300000, 40]> : tensor<2xindex>}
-// CHECK-DAG: %[[VAL_12:.*]] = tosa.const_shape  {value = dense<[10, 20, 30, 50]> : tensor<4xindex>}
-// CHECK: %[[VAL_2:.*]] = tosa.transpose %[[VAL_0]], %[[VAL_1]] : (tensor<10x20x30x40x50xf32>, tensor<5xi32>) -> tensor<10x20x30x50x40xf32>
-// CHECK: %[[VAL_3:.*]] = tosa.reshape %[[VAL_2]], %[[VAL_11]] : (tensor<10x20x30x50x40xf32>, !tosa.shape<2>) -> tensor<300000x40xf32>
-// CHECK: %[[VAL_4:.*]] = tosa.reduce_sum %[[VAL_3]] {axis = 1 : i32} : (tensor<300000x40xf32>) -> tensor<300000x1xf32>
-// CHECK: %[[VAL_5:.*]] = tosa.reshape %[[VAL_4]], %[[VAL_12]] : (tensor<300000x1xf32>, !tosa.shape<4>) -> tensor<10x20x30x50xf32>
-// CHECK: return %[[VAL_5]] : tensor<10x20x30x50xf32>
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape {value = dense<[10, 20, 30, 50]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.reduce_sum %[[VAL_0]] {axis = 3 : i32} : (tensor<10x20x30x40x50xf32>) -> tensor<10x20x30x1x50xf32>
+// CHECK-DAG: %[[VAL_3:.*]] = tosa.reshape %[[VAL_2]], %[[VAL_1]] : (tensor<10x20x30x1x50xf32>, !tosa.shape<4>) -> tensor<10x20x30x50xf32>
+// CHECK: return %[[VAL_3]] : tensor<10x20x30x50xf32>
 func.func @test_reduce_sum_nonzero_axis(%arg0: tensor<10x20x30x40x50xf32> {tf._user_specified_name = "inp_list"}) -> tensor<10x20x30x50xf32> {
   %cst = "tf.Const"() {device = "", value = dense<3> : tensor<i32>} : () -> tensor<i32>
   %0 = "tf.Sum"(%arg0, %cst) {device = "", keep_dims = false} : (tensor<10x20x30x40x50xf32>, tensor<i32>) -> tensor<10x20x30x50xf32>
@@ -579,8 +572,7 @@ func.func @test_reshape(%arg0: tensor<13x21x3xf32>) -> tensor<1x819xf32> {
 // -----
 
 // CHECK-LABEL: test_transpose
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[2, 0, 1]> : tensor<3xi32>}>
-// CHECK: %[[VAR1:.*]] = tosa.transpose %arg0, %[[VAR0]]
+// CHECK: %[[VAR1:.*]] = tosa.transpose %arg0 {perms = array<i32: 2, 0, 1>}
 func.func @test_transpose(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x21xf32> {
   %2 = "tf.Const"()  {value = dense<[2, 0, 1]> : tensor<3xi32>}  : () -> tensor<3xi32>
   %3 = "tf.Transpose"(%arg0, %2)   : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13x21xf32>
@@ -886,15 +878,14 @@ func.func @test_reverse(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_space_to_batch
-// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<[26, 11, 3]> : tensor<3xindex>}
-// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() <{value = dense<[2, 0, 1, 3]> : tensor<4xi32>}>
-// CHECK-DAG: %[[VAL_3:.*]] = tosa.const_shape  {value = dense<[13, 11, 2, 3]> : tensor<4xindex>}
-// CHECK-DAG: %[[VAL_4:.*]] = tosa.const_shape  {value = dense<[0, 0, 0, 1, 0, 0]> : tensor<6xindex>}
-// CHECK-DAG: %[[VAL_5:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<f32>}>
-// CHECK: %[[VAL_6:.*]] = tosa.pad %[[VAL_0]], %[[VAL_4]], %[[VAL_5]]
-// CHECK: %[[VAL_7:.*]] = tosa.reshape %[[VAL_6]], %[[VAL_3]]
-// CHECK: %[[VAL_8:.*]] = tosa.transpose %[[VAL_7]], %[[VAL_2]]
-// CHECK: %[[VAL_9:.*]] = tosa.reshape %[[VAL_8]], %[[VAL_1]]
+// CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<[0, 0, 0, 1, 0, 0]> : tensor<6xindex>} : () -> !tosa.shape<6>
+// CHECK-DAG: %[[PVAL:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<f32>}>
+// CHECK-DAG: %[[VAR2:.*]] = tosa.pad %arg0, %[[VAR0]], %[[PVAL]]
+// CHECK-DAG: %[[VAR13:.*]] = tosa.const_shape {value = dense<[13, 11, 2, 3]> : tensor<4xindex>}
+// CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]], %[[VAR13]]
+// CHECK-DAG: %[[VAR4:.*]] = tosa.transpose %[[VAR3]] {perms = array<i32: 2, 0, 1, 3>}
+// CHECK-DAG: %[[VAR14:.*]] = tosa.const_shape {value = dense<[26, 11, 3]> : tensor<3xindex>}
+// CHECK: %[[VAR5:.*]] = tosa.reshape %[[VAR4]], %[[VAR14]]
 func.func @test_space_to_batch(%arg0: tensor<13x21x3xf32>) -> tensor<26x11x3xf32> {
   %2 = "tf.Const"()  {value = dense<2> : tensor<1xi32>}  : () -> tensor<1xi32>
   %3 = "tf.Const"()  {value = dense<[[0, 1]]> : tensor<1x2xi32>}  : () -> tensor<1x2xi32>
@@ -905,14 +896,13 @@ func.func @test_space_to_batch(%arg0: tensor<13x21x3xf32>) -> tensor<26x11x3xf32
 // -----
 
 // CHECK-LABEL: test_batch_to_space
-// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<[2, 64, 64, 1]> : tensor<4xindex>}
-// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() <{value = dense<[2, 3, 0, 4, 1, 5]> : tensor<6xi32>}>
-// CHECK-DAG: %[[VAL_3:.*]] = tosa.const_shape  {value = dense<[2, 2, 2, 32, 32, 1]> : tensor<6xindex>}
-// CHECK-DAG: %[[VAL_4:.*]] = "tosa.const"() <{value = dense<[3, 1, 2, 0]> : tensor<4xi32>}>
-// CHECK: %[[VAL_5:.*]] = tosa.transpose %[[VAL_0]], %[[VAL_4]]
-// CHECK: %[[VAL_6:.*]] = tosa.reshape %[[VAL_5]], %[[VAL_3]]
-// CHECK: %[[VAL_7:.*]] = tosa.transpose %[[VAL_6]], %[[VAL_2]]
-// CHECK: %[[VAL_8:.*]] = tosa.reshape %[[VAL_7]], %[[VAL_1]]
+// CHECK-DAG: %[[VAR2:.*]] = tosa.transpose %arg0 {perms = array<i32: 3, 1, 2, 0>}
+// CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape {value = dense<[2, 2, 2, 32, 32, 1]> : tensor<6xindex>}
+// CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]], %[[VAR10]]
+// CHECK-DAG: %[[VAR4:.*]] = tosa.transpose %[[VAR3]] {perms = array<i32: 2, 3, 0, 4, 1, 5>}
+// CHECK-DAG: %[[VAR12:.*]] = tosa.const_shape {value = dense<[2, 64, 64, 1]> : tensor<4xindex>}
+// CHECK-DAG: %[[VAR5:.*]] = tosa.reshape %[[VAR4]], %[[VAR12]]
+// CHECK: return %[[VAR5]]
 func.func @test_batch_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<2x64x64x1xf32> {
   %2 = "tf.Const"()  {value = dense<2> : tensor<2xi32>}  : () -> tensor<2xi32>
   %3 = "tf.Const"()  {value = dense<0> : tensor<2x2xi32>}  : () -> tensor<2x2xi32>
@@ -925,12 +915,11 @@ func.func @test_batch_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<2x64x64x1
 // -----
 
 // CHECK-LABEL: test_space_to_depth
-// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<[1, 16, 16, 32]> : tensor<4xindex>}
-// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() <{value = dense<[0, 1, 3, 2, 4, 5]> : tensor<6xi32>}>
-// CHECK-DAG: %[[VAL_3:.*]] = tosa.const_shape  {value = dense<[1, 16, 2, 16, 2, 8]> : tensor<6xindex>}
-// CHECK: %[[VAL_4:.*]] = tosa.reshape %arg0, %[[VAL_3]]
-// CHECK: %[[VAL_5:.*]] = tosa.transpose %[[VAL_4]], %[[VAL_2]]
-// CHECK: %[[VAL_6:.*]] = tosa.reshape %[[VAL_5]], %[[VAL_1]]
+// CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape {value = dense<[1, 16, 2, 16, 2, 8]> : tensor<6xindex>}
+// CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg0, %[[VAR10]]
+// CHECK-DAG: %[[VAR2:.*]] = tosa.transpose %[[VAR1]] {perms = array<i32: 0, 1, 3, 2, 4, 5>}
+// CHECK-DAG: %[[VAR12:.*]] = tosa.const_shape {value = dense<[1, 16, 16, 32]> : tensor<4xindex>}
+// CHECK: %[[VAR3:.*]] = tosa.reshape %[[VAR2]], %[[VAR12]]
 func.func @test_space_to_depth(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x16x16x32xf32> {
   %2 = "tf.SpaceToDepth"(%arg0)  {block_size = 2 : i64, data_format = "NHWC"}  : (tensor<1x32x32x8xf32>) -> tensor<1x16x16x32xf32>
   func.return %2 : tensor<1x16x16x32xf32>
@@ -939,12 +928,11 @@ func.func @test_space_to_depth(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x16x16x3
 // -----
 
 // CHECK-LABEL: test_depth_to_space
-// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<[1, 64, 64, 2]> : tensor<4xindex>}
-// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() <{value = dense<[0, 1, 3, 2, 4, 5]> : tensor<6xi32>}>
-// CHECK-DAG: %[[VAL_3:.*]] = tosa.const_shape  {value = dense<[1, 32, 32, 2, 2, 2]> : tensor<6xindex>}
-// CHECK: %[[VAL_4:.*]] = tosa.reshape %arg0, %[[VAL_3]]
-// CHECK: %[[VAL_5:.*]] = tosa.transpose %[[VAL_4]], %[[VAL_2]]
-// CHECK: %[[VAL_6:.*]] = tosa.reshape %[[VAL_5]], %[[VAL_1]]
+// CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape {value = dense<[1, 32, 32, 2, 2, 2]> : tensor<6xindex>}
+// CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg0, %[[VAR10]]
+// CHECK-DAG: %[[VAR2:.*]] = tosa.transpose %[[VAR1]] {perms = array<i32: 0, 1, 3, 2, 4, 5>}
+// CHECK-DAG: %[[VAR12:.*]] = tosa.const_shape {value = dense<[1, 64, 64, 2]> : tensor<4xindex>}
+// CHECK: %[[VAR3:.*]] = tosa.reshape %[[VAR2]], %[[VAR12]]
 func.func @test_depth_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x64x64x2xf32> {
   %2 = "tf.DepthToSpace"(%arg0)  {block_size = 2 : i64, data_format = "NHWC"}  : (tensor<1x32x32x8xf32>) -> tensor<1x64x64x2xf32>
   func.return %2 : tensor<1x64x64x2xf32>

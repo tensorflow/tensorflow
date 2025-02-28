@@ -81,6 +81,13 @@ static int64_t multiply_dims(llvm::ArrayRef<int64_t> dims, int64_t res = 1) {
   return res;
 }
 
+static int64_t divide_dims(int64_t a, int64_t b) {
+  if (a == ShapedType::kDynamic || b == ShapedType::kDynamic) {
+    return ShapedType::kDynamic;
+  }
+  return a / b;
+}
+
 static OpFoldResult multiplyDims(ImplicitLocOpBuilder& builder,
                                  OpFoldResult lhs, OpFoldResult rhs) {
   auto val_x = getValueOrCreateConstantIndexOp(builder, builder.getLoc(), lhs);
@@ -392,14 +399,9 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // If axis is equal to input tensor rank, then we need extra transpose
   // [N, A, B, C] to [A, B, C, N]
   if (axis == input_tensor_rank) {
-    std::optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
-        rewriter, op, perm, {static_cast<int64_t>(perm.size())});
-
-    if (!a3_transpose_perm) return std::nullopt;
-
     return CreateOpAndInfer<tosa::TransposeOp>(
                rewriter, op->getLoc(), result_type, a2_reshape_op.getResult(),
-               a3_transpose_perm.value())
+               rewriter.getDenseI32ArrayAttr(perm))
         .getResult();
   }
 
@@ -439,11 +441,6 @@ std::optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
       perm.push_back(i);
     }
 
-    std::optional<Value> a1_transpose_perm = getConstTensor<int32_t>(
-        rewriter, op, perm, {static_cast<int64_t>(perm.size())});
-
-    if (!a1_transpose_perm) return std::nullopt;
-
     for (int i = 0; i < input_rank; i++) {
       a1_transpose_shape[i] = input_shape[perm[i]];
     }
@@ -452,7 +449,7 @@ std::optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
         rewriter, op->getLoc(),
         tensorflow::GetTypeFromTFTensorShape(a1_transpose_shape,
                                              input_type.getElementType()),
-        input_value, a1_transpose_perm.value());
+        input_value, rewriter.getDenseI32ArrayAttr(perm));
 
     transposed_input_value = a1_transpose_op.getResult();
   } else {
@@ -1055,16 +1052,11 @@ std::optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     a3_transpose_shape[i] = a2_shape[a3_perm[i]];
   }
 
-  std::optional<Value> a3_transpose_const = getConstTensor<int32_t>(
-      rewriter, op, a3_perm, {static_cast<int64_t>(a3_perm.size())});
-
-  if (!a3_transpose_const) return std::nullopt;
-
   auto a3_transpose_a2_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a3_transpose_shape,
                                            result_type.getElementType()),
-      a2_reshape_a1_op.getResult(), a3_transpose_const.value());
+      a2_reshape_a1_op.getResult(), rewriter.getDenseI32ArrayAttr(a3_perm));
 
   // 4. Reshape the transposed tensor to flatten block_shape
   // into the batch dimension with the following shape:
@@ -1285,16 +1277,11 @@ std::optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
     a2_transpose_shape[i] = a1_shape[a2_perm[i]];
   }
 
-  std::optional<Value> a2_transpose_perm = getConstTensor<int32_t>(
-      rewriter, op, a2_perm, {static_cast<int64_t>(a2_perm.size())});
-
-  if (!a2_transpose_perm) return std::nullopt;
-
   auto a2_transpose_a1_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a2_transpose_shape,
                                            result_type.getElementType()),
-      a1_reshape_input_op.getResult(), a2_transpose_perm.value());
+      a1_reshape_input_op.getResult(), rewriter.getDenseI32ArrayAttr(a2_perm));
 
   // Step 3. Reshape to:
   // [ batch / prod(block_shape) ],
@@ -2123,14 +2110,20 @@ std::optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
       rewriter, op->getLoc(), a_reshape_output_type, input_value,
       a_reshape_dims_value);
 
-  std::optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
-      rewriter, op, /*vec=*/{0, 1, 3, 2, 4, 5}, /*shape=*/{6});
-
-  if (!a3_transpose_perm) return std::nullopt;
+  SmallVector<int64_t, 6> a2_transpose_dims;
+  a2_transpose_dims.push_back(input_shape[0]);
+  a2_transpose_dims.push_back(divide_dims(input_shape[1], block_size[0]));
+  a2_transpose_dims.push_back(divide_dims(input_shape[2], block_size[1]));
+  a2_transpose_dims.push_back(block_size[0]);
+  a2_transpose_dims.push_back(block_size[1]);
+  a2_transpose_dims.push_back(input_shape[3]);
 
   auto a3_transpose_a2_op = CreateOpAndInfer<tosa::TransposeOp>(
-      rewriter, op->getLoc(), a_reshape_output_type,
-      a2_reshape_a_op.getResult(), a3_transpose_perm.value());
+      rewriter, op->getLoc(),
+      tensorflow::GetTypeFromTFTensorShape(a2_transpose_dims,
+                                           output_type.getElementType()),
+      a2_reshape_a_op.getResult(),
+      rewriter.getDenseI32ArrayAttr({0, 1, 3, 2, 4, 5}));
 
   SmallVector<int64_t, 4> a3_reshape_dims;
   a3_reshape_dims.push_back(input_shape[0]);
@@ -2220,14 +2213,10 @@ std::optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
       rewriter, op->getLoc(), a_reshape_output_type, input_value,
       a_reshape_dims_value);
 
-  std::optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
-      rewriter, op, /*vec=*/{0, 1, 3, 2, 4, 5}, /*shape=*/{6});
-
-  if (!a3_transpose_perm) return std::nullopt;
-
   auto a3_transpose_a2_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(), a_reshape_output_type,
-      a2_reshape_a_op.getResult(), a3_transpose_perm.value());
+      a2_reshape_a_op.getResult(),
+      rewriter.getDenseI32ArrayAttr({0, 1, 3, 2, 4, 5}));
 
   SmallVector<int64_t, 4> a3_reshape_dims;
   a3_reshape_dims.push_back(input_shape[0]);
@@ -2911,56 +2900,6 @@ std::optional<Value> convertFusedActivation(PatternRewriter& rewriter,
   return std::nullopt;
 }
 
-template <typename T>
-static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
-                                    Value input, Type input_etype,
-                                    Type reduce_etype,
-                                    ArrayRef<int64_t> input_shape,
-                                    ArrayRef<int64_t> axes) {
-  Location loc = op->getLoc();
-  int64_t input_rank = input_shape.size();
-  llvm::SmallVector<int32_t> perms;
-  llvm::SmallVector<int64_t> reshape_shape;
-  perms.reserve(input_rank);
-  reshape_shape.resize(2, 1);
-
-  // First insert all non-reduction axes.
-  for (int i = 0; i < input_rank; i++) {
-    auto it = std::find(axes.begin(), axes.end(), i);
-    if (it == axes.end()) {
-      perms.push_back(i);
-      reshape_shape[0] *= input_shape[i];
-    }
-  }
-
-  // Then insert all reduction matrices.
-  for (auto axis : axes) {
-    perms.push_back(axis);
-    reshape_shape[1] *= input_shape[axis];
-  }
-
-  Value perms_value =
-      getConstTensor<int32_t>(rewriter, op, perms,
-                              {static_cast<int64_t>(perms.size())})
-          .value();
-
-  auto transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
-      rewriter, loc, UnrankedTensorType::get(input_etype), input, perms_value);
-
-  auto reshape_shape_value =
-      getTosaConstShape(rewriter, op->getLoc(),
-                    tensorflow::ConvertMlirShapeToTF(reshape_shape));
-  auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
-      rewriter, loc,
-      tensorflow::GetTypeFromTFTensorShape(reshape_shape, input_etype),
-      transpose_op,
-      reshape_shape_value);
-
-  return CreateOpAndInfer<T>(rewriter, loc,
-                             UnrankedTensorType::get(reduce_etype), reshape_op,
-                             rewriter.getI32IntegerAttr(1));
-}
-
 // Common function for lowering reduce operations to TOSA ops.
 // Nan propagation mode is only applied to reduce_max and reduce_min.
 template <typename T>
@@ -3001,46 +2940,35 @@ std::optional<Value> convertReduceOpCommon(
     axes.push_back(axis_val);
   }
 
-  // Reduction operations are limited to 4D tensors, restructure to obey this
-  // restriction. We transpose all reduction axis to the RHS, then reshape
-  // such that all reduction and non-reduction values are grouped. This forms a
-  // 2D matrix in all cases.
   Value val = input_value;
-  if (input_rank > 4) {
-    val = convertGenericReduceOp<T>(rewriter, op, val,
-                                    input_type.getElementType(),
-                                    reduce_element_type, input_shape, axes);
-  } else {
-    // Reduce along each axis
-    SmallVector<int64_t> shape_vec(input_shape.begin(), input_shape.end());
+  SmallVector<int64_t> shape_vec(input_shape.begin(), input_shape.end());
 
-    if (is_quantized) {
-      val = buildRescaleToInt32(rewriter, op, val, input_scale_multiplier,
-                                input_scale_shift, input_zp);
-    }
+  if (is_quantized) {
+    val = buildRescaleToInt32(rewriter, op, val, input_scale_multiplier,
+                              input_scale_shift, input_zp);
+  }
 
-    for (auto axis_val : axes) {
-      auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
+  for (auto axis_val : axes) {
+    auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
 
-      shape_vec[axis_val] = 1;
-      RankedTensorType reduce_type =
-          tensorflow::GetTypeFromTFTensorShape(shape_vec, reduce_element_type);
+    shape_vec[axis_val] = 1;
+    RankedTensorType reduce_type =
+        tensorflow::GetTypeFromTFTensorShape(shape_vec, reduce_element_type);
 
-      if constexpr (std::is_same_v<tosa::ReduceMaxOp, T> ||
-                    std::is_same_v<tosa::ReduceMinOp, T>) {
-        if (nan_mode != "PROPAGATE" && nan_mode != "IGNORE") {
-          (void)rewriter.notifyMatchFailure(
-              op, "invalid NaN mode: must be either 'PROPAGATE' or 'IGNORE'");
-          return std::nullopt;
-        }
-        val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
-                                  axis_attr, rewriter.getStringAttr(nan_mode))
-                  .getResult();
-      } else {
-        val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
-                                  axis_attr)
-                  .getResult();
+    if constexpr (std::is_same_v<tosa::ReduceMaxOp, T> ||
+                  std::is_same_v<tosa::ReduceMinOp, T>) {
+      if (nan_mode != "PROPAGATE" && nan_mode != "IGNORE") {
+        (void)rewriter.notifyMatchFailure(
+            op, "invalid NaN mode: must be either 'PROPAGATE' or 'IGNORE'");
+        return std::nullopt;
       }
+      val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
+                                axis_attr, rewriter.getStringAttr(nan_mode))
+                .getResult();
+    } else {
+      val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
+                                axis_attr)
+                .getResult();
     }
   }
 
@@ -3887,97 +3815,6 @@ std::optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
   return result;
 }
 
-std::optional<Value> convertTFConv2DCommon(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input, Value filter, Value bias, ArrayAttr strides_attr,
-    ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
-    StringRef padding_ref, StringRef data_format_ref) {
-  RankedTensorType input_type = dyn_cast<RankedTensorType>(input.getType());
-  RankedTensorType filter_type = dyn_cast<RankedTensorType>(filter.getType());
-  // Not a ranked tensor output
-  if (!input_type) return std::nullopt;
-  if (!filter_type) return std::nullopt;
-
-  // Transpose [H, W, I, O] to [O, H, W, I]
-  auto filter_shape = filter_type.getShape();
-  SmallVector<int64_t, 4> a1_transpose_dims;
-  a1_transpose_dims.push_back(filter_shape[3]);
-  a1_transpose_dims.push_back(filter_shape[0]);
-  a1_transpose_dims.push_back(filter_shape[1]);
-  a1_transpose_dims.push_back(filter_shape[2]);
-  std::optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
-      rewriter, op, /*vec=*/{3, 0, 1, 2}, /*shape=*/{4});
-
-  if (!a1_filter_transpose_perm) return std::nullopt;
-
-  auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
-      rewriter, op->getLoc(),
-      tensorflow::GetTypeFromTFTensorShape(a1_transpose_dims,
-                                           filter_type.getElementType()),
-      filter, a1_filter_transpose_perm.value());
-
-  // Only support NHWC now.
-  if (data_format_ref.str() != "NHWC") {
-    op->emitWarning("convertTDConv2DCommon only supports NHWC!");
-    return std::nullopt;
-  }
-
-  DenseI64ArrayAttr stride;
-  DenseI64ArrayAttr dilation;
-  DenseI64ArrayAttr pad;
-  {
-    if (!strides_attr) {
-      stride = rewriter.getDenseI64ArrayAttr({1, 1});
-    } else {
-      // Note: hardcoded to NHWC for now
-      int64_t stride_h = mlir::cast<IntegerAttr>(strides_attr[1]).getInt();
-      int64_t stride_w = mlir::cast<IntegerAttr>(strides_attr[2]).getInt();
-      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
-    }
-  }
-  {
-    if (!dilations_attr) {
-      dilation = rewriter.getDenseI64ArrayAttr({1, 1});
-    } else {
-      // Note: hardcoded to NHWC for now
-      int64_t dilation_h = mlir::cast<IntegerAttr>(dilations_attr[1]).getInt();
-      int64_t dilation_w = mlir::cast<IntegerAttr>(dilations_attr[2]).getInt();
-      dilation = rewriter.getDenseI64ArrayAttr({dilation_h, dilation_w});
-    }
-  }
-  {
-    tensorflow::Padding tf_pad;
-    if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
-      op->emitWarning("Could not get padding data from padding string term!");
-      return std::nullopt;
-    }
-
-    tensorflow::TensorFormat data_format_tf;
-    if (!FormatFromString(data_format_ref.str(), &data_format_tf))
-      return std::nullopt;
-
-    if (tf_pad == tensorflow::Padding::EXPLICIT) {
-      pad = getPaddingValuesFromExplicitPadAttr(explicit_padding_attr,
-                                                data_format_tf, rewriter);
-    } else {
-      if (!getPaddingValuesFromPadType(tf_pad, data_format_tf,
-                                       0,  // tensorflow::FORMAT_HWIO
-                                       input_type, filter_type, stride,
-                                       dilation, rewriter, pad))
-        return std::nullopt;
-    }
-  }
-
-  auto acc_type =
-      getConvAccTypeAttr(rewriter,
-                         /* input_etype = */ input_type.getElementType(),
-                         /* output_etype = */ output_type.getElementType());
-  return CreateOpAndInfer<tosa::Conv2DOp>(rewriter, op->getLoc(), output_type,
-                                          input,
-                                          a1_filter_transpose_op.getResult(),
-                                          bias, pad, stride, dilation, acc_type)
-      .getResult();
-}
 
 std::optional<Value> convertConv3DCommon(
     PatternRewriter& rewriter, Operation* op, ShapedType output_type,
@@ -3999,13 +3836,10 @@ std::optional<Value> convertConv3DCommon(
   a1_transpose_dims.push_back(filter_shape[1]);
   a1_transpose_dims.push_back(filter_shape[2]);
   a1_transpose_dims.push_back(filter_shape[3]);
-  std::optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
-      rewriter, op, /*vec=*/{4, 0, 1, 2, 3}, /*shape=*/{5});
-  if (!a1_filter_transpose_perm) return std::nullopt;
   auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(),
       RankedTensorType::get(a1_transpose_dims, filter_type.getElementType()),
-      filter, a1_filter_transpose_perm.value());
+      filter, rewriter.getDenseI32ArrayAttr({4, 0, 1, 2, 3}));
   return CreateOpAndInfer<tosa::Conv3DOp>(
              rewriter, op->getLoc(), output_type, input,
              a1_filter_transpose_op.getResult(), bias, pads, strides, dilations,
@@ -4013,72 +3847,6 @@ std::optional<Value> convertConv3DCommon(
       .getResult();
 }
 
-std::optional<Value> convertTFConv3DCommon(
-    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
-    Value input, Value filter, Value bias, ArrayAttr strides_attr,
-    ArrayAttr dilations_attr, StringRef padding_ref,
-    StringRef data_format_ref) {
-  DenseI64ArrayAttr strides;
-  if (!strides_attr) {
-    // Defaults to [1, 1, 1].
-    strides = rewriter.getDenseI64ArrayAttr({1, 1, 1});
-  } else {
-    int64_t stride_d = strides_attr[1].cast<IntegerAttr>().getInt();
-    int64_t stride_h = strides_attr[2].cast<IntegerAttr>().getInt();
-    int64_t stride_w = strides_attr[3].cast<IntegerAttr>().getInt();
-    strides = rewriter.getDenseI64ArrayAttr({stride_d, stride_h, stride_w});
-  }
-
-  DenseI64ArrayAttr dilations;
-  if (!dilations_attr) {
-    // Defaults to [1, 1, 1].
-    dilations = rewriter.getDenseI64ArrayAttr({1, 1, 1});
-  } else {
-    int64_t dilation_d = dilations_attr[1].cast<IntegerAttr>().getInt();
-    int64_t dilation_h = dilations_attr[2].cast<IntegerAttr>().getInt();
-    int64_t dilation_w = dilations_attr[3].cast<IntegerAttr>().getInt();
-    dilations =
-        rewriter.getDenseI64ArrayAttr({dilation_d, dilation_h, dilation_w});
-  }
-
-  RankedTensorType input_type = input.getType().cast<RankedTensorType>();
-  DenseI64ArrayAttr pads;
-  {
-    RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
-
-    tensorflow::TensorFormat data_format_tf;
-    if (!FormatFromString(data_format_ref, &data_format_tf)) {
-      return std::nullopt;
-    }
-
-    tensorflow::Padding tf_pad;
-    if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
-      (void)rewriter.notifyMatchFailure(
-          op, "could not get padding data from padding string term");
-      return std::nullopt;
-    }
-
-    if (tf_pad == tensorflow::Padding::EXPLICIT) {
-      (void)rewriter.notifyMatchFailure(op, "don't have explicit padding");
-      return std::nullopt;
-    }
-
-    if (!getPaddingValuesFromPadType(tf_pad, data_format_tf, 0, input_type,
-                                     filter_type, strides, dilations, rewriter,
-                                     pads)) {
-      return std::nullopt;
-    }
-  }
-
-  auto acc_type =
-      getConvAccTypeAttr(rewriter,
-                         /* input_etype = */ input_type.getElementType(),
-                         /* output_etype = */ output_type.getElementType());
-
-  return convertConv3DCommon(rewriter, op, output_type, input, filter, bias,
-                             pads, strides, dilations, acc_type,
-                             data_format_ref);
-}
 
 // Lowers Gather operators to a sequence of TOSA ops.
 std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
@@ -4306,22 +4074,11 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   SmallVector<OpFoldResult> tosa_indices_shape = {N, W};
   SmallVector<OpFoldResult> tosa_gather_result_shape = {N, W, C};
 
-  std::optional<Value> params_transpose_perm_val = getConstTensor<int32_t>(
-      rewriter, op, params_transpose_perm,
-      {static_cast<int64_t>(params_transpose_perm.size())});
-
-  std::optional<Value> result_transpose_perm_val = getConstTensor<int32_t>(
-      rewriter, op, result_transpose_perm,
-      {static_cast<int64_t>(result_transpose_perm.size())});
-
-  if (!params_transpose_perm_val || !result_transpose_perm_val)
-    return std::nullopt;
-
   auto params_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
       builder,
       tensorflow::GetTypeFromTFTensorShape(params_transpose_shape,
                                            params_type.getElementType()),
-      params_value, params_transpose_perm_val.value());
+      params_value, rewriter.getDenseI32ArrayAttr(params_transpose_perm));
 
   Value tosa_values_reshape_op =
       buildReshape(builder, params_transpose_op, {N, K, C});
@@ -4340,9 +4097,9 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   Value tosa_result_reshape_op =
       buildReshape(builder, tosa_gather_op, result_reshape_shape);
 
-  return CreateOpAndInfer<tosa::TransposeOp>(builder, result_type,
-                                             tosa_result_reshape_op,
-                                             result_transpose_perm_val.value())
+  return CreateOpAndInfer<tosa::TransposeOp>(
+             builder, result_type, tosa_result_reshape_op,
+             rewriter.getDenseI32ArrayAttr(result_transpose_perm))
       .getResult();
 }
 
@@ -4674,16 +4431,11 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
       shape_value);
 
   // Transposed to [LeftDims, K, RightDims].
-  std::optional<Value> perm_const =
-      getConstTensor<int32_t>(rewriter, op, /*vec=*/{0, 2, 1}, /*shape=*/{3});
-
-  if (!perm_const) return std::nullopt;
-
   auto op8_transpose_op7 = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape({left_dim, K, right_dim},
                                            result_type.getElementType()),
-      op7_reshape_op6.getResult(), perm_const.value());
+      op7_reshape_op6.getResult(), rewriter.getDenseI32ArrayAttr({0, 2, 1}));
 
   // Reshaped to result.shape.
   auto result_shape_value =
