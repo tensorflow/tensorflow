@@ -115,7 +115,7 @@ bool HasFastFP16Support(const DeviceProperties& props) {
   return GetDeviceGPUArch(props) >= kMinGPUArch;
 #elif TENSORFLOW_USE_ROCM
   absl::flat_hash_set<std::string> FP16SupportedDevices = {
-      {"gfx906"}, {"gfx908"}, {"gfx90a"}, {"gfx910"}, {"gfx940"}, {"gfx941"}, 
+      {"gfx906"}, {"gfx908"}, {"gfx90a"}, {"gfx910"}, 
       {"gfx942"}, {"gfx1010"}, {"gfx1012"}, {"gfx1030"},
       {"gfx1100"}, {"gfx1101"}, {"gfx1102"},
       {"gfx1200"}, {"gfx1201"}
