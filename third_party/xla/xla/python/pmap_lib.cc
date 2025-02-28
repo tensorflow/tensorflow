@@ -72,6 +72,7 @@ limitations under the License.
 #include "xla/python/types.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/python/lib/core/numpy.h"
@@ -669,6 +670,8 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
 
   xla::ifrt::ExecuteOptions execute_options = cache_entry.executable->options();
   execute_options.launch_id = cache_entry.executable->GetNextLaunchId();
+  execute_options.execution_stream_id =
+      tsl::Env::Default()->GetCurrentThreadId();
 
   // A vector of [num_outputs].
   std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;

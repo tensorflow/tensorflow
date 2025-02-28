@@ -122,6 +122,11 @@ struct ExecuteOptions {
   // an invalid future.
   bool fill_status = false;
 
+  // Execution stream ID identifies the series of executions that must be
+  // executed in program order.  Executions with different execution stream IDs
+  // may be executed in any order and concurrently.
+  uint64_t execution_stream_id = 0;
+
   // Custom execution options specific to the runtime. The user and the runtime
   // are responsible for ensuring version compatibility.
   std::optional<AttributeMap> custom_options;
