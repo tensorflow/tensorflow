@@ -1,11 +1,10 @@
 load("//xla:strict.default.bzl", "py_strict_test")
-load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 cc_library(
-    name = "profile_data_lib",
+    name = "profile_data",
     srcs = ["profile_data.cc"],
     hdrs = ["profile_data.h"],
     copts = [
@@ -29,17 +28,18 @@ cc_library(
     alwayslink = 1,
 )
 
-tsl_pybind_extension(
-    name = "profile_data",
+cc_library(
+    name = "py_profile_data",
     srcs = ["py_profile_data.cc"],
+    hdrs = ["py_profile_data.h"],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    pytype_srcs = ["profile_data.pyi"],
+    features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
-        ":profile_data_lib",
+        ":profile_data",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@nanobind",
@@ -54,8 +54,10 @@ py_strict_test(
         "optonly",
     ],
     deps = [
-        ":profile_data",
+        # ":profile_data",
+        # ":py_profile_data",
         # copybara:uncomment "//pyglib:gfile",
         "@absl_py//absl/testing:absltest",
+        "//xla/python:xla_extension",
     ],
 )

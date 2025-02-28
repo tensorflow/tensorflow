@@ -1,4 +1,4 @@
-# Copyright 2024 The OpenXLA Authors.
+# Copyright 2025 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 # ==============================================================================
 """Utilities for visiting program execution data."""
 
-from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple
+from typing import Any, Iterator, Mapping, Optional, Sequence
 
 
 class ProfileData:
@@ -71,7 +71,7 @@ class ProfilePlane:
     ...
 
   @property
-  def stats(self) -> Iterator[Tuple[str, Any]]:
+  def stats(self) -> Iterator[tuple[str, Any] | tuple[None, None]]:
     """Stats in the plane.
 
     Returns
@@ -120,7 +120,7 @@ class ProfileEvent:
     ...
 
   @property
-  def stats(self) -> Iterator[Tuple[str, Any]]:
+  def stats(self) -> Iterator[tuple[str, Any] | tuple[None, None]]:
     """Stats of the event.
 
     Returns

@@ -1148,7 +1148,8 @@ cc_library(
         "//xla/pjrt:status_casters",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
-        "//xla/python/profiler:profile_data_lib",
+        "//xla/python/profiler:profile_data",
+        "//xla/python/profiler:py_profile_data",
         "//xla/tsl/platform:macros",
         "//xla/tsl/profiler/rpc:profiler_server_impl",
         "//xla/tsl/profiler/rpc/client:capture_profile",
@@ -1373,7 +1374,7 @@ tsl_pybind_extension(
     pytype_deps = [
         "//third_party/py/numpy",
     ],
-    pytype_srcs = glob(["xla_extension/*.pyi"]),
+    pytype_srcs = glob(["xla_extension/**/*.pyi"]),
     visibility = ["//visibility:public"],
     deps = [
         ":config",
