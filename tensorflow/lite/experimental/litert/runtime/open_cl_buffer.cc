@@ -14,6 +14,8 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
 
+#include <stdlib.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <utility>
@@ -51,8 +53,8 @@ Expected<T*> OpenClBuffer::Lock() {
                         "Failed to read OpenCL buffer");
     }
     // Ensure the data is aligned.
-    if (auto rc = ::posix_memalign(&data_, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT,
-                                   size_);
+    if (auto rc =
+            posix_memalign(&data_, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT, size_);
         rc) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                         "Failed to allocate aligned memory");

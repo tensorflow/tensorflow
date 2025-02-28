@@ -123,6 +123,14 @@ typedef int LiteRtHwAcceleratorSet;
 // For indexing into LiteRT collections or counting LiteRT things.
 typedef size_t LiteRtParamIndex;
 
+#if defined(_WIN32)
+// Provides posix_memalign() missing in Windows.
+#include <errno.h>
+
+#define posix_memalign(p, a, s) \
+  (((*(p)) = _aligned_malloc((s), (a))), *(p) ? 0 : errno)
+#endif  // defined(_WIN32)
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

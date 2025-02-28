@@ -20,6 +20,7 @@
 #include <EGL/eglext.h>
 #include <GLES3/gl31.h>
 #include <GLES3/gl32.h>
+#include <stdlib.h>
 
 #include <cstddef>
 #include <memory>
@@ -59,8 +60,8 @@ Expected<T*> GlBuffer::Lock() {
   absl::MutexLock lock(&mutex_);
   if (data_ == nullptr) {
     // Ensure the data is aligned.
-    if (auto rc = ::posix_memalign(&data_, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT,
-                                   size_);
+    if (auto rc =
+            posix_memalign(&data_, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT, size_);
         rc) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                         "Failed to allocate aligned memory");

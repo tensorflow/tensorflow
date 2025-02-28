@@ -14,9 +14,6 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/dmabuf_buffer.h"
 
-#include <dlfcn.h>
-#include <sys/mman.h>
-
 #include <cstddef>
 #include <memory>
 #include <utility>
@@ -28,9 +25,15 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
+#if LITERT_HAS_DMA_BUF_SUPPORT
+#include <dlfcn.h>
+#include <sys/mman.h>
+#endif  // LITERT_HAS_DMA_BUF_SUPPORT
+
 namespace litert {
 namespace internal {
 
+#if LITERT_HAS_DMA_BUF_SUPPORT
 namespace {
 
 class DmaBufLibrary {
@@ -154,26 +157,38 @@ Expected<void> InitLibraryIfNeededUnlocked() {
 }
 
 }  // namespace
+#endif  // LITERT_HAS_DMA_BUF_SUPPORT
 
 bool DmaBufBuffer::IsSupported() {
+#if LITERT_HAS_DMA_BUF_SUPPORT
   absl::MutexLock lock(&TheMutex);
   auto status = InitLibraryIfNeededUnlocked();
   return static_cast<bool>(status);
+#else   // LITERT_HAS_DMA_BUF_SUPPORT
+  return false;
+#endif  // LITERT_HAS_DMA_BUF_SUPPORT
 }
 
 Expected<DmaBufBuffer> DmaBufBuffer::Alloc(size_t size) {
+#if LITERT_HAS_DMA_BUF_SUPPORT
   absl::MutexLock lock(&TheMutex);
   if (auto status = InitLibraryIfNeededUnlocked(); !status) {
     return Unexpected(status.Error());
   }
   return TheDmaBufLibrary->Alloc(size);
+#else   // LITERT_HAS_DMA_BUF_SUPPORT
+  return Unexpected(kLiteRtStatusErrorUnsupported,
+                    "DmaBufBuffer::Alloc not implemented for this platform");
+#endif  // LITERT_HAS_DMA_BUF_SUPPORT
 }
 
 void DmaBufBuffer::Free(void* addr) {
+#if LITERT_HAS_DMA_BUF_SUPPORT
   absl::MutexLock lock(&TheMutex);
   if (TheDmaBufLibrary) {
     TheDmaBufLibrary->Free(addr);
   }
+#endif  // LITERT_HAS_DMA_BUF_SUPPORT
 }
 
 }  // namespace internal

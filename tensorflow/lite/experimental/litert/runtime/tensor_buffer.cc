@@ -14,10 +14,11 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 
+#include <stdlib.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <iterator>
 #include <string>
 #include <utility>
@@ -135,7 +136,7 @@ Expected<LiteRtTensorBufferT::Ptr>
 LiteRtTensorBufferT::CreateManagedOnHostMemory(
     const LiteRtRankedTensorType& tensor_type, size_t buffer_size) {
   void* host_memory_ptr;
-  if (auto rc = ::posix_memalign(
+  if (auto rc = posix_memalign(
           &host_memory_ptr, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT, buffer_size);
       rc) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
