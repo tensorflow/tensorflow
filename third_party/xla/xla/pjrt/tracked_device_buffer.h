@@ -211,7 +211,7 @@ class RawSEDeviceMemory : public tsl::ReferenceCounted<RawSEDeviceMemory> {
   virtual void UnsafeReleaseMemory() = 0;
 
   static tsl::RCReference<RawSEDeviceMemory> Create(
-      se::DeviceMemoryBase value, PjRtDevice* device,
+      se::DeviceMemoryBase value, PjRtLocalDeviceId device_id,
       se::DeviceMemoryAllocator* allocator);
   static tsl::RCReference<RawSEDeviceMemory> CreateForeign(
       se::DeviceMemoryBase value,
@@ -290,7 +290,7 @@ class TrackedDeviceBuffer {
 
   // Relinquishes ownership of the buffer's device memory, e.g., after the
   // buffer is passed to a computation that aliases its inputs to outputs.
-  void ReleaseDeviceMemory(bool unsafe_release);
+  void ReleaseDeviceMemory();
 
   // Indicates that the buffer has been used on a stream.
   //

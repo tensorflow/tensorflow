@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
@@ -211,10 +212,10 @@ class AllocatedRawSEDeviceMemory : public RawSEDeviceMemory {
 };
 
 tsl::RCReference<RawSEDeviceMemory> RawSEDeviceMemory::Create(
-    se::DeviceMemoryBase value, PjRtDevice* device,
+    se::DeviceMemoryBase value, PjRtLocalDeviceId device_id,
     se::DeviceMemoryAllocator* allocator) {
-  return tsl::MakeRef<AllocatedRawSEDeviceMemory>(
-      value, device->local_device_id().value(), allocator);
+  return tsl::MakeRef<AllocatedRawSEDeviceMemory>(value, device_id.value(),
+                                                  allocator);
 }
 
 class ForeignRawSEDeviceMemory : public RawSEDeviceMemory {
@@ -255,7 +256,8 @@ TrackedDeviceBuffer::FromScopedShapedBuffer(
       shaped_buffer->on_device_shape(), [&](const Shape&, const ShapeIndex&) {
         CHECK(iterator != shaped_buffer->buffers().end());
         buffers.push_back(RawSEDeviceMemory::Create(
-            iterator->second, device, shaped_buffer->memory_allocator()));
+            iterator->second, device->local_device_id(),
+            shaped_buffer->memory_allocator()));
         iterator->second = se::DeviceMemoryBase();
         ++iterator;
       });
@@ -281,35 +283,6 @@ ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
   return shaped_buffer;
 }
 
-// See comment on ExecutionInput in xla/service/executable.h to understand
-// the meaning of owned/unowned in that class.
-
-void TrackedDeviceBuffer::AddToInputAsImmutable(
-    ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
-    const ShapeTree<MaybeOwningDeviceMemory>::iterator& end) const {
-  for (const tsl::RCReference<RawSEDeviceMemory>& buf : device_memory_) {
-    CHECK(*iterator != end);
-    // Set buffers to be case (1) in the comment on ExecutionInput.
-    (*iterator)->second = MaybeOwningDeviceMemory(buf->mem());
-    ++(*iterator);
-  }
-}
-
-void TrackedDeviceBuffer::AddToInputAsDonated(
-    ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
-    const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
-    ExecutionInput* execution_input,
-    se::DeviceMemoryAllocator* allocator) const {
-  for (const tsl::RCReference<RawSEDeviceMemory>& buf : device_memory_) {
-    CHECK(*iterator != end);
-    // Set buffers to be case (2) in the comment on ExecutionInput.
-    (*iterator)->second = MaybeOwningDeviceMemory(se::OwningDeviceMemory(
-        buf->mem(), device_->local_device_id().value(), allocator));
-    execution_input->SetUnownedIndex((*iterator)->first);
-    ++(*iterator);
-  }
-}
-
 TrackedDeviceBuffer::TrackedDeviceBuffer(
     PjRtDevice* device,
     absl::Span<tsl::RCReference<RawSEDeviceMemory> const> device_memory,
@@ -322,14 +295,7 @@ TrackedDeviceBuffer::TrackedDeviceBuffer(
 
 TrackedDeviceBuffer::~TrackedDeviceBuffer() = default;
 
-void TrackedDeviceBuffer::ReleaseDeviceMemory(bool unsafe_release) {
-  if (unsafe_release) {
-    for (auto& mem : device_memory_) {
-      mem->UnsafeReleaseMemory();
-    }
-  }
-  device_memory_.clear();
-}
+void TrackedDeviceBuffer::ReleaseDeviceMemory() { device_memory_.clear(); }
 
 void TrackedDeviceBuffer::AddUsageEvent(
     se::Stream* usage_stream, std::shared_ptr<BufferSequencingEvent> event,
