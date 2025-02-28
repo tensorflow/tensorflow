@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "ifrt_proxy_cc_test")
+load("//xla/tsl:tsl.bzl", "if_oss")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -70,6 +71,7 @@ ifrt_proxy_cc_test(
     timeout = "moderate",
     srcs = ["executable_impl_test_tfrt_cpu.cc"],
     shuffle_tests = False,
+    tags = if_oss(["not_run:arm"]),  # TODO(b/394180263): reenable this.
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
         "//xla/python/ifrt:test_util",
