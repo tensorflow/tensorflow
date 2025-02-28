@@ -610,11 +610,26 @@ void PjRtStreamExecutorBuffer::ScopedHold::ConvertUsageHold(
   SetState(kConverted);
 }
 
-void PjRtStreamExecutorBuffer::ScopedHold::ConfirmDonation() {
+void PjRtStreamExecutorBuffer::ScopedHold::ConfirmDonation(
+    bool unsafe_release) {
   CHECK(ok());
   CHECK_EQ(type_, kDonation);
-  parent_->ConfirmDonation(buffer().get());
+  parent_->ConfirmDonation(buffer().get(), unsafe_release);
   SetState(kDonated);
+}
+
+void PjRtStreamExecutorBuffer::ScopedHold::AddToInput(
+    ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
+    const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
+    ExecutionInput* execution_input,
+    se::DeviceMemoryAllocator* allocator) const {
+  CHECK(ok());
+  if (type_ == kDonation) {
+    buffer()->AddToInputAsDonated(iterator, end, execution_input, allocator);
+  } else {
+    CHECK_EQ(type_, kUsage);
+    buffer()->AddToInputAsImmutable(iterator, end);
+  }
 }
 
 bool PjRtStreamExecutorBuffer::IsOnCpu() const {
@@ -785,7 +800,7 @@ PjRtStreamExecutorBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
         local_device->ReturnStreamToPool(std::move(stream));
       });
 
-  tracked_buffer.ConfirmDonation();
+  tracked_buffer.ConfirmDonation(false);
   return new_buffer;
 }
 
@@ -1574,7 +1589,7 @@ void PjRtStreamExecutorBuffer::ConvertUsageHold(
 }
 
 void PjRtStreamExecutorBuffer::ConfirmDonation(
-    TrackedDeviceBuffer* device_buffer) {
+    TrackedDeviceBuffer* device_buffer, bool unsafe_release) {
   {
     absl::MutexLock lock(&mu_);
     CHECK_EQ(holds_[ScopedHold::kUsage], 0);
@@ -1586,7 +1601,7 @@ void PjRtStreamExecutorBuffer::ConfirmDonation(
     device_buffer->LockUseAndTransferUsageEvents();
     // Give up ownership of the device memory so we don't free it when the last
     // reference to device_buffer_ goes away.
-    device_buffer->ReleaseDeviceMemory();
+    device_buffer->ReleaseDeviceMemory(unsafe_release);
     // Make *this invalid so it can't be used again. Any threads blocking in
     // Release or GetBufferWithHold will see an invalid buffer and return.
     device_buffer_.reset();
@@ -2119,9 +2134,7 @@ absl::Status CheckCompatibleShapes(bool strict_shape_checking,
 }
 
 // Makes a tuple from the arguments to an execution.
-static absl::StatusOr<std::pair<ShapeTree<PjRtStreamExecutorExecutionInput>,
-                                std::shared_ptr<BufferSequencingEvent>>>
-MakeTupleHelper(
+absl::StatusOr<std::unique_ptr<TupleHandle>> MakeTupleHelper(
     PjRtStreamExecutorClient* client, LocalDeviceState* local_device,
     bool strict_shape_checking, const Shape& tupled_parameter_shape,
     absl::Span<PjRtBuffer* const> py_buffers,
@@ -2144,54 +2157,39 @@ MakeTupleHelper(
 
   se::Stream* stream = local_device->host_to_device_stream();
   TF_ASSIGN_OR_RETURN(
-      se::OwningDeviceMemory owned_root_table_memory,
+      se::OwningDeviceMemory root_table_memory,
       allocator->Allocate(
           device_ordinal,
           transfer_manager->GetByteSizeRequirement(tupled_parameter_shape)));
-  auto root_table_memory = owned_root_table_memory.cref();
 
   if (local_device->allocation_model() ==
       LocalDeviceState::kComputeSynchronized) {
     TF_RETURN_IF_ERROR(stream->WaitFor(local_device->compute_stream()));
   } else {
     DCHECK(transfer_manager->CanBufferBeAccessedNow(
-        local_device->compute_stream()->parent(), root_table_memory));
+        local_device->compute_stream()->parent(), root_table_memory.cref()));
   }
 
-  ShapeTree<PjRtStreamExecutorExecutionInput> execution_input(
-      tupled_parameter_shape);
-  auto input_iterator = execution_input.begin();
-  auto iterator_end = execution_input.end();
+  ExecutionInput execution_input(tupled_parameter_shape);
+  ShapeTree<MaybeOwningDeviceMemory>::iterator input_iterator =
+      execution_input.MutableBuffers()->begin();
+  ShapeTree<MaybeOwningDeviceMemory>::iterator iterator_end =
+      execution_input.MutableBuffers()->end();
   // First set the root tuple table which is the first buffer in the ShapeTree.
-  input_iterator->second = {
-      true,
-      RawSEDeviceMemory::Create(owned_root_table_memory.Release(),
-                                local_device->local_device_id(), allocator)};
+  execution_input.SetBuffer(
+      input_iterator->first,
+      MaybeOwningDeviceMemory(std::move(root_table_memory)));
   ++input_iterator;
   // Then set each sub-tuple in turn from the parameters.
   for (const PjRtStreamExecutorBuffer::ScopedHold& device_buffer :
        device_buffers) {
-    for (const tsl::RCReference<RawSEDeviceMemory>& buf :
-         device_buffer->device_memory()) {
-      CHECK(input_iterator != iterator_end);
-      input_iterator->second = {
-          device_buffer.type() ==
-              PjRtStreamExecutorBuffer::ScopedHold::kDonation,
-          buf};
-      ++input_iterator;
-    }
+    device_buffer.AddToInput(&input_iterator, iterator_end, &execution_input,
+                             allocator);
   }
   CHECK(input_iterator == iterator_end);
 
-  std::vector<se::DeviceMemoryBase> elements;
-  size_t num_elements = ShapeUtil::TupleElementCount(tupled_parameter_shape);
-  elements.reserve(num_elements);
-  for (int64_t i = 0; i < num_elements; ++i) {
-    elements.push_back(execution_input.element({i}).buf->mem());
-  }
-
-  TF_RETURN_IF_ERROR(transfer_manager->WriteSingleTupleIndexTable(
-      stream, elements, tupled_parameter_shape, &root_table_memory));
+  TF_RETURN_IF_ERROR(transfer_manager->WriteRootTupleIndexTable(
+      stream, execution_input.Buffers()));
   absl::StatusOr<EventPool::Handle> event_or =
       local_device->event_pool().ThenAllocateAndRecordEvent(stream);
   if (!event_or.ok()) {
@@ -2202,25 +2200,21 @@ MakeTupleHelper(
   auto transfer_event =
       std::make_shared<BufferSequencingEvent>(client->thread_pool());
   transfer_event->SetSequencingEvent(std::move(event_or).value(), stream);
-  return std::make_pair(std::move(execution_input), std::move(transfer_event));
+  return std::make_unique<TupleHandle>(
+      TupleHandle({std::move(execution_input), std::move(transfer_event)}));
 }
 
 // Converts a ScopedShapedBuffer returned from an execution into a
 // PjRtBuffer.
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> OutputBufferHelper(
-    ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result_buffer,
+    ScopedShapedBuffer* result_buffer,
     std::shared_ptr<BufferSequencingEvent> definition_event, PjRtClient* client,
     PjRtDevice* device, LocalDeviceState* local_device,
     std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release) {
-  absl::InlinedVector<tsl::RCReference<RawSEDeviceMemory>, 1> buffers;
-  for (auto& item : result_buffer) {
-    buffers.push_back(std::move(item.second));
-  }
-  auto out_buffer = std::make_shared<TrackedDeviceBuffer>(
-      device, absl::Span<tsl::RCReference<RawSEDeviceMemory> const>(buffers),
-      absl::Span<const std::shared_ptr<BufferSequencingEvent>>{
-          definition_event});
-  const Shape& shape = result_buffer.shape();
+  std::shared_ptr<TrackedDeviceBuffer> out_buffer =
+      TrackedDeviceBuffer::FromScopedShapedBuffer(result_buffer,
+                                                  {definition_event}, device);
+  const Shape& shape = result_buffer->on_device_shape();
   PjRtMemorySpace* memory_space =
       device->default_memory_space().value_or(nullptr);
   if (shape.has_layout()) {
@@ -2243,7 +2237,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> OutputBufferHelper(
     }
   }
   auto pjrt_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
-      result_buffer.shape(), std::move(out_buffer), client, device,
+      result_buffer->on_device_shape(), std::move(out_buffer), client, device,
       memory_space);
   RecordUsage(pjrt_buffer->GetBufferWithUsageHold(), local_device, local_device,
               definition_event, local_device->compute_stream(),
@@ -2363,28 +2357,28 @@ PjRtStreamExecutorLoadedExecutable::ParametersThatMustBeDonated(
   return parameters_that_must_be_donated_[executable_idx];
 }
 
-absl::StatusOr<std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>>>
+absl::StatusOr<std::vector<ExecutionInput>>
 PjRtStreamExecutorLoadedExecutable::MakeExecutionInputsAndWaitForEvents(
     int device_ordinal, const ExecuteOptions& options,
     absl::Span<const Shape> executable_parameter_shapes,
     absl::Span<PjRtBuffer* const> argument_handles,
     absl::Span<const PjRtStreamExecutorBuffer::ScopedHold> device_buffers,
     absl::flat_hash_set<BufferSequencingEvent*>& events) const {
-  std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> execution_inputs;
+  std::vector<ExecutionInput> execution_inputs;
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
   TransferManager* transfer_manager =
       client_->client()->backend().transfer_manager();
-  // Lift tuple_write_event outside the conditional so that the event it
-  // returns is not destroyed until after the loop below that waits on events.
-  std::shared_ptr<BufferSequencingEvent> tuple_write_event;
+  // Lift tuple_handle outside the conditional so that the event it returns is
+  // not destroyed until after the loop below that waits on events.
+  std::unique_ptr<TupleHandle> tuple_handle;
   if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
     TF_ASSIGN_OR_RETURN(
-        auto tuple_handle,
+        tuple_handle,
         MakeTupleHelper(client_, device_state, options.strict_shape_checking,
                         executable_parameter_shapes[0], argument_handles,
                         device_buffers, device_ordinal));
-    tuple_write_event = std::move(tuple_handle.second);
-    execution_inputs.emplace_back(std::move(tuple_handle.first));
+    events.insert(tuple_handle->event.get());
+    execution_inputs.emplace_back(std::move(tuple_handle->execution_input));
   } else {
     if (argument_handles.size() != executable_parameter_shapes.size()) {
       return InvalidArgument("Executable expected %lld arguments but got %lld",
@@ -2400,19 +2394,13 @@ PjRtStreamExecutorLoadedExecutable::MakeExecutionInputsAndWaitForEvents(
           options.strict_shape_checking, handle->on_device_shape(),
           executable_parameter_shapes[i], *transfer_manager, i));
       execution_inputs.emplace_back(executable_parameter_shapes[i]);
-      ShapeTree<PjRtStreamExecutorExecutionInput>& execution_input =
-          execution_inputs.back();
-      auto input_iterator = execution_input.begin();
-      auto iterator_end = execution_input.end();
-      for (const tsl::RCReference<RawSEDeviceMemory>& buf :
-           device_buffers[i]->device_memory()) {
-        CHECK(input_iterator != iterator_end);
-        input_iterator->second = {
-            device_buffers[i].type() ==
-                PjRtStreamExecutorBuffer::ScopedHold::kDonation,
-            buf};
-        ++input_iterator;
-      }
+      ExecutionInput& execution_input = execution_inputs.back();
+      ShapeTree<MaybeOwningDeviceMemory>::iterator input_iterator =
+          execution_input.MutableBuffers()->begin();
+      ShapeTree<MaybeOwningDeviceMemory>::iterator iterator_end =
+          execution_input.MutableBuffers()->end();
+      device_buffers[i].AddToInput(&input_iterator, iterator_end,
+                                   &execution_input, client_->allocator());
       CHECK(input_iterator == iterator_end);
     }
   }
@@ -2663,68 +2651,19 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   };
 }
 
-absl::StatusOr<PjRtStreamExecutorExecutionOutput>
-PjRtStreamExecutorClient::RunAsync(
-    LocalExecutable& exec, PjRtDevice* device,
-    std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> arguments,
-    ExecutableRunOptions run_options) {
-  std::vector<ExecutionInput> xla_arguments;
-  for (ShapeTree<PjRtStreamExecutorExecutionInput>& input : arguments) {
-    xla_arguments.emplace_back(input.shape());
-    auto& tmp = xla_arguments.back();
-    auto it = tmp.MutableBuffers()->begin();
-    for (auto& v : input) {
-      if (v.second.is_donated) {
-        it->second = MaybeOwningDeviceMemory(se::OwningDeviceMemory(
-            v.second.buf->mem(), device->local_device_id().value(),
-            run_options.allocator()));
-        tmp.SetUnownedIndex(it->first);
-      } else {
-        it->second = MaybeOwningDeviceMemory(v.second.buf->mem());
-      }
-    }
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      ExecutionOutput output,
-      exec.RunAsync(std::move(xla_arguments), std::move(run_options)));
-  ScopedShapedBuffer ssb = output.ConsumeResult();
-  xla::ShapeTree<tsl::RCReference<RawSEDeviceMemory>> results(
-      ssb.on_device_shape());
-  auto it = results.begin();
-  se::DeviceMemoryAllocator* allocator = ssb.memory_allocator();
-  ShapedBuffer released_ssb = ssb.release();
-  for (auto& buf : released_ssb.buffers()) {
-    CHECK(it != results.end());
-    it->second = RawSEDeviceMemory::Create(
-        buf.second, device->local_device_id(), allocator);
-    ++it;
-  }
-  CHECK(it == results.end());
-  for (ShapeTree<PjRtStreamExecutorExecutionInput>& input : arguments) {
-    for (auto& v : input) {
-      if (v.second.is_donated) {
-        v.second.buf->UnsafeReleaseMemory();
-      }
-    }
-  }
-  return PjRtStreamExecutorExecutionOutput(
-      {std::move(results), {}, output.ConsumeToBeReleased()});
-}
-
 // Enqueues a computation onto the compute stream. Each buffer returned in
 // device_buffers has a usage hold added that must be dropped on error or
 // converted on success.
 // When `options` has non-zero `launch_id`, use `launch_id` instead of `run_id`
 // to initialize `run_options`.
-absl::StatusOr<ShapeTree<tsl::RCReference<RawSEDeviceMemory>>>
+absl::StatusOr<ScopedShapedBuffer>
 PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     int executable_idx, const RunId& run_id, const ExecuteOptions& options,
     PjRtDevice* device,
     std::vector<PjRtStreamExecutorBuffer::ScopedHold>* device_buffers,
     std::shared_ptr<DeviceAssignment> device_assignment,
-    std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const {
+    std::vector<std::function<void()>>& compute_callbacks) const {
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->local_device_id()
@@ -2823,7 +2762,7 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
   }
 
   TF_ASSIGN_OR_RETURN(
-      std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> execution_inputs,
+      std::vector<ExecutionInput> execution_inputs,
       MakeExecutionInputsAndWaitForEvents(
           device_ordinal, options,
           on_device_executable_parameter_shapes_[executable_idx],
@@ -2893,10 +2832,9 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
           *start_time_ns = tsl::Env::Default()->NowNanos();
         }));
   }
-
-  absl::StatusOr<PjRtStreamExecutorExecutionOutput> result_buffer_or_status =
-      client_->RunAsync(*executables_[executable_idx], device,
-                        std::move(execution_inputs), run_options);
+  absl::StatusOr<ExecutionOutput> result_buffer_or_status =
+      executables_[executable_idx]->RunAsync(std::move(execution_inputs),
+                                             run_options);
 
   VLOG(1) << "Replica " << replica << " partition " << partition
           << " completed; ok=" << result_buffer_or_status.ok();
@@ -2927,6 +2865,7 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
   }
 
   if (device_state->allocation_model() == LocalDeviceState::kSynchronous) {
+    ExecutionOutput& execution_output = result_buffer_or_status.value();
     // If we used a transient tuple for the arguments we donated its root table
     // buffer. In that case, and/or if we donated any input buffers that were
     // not aliased, the donated buffers are going to be passed back to us via
@@ -2934,10 +2873,23 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
     // execution completes. (Currently XLA does not support aliasing tuple
     // tables, so if any donated parameter is a tuple there will be donated but
     // unaliased buffers.)
+    std::vector<se::OwningDeviceMemory> donated_memory =
+        execution_output.ConsumeToBeReleased();
+    absl::InlinedVector<se::DeviceMemoryBase, 3> donated_ptrs;
+    donated_ptrs.reserve(donated_memory.size());
+    for (se::OwningDeviceMemory& owning : donated_memory) {
+      // Release the owning memory so we can pass it to the closure.
+      donated_ptrs.push_back(owning.Release());
+    }
     compute_callbacks.push_back(
-        [donated_memory = std::move(result_buffer_or_status->to_be_released),
-         se_donated_memory = std::move(
-             result_buffer_or_status->se_to_be_released)]() mutable {});
+        [references{std::make_tuple(executables_[executable_idx],
+                                    compute_reservation, device_assignment)},
+         donated_ptrs{std::move(donated_ptrs)}, allocator{client_->allocator()},
+         device_ordinal]() {
+          for (const auto& ptr : donated_ptrs) {
+            TF_CHECK_OK(allocator->Deallocate(device_ordinal, ptr));
+          }
+        });
   } else {
     // Any donated memory returned by the ExecutionOutput can be immediately
     // freed.
@@ -2947,45 +2899,47 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
                                     device_assignment)}]() {});
   }
 
-  return std::move(std::move(result_buffer_or_status).value().result);
+  return std::move(result_buffer_or_status).value().ConsumeResult();
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtStreamExecutorLoadedExecutable::MakeOutputBuffers(
     int device_ordinal, const ExecuteOptions& options,
-    ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result_buffer,
+    ScopedShapedBuffer result_buffer,
     std::shared_ptr<BufferSequencingEvent> definition_event, PjRtDevice* device,
-    std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks,
+    std::vector<std::function<void()>>& compute_callbacks,
     std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release)
     const {
   tsl::profiler::TraceMe traceme("MakeOutputBuffers");
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
-  if (options.untuple_result && result_buffer.shape().IsTuple()) {
-    int tuple_count = result_buffer.shape().tuple_shapes_size();
+  if (options.untuple_result && result_buffer.on_device_shape().IsTuple()) {
+    int tuple_count = result_buffer.on_device_shape().tuple_shapes_size();
     outputs.reserve(tuple_count);
     // Take ownership of each of the output values, leaving only the root table
     // in result_buffer.
     for (int i = 0; i < tuple_count; ++i) {
-      TF_ASSIGN_OR_RETURN(
-          ShapeTree<tsl::RCReference<RawSEDeviceMemory>> tuple_buffer,
-          result_buffer.SubShapeTree({i}));
+      ScopedShapedBuffer tuple_buffer = result_buffer.TakeSubTree({i});
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<PjRtBuffer> buffer,
-          OutputBufferHelper(std::move(tuple_buffer), definition_event, client_,
-                             device, device_state, buffers_to_release));
+          OutputBufferHelper(&tuple_buffer, definition_event, client_, device,
+                             device_state, buffers_to_release));
       outputs.push_back(std::move(buffer));
     }
     if (device_state->allocation_model() == LocalDeviceState::kSynchronous) {
       // Don't release the root buffer until after execution completes.
-      auto root_buffer = result_buffer.find({})->second;
-      compute_callbacks.push_back([root_buffer = std::move(root_buffer)]() {});
+      ShapedBuffer root_buffer_holder = result_buffer.release();
+      se::DeviceMemoryBase root_buffer = root_buffer_holder.root_buffer();
+      compute_callbacks.push_back(
+          [root_buffer, allocator{client_->allocator()}, device_ordinal]() {
+            TF_CHECK_OK(allocator->Deallocate(device_ordinal, root_buffer));
+          });
     }
   } else {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<PjRtBuffer> buffer,
-        OutputBufferHelper(std::move(result_buffer), definition_event, client_,
-                           device, device_state, buffers_to_release));
+        OutputBufferHelper(&result_buffer, definition_event, client_, device,
+                           device_state, buffers_to_release));
     outputs.push_back(std::move(buffer));
   }
   return outputs;
@@ -3061,22 +3015,19 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
   // SPMD sharding produces a single executable for multiple partitions.
   int executable_idx = executables_.size() > 1 ? partition : 0;
 
-  std::vector<absl::AnyInvocable<void() &&>> compute_callbacks;
+  std::vector<std::function<void()>> compute_callbacks;
   std::vector<PjRtStreamExecutorBuffer::ScopedHold> device_buffers;
   device_buffers.reserve(argument_handles.size());
-  absl::StatusOr<ShapeTree<tsl::RCReference<RawSEDeviceMemory>>>
-      result_buffer_or_status =
-          EnqueueExecution(argument_handles, replica, partition, executable_idx,
-                           run_id, options, device, &device_buffers,
-                           std::move(device_assignment), compute_callbacks);
+  absl::StatusOr<ScopedShapedBuffer> result_buffer_or_status = EnqueueExecution(
+      argument_handles, replica, partition, executable_idx, run_id, options,
+      device, &device_buffers, std::move(device_assignment), compute_callbacks);
 
   if (!result_buffer_or_status.ok()) {
     LOG(ERROR) << "Execution of replica " << replica
                << " failed: " << result_buffer_or_status.status();
     return result_buffer_or_status.status();
   }
-  ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result_buffer =
-      std::move(result_buffer_or_status).value();
+  ScopedShapedBuffer result_buffer = std::move(result_buffer_or_status).value();
 
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
   se::Stream* stream = device_state->compute_stream();
@@ -3089,7 +3040,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
         // Even though there was an error we need to call ConfirmDonation, which
         // renders b invalid, since the computation has been enqueued and b has
         // been donated.
-        b.ConfirmDonation();
+        b.ConfirmDonation(true);
       }
     }
     return event_or.status();
@@ -3110,7 +3061,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
                   stream, &buffers_to_release);
     } else {
       CHECK(b.type() == PjRtStreamExecutorBuffer::ScopedHold::kDonation);
-      b.ConfirmDonation();
+      b.ConfirmDonation(true);
     }
   }
 
@@ -3123,11 +3074,10 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
   }
   TF_RETURN_IF_ERROR(device_state->ThenExecuteCallback(
       stream, [callbacks{std::move(compute_callbacks)},
-               buffers_to_release{std::move(buffers_to_release)}]() mutable {
+               buffers_to_release{std::move(buffers_to_release)}]() {
         for (auto& fn : callbacks) {
-          std::move(fn)();
+          fn();
         }
-        callbacks.clear();
       }));
   metrics::ReportExecutableEnqueueTime(tsl::Env::Default()->NowMicros() -
                                        start_time_usecs);
