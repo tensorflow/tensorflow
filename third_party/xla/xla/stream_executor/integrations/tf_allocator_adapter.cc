@@ -33,14 +33,20 @@ limitations under the License.
 
 namespace stream_executor {
 
-TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream)
+TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream,
+                                       bool allows_asynchronous_deallocation)
     : DeviceMemoryAllocator(stream->parent()->GetPlatform()),
       wrapped_(wrapped),
-      stream_(stream) {}
+      stream_(stream),
+      allows_asynchronous_deallocation_(allows_asynchronous_deallocation) {}
 
 TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped,
-                                       Platform *platform)
-    : DeviceMemoryAllocator(platform), wrapped_(wrapped), stream_(nullptr) {}
+                                       Platform *platform,
+                                       bool allows_asynchronous_deallocation)
+    : DeviceMemoryAllocator(platform),
+      wrapped_(wrapped),
+      stream_(nullptr),
+      allows_asynchronous_deallocation_(allows_asynchronous_deallocation) {}
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 
