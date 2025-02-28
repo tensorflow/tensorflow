@@ -14,6 +14,7 @@ cc_library(
         "//xla/service/gpu/llvm_gpu_backend:nvptx_utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:cuda_root_path",
@@ -28,6 +29,7 @@ cc_library(
     name = "load_ir_module",
     srcs = ["load_ir_module.cc"],
     deps = [
+        "@com_google_absl//absl/log",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
