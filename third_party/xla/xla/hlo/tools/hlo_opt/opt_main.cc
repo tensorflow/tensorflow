@@ -32,9 +32,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/tools/hlo_module_loader.h"
@@ -139,6 +141,14 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
             "specified");
       }
     }
+    if (format == "mlir") {
+      std::unique_ptr<llvm::MemoryBuffer> buffer =
+          llvm::MemoryBuffer::getMemBuffer(hlo);
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                          xla::ConvertStablehloTextToHLO(std::move(buffer)));
+      out.push_back(std::move(module));
+      continue;
+    }
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         LoadModuleFromData(hlo, format));
     out.push_back(std::move(module));
@@ -237,7 +247,8 @@ int main(int argc, char** argv) {
                 "filename. Valid values:\n"
                 "\t\t\t  hlo : HLO textual format\n"
                 "\t\t\t  pb : xla::HloProto in binary proto format\n"
-                "\t\t\t  pbtxt : xla::HloProto in text proto format"),
+                "\t\t\t  pbtxt : xla::HloProto in text proto format\n"
+                "\t\t\t  mlir : StableHLO module in text format"),
       tsl::Flag("stage", &opts.stage,
                 "Output stage to dump. "
                 "Valid values depend on the platform, for GPUs:\n"
