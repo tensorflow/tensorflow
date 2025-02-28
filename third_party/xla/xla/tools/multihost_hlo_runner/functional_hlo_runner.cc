@@ -136,9 +136,9 @@ const FixedOptionSetFlagParser<InputFormat>& GetInputFormatParser() {
        {"proto_text", InputFormat::kProtoText},
        {"proto_binary", InputFormat::kProtoBinary},
        {"snapshot_proto_binary", InputFormat::kSnapshotProtoBinary},
-       {"input_snapshot_proto_binary",
+       {"unoptimized_snapshot_proto_binary",
         InputFormat::kUnoptimizedSnapshotProtoBinary},
-       {"input_snapshot_proto_text",
+       {"unoptimized_snapshot_proto_text",
         InputFormat::kUnoptimizedSnapshotProtoText}});
   return parser;
 }
