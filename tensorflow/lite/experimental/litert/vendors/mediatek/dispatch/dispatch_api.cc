@@ -28,7 +28,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch_api.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/dispatch/litert_dispatch_device_context.h"
@@ -172,8 +171,7 @@ LiteRtStatus LiteRtRegisterTensorBuffer(
     LiteRtDispatchDeviceContext device_context,
     LiteRtTensorBuffer tensor_buffer,
     LiteRtTensorBufferHandle* tensor_buffer_handle) {
-  litert::TensorBuffer tensor_buffer_(tensor_buffer, /*owned=*/false);
-  if (auto result = device_context->RegisterTensorBuffer(tensor_buffer_);
+  if (auto result = device_context->RegisterTensorBuffer(tensor_buffer);
       result) {
     *tensor_buffer_handle = *result;
     return kLiteRtStatusOk;
