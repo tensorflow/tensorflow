@@ -200,16 +200,10 @@ LiteralBase::~LiteralBase() = default;
 const Shape& LiteralBase::shape() const { return root_piece().subshape(); }
 
 const char* LiteralBase::Piece::buffer() const {
-  // std::visit is avoided here due to its code size issues.
-  if (auto* r = std::get_if<DenseRep>(&rep_)) {
-    return r->data;
+  if (storage_.Isa<TupleRep>() || storage_.Isa<Uninitialized>()) {
+    DCHECK_EQ(storage_.data(), nullptr) << "Unexpected data pointer";
   }
-  if (auto* r = std::get_if<DenseInlinedRep>(&rep_)) {
-    return r->data;
-  }
-  DCHECK(std::holds_alternative<TupleRep>(rep_) ||
-         std::holds_alternative<Uninitialized>(rep_));
-  return nullptr;
+  return storage_.data();
 }
 
 const LiteralBase::Piece& LiteralBase::piece(
@@ -628,20 +622,18 @@ void LiteralBase::Piece::AllocateBuffers() {
   const int64_t bytes = total_bytes_dense();
   if (bytes > kMaxInlinedBytes) {
     CHECK_EQ(buffer(), nullptr);
-    rep_.emplace<DenseRep>();
-    char* buffer =
-        static_cast<char*>(tsl::port::AlignedMalloc(bytes, kMinimumAlignment));
-    CHECK(buffer != nullptr) << "Failed to allocate buffer for Literal";
-    set_buffer(buffer);
+    storage_.Emplace<DenseRep>(
+        static_cast<char*>(tsl::port::AlignedMalloc(bytes, kMinimumAlignment)));
+    CHECK_NE(buffer(), nullptr) << "Failed to allocate buffer for Literal";
   } else {
-    rep_.emplace<DenseInlinedRep>();
+    storage_.Emplace<DenseInlinedRep>();
   }
 }
 
 void LiteralBase::Piece::DeallocateBuffers() {
-  if (auto* array_rep = GetDenseRep()) {
+  if (auto* array_rep = storage_.GetDenseRep()) {
     tsl::port::AlignedFree(array_rep->data);
-    rep_.emplace<Uninitialized>();
+    storage_.Emplace<Uninitialized>();
   }
 }
 

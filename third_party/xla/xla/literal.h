@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -856,22 +857,18 @@ class LiteralBase {
     }
     void set_buffer(char* buffer) {
       DCHECK(LayoutUtil::IsDenseArray(*subshape_));
-      auto* dense_rep = std::holds_alternative<Uninitialized>(rep_)
-                            ? &rep_.emplace<DenseRep>()
-                            : GetDenseRep();
-      DCHECK(dense_rep);
-      dense_rep->data = buffer;
+      storage_.Emplace<DenseRep>(buffer);
     }
     void MoveDataFrom(Piece& from) {
-      DCHECK(!std::holds_alternative<DenseRep>(rep_));
-      DCHECK(!std::holds_alternative<TupleRep>(rep_));
-      if (auto* dense_rep = from.GetDenseRep()) {
-        rep_.emplace<DenseRep>().data = dense_rep->data;
-      } else if (auto* inlined_rep = from.GetDenseInlinedRep()) {
-        std::memcpy(rep_.emplace<DenseInlinedRep>().data, inlined_rep->data,
-                    from.total_bytes_dense());
+      DCHECK(!storage_.Isa<DenseRep>());
+      DCHECK(!storage_.Isa<TupleRep>());
+      if (auto* dense_rep = from.storage_.GetDenseRep()) {
+        storage_.Emplace<DenseRep>(dense_rep->data);
+      } else if (auto* inlined_rep = from.storage_.GetDenseInlinedRep()) {
+        storage_.Emplace<DenseInlinedRep>(inlined_rep->data,
+                                          from.total_bytes_dense());
       }
-      from.rep_.emplace<Uninitialized>();
+      from.storage_.Emplace<Uninitialized>();
     }
 
     // Gets/sets the buffer holding dynamic sizes.
@@ -895,9 +892,9 @@ class LiteralBase {
     const Shape& subshape() const { return *subshape_; }
     void set_subshape(const Shape* subshape) {
       subshape_ = subshape;
-      if (std::holds_alternative<Uninitialized>(rep_)) {
+      if (storage_.Isa<Uninitialized>()) {
         if (subshape_->IsTuple()) {
-          rep_.emplace<TupleRep>();
+          storage_.Emplace<TupleRep>();
         }
       }
     }
@@ -937,21 +934,21 @@ class LiteralBase {
       return const_cast<Piece&>(const_cast<const Piece*>(this)->child(index));
     }
     const Piece& child(int64_t index) const {
-      auto* tuple_rep = GetTupleRep();
+      auto* tuple_rep = storage_.GetTupleRep();
       DCHECK(tuple_rep);
       return tuple_rep->children[index];
     }
 
     // Adds a child piece to this piece's children.
     void emplace_back(Piece child_piece) {
-      auto* tuple_rep = GetTupleRep();
+      auto* tuple_rep = storage_.GetTupleRep();
       DCHECK(tuple_rep);
       tuple_rep->children.emplace_back(std::move(child_piece));
     }
 
     // Returns the size of children pieces of this piece.
     int64_t children_size() const {
-      if (auto* tuple_rep = GetTupleRep()) {
+      if (auto* tuple_rep = storage_.GetTupleRep()) {
         return tuple_rep->children.size();
       }
       return 0;
@@ -1059,43 +1056,118 @@ class LiteralBase {
     bool DeserializeData(DeserializeState<InputIterator>& state);
 
    private:
+    // Literals can be used as DMA targets, which can require alignment. We
+    // force a tsl::Allocator::kAllocatorAlignment-byte minimum alignment.
+    static constexpr size_t kMinimumAlignment = 64;
+
+    // The maximum number of bytes that can be inlined in the DenseInlinedRep.
+    static constexpr size_t kMaxInlinedBytes = 24;
+
     // Uninitialized state representation.
     struct Uninitialized {};
-    // Out of line dense array storage.
-    union DenseRep {
-      char* data;
-    };
+
+    // Children pieces for tuple shaped pieces.
     struct TupleRep {
-      // Children pieces for tuple shaped pieces.
-      std::vector<Piece> children = {};
+      std::vector<Piece> children;
     };
 
-    // Literals can be used as DMA targets, which can require alignment. We
-    // force a tsl::Allocator::kAllocatorAlignment-byte minimum
-    // alignment.
-    static inline constexpr size_t kMinimumAlignment = 64;
+    // Out of line dense array storage.
+    struct DenseRep {
+      DenseRep() = default;
+      explicit DenseRep(char* data) : data(data) {}
 
-    // Use just so many bytes that we don't increase the sizeof(Piece).
-    static inline constexpr size_t kMaxInlinedBytes =
-        std::max(sizeof(DenseRep), sizeof(TupleRep));
+      char* data = nullptr;
+    };
 
     // Inlined dense array storage.
     struct DenseInlinedRep {
+      DenseInlinedRep() = default;
+      DenseInlinedRep(const char* init, size_t size) {
+        DCHECK_LE(size, kMaxInlinedBytes);
+        std::memcpy(data, init, size);
+      }
+
       alignas(kMinimumAlignment) char data[kMaxInlinedBytes];
     };
 
-    const DenseInlinedRep* GetDenseInlinedRep() const {
-      return std::get_if<DenseInlinedRep>(&rep_);
-    }
-    DenseInlinedRep* GetDenseInlinedRep() {
-      return std::get_if<DenseInlinedRep>(&rep_);
-    }
+    // A wrapper around the piece representations with cached data pointer.
+    class Storage {
+     public:
+      Storage() = default;
 
-    const DenseRep* GetDenseRep() const { return std::get_if<DenseRep>(&rep_); }
-    DenseRep* GetDenseRep() { return std::get_if<DenseRep>(&rep_); }
+      Storage(Storage&& other) { *this = std::move(other); }
+      Storage& operator=(Storage&& other) {
+        rep_ = std::move(other.rep_);
+        data_ = other.data_;
 
-    const TupleRep* GetTupleRep() const { return std::get_if<TupleRep>(&rep_); }
-    TupleRep* GetTupleRep() { return std::get_if<TupleRep>(&rep_); }
+        if (auto* inline_rep = GetDenseInlinedRep()) {
+          data_ = inline_rep->data;
+        }
+
+        other.rep_.emplace<Uninitialized>();
+        other.data_ = nullptr;
+
+        return *this;
+      }
+
+      template <typename Rep>
+      bool Isa() const {
+        return std::holds_alternative<Rep>(rep_);
+      }
+
+      template <typename Rep, typename... Args>
+      Rep& Emplace(Args... args) {
+        Rep& emplaced = rep_.emplace<Rep>(std::forward<Args>(args)...);
+        if constexpr (std::is_same_v<Rep, DenseRep> ||
+                      std::is_same_v<Rep, DenseInlinedRep>) {
+          data_ = emplaced.data;
+        } else {
+          data_ = nullptr;
+        }
+        return emplaced;
+      }
+
+      const DenseInlinedRep* GetDenseInlinedRep() const {
+        return std::get_if<DenseInlinedRep>(&rep_);
+      }
+
+      DenseInlinedRep* GetDenseInlinedRep() {
+        return std::get_if<DenseInlinedRep>(&rep_);
+      }
+
+      const DenseRep* GetDenseRep() const {
+        return std::get_if<DenseRep>(&rep_);
+      }
+
+      DenseRep* GetDenseRep() { return std::get_if<DenseRep>(&rep_); }
+
+      const TupleRep* GetTupleRep() const {
+        return std::get_if<TupleRep>(&rep_);
+      }
+
+      TupleRep* GetTupleRep() { return std::get_if<TupleRep>(&rep_); }
+
+      const char* data() const {
+        DCHECK_EQ(dense_data(), data_) << "cached data pointer is stale";
+        return data_;
+      }
+
+      char* data() {
+        DCHECK_EQ(dense_data(), data_) << "cached data pointer is stale";
+        return data_;
+      }
+
+     private:
+      const char* dense_data() const {
+        if (auto* rep = GetDenseRep()) return rep->data;
+        if (auto* rep = GetDenseInlinedRep()) return rep->data;
+        return nullptr;
+      }
+
+      std::variant<Uninitialized, TupleRep, DenseRep, DenseInlinedRep> rep_;
+      char* data_ = nullptr;  // cached `rep_.data` value for dense reps
+    };
+
     // Helpers for traversing the piece via ForEachSubpiece rooted at 'index'.
     // The first non-OK (or non-true) value is returned by the function.
     // The callable 'func' has the same signature as described above in
@@ -1104,7 +1176,7 @@ class LiteralBase {
     absl::Status ForEachHelper(const Fn& func, const Piece& piece,
                                ShapeIndex* index) const {
       TF_RETURN_IF_ERROR(func(*index, piece));
-      if (auto* tuple_rep = piece.GetTupleRep()) {
+      if (auto* tuple_rep = piece.storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
           TF_RETURN_IF_ERROR(
@@ -1120,7 +1192,7 @@ class LiteralBase {
       if (!func(*index, piece)) {
         return false;
       }
-      if (auto* tuple_rep = piece.GetTupleRep()) {
+      if (auto* tuple_rep = piece.storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
           if (!ForEachHelperBool(func, tuple_rep->children[i], index)) {
@@ -1135,7 +1207,7 @@ class LiteralBase {
     absl::Status ForEachMutableHelper(const Fn& func, Piece* piece,
                                       ShapeIndex* index) {
       TF_RETURN_IF_ERROR(func(*index, piece));
-      if (auto* tuple_rep = piece->GetTupleRep()) {
+      if (auto* tuple_rep = piece->storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
           TF_RETURN_IF_ERROR(
@@ -1155,8 +1227,8 @@ class LiteralBase {
     template <typename NativeT>
     void CopyElementsWithDynamicBound(const LiteralBase::Piece& src);
 
-    // Storage representation of this piece.
-    std::variant<Uninitialized, DenseInlinedRep, DenseRep, TupleRep> rep_;
+    // Storage for this piece.
+    Storage storage_;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
@@ -1505,7 +1577,7 @@ class Literal : public MutableLiteralBase {
  private:
   friend class LiteralBase;
   friend class MutableLiteralBase;
-  const Piece& root_piece() const override { return root_piece_; };
+  const Piece& root_piece() const final { return root_piece_; };
   // Deallocate the buffers held by this literal.
   void DeallocateBuffers();
 
@@ -1555,7 +1627,7 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   explicit MutableBorrowingLiteral(ShapeTree<char*> src_buf_ptrs);
 
  private:
-  const Piece& root_piece() const override { return *root_piece_; };
+  const Piece& root_piece() const final { return *root_piece_; };
   // Recursively copies the subtree from the `src_piece` at the given child
   // index to the `dest_piece`. For buffers only the pointers are copied, but
   // not the content.
@@ -1576,7 +1648,7 @@ class LiteralSlice : public LiteralBase {
   LiteralSlice(const LiteralBase& literal, const ShapeIndex& view_root);
 
  private:
-  const Piece& root_piece() const override { return *root_piece_; };
+  const Piece& root_piece() const final { return *root_piece_; };
 
   const Piece* root_piece_;  // Not owned.
 };
@@ -1604,7 +1676,7 @@ class BorrowingLiteral : public LiteralBase {
 
  private:
   // Accessor for the root piece of this literal.
-  const Piece& root_piece() const override { return root_piece_; };
+  const Piece& root_piece() const final { return root_piece_; };
   Piece root_piece_;
 
   // Shape of this literal. Stored as unique_ptr such that the (default) move
