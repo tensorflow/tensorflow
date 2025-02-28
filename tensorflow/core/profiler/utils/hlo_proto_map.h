@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_HLO_PROTO_MAP_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_HLO_PROTO_MAP_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"

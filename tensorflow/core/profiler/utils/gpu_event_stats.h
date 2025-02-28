@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {

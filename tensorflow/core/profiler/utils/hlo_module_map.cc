@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/hlo_module_map.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -22,6 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
 #if GOOGLE_CUDA
@@ -32,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/profiler/utils/hlo_module_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"

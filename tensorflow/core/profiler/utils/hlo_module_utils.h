@@ -20,10 +20,13 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 
 namespace tensorflow {

@@ -18,10 +18,10 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/container/btree_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 

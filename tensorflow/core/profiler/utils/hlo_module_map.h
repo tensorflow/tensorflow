@@ -30,6 +30,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_HLO_MODULE_MAP_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_HLO_MODULE_MAP_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_module_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
