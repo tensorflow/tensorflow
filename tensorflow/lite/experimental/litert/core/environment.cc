@@ -15,8 +15,11 @@
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -27,7 +30,16 @@ litert::Expected<LiteRtEnvironmentT::Ptr> LiteRtEnvironmentT::CreateWithOptions(
   LITERT_LOG(LITERT_INFO, "Creating LiteRT environment with options");
   auto env = std::make_unique<LiteRtEnvironmentT>();
   for (auto& option : options) {
-    env->options_[option.tag] = option.value;
+    if (option.value.type == kLiteRtAnyTypeString) {
+      std::string str_copy = std::string(option.value.str_value);
+      env->string_options_.push_back(std::move(str_copy));
+      LiteRtAny litert_any;
+      litert_any.type = kLiteRtAnyTypeString;
+      litert_any.str_value = env->string_options_.back().c_str();
+      env->options_[option.tag] = litert_any;
+    } else {
+      env->options_[option.tag] = option.value;
+    }
   }
 
   // Find `LiteRtRegisterAcceleratorGpuOpenCl` to register the GPU delegate.

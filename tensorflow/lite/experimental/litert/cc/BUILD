@@ -30,6 +30,30 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "litert_environment_test",
+    srcs = [
+        "litert_environment_test.cc",
+    ],
+    linkopts = select({
+        "//tensorflow:android": ["-llog"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":litert_any",
+        ":litert_compiled_model",
+        ":litert_environment",
+        ":litert_expected",
+        ":litert_model",
+        "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:matchers",
+        "//tensorflow/lite/experimental/litert/test:simple_model",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "litert_event",
     hdrs = ["litert_event.h"],
