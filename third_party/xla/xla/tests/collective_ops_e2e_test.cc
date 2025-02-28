@@ -15,14 +15,17 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -36,11 +39,12 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
@@ -1923,8 +1927,21 @@ ENTRY entry {
   EXPECT_NE(hlo_module, nullptr);
 }
 
-class RaggedAllToAllTest : public AsyncMemcpyCollectiveOps {
+enum class RaggedAllToAllImplType {
+  kNccl,
+  kMemcpy,
+  kDecomposer,
+};
+
+class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
+                           public ::testing::WithParamInterface<
+                               std::tuple<bool, RaggedAllToAllImplType>> {
  public:
+  RaggedAllToAllTest()
+      : CollectiveOpsWithFlagsBase(
+            std::get<0>(GetParam()),
+            std::get<1>(GetParam()) == RaggedAllToAllImplType::kMemcpy) {}
+
   // Creates random test data for a ragged-all-to-all.
   //
   // Ragged tensors which are ragged (have various size) along the second most
@@ -2009,6 +2026,14 @@ class RaggedAllToAllTest : public AsyncMemcpyCollectiveOps {
                                     &output_offsets_[i], &output_sizes_[i]});
     }
     return input_literal_ptrs;
+  }
+
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
+    opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(
+        std::get<1>(GetParam()) == RaggedAllToAllImplType::kDecomposer);
+    return opts;
   }
 
   // Computes ragged tensor offsets based on the sizes of the ragged rows.
@@ -2210,10 +2235,6 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  auto ragged_all_to_all =
-      FindInstruction(module.get(), HloOpcode::kRaggedAllToAll);
-  EXPECT_THAT(ragged_all_to_all, NotNull());
-
   CreateRandomTestData</*IndexType=*/int64_t>(
       module.get(), /*input_sizes=*/{/*replica_0=*/{4, 7},
                                      /*replica_1=*/{2, 5}});
@@ -2340,10 +2361,31 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(RaggedAllToAllTest, RaggedAllToAllTest,
-                         ::testing::Combine(::testing::Bool(),
-                                            ::testing::Bool()),
-                         GetAsyncMemcpyTestSuiteName);
+std::string RaggedAllToAllImplTypeName(
+    RaggedAllToAllImplType ragged_all_to_all_impl_type) {
+  switch (ragged_all_to_all_impl_type) {
+    case RaggedAllToAllImplType::kNccl:
+      return "nccl";
+    case RaggedAllToAllImplType::kMemcpy:
+      return "memcpy";
+    case RaggedAllToAllImplType::kDecomposer:
+      return "decomposer";
+    default:
+      LOG(FATAL) << "Unknown ragged all-to-all implementation type.";
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    RaggedAllToAllTest, RaggedAllToAllTest,
+    ::testing::Combine(::testing::Bool(),
+                       ::testing::Values(RaggedAllToAllImplType::kNccl,
+                                         RaggedAllToAllImplType::kMemcpy,
+                                         RaggedAllToAllImplType::kDecomposer)),
+    [](const ::testing::TestParamInfo<std::tuple<bool, RaggedAllToAllImplType>>&
+           info) {
+      return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",
+                          RaggedAllToAllImplTypeName(std::get<1>(info.param)));
+    });
 
 TEST_F(CollectiveOpsTestE2E, MemcpyP2pWhileLoopCorrectness) {
   absl::string_view hlo_string = R"(
