@@ -42,7 +42,7 @@ class OptionalVariant {
     values_ = std::make_shared<std::vector<Tensor>>(std::move(values));
   }
 
-  OptionalVariant(const OptionalVariant& other) : values_(other.values_) {}
+  OptionalVariant(const OptionalVariant& other) = default;
 
   // Returns true if `this` represents an actual value.
   bool has_value() const { return values_ != nullptr; }
