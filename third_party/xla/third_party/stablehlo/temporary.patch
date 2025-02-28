@@ -31,18 +31,6 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeTo
      return success();
    }
  };
-diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
---- stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
-+++ stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
-@@ -57,7 +57,7 @@
- // -----
- 
- func.func @constant_with_dynamic_shape() -> tensor<1x?xf32, #stablehlo.bounds<?, 5>> {
--  // expected-error@+2 {{elements literal type must have static shape}}
-+  // expected-error@below {{elements literal type must have static shape}}
-   %c = stablehlo.constant dense<1> : tensor<1x?xf32, #stablehlo.bounds<?, 5>>
-   return %c : tensor<1x?xf32, #stablehlo.bounds<?, 5>>
- }
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
@@ -62,39 +50,6 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplific
  }
  
  // -----
-diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_qdq_to_quantized_op.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_qdq_to_quantized_op.mlir
---- stablehlo/stablehlo/tests/transforms/stablehlo_legalize_qdq_to_quantized_op.mlir
-+++ stablehlo/stablehlo/tests/transforms/stablehlo_legalize_qdq_to_quantized_op.mlir
-@@ -127,3 +127,15 @@
-     %4 = stablehlo.uniform_quantize %3 : (tensor<16x16xf32>) -> tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>>
-     func.return %4: tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>>
- }
-+
-+// -----
-+
-+// CHECK-LABEL @failed_to_match_zero_defining_op
-+// CHECK{LITERAL}: %cst = stablehlo.constant dense<0.000000e+00> : tensor<2xf32>
-+// CHECK-NEXT: %0 = stablehlo.uniform_quantize %cst : (tensor<2xf32>) -> tensor<2x!quant.uniform<u8:f32, 3.400000e+01:16>>
-+// CHECK-NEXT: return %0 : tensor<2x!quant.uniform<u8:f32, 3.400000e+01:16>>
-+func.func @failed_to_match_zero_defining_op() -> tensor<2x!quant.uniform<u8:f32, 3.400000e+01:16>> {
-+  %0 = stablehlo.constant dense<0.000000e+00> : tensor<2xf32>
-+  %1 = stablehlo.uniform_quantize %0 : (tensor<2xf32>) -> tensor<2x!quant.uniform<u8:f32, 3.400000e+01:16>>
-+  return %1 : tensor<2x!quant.uniform<u8:f32, 3.400000e+01:16>>
-+}
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
---- stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
-+++ stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
-@@ -63,6 +63,10 @@
- 
-     // Collect quantized operands and result types to rewrite.
-     // All operands and results must be quantized
-+    if (computeOp->getNumOperands() == 0)
-+      return rewriter.notifyMatchFailure(computeOp,
-+                                         "requires non empty operands");
-+
-     llvm::SmallVector<Value> quantizedComputeOpOperands;
-     for (const Value& operand : computeOp->getOperands()) {
-       auto* definingOp = operand.getDefiningOp();
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
