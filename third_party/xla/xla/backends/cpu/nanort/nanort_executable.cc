@@ -175,6 +175,20 @@ static absl::StatusOr<std::optional<size_t>> ResolveTempAllocationIndex(
   return temp_allocation_index;
 }
 
+NanoRtExecutable::ThreadPoolManager::ThreadPoolManager(
+    std::shared_ptr<tsl::thread::ThreadPool> thread_pool)
+    : thread_pool_(std::move(thread_pool)),
+      thread_pool_device_(thread_pool_ ? new Eigen::ThreadPoolDevice(
+                                             thread_pool_->AsEigenThreadPool(),
+                                             thread_pool_->NumThreads())
+                                       : nullptr) {}
+
+NanoRtExecutable::ThreadPoolManager::~ThreadPoolManager() {
+  if (thread_pool_device_ && thread_pool_device_) {
+    delete thread_pool_device_;
+  }
+}
+
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
     std::unique_ptr<Executable> executable,
     std::shared_ptr<tsl::thread::ThreadPool> thread_pool) {
@@ -225,7 +239,7 @@ NanoRtExecutable::NanoRtExecutable(
     std::vector<size_t> result_to_allocation_index,
     std::optional<size_t> temp_allocation_index)
     : executable_(std::move(executable)),
-      thread_pool_(std::move(thread_pool)),
+      thread_pool_manager_(std::move(thread_pool)),
       allocation_sizes_(std::move(allocation_sizes)),
       argument_to_allocation_index_(std::move(argument_to_allocation_index)),
       result_to_allocation_index_(std::move(result_to_allocation_index)),
@@ -320,6 +334,8 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   cpu::Thunk::ExecuteParams execute_params = {
       executable->function_library(),
       &allocations,
+      /*xfeed=*/nullptr,
+      /*intra_op_threadpool=*/thread_pool_manager_.thread_pool_device(),
   };
 
   return executable->thunks().Execute(execute_params);

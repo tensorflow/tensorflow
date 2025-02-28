@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_NANORT_NANORT_EXECUTABLE_H_
 #define XLA_BACKENDS_CPU_NANORT_NANORT_EXECUTABLE_H_
 
+#define EIGEN_USE_THREADS
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -24,8 +26,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/fixed_array.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/service/executable.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -36,6 +40,36 @@ limitations under the License.
 namespace xla::cpu {
 
 class NanoRtExecutable {
+  // Manages the thread pool used by the NanoRtExecutable.
+  // If the thread pool is provided the thread pool device is managed by the
+  // object, otherwise the thread pool device is managed by the caller.
+  class ThreadPoolManager {
+   public:
+    explicit ThreadPoolManager(
+        std::shared_ptr<tsl::thread::ThreadPool> thread_pool);
+
+    const Eigen::ThreadPoolDevice* thread_pool_device() const {
+      return thread_pool_device_;
+    }
+
+    absl::Status set_thread_pool_device(
+        const Eigen::ThreadPoolDevice* thread_pool_device) {
+      if (thread_pool_) {
+        return absl::FailedPreconditionError(
+            "Thread pool device is already set and managed by an internal "
+            "thread pool.");
+      }
+      thread_pool_device_ = thread_pool_device;
+      return absl::OkStatus();
+    }
+
+    ~ThreadPoolManager();
+
+   private:
+    std::shared_ptr<tsl::thread::ThreadPool> thread_pool_;
+    const Eigen::ThreadPoolDevice* thread_pool_device_;
+  };
+
  public:
   // Creates a new instance of the NanoRtExecutable from compatible XLA
   // executable.
@@ -55,6 +89,8 @@ class NanoRtExecutable {
     template <typename T>
     Argument(const T* data, int64_t size);
 
+    inline Argument(const void* data, int64_t size);
+
     template <typename T>
     explicit Argument(absl::Span<const T> data);
 
@@ -69,6 +105,8 @@ class NanoRtExecutable {
    public:
     template <typename T>
     Result(T* data, int64_t size);
+
+    inline Result(void* data, int64_t size);
 
     template <typename T>
     explicit Result(absl::Span<T> data);
@@ -114,6 +152,11 @@ class NanoRtExecutable {
   // Returns the size of the temp buffer required to run the executable.
   size_t temp_buffer_size() const;
 
+  absl::Status set_thread_pool_device(
+      const Eigen::ThreadPoolDevice* thread_pool_device) {
+    return thread_pool_manager_.set_thread_pool_device(thread_pool_device);
+  }
+
  private:
   NanoRtExecutable(std::unique_ptr<Executable> executable,
                    std::shared_ptr<tsl::thread::ThreadPool> thread_pool,
@@ -123,7 +166,8 @@ class NanoRtExecutable {
                    std::optional<size_t> temp_allocation_index);
 
   std::unique_ptr<Executable> executable_;
-  std::shared_ptr<tsl::thread::ThreadPool> thread_pool_;
+
+  ThreadPoolManager thread_pool_manager_;
 
   std::vector<size_t> allocation_sizes_;
 
@@ -140,6 +184,9 @@ template <typename T>
 NanoRtExecutable::Argument::Argument(const T* data, int64_t size)
     : data_(reinterpret_cast<const std::byte*>(data), size * sizeof(T)) {}
 
+NanoRtExecutable::Argument::Argument(const void* data, int64_t size)
+    : data_(reinterpret_cast<const std::byte*>(data), size) {}
+
 template <typename T>
 NanoRtExecutable::Argument::Argument(absl::Span<const T> data)
     : Argument(data.data(), data.size()) {}
@@ -147,6 +194,9 @@ NanoRtExecutable::Argument::Argument(absl::Span<const T> data)
 template <typename T>
 NanoRtExecutable::Result::Result(T* data, int64_t size)
     : data_(reinterpret_cast<std::byte*>(data), size * sizeof(T)) {}
+
+NanoRtExecutable::Result::Result(void* data, int64_t size)
+    : data_(reinterpret_cast<std::byte*>(data), size) {}
 
 template <typename T>
 NanoRtExecutable::Result::Result(absl::Span<T> data)

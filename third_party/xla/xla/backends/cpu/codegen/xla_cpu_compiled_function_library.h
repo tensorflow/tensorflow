@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_CPU_COMPILED_FUNCTION_LIBRARY_H_
-#define TENSORFLOW_COMPILER_TF2XLA_XLA_CPU_COMPILED_FUNCTION_LIBRARY_H_
+#ifndef XLA_BACKENDS_CPU_CODEGEN_XLA_CPU_COMPILED_FUNCTION_LIBRARY_H_
+#define XLA_BACKENDS_CPU_CODEGEN_XLA_CPU_COMPILED_FUNCTION_LIBRARY_H_
 
 #include <string>
 
@@ -50,4 +50,4 @@ class XlaCpuCompiledFunctionLibrary : public FunctionLibrary {
 
 }  // namespace xla::cpu
 
-#endif  // TENSORFLOW_COMPILER_TF2XLA_XLA_CPU_COMPILED_FUNCTION_LIBRARY_H_
+#endif  // XLA_BACKENDS_CPU_CODEGEN_XLA_CPU_COMPILED_FUNCTION_LIBRARY_H_

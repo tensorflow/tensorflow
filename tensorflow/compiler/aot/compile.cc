@@ -95,7 +95,7 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
                            aot_or.status().message());
   }
   compile_result->aot =
-      xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
+      xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResultLegacy>(
           std::move(aot_or.value().back()));
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
@@ -162,6 +162,11 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
     aot_opts.set_sanitize_dataflow(flags.sanitize_dataflow);
     aot_opts.set_sanitize_abilists_dataflow(absl::StrSplit(
         flags.sanitize_abilists_dataflow, ',', absl::SkipEmpty()));
+  }
+
+  // AOT compilation is currently not supported for the thunk runtime.
+  if (aot_opts.debug_options().xla_cpu_use_thunk_runtime()) {
+    aot_opts.mutable_debug_options()->set_xla_cpu_use_thunk_runtime(false);
   }
 
   return CompileXla(client, computation, aot_opts, compile_result);

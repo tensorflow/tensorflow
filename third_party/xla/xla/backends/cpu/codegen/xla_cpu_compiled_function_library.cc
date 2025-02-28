@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/xla_cpu_compiled_function_library.h"
+#include "xla/backends/cpu/codegen/xla_cpu_compiled_function_library.h"
 
 #include <string>
 #include <utility>
