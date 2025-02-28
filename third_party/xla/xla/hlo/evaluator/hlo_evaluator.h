@@ -16,40 +16,41 @@ limitations under the License.
 #ifndef XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 #define XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
-#include "absl/log/check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "Eigen/Core"
-#include "xla/comparison_util.h"
-#include "xla/hlo/ir/dfs_hlo_visitor.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/shape.h"
-#include "xla/status_macros.h"
-#include "tsl/platform/errors.h"
 #define _USE_MATH_DEFINES
 
+#include <complex>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <random>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"
 #include "xla/array2d.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
+#include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dynamic_dimension_inference.h"
-#include "xla/service/shape_inference.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -461,21 +462,23 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   bool use_fast_path_reduce_ = true;
 
  private:
-  template <typename ReturnT, typename NativeT>
+  template <typename ReturnT, typename NativeT, typename UnaryOp>
   static absl::StatusOr<Literal> ElementWiseUnaryOpImpl(
-      const HloInstruction* instruction,
-      const std::function<ReturnT(NativeT)>& unary_op,
+      const HloInstruction* instruction, UnaryOp&& unary_op,
       const Literal& operand_literal) {
+    static_assert(std::is_invocable_r_v<ReturnT, UnaryOp, NativeT>,
+                  "Invalid UnaryOp signature");
+
     const Shape& shape = instruction->shape();
     const auto* operand = instruction->operand(0);
     TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 
     Literal result(shape);
-    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
-        [&](absl::Span<const int64_t> multi_index, int) {
-          return unary_op(operand_literal.Get<NativeT>(multi_index));
+    TF_RETURN_IF_ERROR(
+        result.PopulateLinearParallel<ReturnT>([&](int64_t linear_index, int) {
+          return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
         }));
-    return std::move(result);
+    return result;
   }
 
   // Map from a primitive type to its associated (templated) DfsHloVisitor.
@@ -531,7 +534,7 @@ struct ParsedStaticWhileLoop {
 // Indicates whether a parsed while loop is static or dynamic. If the loop is
 // static, it contains a value for StaticLoopInfo; otherwise the loop is
 // dynamic. We consider a loop dynamic if its induction variable's initial
-// value or the loop bound's value depends on the while's parent computation's
+// value or the loop bounds value depends on the while's parent computation's
 // parameter.
 struct ParsedWhileLoop {
   std::optional<ParsedStaticWhileLoop> static_while_loop;

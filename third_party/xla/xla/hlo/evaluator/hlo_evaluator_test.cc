@@ -6257,12 +6257,15 @@ BENCHMARK(BM_ReducePrecisely);
 static void BM_UnaryOp(benchmark::State& state) {
   int64_t d = state.range(0);
 
-  auto input = LiteralUtil::CreateFull({d, d}, 1.0f);
+  std::unique_ptr<HloInstruction> input =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 1.0f));
+
+  std::unique_ptr<HloInstruction> unary = HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {d, d}), HloOpcode::kExp, input.get());
 
   HloEvaluator evaluator;
   for (auto s : state) {
-    CHECK_OK(
-        evaluator.EvaluateElementwiseUnaryOp(HloOpcode::kExp, input).status());
+    CHECK_OK(evaluator.Evaluate(unary.get()).status());
   }
 }
 
@@ -6276,13 +6279,17 @@ BENCHMARK(BM_UnaryOp)
 static void BM_BinaryOp(benchmark::State& state) {
   int64_t d = state.range(0);
 
-  auto lhs = LiteralUtil::CreateFull({d, d}, 1.0f);
-  auto rhs = LiteralUtil::CreateFull({d, d}, 2.0f);
+  std::unique_ptr<HloInstruction> lhs =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 1.0f));
+  std::unique_ptr<HloInstruction> rhs =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 2.0f));
+
+  std::unique_ptr<HloInstruction> binary = HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {d, d}), HloOpcode::kAdd, lhs.get(), rhs.get());
 
   HloEvaluator evaluator;
   for (auto s : state) {
-    CHECK_OK(evaluator.EvaluateElementwiseBinaryOp(HloOpcode::kAdd, lhs, rhs)
-                 .status());
+    CHECK_OK(evaluator.Evaluate(binary.get()).status());
   }
 }
 
