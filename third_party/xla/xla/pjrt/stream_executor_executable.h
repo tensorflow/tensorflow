@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo_proto_util.h"
 
 namespace xla {
 class StreamExecutorExecutable : public PjRtExecutable {
@@ -83,6 +84,24 @@ class StreamExecutorExecutable : public PjRtExecutable {
 
   absl::StatusOr<std::string> FingerprintExecutable() const override {
     return fingerprint_;
+  }
+
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    if (aot_executables_.size() != 1) {
+      return Unimplemented(
+          "Retrieving CompiledMemoryStats is not supported for multiple "
+          "executables.");
+    }
+
+    HloProto proto = MakeHloProto(*aot_executables_[0]->optimized_module());
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffers,
+                        aot_executables_[0]->GetBufferAssignment());
+
+    CompiledMemoryStats memory_stats{};
+    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+    memory_stats.serialized_hlo_proto = proto.SerializeAsString();
+    memory_stats.PopulateBufferStatsFromAllocations(buffers->Allocations());
+    return memory_stats;
   }
 
  private:
