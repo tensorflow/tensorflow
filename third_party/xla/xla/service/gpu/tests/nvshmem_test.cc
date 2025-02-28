@@ -39,18 +39,15 @@ namespace xla {
 namespace {
 
 // Tests that NVSHMEM library can be loaded and initialized.
-
-static const char* test_binary_name;
-
 TEST(NvshmemTest, Initialization) {
   const int num_nodes = 2;
   tsl::SubProcess child[num_nodes];
   for (int node_id = 0; node_id < num_nodes; ++node_id) {
     std::vector<std::string> argv;
-    argv.push_back(test_binary_name);
+    argv.push_back("nvshmem_test");
     argv.push_back(absl::StrFormat("--node_id=%d", node_id));
     argv.push_back(absl::StrFormat("--num_nodes=%d", num_nodes));
-    child[node_id].SetProgram(test_binary_name, argv);
+    child[node_id].SetProgram("/proc/self/exe", argv);
     child[node_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
     child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
     ASSERT_TRUE(child[node_id].Start()) << "node " << node_id;
@@ -100,7 +97,6 @@ absl::Status InitializationTestBody(const int node_id, const int num_nodes) {
 
 int main(int argc, char* argv[]) {
   // Save name of binary so that it may invoke itself.
-  xla::test_binary_name = argv[0];
   int node_id = -1;
   int num_nodes = -1;
   std::vector<tsl::Flag> flag_list = {
