@@ -157,7 +157,7 @@ static opt<bool, true> disable_vhlo_to_stablehlo_flag(
 // NOLINTNEXTLINE
 static opt<bool, true> serialize_debug_metadata_flag(
     "serialize-debug-metadata",
-    llvm::cl::desc("Wether to serialize debug metadata or not"),
+    llvm::cl::desc("Whether to serialize debug metadata or not"),
     llvm::cl::location(serialize_debug_metadata), llvm::cl::init(false));
 
 // NOLINTNEXTLINE
