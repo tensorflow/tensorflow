@@ -69,7 +69,8 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
     ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
     std::vector<NcclCollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
     : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
-                          IsGPUSyncCollective(*instr)),
+                          IsGPUSyncCollective(*instr),
+                          AsyncStreamKind::kCollective),
       config_(GetNcclAllToAllConfig(instr)),
       buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {
@@ -170,8 +171,10 @@ absl::Status NcclAllToAllStartThunk::RunNcclCollective(
 }
 
 AsyncStreamKind NcclAllToAllStartThunk::GetAsyncStreamKind() const {
-  return (is_local() && p2p_memcpy_enabled_) ? AsyncStreamKind::kMemCpyP2P
-                                             : AsyncStreamKind::kCollective;
+  if (is_local() && p2p_memcpy_enabled_) {
+    return AsyncStreamKind::kMemCpyP2P;
+  }
+  return NcclCollectiveThunk::GetAsyncStreamKind();
 }
 
 bool NcclAllToAllStartThunk::is_local() const {

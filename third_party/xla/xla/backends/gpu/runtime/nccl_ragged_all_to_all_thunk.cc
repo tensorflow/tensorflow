@@ -291,7 +291,8 @@ NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
     ThunkInfo thunk_info, const HloRaggedAllToAllInstruction* instr,
     std::vector<NcclCollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
     : NcclCollectiveThunk(Thunk::kNcclRaggedAllToAllStart, thunk_info,
-                          IsGPUSyncCollective(*instr)),
+                          IsGPUSyncCollective(*instr),
+                          AsyncStreamKind::kCollective),
       config_(GetNcclRaggedAllToAllConfig(instr)),
       buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {

@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/collective_ops_utils.h"
@@ -169,9 +170,20 @@ NcclP2PConfig GetNcclP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
   return p2p_config;
 }
 
-AsyncStreamKind GetStreamKindForSendRecv(const HloSendRecvInstruction* instr) {
-  auto it = instr->frontend_attributes().map().find(kSendRecvPipelineAttr);
-  if (it != instr->frontend_attributes().map().end() && it->second == "1") {
+AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr) {
+  const auto& fe_map = instr->frontend_attributes().map();
+
+  // kCollectiveStreamAttrName takes precedence over kSendRecvPipelineAttr.
+  {
+    const auto it = fe_map.find(kCollectiveStreamAttrName);
+    if (it != fe_map.end() && it->second == kCollectiveStreamP2P) {
+      // Use any of the two p2p streams.
+      return AsyncStreamKind::kP2P0;
+    }
+  }
+
+  const auto it = fe_map.find(kSendRecvPipelineAttr);
+  if (it != fe_map.end() && it->second == "1") {
     return AsyncStreamKind::kP2P1;
   }
   return AsyncStreamKind::kP2P0;
