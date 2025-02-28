@@ -195,6 +195,7 @@ cc_library(
         ":sequential_thunk",
         ":thunk",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla/hlo/evaluator:hlo_evaluator",

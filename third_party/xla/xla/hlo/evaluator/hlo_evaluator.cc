@@ -80,15 +80,15 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -102,10 +102,10 @@ absl::StatusOr<Literal> Compare(const Shape& shape, Comparison comparison,
                                 LiteralSlice rhs_literal) {
   auto populate = [&](auto compare_op) -> absl::StatusOr<Literal> {
     Literal result(shape);
-    TF_RETURN_IF_ERROR(result.PopulateParallel<bool>(
-        [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
-          auto lhs = lhs_literal.Get<OperandT>(multi_index);
-          auto rhs = rhs_literal.Get<OperandT>(multi_index);
+    TF_RETURN_IF_ERROR(result.PopulateLinearParallel<bool>(
+        [&](int64_t linear_index, int /*thread_id*/) {
+          auto lhs = lhs_literal.GetLinear<OperandT>(linear_index);
+          auto rhs = rhs_literal.GetLinear<OperandT>(linear_index);
           if constexpr (is_specialized_floating_point_v<OperandT>) {
             if (comparison.IsTotalOrder()) {
               return compare_op(ToSignMagnitude(lhs), ToSignMagnitude(rhs));
