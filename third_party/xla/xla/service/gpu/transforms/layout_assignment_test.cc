@@ -20,11 +20,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tests/hlo_test_base.h"
@@ -49,6 +52,7 @@ namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
+using ::testing::NotNull;
 using ::tsl::testing::IsOkAndHolds;
 
 class LayoutAssignmentTest : public HloTestBase {
@@ -965,6 +969,48 @@ ENTRY %main {
 // CHECK:  (f32[100,100]{1,0}, token[]) recv-done
 // CHECK:  (f32[100,100]{1,0}, u32[], token[]) send
                                 )");
+}
+
+TEST_F(LayoutAssignmentTest, RaggedAllToAllLayoutSetRaggedDimToMajor) {
+  absl::string_view hlo = R"(
+  HloModule module
+
+  ENTRY main {
+    input = f32[16,4,8]{0,2,1} parameter(0)
+    output = f32[32,4,8]{0,1,2} parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = f32[32,4,8]{0,1,2} ragged-all-to-all(input, output,
+      input_offsets, send_sizes, output_offsets, recv_sizes),
+      replica_groups={{0,1}}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  auto ragged_all_to_all = FindInstruction(m.get(), HloOpcode::kRaggedAllToAll);
+  EXPECT_THAT(ragged_all_to_all, NotNull());
+
+  // Operands 0 and 1 of ragged-all-to-all can have different shapes, but they
+  // must have the same layout.
+  EXPECT_EQ(ragged_all_to_all->operand(0)->shape().layout().minor_to_major(),
+            ragged_all_to_all->operand(1)->shape().layout().minor_to_major());
+
+  // Operand 1 is aliased to the output of the ragged-all-to-all, so they must
+  // have the same shape.
+  EXPECT_EQ(ragged_all_to_all->operand(1)->shape(), ragged_all_to_all->shape());
+
+  // The ragged dimension (0) must be in the most major position in the layout.
+  EXPECT_TRUE(ShapeUtil::IsEffectivelyMostMajorDimension(
+      ragged_all_to_all->shape(), 0));
 }
 
 }  // namespace

@@ -1997,23 +1997,30 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
     FillWithRandomData(input_data, output_data, input_offsets, output_offsets,
                        input_sizes);
 
+    HloInstruction* input_param =
+        module->entry_computation()->parameter_instruction(0);
+    HloInstruction* output_param =
+        module->entry_computation()->parameter_instruction(1);
+
     // Create literals from array data.
     for (int replica_id = 0; replica_id < num_replicas; ++replica_id) {
-      inputs_.push_back(LiteralUtil::CreateFromArray(input_data[replica_id]));
+      inputs_.push_back(LiteralUtil::CreateFromArrayWithLayout(
+          input_data[replica_id], input_param->shape().layout()));
       input_offsets_.push_back(LiteralUtil::CreateFromArray(
           GetReplicaSlice(replica_id, input_offsets)));
       input_sizes_.push_back(LiteralUtil::CreateFromArray(
           GetReplicaSlice(replica_id, input_sizes)));
 
-      expected_outputs_.push_back(
-          LiteralUtil::CreateFromArray(output_data[replica_id]));
+      expected_outputs_.push_back(LiteralUtil::CreateFromArrayWithLayout(
+          output_data[replica_id], output_param->shape().layout()));
       output_offsets_.push_back(LiteralUtil::CreateFromArray(
           GetReplicaSlice(replica_id, output_offsets)));
       output_sizes_.push_back(LiteralUtil::CreateFromArray(
           GetReplicaSlice(replica_id, output_sizes)));
     }
 
-    output_init_ = LiteralUtil::CreateFromArray(output_init_data);
+    output_init_ = LiteralUtil::CreateFromArrayWithLayout(
+        output_init_data, output_param->shape().layout());
   }
 
   // Returns a vector of pointers to the literals in the format needed for
@@ -2251,7 +2258,7 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
-XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_Degenerate_2GPUs) {
+XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_Degenerate) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module
 
@@ -2307,6 +2314,56 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_Degenerate_2GPUs) {
                                      /*run_hlo_passes=*/true,
                                      /*device_assignment=*/nullptr));
   ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
+}
+
+XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_NonDefaultLayout) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module
+
+  ENTRY entry {
+    input = f32[16,4,8]{0,2,1} parameter(0)
+    output = f32[16,4,8]{0,1,2} parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = f32[16,4,8]{0,1,2} ragged-all-to-all(input, output,
+      input_offsets, send_sizes, output_offsets, recv_sizes),
+      replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  const int64_t kNumPartitions = 1;
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  auto ragged_all_to_all =
+      FindInstruction(module.get(), HloOpcode::kRaggedAllToAll);
+  EXPECT_THAT(ragged_all_to_all, NotNull());
+
+  CreateRandomTestData</*IndexType=*/int32_t>(
+      module.get(), /*input_sizes=*/{/*replica_0=*/{4, 7},
+                                     /*replica_1=*/{2, 5}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }

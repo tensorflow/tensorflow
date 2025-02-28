@@ -551,6 +551,13 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
           ShapeUtil::MoveDimToMajor(all_to_all->shape(),
                                     *all_to_all->split_dimension()),
           all_to_all));
+    } else if (HloPredicateIsOp<HloOpcode::kRaggedAllToAll>(instruction)) {
+      auto* ragged_all_to_all = Cast<HloRaggedAllToAllInstruction>(instruction);
+      // XLA:GPU can only support ragged-all-to-all with the most major ragged
+      // dimension in the layout.
+      TF_RETURN_IF_ERROR(SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(ragged_all_to_all->shape(), 0),
+          ragged_all_to_all));
     } else if (HloPredicateIsOp<HloOpcode::kSend>(instruction)) {
       Shape s = instruction->operand(0)->shape();
       LayoutUtil::SetToDefaultLayout(&s);
