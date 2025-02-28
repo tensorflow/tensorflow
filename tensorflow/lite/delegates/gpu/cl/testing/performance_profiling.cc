@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/time/time.h"
-#include "third_party/opencl_headers/CL/cl.h"
-#include "third_party/opencl_headers/CL/cl_ext.h"
-#include "third_party/opencl_headers/CL/cl_platform.h"
+#include <CL/cl.h>
+#include <CL/cl_ext.h>
+#include <CL/cl_platform.h>
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
