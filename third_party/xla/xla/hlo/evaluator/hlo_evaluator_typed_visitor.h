@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <bitset>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -32,20 +33,32 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/index_util.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -1293,10 +1306,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
     // Create new HLO of padded shape with padding value.
     Literal result(pad->shape());
-    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
-        [&scalar](absl::Span<const int64_t> multi_index, int) {
-          return scalar;
-        }));
+    TF_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
+        [&scalar](int64_t linear_index, int) { return scalar; }));
 
     const Literal& evaluated_operand =
         parent_->GetEvaluatedLiteralFor(pad->operand(0));
@@ -1663,12 +1674,26 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
     Literal result(shape);
 
-    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
-        [&](absl::Span<const int64_t> multi_index, int) {
-          return ConvertBinaryFunction(binary_op)(
-              lhs_literal.Get<ReturnT>(multi_index),
-              rhs_literal.Get<ReturnT>(multi_index));
-        }));
+    // If layout is the same, we can use linear indexing into the literals.
+    const Layout& lhs_layout = lhs_literal.shape().layout();
+    const Layout& rhs_layout = rhs_literal.shape().layout();
+    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout);
+
+    if (same_layout) {
+      TF_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
+          [&](int64_t linear_index, int) {
+            return ConvertBinaryFunction(binary_op)(
+                lhs_literal.GetLinear<ReturnT>(linear_index),
+                rhs_literal.GetLinear<ReturnT>(linear_index));
+          }));
+    } else {
+      TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+          [&](absl::Span<const int64_t> multi_index, int) {
+            return ConvertBinaryFunction(binary_op)(
+                lhs_literal.Get<ReturnT>(multi_index),
+                rhs_literal.Get<ReturnT>(multi_index));
+          }));
+    }
     return std::move(result);
   }
 
@@ -1690,12 +1715,29 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
     Literal result(shape);
 
-    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
-        [&](absl::Span<const int64_t> multi_index, int) {
-          return ternary_op(lhs_literal.Get<LhsType>(multi_index),
-                            rhs_literal.Get<RhsType>(multi_index),
-                            ehs_literal.Get<EhsType>(multi_index));
-        }));
+    // If layout is the same, we can use linear indexing into the literals.
+    const Layout& lhs_layout = lhs_literal.shape().layout();
+    const Layout& rhs_layout = rhs_literal.shape().layout();
+    const Layout& ehs_layout = ehs_literal.shape().layout();
+    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
+                       LayoutUtil::Equal(rhs_layout, ehs_layout);
+
+    if (same_layout) {
+      TF_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
+          [&](int64_t linear_index, int) {
+            return ternary_op(lhs_literal.GetLinear<LhsType>(linear_index),
+                              rhs_literal.GetLinear<RhsType>(linear_index),
+                              ehs_literal.GetLinear<EhsType>(linear_index));
+          }));
+
+    } else {
+      TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+          [&](absl::Span<const int64_t> multi_index, int) {
+            return ternary_op(lhs_literal.Get<LhsType>(multi_index),
+                              rhs_literal.Get<RhsType>(multi_index),
+                              ehs_literal.Get<EhsType>(multi_index));
+          }));
+    }
 
     return std::move(result);
   }
