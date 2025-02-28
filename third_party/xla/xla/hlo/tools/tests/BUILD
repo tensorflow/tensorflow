@@ -26,6 +26,7 @@ lit_test_suite(
             # go/keep-sorted start
             "hlo_opt_all_passes_smoke_test.hlo",
             "hlo_opt_emit_proto.hlo",
+            "hlo_opt_hlo_protobinary_to_hlotext.hlo",
             "hlo_opt_nonexistent_pass_failure.hlo",
             "hlo_opt_run_multiple_passes.hlo",
             "hlo_opt_run_single_pass.hlo",
@@ -36,6 +37,9 @@ lit_test_suite(
         ],
     ),
     cfg = "//xla:lit.cfg.py",
+    data = [
+        "hlo_opt_hlo_protobinary.pb",
+    ],
     tools = [
         "//xla/hlo/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
@@ -67,22 +71,6 @@ lit_test_suite(
     cfg = "//xla:lit.cfg.py",
     tools = [
         "//xla/hlo/tools:hlo-opt",
-        "@llvm-project//llvm:FileCheck",
-    ],
-)
-
-lit_test_suite(
-    name = "hlo_convert_tests",
-    srcs = [
-        "convert_to_pbtxt.hlo",
-        "convert_to_text.hlo",
-    ],
-    cfg = "//xla:lit.cfg.py",
-    data = [
-        "convert_to_text.hlo.pb",
-    ],
-    tools = [
-        "//xla/hlo/tools:convert",
         "@llvm-project//llvm:FileCheck",
     ],
 )
