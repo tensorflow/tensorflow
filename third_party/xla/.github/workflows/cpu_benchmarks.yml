@@ -49,7 +49,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 360
+    timeout-minutes: 540
     steps:
       - name: Print machine specs
         run: |
@@ -108,6 +108,7 @@ jobs:
           cd tmp_hlo
           wget https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo
           cd ..
+          ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU tmp_hlo/gemma2_2b_keras_jax.hlo
 
       - name: Compute the cost of gemma2_2b_keras_jax.hlo
         run: |
