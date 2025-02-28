@@ -24,7 +24,7 @@ message ExecuteOptionsProto {
   int32 launch_id = 3;
   repeated int32 non_donatable_input_indices = 7;
   bool fill_status = 9;
-  uint64 execution_stream_id = 11;
+  int64 execution_stream_id = 11;
   AttributeMapProto custom_options = 10;
 
   reserved 1, 4 to 6, 8;

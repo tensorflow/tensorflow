@@ -87,19 +87,22 @@ def _write_to_sponge_config(key, value) -> None:
 
 
 class BuildType(enum.Enum):
-  """Enum representing all types of builds."""
-  CPU_X86_SELF_HOSTED = enum.auto()
-  CPU_ARM64_SELF_HOSTED = enum.auto()
-  GPU_T4_SELF_HOSTED = enum.auto()
+  """Enum representing all types of builds.
 
-  MACOS_CPU_X86 = enum.auto()
-  MACOS_CPU_ARM64 = enum.auto()
+  Should be named as `REPO,OS,HOST_TYPE,BACKEND,GPU_TYPE,CI_TYPE`.
+  """
+  XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
 
-  JAX_CPU_SELF_HOSTED = enum.auto()
-  JAX_X86_GPU_T4_SELF_HOSTED = enum.auto()
+  XLA_MACOS_X86_CPU_KOKORO = enum.auto()
+  XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
 
-  TENSORFLOW_CPU_SELF_HOSTED = enum.auto()
-  TENSORFLOW_X86_GPU_T4_SELF_HOSTED = enum.auto()
+  JAX_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+
+  TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
 
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
@@ -160,8 +163,8 @@ class Build:
     # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
     # MacOS VM.
     if (
-        self.type_ != BuildType.MACOS_CPU_X86
-        and self.type_ != BuildType.MACOS_CPU_ARM64
+        self.type_ != BuildType.XLA_MACOS_X86_CPU_KOKORO
+        and self.type_ != BuildType.XLA_MACOS_ARM64_CPU_KOKORO
     ):
       cmds.append(
           retry(
@@ -221,8 +224,8 @@ cpu_x86_tag_filter = (
     "-requires-gpu-nvidia",
     "-requires-gpu-amd",
 )
-_CPU_X86_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.CPU_X86_SELF_HOSTED,
+_XLA_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
@@ -238,8 +241,8 @@ cpu_arm_tag_filter = (
     "-requires-gpu-amd",
     "-not_run:arm",
 )
-_CPU_ARM64_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.CPU_ARM64_SELF_HOSTED,
+_XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
@@ -248,10 +251,12 @@ _CPU_ARM64_SELF_HOSTED_BUILD = Build(
     test_tag_filters=cpu_arm_tag_filter,
 )
 
-_GPU_T4_SELF_HOSTED_BUILD = nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.GPU_T4_SELF_HOSTED,
-    configs=("warnings", "rbe_linux_cuda_nvcc"),
-    compute_capability=75,
+_XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD = (
+    nvidia_gpu_build_with_compute_capability(
+        type_=BuildType.XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+        configs=("warnings", "rbe_linux_cuda_nvcc"),
+        compute_capability=75,
+    )
 )
 
 macos_tag_filter = (
@@ -263,8 +268,8 @@ macos_tag_filter = (
     "-requires-gpu-amd",
 )
 
-_MACOS_X86_BUILD = Build(
-    type_=BuildType.MACOS_CPU_X86,
+_XLA_MACOS_X86_CPU_KOKORO_BUILD = Build(
+    type_=BuildType.XLA_MACOS_X86_CPU_KOKORO,
     repo="openxla/xla",
     configs=("nonccl",),
     target_patterns=(
@@ -297,8 +302,8 @@ _MACOS_X86_BUILD = Build(
     ),
 )
 
-_MACOS_ARM64_BUILD = Build(
-    type_=BuildType.MACOS_CPU_ARM64,
+_XLA_MACOS_ARM64_CPU_KOKORO_BUILD = Build(
+    type_=BuildType.XLA_MACOS_ARM64_CPU_KOKORO,
     repo="openxla/xla",
     configs=("nonccl",),
     target_patterns=(
@@ -324,8 +329,8 @@ _MACOS_ARM64_BUILD = Build(
     ),
 )
 
-_JAX_CPU_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.JAX_CPU_SELF_HOSTED,
+_JAX_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.JAX_LINUX_X86_CPU_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_linux_x86_64",),
     target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
@@ -340,8 +345,8 @@ _JAX_CPU_SELF_HOSTED_BUILD = Build(
     ),
 )
 
-_JAX_GPU_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.JAX_X86_GPU_T4_SELF_HOSTED,
+_JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_linux_x86_64_cuda",),
     target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
@@ -377,8 +382,8 @@ tensorflow_gpu_tag_filters = tensorflow_tag_filters + (
     "+gpu",
 )
 
-_TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.TENSORFLOW_CPU_SELF_HOSTED,
+_TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS,
     repo="tensorflow/tensorflow",
     configs=(
         "release_cpu_linux",
@@ -402,8 +407,8 @@ _TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
     ),
 )
 
-_TENSORFLOW_GPU_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.TENSORFLOW_X86_GPU_T4_SELF_HOSTED,
+_TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     repo="tensorflow/tensorflow",
     configs=(
         "release_gpu_linux",
@@ -428,15 +433,19 @@ _TENSORFLOW_GPU_SELF_HOSTED_BUILD = Build(
 )
 
 _KOKORO_JOB_NAME_TO_BUILD_MAP = {
-    "tensorflow/xla/macos/github_continuous/cpu_py39_full": _MACOS_X86_BUILD,
-    "tensorflow/xla/macos/cpu/cpu_py39_full": _MACOS_ARM64_BUILD,
-    "xla-linux-x86-cpu": _CPU_X86_SELF_HOSTED_BUILD,
-    "xla-linux-arm64-cpu": _CPU_ARM64_SELF_HOSTED_BUILD,
-    "xla-linux-x86-gpu-t4": _GPU_T4_SELF_HOSTED_BUILD,
-    "jax-linux-x86-cpu": _JAX_CPU_SELF_HOSTED_BUILD,
-    "jax-linux-x86-gpu-t4": _JAX_GPU_SELF_HOSTED_BUILD,
-    "tensorflow-linux-x86-cpu": _TENSORFLOW_CPU_SELF_HOSTED_BUILD,
-    "tensorflow-linux-x86-gpu-t4": _TENSORFLOW_GPU_SELF_HOSTED_BUILD,
+    "tensorflow/xla/macos/github_continuous/cpu_py39_full": (
+        _XLA_MACOS_X86_CPU_KOKORO_BUILD
+    ),
+    "tensorflow/xla/macos/cpu/cpu_py39_full": _XLA_MACOS_ARM64_CPU_KOKORO_BUILD,
+    "xla-linux-x86-cpu": _XLA_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD,
+    "xla-linux-arm64-cpu": _XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS_BUILD,
+    "xla-linux-x86-gpu-t4": _XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD,
+    "jax-linux-x86-cpu": _JAX_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD,
+    "jax-linux-x86-gpu-t4": _JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD,
+    "tensorflow-linux-x86-cpu": _TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD,
+    "tensorflow-linux-x86-gpu-t4": (
+        _TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD
+    ),
 }
 
 
