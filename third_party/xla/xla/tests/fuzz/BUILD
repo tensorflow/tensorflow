@@ -17,6 +17,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
     ],
+    alwayslink = True,  # This library registers test cases at dynamic initialization time.
 )
 
 [hlo_test(
