@@ -101,7 +101,7 @@ bool RegisterDispatchableType(PyObject* py_class) {
     Safe_PyObjectPtr s(PyObject_Str(py_class));
     PyErr_SetString(PyExc_ValueError,
                     absl::StrCat("Type ", s ? PyUnicode_AsUTF8(s.get()) : "?",
-                                 " (or one of its bases clases) has "
+                                 " (or one of its bases classes) has "
                                  "already been registered")
                         .c_str());
     return false;
