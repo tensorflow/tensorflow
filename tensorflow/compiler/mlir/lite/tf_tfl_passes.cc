@@ -293,11 +293,10 @@ void AddPreQuantizationStableHloToTfPasses(
   pass_manager.addPass(mlir::TF::CreateStripNoinlineAttributePass());
   // Add inline pass.
   pass_manager.addPass(mlir::createInlinerPass());
-  pass_manager.addPass(
-      mlir::stablehlo_ext::createStablehloFlattenEntryFunctionTuplesPass(
-          {entry_function_name.str()}));
+  // Flatten tuples in entry computations and custom calls.
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo_ext::createStablehloFlattenTuplePass());
+      mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass(
+          {entry_function_name.str()}));
   mlir::odml::AddMhloOptimizationPasses(
       pass_manager,
       /*add_fold_broadcast_pass=*/pass_config.enable_stablehlo_quantizer);

@@ -50,6 +50,43 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplific
  }
  
  // -----
+@@ -1908,6 +1917,19 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: @side_effecting_custom_call
++func.func @side_effecting_custom_call(%arg0: tensor<0xf32>) -> (tensor<0xf32>, tensor<0xf32>) {
++  // CHECK:      %[[CST:.*]] = stablehlo.constant dense<> : tensor<0xf32>
++  // CHECK-NEXT: %[[CC:.*]] = stablehlo.custom_call @foo(%arg0) {api_version = 0 : i32, has_side_effect = true} : (tensor<0xf32>) -> tensor<0xf32>
++  %0 = stablehlo.custom_call @foo(%arg0) {api_version = 0 : i32, has_side_effect = true} : (tensor<0xf32>) -> tensor<0xf32>
++  // CHECK-NOT:  stablehlo.custom_call{{.*}}has_side_effect = false
++  %1 = stablehlo.custom_call @foo(%arg0) {api_version = 0 : i32, has_side_effect = false} : (tensor<0xf32>) -> tensor<0xf32>
++  // CHECK: return %[[CC]], %[[CST]]
++  return %0, %1 : tensor<0xf32>, tensor<0xf32>
++}
++
++// -----
++
+ /////////
+ // Generic Shape Ops
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/Passes.h b/stablehlo/stablehlo/transforms/optimization/Passes.h
+--- stablehlo/stablehlo/transforms/optimization/Passes.h
++++ stablehlo/stablehlo/transforms/optimization/Passes.h
+@@ -50,6 +50,13 @@
+                                           MLIRContext *context,
+                                           bool foldFloat = false,
+                                           PatternBenefit benefit = 1);
++
++/// Some workloads in XLA import StableHLO from HLO. Since there are a few
++/// differences in HLO (no implicit captures, lots of tuples, etc.), this
++/// set of patterns brings the imported HLO back to a more canonical form
++/// without applying a full set of graph simplifications.
++void populateStablehloHloImportCanonicalizationPatterns(
++    MLIRContext *context, RewritePatternSet *patterns);
+ }  // namespace stablehlo
+ }  // namespace mlir
+ 
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
@@ -68,4 +105,42 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        return rewriter.notifyMatchFailure(op, "operand is not empty tensor");
  
      if (resultTy.hasStaticShape()) {
+@@ -1399,6 +1403,12 @@
+       return rewriter.notifyMatchFailure(op, "not stablehlo");
+     if (isa<ConstantOp>(op))
+       return rewriter.notifyMatchFailure(op, "op is empty constant");
++
++    // Skip ops that have memory effects, similar to XLA's zero extent
++    // simplification, replacing these doesn't save any computation.
++    auto effectInterface = dyn_cast<MemoryEffectOpInterface>(op);
++    if (effectInterface && !effectInterface.hasNoEffect())
++      return rewriter.notifyMatchFailure(op, "op has memory effect");
+ 
+     // If the result is a zero-extent tensor, replace the whole op with an empty
+     // constant.
+@@ -1528,6 +1538,12 @@
+             DynamicReshapeOpIsStatic, DynamicIotaIsStatic>(context);
+ }
+ 
++void populateStablehloHloImportCanonicalizationPatterns(
++    MLIRContext *context, RewritePatternSet *patterns) {
++  patterns->add<TupleIsRepacking, TupleIsUnpacked, WhileOpImplicitCapture>(
++      context);
++}
++
+ std::unique_ptr<Pass> createStablehloAggressiveSimplificationPass(
+     GreedyRewriteConfig config) {
+   return std::make_unique<StablehloAggressiveSimplificationPass>(config);
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+@@ -411,7 +411,7 @@
+ // GetTupleElementOp
+ 
+ // Pattern: get_tuple_element(tuple(X_0, X_1, ...), i) -> X_i
+-def : Pat<(StableHLO_GetTupleElementOp (StableHLO_TupleOp:$tuple $operands), $idx),
++def TupleIsUnpacked : Pat<(StableHLO_GetTupleElementOp (StableHLO_TupleOp:$tuple $operands), $idx),
+           (GetOperandN $tuple, $idx)>;
+ 
+ ////////
 

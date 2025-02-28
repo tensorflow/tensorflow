@@ -50,14 +50,7 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm,
     pm.addNestedPass<FuncOp>(createImportConstantsPass());
   }
   pm.addNestedPass<FuncOp>(
-      mlir::stablehlo_ext::createStablehloFlattenTuplePass());
-  mlir::GreedyRewriteConfig config;
-  config.useTopDownTraversal = true;
-  config.enableRegionSimplification = mlir::GreedySimplifyRegionLevel::Disabled;
-  config.fold = false;
-  config.cseConstants = false;
-  pm.addNestedPass<FuncOp>(
-      mlir::stablehlo::createStablehloAggressiveSimplificationPass(config));
+      mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
 }
 
 void addCommonPostImportPasses(mlir::OpPassManager& pm) {
