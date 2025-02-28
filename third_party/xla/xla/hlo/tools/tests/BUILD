@@ -88,11 +88,12 @@ lit_test_suite(
 )
 
 cc_library(
-    name = "hlo_opt_dummy_passes",
-    hdrs = ["hlo_opt_dummy_passes.h"],
+    name = "hlo_opt_test_only_passes",
+    hdrs = ["hlo_opt_test_only_passes.h"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",

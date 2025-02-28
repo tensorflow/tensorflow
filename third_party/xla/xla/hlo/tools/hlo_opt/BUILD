@@ -41,7 +41,7 @@ cc_library(
         "//xla/hlo/analysis:indexed_array_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/tools/tests:hlo_opt_dummy_passes",
+        "//xla/hlo/tools/tests:hlo_opt_test_only_passes",
         "//xla/hlo/transforms:add_original_value",
         "//xla/hlo/transforms:bfloat16_propagation",
         "//xla/hlo/transforms:convert_memory_placement_to_internal_annotations",

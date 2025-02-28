@@ -9386,7 +9386,8 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   return true;
 }
 
-absl::StatusOr<bool> AlgebraicSimplifierVisitor::IsOneDnnRewritableBF16Conv(
+absl::StatusOr<bool>
+AlgebraicSimplifierVisitor::PromoteConvolutionToF32IfNotOnednnCompatible(
     HloInstruction** convolution) {
   bool can_rewrite = true;
   auto from_dtype = (*convolution)->shape().element_type();
@@ -9414,11 +9415,10 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::IsOneDnnRewritableBF16Conv(
     can_rewrite = false;
   }
 
-  for (auto it = (*convolution)->window().dimensions().begin();
-       it != (*convolution)->window().dimensions().end(); it++) {
-    if ((*it).padding_low() < 0 || (*it).padding_high() < 0 ||
-        (*it).stride() < 0 || (*it).base_dilation() != 1 ||
-        (*it).window_reversal()) {
+  const auto& window_dims = (*convolution)->window().dimensions();
+  for (auto it = window_dims.begin(); it != window_dims.end(); ++it) {
+    if (it->padding_low() < 0 || it->padding_high() < 0 || it->stride() < 0 ||
+        it->base_dilation() != 1 || it->window_reversal()) {
       can_rewrite = false;
     }
   }
@@ -9720,15 +9720,18 @@ absl::Status AlgebraicSimplifierVisitor::HandleConvolution(
   if (swapped) {
     return absl::OkStatus();
   }
-#if defined(INTEL_MKL)
-  // Convert the data type back to F32 if we can't rewrite BF16 convolution to
-  // oneDNN custom call.
-  TF_ASSIGN_OR_RETURN(bool can_rewrite_bf16_conv_to_onednn,
-                      IsOneDnnRewritableBF16Conv(&convolution));
-  if (can_rewrite_bf16_conv_to_onednn) {
-    return absl::OkStatus();
+
+  if (options_.enable_onednn_support()) {
+    // Convert the data type back to F32 if we can't rewrite BF16 convolution to
+    // oneDNN custom call.
+    TF_ASSIGN_OR_RETURN(
+        bool can_rewrite_bf16_conv_to_onednn,
+        PromoteConvolutionToF32IfNotOnednnCompatible(&convolution));
+    if (can_rewrite_bf16_conv_to_onednn) {
+      return absl::OkStatus();
+    }
   }
-#endif  // INTEL_MKL
+
   // Try to replace the convolution with a kDot or a kMultiply instruction.
   TF_ASSIGN_OR_RETURN(bool replaced_with_dot, SimplifyConvToDot(convolution));
   if (replaced_with_dot) {
