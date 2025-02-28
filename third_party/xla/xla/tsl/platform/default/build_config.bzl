@@ -810,33 +810,23 @@ def tf_protobuf_deps():
 def tsl_protobuf_deps():
     return if_tsl_link_protobuf([clean_dep("@com_google_protobuf//:protobuf")], [clean_dep("@com_google_protobuf//:protobuf_headers")])
 
-# When tsl_protobuf_header_only is true, we need to add the protobuf library
-# back into our binaries explicitly.
-def tsl_cc_test(
+def strict_cc_test(
         name,
         linkstatic = True,
-        args = None,
         shuffle_tests = True,
-        deps = [],
+        args = None,
         **kwargs):
-    """A wrapper around cc_test that adds protobuf deps if needed.
+    """A drop-in replacement for cc_test that enforces some good practices by default.
 
-    It also defaults to linkstatic = True, which is a good practice for catching duplicate
-    symbols at link time (e.g. linking in two main() functions).
-
-    By default, it also shuffles the tests to avoid test ordering dependencies.
-
-    Use tsl_cc_test instead of cc_test in all .../tsl/... directories.
+    This should be lightweight and not add any dependencies by itself.
 
     Args:
       name: The name of the test.
       linkstatic: Whether to link statically.
-      args: The arguments to pass to the test.
       shuffle_tests: Whether to shuffle the test cases.
-      deps: The dependencies of the test.
+      args: The arguments to pass to the test.
       **kwargs: Other arguments to pass to the test.
     """
-
     if args == None:
         args = []
 
@@ -848,6 +838,32 @@ def tsl_cc_test(
         name = name,
         linkstatic = linkstatic,
         args = args,
+        **kwargs
+    )
+
+# When tsl_protobuf_header_only is true, we need to add the protobuf library
+# back into our binaries explicitly.
+def tsl_cc_test(
+        name,
+        deps = [],
+        **kwargs):
+    """A wrapper around strict_cc_test that adds protobuf deps if needed.
+
+    It also defaults to linkstatic = True, which is a good practice for catching duplicate
+    symbols at link time (e.g. linking in two main() functions).
+
+    By default, it also shuffles the tests to avoid test ordering dependencies.
+
+    Use tsl_cc_test instead of cc_test in all .../tsl/... directories.
+
+    Args:
+      name: The name of the test.
+      deps: The dependencies of the test.
+      **kwargs: Other arguments to pass to the test.
+    """
+
+    strict_cc_test(
+        name = name,
         deps = deps + if_tsl_link_protobuf(
             [],
             [

@@ -3678,6 +3678,7 @@ bzl_library(
         "//xla:xla_bzl",
         "//xla/stream_executor:build_defs_bzl",
         "//xla/tsl/platform:build_config_root_bzl",
+        "//xla/tsl/platform/default:build_config_bzl",
     ] + tests_build_defs_bzl_deps(),
 )
 

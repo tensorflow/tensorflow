@@ -14,6 +14,7 @@ load(
     "if_static",
     "tf_exec_properties",
 )
+load("//xla/tsl/platform/default:build_config.bzl", "strict_cc_test")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -74,11 +75,8 @@ def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):
 def xla_cc_test(
         name,
         deps = [],
-        linkstatic = True,
-        args = None,
-        shuffle_tests = True,
         **kwargs):
-    """A wrapper around cc_test that adds XLA-specific dependencies.
+    """A wrapper around strict_cc_test that adds XLA-specific dependencies.
 
     Also, it sets linkstatic to True by default, which is a good practice for catching duplicate
     symbols at link time (e.g. linking in two main() functions).
@@ -89,24 +87,12 @@ def xla_cc_test(
     Args:
       name: The name of the test.
       deps: The dependencies of the test.
-      linkstatic: Whether to link statically.
-      args: The arguments to pass to the test.
-      shuffle_tests: Whether to shuffle the test cases.
       **kwargs: Other arguments to pass to the test.
     """
 
-    if args == None:
-        args = []
-
-    if shuffle_tests:
-        # Shuffle tests to avoid test ordering dependencies.
-        args = args + ["--gtest_shuffle"]
-
-    native.cc_test(
+    strict_cc_test(
         name = name,
-        args = args,
         deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS,
-        linkstatic = linkstatic,
         exec_properties = tf_exec_properties(kwargs),
         **kwargs
     )
