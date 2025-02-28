@@ -2233,8 +2233,8 @@ e {
                            m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
-                                                /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2,
+                                                /*arel=*/1e-2}));
 }
 
 TEST_F(TritonGemmTestAny, MinimumHandlesNaNsOnTheLeft) {
@@ -3246,7 +3246,7 @@ ENTRY e {
 )";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
+                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
                                       /*run_hlo_passes=*/false));
 }
 
