@@ -17,7 +17,7 @@ COPY setup.packages.rocm.el8.sh setup.packages.rocm.el8.sh
 COPY builder.packages.rocm.el8.txt builder.packages.rocm.el8.txt
 RUN /setup.packages.rocm.el8.sh /builder.packages.rocm.el8.txt
 
-ARG GPU_DEVICE_TARGETS="gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030 gfx1100 gfx1101 gfx1102 gfx1200 gfx1201"
+ARG GPU_DEVICE_TARGETS="gfx908 gfx90a gfx942 gfx1030 gfx1100 gfx1101 gfx1102 gfx1200 gfx1201"
 ENV GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS}
 
 # Install ROCM
