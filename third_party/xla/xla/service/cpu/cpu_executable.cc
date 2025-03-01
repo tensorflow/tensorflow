@@ -80,23 +80,6 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-using ConstantAllocation = CpuExecutable::ConstantAllocation;
-
-se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
-  if (auto* empty = std::get_if<std::monostate>(&data)) {
-    return se::DeviceMemoryBase();
-  }
-
-  if (auto* owned = std::get_if<std::unique_ptr<Literal>>(&data)) {
-    return se::DeviceMemoryBase((*owned)->untyped_data(),
-                                (*owned)->size_bytes());
-  }
-
-  auto* view = std::get_if<absl::Span<const uint8_t>>(&data);
-  return se::DeviceMemoryBase(
-      const_cast<void*>(reinterpret_cast<const void*>(view->data())),
-      view->size());
-}
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<FunctionLibrary> function_library,
