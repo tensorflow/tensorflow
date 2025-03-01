@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // See ../ops/image_ops.cc for details.
+#include <algorithm>
+#include <cstdint>
+#include <vector>
+
+#include "absl/log/log.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/op_kernel.h"
