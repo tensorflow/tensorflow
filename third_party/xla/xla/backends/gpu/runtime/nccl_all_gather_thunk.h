@@ -48,6 +48,8 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
                                          int64_t replica_count,
                                          int64_t partition_count);
 
+  absl::Status Initialize(const InitializeParams& params) override;
+
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllGatherInstruction* inst);
 
@@ -60,13 +62,41 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
                                  CommunicatorHandle comm_handle) override;
 
  private:
+  bool is_local() const;
+  bool should_use_memcpy() const { return p2p_memcpy_enabled_ && is_local(); }
+
   const NcclAllGatherConfig config_;
   const std::vector<Buffer> buffers_;
+  int64_t device_count_ = -1;
+  const bool p2p_memcpy_enabled_;
+
+  absl::Mutex pointers_mutex_;
+  // Maps from a device to a pointer to an uint64_t array whose size is
+  // buffers_.size(). The pointer is written to and read from in each call to
+  // RunNcclCollective(), but is preallocated as CUDA host memory in the first
+  // call to Initialize(), since allocating CUDA host memory every call to
+  // RunNcclCollective() is expensive.
+  absl::flat_hash_map<se::StreamExecutor*,
+                      std::unique_ptr<se::MemoryAllocation>>
+      send_pointers_ ABSL_GUARDED_BY(pointers_mutex_);
+  // Maps from a device to a pointer to an uint64_t array whose size is
+  // buffers_.size() times the size of the replica_group the device is in. Like
+  // with send_pointers, this is used in RunNcclCollective() and allocated in
+  // Initialize().
+  absl::flat_hash_map<se::StreamExecutor*,
+                      std::unique_ptr<se::MemoryAllocation>>
+      receive_pointer_maps_ ABSL_GUARDED_BY(pointers_mutex_);
 };
 
 absl::Status RunAllGather(GpuCollectives* collectives,
                           std::vector<DeviceBufferPair>& buffers,
                           se::Stream& stream, Communicator* comm);
+
+absl::Status RunMemCpyAllGather(GpuCollectives* collectives,
+                                std::vector<DeviceBufferPair>& buffers,
+                                se::Stream& stream, Communicator* comm,
+                                RankId rank, uint64_t* send_pointer,
+                                uint64_t receive_pointer_map[]);
 
 }  // namespace gpu
 }  // namespace xla
