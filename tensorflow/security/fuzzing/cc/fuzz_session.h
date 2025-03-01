@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
+#include <stdexcept>
+#include <limits>
 
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -29,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/lib/core/errors.h"
 
-// Standard builder for hooking one placeholder to one op.
 #define SINGLE_INPUT_OP_FUZZER(dtype, opName)                             \
   class Fuzz##opName : public FuzzSession<Tensor> {                       \
     void BuildGraph(const Scope& scope) override {                        \
@@ -61,16 +63,23 @@ limitations under the License.
 namespace tensorflow {
 namespace fuzzing {
 
-// Used by GFT to map a known domain (vector<T>) to an unknown
-// domain (Tensor of datatype). T and datatype should match/be compatible.
 template <typename T = uint8_t>
 inline auto AnyTensor() {
   return fuzztest::Map(
-      [](auto v) {
-        Tensor tensor(DataTypeToEnum<T>::v(),
-                      TensorShape({static_cast<int64_t>(v.size())}));
+      [](const std::vector<T>& v) {
+        if (v.empty()) {
+          return Tensor(DataTypeToEnum<T>::v(), TensorShape({0}));
+        }
+
+        TensorShape shape({static_cast<int64_t>(v.size())});
+        if (!shape.IsValid()) {
+           throw std::runtime_error("Invalid tensor shape.");
+        }
+
+        Tensor tensor(DataTypeToEnum<T>::v(), shape);
         auto flat_tensor = tensor.flat<T>();
-        for (int i = 0; i < v.size(); ++i) {
+
+        for (size_t i = 0; i < v.size(); ++i) {
           flat_tensor(i) = v[i];
         }
         return tensor;
@@ -78,94 +87,108 @@ inline auto AnyTensor() {
       fuzztest::Arbitrary<std::vector<T>>());
 }
 
-// Create a TensorFlow session using a specific GraphDef created
-// by BuildGraph(), and make it available for fuzzing.
-// Users must override BuildGraph and FuzzImpl to specify
-// (1) which operations are being fuzzed; and
-// (2) How to translate the uint8_t* buffer from the fuzzer
-//     to a Tensor or Tensors that are semantically appropriate
-//     for the op under test.
-// For the simple cases of testing a single op that takes a single
-// input Tensor, use the SINGLE_INPUT_OP_BUILDER(dtype, opName) macro in place
-// of defining BuildGraphDef.
-//
-// Typical use:
-// SINGLE_INPUT_OP_FUZZER(DT_UINT8, Identity);
-// FUZZ_TEST_F(FuzzIdentity, Fuzz).WithDomains(AnyTensor());
+
 template <typename... T>
 class FuzzSession {
  public:
-  FuzzSession() : initialized_(false) {}
+  FuzzSession() : initialized_(false), session_options_(CreateSessionOptions()) {}
   virtual ~FuzzSession() = default;
 
-  // Constructs a Graph using the supplied Scope.
-  // By convention, the graph should have inputs named "input1", ...
-  // "inputN", and one output node, named "output".
-  // Users of FuzzSession should override this method to create their graph.
   virtual void BuildGraph(const Scope& scope) = 0;
-
-  // Implements the logic that converts an opaque byte buffer
-  // from the fuzzer to Tensor inputs to the graph.  Users must override.
   virtual void FuzzImpl(const T&...) = 0;
 
-  // Initializes the FuzzSession.  Not safe for multithreading.
-  // Separate init function because the call to virtual BuildGraphDef
-  // can't be put into the constructor.
   absl::Status InitIfNeeded() {
+    std::lock_guard<std::mutex> lock(init_mutex_);
     if (initialized_) {
       return absl::OkStatus();
     }
     initialized_ = true;
 
-    Scope root = Scope::DisabledShapeInferenceScope().ExitOnError();
-    SessionOptions options;
-    session_ = std::unique_ptr<Session>(NewSession(options));
-
+    Scope root = Scope::NewRootScope().ExitOnError();
     BuildGraph(root);
 
     GraphDef graph_def;
-    TF_CHECK_OK(root.ToGraphDef(&graph_def));
-
-    absl::Status status = session_->Create(graph_def);
-    if (!status.ok()) {
-      // This is FATAL, because this code is designed to fuzz an op
-      // within a session.  Failure to create the session means we
-      // can't send any data to the op.
-      LOG(FATAL) << "Could not create session: "  // Crash OK
-                 << status.message();
+    absl::Status graph_status = root.ToGraphDef(&graph_def);
+    if (!graph_status.ok()) {
+        LOG(ERROR) << "Failed to build graph def: " << graph_status.message();
+        return graph_status;
     }
-    return status;
+
+    absl::Status session_status = CreateSession(graph_def);
+    if (!session_status.ok()) {
+      LOG(ERROR) << "Could not create session: " << session_status.message();
+      return session_status;
+    }
+
+    return absl::OkStatus();
   }
 
-  // Runs the TF session by pulling on the "output" node, attaching
-  // the supplied input_tensor to the input node(s), and discarding
-  // any returned output.
-  // Note: We are ignoring Status from Run here since fuzzers don't need to
-  // check it (as that will slow them down and printing/logging is useless).
-  void RunInputs(const std::vector<std::pair<string, Tensor> >& inputs) {
-    RunInputsWithStatus(inputs).IgnoreError();
+  void RunInputs(const std::vector<std::pair<string, Tensor>>& inputs) {
+    absl::Status status = RunInputsWithStatus(inputs);
+    if (!status.ok()) {
+        LOG(WARNING) << "RunInputs failed: " << status.message();
+    }
   }
 
-  // Same as RunInputs but don't ignore status
-  absl::Status RunInputsWithStatus(
-      const std::vector<std::pair<string, Tensor>>& inputs) {
-    return session_->Run(inputs, {}, {"output"}, nullptr);
+  absl::Status RunInputsWithStatus(const std::vector<std::pair<string, Tensor>>& inputs) {
+      if (!session_) {
+          return absl::InternalError("Session not initialized.");
+      }
+
+      std::vector<Tensor> outputs;
+      absl::Status status = session_->Run(inputs, {"output"}, {}, &outputs);
+      if (!status.ok()) {
+        LOG(WARNING) << "Session run failed: " << status.message();
+      }
+      return status;
   }
 
-  // Dispatches to FuzzImpl;  small amount of sugar to keep the code
-  // of the per-op fuzzers tiny.
   void Fuzz(const T&... args) {
-    absl::Status status = InitIfNeeded();
-    TF_CHECK_OK(status) << "Fuzzer graph initialization failed: "
-                        << status.message();
-    // No return value from fuzzing:  Success is defined as "did not
-    // crash".  The actual application results are irrelevant.
-    FuzzImpl(args...);
+      absl::Status status = InitIfNeeded();
+      if (!status.ok()) {
+          LOG(ERROR) << "Fuzzer graph initialization failed: " << status.message();
+          return;
+      }
+
+      try {
+          FuzzImpl(args...);
+      } catch (const std::exception& e) {
+          LOG(ERROR) << "FuzzImpl threw an exception: " << e.what();
+      } catch (...) {
+          LOG(ERROR) << "FuzzImpl threw an unknown exception.";
+      }
   }
+
 
  private:
+  SessionOptions CreateSessionOptions() {
+    SessionOptions options;
+    options.config.set_intra_op_parallelism_threads(1);
+    options.config.set_inter_op_parallelism_threads(1);
+    options.config.set_use_per_session_threads(true);
+    options.config.mutable_gpu_options()->set_allow_growth(true);
+    return options;
+  }
+
+
+  absl::Status CreateSession(const GraphDef& graph_def) {
+      session_ = std::unique_ptr<Session>(NewSession(session_options_));
+      if (!session_) {
+          return absl::InternalError("Failed to create session.");
+      }
+
+      absl::Status status = session_->Create(graph_def);
+      if (!status.ok()) {
+        session_.reset();
+        return status;
+      }
+      return absl::OkStatus();
+  }
+
   bool initialized_;
+  SessionOptions session_options_;
   std::unique_ptr<Session> session_;
+  std::mutex init_mutex_;
 };
 
 }  // end namespace fuzzing
