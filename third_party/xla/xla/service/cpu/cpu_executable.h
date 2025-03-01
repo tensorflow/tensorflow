@@ -165,6 +165,10 @@ class CpuExecutable : public Executable {
 
   FunctionLibrary* function_library() const { return function_library_.get(); }
 
+  std::unique_ptr<FunctionLibrary> consume_function_library() && {
+    return std::move(function_library_);
+  }
+
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.
