@@ -29,10 +29,13 @@ def QuantizeByQuantizedType : NativeCodeCall<"quant::Quantize($0, $1.getValue())
 def F32ElementsAttr : ElementsAttrBase<
   CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">, "float constant tensor">;
 
+def HasSameType : Constraint<CPred<[{$0.getType() == $1.getType()}]>>;
+
 // Squash tfl.dequantize and tfl.quantize pairs.
-// TODO(fengliuai): Compare the scale of input and output. This can also be
-// squashed to a requantize op if the scales are different.
-def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
+def : Pat<(TFL_QuantizeOp:$out (TFL_DequantizeOp $in), $qt),
+          (replaceWithValue $in),
+          [(HasSameType $in, $out)]>;
+
 
 // If the tfl.dequantize op wasn't fused, we shouldn't quantize the floating
 // point constant.
