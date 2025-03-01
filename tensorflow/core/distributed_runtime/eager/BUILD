@@ -42,7 +42,13 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:worker_session",
+        "//tensorflow/core/protobuf:eager_service_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -84,6 +90,9 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:shape_inference",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -173,9 +182,14 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/platform:error_payloads",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/util:env_var",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -192,6 +206,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/platform:error_payloads",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -230,6 +245,12 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/protobuf:eager_service_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
     ],
 )
