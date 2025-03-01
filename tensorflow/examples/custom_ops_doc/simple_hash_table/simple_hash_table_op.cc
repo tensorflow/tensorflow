@@ -33,14 +33,14 @@ using ::tensorflow::shape_inference::ShapeHandle;
 
 Status ScalarOutput(InferenceContext* c) {
   c->set_output(0, c->Scalar());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TwoScalarInputs(InferenceContext* c) {
   ShapeHandle handle;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TwoScalarInputsScalarOutput(InferenceContext* c) {
@@ -55,7 +55,7 @@ Status ThreeScalarInputs(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &handle));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ThreeScalarInputsScalarOutput(InferenceContext* c) {
@@ -89,7 +89,7 @@ Status ValidateTableType(InferenceContext* c,
         DataTypeString(value_shape_and_type.dtype), " got ",
         DataTypeString(value_dtype));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExportShapeFunction(InferenceContext* c) {
@@ -107,7 +107,7 @@ Status ExportShapeFunction(InferenceContext* c) {
   // Different lookup tables have different output shapes.
   c->set_output(0, c->UnknownShape());
   c->set_output(1, c->UnknownShape());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ImportShapeFunction(InferenceContext* c) {
@@ -119,7 +119,7 @@ Status ImportShapeFunction(InferenceContext* c) {
   DimensionHandle unused;
   TF_RETURN_IF_ERROR(
       c->Merge(c->Dim(keys, 0), c->Dim(c->input(2), 0), &unused));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Note that if an op has any Input or Output of type "resource", it
