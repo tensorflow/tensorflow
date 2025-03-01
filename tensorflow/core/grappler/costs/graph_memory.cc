@@ -15,7 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/graph_memory.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -26,7 +36,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 
 namespace tensorflow {
 namespace grappler {
