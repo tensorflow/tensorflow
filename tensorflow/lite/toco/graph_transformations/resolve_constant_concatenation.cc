@@ -140,9 +140,9 @@ void SetMinMaxForConcatenedArray(GraphTransformation* transformation,
 }  // namespace
 
 // Resolves the concatenation operator if all its inputs are constant arrays.
-::tensorflow::Status ResolveConstantConcatenation::Run(Model* model,
-                                                       std::size_t op_index,
-                                                       bool* modified) {
+absl::Status ResolveConstantConcatenation::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
   *modified = false;
   const auto concat_it = model->operators.begin() + op_index;
   const auto* concat_base_op = concat_it->get();
