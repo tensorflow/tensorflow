@@ -106,9 +106,8 @@ void Transpose(Model* model, const Array& input_array,
 
 }  // namespace
 
-::tensorflow::Status ResolveConstantTranspose::Run(Model* model,
-                                                   std::size_t op_index,
-                                                   bool* modified) {
+absl::Status ResolveConstantTranspose::Run(Model* model, std::size_t op_index,
+                                           bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
