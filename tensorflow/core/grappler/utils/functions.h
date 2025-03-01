@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_FUNCTIONS_H_
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_FUNCTIONS_H_
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"

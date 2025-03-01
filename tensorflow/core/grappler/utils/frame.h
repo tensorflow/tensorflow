@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_FRAME_H_
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_FRAME_H_
 
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/lib/core/status.h"
