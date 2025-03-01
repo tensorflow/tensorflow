@@ -175,6 +175,7 @@ cc_library(
     deps = [
         "//xla/pjrt:status_casters",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@gloo",
     ],
