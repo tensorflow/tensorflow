@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
-#include <memory>
+#include <initializer_list>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
