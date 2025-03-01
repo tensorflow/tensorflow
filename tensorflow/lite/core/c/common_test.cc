@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
