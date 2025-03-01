@@ -455,12 +455,15 @@ bool MultiOutputFusion::Perform() {
                      HloPrintOptions().set_indent_amount(1));
     }
   }
-  if (DoProducerConsumerMultiOutputFusion()) {
+  if (DoBackendSpecificMultiOutputFusion()) {
     changed = true;
   }
   return changed;
 }
 
-bool MultiOutputFusion::DoProducerConsumerMultiOutputFusion() { return false; }
+bool MultiOutputFusion::DoBackendSpecificMultiOutputFusion() {
+  // No additional fusion criteria considered.
+  return false;
+}
 
 }  // namespace xla

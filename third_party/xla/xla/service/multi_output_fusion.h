@@ -109,12 +109,11 @@ class MultiOutputFusion : public HloModulePass {
       std::optional<absl::FunctionRef<bool(HloInstruction*)>> skip =
           std::nullopt);
 
-  // Hook for multi-output fusion along producer-consumer edges.
-  // Returns whether any instructions were fused.
+  // Hook for backend specific multi-output fusions. By default, no additional
+  // fusion criteria are considered.
   //
-  // TODO(b/80420762): Perform producer-consumer multi-output fusion in
-  // InstructionFusion instead.
-  virtual bool DoProducerConsumerMultiOutputFusion();
+  // Returns whether any instructions were fused.
+  virtual bool DoBackendSpecificMultiOutputFusion();
 
   // Return a list of fusible instructions that can be fused into the fusion of
   // instr1 and instr2. The second entry in the vector is an old profit value
