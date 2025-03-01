@@ -90,6 +90,9 @@ class GraphMapper {
     graph_outpus_.insert(litert_tensor);
   }
 
+  // Pick graph config based on subgraph.
+  absl::Span<const QnnGraph_Config_t*> PickGraphConfigHeuristic();
+
   inline bool IsTensorOutput(LiteRtTensor litert_tensor) {
     return graph_outpus_.contains(litert_tensor);
   }

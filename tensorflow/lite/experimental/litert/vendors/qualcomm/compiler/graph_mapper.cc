@@ -17,6 +17,7 @@
 #include <alloca.h>
 #include <stdio.h>
 
+#include <array>
 #include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
@@ -29,7 +30,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
@@ -65,6 +65,35 @@ inline absl::Span<const QnnGraph_Config_t*> GetDefaultGraphConfigs() {
       &graph_configs[0], &graph_configs[1], nullptr};
 
   return absl::MakeSpan(result.data(), result.size());
+}
+
+inline absl::Span<const QnnGraph_Config_t*> GetLegacyGraphConfigs() {
+  static QnnHtpGraph_CustomConfig_t graph_custom_config;
+  // Default use O3 for now.
+  graph_custom_config = QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT;
+  graph_custom_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
+  graph_custom_config.optimizationOption.type =
+      QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
+  // Change to 2 if you want to use O2 (default).
+  graph_custom_config.optimizationOption.floatValue = 3;
+
+  static QnnGraph_Config_t graph_config;
+  graph_config = QNN_GRAPH_CONFIG_INIT;
+  graph_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+  graph_config.customConfig = &graph_custom_config;
+
+  static std::array<const QnnGraph_Config_t*, 2> result = {&graph_config,
+                                                           nullptr};
+
+  return absl::MakeSpan(result.data(), result.size());
+}
+
+absl::Span<const QnnGraph_Config_t*> GraphMapper::PickGraphConfigHeuristic() {
+  if (qnn_.IsLegacySocModel()) {
+    return GetLegacyGraphConfigs();
+  } else {
+    return GetDefaultGraphConfigs();
+  }
 }
 
 LiteRtStatus GraphMapper::AssignTensorName(Qnn_Tensor_t& qnn_tensor) {
@@ -148,7 +177,7 @@ LiteRtStatus GraphMapper::IsLiteRtSubgraphSupported() {
 LiteRtStatus GraphMapper::InitQnnGraph(absl::string_view qnn_graph_name) {
   LITERT_RETURN_STATUS_IF_QNN_NOT_OK(
       qnn_.Api()->graphCreate(context_handle_, qnn_graph_name.data(),
-                              GetDefaultGraphConfigs().data(), &QnnGraph()));
+                              PickGraphConfigHeuristic().data(), &QnnGraph()));
   return kLiteRtStatusOk;
 }
 

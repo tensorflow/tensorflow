@@ -124,6 +124,8 @@ class QnnManager {
 
   LiteRtStatus ValidateOp(const Qnn_OpConfig_t& op_config);
 
+  bool IsLegacySocModel() { return soc_model_ == QNN_HTP_DEVICE_ARCH_V68; }
+
  private:
   QnnManager() = default;
 
@@ -187,6 +189,7 @@ class QnnManager {
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_BackendHandle_t backend_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
+  QnnHtpDevice_Arch_t soc_model_ = QNN_HTP_DEVICE_ARCH_UNKNOWN;
 };
 
 // Unfortunately we can't use std::unique_ptr with a deleter because

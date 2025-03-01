@@ -308,6 +308,7 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
   }
 
   if (soc_model.has_value()) {
+    soc_model_ = *soc_model;
     LITERT_LOG(LITERT_INFO,
                "Initializing QNN backend for device architecture %d",
                *soc_model);
