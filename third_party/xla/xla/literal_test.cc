@@ -3067,10 +3067,25 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::ValuesIn(LiteralSerializationTest::GenerateTupleParams()));
 
 //===----------------------------------------------------------------------===//
+// Literal::Clone perfrormance benchmarks below.
+//===----------------------------------------------------------------------===//
+
+void BM_CloneScalar(benchmark::State& state) {
+  auto scalar = LiteralUtil::CreateR0<int>(42);
+
+  for (auto s : state) {
+    Literal clone = scalar.Clone();
+    benchmark::DoNotOptimize(clone);
+  }
+}
+
+BENCHMARK(BM_CloneScalar);
+
+//===----------------------------------------------------------------------===//
 // Literal::Broadcast perfrormance benchmarks below.
 //===----------------------------------------------------------------------===//
 
-void BM_BroadcastVectorToMatrix(::testing::benchmark::State& state) {
+void BM_BroadcastVectorToMatrix(benchmark::State& state) {
   const int d0 = state.range(0);
   const int d1 = state.range(1);
   std::vector<int64_t> v(d0);
@@ -3101,7 +3116,7 @@ BENCHMARK(BM_BroadcastVectorToMatrix)
 // Literal::Populate(.*) performance benchmarks below.
 //===----------------------------------------------------------------------===//
 
-void BM_Populate(::testing::benchmark::State& state) {
+void BM_Populate(benchmark::State& state) {
   int64_t d0 = state.range(0);
   Literal literal(ShapeUtil::MakeShape(F32, {d0, d0}));
 
@@ -3113,7 +3128,7 @@ void BM_Populate(::testing::benchmark::State& state) {
   }
 }
 
-void BM_PopulateParallel(::testing::benchmark::State& state) {
+void BM_PopulateParallel(benchmark::State& state) {
   int64_t d0 = state.range(0);
   Literal literal(ShapeUtil::MakeShape(F32, {d0, d0}));
 
@@ -3126,7 +3141,7 @@ void BM_PopulateParallel(::testing::benchmark::State& state) {
   }
 }
 
-void BM_PopulateLinear(::testing::benchmark::State& state) {
+void BM_PopulateLinear(benchmark::State& state) {
   int64_t d0 = state.range(0);
   Literal literal(ShapeUtil::MakeShape(F32, {d0, d0}));
 
@@ -3136,7 +3151,7 @@ void BM_PopulateLinear(::testing::benchmark::State& state) {
   }
 }
 
-void BM_PopulateLinearParallel(::testing::benchmark::State& state) {
+void BM_PopulateLinearParallel(benchmark::State& state) {
   int64_t d0 = state.range(0);
   Literal literal(ShapeUtil::MakeShape(F32, {d0, d0}));
 
