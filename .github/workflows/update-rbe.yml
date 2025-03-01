@@ -130,7 +130,7 @@ jobs:
         map sigbuild-r2.17-clang-python3.11 2.17-python3.11
         map sigbuild-r2.17-clang-python3.12 2.17-python3.12
     - name: Create Pull Request with changes
-      uses: peter-evans/create-pull-request@67ccf781d68cd99b580ae25a5c18a1cc84ffff1f # v7.0.6
+      uses: peter-evans/create-pull-request@dd2324fc52d5d43c699a5636bcf19fceaa70c284 # v7.0.7
       with:
         title: Update the RBE images to the latest container versions
         committer: TensorFlow Release Automation <jenkins@tensorflow.org>
