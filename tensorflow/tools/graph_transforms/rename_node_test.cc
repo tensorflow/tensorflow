@@ -18,9 +18,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace graph_transforms {
