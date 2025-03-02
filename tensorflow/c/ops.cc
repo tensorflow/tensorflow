@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "tensorflow/c/ops.h"
 
+#include <cstddef>
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 using ::tensorflow::DataType;
 using ::tensorflow::OpDef;
