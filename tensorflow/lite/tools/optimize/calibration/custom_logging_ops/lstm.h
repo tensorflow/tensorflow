@@ -24,9 +24,9 @@ namespace optimize {
 namespace calibration {
 namespace custom {
 
-TfLiteStatus lstm_logging_kernel(TfLiteContext* context,
-                                 const int subgraph_index, TfLiteNode* node,
-                                 Logger* logger, ErrorReporter* error_reporter);
+TfLiteStatus lstm_logging_kernel(TfLiteContext* context, int subgraph_index,
+                                 TfLiteNode* node, Logger* logger,
+                                 ErrorReporter* error_reporter);
 
 }  // namespace custom
 }  // namespace calibration
