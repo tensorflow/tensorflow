@@ -15,9 +15,16 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
