@@ -37,7 +37,7 @@ func.func @QuantizeUnidirectionalLstm(%arg0: tensor<1x2x3xf32>) -> (tensor<1x2x3
         none, none,
         tensor<1x3xf32>, tensor<1x3xf32>,
         none, none, none, none) -> tensor<1x2x3xf32>
-  %17 = "quantfork.stats"(%16) {layerStats = dense<[-0.1, 0.1]> : tensor<2xf32>} : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  %17 = "quantization.stats"(%16) {layerStats = dense<[-0.1, 0.1]> : tensor<2xf32>} : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
   func.return %17 : tensor<1x2x3xf32>
 
   // CHECK: %[[NONE:.*]] = "tfl.no_value"() <{value}> : () -> none

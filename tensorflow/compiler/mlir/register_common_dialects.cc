@@ -22,8 +22,10 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllExtensions.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
+// #include
+// "third_party/tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -43,7 +45,8 @@ void RegisterCommonToolingDialects(mlir::DialectRegistry& registry) {
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
   registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
   registry.insert<mlir::quant::QuantDialect>();
-  registry.insert<mlir::quantfork::QuantizationForkDialect>();
+  // registry.insert<mlir::quantfork::QuantizationForkDialect>();
+  registry.insert<mlir::quant::ir::TFQuantDialect>();
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::tensor::TensorDialect>();
   registry.insert<mlir::tosa::TosaDialect>();
