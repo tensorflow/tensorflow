@@ -627,7 +627,7 @@ bool NcclManager::CheckReady(const string& collective_key,
 
 void NcclManager::RunCollective(Collective* collective) {
   // For TraceMeConsumer in Connection::RPCDone().
-  tensorflow::profiler::TraceMeProducer traceme("Schedule Collective");
+  tsl::profiler::TraceMeProducer traceme("Schedule Collective");
   collective->trace_context = traceme.GetContextId();
 
   static mutex collective_mu(LINKER_INITIALIZED);
@@ -740,8 +740,8 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 
     // Launch the nccl kernel.
     Collective* collective = next_launch.first;
-    tensorflow::profiler::TraceMeConsumer traceme("Run Collective",
-                                                  collective->trace_context);
+    tsl::profiler::TraceMeConsumer traceme("Run Collective",
+                                           collective->trace_context);
 
     ncclDataType_t data_type = ToNcclType(collective->data_type);
     int p_idx = next_launch.second;
