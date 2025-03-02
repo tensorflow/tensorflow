@@ -16,6 +16,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "tensorflow/cc/saved_model/test_utils.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -24,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tsl/platform/status_matchers.h"
 
