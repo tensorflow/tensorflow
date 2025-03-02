@@ -14,7 +14,6 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/model_load.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
