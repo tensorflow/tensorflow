@@ -1,7 +1,5 @@
 syntax = "proto3";
 
-option cc_enable_arenas = true;
-
 package tensorflow.tpu;
 
 // A mapping between the dynamic shape dimension of an input and the arg that
