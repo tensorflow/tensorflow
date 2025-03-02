@@ -16,6 +16,7 @@ limitations under the License.
 #define XLA_PYTHON_TRANSFER_SOCKET_SERVER_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "xla/python/transfer/event_loop.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
