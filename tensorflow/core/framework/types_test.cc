@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"

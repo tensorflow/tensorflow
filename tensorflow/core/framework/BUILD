@@ -543,9 +543,12 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":types_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -574,10 +577,13 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":node_def_proto_cc",
+        ":types_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -710,6 +716,12 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
@@ -888,9 +900,14 @@ tf_cuda_library(
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/public:version",
+        "//third_party/protobuf:protobuf_lite",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_xla//xla/tsl/framework:device_type",
@@ -911,11 +928,18 @@ cc_library(
         ":op_def_proto_cc",
         ":tensor_shape",
         ":tensor_shape_proto_cc",
+        ":types_proto_cc",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1219,6 +1243,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:array",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -1232,6 +1259,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -1253,6 +1281,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:matmul_op",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
     ],
@@ -1288,6 +1317,7 @@ tf_cc_test(
     size = "small",
     srcs = ["resource_var_test.cc"],
     deps = [
+        ":types_proto_cc",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -1930,6 +1960,7 @@ tf_cc_fuzz_test(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
@@ -1944,6 +1975,7 @@ tf_cc_fuzz_test(
         "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )

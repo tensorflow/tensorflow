@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/run_handler_util.h"
 
+#include <cstdint>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
