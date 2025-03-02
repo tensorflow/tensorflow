@@ -66,6 +66,19 @@ DEFINE(bfloat16, float8_e4m3fn);
 DEFINE(Eigen::half, float8_e4m3fn);
 DEFINE(float8_e4m3fn, float8_e4m3fn);
 
+DEFINE(double, float8_e5m2fnuz);
+DEFINE(float, float8_e5m2fnuz);
+DEFINE(bfloat16, float8_e5m2fnuz);
+DEFINE(Eigen::half, float8_e5m2fnuz);
+DEFINE(float8_e5m2fnuz, float8_e5m2fnuz);
+DEFINE(float8_e4m3fnuz, float8_e5m2fnuz);
+
+DEFINE(double, float8_e4m3fnuz);
+DEFINE(float, float8_e4m3fnuz);
+DEFINE(bfloat16, float8_e4m3fnuz);
+DEFINE(Eigen::half, float8_e4m3fnuz);
+DEFINE(float8_e4m3fnuz, float8_e4m3fnuz);
+
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 
 // The cast from float to double is still needed for resize_bilinear_op.cc
