@@ -432,7 +432,7 @@ inline string* Check_EQImpl(size_t v1, int v2, const char* exprtext) {
 TF_DEFINE_CHECK_OP_IMPL(Check_NE, !=)
 
 inline string* Check_NEImpl(int v1, size_t v2, const char* exprtext) {
-  if (v1 < 0) return NULL;
+  if (v1 < 0) return nullptr;
 
   return Check_NEImpl(size_t(v1), v2, exprtext);
 }
@@ -444,7 +444,7 @@ inline string* Check_NEImpl(size_t v1, int v2, const char* exprtext) {
 TF_DEFINE_CHECK_OP_IMPL(Check_LE, <=)
 
 inline string* Check_LEImpl(int v1, size_t v2, const char* exprtext) {
-  if (v1 <= 0) return NULL;
+  if (v1 <= 0) return nullptr;
 
   return Check_LEImpl(size_t(v1), v2, exprtext);
 }
@@ -458,7 +458,7 @@ inline string* Check_LEImpl(size_t v1, int v2, const char* exprtext) {
 TF_DEFINE_CHECK_OP_IMPL(Check_LT, <)
 
 inline string* Check_LTImpl(int v1, size_t v2, const char* exprtext) {
-  if (v1 < 0) return NULL;
+  if (v1 < 0) return nullptr;
 
   return Check_LTImpl(size_t(v1), v2, exprtext);
 }
