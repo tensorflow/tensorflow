@@ -67,8 +67,7 @@ class CredentialsFactory {
  private:
   // Gets the credentials factory registered via `Register` for the specified
   // protocol, and stores it to `*out`.
-  static absl::Status Get(const absl::string_view protocol,
-                          CredentialsFactory** out);
+  static absl::Status Get(absl::string_view protocol, CredentialsFactory** out);
 };
 
 }  // namespace data
