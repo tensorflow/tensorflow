@@ -851,6 +851,7 @@ def strict_cc_test(
 # back into our binaries explicitly.
 def tsl_cc_test(
         name,
+        linkstatic = True,
         deps = [],
         **kwargs):
     """A wrapper around strict_cc_test that adds protobuf deps if needed.
@@ -859,6 +860,9 @@ def tsl_cc_test(
     symbols at link time (e.g. linking in two main() functions).
 
     By default, it also shuffles the tests to avoid test ordering dependencies.
+
+    It also defaults to linkstatic = True, which is a good practice for catching duplicate
+    symbols at link time (e.g. linking in two main() functions).
 
     Use tsl_cc_test instead of cc_test in all .../tsl/... directories.
 
@@ -870,6 +874,7 @@ def tsl_cc_test(
 
     strict_cc_test(
         name = name,
+        linkstatic = linkstatic,
         deps = deps + if_tsl_link_protobuf(
             [],
             [
