@@ -559,10 +559,9 @@ typedef cl_int(CL_API_CALL *PFN_clCommandNDRangeKernelKHR)(
 typedef cl_int(CL_API_CALL *PFN_clCommandNDRangeKernelKHR)(
     cl_command_buffer_khr /*command_buffer*/,
     cl_command_queue /*command_queue*/,
-    const cl_ndrange_kernel_command_properties_khr * /*properties*/,
-    cl_kernel /*kernel*/, cl_uint /*work_dim*/,
-    const size_t * /*global_work_offset*/, const size_t * /*global_work_size*/,
-    const size_t * /*local_work_size*/,
+    const cl_command_properties_khr * /*properties*/, cl_kernel /*kernel*/,
+    cl_uint /*work_dim*/, const size_t * /*global_work_offset*/,
+    const size_t * /*global_work_size*/, const size_t * /*local_work_size*/,
     cl_uint /*num_sync_points_in_wait_list*/,
     const cl_sync_point_khr * /*sync_point_wait_list*/,
     cl_sync_point_khr * /*sync_point*/,
