@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/hexagon/builders/slice_builder.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/lite/kernels/internal/tensor.h"

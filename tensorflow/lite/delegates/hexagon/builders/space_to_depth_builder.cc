@@ -16,8 +16,6 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <limits>
-
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
