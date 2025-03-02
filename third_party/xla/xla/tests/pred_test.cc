@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 // Miscellaneous tests with the PRED type that don't fit anywhere else.
-#include <memory>
+#include <cstdint>
+#include <functional>
+#include <string>
 
+#include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
