@@ -899,7 +899,6 @@ litert_lib(
         # Don't build/test in OS until qnn is available.
         "nobuilder",
     ],
-    visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
     deps = [
         ":legalization",
         "@com_google_absl//absl/strings:string_view",
