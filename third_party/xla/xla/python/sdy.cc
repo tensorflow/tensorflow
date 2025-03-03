@@ -38,12 +38,15 @@ limitations under the License.
 #include "nanobind/stl/tuple.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 
 namespace nb = nanobind;
@@ -103,6 +106,20 @@ void BuildSdySubmodule(nb::module_& m) {
             return nb::bytes(module_str.data(), module_str.size());
           },
           nb::arg("module"))
+      .def("lowered_with_shardy",
+           [](const nb::bytes& bytecode) -> bool {
+             mlir::MLIRContext context;
+             mlir::OwningOpRef<mlir::ModuleOp> module =
+                 xla::ValueOrThrow(ParseMlirModuleString(
+                     absl::string_view(bytecode.c_str(), bytecode.size()),
+                     context));
+             return mlir::sdy::getMeshAttr(module.get(), "mesh") ||
+                    sdy::tryGetFrontendAttr<mlir::DictionaryAttr>(
+                        module.get(), sdy::kMeshesRoundTripAttr)
+                        .has_value();
+           })
+      // TODO(bartchr): delete this and all uses of it once I have JAX export
+      // support multiple meshes.
       .def("get_mesh", [](const nb::bytes& bytecode) -> nb::list {
         mlir::MLIRContext context;
         mlir::OwningOpRef<mlir::ModuleOp> module =
