@@ -45,54 +45,47 @@ jobs:
           {
             pool: "linux-x86-n2-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            kokoro_job_name: "xla-linux-x86-cpu",
-            pretty_name: "XLA Linux x86 CPU",
+            name: "XLA Linux x86 CPU",
             repo: "openxla/xla",
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            kokoro_job_name: "xla-linux-x86-gpu-t4",
-            pretty_name: "XLA Linux x86 GPU T4",
+            name: "XLA Linux x86 GPU T4",
             repo: "openxla/xla",
           },
           {
             pool: "linux-arm64-c4a-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
-            kokoro_job_name: "xla-linux-arm64-cpu",
-            pretty_name: "XLA Linux ARM64 CPU",
+            name: "XLA Linux ARM64 CPU",
             repo: "openxla/xla",
           },
           {
             pool: "linux-x86-n2-16",
             container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
-            kokoro_job_name: "jax-linux-x86-cpu",
-            pretty_name: "JAX Linux x86 CPU",
+            name: "JAX Linux x86 CPU",
             repo: "jax-ml/jax",
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
             container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
-            kokoro_job_name: "jax-linux-x86-gpu-t4",
-            pretty_name: "JAX Linux x86 GPU T4",
+            name: "JAX Linux x86 GPU T4",
             repo: "jax-ml/jax",
           },
           {
             pool: "linux-x86-n2-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            kokoro_job_name: "tensorflow-linux-x86-cpu",
-            pretty_name: "TensorFlow Linux x86 CPU",
+            name: "TensorFlow Linux x86 CPU",
             repo: "tensorflow/tensorflow",
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            kokoro_job_name: "tensorflow-linux-x86-gpu-t4",
-            pretty_name: "TensorFlow Linux x86 GPU T4",
+            name: "TensorFlow Linux x86 GPU T4",
             repo: "tensorflow/tensorflow",
           },
         ]
-    name: ${{ matrix.job_info.pretty_name }}
+    name: ${{ matrix.job_info.name }}
     runs-on: ${{ matrix.job_info.pool }}
     container: ${{ matrix.job_info.container }}
     defaults:
@@ -116,7 +109,4 @@ jobs:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
       - name: "Run build.py"
         working-directory: ${{ matrix.job_info.repo }}
-        env:
-          # TODO(ddunleavy): refactor build.py to not depend on this env var
-          KOKORO_JOB_NAME: ${{ matrix.job_info.kokoro_job_name }}
-        run: $GITHUB_WORKSPACE/openxla/xla/build_tools/ci/build.py
+        run: $GITHUB_WORKSPACE/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"

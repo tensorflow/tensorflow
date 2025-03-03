@@ -15,21 +15,18 @@
 # ==============================================================================
 """XLA build script for use in CI.
 
-This script is used for the Kokoro builds of XLA, but aims to be as agnostic to
-the specifics of the VM as possible. The only Kokoro-specific things that are
-assumed are:
-  * that `KOKORO_JOB_NAME` is set, which is used to decide what build to run.
-  * and all code ends up in `$PWD/github/$REPO_NAME`.
-The script also assumes that the working directory never changes modulo `cd`ing
-into the repo that should be built (mostly `github/xla`, but also JAX and TF).
+This build script aims to be completely agnostic to the specifics of the VM, the
+exceptions are uses of `KOKORO_ARTIFACTS_DIR` and `GITHUB_WORKSPACE` to know
+where JAX or TensorFlow lives depending on which build is being executed.
 """
+import argparse
 import dataclasses
 import enum
 import logging
 import os
 import subprocess
 import sys
-from typing import Any, Dict, List, Tuple
+from typing import Any, ClassVar, Dict, List, Tuple
 
 
 # TODO(ddunleavy): move this to the bazelrc
@@ -104,10 +101,20 @@ class BuildType(enum.Enum):
   TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
   TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
 
+  @classmethod
+  def from_str(cls, s):
+    try:
+      return cls[s.replace(" ", "_").upper()]
+    except KeyError:
+      # Sloppy looking exception handling, but argparse will catch ValueError
+      # and give a pleasant error message. KeyError would not work here.
+      raise ValueError  # pylint: disable=raise-missing-from
+
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class Build:
   """Class representing a build of XLA."""
+  _builds: ClassVar[Dict[BuildType, "Build"]] = {}
 
   type_: BuildType
   repo: str
@@ -119,6 +126,15 @@ class Build:
   test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   extra_setup_commands: Tuple[List[str], ...] = ()
+
+  def __post_init__(self):
+    # pylint: disable=protected-access
+    assert self.type_ not in self.__class__._builds
+    self.__class__._builds[self.type_] = self
+
+  @classmethod
+  def all_builds(cls):
+    return cls._builds
 
   def bazel_command(
       self, subcommand: str = "test", extra_options: Tuple[str, ...] = ()
@@ -432,49 +448,46 @@ _TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD = Build(
     ),
 )
 
-_KOKORO_JOB_NAME_TO_BUILD_MAP = {
-    "tensorflow/xla/macos/github_continuous/cpu_py39_full": (
-        _XLA_MACOS_X86_CPU_KOKORO_BUILD
-    ),
-    "tensorflow/xla/macos/cpu/cpu_py39_full": _XLA_MACOS_ARM64_CPU_KOKORO_BUILD,
-    "xla-linux-x86-cpu": _XLA_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD,
-    "xla-linux-arm64-cpu": _XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS_BUILD,
-    "xla-linux-x86-gpu-t4": _XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD,
-    "jax-linux-x86-cpu": _JAX_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD,
-    "jax-linux-x86-gpu-t4": _JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD,
-    "tensorflow-linux-x86-cpu": _TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD,
-    "tensorflow-linux-x86-gpu-t4": (
-        _TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD
-    ),
-}
-
 
 def dump_all_build_commands():
   """Used to generate what commands are run for each build."""
   # Awkward workaround b/c Build instances are not hashable
-  type_to_build = {b.type_: b for b in _KOKORO_JOB_NAME_TO_BUILD_MAP.values()}
-  for t in sorted(type_to_build.keys(), key=str):
-    build = type_to_build[t]
+  for build in sorted(Build.all_builds().values(), key=lambda b: str(b.type_)):
     sys.stdout.write(f"# BEGIN {build.type_}\n")
     for cmd in build.commands():
       sys.stdout.write(" ".join(cmd) + "\n")
     sys.stdout.write(f"# END {build.type_}\n")
 
 
+def _parse_args():
+  """Defines flags and parses args."""
+  parser = argparse.ArgumentParser(allow_abbrev=False)
+  group = parser.add_mutually_exclusive_group(required=True)
+  group.add_argument(
+      "--build",
+      type=BuildType.from_str,
+      choices=list(BuildType),
+  )
+  group.add_argument(
+      "--dump_commands",
+      action="store_true",
+  )
+
+  return parser.parse_args()
+
+
 def main():
   logging.basicConfig()
   logging.getLogger().setLevel(logging.INFO)
-  kokoro_job_name = os.getenv("KOKORO_JOB_NAME")
 
-  if kokoro_job_name == "GOLDENS":  # HACK!!
+  args = _parse_args()
+
+  if args.dump_commands:
     dump_all_build_commands()
     return
-
-  build = _KOKORO_JOB_NAME_TO_BUILD_MAP[kokoro_job_name]
-  logging.info("build.type_: %s", build.type_)
-  logging.info("build.commands(): %s", build.commands())
-  for cmd in build.commands():
-    sh(cmd)
+  else:
+    for cmd in Build.all_builds()[args.build].commands():
+      sh(cmd)
 
 if __name__ == "__main__":
   main()

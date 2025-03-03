@@ -29,7 +29,7 @@ pytype_strict_binary(
 genrule(
     name = "generated_build_commands",
     outs = ["generated_commands.txt"],
-    cmd = "KOKORO_JOB_NAME=GOLDENS $(location //build_tools/ci:build) > $(OUTS)",
+    cmd = "$(location //build_tools/ci:build) --dump_commands > $(OUTS)",
     tags = ["not_run:arm"],
     tools = [":build"],
 )
