@@ -123,6 +123,7 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/round_trip_common:import_constants",
         "//xla/service/spmd/shardy/round_trip_common:import_sdy_custom_calls",
         "//xla/service/spmd/shardy/round_trip_common:open_while_free_vars_sharding",
+        "//xla/service/spmd/shardy/sdy_round_trip:dedup_meshes",
         "//xla/service/spmd/shardy/sdy_round_trip:export_ops",
         "//xla/service/spmd/shardy/sdy_round_trip:export_shardy_attrs",
         "//xla/service/spmd/shardy/sdy_round_trip:import_callback_custom_calls",
