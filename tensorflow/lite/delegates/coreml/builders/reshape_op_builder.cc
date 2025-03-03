@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/coreml/builders/reshape_op_builder.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <iterator>
 #include <memory>
 #include <string>
 
