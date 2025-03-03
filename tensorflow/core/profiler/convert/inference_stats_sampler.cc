@@ -16,12 +16,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow::profiler {
 

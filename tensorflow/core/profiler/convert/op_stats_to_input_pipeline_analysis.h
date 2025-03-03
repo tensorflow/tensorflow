@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/util/stats_calculator.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tpu_input_pipeline.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -68,8 +68,7 @@ constexpr double kHostToDeviceTimePercentAsDominant = 90.0;
 
 // Computes the summary of step time in milliseconds.
 StepSummary ComputeStepTimeSummaryInMs(
-    const ::tensorflow::protobuf::RepeatedPtrField<PerCoreStepInfo>&
-        grouped_by_step);
+    const tsl::protobuf::RepeatedPtrField<PerCoreStepInfo>& grouped_by_step);
 
 void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
                         InputPipelineAnalysisResult* result);
@@ -82,7 +81,7 @@ InputPipelineAnalysisRecommendation GenerateRecommendation();
 void MayFixTpuStepAnalysis(
     const StepEvents& host_step_events, const OpMetricsDb& device_op_metrics_db,
     StepDatabaseResult& step_db,
-    const protobuf::Map<uint32_t, CoreDetails>& core_details_map);
+    const tsl::protobuf::Map<uint32_t, CoreDetails>& core_details_map);
 
 // Returns a struct that describes the performance bottleneck of the
 // program executed on TPU.
@@ -92,7 +91,7 @@ TpuBottleneckAnalysis ComputeTpuBottleneckAnalysis(
 // Returns the performance bottleneck of the program executed.
 BottleneckAnalysis ComputeBottleneckAnalysis(
     const InputTimeBreakdown& input_time_breakdown,
-    const ::tensorflow::protobuf::RepeatedPtrField<::google::protobuf::Any>&
+    const tsl::protobuf::RepeatedPtrField<::google::protobuf::Any>&
         any_step_details);
 
 InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
