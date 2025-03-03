@@ -1168,9 +1168,13 @@ message DebugOptions {
   // its use indicates an error in test setup.
   bool xla_allow_get_default_platform = 371;
 
+  // If true, the test launched with ClientLibraryTestBase will also try to
+  // use command buffer mode to run.
+  bool xla_test_add_command_buffer_mode = 373;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
-  // Next id: 373
+  // Next id: 374
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -189,6 +189,37 @@ void ClientLibraryTestBase::ComputeAndCompareLiteral(
                                                   error, shape_with_layout));
 }
 
+absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithCmdBuffer(
+    const xla::XlaComputation& computation, const Literal& expected,
+    absl::Span<GlobalData* const> arguments,
+    const std::function<void(const Literal& actual,
+                             const std::string& error_message)>&
+        verify_output) {
+  execution_options_.mutable_debug_options()->add_xla_gpu_enable_command_buffer(
+      DebugOptions::FUSION);
+  execution_options_.mutable_debug_options()->add_xla_gpu_enable_command_buffer(
+      DebugOptions::CUBLAS);
+  execution_options_.mutable_debug_options()->add_xla_gpu_enable_command_buffer(
+      DebugOptions::CUDNN);
+  execution_options_.mutable_debug_options()->add_xla_gpu_enable_command_buffer(
+      DebugOptions::COLLECTIVES);
+  execution_options_.mutable_debug_options()->add_xla_gpu_enable_command_buffer(
+      DebugOptions::CONDITIONAL);
+  execution_options_.mutable_debug_options()->add_xla_gpu_enable_command_buffer(
+      DebugOptions::WHILE);
+  execution_options_.mutable_debug_options()->add_xla_gpu_enable_command_buffer(
+      DebugOptions::CUSTOM_CALL);
+  execution_options_.mutable_debug_options()->add_xla_gpu_enable_command_buffer(
+      DebugOptions::CUBLASLT);
+  execution_options_.mutable_debug_options()->add_xla_gpu_enable_command_buffer(
+      DebugOptions::DYNAMIC_SLICE_FUSION);
+  execution_options_.mutable_debug_options()->set_xla_gpu_graph_min_graph_size(
+      1);
+  TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments));
+  verify_output(actual, "");
+  return absl::OkStatus();
+}
+
 absl::Status
 ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
     const xla::XlaComputation& computation, const Literal& expected,
@@ -361,6 +392,12 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected_ptr, actual));
+
+  if (execution_options_.debug_options().xla_test_add_command_buffer_mode()) {
+    return ComputeAndCompareLiteralWithCmdBuffer(computation, *expected_ptr,
+                                                 arguments, expect_equal);
+  }
+
   return absl::OkStatus();
 }
 
@@ -420,6 +457,11 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, actual, error));
+
+  if (execution_options_.debug_options().xla_test_add_command_buffer_mode()) {
+    return ComputeAndCompareLiteralWithCmdBuffer(computation, *expected_ptr,
+                                                 arguments, expect_near);
+  }
   return absl::OkStatus();
 }
 

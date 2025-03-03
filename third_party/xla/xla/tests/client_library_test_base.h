@@ -427,6 +427,12 @@ class ClientLibraryTestBase : public ::testing::Test {
           verify_output,
       const Shape* output_with_layout = nullptr);
 
+  absl::Status ComputeAndCompareLiteralWithCmdBuffer(
+      const xla::XlaComputation& computation, const Literal& expected,
+      absl::Span<GlobalData* const> arguments,
+      const std::function<void(const Literal& actual,
+                               const std::string& error_message)>&
+          verify_output);
   // Converts an f32 shape to test_type_.
   Shape MaybeConvertShapeToTestType(const Shape& shape);
 

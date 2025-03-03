@@ -929,6 +929,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "4D shape, the computation will run 2! * 4! times for every possible "
       "layouts"));
   flag_list->push_back(tsl::Flag(
+      "xla_test_add_command_buffer_mode",
+      bool_setter_for(&DebugOptions::set_xla_test_add_command_buffer_mode),
+      debug_options->xla_test_add_command_buffer_mode(),
+      "If true, the test launched with ClientLibraryTestBase will use command "
+      "buffer to execute the computation."));
+  flag_list->push_back(tsl::Flag(
       "xla_hlo_profile", bool_setter_for(&DebugOptions::set_xla_hlo_profile),
       debug_options->xla_hlo_profile(),
       "Instrument the computation to collect per-HLO cycle counts"));

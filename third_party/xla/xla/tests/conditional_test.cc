@@ -35,6 +35,12 @@ namespace {
 
 class ConditionalOpTest : public ClientLibraryTestBase {
  protected:
+  void SetUp() override {
+    ClientLibraryTestBase::SetUp();
+    execution_options_.mutable_debug_options()
+        ->set_xla_test_add_command_buffer_mode(true);
+  }
+
   XlaComputation CreateR0ConstantComputation(float value) {
     XlaBuilder builder("Constant");
     Parameter(&builder, 0, empty_tuple_, "tuple");
@@ -481,7 +487,7 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleOfScalars) {
   Conditional(pred, operands, CreateR0TupleCeilComputation(), operands,
               CreateR0TupleFloorComputation());
 
-  ComputeAndCompareTuple(
+  ComputeAndCompareLiteral(
       &builder,
       LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR0<float>(12.0f),
                                         LiteralUtil::CreateR0<float>(25.0f)}),
@@ -499,11 +505,11 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleOfArrays) {
   Conditional(pred, operands, CreateR1TupleCeilComputation(), operands,
               CreateR1TupleFloorComputation());
 
-  ComputeAndCompareTuple(&builder,
-                         LiteralUtil::MakeTupleFromSlices(
-                             {LiteralUtil::CreateR1<float>({13.0f, 16.0f}),
-                              LiteralUtil::CreateR1<float>({26.0f, 30.0f})}),
-                         {pred_arg.get()}, error_spec_);
+  ComputeAndCompareLiteral(&builder,
+                           LiteralUtil::MakeTupleFromSlices(
+                               {LiteralUtil::CreateR1<float>({13.0f, 16.0f}),
+                                LiteralUtil::CreateR1<float>({26.0f, 30.0f})}),
+                           {pred_arg.get()}, error_spec_);
 }
 
 // Test true and false computations that return a tuple of a predicate, a
@@ -538,12 +544,12 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleofPredicateScalarArray) {
   Conditional(pred, operands, std::move(true_builder_result).value(), operands,
               std::move(false_builder_result).value());
 
-  ComputeAndCompareTuple(&builder,
-                         LiteralUtil::MakeTupleFromSlices(
-                             {LiteralUtil::CreateR0<bool>(true),
-                              LiteralUtil::CreateR0<float>(12.2f),
-                              LiteralUtil::CreateR1<float>({12.8f, 14.6f})}),
-                         {pred_arg.get()}, error_spec_);
+  ComputeAndCompareLiteral(&builder,
+                           LiteralUtil::MakeTupleFromSlices(
+                               {LiteralUtil::CreateR0<bool>(true),
+                                LiteralUtil::CreateR0<float>(12.2f),
+                                LiteralUtil::CreateR1<float>({12.8f, 14.6f})}),
+                           {pred_arg.get()}, error_spec_);
 }
 
 // Test true and false computations that return a nested tuple.
@@ -583,7 +589,7 @@ XLA_TEST_F(ConditionalOpTest, ReturnNestedTuple) {
   Conditional(pred, operands, std::move(true_builder_result).value(), operands,
               std::move(false_builder_result).value());
 
-  ComputeAndCompareTuple(
+  ComputeAndCompareLiteral(
       &builder,
       LiteralUtil::MakeTupleFromSlices(
           {LiteralUtil::MakeTupleFromSlices(
@@ -743,33 +749,21 @@ XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
     main = builder.Build().value();
   }
 
-  auto test_swap = [&](float a, float b, bool use_cmd_buffer) {
+  auto test_swap = [&](float a, float b) {
     XlaBuilder builder(TestName());
     XlaOp x, y;
     auto x_arg = CreateR0Parameter<float>(a, 0, "x", &builder, &x);
     auto y_arg = CreateR0Parameter<float>(b, 1, "y", &builder, &y);
     auto tuple_operand = Tuple(&builder, {x, y});
     Call(&builder, main, {tuple_operand});
-    if (use_cmd_buffer) {
-      execution_options_.mutable_debug_options()
-          ->add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
-      execution_options_.mutable_debug_options()
-          ->set_xla_gpu_graph_min_graph_size(1);
-    } else {
-      execution_options_.mutable_debug_options()
-          ->clear_xla_gpu_enable_command_buffer();
-    }
-
-    ComputeAndCompareTuple(
+    ComputeAndCompareLiteral(
         &builder,
         LiteralUtil::MakeTupleFromSlices(
             {LiteralUtil::CreateR0<float>(a), LiteralUtil::CreateR0<float>(b)}),
         {x_arg.get(), y_arg.get()}, error_spec_);
   };
-  test_swap(3.11f, 9.4f, true);
-  test_swap(11.24f, 5.55f, true);
-  test_swap(3.11f, 9.4f, false);
-  test_swap(11.24f, 5.55f, false);
+  test_swap(3.11f, 9.4f);
+  test_swap(11.24f, 5.55f);
 }
 
 // Test conditional that duplicates tuple elements in the then and else
