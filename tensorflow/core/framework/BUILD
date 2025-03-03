@@ -42,6 +42,7 @@ default_visibility = [
     # copybara:uncomment "//third_party/odml/experimental:__subpackages__",
     #internal nexus library,
     #internal nexus library tests,
+    "//tensorflow/compiler/jit:__subpackages__",
 ]
 
 package(
@@ -736,8 +737,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
-        "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -1412,6 +1413,7 @@ tf_cc_tests(
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",

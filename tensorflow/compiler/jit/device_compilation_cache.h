@@ -21,8 +21,9 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 
+#include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
@@ -99,6 +100,25 @@ class DeviceCompilationCache {
              std::optional<std::unique_ptr<ExecutableType>> executable);
 
   std::string DebugString() const;
+
+  // Erase any cache entries that have a null entry and releases all references
+  // to `xla::XlaComputation` in the non-null cache entries.
+  void Finalize() {
+    const mutex_lock lock(compile_cache_mu_);
+    absl::erase_if(
+        cache_,
+        [&](std::pair<const Key, absl::Nullable<std::unique_ptr<Entry>>>& kv) {
+          const absl::Nullable<Entry*> entry = kv.second.get();
+          if (entry == nullptr) {
+            return true;
+          }
+
+          const mutex_lock entry_lock(entry->mu);
+          entry->compilation_result->computation.reset();
+
+          return false;
+        });
+  };
 
  private:
   // The value associated with a cache entry.
