@@ -28,6 +28,8 @@ cc_library(
         "//tensorflow/core/transforms:op_cat_helper",
         "//tensorflow/core/transforms:utils",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
