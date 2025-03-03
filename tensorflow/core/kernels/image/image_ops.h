@@ -18,6 +18,8 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc.
 
+#include <cmath>
+#include <cstdint>
 #define EIGEN_USE_THREADS
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
