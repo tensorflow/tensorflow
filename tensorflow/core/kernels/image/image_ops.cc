@@ -13,6 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/log/log.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/errors.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA
