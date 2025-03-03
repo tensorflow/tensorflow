@@ -16,7 +16,11 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/colocation.h"
 
 #include <cstring>
+#include <list>
+#include <unordered_map>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/utils.h"
 
