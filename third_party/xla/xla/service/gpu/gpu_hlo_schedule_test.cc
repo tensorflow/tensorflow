@@ -36,12 +36,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/backend.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
+#include "xla/service/gpu/transforms/schedule_postprocessing.h"
+#include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/latency_hiding_scheduler.h"
+#include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -57,6 +63,7 @@ namespace xla {
 namespace gpu {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
 class GpuHloScheduleTest : public HloTestBase {
@@ -109,6 +116,53 @@ class GpuHloScheduleTest : public HloTestBase {
 
     // The fingerprint is 128 bits stored as a hex string (128/4 hex digits).
     return it != attrs.map().end() && it->second.size() == 128 / 4;
+  }
+
+  // Run the gpu hlo scheduler and latency hiding scheduler
+  absl::StatusOr<bool> RunGpuLatencyHidingScheduler(HloModule* module,
+                                                    uint64_t memory_limit) {
+    HloModuleConfig default_config = GetModuleConfig({});
+    auto* gpu_compiler = dynamic_cast<GpuCompiler*>(backend().compiler());
+    EXPECT_NE(gpu_compiler, nullptr);
+    const int64_t pointer_size = gpu_compiler->GetPointerSize();
+
+    auto shape_size_in_bytes = ShapeSizeBytesFunction(pointer_size);
+
+    int64_t initial_peak_memory = -1;
+    TF_ASSIGN_OR_RETURN(HloSchedule initial_schedule,
+                        ScheduleGpuModuleWithMemoryScheduler(
+                            module, pointer_size, &initial_peak_memory));
+
+    TF_CHECK_OK(module->set_schedule(std::move(initial_schedule)));
+
+    SchedulerConfig config;
+    config.memory_limit = memory_limit;
+
+    auto estimator = std::make_unique<ApproximateLatencyEstimator>();
+    auto async_tracker = std::make_unique<GpuAsyncTracker>(config);
+    auto tracker_ptr = async_tracker.get();
+    auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
+        shape_size_in_bytes, tracker_ptr, estimator.get(), config,
+        /*target_scheduling_rule=*/nullptr,
+        /*early_target_scheduling_rule=*/nullptr,
+        /*post_processing_fn=*/nullptr,
+        /*scheduling_instruction_crosses_overlap_limit=*/
+        GpuScheduleCrossesOverlapLimit);
+
+    HloPassPipeline pipeline("latency-hiding-scheduler");
+    // Only run latency hiding scheduling if the memory limit is positive
+    // to avoid out of memory
+    if (memory_limit > 0) {
+      pipeline.AddPass<LatencyHidingScheduler>(
+          std::move(estimator), std::move(async_tracker),
+          std::move(scheduler_core), shape_size_in_bytes);
+      return pipeline.Run(module);
+    } else {
+      return Internal(
+          "The byte size of input/output arguments exceeds the "
+          "base limit. This indicates an error in the calculation!");
+    }
+    return true;
   }
 };
 
@@ -1740,6 +1794,78 @@ TEST_F(GpuHloScheduleTest, DiscountCPUMemoryFromGPUPeakMemoryUsage) {
 // CHECK: copy-start.h2d = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start
 // CHECK: copy-done.h2d = f32[1024]{0} copy-done
 )"));
+}
+
+constexpr absl::string_view kCopyStartOverlap = R"(
+  HloModule conv_offloading
+  ENTRY %main (param_0: f32[1024], param_1: f32[1024]) -> f32[1024] {
+    %param_1 = f32[1024]{0} parameter(1)
+    %param_0 = f32[1024]{0} parameter(0)
+    %res_3 = f32[1024]{0} add(f32[1024]{0} %param_0, f32[1024]{0} %param_1)
+    %copy-start = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start(f32[1024]{0} %res_3)
+    %copy-done = f32[1024]{0:S(5)} copy-done((f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) %copy-start)
+    %res_4 = f32[1024]{0} tanh(f32[1024]{0} %res_3)
+    %copy-start.2 = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start(f32[1024]{0} %res_4)
+    %copy-done.2 = f32[1024]{0:S(5)} copy-done((f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) %copy-start.2)
+    %res_5 = f32[1024]{0} tanh(f32[1024]{0} %res_4)
+    %res_6 = f32[1024]{0} tanh(f32[1024]{0} %res_5)
+    %res_7 = f32[1024]{0} add(f32[1024]{0} %res_6, f32[1024]{0} %res_6)
+    %copy-start.1 = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start(f32[1024]{0:S(5)} %copy-done)
+    %copy-done.1 = f32[1024]{0} copy-done((f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) %copy-start.1)
+    %res_8 = f32[1024]{0} add(f32[1024]{0} %res_7, f32[1024]{0} %res_5)
+    %copy-start.3 = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start(f32[1024]{0:S(5)} %copy-done.2)
+    %copy-done.3 = f32[1024]{0} copy-done((f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) %copy-start.3)
+    %res_9 = f32[1024]{0} add(f32[1024]{0} %res_8, f32[1024]{0} %copy-done.3)
+    %res_10 = f32[1024]{0} add(f32[1024]{0} %res_9, f32[1024]{0} %copy-done.1)
+    ROOT %res_11 = f32[1024]{0} tanh(f32[1024]{0} %res_10)
+})";
+
+// This test ensures that the GPU scheduler applies latency hiding scheduling
+// while adhering to a specified memory limit.
+TEST_F(GpuHloScheduleTest, RunLHSToBeWithinMemoryLimit) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(kCopyStartOverlap, GetModuleConfig({})));
+
+  // Define a large memory limit for the scheduler.
+  constexpr uint64_t kMemoryLimitLarge = 22000;
+
+  // Run the latency hiding scheduler with the specified memory limit.
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunGpuLatencyHidingScheduler(
+                                            module.get(), kMemoryLimitLarge));
+
+  EXPECT_TRUE(changed);
+
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+// CHECK: ENTRY
+// CHECK: %copy-start.2 = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start
+// CHECK: %copy-start = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start
+// CHECK: %copy-done.2 = f32[1024]{0:S(5)} copy-done
+// CHECK: %copy-start.3 = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start
+// CHECK: %copy-done = f32[1024]{0:S(5)} copy-done
+// CHECK: %copy-start.1 = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start
+// CHECK: %copy-done.3 = f32[1024]{0} copy-done
+// CHECK: %copy-done.1 = f32[1024]{0} copy-done
+)"));
+}
+
+// This test verifies that the GPU scheduler doesn't run latency hiding
+// scheduling if the given memory limit is negative.
+TEST_F(GpuHloScheduleTest, NegativeTestMemoryLimit) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(kCopyStartOverlap, GetModuleConfig({})));
+
+  constexpr uint64_t kMemoryLimitNeg = 0;
+
+  // Run latency hiding scheduler with a negative memory limit
+  auto status =
+      RunGpuLatencyHidingScheduler(module.get(), kMemoryLimitNeg).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("The byte size of input/output arguments exceeds the "
+                "base limit. This indicates an error in the calculation!"));
 }
 
 }  // namespace gpu

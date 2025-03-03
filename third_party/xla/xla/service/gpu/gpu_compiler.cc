@@ -2498,9 +2498,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
 HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
   // Capture just the pointer size, not the entire GpuCompiler object.
-  return [pointer_size = pointer_size_](const Shape& shape) {
-    return GetSizeOfShape(shape, pointer_size);
-  };
+  return gpu::ShapeSizeBytesFunction(pointer_size_);
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
