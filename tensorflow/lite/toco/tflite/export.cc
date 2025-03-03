@@ -14,7 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/export.h"
 
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <set>
 #include <string>
+#include <vector>
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/log/log.h"
