@@ -6,10 +6,10 @@
 
 // CHECK-LABEL: ENTRY %DotOperationFusion_TransposeFusion
 // CHECK-NEXT:  %[[arg0:[^ ]+]] = f32[256,1]{1,0} parameter(0)
-// CHECK-NEXT:  %[[transpose:[^ ]+]] = f32[1,256]{1,0} transpose(f32[256,1]{1,0} %[[arg0]]), dimensions={1,0}
+// CHECK-NEXT:  %[[transpose:[^ ]+]] = f32[1,256]{1,0} transpose(%[[arg0]]), dimensions={1,0}
 // CHECK-NEXT:  %[[arg1:[^ ]+]] = f32[256,1024]{1,0} parameter(1)
-// CHECK-NEXT:  %[[exponential:[^ ]+]] = f32[256,1024]{1,0} exponential(f32[256,1024]{1,0} %[[arg1]])
-// CHECK-NEXT:  ROOT %[[dot:[^ ]+]] = f32[1,1024]{1,0} dot(f32[1,256]{1,0} %[[transpose]], f32[256,1024]{1,0} %[[exponential]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+// CHECK-NEXT:  %[[exponential:[^ ]+]] = f32[256,1024]{1,0} exponential(%[[arg1]])
+// CHECK-NEXT:  ROOT %[[dot:[^ ]+]] = f32[1,1024]{1,0} dot(%[[transpose]], %[[exponential]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 
 HloModule DotOperationFusion_TransposeFusion
 

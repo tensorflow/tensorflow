@@ -705,8 +705,8 @@ TEST_F(HloComputationTest, Stringification) {
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
-  %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
-  ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %transpose = f32[10,20]{1,0} transpose(%y), dimensions={1,0}
+  ROOT %dot = f32[5,20]{1,0} dot(%x, %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
@@ -742,8 +742,8 @@ TEST_F(HloComputationTest, StringificationIndent) {
       R"(    %TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
       %x = f32[5,10]{1,0} parameter(0)
       %y = f32[20,10]{1,0} parameter(1)
-      %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
-      ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %transpose = f32[10,20]{1,0} transpose(%y), dimensions={1,0}
+      ROOT %dot = f32[5,20]{1,0} dot(%x, %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     }, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
@@ -778,8 +778,8 @@ TEST_F(HloComputationTest, StringificationCanonical) {
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
-  %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
-  ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %transpose = f32[10,20]{1,0} transpose(%y), dimensions={1,0}
+  ROOT %dot = f32[5,20]{1,0} dot(%x, %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation1);
 

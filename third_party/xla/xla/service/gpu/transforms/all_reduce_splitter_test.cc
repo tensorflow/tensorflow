@@ -115,15 +115,15 @@ ENTRY main {
   EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(true));
   TF_EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
-    CHECK:        %[[AR0:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(bf16[2,4096,4096]{2,1,0} %[[P0]])
+    CHECK:        %[[AR0:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(%[[P0]])
     CHECK-SAME:   replica_groups={[[DESIRED_RGS:.*]]}
     CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
-    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(bf16[2,4096,4096]{2,1,0} %[[AR0]], bf16[] %[[ZERO]])
-    CHECK:        %[[AR1:.*]] = bf16[4096]{0} all-reduce(bf16[4096]{0} %[[LOCAL_REDUCE]])
+    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(%[[AR0]], %[[ZERO]])
+    CHECK:        %[[AR1:.*]] = bf16[4096]{0} all-reduce(%[[LOCAL_REDUCE]])
     CHECK-SAME:   replica_groups={[[DESIRED_RGS]]}
-    CHECK:        %[[DS:.*]] = bf16[1024]{0} dynamic-slice(bf16[4096]{0} %[[AR1]], s32[] %[[_:.*]])
+    CHECK:        %[[DS:.*]] = bf16[1024]{0} dynamic-slice(%[[AR1]], %[[_:.*]])
     CHECK-SAME:   dynamic_slice_sizes={1024}
-    CHECK-NEXT:   ROOT %[[AR2:.*]] = bf16[1024]{0} all-reduce(bf16[1024]{0} %[[DS]])
+    CHECK-NEXT:   ROOT %[[AR2:.*]] = bf16[1024]{0} all-reduce(%[[DS]])
     CHECK-SAME:   replica_groups={{[{]}}{0,4},{1,5},{2,6},{3,7}{{[}]}}
     )"));
 }
@@ -202,14 +202,14 @@ ENTRY main {
   TF_EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
     CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
-    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(bf16[2,4096,4096]{2,1,0} %[[P0]], bf16[] %[[ZERO]])
-    CHECK:        %[[AR0:.*]] = bf16[4096]{0} all-reduce(bf16[4096]{0} %[[LOCAL_REDUCE]])
+    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(%[[P0]], %[[ZERO]])
+    CHECK:        %[[AR0:.*]] = bf16[4096]{0} all-reduce(%[[LOCAL_REDUCE]])
     CHECK-SAME:   replica_groups={[[DESIRED_RGS:.*]]}
-    CHECK:        %[[DS:.*]] = bf16[1024]{0} dynamic-slice(bf16[4096]{0} %[[AR0]], s32[] %[[_:.*]])
+    CHECK:        %[[DS:.*]] = bf16[1024]{0} dynamic-slice(%[[AR0]], %[[_:.*]])
     CHECK-SAME:   dynamic_slice_sizes={1024}
-    CHECK-NEXT:   %[[AR1:.*]] = bf16[1024]{0} all-reduce(bf16[1024]{0} %[[DS]])
+    CHECK-NEXT:   %[[AR1:.*]] = bf16[1024]{0} all-reduce(%[[DS]])
     CHECK-SAME:   replica_groups={{[{]}}{0,4},{1,5},{2,6},{3,7}{{[}]}}
-    CHECK:        %[[EXISTING_AR:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(bf16[2,4096,4096]{2,1,0} %[[P0]])
+    CHECK:        %[[EXISTING_AR:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(%[[P0]])
     CHECK-SAME:   replica_groups={[[DESIRED_RGS]]}
     CHECK:        ROOT
     CHECK-NOT:    %[[AR1]]
@@ -438,13 +438,13 @@ ENTRY main {
   EXPECT_THAT(pipeline.Run(module.get()), IsOkAndHolds(true));
   TF_EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
-    CHECK:        %[[AR0:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(bf16[2,4096,4096]{2,1,0} %[[P0]])
+    CHECK:        %[[AR0:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(%[[P0]])
     CHECK-SAME:   replica_groups={[[DESIRED_RGS:.*]]}
     CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
-    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(bf16[2,4096,4096]{2,1,0} %[[AR0]], bf16[] %[[ZERO]])
-    CHECK:        %[[REDUCE_SCATTER:.*]] = bf16[1024]{0} reduce-scatter(bf16[4096]{0} %[[LOCAL_REDUCE]])
+    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(%[[AR0]], %[[ZERO]])
+    CHECK:        %[[REDUCE_SCATTER:.*]] = bf16[1024]{0} reduce-scatter(%[[LOCAL_REDUCE]])
     CHECK-SAME:   replica_groups={[[DESIRED_RGS]]}
-    CHECK-NEXT:   ROOT %[[AR2:.*]] = bf16[1024]{0} all-reduce(bf16[1024]{0} %[[REDUCE_SCATTER]])
+    CHECK-NEXT:   ROOT %[[AR2:.*]] = bf16[1024]{0} all-reduce(%[[REDUCE_SCATTER]])
     CHECK-SAME:   replica_groups={{[{]}}{0,4},{1,5},{2,6},{3,7}{{[}]}}
     )"));
 }
@@ -490,11 +490,11 @@ ENTRY main {
   TF_EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
     CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
-    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(bf16[2,4096,4096]{2,1,0} %[[P0]], bf16[] %[[ZERO]])
-    CHECK:        %[[REDUCE_SCATTER:.*]] = bf16[1024]{0} reduce-scatter(bf16[4096]{0} %[[LOCAL_REDUCE]])
-    CHECK-NEXT:   %[[AR1:.*]] = bf16[1024]{0} all-reduce(bf16[1024]{0} %[[REDUCE_SCATTER]])
+    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(%[[P0]], %[[ZERO]])
+    CHECK:        %[[REDUCE_SCATTER:.*]] = bf16[1024]{0} reduce-scatter(%[[LOCAL_REDUCE]])
+    CHECK-NEXT:   %[[AR1:.*]] = bf16[1024]{0} all-reduce(%[[REDUCE_SCATTER]])
     CHECK-SAME:   replica_groups={{[{]}}{0,4},{1,5},{2,6},{3,7}{{[}]}}
-    CHECK:        %[[EXISTING_AR:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(bf16[2,4096,4096]{2,1,0} %[[P0]])
+    CHECK:        %[[EXISTING_AR:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(%[[P0]])
     CHECK:        ROOT
     CHECK-NOT:    %[[AR1]]
     CHECK-SAME:   %[[EXISTING_AR]]
