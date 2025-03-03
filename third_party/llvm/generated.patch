@@ -11,14 +11,3 @@ diff -ruN --strip-trailing-cr a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipel
  
  # CHECK: regallocfast
  # CHECK-GREEDY: greedy<all>
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -9662,6 +9662,7 @@
-         "lib/Target/LLVMIR/DataLayoutImporter.h",
-         "lib/Target/LLVMIR/DebugImporter.cpp",
-         "lib/Target/LLVMIR/DebugImporter.h",
-+        "lib/Target/LLVMIR/LLVMImportInterface.cpp",
-         "lib/Target/LLVMIR/LoopAnnotationImporter.cpp",
-         "lib/Target/LLVMIR/LoopAnnotationImporter.h",
-         "lib/Target/LLVMIR/ModuleImport.cpp",
