@@ -469,13 +469,13 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
     void Reset(absl::Span<const Literal* const> args) {
       args_.clear();
       args_.insert(args_.end(), args.begin(), args.end());
-      evaluated_.clear();
+      evaluated_.erase(evaluated_.begin(), evaluated_.end());
     }
 
     // Resets the state of the evaluation.
     void Reset() {
       args_.clear();
-      evaluated_.clear();
+      evaluated_.erase(evaluated_.begin(), evaluated_.end());
     }
 
     // Returns the argument literals set for the evaluation.
