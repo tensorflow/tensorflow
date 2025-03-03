@@ -60,6 +60,8 @@ HloInstructionWrapper::HloInstructionWrapper(
     : instr_(instr),
       op_full_name_(
           tsl::profiler::TraceMeOp(Metadata().op_name(), Metadata().op_type())),
+      tf_op_name_(tsl::profiler::TfOpFullname(Metadata().op_type(),
+                                              Metadata().op_name())),
       category_(instr_->ToCategory()),
       expression_(tensorflow::profiler::UncachedExpression(
           instr_, false, tensorflow::profiler::kMaxHlolNameSize)) {

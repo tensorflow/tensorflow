@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/macros.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace tsl {
 namespace profiler {
@@ -81,6 +82,24 @@ TF_CONST_INIT extern const absl::string_view kHloSparseCoreV0Infeed;
 TF_CONST_INIT extern const absl::string_view kHloSparseCoreV0Outfeed;
 TF_CONST_INIT extern const absl::string_view kHloSparseCoreV0InfeedWait;
 TF_CONST_INIT extern const absl::string_view kHloSparseCoreV0InfeedTransform;
+
+// Returns true if the given op is added by xla_compiler.cc.
+inline bool IsXlaArgsOrRetvals(absl::string_view op_name) {
+  return op_name == "XLA_Args" || op_name == "XLA_Retvals";
+}
+
+// Returns the TF-op fullname from op_type and op_name.
+inline std::string TfOpFullname(absl::string_view op_type,
+                                absl::string_view op_name) {
+  if (op_type.empty()) {
+    if (op_name.empty()) return std::string();
+    if (IsXlaArgsOrRetvals(op_name)) {
+      op_type = op_name;
+    }
+  }
+  // Use TraceMeOp for consistency with TraceMe in TensorFlow executor.
+  return TraceMeOp(op_name, op_type);
+}
 
 // Return if a category is fusion.
 inline bool IsFusion(absl::string_view category) {
