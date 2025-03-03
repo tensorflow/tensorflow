@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "absl/strings/string_view.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/parser/hlo_parser.h"
