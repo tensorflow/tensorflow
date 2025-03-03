@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstdint>
+#include <vector>
 
 #include "tensorflow/lite/delegates/hexagon/builders/op_builder.h"
 
