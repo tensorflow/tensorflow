@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/stream_executor_util.h"
