@@ -38,6 +38,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_STRINGS_ORDERED_CODE_H_
 #define TENSORFLOW_CORE_LIB_STRINGS_ORDERED_CODE_H_
 
+#include <cstdint>
 #include <string>
 
 #include "tensorflow/core/platform/macros.h"
