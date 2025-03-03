@@ -371,18 +371,16 @@ TEST(ApplyTest, ApplyPlugins) {
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
 }
 
-TEST(CompositeInfoTest, GetCompositeInfo) {
+TEST(PartitionTest, MappedCompositeOp) {
   auto model_wrap = testing::LoadTestFileModel("rms_norm_composite.tflite");
   ASSERT_TRUE(model_wrap);
   auto& model = *model_wrap.Get();
-  ASSERT_EQ(model.NumSubgraphs(), 2);
-  auto* op = model.MainSubgraph()->Ops().front();
+  auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
 
-  auto composite_info = GetCompositeInfo(op);
-  ASSERT_TRUE(composite_info.has_value());
-  EXPECT_EQ(composite_info->composite_op->OpCode(), kLiteRtOpCodeShloComposite);
-  EXPECT_EQ(composite_info->composite_name, "odml.rms_norm");
-  EXPECT_EQ(composite_info->decomposition_subgraph_index, 1);
+  auto partition_result = PartitionModel(plugins->front(), model);
+  ASSERT_TRUE(partition_result);
+  // One new subgraph for the consumed composite op only, decomp not consumed.
+  ASSERT_EQ(partition_result->second.Size(), 1);
 }
 
 }  // namespace
