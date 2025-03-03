@@ -2212,7 +2212,9 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:device_profiler_session",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )

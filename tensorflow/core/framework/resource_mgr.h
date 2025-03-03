@@ -234,6 +234,10 @@ class ResourceMgr {
   // Deletes all resources in all containers.
   void Clear();
 
+  // Call `ResourceBase::Finalize` on all resources. Erase resources that are
+  // `nullptr` or whose weak references have expired.
+  void Finalize();
+
   // Returns a text description for all resources.
   std::string DebugString() const;
 
