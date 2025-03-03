@@ -29,7 +29,7 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/mem.h"
 
 namespace tensorflow {
