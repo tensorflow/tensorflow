@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_VALUE_RANGE_H_
 #define XLA_SERVICE_VALUE_RANGE_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 

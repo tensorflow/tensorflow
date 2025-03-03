@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_WHILE_LOOP_EXPENSIVE_INVARIANT_CODE_MOTION_H_
 #define XLA_SERVICE_WHILE_LOOP_EXPENSIVE_INVARIANT_CODE_MOTION_H_
 
+#include <cstdint>
 #include <functional>
 #include <utility>
 

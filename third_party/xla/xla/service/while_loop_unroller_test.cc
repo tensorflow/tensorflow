@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/while_loop_unroller.h"
 
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
