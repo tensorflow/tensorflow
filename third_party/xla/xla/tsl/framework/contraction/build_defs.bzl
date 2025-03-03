@@ -1,5 +1,16 @@
 """Defines the cc_binary_disable_onednn build rule to disable oneDNN."""
 
+load("//xla/tsl:tsl.bzl", "xla_bzl_visibility")
+
+visibility(xla_bzl_visibility([
+    "platforms/xla/...",
+    "third_party/tensorflow/...",
+    # The following are legacy users of this .bzl file. DO NOT ADD NEW USERS.
+    # go/keep-sorted start
+    "tech/internal/env/extension",
+    # go/keep-sorted end
+]))
+
 def _disable_onednn_transition_impl(settings, attr):
     _ignore = (settings, attr)  # @unused
     return {"//xla/tsl/framework/contraction:disable_onednn_contraction_kernel": True}
