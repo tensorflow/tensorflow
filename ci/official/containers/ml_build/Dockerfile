@@ -46,6 +46,9 @@ RUN if [ "${INSTALL_CUDNN}" = "true" ]; then \
       echo "cudnn is not installed"; \
     fi
 
+RUN pip --version
+RUN python3 --version
+
 # Setup links for TensorFlow to compile.
 # Referenced in devel.usertools/*.bazelrc.
 # Set python3.12 as the default python version.
@@ -53,6 +56,9 @@ RUN if [ "${INSTALL_CUDNN}" = "true" ]; then \
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python
 RUN ln -sf /usr/lib/python3.12 /usr/lib/tf_python
+
+RUN pip --version
+RUN python3 --version
 
 # Make sure clang is on the path
 RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
