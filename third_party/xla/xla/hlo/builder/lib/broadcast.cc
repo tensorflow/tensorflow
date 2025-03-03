@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/broadcast.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/algorithm/container.h"
