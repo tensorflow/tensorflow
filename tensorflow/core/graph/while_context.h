@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_WHILE_CONTEXT_H_
 #define TENSORFLOW_CORE_GRAPH_WHILE_CONTEXT_H_
 
+#include <vector>
+
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
