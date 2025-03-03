@@ -176,6 +176,7 @@ cc_library(
         "//xla/service/spmd/shardy/round_trip_common:export_named_computations",
         "//xla/service/spmd/shardy/round_trip_common:pipeline_passes",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
