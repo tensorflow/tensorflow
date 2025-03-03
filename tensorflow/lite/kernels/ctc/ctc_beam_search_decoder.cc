@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <initializer_list>
 #include <vector>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
