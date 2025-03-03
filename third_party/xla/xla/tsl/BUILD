@@ -83,24 +83,24 @@ config_setting(
 
 config_setting(
     name = "macos_x86_64_with_framework_shared_object",
+    constraint_values = ["@platforms//cpu:x86_64"],
     define_values = {
         "framework_shared_object": "true",
     },
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin",
     },
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "macos_arm64_with_framework_shared_object",
+    constraint_values = ["@platforms//cpu:aarch64"],
     define_values = {
         "framework_shared_object": "true",
     },
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin_arm64",
     },
     visibility = ["//visibility:public"],
 )
@@ -125,7 +125,7 @@ config_setting(
 config_setting(
     name = "android",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
+        ["@platforms//os:android"],
         [],
     ),
     values = if_oss(
@@ -138,7 +138,7 @@ config_setting(
 config_setting(
     name = "emscripten",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:emscripten"],
+        ["@platforms//os:emscripten"],
         [],
     ),
     values = if_oss(
@@ -148,52 +148,26 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# Sometimes Bazel reports darwin_x86_64 as "darwin" and sometimes as
-# "darwin_x86_64". The former shows up when building on a Mac x86_64 host for a Mac x86_64 target.
-# The latter shows up when cross-compiling for Mac x86_64 from a Mac ARM machine and in internal
-# Google builds.
 config_setting(
-    name = "macos_x86_64_default",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
-        [],
-    ),
-    values = {
-        "apple_platform_type": "macos",
-        "cpu": "darwin",
-    },
-)
-
-config_setting(
-    name = "macos_x86_64_crosscompile",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
-        [],
-    ),
-    values = {
-        "apple_platform_type": "macos",
-        "cpu": "darwin_x86_64",
-    },
-)
-
-selects.config_setting_group(
     name = "macos_x86_64",
-    match_any = [
-        ":macos_x86_64_default",
-        ":macos_x86_64_crosscompile",
-    ],
+    constraint_values = if_google(
+        ["@platforms//os:macos"],
+        [],
+    ) + ["@platforms//cpu:x86_64"],
+    values = {
+        "apple_platform_type": "macos",
+    },
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "macos_arm64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
+        ["@platforms//os:macos"],
         [],
-    ),
+    ) + ["@platforms//cpu:aarch64"],
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin_arm64",
     },
     visibility = ["//visibility:public"],
 )
@@ -209,28 +183,25 @@ selects.config_setting_group(
 
 config_setting(
     name = "windows_x86_64",
-    values = {"cpu": "x64_windows"},
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+    ],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "windows_aarch64",
-    values = {"cpu": "arm64_windows"},
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:windows",
+    ],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "windows",
-    # Internal builds query the target OS.
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:windows"],
-        [],
-    ),
-    # OSS builds query the CPU type.
-    values = if_oss(
-        {"cpu": "x64_windows"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:windows"],
     visibility = ["//visibility:public"],
 )
 
@@ -238,7 +209,7 @@ config_setting(
 config_setting(
     name = "ios",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:ios"],
+        ["@platforms//os:ios"],
         [],
     ),
     values = if_oss(
@@ -272,14 +243,13 @@ config_setting(
 config_setting(
     name = "android_arm",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
+        ["@platforms//os:android"],
         [],
-    ),
+    ) + ["@platforms//cpu:armv7"],
     values = dict(
         if_oss(
             {"crosstool_top": "//external:android/crosstool"},
         ),
-        cpu = "armeabi-v7a",
     ),
     visibility = ["//visibility:public"],
 )
@@ -287,19 +257,19 @@ config_setting(
 config_setting(
     name = "linux_aarch64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
+        ["@platforms//os:linux"],
         [],
-    ),
-    values = {"cpu": "aarch64"},
+    ) + ["@platforms//cpu:aarch64"],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_armhf",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
+        ["@platforms//os:linux"],
         [],
     ),
+    # TODO: find/establish constraint_value for armhf (Debian code for arm with hardware FP)
     values = {"cpu": "armhf"},
     visibility = ["//visibility:public"],
 )
@@ -307,44 +277,40 @@ config_setting(
 config_setting(
     name = "linux_x86_64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
+        ["@platforms//os:linux"],
         [],
-    ),
-    values = {"cpu": "k8"},
+    ) + ["@platforms//cpu:x86_64"],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_ppc64le",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
+        ["@platforms//os:linux"],
         [],
-    ),
-    values = {"cpu": "ppc"},
+    ) + ["@platforms//cpu:ppc"],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_s390x",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
+        ["@platforms//os:linux"],
         [],
-    ),
-    values = {"cpu": "s390x"},
+    ) + ["@platforms//cpu:s390x"],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "ios_x86_64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:ios"],
+        ["@platforms//os:ios"],
         [],
-    ),
+    ) + ["@platforms//cpu:x86_64"],
     values = dict(
         if_oss(
             {"crosstool_top": "//tools/osx/crosstool:crosstool"},
         ),
-        cpu = "ios_x86_64",
     ),
     visibility = ["//visibility:public"],
 )
@@ -421,7 +387,7 @@ config_setting(
 config_setting(
     name = "fuchsia",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:fuchsia"],
+        ["@platforms//os:fuchsia"],
         [],
     ),
     values = if_oss(
@@ -436,21 +402,20 @@ config_setting(
 config_setting(
     name = "android_x86",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
+        ["@platforms//os:android"],
         [],
-    ),
+    ) + ["@platforms//cpu:x86_32"],
     values = dict(
         if_oss(
             {"crosstool_top": "//external:android/crosstool"},
         ),
-        cpu = "x86",
     ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "arm",
-    values = {"cpu": "arm"},
+    constraint_values = ["@platforms//cpu:aarch64"],
     visibility = ["//visibility:public"],
 )
 
@@ -462,13 +427,13 @@ config_setting(
 
 config_setting(
     name = "armeabi-v7a",
-    values = {"cpu": "armeabi-v7a"},
+    constraint_values = ["@platforms//cpu:armv7"],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "arm64-v8a",
-    values = {"cpu": "arm64-v8a"},
+    name = "arm64",
+    constraint_values = ["@platforms//cpu:aarch64"],
     visibility = ["//visibility:public"],
 )
 
@@ -477,10 +442,9 @@ tsl_extra_config_settings()
 selects.config_setting_group(
     name = "arm_any",
     match_any = [
-        ":arm",
         ":armeabi",
         ":armeabi-v7a",
-        ":arm64-v8a",
+        ":arm64",
         ":linux_aarch64",
         ":linux_armhf",
     ] + tsl_extra_config_settings_targets(),
@@ -511,12 +475,9 @@ selects.config_setting_group(
 config_setting(
     name = "fuchsia_x86_64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:fuchsia"],
+        ["@platforms//os:fuchsia"],
         [],
-    ),
-    values = {
-        "cpu": "x86_64",
-    },
+    ) + ["@platforms//cpu:x86_64"],
     visibility = ["//visibility:public"],
 )
 
@@ -549,6 +510,7 @@ selects.config_setting_group(
 
 config_setting(
     name = "freebsd",
+    # TODO: figure out what CPU freebsd should be, and replace it with a constraint_value.
     values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
 )
