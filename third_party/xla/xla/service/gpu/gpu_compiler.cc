@@ -1723,6 +1723,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
   const DebugOptions debug_opts = module->config().debug_options();
+  VLOG(2) << "RunHloPasses: Debug options: " << debug_opts.DebugString();
   TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
   bool is_deviceless = options.target_config.has_value() ||
                        !debug_opts.xla_gpu_target_config_filename().empty();
@@ -2311,6 +2312,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }
 
   const DebugOptions& debug_opts = module->config().debug_options();
+  VLOG(2) << "RunBackend: Debug options: " << debug_opts.DebugString();
   TF_ASSIGN_OR_RETURN(TargetConfig gpu_target_config,
                       GetTargetConfig(options, debug_opts, stream_exec));
 
