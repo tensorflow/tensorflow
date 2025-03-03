@@ -39,7 +39,6 @@ def _python_wheel_version_suffix_repository_impl(repository_ctx):
 
     wheel_version_suffix = ""
     semantic_wheel_version_suffix = ""
-    build_tag = ""
     if wheel_type == "nightly":
         if not build_date:
             fail("Environment variable ML_BUILD_DATE is required for nightly builds!")
@@ -63,14 +62,13 @@ def _python_wheel_version_suffix_repository_impl(repository_ctx):
             wheel_version_suffix += custom_version_suffix.replace("-", "")
             semantic_wheel_version_suffix += custom_version_suffix
     else:
-        build_tag = "0"
+        wheel_version_suffix = ".dev0+selfbuilt"
+        semantic_wheel_version_suffix = "-dev0+selfbuilt"
 
     version_suffix_bzl_content = """WHEEL_VERSION_SUFFIX = '{wheel_version_suffix}'
-SEMANTIC_WHEEL_VERSION_SUFFIX = '{semantic_wheel_version_suffix}'
-BUILD_TAG = '{build_tag}'""".format(
+SEMANTIC_WHEEL_VERSION_SUFFIX = '{semantic_wheel_version_suffix}'""".format(
         wheel_version_suffix = wheel_version_suffix,
         semantic_wheel_version_suffix = semantic_wheel_version_suffix,
-        build_tag = build_tag,
     )
 
     repository_ctx.file(
@@ -102,7 +100,7 @@ The calculated wheel version suffix depends on the wheel type:
 - nightly: .dev{build_date}
 - release: ({custom_version_suffix})?
 - custom: .dev{build_date}(+{git_hash})?({custom_version_suffix})?
-- snapshot (default): -0
+- snapshot (default): .dev0+selfbuilt
 
 The following environment variables can be set:
 {wheel_type}: ML_WHEEL_TYPE
@@ -124,7 +122,7 @@ Examples:
                                      --repo_env=ML_WHEEL_BUILD_DATE=$(git show -s --format=%as HEAD)
                                      --repo_env=ML_WHEEL_GIT_HASH=$(git rev-parse HEAD)
                                      --repo_env=ML_WHEEL_VERSION_SUFFIX=-custom
-5. snapshot wheel version: 2.19.0-0
+5. snapshot wheel version: 2.19.0.dev0+selfbuilt
    Env vars passed to Bazel command: --repo_env=ML_WHEEL_TYPE=snapshot
 
 """  # buildifier: disable=no-effect
