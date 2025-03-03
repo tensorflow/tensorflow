@@ -270,6 +270,12 @@ cc_test(
 cc_test(
     name = "gl_buffer_test",
     srcs = ["gl_buffer_test.cc"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-landroid",
+        ],
+        "//conditions:default": [],
+    }),
     tags = [
         "notap",
     ],
