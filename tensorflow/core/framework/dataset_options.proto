@@ -27,7 +27,7 @@ enum AutoShardPolicy {
   OFF = -1;
 }
 
-// next: 6
+// next: 7
 message AutotuneOptions {
   // Whether to automatically tune performance knobs.
   oneof optional_enabled {
@@ -62,6 +62,10 @@ message AutotuneOptions {
   // Defaults to 16.
   oneof optional_initial_parallelism {
     int64 initial_parallelism = 5;
+  }
+
+  oneof optional_force_min_initial_parallelism {
+    bool force_min_initial_parallelism = 6;
   }
 }
 

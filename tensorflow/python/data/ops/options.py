@@ -241,6 +241,15 @@ class AutotuneOptions(options_lib.OptionsBase):
       ),
   )
 
+  force_min_initial_parallelism = options_lib.create_option(
+      name="force_min_initial_parallelism",
+      ty=bool,
+      docstring=(
+          "When true, asynchrous ops like `.map` will at least have"
+          " `initial_parallelism`(16)"
+      ),
+  )
+
   def _to_proto(self):
     pb = dataset_options_pb2.AutotuneOptions()
     if self.enabled is not None:
@@ -254,6 +263,8 @@ class AutotuneOptions(options_lib.OptionsBase):
           self.autotune_algorithm)
     if self.initial_parallelism is not None:
       pb.initial_parallelism = self.initial_parallelism
+    if self.force_min_initial_parallelism is not None:
+      pb.force_min_initial_parallelism = self.force_min_initial_parallelism
     return pb
 
   def _from_proto(self, pb):
@@ -268,6 +279,8 @@ class AutotuneOptions(options_lib.OptionsBase):
           pb.autotune_algorithm)
     if pb.WhichOneof("optional_initial_parallelism") is not None:
       self.initial_parallelism = pb.initial_parallelism
+    if pb.WhichOneof("optional_force_min_initial_parallelism") is not None:
+      self.force_min_initial_parallelism = pb.force_min_initial_parallelism
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""
