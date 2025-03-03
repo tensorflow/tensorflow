@@ -1,1 +1,24 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir b/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
+--- a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
++++ b/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
+@@ -1,6 +1,6 @@
+ # REQUIRES x86_64-registered-target
+-# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=fast -print-pipeline-passes %s 2>&1 | FileCheck %s
+-# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=greedy -print-pipeline-passes %s 2>&1 | FileCheck %s --check-prefix=CHECK-GREEDY
++# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=fast -print-pipeline-passes %s -o - 2>&1 | FileCheck %s
++# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=greedy -print-pipeline-passes %s -o - 2>&1 | FileCheck %s --check-prefix=CHECK-GREEDY
+ 
+ # CHECK: regallocfast
+ # CHECK-GREEDY: greedy<all>
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -9662,6 +9662,7 @@
+         "lib/Target/LLVMIR/DataLayoutImporter.h",
+         "lib/Target/LLVMIR/DebugImporter.cpp",
+         "lib/Target/LLVMIR/DebugImporter.h",
++        "lib/Target/LLVMIR/LLVMImportInterface.cpp",
+         "lib/Target/LLVMIR/LoopAnnotationImporter.cpp",
+         "lib/Target/LLVMIR/LoopAnnotationImporter.h",
+         "lib/Target/LLVMIR/ModuleImport.cpp",
