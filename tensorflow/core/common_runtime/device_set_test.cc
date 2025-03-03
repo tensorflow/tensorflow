@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_set.h"
 
+#include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
 
