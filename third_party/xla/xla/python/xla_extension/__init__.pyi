@@ -861,8 +861,7 @@ class DistributedRuntimeClient:
 def get_distributed_runtime_service(
     address: str,
     num_nodes: int,
-    heartbeat_interval: Optional[int] = ...,
-    max_missing_heartbeats: Optional[int] = ...,
+    heartbeat_timeout_seconds: Optional[int] = ...,
     cluster_register_timeout: Optional[int] = ...,
     shutdown_timeout: Optional[int] = ...,
 ) -> DistributedRuntimeService: ...
@@ -872,8 +871,7 @@ def get_distributed_runtime_client(
     rpc_timeout: Optional[int] = ...,
     init_timeout: Optional[int] = ...,
     shutdown_timeout: Optional[int] = ...,
-    heartbeat_interval: Optional[int] = ...,
-    max_missing_heartbeats: Optional[int] = ...,
+    heartbeat_timeout_seconds: Optional[int] = ...,
     missed_heartbeat_callback: Optional[Any] = ...,
     shutdown_on_destruction: Optional[bool] = ...,
     use_compression: Optional[bool] = ...,
