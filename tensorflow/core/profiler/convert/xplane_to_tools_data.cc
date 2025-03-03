@@ -394,8 +394,6 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return ConvertXSpaceToMemoryProfile(session_snapshot);
   } else if (tool_name == "pod_viewer") {
     return ConvertMultiXSpacesToPodViewer(session_snapshot);
-  } else if (tool_name == "tf_data_bottleneck_analysis") {
-    return ConvertMultiXSpacesToTfDataBottleneckAnalysis(session_snapshot);
   } else if (tool_name == "op_profile") {
     return ConvertMultiXSpacesToOpProfileViewer(session_snapshot);
   } else if (tool_name == "hlo_stats") {
@@ -404,8 +402,6 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return ConvertMultiXSpacesToRooflineModel(session_snapshot);
   } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
     return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
-  } else if (tool_name == "dcn_collective_stats") {
-    return ConvertDcnCollectiveStatsToToolData(session_snapshot, options);
   } else if (tool_name == "tool_names") {
     return GetAvailableToolNames(session_snapshot);
   } else if (tool_name == "_xplane.pb") {  // internal test only.

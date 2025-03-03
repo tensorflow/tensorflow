@@ -43,7 +43,6 @@ absl::StatusOr<std::string> GetAvailableToolNames(
     tools.push_back("framework_op_stats");
     tools.push_back("memory_profile");
     tools.push_back("pod_viewer");
-    tools.push_back("tf_data_bottleneck_analysis");
     tools.push_back("op_profile");
     tools.push_back("inference_profile");
     tools.push_back("hlo_stats");
