@@ -25,6 +25,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
@@ -43,6 +45,36 @@ namespace gpu {
 class SymbolicTileAnalysis;
 using SymbolicTileAnalysisOrError =
     std::variant<SymbolicTileAnalysis, FusionDecision>;
+
+// Holds the indexing information for the roots of the computation.
+struct RootIndexing {
+  RootIndexing(int64_t real_root_index,
+               absl::Span<const HloInstruction* const> roots,
+               IndexingMap real_root_indexing, int64_t num_reduction_dims)
+      : real_root_index(real_root_index),
+        roots(roots.begin(), roots.end()),
+        real_root_indexing(std::move(real_root_indexing)),
+        num_reduction_dims(num_reduction_dims) {}
+
+  const HloInstruction* GetRealRoot() const { return roots[real_root_index]; }
+
+  // ID of the root that defines the indexing for other roots.
+  int64_t real_root_index = -1;
+
+  // `roots` contains the computation roots in increasing order of their
+  // output index.
+  absl::InlinedVector<const HloInstruction*, 2> roots;
+
+  // Indexing map to the "real" root.
+  IndexingMap real_root_indexing;
+
+  // Number of reduction dimensions in the real root of a nested fusion that
+  // correspond to the dimensions reduced/contracted by the user of the nested
+  // fusion.
+  // At the moment the reduction dimensions correspond to the last
+  // `num_reduction_dims` dimensions in the `real_root_indexing` map.
+  int64_t num_reduction_dims = 0;
+};
 
 // An interface to implement additional emitter-specific constraints. This
 // interface can be used as an extension point to further constrain the set of
@@ -123,10 +155,7 @@ class SymbolicTileAnalysis {
   // for computing the tiling, and that it is the last symbolic tiled hlo
   // instruction in the list.
   int64_t num_tile_parameters() const {
-    return symbolic_tiled_hlo_instructions_.back()
-        ->hlo()
-        ->shape()
-        .dimensions_size();
+    return root_indexing_.real_root_indexing.GetDimVarsCount();
   }
 
   // Returns the symbolic tiled HLO instructions in def-before-use order.
@@ -167,21 +196,6 @@ class SymbolicTileAnalysis {
   absl::StatusOr<std::vector<Tiling>> GetGoodTilings() const;
 
  private:
-  // Holds the indexing information for the roots of the computation.
-  struct RootIndexing {
-    const HloInstruction* GetRealRoot() const { return roots[real_root_index]; }
-
-    // ID of the root that defines the indexing for other roots.
-    int64_t real_root_index = -1;
-
-    // `roots` contains the computation roots in increasing order of their
-    // output index.
-    absl::InlinedVector<const HloInstruction*, 2> roots;
-
-    // Indexing map to the "real" root.
-    IndexingMap real_root_indexing;
-  };
-
   SymbolicTileAnalysis(
       std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
           symbolic_tiled_hlo_instructions,

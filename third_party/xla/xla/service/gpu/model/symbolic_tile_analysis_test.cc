@@ -173,10 +173,10 @@ ENTRY main {
   EXPECT_THAT(*root, MatchTiledHloInstruction(/*tile_sizes=*/{1, 10},
                                               /*tile_strides=*/{1, 1},
                                               /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0, tid_1 * 10),
+    (pid_0, pid_1) -> (pid_0, pid_1 * 10),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 9]
+    pid_0 in [0, 1],
+    pid_1 in [0, 9]
   )"));
 
   auto p0_from_subtract0 = root->operand(0);
@@ -186,20 +186,20 @@ ENTRY main {
                                       /*tile_sizes=*/{1, 10},
                                       /*tile_strides=*/{1, 1},
                                       /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0, tid_1 * 10),
+    (pid_0, pid_1) -> (pid_0, pid_1 * 10),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 9]
+    pid_0 in [0, 1],
+    pid_1 in [0, 9]
   )"));
 
   EXPECT_THAT(*p0_from_subtract1, MatchTiledHloInstruction(
                                       /*tile_sizes=*/{1, 97},
                                       /*tile_strides=*/{1, 1},
                                       /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0, 0),
+    (pid_0, pid_1) -> (pid_0, 0),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 9]
+    pid_0 in [0, 1],
+    pid_1 in [0, 9]
   )"));
 }
 
@@ -288,10 +288,10 @@ ENTRY main {
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{1, 97}, /*tile_strides=*/{1, 1},
                   /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0, 0),
+    (pid_0, pid_1) -> (pid_0, 0),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 0]
+    pid_0 in [0, 1],
+    pid_1 in [0, 0]
   )"));
 }
 
@@ -378,18 +378,18 @@ ENTRY entry_computation {
   EXPECT_THAT(*roots[0], MatchTiledHloInstruction(
                              /*tile_sizes=*/{2, 4}, /*tile_strides=*/{1, 1},
                              /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0 * 2, tid_1 * 4),
+    (pid_0, pid_1) -> (pid_0 * 2, pid_1 * 4),
     domain:
-    tid_0 in [0, 31],
-    tid_1 in [0, 15]
+    pid_0 in [0, 31],
+    pid_1 in [0, 15]
   )"));
   EXPECT_THAT(*roots[1], MatchTiledHloInstruction(
                              /*tile_sizes=*/{2, 4}, /*tile_strides=*/{1, 1},
                              /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0 * 2, tid_1 * 4),
+    (pid_0, pid_1) -> (pid_0 * 2, pid_1 * 4),
     domain:
-    tid_0 in [0, 31],
-    tid_1 in [0, 15]
+    pid_0 in [0, 31],
+    pid_1 in [0, 15]
   )"));
 }
 
@@ -456,18 +456,18 @@ ENTRY entry_computation {
   EXPECT_THAT(*roots[0], MatchTiledHloInstruction(
                              /*tile_sizes=*/{1, 4}, /*tile_strides=*/{1, 1},
                              /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0, tid_1 * 4),
+    (pid_0, pid_1) -> (pid_0, pid_1 * 4),
     domain:
-    tid_0 in [0, 7],
-    tid_1 in [0, 1]
+    pid_0 in [0, 7],
+    pid_1 in [0, 1]
   )"));
   EXPECT_THAT(*roots[1], MatchTiledHloInstruction(
                              /*tile_sizes=*/{4}, /*tile_strides=*/{1},
                              /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0 * 8 + tid_1 * 4),
+    (pid_0, pid_1) -> (pid_0 * 8 + pid_1 * 4),
     domain:
-    tid_0 in [0, 7],
-    tid_1 in [0, 1]
+    pid_0 in [0, 7],
+    pid_1 in [0, 1]
   )"));
 }
 
@@ -502,16 +502,16 @@ ENTRY entry_computation {
   EXPECT_THAT(*roots[0], MatchTiledHloInstruction(
                              /*tile_sizes=*/{4}, /*tile_strides=*/{1},
                              /*tile_offsets_indexing=*/R"(
-    (tid_0) -> (tid_0 * 4),
+    (pid_0) -> (pid_0 * 4),
     domain:
-    tid_0 in [0, 15]
+    pid_0 in [0, 15]
   )"));
   EXPECT_THAT(*roots[1], MatchTiledHloInstruction(
                              /*tile_sizes=*/{1, 4}, /*tile_strides=*/{1, 1},
                              /*tile_offsets_indexing=*/R"(
-    (tid_0) -> (tid_0 floordiv 2, (tid_0 mod 2) * 4),
+    (pid_0) -> (pid_0 floordiv 2, (pid_0 mod 2) * 4),
     domain:
-    tid_0 in [0, 15]
+    pid_0 in [0, 15]
   )"));
 }
 
@@ -541,22 +541,22 @@ ENTRY main {
   EXPECT_THAT(*root, MatchTiledHloInstruction(
                          /*tile_sizes=*/{2, 4, 2}, /*tile_strides=*/{1, 1, 1},
                          /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1, tid_2) -> (tid_0 * 2, tid_1 * 4, tid_2 * 2),
+    (pid_0, pid_1, pid_2) -> (pid_0 * 2, pid_1 * 4, pid_2 * 2),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 1],
-    tid_2 in [0, 7]
+    pid_0 in [0, 1],
+    pid_1 in [0, 1],
+    pid_2 in [0, 7]
   )"));
 
   EXPECT_THAT(*root->operand(0),
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{4, 2, 2}, /*tile_strides=*/{1, 1, 1},
                   /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1, tid_2) -> (tid_1 * 4, tid_2 * 2, tid_0 * 2),
+    (pid_0, pid_1, pid_2) -> (pid_1 * 4, pid_2 * 2, pid_0 * 2),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 1],
-    tid_2 in [0, 7]
+    pid_0 in [0, 1],
+    pid_1 in [0, 1],
+    pid_2 in [0, 7]
   )"));
 }
 
@@ -590,30 +590,30 @@ ENTRY main {
   EXPECT_THAT(*root, MatchTiledHloInstruction(
                          /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
                          /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0 * 2, tid_1 * 2),
+    (pid_0, pid_1) -> (pid_0 * 2, pid_1 * 2),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 3]
+    pid_0 in [0, 1],
+    pid_1 in [0, 3]
   )"));
 
   EXPECT_THAT(*p0_from_slice0,
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
                   /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0 * 2, tid_1 * 2 + 2),
+    (pid_0, pid_1) -> (pid_0 * 2, pid_1 * 2 + 2),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 3]
+    pid_0 in [0, 1],
+    pid_1 in [0, 3]
   )"));
 
   EXPECT_THAT(*p0_from_slice1,
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
                   /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0 * 2 + 3, tid_1 * 2 + 4),
+    (pid_0, pid_1) -> (pid_0 * 2 + 3, pid_1 * 2 + 4),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 3]
+    pid_0 in [0, 1],
+    pid_1 in [0, 3]
   )"));
 }
 
@@ -645,30 +645,30 @@ ENTRY main {
   EXPECT_THAT(*dot, MatchTiledHloInstruction(
                         /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
                         /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0 * 2, tid_1 * 2),
+    (pid_0, pid_1) -> (pid_0 * 2, pid_1 * 2),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 7]
+    pid_0 in [0, 1],
+    pid_1 in [0, 7]
   )"));
 
   const TiledHloInstruction* lhs = dot->operand(0);
   EXPECT_THAT(*lhs, MatchTiledHloInstruction(
                         /*tile_sizes=*/{2, 8}, /*tile_strides=*/{1, 1},
                         /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0 * 2, 0),
+    (pid_0, pid_1) -> (pid_0 * 2, 0),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 7]
+    pid_0 in [0, 1],
+    pid_1 in [0, 7]
   )"));
 
   const TiledHloInstruction* rhs = dot->operand(1);
   EXPECT_THAT(*rhs, MatchTiledHloInstruction(
                         /*tile_sizes=*/{8, 2}, /*tile_strides=*/{1, 1},
                         /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (0, tid_1 * 2),
+    (pid_0, pid_1) -> (0, pid_1 * 2),
     domain:
-    tid_0 in [0, 1],
-    tid_1 in [0, 7]
+    pid_0 in [0, 1],
+    pid_1 in [0, 7]
   )"));
 }
 
@@ -1151,10 +1151,10 @@ ENTRY main {
                   /*tile_sizes=*/{1, 1},
                   /*tile_strides=*/{1, 1},
                   /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (tid_0, tid_1),
+    (pid_0, pid_1) -> (pid_0, pid_1),
     domain:
-    tid_0 in [0, 65537],
-    tid_1 in [0, 32767]
+    pid_0 in [0, 65537],
+    pid_1 in [0, 32767]
   )"));
 }
 
@@ -1206,20 +1206,20 @@ ENTRY main {
                                   /*tile_sizes=*/{1, 1, 32},
                                   /*tile_strides=*/{0, 1, 1},
                                   /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1) -> (0, tid_1, 0),
+    (pid_0, pid_1) -> (0, pid_1, 0),
     domain:
-    tid_0 in [0, 0],
-    tid_1 in [0, 1]
+    pid_0 in [0, 0],
+    pid_1 in [0, 1]
   )"));
 
   EXPECT_THAT(*param_0_tile, MatchTiledHloInstruction(
                                  /*tile_sizes=*/{1, 1, 32},
                                  /*tile_strides=*/{0, 1, 1},
                                  /*tile_offsets_indexing=*/R"(
-    (tid_0, tid_1){rt0, rt1} -> (rt0, tid_1, rt1),
+    (pid_0, pid_1){rt0, rt1} -> (rt0, pid_1, rt1),
     domain:
-    tid_0 in [0, 0],
-    tid_1 in [0, 1],
+    pid_0 in [0, 0],
+    pid_1 in [0, 1],
     rt0 in [0, 1],
     rt1 in [0, 226]
   )"));
@@ -1317,6 +1317,126 @@ ENTRY main {
 
   const TiledHloInstruction* iota = tiled_hlo_computation.GetRoots()[0];
   EXPECT_THAT(iota->tile_offsets_indexing().status(), ::tsl::testing::IsOk());
+}
+
+TEST_F(SymbolicTileAnalysisTest, TileNestedDotFusions) {
+  // Tile a dot of [8192,256] x [256,512] = [8192,512].
+  // [N, K] * [K, M] = [N, M].
+  // N is tiled to 128, K: 8, M: 32.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+    lhs {
+      lhs.p0 = bf16[8192,256]{1,0} parameter(0)
+      ROOT lhs.root = bf16[8192,256]{1,0} negate(lhs.p0)
+    }
+
+    rhs {
+      rhs.p0 = bf16[256,512]{1,0} parameter(0)
+      ROOT rhs.root = bf16[256,512]{1,0} exponential(rhs.p0)
+    }
+
+    dot {
+      dot.p0 = bf16[8192,256]{1,0} parameter(0)
+      dot.p1 = bf16[256,512]{1,0} parameter(1)
+
+      dot.lhs = bf16[8192,256]{1,0} fusion(dot.p0),
+        kind=kCustom, calls=lhs, backend_config={
+          "fusion_backend_config":{
+            "block_level_fusion_config":{
+              "output_tiles":[{"sizes":["8"]}]}}}
+      dot.rhs = bf16[256,512]{1,0} fusion(dot.p1),
+        kind=kCustom, calls=rhs, backend_config={
+          "fusion_backend_config":{
+            "block_level_fusion_config":{
+              "output_tiles":[{"sizes":["8"]}]}}}
+
+      ROOT dot = bf16[8192,512]{1,0} dot(dot.lhs, dot.rhs),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      main.p0 = bf16[8192,256]{1,0} parameter(0)
+      main.p1 = bf16[256,512]{1,0} parameter(1)
+      ROOT fusion = bf16[8192,512]{1,0} fusion(main.p0, main.p1),
+        kind=kCustom, calls=dot
+    }
+  )"));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              /*tile_parameters=*/{128, 32},
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* dot = tiled_hlo_computation.GetRoots().front();
+  EXPECT_THAT(*dot, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{128, 32},
+                        /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (pid_0, pid_1) -> (pid_0 * 128, pid_1 * 32),
+    domain:
+    pid_0 in [0, 63],
+    pid_1 in [0, 15]
+  )"));
+
+  // LHS nested fusion.
+  const TiledHloInstruction* lhs = dot->operand(0);
+  const TiledHloComputation* lhs_nested_computation =
+      static_cast<const TiledHloFusionInstruction*>(lhs)->called_computation();
+  const TiledHloInstruction* negate =
+      lhs_nested_computation->GetRoots().front();
+  EXPECT_THAT(*negate, MatchTiledHloInstruction(
+                           /*tile_sizes=*/{128, 8},
+                           /*tile_strides=*/{1, 1},
+                           /*tile_offsets_indexing=*/R"(
+    (pid_0, pid_1, rid_0) -> (pid_0 * 128, rid_0 * 8),
+    domain:
+    pid_0 in [0, 63],
+    pid_1 in [0, 15],
+    rid_0 in [0, 31]
+  )"));
+  const TiledHloInstruction* lhs_p0 = negate->operand(0);
+  EXPECT_THAT(*lhs_p0, MatchTiledHloInstruction(
+                           /*tile_sizes=*/{128, 8},
+                           /*tile_strides=*/{1, 1},
+                           /*tile_offsets_indexing=*/R"(
+    (pid_0, pid_1, rid_0) -> (pid_0 * 128, rid_0 * 8),
+    domain:
+    pid_0 in [0, 63],
+    pid_1 in [0, 15],
+    rid_0 in [0, 31]
+  )"));
+
+  // RHS nested fusion.
+  const TiledHloInstruction* rhs = dot->operand(1);
+  const TiledHloComputation* rhs_nested_computation =
+      static_cast<const TiledHloFusionInstruction*>(rhs)->called_computation();
+  const TiledHloInstruction* exp = rhs_nested_computation->GetRoots().front();
+  EXPECT_THAT(*exp, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{8, 32},
+                        /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (pid_0, pid_1, rid_0) -> (rid_0 * 8, pid_1 * 32),
+    domain:
+    pid_0 in [0, 63],
+    pid_1 in [0, 15],
+    rid_0 in [0, 31]
+  )"));
+  const TiledHloInstruction* rhs_p0 = exp->operand(0);
+  EXPECT_THAT(*rhs_p0, MatchTiledHloInstruction(
+                           /*tile_sizes=*/{8, 32},
+                           /*tile_strides=*/{1, 1},
+                           /*tile_offsets_indexing=*/R"(
+    (pid_0, pid_1, rid_0) -> (rid_0 * 8, pid_1 * 32),
+    domain:
+    pid_0 in [0, 63],
+    pid_1 in [0, 15],
+    rid_0 in [0, 31]
+  )"));
 }
 
 }  // namespace
