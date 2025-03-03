@@ -16,6 +16,10 @@ limitations under the License.
 // This transformation pass transforms functional control flow operations in the
 // TensorFlow dialect to MLIR Control Flow Graph (CFG) form.
 
+#include <cassert>
+#include <functional>
+#include <memory>
+
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
