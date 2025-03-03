@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "xla/stream_executor/tpu/status_helper.h"
@@ -70,10 +72,12 @@ int64 ConvertBucketSplitsToBinarySplits(std::vector<int> bucket_splits,
 }
 
 absl::Status ValidateInputCombiner(const std::string& combiner) {
-  if (combiner != "sum" && combiner != "mean" && combiner != "sqrtn") {
+  if (combiner != "sum" && combiner != "mean" && combiner != "sqrtn" &&
+      !absl::StartsWith(combiner, "custom")) {
     return absl::InvalidArgumentError(
-        "Invalid combiner: only \"sum\", \"mean\", and "
-        "\"sqrtn\" are supported.");
+        absl::StrCat("Invalid combiner: only \"sum\", \"mean\", \"sqrtn\", and "
+                     "\"custom\" are supported, but got ",
+                     combiner));
   }
   return absl::OkStatus();
 }
