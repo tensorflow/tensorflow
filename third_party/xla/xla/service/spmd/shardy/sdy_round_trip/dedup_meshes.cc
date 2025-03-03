@@ -157,7 +157,8 @@ void dedupMeshes(ModuleOp moduleOp,
           return oldSharding;
         }
         auto [mainMeshName, axisMap] = meshNameAndAxisMap->getSecond();
-        auto buildNewAxisRef = [&](sdy::AxisRefAttr oldAxisRef) {
+        auto buildNewAxisRef = [&, &axisMap =
+                                       axisMap](sdy::AxisRefAttr oldAxisRef) {
           return sdy::AxisRefAttr::get(context,
                                        axisMap.at(oldAxisRef.getName()),
                                        oldAxisRef.getSubAxisInfo());
