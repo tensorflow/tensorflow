@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/shape.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace hlo_sharding_util {
