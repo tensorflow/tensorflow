@@ -258,9 +258,18 @@ void LiteRtCompiledModelT::CheckCpuTensors() {
   for (int subgraph_no = 0; subgraph_no < interp_->subgraphs_size();
        ++subgraph_no) {
     auto* subgraph = interp_->subgraph(subgraph_no);
-    for (auto& node_and_registration : subgraph->nodes_and_registration()) {
-      auto& node = node_and_registration.first;
-      auto& registration = node_and_registration.second;
+    auto& execution_plan = subgraph->execution_plan();
+    auto& nodes_and_registration = subgraph->nodes_and_registration();
+    for (int execution_plan_index = 0;
+         execution_plan_index < execution_plan.size(); execution_plan_index++) {
+      int node_index = execution_plan[execution_plan_index];
+      auto& node = nodes_and_registration[node_index].first;
+      const TfLiteRegistration& registration =
+          nodes_and_registration[node_index].second;
+
+      if (registration.builtin_code == kTfLiteBuiltinDelegate) {
+        continue;
+      }
       if (registration.builtin_code == kTfLiteBuiltinCustom &&
           litert::internal::kLiteRtDispatchOpCustomCode ==
               registration.custom_name)
@@ -283,6 +292,8 @@ LiteRtCompiledModelT::GetTensorBufferRequirements(const TfLiteTensor* tensor) {
     if (requirements) {
       return (*requirements)->Get();
     }
+  } else {
+    LITERT_LOG(LITERT_VERBOSE, "Tensor %s is shared with CPU.\n", tensor->name);
   }
   LiteRtTensorBufferRequirements litert_cpu_buffer_requirements;
   LiteRtTensorBufferType cpu_buffer_type[] = {

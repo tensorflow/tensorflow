@@ -95,7 +95,9 @@ cc_library(
     hdrs = [
         "environment.h",
     ],
-    visibility = ["//third_party/odml/infra/ml_drift_delegate/litert:__subpackages__"],
+    visibility = [
+        "//third_party/odml/infra/ml_drift_delegate:__subpackages__",
+    ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
