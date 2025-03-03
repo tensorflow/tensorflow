@@ -545,8 +545,9 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
           fallback_state_.process_function_library_runtime());
       // TODO(290630314): Use LOG_IF when absl logging is available
       if (!op_kernel_runner.ok()) {
-        LOG(ERROR) << "Failed to create op_kernel_runner for " << node_def_text
-                   << " with error: " << op_kernel_runner.status();
+        LOG(WARNING) << "Failed to create op_kernel_runner for "
+                     << node_def_text
+                     << " with error: " << op_kernel_runner.status();
       }
 
       if (op_kernel_runner.ok() && (*op_kernel_runner)->IsAsync()) {
