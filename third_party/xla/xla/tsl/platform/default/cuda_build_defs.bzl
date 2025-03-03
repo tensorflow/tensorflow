@@ -5,6 +5,9 @@ load(
     _if_cuda_is_configured = "if_cuda_is_configured",
     _if_cuda_newer_than = "if_cuda_newer_than",
 )
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
 
 # We perform this indirection so that the copybara tool can distinguish this
 # macro from others provided by the same file.

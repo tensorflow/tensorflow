@@ -592,9 +592,16 @@ bzl_library(
     srcs = if_google(["tsl.google.bzl"]),
     visibility = ["//visibility:public"],
     deps = [
+        ":package_groups_bzl",
         ":tsl_bzl",
         "//xla/tsl/platform:build_config_root_bzl",
     ] + tsl_google_bzl_deps(),
+)
+
+bzl_library(
+    name = "package_groups_bzl",
+    srcs = ["package_groups.bzl"],
+    visibility = ["//xla:__subpackages__"],
 )
 
 # copybara:comment_begin(oss-only)
