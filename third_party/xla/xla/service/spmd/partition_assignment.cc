@@ -35,21 +35,9 @@ PartitioningAlgorithm::PartitioningAlgorithm(AlgorithmKind kind,
   num_partitions_ = num_partitions;
 }
 
-absl::string_view PartitioningAlgorithm::name() const {
-  switch (kind_) {
-    case AlgorithmKind::kNoop:
-    default:
-      return "Noop";
-  }
-}
-
 const PartitioningAlgorithm::AlgorithmKind& PartitioningAlgorithm::kind()
     const {
   return kind_;
-}
-
-int64_t PartitioningAlgorithm::num_partitions() const {
-  return num_partitions_;
 }
 
 /* static */ std::unique_ptr<PartitioningAlgorithm>
