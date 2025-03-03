@@ -3107,6 +3107,16 @@ absl::Status HloEvaluator::HandleScatter(const HloInstruction* hlo) {
     return MutableBorrowingLiteral(&literal);
   };
 
+  // If `scater->to_apply()` computation simply forwards one of its parameter,
+  // we can avoid evaluating it, and update the result literal with a scalar
+  // extracted from the update literal.
+  std::optional<int32_t> forward_parameter;
+  const HloInstruction* scatter_root = scatter->to_apply()->root_instruction();
+  if (scatter_root->opcode() == HloOpcode::kParameter) {
+    CHECK_EQ(operands.size(), 1) << "Expected a scatter with a single operand";
+    forward_parameter = scatter_root->parameter_number();
+  }
+
   HloEvaluator embedded_evaluator;
   auto scatter_inner_loop_body =
       [&](absl::Span<const int64_t> update_window_index,
@@ -3139,6 +3149,17 @@ absl::Status HloEvaluator::HandleScatter(const HloInstruction* hlo) {
       input_index[i] = input_scatter_index[i] + input_window_index[i];
     }
 
+    // Fast path: update result with a scalar extracted from the update literal.
+    if (forward_parameter.has_value()) {
+      DCHECK_LT(*forward_parameter, 2);
+      // Forwarding parameter 0 is a no-op.
+      if (*forward_parameter == 1) {
+        result.CopyElementFrom(*updates[0], update_index, input_index);
+      }
+      return true;
+    }
+
+    // Slow path: evaluate the scatter computation to get an update value.
     absl::InlinedVector<Literal, 2> to_apply_args;
     to_apply_args.reserve(operands.size() + updates.size());
     for (int i = 0, n = operands.size(); i < n; ++i) {
@@ -3149,9 +3170,9 @@ absl::Status HloEvaluator::HandleScatter(const HloInstruction* hlo) {
       to_apply_args.push_back(
           LiteralUtil::GetScalarLiteral(*updates[i], update_index));
     }
-    Literal updated_result =
-        embedded_evaluator.Evaluate(*scatter->to_apply(), to_apply_args)
-            .value();
+    TF_ASSIGN_OR_RETURN(
+        Literal updated_result,
+        embedded_evaluator.Evaluate(*scatter->to_apply(), to_apply_args));
     // Clear visit states so that the we can use the evaluate again on the
     // same computation.
     embedded_evaluator.ResetVisitStates();
