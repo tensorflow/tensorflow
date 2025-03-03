@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_device.h"
+#include "xla/pjrt/cpu/tfrt_cpu_async_execution_tracker.h"
 #include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -1679,6 +1680,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     }
     std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps_avs_copy =
         CopyAsyncValues(input_deps);
+    TfrtCpuScopedAsyncExecution scoped_async_execution =
+        device->async_execution_tracker()->NewAsyncExecution(
+            run_id.ToInt(), std::move(ready_on_exit).Release());
     EnqueueWorkWhenReady(
         client()->pjrt_client_thread_pool(), input_deps,
         [cpu_executable, buffer_alloc = std::move(buffer_alloc),
@@ -1692,7 +1696,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
          compute_reservation = std::move(compute_reservation),
          tuplized_arg = std::move(tuplized_arg),
          donation_transactions = std::move(donation_transactions),
-         execute_event = std::move(ready_on_exit).Release(),
+         scoped_async_execution = std::move(scoped_async_execution),
          input_deps_avs = std::move(input_deps_avs_copy),
          eigen_device = client()->eigen_intraop_device()]() mutable {
           // Because `input_deps` contains the definition events of all inputs,
@@ -1704,7 +1708,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
           for (const auto& av : input_deps_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
-              execute_event.SetError(Internal(
+              scoped_async_execution.SetError(Internal(
                   "Error dispatching computation: %s", error->message()));
               return;
             }
@@ -1721,7 +1725,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           for (const auto& buffer_info : buffer_table) {
             CHECK(buffer_info.buffer.IsAvailable());
             if (buffer_info.buffer.IsError()) {
-              execute_event.SetError(
+              scoped_async_execution.SetError(
                   Internal("Error preparing computation: %s",
                            buffer_info.buffer.GetError().message()));
               return;
@@ -1801,12 +1805,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
           if (!status.ok()) {
             // CPU computation fails with an error.
-            execute_event.SetError(std::move(status));
-            return;
+            scoped_async_execution.SetError(std::move(status));
           }
 
           // CPU computation completes.
-          execute_event.SetStateConcrete();
+          scoped_async_execution.SetStateConcrete();
         });
   }
 
