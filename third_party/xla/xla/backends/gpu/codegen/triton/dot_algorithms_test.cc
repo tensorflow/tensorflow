@@ -1187,12 +1187,14 @@ TEST_P(NumericTestsForTriton, InputsWithLargeExponent) {
 INSTANTIATE_TEST_SUITE_P(NumericTestsForBlas, NumericTestsForBlas,
                          ::testing::ValuesIn({PC::ALG_DOT_TF32_TF32_F32_X3,
                                               PC::ALG_DOT_BF16_BF16_F32_X3,
-                                              PC::ALG_DOT_BF16_BF16_F32_X6}),
+                                              PC::ALG_DOT_BF16_BF16_F32_X6,
+                                              PC::ALG_DOT_BF16_BF16_F32_X9}),
                          AlgorithmTestParamToString);
 
 INSTANTIATE_TEST_SUITE_P(NumericTestsForTriton, NumericTestsForTriton,
                          ::testing::ValuesIn({PC::ALG_DOT_BF16_BF16_F32_X3,
                                               PC::ALG_DOT_BF16_BF16_F32_X6,
+                                              PC::ALG_DOT_BF16_BF16_F32_X9,
                                               PC::ALG_DOT_TF32_TF32_F32_X3}),
                          AlgorithmTestParamToString);
 
@@ -1512,6 +1514,7 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
     case PC::ALG_DOT_BF16_BF16_F32:
     case PC::ALG_DOT_BF16_BF16_F32_X3:
     case PC::ALG_DOT_BF16_BF16_F32_X6:
+    case PC::ALG_DOT_BF16_BF16_F32_X9:
     case PC::ALG_DOT_F32_F32_F32:
       EXPECT_TRUE(result_or_status.status().ok())
           << "failed to compile " << algorithm_;
@@ -1531,12 +1534,11 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
 INSTANTIATE_TEST_SUITE_P(
     TritonAndBlasSupportForDifferentTensorSizes,
     TritonAndBlasSupportForDifferentTensorSizes,
-    ::testing::ValuesIn({PC::ALG_DOT_BF16_BF16_F32,
-                         PC::ALG_DOT_BF16_BF16_F32_X3,
-                         PC::ALG_DOT_BF16_BF16_F32_X6, PC::ALG_DOT_F32_F32_F32,
-                         PC::ALG_DOT_TF32_TF32_F32,
-                         PC::ALG_DOT_TF32_TF32_F32_X3, PC::ALG_DOT_F64_F64_F64,
-                         PC::ALG_UNSET}),
+    ::testing::ValuesIn(
+        {PC::ALG_DOT_BF16_BF16_F32, PC::ALG_DOT_BF16_BF16_F32_X3,
+         PC::ALG_DOT_BF16_BF16_F32_X6, PC::ALG_DOT_BF16_BF16_F32_X9,
+         PC::ALG_DOT_F32_F32_F32, PC::ALG_DOT_TF32_TF32_F32,
+         PC::ALG_DOT_TF32_TF32_F32_X3, PC::ALG_DOT_F64_F64_F64, PC::ALG_UNSET}),
     AlgorithmTestParamToString);
 
 }  // namespace

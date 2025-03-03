@@ -49,6 +49,8 @@ absl::StatusOr<se::blas::ComputationType> GetBlasComputationType(
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
       return se::blas::ComputationType::kF32;
@@ -75,6 +77,7 @@ absl::StatusOr<PrimitiveType> GetDotAccumulatorType(
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
@@ -132,6 +135,7 @@ bool IsSupportedByCublasOrCublasLt(
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
     case PrecisionConfig::ALG_UNSET:
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
@@ -218,6 +222,7 @@ bool IsSupportedDotAlgorithmOnGpu(
       }
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
       return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
              input_storage_type == F32 && output_storage_type == F32;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:

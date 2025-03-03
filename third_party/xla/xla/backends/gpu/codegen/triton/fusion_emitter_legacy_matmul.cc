@@ -1736,16 +1736,16 @@ std::vector<Value> SplitF32(EmitterLocOpBuilder b, Value input,
   auto round_to_bf16 = [](EmitterLocOpBuilder b, Value input) {
     return Cast(b, input, b.getBF16Type());
   };
-  std::vector<Value> splitted_inputs;
-  splitted_inputs.reserve(split_count);
+  std::vector<Value> split_inputs;
+  split_inputs.reserve(split_count);
   for (int i = 0; i < split_count; ++i) {
     Value masked = MaskToBF16(b, input);
     if (i != split_count - 1) {
       input = b.create<ma::SubFOp>(input, masked);
     }
-    splitted_inputs.push_back(round_to_bf16(b, masked));
+    split_inputs.push_back(round_to_bf16(b, masked));
   }
-  return splitted_inputs;
+  return split_inputs;
 }
 
 Value IEEEDot(EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
@@ -1756,8 +1756,41 @@ Value IEEEDot(EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
 
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
-Value Emit6xBfloat16MatMul(EmitterLocOpBuilder& b, Value lhs, Value rhs,
-                           Value acc) {
+Value EmitBF16x9Matmul(EmitterLocOpBuilder& b, Value lhs, Value rhs,
+                       Value acc) {
+  std::vector<Value> lhs_parts = SplitF32(b, lhs, 3);
+  std::vector<Value> rhs_parts = SplitF32(b, rhs, 3);
+
+  Value local_acc = ZerosLike(b, acc);
+  Value result;
+
+  // low @ low + low @ mid + mid @ low
+  result = IEEEDot(b, lhs_parts[2], rhs_parts[2], local_acc);
+  result = IEEEDot(b, lhs_parts[1], rhs_parts[2], result);
+  result = IEEEDot(b, lhs_parts[2], rhs_parts[1], result);
+
+  // mid @ mid
+  result = IEEEDot(b, lhs_parts[1], rhs_parts[1], result);
+
+  // high @ low + low @ high
+  result = IEEEDot(b, lhs_parts[2], rhs_parts[0], result);
+  result = IEEEDot(b, lhs_parts[0], rhs_parts[2], result);
+
+  // high @ mid + mid @ high
+  result = IEEEDot(b, lhs_parts[1], rhs_parts[0], result);
+  result = IEEEDot(b, lhs_parts[0], rhs_parts[1], result);
+
+  result = ZeroNaNs(b, result);
+  result = IEEEDot(b, lhs_parts[0], rhs_parts[0], result);
+  result = b.create<ma::AddFOp>(acc, result);
+  return result;
+}
+
+// Leverages BF16 datatype for F32 matmul computation. It follows the guidance
+// from https://arxiv.org/pdf/1904.06376.pdf.
+Value EmitBF16x6Matmul(EmitterLocOpBuilder& b, Value lhs, Value rhs,
+                       Value acc) {
+  LOG(ERROR) << "EmitBF16x6Matmul";
   std::vector<Value> lhs_parts = SplitF32(b, lhs, 3);
   std::vector<Value> rhs_parts = SplitF32(b, rhs, 3);
 
@@ -1778,9 +1811,9 @@ Value Emit6xBfloat16MatMul(EmitterLocOpBuilder& b, Value lhs, Value rhs,
 }
 
 // Compute F32 matmul with 3 BF16 dots. It is less accurate than
-// Emit6xBfloat16MatMul.
-Value Emit3xBfloat16MatMul(EmitterLocOpBuilder& b, Value lhs, Value rhs,
-                           Value acc) {
+// EmitBF16x6Matmul.
+Value EmitBF16x3Matmul(EmitterLocOpBuilder& b, Value lhs, Value rhs,
+                       Value acc) {
   std::vector<Value> lhs_bf16 = SplitF32(b, lhs, 2);
   std::vector<Value> rhs_bf16 = SplitF32(b, rhs, 2);
 
@@ -2281,12 +2314,15 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     Value acc_next;
     auto algorithm = dot_instr->precision_config().algorithm();
 
-    if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6) {
+    if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9) {
       TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
-      acc_next = Emit6xBfloat16MatMul(b, dot_lhs, dot_rhs, iter_args.back());
+      acc_next = EmitBF16x9Matmul(b, dot_lhs, dot_rhs, iter_args.back());
+    } else if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6) {
+      TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
+      acc_next = EmitBF16x6Matmul(b, dot_lhs, dot_rhs, iter_args.back());
     } else if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3) {
       TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
-      acc_next = Emit3xBfloat16MatMul(b, dot_lhs, dot_rhs, iter_args.back());
+      acc_next = EmitBF16x3Matmul(b, dot_lhs, dot_rhs, iter_args.back());
     } else {
       // Execute matrix multiplication of input tiles and pass the accumulator.
       // TODO(manany): Should be looked into once we enable Hopper workloads.
