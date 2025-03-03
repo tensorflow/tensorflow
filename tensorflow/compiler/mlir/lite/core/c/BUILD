@@ -23,9 +23,7 @@ filegroup(
         "builtin_op_data.h",
         "tflite_types.h",
     ],
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 exports_files(
