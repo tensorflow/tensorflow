@@ -970,10 +970,12 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         ":prepare_hlo",
+        "//third_party/jsoncpp:json_compat",
         "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
