@@ -82,9 +82,8 @@ bool IsReshapeTrivial(const Model& model, const Operator& op,
 
 }  // namespace
 
-::tensorflow::Status RemoveTrivialReshape::Run(Model* model,
-                                               std::size_t op_index,
-                                               bool* modified) {
+absl::Status RemoveTrivialReshape::Run(Model* model, std::size_t op_index,
+                                       bool* modified) {
   *modified = false;
   const auto reshape_it = model->operators.begin() + op_index;
   auto* reshape_op = reshape_it->get();
