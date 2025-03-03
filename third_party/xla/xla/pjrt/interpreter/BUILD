@@ -16,6 +16,8 @@ cc_library(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/backends/interpreter:compiler",
         "//xla/client:executable_build_options",
         "//xla/hlo/builder:xla_computation",
