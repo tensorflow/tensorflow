@@ -103,9 +103,9 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
 
 }  // anonymous namespace
 
-::tensorflow::Status ResolveConstantStridedSlice::Run(Model* model,
-                                                      std::size_t op_index,
-                                                      bool* modified) {
+absl::Status ResolveConstantStridedSlice::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();

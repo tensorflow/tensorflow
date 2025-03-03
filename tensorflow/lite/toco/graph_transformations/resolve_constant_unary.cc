@@ -117,9 +117,9 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
   return true;
 }
 
-::tensorflow::Status ResolveConstantUnaryOperator::Run(Model* model,
-                                                       std::size_t op_index,
-                                                       bool* modified) {
+absl::Status ResolveConstantUnaryOperator::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
   *modified = false;
   const auto unary_it = model->operators.begin() + op_index;
   const auto* unary_op = unary_it->get();
