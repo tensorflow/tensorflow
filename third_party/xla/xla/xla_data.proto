@@ -1144,12 +1144,30 @@ message ParameterReplication {
 // whereas implementing a `while` loop requires a host-device sync on each
 // iteration.
 message WhileLoopBackendConfig {
+  message KnownInitStep {
+    int64 init = 1;
+    int64 step = 2;
+  }
+
   message KnownTripCount {
     int64 n = 1;
   }
+
+  message KnownInductionVariable {
+    int64 tuple_index = 1;
+  }
+
   // This indirection lets us distinguish between known-trip-count == 0 and
   // unknown-trip-count.
   KnownTripCount known_trip_count = 1;
+
+  // Independently from the known trip count, we may also know the start and
+  // step of the induction variable.
+  KnownInitStep known_init_step = 2;
+
+  // This lets us distinguish between an unknown induction variable (or none)
+  // and tuple index 0.
+  KnownInductionVariable known_induction_variable = 3;
 }
 
 // Specifies a pair of output/operand buffers that alias each other for
