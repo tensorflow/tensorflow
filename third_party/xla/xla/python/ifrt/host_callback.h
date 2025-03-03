@@ -17,9 +17,11 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_HOST_CALLBACK_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/ffi/api/ffi.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -67,6 +69,14 @@ class LoadedHostCallback
   virtual absl::StatusOr<std::string> Serialize() const = 0;
 
   static char ID;  // NOLINT
+};
+
+struct FfiLoadedHostCallbacks {
+  static xla::ffi::TypeId id;
+  explicit FfiLoadedHostCallbacks(
+      std::vector<tsl::RCReference<ifrt::LoadedHostCallback>>* callbacks)
+      : callbacks(callbacks) {}
+  std::vector<tsl::RCReference<ifrt::LoadedHostCallback>>* callbacks;
 };
 
 }  // namespace ifrt
