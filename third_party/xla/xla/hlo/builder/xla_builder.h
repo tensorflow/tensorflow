@@ -1073,13 +1073,11 @@ class XlaBuilder {
   absl::StatusOr<HloInstructionProto*> LookUpMutableInstructionByHandle(
       int64_t handle);
 
-  // Internal helper method that does the building for an arbitrary unary op.
-  virtual XlaOp UnaryOp(HloOpcode unop, XlaOp operand);
-
   // Internal helper method that does the building for an arbitrary unary op
-  // with a result accuracy intended for unary functions.
-  virtual XlaOp UnaryOp(HloOpcode unop, XlaOp operand,
-                        const ResultAccuracy& result_accuracy);
+  // with an optional result accuracy.
+  XlaOp UnaryOp(
+      HloOpcode unop, XlaOp operand,
+      const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
   // Internal helper method that does the building for an arbitrary binary op.
   // broadcast_dimensions specifies which dimensions to use for broadcasting
@@ -1604,28 +1602,40 @@ class XlaBuilder {
   friend XlaOp Abs(XlaOp operand);
   friend XlaOp Atan2(XlaOp y, XlaOp x,
                      absl::Span<const int64_t> broadcast_dimensions);
-  friend XlaOp Erf(XlaOp operand);
-  friend XlaOp Exp(XlaOp operand);
-  friend XlaOp Exp(XlaOp operand, const ResultAccuracy& result_accuracy);
-  friend XlaOp Expm1(XlaOp operand);
+  friend XlaOp Erf(XlaOp operand,
+                   const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Exp(XlaOp operand,
+                   const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Expm1(XlaOp operand,
+                     const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Floor(XlaOp operand);
   friend XlaOp Ceil(XlaOp operand);
   friend XlaOp Round(XlaOp operand);
   friend XlaOp RoundNearestEven(XlaOp operand);
-  friend XlaOp Log(XlaOp operand);
-  friend XlaOp Log1p(XlaOp operand);
-  friend XlaOp Logistic(XlaOp operand);
+  friend XlaOp Log(XlaOp operand,
+                   const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Log1p(XlaOp operand,
+                     const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Logistic(XlaOp operand,
+                        const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Sign(XlaOp operand);
   friend XlaOp Clz(XlaOp operand);
-  friend XlaOp Cos(XlaOp operand);
-  friend XlaOp Sin(XlaOp operand);
-  friend XlaOp Tan(XlaOp operand);
-  friend XlaOp Tanh(XlaOp operand);
+  friend XlaOp Cos(XlaOp operand,
+                   const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Sin(XlaOp operand,
+                   const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Tan(XlaOp operand,
+                   const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Tanh(XlaOp operand,
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Real(XlaOp operand);
   friend XlaOp Imag(XlaOp operand);
-  friend XlaOp Sqrt(XlaOp operand);
-  friend XlaOp Rsqrt(XlaOp operand);
-  friend XlaOp Cbrt(XlaOp operand);
+  friend XlaOp Sqrt(XlaOp operand,
+                    const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Rsqrt(XlaOp operand,
+                     const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Cbrt(XlaOp operand,
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Pow(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp IsFinite(XlaOp operand);
@@ -1763,11 +1773,9 @@ class XlaBuilder {
   // Creates an op with the given opcode and the output shape.
   virtual absl::StatusOr<XlaOp> AddOpWithShape(
       HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands);
-
-  // Creates an op with the given opcode and the output shape.
-  virtual absl::StatusOr<XlaOp> AddOpWithResultAccuracy(
+  virtual absl::StatusOr<XlaOp> AddOpWithShape(
       HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands,
-      const ResultAccuracy& result_accuracy);
+      const std::optional<ResultAccuracy>& result_accuracy);
 
   // Here, InstructionType is either const HloInstructionProto* or non-const
   // HloInstructionProto*.
@@ -2721,14 +2729,17 @@ XlaOp Atan2(XlaOp y, XlaOp x,
             absl::Span<const int64_t> broadcast_dimensions = {});
 
 // Enqueues an erf instruction onto the computation.
-XlaOp Erf(XlaOp operand);
+XlaOp Erf(XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues an exp instruction onto the computation.
-XlaOp Exp(XlaOp operand);
-XlaOp Exp(XlaOp operand, const ResultAccuracy& result_accuracy);
+XlaOp Exp(XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues an expm1 instruction onto the computation.
-XlaOp Expm1(XlaOp operand);
+XlaOp Expm1(
+    XlaOp operand,
+    const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a floor instruction onto the computation.
 XlaOp Floor(XlaOp operand);
@@ -2744,13 +2755,18 @@ XlaOp Round(XlaOp operand);
 XlaOp RoundNearestEven(XlaOp operand);
 
 // Enqueues an log instruction (natural logarithm) onto the computation.
-XlaOp Log(XlaOp operand);
+XlaOp Log(XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues an log1p instruction (log(x+1)) onto the computation.
-XlaOp Log1p(XlaOp operand);
+XlaOp Log1p(
+    XlaOp operand,
+    const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a logistic instruction onto the computation.
-XlaOp Logistic(XlaOp operand);
+XlaOp Logistic(
+    XlaOp operand,
+    const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a sign instruction onto the computation.
 XlaOp Sign(XlaOp operand);
@@ -2759,16 +2775,20 @@ XlaOp Sign(XlaOp operand);
 XlaOp Clz(XlaOp operand);
 
 // Enqueues a cosine instruction onto the computation.
-XlaOp Cos(XlaOp operand);
+XlaOp Cos(XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a sine instruction onto the computation.
-XlaOp Sin(XlaOp operand);
+XlaOp Sin(XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a tan instruction onto the computation.
-XlaOp Tan(XlaOp operand);
+XlaOp Tan(XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a tanh instruction onto the computation.
-XlaOp Tanh(XlaOp operand);
+XlaOp Tanh(XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a real-part instruction onto the computation.
 XlaOp Real(XlaOp operand);
@@ -2777,13 +2797,17 @@ XlaOp Real(XlaOp operand);
 XlaOp Imag(XlaOp operand);
 
 // Enqueues a sqrt computation onto the computation.
-XlaOp Sqrt(XlaOp operand);
+XlaOp Sqrt(XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a cbrt computation onto the computation.
-XlaOp Cbrt(XlaOp operand);
+XlaOp Cbrt(XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a rsqrt computation onto the computation.
-XlaOp Rsqrt(XlaOp operand);
+XlaOp Rsqrt(
+    XlaOp operand,
+    const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a lhs^rhs computation onto the computation.
 XlaOp Pow(XlaOp lhs, XlaOp rhs,

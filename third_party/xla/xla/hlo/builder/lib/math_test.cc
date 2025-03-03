@@ -264,7 +264,7 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
              {IsPosInf, "is_pos_inf"},
              {IsNegInf, "is_neg_inf"},
              {IsNan, "is_nan"},
-             {Erf, "erf"},
+             {[](XlaOp x) { return Erf(x); }, "erf"},
              {Erfc, "erfc"},
              {Lgamma, "lgamma"},
              {Digamma, "digamma"},

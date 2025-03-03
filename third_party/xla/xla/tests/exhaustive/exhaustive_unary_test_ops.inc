@@ -167,13 +167,18 @@ NativeRefT HostDigamma(NativeRefT x) {
   };                                                         \
   static_assert(true, "")
 
-DEFINE_UNARY_TEST_OP(LogOp, { return Log; }, { return std::log; });
-DEFINE_UNARY_TEST_OP(Log1pOp, { return Log1p; }, { return std::log1p; });
+DEFINE_UNARY_TEST_OP(
+    LogOp, { return [](XlaOp x) { return Log(x); }; }, { return std::log; });
+DEFINE_UNARY_TEST_OP(
+    Log1pOp, { return [](XlaOp x) { return Log1p(x); }; },
+    { return std::log1p; });
 DEFINE_UNARY_TEST_OP(
     ExpOp, { return [](XlaOp x) { return Exp(x); }; }, { return std::exp; });
-DEFINE_UNARY_TEST_OP(Expm1Op, { return Expm1; }, { return std::expm1; });
 DEFINE_UNARY_TEST_OP(
-    LogisticOp, { return Logistic; },
+    Expm1Op, { return [](XlaOp x) { return Expm1(x); }; },
+    { return std::expm1; });
+DEFINE_UNARY_TEST_OP(
+    LogisticOp, { return [](XlaOp x) { return Logistic(x); }; },
     {
       return +[](Traits::NativeRefT x) { return 1.0f / (1.0f + std::exp(-x)); };
     });
@@ -186,10 +191,12 @@ DEFINE_UNARY_TEST_OP(
     { return [](XlaOp x) { return Pow(ScalarLike(x, 2.0f), x); }; },
     { return +[](Traits::NativeRefT x) { return std::exp2(x); }; });
 DEFINE_UNARY_TEST_OP(
-    RsqrtOp, { return Rsqrt; },
+    RsqrtOp, { return [](XlaOp x) { return Rsqrt(x); }; },
     { return +[](Traits::NativeRefT x) { return 1 / std::sqrt(x); }; });
-DEFINE_UNARY_TEST_OP(SqrtOp, { return Sqrt; }, { return std::sqrt; });
-DEFINE_UNARY_TEST_OP(CbrtOp, { return Cbrt; }, { return std::cbrt; });
+DEFINE_UNARY_TEST_OP(
+    SqrtOp, { return [](XlaOp x) { return Sqrt(x); }; }, { return std::sqrt; });
+DEFINE_UNARY_TEST_OP(
+    CbrtOp, { return [](XlaOp x) { return Cbrt(x); }; }, { return std::cbrt; });
 DEFINE_UNARY_TEST_OP(AcoshOp, { return Acosh; }, { return std::acosh; });
 DEFINE_UNARY_TEST_OP(AsinhOp, { return Asinh; }, { return std::asinh; });
 DEFINE_UNARY_TEST_OP(AtanhOp, { return Atanh; }, { return std::atanh; });
@@ -198,11 +205,16 @@ DEFINE_UNARY_TEST_OP(AsinOp, { return Asin; }, { return std::asin; });
 DEFINE_UNARY_TEST_OP(AtanOp, { return Atan; }, { return std::atan; });
 DEFINE_UNARY_TEST_OP(CoshOp, { return Cosh; }, { return std::cosh; });
 DEFINE_UNARY_TEST_OP(SinhOp, { return Sinh; }, { return std::sinh; });
-DEFINE_UNARY_TEST_OP(TanhOp, { return Tanh; }, { return std::tanh; });
-DEFINE_UNARY_TEST_OP(CosOp, { return Cos; }, { return std::cos; });
-DEFINE_UNARY_TEST_OP(SinOp, { return Sin; }, { return std::sin; });
-DEFINE_UNARY_TEST_OP(TanOp, { return Tan; }, { return std::tan; });
-DEFINE_UNARY_TEST_OP(ErfOp, { return Erf; }, { return std::erf; });
+DEFINE_UNARY_TEST_OP(
+    TanhOp, { return [](XlaOp x) { return Tanh(x); }; }, { return std::tanh; });
+DEFINE_UNARY_TEST_OP(
+    CosOp, { return [](XlaOp x) { return Cos(x); }; }, { return std::cos; });
+DEFINE_UNARY_TEST_OP(
+    SinOp, { return [](XlaOp x) { return Sin(x); }; }, { return std::sin; });
+DEFINE_UNARY_TEST_OP(
+    TanOp, { return [](XlaOp x) { return Tan(x); }; }, { return std::tan; });
+DEFINE_UNARY_TEST_OP(
+    ErfOp, { return [](XlaOp x) { return Erf(x); }; }, { return std::erf; });
 DEFINE_UNARY_TEST_OP(ErfcOp, { return Erfc; }, { return std::erfc; });
 DEFINE_UNARY_TEST_OP(
     ErfInvOp, { return ErfInv; },

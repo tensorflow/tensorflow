@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "Eigen/Core"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -78,23 +79,25 @@ half round_imp(half value) {
   return half(std::round(static_cast<float>(std::move(value))));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     half, UnaryOpTest,
     ::testing::Values(
         UnaryOpTestParam{[](half x) { return abs(x); }, &Abs},
         UnaryOpTestParam{[](half x) { return round_imp(x); }, &Round},
         UnaryOpTestParam{[](half x) { return ceil(x); }, &Ceil},
-        UnaryOpTestParam{[](half x) { return cos(x); }, &Cos},
+        UnaryOpTestParam{[](half x) { return cos(x); },
+                         [](XlaOp x) { return xla::Cos(x); }},
         UnaryOpTestParam{[](half x) { return exp(x); },
-                         static_cast<xla::XlaOp (*)(xla::XlaOp)>(&xla::Exp)},
+                         [](XlaOp x) { return xla::Exp(x); }},
         UnaryOpTestParam{[](half x) { return floor(x); }, &Floor},
-        UnaryOpTestParam{[](half x) { return log(x); }, &Log},
+        UnaryOpTestParam{[](half x) { return log(x); },
+                         [](XlaOp x) { return xla::Log(x); }},
         UnaryOpTestParam{[](half x) { return -x; }, &Neg},
         UnaryOpTestParam{[](half x) { return sign_imp(x); }, &Sign},
-        UnaryOpTestParam{[](half x) { return sin(x); }, &Sin},
-        UnaryOpTestParam{[](half x) { return tanh(x); }, &Tanh}
-
-        ));
+        UnaryOpTestParam{[](half x) { return sin(x); },
+                         [](XlaOp x) { return xla::Sin(x); }},
+        UnaryOpTestParam{[](half x) { return tanh(x); },
+                         [](XlaOp x) { return xla::Tanh(x); }}));
 
 struct UnaryPredTestParam {
   std::function<bool(half)> compute_func;
@@ -125,9 +128,9 @@ XLA_TEST_P(UnaryPredTest, Ops) {
   ComputeAndCompareR1<bool>(&builder, expected, {x_data.get()});
 }
 
-INSTANTIATE_TEST_CASE_P(half, UnaryPredTest,
-                        ::testing::Values(UnaryPredTestParam{
-                            [](half x) { return isfinite(x); }, &IsFinite}));
+INSTANTIATE_TEST_SUITE_P(half, UnaryPredTest,
+                         ::testing::Values(UnaryPredTestParam{
+                             [](half x) { return isfinite(x); }, &IsFinite}));
 
 using BinaryBuildFuncTy = std::function<void(
     const xla::XlaOp& x, const xla::XlaOp& y, absl::Span<const int64_t>)>;
@@ -172,7 +175,7 @@ half atan2_imp(half x, half y) {
                          static_cast<float>(std::move(y))));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     half, BinaryOpTest,
     ::testing::Values(
         BinaryOpTestParam{[](half x, half y) { return x + y; }, &Add},
@@ -221,7 +224,7 @@ XLA_TEST_P(BinaryPredTest, Ops) {
   ComputeAndCompareR1<bool>(&builder, expected, {x_data.get(), y_data.get()});
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     half, BinaryPredTest,
     ::testing::Values(
         BinaryPredTestParam{[](half x, half y) { return x == y; }, &Eq},
