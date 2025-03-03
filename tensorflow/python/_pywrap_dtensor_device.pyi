@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import ClassVar, overload
+from typing import ClassVar, Sequence, overload
 
 class Layout:
     @overload
