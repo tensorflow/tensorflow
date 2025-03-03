@@ -15,21 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_CONNECTED_TRACEME_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_CONNECTED_TRACEME_H_
 
-#include <string>
-#include <utility>
-
 #include "absl/base/macros.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
-#include "tensorflow/core/profiler/lib/context_types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/core/profiler/lib/context_types.h"  // IWYU pragma: keep
+#include "tensorflow/core/profiler/lib/traceme_encode.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/connected_traceme.h"
-
-// TODO: b/323943471 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
 
 namespace tensorflow {
 namespace profiler {

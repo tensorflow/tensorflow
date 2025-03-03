@@ -22,9 +22,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_not_android([
-        ":profiler_session",
+        "@local_tsl//tsl/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/convert:xplane_to_step_stats",
     ]),
 )
@@ -46,8 +48,8 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_session",
     ] + if_not_android([
-        ":profiler_interface",
-        ":profiler_lock",
+        "@local_tsl//tsl/profiler/lib:profiler_interface",
+        "@local_tsl//tsl/profiler/lib:profiler_lock",
     ]) + if_static([
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",
     ]),
@@ -63,12 +65,12 @@ cc_library(
     hdrs = ["profiler_factory.h"],
     visibility = ["//tensorflow/c/experimental/pluggable_profiler:__pkg__"],
     deps = [
-        ":profiler_interface",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
+        "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_static([
-        ":profiler_factory_impl",
+        "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
     ]),
 )
 
@@ -82,10 +84,10 @@ cc_library(
         "//tensorflow/core/profiler:__pkg__",
     ],
     deps = [
-        ":profiler_interface",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
+        "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
     alwayslink = True,
@@ -100,8 +102,6 @@ cc_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_interface",
     ],
@@ -111,9 +111,6 @@ cc_library(
     name = "profiler_controller",
     hdrs = ["profiler_controller.h"],
     deps = [
-        ":profiler_interface",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_controller",
     ],
@@ -153,7 +150,6 @@ cc_library(
     hdrs = ["traceme_encode.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
@@ -166,8 +162,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":scoped_annotation",
-        ":traceme",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/profiler/lib:scoped_annotation",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -177,11 +175,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":context_types_hdrs",
-        ":traceme",
         ":traceme_encode",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
     ],
 )
@@ -239,8 +234,6 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_lock",
     ],

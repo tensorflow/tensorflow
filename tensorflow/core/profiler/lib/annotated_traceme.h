@@ -19,10 +19,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "absl/log/check.h"
+#include "xla/tsl/platform/macros.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"  // IWYU pragma: keep
+#include "tsl/profiler/lib/scoped_annotation.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace profiler {
