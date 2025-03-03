@@ -81,8 +81,8 @@ absl::StatusOr<bool> AllReduceSimplifier::Run(
   for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       // AllGather and ReduceScatter with the same input and output shape
-      if ((inst->opcode() == HloOpcode::kAllGather ||
-           inst->opcode() == HloOpcode::kReduceScatter) &&
+      if ((HloPredicateIsOp<HloOpcode::kAllGather, HloOpcode::kReduceScatter>(
+              inst)) &&
           ShapeUtil::Compatible(inst->shape(), inst->operand(0)->shape())) {
         changed = true;
         TF_RETURN_IF_ERROR(
