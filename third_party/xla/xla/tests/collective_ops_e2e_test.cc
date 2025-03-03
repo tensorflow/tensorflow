@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -1961,8 +1964,8 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
   // `input_sizes` is an array of shape [num_replicas, num_replicas,
   // num_updates_per_replica]. For concenivence, `input_sizes` can be a 2D
   // array, in that case `num_updates_per_replica` is assumed to be 1.
-  template <typename IndexType>
-  void CreateRandomTestData(HloModule* module, Array<IndexType> input_sizes) {
+  absl::Status CreateRandomTestData(HloModule* module,
+                                    Array<int64_t> input_sizes) {
     CHECK(inputs_.empty());
     if (input_sizes.num_dimensions() == 2) {
       input_sizes.Reshape({input_sizes.dim(0), input_sizes.dim(1), 1});
@@ -1988,11 +1991,11 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
     Array<float> output_init_data(output_ragged_tensor_sizes);
     output_init_data.Fill(-1);
 
-    Array<IndexType> output_sizes = input_sizes;
+    Array<int64_t> output_sizes = input_sizes;
     output_sizes.TransposeDimensions({1, 0, 2});
 
-    Array<IndexType> input_offsets = CalculateOffsetsFromSizes(input_sizes);
-    Array<IndexType> output_offsets = CalculateOffsetsFromSizes(output_sizes);
+    Array<int64_t> input_offsets = CalculateOffsetsFromSizes(input_sizes);
+    Array<int64_t> output_offsets = CalculateOffsetsFromSizes(output_sizes);
     output_offsets.TransposeDimensions({1, 0, 2});
 
     int64_t num_replicas = input_sizes.dim(0);
@@ -2008,24 +2011,40 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
         module->entry_computation()->parameter_instruction(1);
 
     // Create literals from array data.
-    for (int replica_id = 0; replica_id < num_replicas; ++replica_id) {
-      inputs_.push_back(LiteralUtil::CreateFromArrayWithLayout(
-          input_data[replica_id], input_param->shape().layout()));
-      input_offsets_.push_back(LiteralUtil::CreateFromArray(
-          GetReplicaSlice(replica_id, input_offsets)));
-      input_sizes_.push_back(LiteralUtil::CreateFromArray(
-          GetReplicaSlice(replica_id, input_sizes)));
+    for (int64_t replica_id = 0; replica_id < num_replicas; ++replica_id) {
+      TF_ASSIGN_OR_RETURN(
+          Literal input_literal,
+          LiteralUtil::CreateFromArrayWithLayout(input_data[replica_id],
+                                                 input_param->shape().layout())
+              .Convert(input_param->shape().element_type()));
+      inputs_.push_back(std::move(input_literal));
 
-      expected_outputs_.push_back(LiteralUtil::CreateFromArrayWithLayout(
-          output_data[replica_id], output_param->shape().layout()));
-      output_offsets_.push_back(LiteralUtil::CreateFromArray(
-          GetReplicaSlice(replica_id, output_offsets)));
-      output_sizes_.push_back(LiteralUtil::CreateFromArray(
-          GetReplicaSlice(replica_id, output_sizes)));
+      TF_ASSIGN_OR_RETURN(
+          Literal output_literal,
+          LiteralUtil::CreateFromArrayWithLayout(output_data[replica_id],
+                                                 output_param->shape().layout())
+              .Convert(output_param->shape().element_type()));
+      expected_outputs_.push_back(std::move(output_literal));
     }
 
-    output_init_ = LiteralUtil::CreateFromArrayWithLayout(
-        output_init_data, output_param->shape().layout());
+    TF_ASSIGN_OR_RETURN(input_offsets_,
+                        GetParameterLilerals(module, /*parameter_index=*/2,
+                                             num_replicas, input_offsets));
+    TF_ASSIGN_OR_RETURN(input_sizes_,
+                        GetParameterLilerals(module, /*parameter_index=*/3,
+                                             num_replicas, input_sizes));
+    TF_ASSIGN_OR_RETURN(output_offsets_,
+                        GetParameterLilerals(module, /*parameter_index=*/4,
+                                             num_replicas, output_offsets));
+    TF_ASSIGN_OR_RETURN(output_sizes_,
+                        GetParameterLilerals(module, /*parameter_index=*/5,
+                                             num_replicas, output_sizes));
+
+    TF_ASSIGN_OR_RETURN(output_init_,
+                        LiteralUtil::CreateFromArrayWithLayout(
+                            output_init_data, output_param->shape().layout())
+                            .Convert(output_param->shape().element_type()));
+    return absl::OkStatus();
   }
 
   // Returns a vector of pointers to the literals in the format needed for
@@ -2049,11 +2068,10 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
   }
 
   // Computes ragged tensor offsets based on the sizes of the ragged rows.
-  template <typename IndexType>
-  Array<IndexType> CalculateOffsetsFromSizes(const Array<IndexType>& sizes) {
+  Array<int64_t> CalculateOffsetsFromSizes(const Array<int64_t>& sizes) {
     int64_t num_replicas = sizes.dim(0);
     int64_t num_updates_per_replica = sizes.dim(2);
-    Array<IndexType> offsets(sizes.dimensions());
+    Array<int64_t> offsets(sizes.dimensions());
     for (int i = 0; i < num_replicas; ++i) {
       int64_t cur_offset = 0;
       for (int j = 0; j < num_replicas; ++j) {
@@ -2071,12 +2089,11 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
   // of each pair of replicas and write the chunk starting from the (i, j, k)
   // offset of the input tensor and starting from the (j, i, k) offset of the
   // output tensor.
-  template <typename IndexType>
   void FillWithRandomData(std::vector<Array<float>>& input_data,
                           std::vector<Array<float>>& output_data,
-                          const Array<IndexType>& input_offsets,
-                          const Array<IndexType>& output_offsets,
-                          const Array<IndexType>& input_sizes) {
+                          const Array<int64_t>& input_offsets,
+                          const Array<int64_t>& output_offsets,
+                          const Array<int64_t>& input_sizes) {
     int64_t num_replicas = input_sizes.dim(0);
     int64_t num_updates_per_replica = input_sizes.dim(2);
     std::vector<int64_t> start_indices(input_data[0].num_dimensions());
@@ -2104,16 +2121,34 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
   }
 
   // Returns a slice of input data that corresponds to the given replica.
-  template <typename IndexType>
-  Array<IndexType> GetReplicaSlice(int64_t replica_id,
-                                   const Array<IndexType>& data) {
+  Array<int64_t> GetReplicaSlice(int64_t replica_id,
+                                 const Array<int64_t>& data) {
     int64_t num_replicas = data.dim(0);
     int64_t num_updates_per_replica = data.dim(2);
-    Array<IndexType> replica_slice =
+    Array<int64_t> replica_slice =
         data.Slice({replica_id, 0, 0},
                    {replica_id + 1, num_replicas, num_updates_per_replica});
     replica_slice.Reshape({num_replicas * num_updates_per_replica});
     return replica_slice;
+  }
+
+  // Creates a vector of literals from the given array data. Literal primitive
+  // type is inferred from the parameter shape.
+  absl::StatusOr<std::vector<Literal>> GetParameterLilerals(
+      HloModule* module, int64_t parameter_index, int64_t num_replicas,
+      Array<int64_t> data) {
+    HloInstruction* param =
+        module->entry_computation()->parameter_instruction(parameter_index);
+
+    std::vector<Literal> literals;
+    for (int replica_id = 0; replica_id < num_replicas; ++replica_id) {
+      TF_ASSIGN_OR_RETURN(
+          Literal literal,
+          LiteralUtil::CreateFromArray(GetReplicaSlice(replica_id, data))
+              .Convert(param->shape().element_type()));
+      literals.push_back(std::move(literal));
+    }
+    return literals;
   }
 
   // Literates for the input and output data, offset, and size parameters of the
@@ -2158,9 +2193,9 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  CreateRandomTestData</*IndexType=*/int32_t>(
-      module.get(), /*input_sizes=*/{/*replica_0=*/{1, 1},
-                                     /*replica_1=*/{3, 1}});
+  TF_ASSERT_OK(CreateRandomTestData(module.get(),
+                                    /*input_sizes=*/{/*replica_0=*/{1, 1},
+                                                     /*replica_1=*/{3, 1}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -2203,9 +2238,9 @@ XLA_TEST_P(RaggedAllToAllTest,
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  CreateRandomTestData</*IndexType=*/int32_t>(
-      module.get(), /*input_sizes=*/{/*replica_0=*/{8, 5},
-                                     /*replica_1=*/{4, 3}});
+  TF_ASSERT_OK(CreateRandomTestData(module.get(),
+                                    /*input_sizes=*/{/*replica_0=*/{8, 5},
+                                                     /*replica_1=*/{4, 3}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -2248,9 +2283,9 @@ XLA_TEST_P(RaggedAllToAllTest,
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  CreateRandomTestData</*IndexType=*/int32_t>(
-      module.get(), /*input_sizes=*/{/*replica_0=*/{4, 12},
-                                     /*replica_1=*/{5, 11}});
+  TF_ASSERT_OK(CreateRandomTestData(module.get(),
+                                    /*input_sizes=*/{/*replica_0=*/{4, 12},
+                                                     /*replica_1=*/{5, 11}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -2292,9 +2327,9 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultipleUpdates) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  CreateRandomTestData</*IndexType=*/int32_t>(
+  TF_ASSERT_OK(CreateRandomTestData(
       module.get(), /*input_sizes=*/{/*replica_0=*/{{1, 2}, {2, 1}},
-                                     /*replica_1=*/{{3, 1}, {1, 1}}});
+                                     /*replica_1=*/{{3, 1}, {1, 1}}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -2312,13 +2347,13 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
   HloModule module, num_partitions=1
 
   ENTRY entry {
-    input = f32[16, 5, 32] parameter(0)
-    output = f32[16, 5, 32] parameter(1)
+    input = bf16[16, 5, 32] parameter(0)
+    output = bf16[16, 5, 32] parameter(1)
     input_offsets = s64[2] parameter(2)
     send_sizes = s64[2] parameter(3)
     output_offsets = s64[2] parameter(4)
     recv_sizes = s64[2] parameter(5)
-    ROOT ra2a = f32[16, 5, 32] ragged-all-to-all(input, output,
+    ROOT ra2a = bf16[16, 5, 32] ragged-all-to-all(input, output,
       input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,1}}
   })";
@@ -2337,9 +2372,9 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  CreateRandomTestData</*IndexType=*/int64_t>(
-      module.get(), /*input_sizes=*/{/*replica_0=*/{4, 7},
-                                     /*replica_1=*/{2, 5}});
+  TF_ASSERT_OK(CreateRandomTestData(module.get(),
+                                    /*input_sizes=*/{/*replica_0=*/{4, 7},
+                                                     /*replica_1=*/{2, 5}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -2447,9 +2482,9 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_NonDefaultLayout) {
       FindInstruction(module.get(), HloOpcode::kRaggedAllToAll);
   EXPECT_THAT(ragged_all_to_all, NotNull());
 
-  CreateRandomTestData</*IndexType=*/int32_t>(
-      module.get(), /*input_sizes=*/{/*replica_0=*/{4, 7},
-                                     /*replica_1=*/{2, 5}});
+  TF_ASSERT_OK(CreateRandomTestData(module.get(),
+                                    /*input_sizes=*/{/*replica_0=*/{4, 7},
+                                                     /*replica_1=*/{2, 5}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -2494,11 +2529,11 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  Array<int32_t> input_sizes(
+  Array<int64_t> input_sizes(
       {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
   input_sizes.FillRandomUniform(0, 10);
 
-  CreateRandomTestData</*IndexType=*/int32_t>(module.get(), input_sizes);
+  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
