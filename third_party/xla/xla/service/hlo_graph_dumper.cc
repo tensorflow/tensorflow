@@ -1613,6 +1613,33 @@ const HloInstruction* HloDotDumper::GetNodeForEdge(
   return instr;
 }
 
+bool IsAcfPrameter(const xla::HloInstruction* instruction) {
+  // Parameter is fused
+  if (instruction->opcode() != xla::HloOpcode::kParameter ||
+      !instruction->IsFused())
+    return false;
+
+  // Fused into ACF
+  int64_t parameter_number = instruction->parameter_number();
+  xla::HloInstruction* fusion_instruction =
+      instruction->parent()->FusionInstruction();
+  if (!instruction->parent()->name().starts_with("async_collective_fusion"))
+    return false;
+
+  // Input is gte from AsyncCollectiveStart
+  const xla::HloInstruction* parameterOperand =
+      fusion_instruction->operand(parameter_number);
+  if (parameterOperand->opcode() != xla::HloOpcode::kGetTupleElement) {
+    return false;
+  }
+  const xla::HloInstruction* gteOperand = parameterOperand->operand(0);
+  if (!gteOperand->name().starts_with("async-collective-start")) {
+    return false;
+  }
+  // Parameter only have one user
+  return instruction->user_count() == 1;
+}
+
 // Gets a NodeFilter that includes roughly all instructions whose distance from
 // root is <= radius.
 NodeFilter MakeNodeRadiusAroundFilter(
@@ -1730,8 +1757,9 @@ NodeFilter MakeNodeRadiusAroundFilter(
         if (it != nodes.end()) {
           return it->second;
         }
-        // Show all nodes in subcomputations.
-        if (instr->parent() != root->parent()) {
+        // Show all nodes in subcomputations (except nodes that are
+        // implementation details).
+        if (instr->parent() != root->parent() && !IsAcfPrameter(instr)) {
           return kNormalNode;
         }
         return kHideNode;
@@ -1841,7 +1869,7 @@ static std::pair<int, int> FusionVisualizerStateKey(
 static absl::StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   class WritableStringFile : public tsl::WritableFile {
    public:
-    explicit WritableStringFile(std::string* data) : data_(data){};
+    explicit WritableStringFile(std::string* data) : data_(data) {};
     ~WritableStringFile() override = default;
 
     absl::Status Append(absl::string_view data) override {
