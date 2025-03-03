@@ -435,6 +435,53 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallFindDevice) {
   EXPECT_EQ(0, rendezvous_cache_->Size());
 }
 
+TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallRunAfterInstalantiation) {
+  Init({test::function::XTimesTwo()});
+
+  // Instantiate the function.
+  FunctionLibraryRuntime::Handle handle;
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
+  TF_CHECK_OK(
+      Instantiate("XTimesTwo", {{"T", DT_FLOAT}}, instantiate_opts, &handle));
+  FunctionLibraryRuntime::Options opts;
+  opts.source_device = "/job:a/replica:0/task:0/cpu:0";
+  opts.remote_execution = true;
+
+  // Run the function.
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+  TF_CHECK_OK(RunInstantiated(handle, opts, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+
+  // Re-run the function.
+  TF_CHECK_OK(RunInstantiated(handle, opts, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallRunAfterFinalizaztion) {
+  Init({test::function::XTimesTwo()});
+
+  // Instantiate the function.
+  FunctionLibraryRuntime::Handle handle;
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
+  TF_CHECK_OK(
+      Instantiate("XTimesTwo", {{"T", DT_FLOAT}}, instantiate_opts, &handle));
+  FunctionLibraryRuntime::Options opts;
+  opts.source_device = "/job:a/replica:0/task:0/cpu:0";
+  opts.remote_execution = true;
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+  TF_CHECK_OK(RunInstantiated(handle, opts, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+
+  TF_CHECK_OK(proc_flr_->Finalize());
+
+  TF_CHECK_OK(RunInstantiated(handle, opts, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+}
+
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceXTimes) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour()});
   auto x = test::AsTensor<float>({1, 2, 3, 4});
