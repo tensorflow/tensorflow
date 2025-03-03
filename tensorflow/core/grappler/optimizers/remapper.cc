@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tsl/platform/errors.h"
+
 #ifdef INTEL_MKL
 #include "tensorflow/core/util/mkl_heuristics.h"
 #endif  // INTEL_MKL
@@ -1911,6 +1912,66 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
     if (alpha_val < 0) return false;
     *alpha = alpha_val;
   }
+  return found_op_type_match;
+}
+
+bool FindMatMulBiasMulAddElu(RemapperContext* ctx, int node_index,
+                       std::map<string, int>* matched_nodes_map,
+                       std::set<int>* remove_node_indices) {
+  // Find MatMul + BiasAdd + Mul + Add + Elu pattern
+  // where 1 input to MM, BiasAdd, Mul & Add is Const or Cast with Const input.
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+
+  // clang-format off
+  utils::OpTypePattern mm_pattern = {
+    "Elu", "elu", NodeStatus::kReplace,
+    {
+      {"Add|AddV2", "add", NodeStatus::kRemove,
+        {
+          {"Mul", "mul", NodeStatus::kRemove,
+            {
+              {"BiasAdd", "bias", NodeStatus::kRemove,
+                {
+                  {"MatMul", "matmul", NodeStatus::kRemove,
+                    {
+                      {"AddV2", "matmul_addv2_in", NodeStatus::kRemain},
+                      {"*", "matmul_in2", NodeStatus::kRemain}
+                    }
+                  },
+                  {"*", "bias_in2", NodeStatus::kRemain}
+                }
+              },
+              {"*", "mul_in2", NodeStatus::kRemain}
+            }
+          },
+          {"*", "add_in2", NodeStatus::kRemain}
+        }
+      }
+    }
+    };
+  // clang-format on
+
+  // Check for allowed datatypes
+  auto* elu_node_def = ctx->graph_view.GetNode(node_index)->node();
+  if (!HasDataType(elu_node_def, DT_HALF) &&
+      !HasDataType(elu_node_def, DT_BFLOAT16) &&
+      !HasDataType(elu_node_def, DT_FLOAT) &&
+      !HasDataType(elu_node_def, DT_DOUBLE))
+    return false;
+  // Current implementation has support only for CPU when oneDNN is enabled.
+  // TODO(intel-tf): This will be removed when fully tested with GPU
+  if (!NodeIsOnCpu(elu_node_def) && !IsMKLEnabled()) return false;
+
+  bool found_op_type_match = false;
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+
+  found_op_type_match = graph_matcher.GetMatchedNodes(
+      mm_pattern, {}, ctx->graph_view.GetNode(node_index),
+      matched_nodes_map, remove_node_indices);
   return found_op_type_match;
 }
 
@@ -3918,6 +3979,97 @@ absl::Status AddMklLayerNorm(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
+Status AddFusedMatMulBiasMulAddAndElu(
+    RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
+    const std::set<int>& remove_node_indices,
+    std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
+  //   (X.M1 + B) . M2 + A + Elu
+  // => X.M1.M2 + B.M2 + A + Elu
+  // => X.M + new_biasadd + Elu
+  // => FusedMM (fused_ops: bias_add, elu)
+  auto* output_node =
+      ctx->graph_view.GetNode(matched_nodes_map.at("elu"))->node();
+  auto* matmul_node =
+      ctx->graph_view.GetNode(matched_nodes_map.at("matmul"))->node();
+  auto* bias_in2_node =
+       ctx->graph_view.GetNode(matched_nodes_map.at("bias_in2"))->node();
+  auto* mul_in2_node =
+        ctx->graph_view.GetNode(matched_nodes_map.at("mul_in2"))->node();
+  auto* add_in2_node =
+        ctx->graph_view.GetNode(matched_nodes_map.at("add_in2"))->node();
+
+  auto* matmul_addv2_in_node =
+      ctx->graph_view.GetNode(matched_nodes_map.at("matmul_addv2_in"))->node();
+    auto* matmul_in2_node =
+      ctx->graph_view.GetNode(matched_nodes_map.at("matmul_in2"))->node();
+
+  // M = M1.M2
+  NodeDef new_mul_node;
+  new_mul_node.set_op("Mul");
+  new_mul_node.set_device(matmul_node->device());
+  new_mul_node.set_name(matmul_in2_node->name()+"_folded");
+  new_mul_node.add_input(matmul_in2_node->name());
+  new_mul_node.add_input(mul_in2_node->name());
+  auto* attr1 = new_mul_node.mutable_attr();
+  // Since there are no Cast ops in main pattern, safe to get T from MM node.
+  auto& mul_attr = matmul_node->attr();
+  (*attr1)["T"] = mul_attr.at("T");
+
+  // B.M2
+  NodeDef new_mul_node2;
+  new_mul_node2.set_op("Mul");
+  new_mul_node2.set_device(bias_in2_node->device());
+  new_mul_node2.set_name(bias_in2_node->name()+"_mul_folded");
+  new_mul_node2.add_input(bias_in2_node->name());
+  new_mul_node2.add_input(mul_in2_node->name());
+  auto* attr2 = new_mul_node2.mutable_attr();
+  (*attr2)["T"] = mul_attr.at("T");
+
+  // new_biasdd = B.M2 + A
+  NodeDef new_add_node;
+  new_add_node.set_op("AddV2");
+  new_add_node.set_device(add_in2_node->device());
+  new_add_node.set_name(add_in2_node->name()+"_add_folded");
+  new_add_node.add_input(new_mul_node2.name());
+  new_add_node.add_input(add_in2_node->name());
+  auto* attr3 = new_add_node.mutable_attr();
+  (*attr3)["T"] = mul_attr.at("T");
+
+  NodeDef fused_node;
+  // Fused node should have the name of terminal node of the fusion.
+  fused_node.set_name(output_node->name());
+  fused_node.set_op("_FusedMatMul");
+  fused_node.set_device(matmul_node->device());
+  fused_node.add_input(matmul_addv2_in_node->name());
+  fused_node.add_input(new_mul_node.name());
+  fused_node.add_input(new_add_node.name());
+
+  CopyMatMulAttributes(*matmul_node, &fused_node);
+  SetFusedOpAttributes(&fused_node, {"BiasAdd", "Elu"});
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(new_mul_node), &status);
+  TF_RETURN_IF_ERROR(status);
+
+  mutation->AddNode(std::move(new_mul_node2), &status);
+  TF_RETURN_IF_ERROR(status);
+
+  mutation->AddNode(std::move(new_add_node), &status);
+  TF_RETURN_IF_ERROR(status);
+
+  mutation->AddNode(std::move(fused_node), &status);
+  TF_RETURN_IF_ERROR(status);
+
+  TF_RETURN_IF_ERROR(mutation->Apply());
+  (*invalidated_nodes)[matched_nodes_map.at("elu")] = true;
+
+  for (const auto& node_idx : remove_node_indices) {
+    (*nodes_to_delete)[node_idx] = true;
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ReplaceMulMaximumWithLeakyRelu(
     RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
@@ -5035,6 +5187,16 @@ absl::Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 #endif
+
+      std::map<string, int> mm_matched_nodes_map;
+      std::set<int> mm_remove_node_indices;
+      if (FindMatMulBiasMulAddElu(&ctx, i, &mm_matched_nodes_map,
+                            &mm_remove_node_indices)) {
+        TF_RETURN_IF_ERROR(AddFusedMatMulBiasMulAddAndElu(
+            &ctx, mm_matched_nodes_map, mm_remove_node_indices,
+            &invalidated_nodes, &nodes_to_delete));
+        continue;
+      }
 
       // Remap Maximum(x, alpha * x) pattern, fuse them into the LeakyRelu(x).
       std::map<string, int> mulmax_matched_nodes_map;
