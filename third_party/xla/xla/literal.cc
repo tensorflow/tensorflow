@@ -1299,14 +1299,25 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
 
 Literal LiteralBase::Clone() const {
   Literal result(shape());
-  TF_CHECK_OK(result.CopyFrom(*this));
+  result.mutable_root_piece().ForEachMutableSubpiece(
+      [&](const ShapeIndex& index, Piece* result_piece) {
+        if (!result_piece->subshape().IsArray()) return;
+
+        ArrayValueState src_state = piece(index).get_array_value_state();
+        if (src_state == ArrayValueState::kKnown) {
+          std::memcpy(result_piece->buffer(), piece(index).buffer(),
+                      piece(index).size_bytes_dense());
+
+        } else {
+          result_piece->DeallocateBuffers();
+          result_piece->set_array_value_state(src_state);
+        }
+      });
   return result;
 }
 
 std::unique_ptr<Literal> LiteralBase::CloneToUnique() const {
-  auto result = std::make_unique<Literal>(shape());
-  TF_CHECK_OK(result->CopyFrom(*this));
-  return result;
+  return std::make_unique<Literal>(Clone());
 }
 
 bool LiteralBase::IsDetermined(const ShapeIndex& shape_index) const {
