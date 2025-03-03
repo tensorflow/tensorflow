@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <vector>
