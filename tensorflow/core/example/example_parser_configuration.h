@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/example_parser_configuration.pb.h"
 #include "tensorflow/core/framework/allocator.h"
