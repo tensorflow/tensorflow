@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/graph/subgraph.h"
 
-#include <string>
+#include <algorithm>
+#include <memory>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_join.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
