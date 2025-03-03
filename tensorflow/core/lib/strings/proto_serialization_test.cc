@@ -17,14 +17,15 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/memory/memory.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
