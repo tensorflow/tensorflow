@@ -16,20 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_
 #define TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_
 
-#include <string>
+#include <cstddef>
+#include <cstdint>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 // This is a set of helper methods that will make it possible to share
 // tensorflow::Example proto Tensor conversion code inside the ExampleParserOp
@@ -184,6 +187,21 @@ struct ParseExampleAttrs {
         return errors::InvalidArgument("Unexpected op_version", op_version);
     }
     return FinishInit(op_version);
+  }
+
+  absl::Status UpdateDenseShapes(const std::vector<size_t>& got_dims) {
+    if (got_dims.size() != dense_shapes.size()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "got_dims.size() (", got_dims.size(),
+          ") must match dense_shapes.size() (", dense_shapes.size(), ")"));
+    }
+    for (size_t d = 0; d < dense_shapes.size(); ++d) {
+      dense_shapes[d].set_dim(0, got_dims[d]);
+    }
+    // Recalculate relative fields.
+    variable_length.clear();
+    elements_per_stride.clear();
+    return GetDenseShapes(dense_shapes, &variable_length, &elements_per_stride);
   }
 
   int64_t num_sparse;
