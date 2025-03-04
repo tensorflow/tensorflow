@@ -25,18 +25,3 @@ pytype_strict_library(
     srcs = ["ifrt_proxy_internal.py"],
     deps = ["//xla/python:xla_client"],
 )
-
-# copybara:uncomment_begin(ifrt_proxy.py is not exported to github)
-# pytype_strict_library(
-#     name = "ifrt_proxy",
-#     srcs = ["ifrt_proxy.py"],
-#     visibility = [
-#         "//xla/python/ifrt_proxy/common/google:internal",
-#         "//xla/python/ifrt_proxy/common/google:jax_users",
-#     ],
-#     deps = [
-#         ":ifrt_proxy_internal",
-#         "//third_party/py/jax",
-#     ],
-# )
-# copybara:uncomment_end
