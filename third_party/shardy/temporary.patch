@@ -1,44 +1,34 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..8ee25f9 100644
+index 8ee25f9..5804241 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,24 @@
- Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir b/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
-+--- a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
-++++ b/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
-+@@ -1,6 +1,6 @@
-+ # REQUIRES x86_64-registered-target
-+-# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=fast -print-pipeline-passes %s 2>&1 | FileCheck %s
-+-# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=greedy -print-pipeline-passes %s 2>&1 | FileCheck %s --check-prefix=CHECK-GREEDY
-++# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=fast -print-pipeline-passes %s -o - 2>&1 | FileCheck %s
-++# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=greedy -print-pipeline-passes %s -o - 2>&1 | FileCheck %s --check-prefix=CHECK-GREEDY
-+ 
-+ # CHECK: regallocfast
-+ # CHECK-GREEDY: greedy<all>
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+@@ -9662,6 +9662,7 @@
-+         "lib/Target/LLVMIR/DataLayoutImporter.h",
-+         "lib/Target/LLVMIR/DebugImporter.cpp",
-+         "lib/Target/LLVMIR/DebugImporter.h",
-++        "lib/Target/LLVMIR/LLVMImportInterface.cpp",
-+         "lib/Target/LLVMIR/LoopAnnotationImporter.cpp",
-+         "lib/Target/LLVMIR/LoopAnnotationImporter.h",
-+         "lib/Target/LLVMIR/ModuleImport.cpp",
+@@ -11,14 +11,3 @@ diff -ruN --strip-trailing-cr a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipel
+  
+  # CHECK: regallocfast
+  # CHECK-GREEDY: greedy<all>
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+-@@ -9662,6 +9662,7 @@
+-         "lib/Target/LLVMIR/DataLayoutImporter.h",
+-         "lib/Target/LLVMIR/DebugImporter.cpp",
+-         "lib/Target/LLVMIR/DebugImporter.h",
+-+        "lib/Target/LLVMIR/LLVMImportInterface.cpp",
+-         "lib/Target/LLVMIR/LoopAnnotationImporter.cpp",
+-         "lib/Target/LLVMIR/LoopAnnotationImporter.h",
+-         "lib/Target/LLVMIR/ModuleImport.cpp",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index b853f00..667ae4e 100644
+index 667ae4e..f94a524 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "cb7030dbe7f3f1947c31b3059958ff3968cc22ff"
--    LLVM_SHA256 = "531ad35a4d22db5c944e1495a3bb0bba53f7c535f4ba252063abcf4462e3876f"
-+    LLVM_COMMIT = "f6212c1cd3d8b827c7d7e2f6cf54b135c27eacc6"
-+    LLVM_SHA256 = "bba6d4c0020622b64202640a94504b957d3597e4f42e9b4f20cbcfa80a8aa41a"
+-    LLVM_COMMIT = "f6212c1cd3d8b827c7d7e2f6cf54b135c27eacc6"
+-    LLVM_SHA256 = "bba6d4c0020622b64202640a94504b957d3597e4f42e9b4f20cbcfa80a8aa41a"
++    LLVM_COMMIT = "17857d92416da5997262318a6f62fccad9c5a156"
++    LLVM_SHA256 = "4f60aaa5f64c320bb2b10c9dfbd852fc7c89192b3acf518fca5f4868c46d4cc6"
  
      tf_http_archive(
          name = name,
