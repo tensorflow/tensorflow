@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
+#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_buffer.h"
@@ -11407,14 +11408,22 @@ ENTRY main {
   properties[HloCostAnalysis::kBytesAccessedKey] = kBytesPerSecond;
   HloCostAnalysis hlo_cost_analysis(HloCostAnalysis::DefaultShapeSize,
                                     properties);
+  HloCostAnalysisWithAcceptState hlo_cost_analysis_wrapper(hlo_cost_analysis);
   CostAnalysisOptions cost_analysis_options;
   cost_analysis_options.default_mem_bandwidth_bytes_per_second =
       kBytesPerSecond;
-  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module,
-                               cost_analysis_options));
+  OpCostManager op_cost_manager(
+      OpCostManager::Options{
+          /*enable_cache=*/false,
+          /*enable_analysis_logging=*/false,
+      },
+      OpCostManager::CalculationNode::CreateLeaf(
+          "HloCostAnalysis",
+          CreateHloCostAnalysisCalculator(hlo_cost_analysis_wrapper),
+          /*enable_cache=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
+                          FakeCostAnalysis::Create(op_cost_manager, *module,
+                                                   cost_analysis_options));
   cost_analysis->SetOverrideForGetInstructionElapsed(
       [](const HloInstruction& instruction) -> float { return 10.0; });
   cost_analysis->SetOverrideForGetAsyncCopyElapsed(
