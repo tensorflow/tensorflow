@@ -1,14 +1,17 @@
 // Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/utils.h"
+
+#include <gtest/gtest.h>
+
 #include <filesystem>
 #include <fstream>
 #include <string>
 
-#include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
 
-namespace litert {
+namespace qnn {
 namespace {
 
 bool IsPrefix(std::string_view prefix, std::string_view full) {
@@ -80,4 +83,20 @@ TEST_P(LiteRtLog, SanityTest) {
   // Delete the temporary log file
   std::filesystem::remove(temp_path);
 }
-}  // namespace litert
+
+TEST(UtilFuncTests, Quantize) {
+  float val = 1;
+  float scale = 0.1;
+  int32_t zero_point = 1;
+  auto q_val = Quantize<std::int8_t>(val, scale, zero_point);
+  EXPECT_EQ(q_val, 11);
+}
+
+TEST(UtilFuncTests, Dequantize) {
+  std::int8_t q_val = 11;
+  float scale = 0.1;
+  int32_t zero_point = 1;
+  auto val = Dequantize(q_val, scale, zero_point);
+  EXPECT_FLOAT_EQ(val, 1);
+}
+}  // namespace qnn

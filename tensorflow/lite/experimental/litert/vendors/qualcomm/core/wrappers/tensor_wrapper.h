@@ -15,13 +15,12 @@
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/utils.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
 namespace qnn {
-
-template <typename...>
-inline constexpr bool always_false = false;
+constexpr uint32_t kInt16ToUint16 = 32768;
 
 // Get the Qnn_DataType_t associated with given C++ type.
 template <typename T>
@@ -47,6 +46,12 @@ inline constexpr Qnn_DataType_t GetQnnDataType(const bool is_quant) {
   }
   return QNN_DATATYPE_UNDEFINED;
 }
+
+void ConvertDataFromInt16toUInt16(absl::Span<const std::int16_t>& src,
+                                  std::vector<std::uint16_t>& dst);
+
+void ConvertDataFromUInt16toInt16(absl::Span<const std::uint16_t>& src,
+                                  std::vector<std::int16_t>& dst);
 
 std::size_t GetDataTypeSize(const Qnn_DataType_t data_type);
 
@@ -91,10 +96,20 @@ class TensorWrapper final {
 
   QuantizeParamsWrapperVariant& GetQuantParams() { return quantize_params_; };
 
-  const bool IsQuant() const {
+  bool IsQuant() const {
     return !std::holds_alternative<UndefinedQuantizeParamsWrapper>(
         quantize_params_);
   };
+
+  bool IsPerTensorQuant() {
+    return std::holds_alternative<ScaleOffsetQuantizeParamsWrapper>(
+        quantize_params_);
+  }
+
+  bool IsPerChannelQuant() {
+    return std::holds_alternative<AxisScaleOffsetQuantizeParamsWrapper>(
+        quantize_params_);
+  }
 
   bool IsPerTensorQuantWithOffsetDiff(const TensorWrapper& rhs) const;
 
@@ -109,8 +124,6 @@ class TensorWrapper final {
   }
 
   Qnn_DataType_t GetDataType() const;
-
-  void SetDataType(Qnn_DataType_t data_type);
 
   bool IsSubgraphInput() const {
     return GetTensorType() == QNN_TENSOR_TYPE_APP_WRITE;
@@ -249,10 +262,17 @@ class TensorWrapper final {
 
   size_t GetTensorBytes() const;
 
+  void ConvertQint16ToQuint16();
+
  private:
   Qnn_TensorType_t GetTensorType() const;
 
   void SetDataBy(std::uint32_t bytes, const void* data);
+
+  bool HasStaticData() const {
+    return qnn_tensor_.v2.clientBuf.dataSize != 0 &&
+           qnn_tensor_.v2.clientBuf.data != nullptr;
+  }
 
   Qnn_Tensor_t qnn_tensor_{.version = QNN_TENSOR_VERSION_2,
                            .v2 = QNN_TENSOR_V2_INIT};
@@ -278,9 +298,8 @@ std::optional<absl::Span<const T>> TensorWrapper::GetStaticTensorData() const {
     return std::nullopt;
   }
 
-  if (qnn_tensor_.v2.clientBuf.dataSize == 0 ||
-      qnn_tensor_.v2.clientBuf.data == nullptr) {
-    QNN_LOG_ERROR("Empty StaticTensorData.");
+  if (!HasStaticData()) {
+    QNN_LOG_ERROR("Empty static tensor data.");
     return std::nullopt;
   }
 

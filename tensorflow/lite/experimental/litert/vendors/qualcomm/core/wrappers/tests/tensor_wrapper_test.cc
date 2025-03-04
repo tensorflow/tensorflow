@@ -3,10 +3,13 @@
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <numeric>
 #include <optional>
+
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/utils.h"
 
 namespace qnn {
 namespace {
@@ -94,6 +97,90 @@ TEST(TensorWrapperTest, MoveTensorTest) {
   }
 }
 
+TEST(TensorWrapperTest, QnnTensorPerTensorQuantConstructTest) {
+  ScaleOffsetQuantizeParamsWrapper q_param(1, 0);
+  TensorWrapper tensor_wrapper{0,
+                               QNN_TENSOR_TYPE_STATIC,
+                               QNN_DATATYPE_UFIXED_POINT_8,
+                               q_param,
+                               {1, 1, 3}};
+  const auto& qnn_tensor = tensor_wrapper.GetQnnTensor();
+  TensorWrapper tensor_wrapper_1(qnn_tensor);
+  Qnn_Tensor_t& ref = tensor_wrapper.GetQnnTensor();
+
+  EXPECT_EQ(ref.version, qnn_tensor.version);
+  EXPECT_EQ(ref.v2.id, qnn_tensor.v2.id);
+  EXPECT_STREQ(ref.v2.name, qnn_tensor.v2.name);
+  EXPECT_EQ(ref.v2.type, qnn_tensor.v2.type);
+  EXPECT_EQ(ref.v2.dataFormat, qnn_tensor.v2.dataFormat);
+  EXPECT_EQ(ref.v2.dataType, qnn_tensor.v2.dataType);
+  EXPECT_EQ(ref.v2.rank, qnn_tensor.v2.rank);
+  EXPECT_EQ(std::vector(ref.v2.dimensions, ref.v2.dimensions + ref.v2.rank),
+            std::vector(qnn_tensor.v2.dimensions,
+                        qnn_tensor.v2.dimensions + qnn_tensor.v2.rank));
+  EXPECT_EQ(ref.v2.quantizeParams.encodingDefinition,
+            qnn_tensor.v2.quantizeParams.encodingDefinition);
+  EXPECT_EQ(ref.v2.quantizeParams.quantizationEncoding,
+            qnn_tensor.v2.quantizeParams.quantizationEncoding);
+  EXPECT_FLOAT_EQ(ref.v2.quantizeParams.scaleOffsetEncoding.scale,
+                  qnn_tensor.v2.quantizeParams.scaleOffsetEncoding.scale);
+  EXPECT_EQ(ref.v2.quantizeParams.scaleOffsetEncoding.offset,
+            qnn_tensor.v2.quantizeParams.scaleOffsetEncoding.offset);
+  EXPECT_EQ(ref.v2.memType, qnn_tensor.v2.memType);
+  EXPECT_EQ(ref.v2.clientBuf.dataSize, qnn_tensor.v2.clientBuf.dataSize);
+  EXPECT_EQ(ref.v2.clientBuf.data, qnn_tensor.v2.clientBuf.data);
+}
+
+TEST(TensorWrapperTest, QnnTensorPerChannelQuantConstructTest) {
+  std::vector<float> scales = {1.0, 1.0};
+  std::vector<std::int32_t> zero_points = {0, 0};
+  AxisScaleOffsetQuantizeParamsWrapper q_param(
+      0, absl::Span(scales.data(), scales.size()),
+      absl::Span(zero_points.data(), zero_points.size()));
+  TensorWrapper tensor_wrapper{0,
+                               QNN_TENSOR_TYPE_STATIC,
+                               QNN_DATATYPE_UFIXED_POINT_8,
+                               q_param,
+                               {1, 1, 3}};
+  const auto& qnn_tensor = tensor_wrapper.GetQnnTensor();
+  TensorWrapper tensor_wrapper_1(qnn_tensor);
+  Qnn_Tensor_t& ref = tensor_wrapper.GetQnnTensor();
+
+  EXPECT_EQ(ref.version, qnn_tensor.version);
+  EXPECT_EQ(ref.v2.id, qnn_tensor.v2.id);
+  EXPECT_STREQ(ref.v2.name, qnn_tensor.v2.name);
+  EXPECT_EQ(ref.v2.type, qnn_tensor.v2.type);
+  EXPECT_EQ(ref.v2.dataFormat, qnn_tensor.v2.dataFormat);
+  EXPECT_EQ(ref.v2.dataType, qnn_tensor.v2.dataType);
+  EXPECT_EQ(ref.v2.rank, qnn_tensor.v2.rank);
+  EXPECT_EQ(std::vector(ref.v2.dimensions, ref.v2.dimensions + ref.v2.rank),
+            std::vector(qnn_tensor.v2.dimensions,
+                        qnn_tensor.v2.dimensions + qnn_tensor.v2.rank));
+  EXPECT_EQ(ref.v2.quantizeParams.encodingDefinition,
+            qnn_tensor.v2.quantizeParams.encodingDefinition);
+  EXPECT_EQ(ref.v2.quantizeParams.quantizationEncoding,
+            qnn_tensor.v2.quantizeParams.quantizationEncoding);
+  EXPECT_FLOAT_EQ(ref.v2.quantizeParams.axisScaleOffsetEncoding.axis,
+                  qnn_tensor.v2.quantizeParams.axisScaleOffsetEncoding.axis);
+  EXPECT_EQ(
+      ref.v2.quantizeParams.axisScaleOffsetEncoding.numScaleOffsets,
+      qnn_tensor.v2.quantizeParams.axisScaleOffsetEncoding.numScaleOffsets);
+  auto& numScaleOffsets =
+      qnn_tensor.v2.quantizeParams.axisScaleOffsetEncoding.numScaleOffsets;
+  for (size_t i = 0; i < numScaleOffsets; ++i) {
+    auto& qnn_tensor_scale_offset =
+        qnn_tensor.v2.quantizeParams.axisScaleOffsetEncoding.scaleOffset;
+    auto& ref_scale_offset =
+        ref.v2.quantizeParams.axisScaleOffsetEncoding.scaleOffset;
+    EXPECT_EQ(ref_scale_offset[i].scale, qnn_tensor_scale_offset[i].scale);
+    EXPECT_EQ(ref_scale_offset[i].offset, qnn_tensor_scale_offset[i].offset);
+  }
+
+  EXPECT_EQ(ref.v2.memType, qnn_tensor.v2.memType);
+  EXPECT_EQ(ref.v2.clientBuf.dataSize, qnn_tensor.v2.clientBuf.dataSize);
+  EXPECT_EQ(ref.v2.clientBuf.data, qnn_tensor.v2.clientBuf.data);
+}
+
 TEST(TensorWrapperTest, QnnTensorTest) {
   std::vector<std::uint32_t> dummy_dims = {1, 1, 3};
   std::vector<std::uint8_t> data = {1, 2, 3};
@@ -151,25 +238,6 @@ TEST(TensorWrapperTest, QnnTensorTest) {
   }
 }
 
-TEST(TensorWrapperTest, DataTypeTest) {
-  TensorWrapper tensor_wrapper{};
-  tensor_wrapper.SetDataType(QNN_DATATYPE_UFIXED_POINT_8);
-  EXPECT_EQ(tensor_wrapper.GetDataType(), QNN_DATATYPE_UFIXED_POINT_8);
-  EXPECT_TRUE(tensor_wrapper.IsQuant8());
-
-  tensor_wrapper.SetDataType(QNN_DATATYPE_SFIXED_POINT_8);
-  EXPECT_EQ(tensor_wrapper.GetDataType(), QNN_DATATYPE_SFIXED_POINT_8);
-  EXPECT_TRUE(tensor_wrapper.IsQuant8());
-
-  tensor_wrapper.SetDataType(QNN_DATATYPE_UFIXED_POINT_16);
-  EXPECT_EQ(tensor_wrapper.GetDataType(), QNN_DATATYPE_UFIXED_POINT_16);
-  EXPECT_TRUE(tensor_wrapper.IsQuant16());
-
-  tensor_wrapper.SetDataType(QNN_DATATYPE_SFIXED_POINT_16);
-  EXPECT_EQ(tensor_wrapper.GetDataType(), QNN_DATATYPE_SFIXED_POINT_16);
-  EXPECT_TRUE(tensor_wrapper.IsQuant16());
-}
-
 TEST(TensorWrapperTest, IsPerTensorQuantWithOffsetDiff8BitTest) {
   constexpr int kSUFixed8OffsetDiff = 128;
   ScaleOffsetQuantizeParamsWrapper wrapper1(1, 0);
@@ -181,11 +249,9 @@ TEST(TensorWrapperTest, IsPerTensorQuantWithOffsetDiff8BitTest) {
                                 {}};
   TensorWrapper tensor_wrapper1{0,
                                 QNN_TENSOR_TYPE_STATIC,
-                                QNN_DATATYPE_UFIXED_POINT_8,
+                                QNN_DATATYPE_SFIXED_POINT_8,
                                 QuantizeParamsWrapperVariant(wrapper2),
                                 {}};
-  EXPECT_FALSE(tensor_wrapper0.IsPerTensorQuantWithOffsetDiff(tensor_wrapper1));
-  tensor_wrapper1.SetDataType(QNN_DATATYPE_SFIXED_POINT_8);
   EXPECT_TRUE(tensor_wrapper0.IsPerTensorQuantWithOffsetDiff(tensor_wrapper1));
 }
 
@@ -200,11 +266,9 @@ TEST(TensorWrapperTest, IsPerTensorQuantWithOffsetDiff16BitTest) {
                                 {}};
   TensorWrapper tensor_wrapper1{0,
                                 QNN_TENSOR_TYPE_STATIC,
-                                QNN_DATATYPE_UFIXED_POINT_16,
+                                QNN_DATATYPE_SFIXED_POINT_16,
                                 QuantizeParamsWrapperVariant(wrapper2),
                                 {}};
-  EXPECT_FALSE(tensor_wrapper0.IsPerTensorQuantWithOffsetDiff(tensor_wrapper1));
-  tensor_wrapper1.SetDataType(QNN_DATATYPE_SFIXED_POINT_16);
   EXPECT_TRUE(tensor_wrapper0.IsPerTensorQuantWithOffsetDiff(tensor_wrapper1));
 }
 
@@ -270,6 +334,54 @@ TEST(TensorWrapperTest, GetStaticTensorDataTest) {
       *(tensor_wrapper.GetStaticTensorData<std::uint8_t>());
   for (size_t i = 0; i < data.size(); i++) {
     EXPECT_EQ(tensor_data[i], data[i]);
+  }
+}
+
+TEST(TensorWrapperTest, ConvertDataFromInt16toUInt16Test) {
+  std::vector<std::uint32_t> dummy_dims = {1, 1, 3};
+  ScaleOffsetQuantizeParamsWrapper q_param(0.0001, 0);
+  TensorWrapper tensor_wrapper{0, QNN_TENSOR_TYPE_STATIC,
+                               QNN_DATATYPE_SFIXED_POINT_16, q_param,
+                               dummy_dims};
+
+  std::vector<float> data = {1, 2, 3};
+  auto float_data = absl::MakeSpan(data.data(), data.size());
+  const auto& int16_q_param_ref = tensor_wrapper.GetQuantParams();
+  EXPECT_TRUE(std::holds_alternative<ScaleOffsetQuantizeParamsWrapper>(
+      int16_q_param_ref));
+  const float int16_scale =
+      std::get<ScaleOffsetQuantizeParamsWrapper>(int16_q_param_ref).GetScale();
+  const std::int32_t int16_zero_point =
+      std::get<ScaleOffsetQuantizeParamsWrapper>(int16_q_param_ref)
+          .GetZeroPoint();
+  std::vector<std::int16_t> int16_data;
+  for (int i = 0; i < data.size(); ++i) {
+    int16_data.emplace_back(
+        Quantize<std::int16_t>(data[i], int16_scale, int16_zero_point));
+  }
+  tensor_wrapper.SetTensorData<std::int16_t>(
+      absl::MakeSpan(int16_data.data(), int16_data.size()));
+
+  tensor_wrapper.ConvertQint16ToQuint16();
+
+  const auto& uint16_q_param_ref = tensor_wrapper.GetQuantParams();
+  EXPECT_TRUE(std::holds_alternative<ScaleOffsetQuantizeParamsWrapper>(
+      uint16_q_param_ref));
+  const float uint16_scale =
+      std::get<ScaleOffsetQuantizeParamsWrapper>(uint16_q_param_ref).GetScale();
+  const std::int32_t uint16_zero_point =
+      std::get<ScaleOffsetQuantizeParamsWrapper>(uint16_q_param_ref)
+          .GetZeroPoint();
+  const auto uint16_data =
+      *(tensor_wrapper.GetStaticTensorData<std::uint16_t>());
+  std::vector<float> deq_data;
+  for (size_t i = 0; i < data.size(); i++) {
+    deq_data.emplace_back(
+        Dequantize(uint16_data[i], uint16_scale, uint16_zero_point));
+  }
+  ASSERT_EQ(data.size(), deq_data.size());
+  for (size_t i = 0; i < data.size(); ++i) {
+    EXPECT_NEAR(data[i], deq_data[i], 1e-3);
   }
 }
 }  // namespace

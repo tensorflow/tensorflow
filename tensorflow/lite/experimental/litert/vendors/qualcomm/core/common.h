@@ -18,6 +18,18 @@ typedef enum LiteRtQnnLogLevel {  // NOLINT(modernize-use-using)
   kLogLevelDebug = 5,
 } LiteRtQnnLogLevel;
 
+typedef struct {  // NOLINT(modernize-use-using)
+  /// This option will treat quantized int16 tensor as quantized uint16 tensor
+  /// for better backend compatibility.
+  bool useQInt16AsQUint16;
+} LiteRtQnnOptions;
+
+// clang-format off
+#define LITERT_QNN_OPTIONS_INIT             \
+  {                                         \
+    true,       /*useQInt16AsQUint16*/      \
+  }
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

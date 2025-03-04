@@ -82,11 +82,6 @@ TensorWrapper& TensorPool::CloneStaticTensorFrom(
       id, QNN_TENSOR_TYPE_STATIC, src.qnn_tensor_.v2.dataType,
       src.quantize_params_, dimentions, src.qnn_tensor_.v2.clientBuf.dataSize,
       src.qnn_tensor_.v2.clientBuf.data);
-
-  if (tensor_callback_) {
-    tensor_callback_(back);
-  }
-
   return back;
 }
 

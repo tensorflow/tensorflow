@@ -25,6 +25,7 @@ cc_test(
         "tensor_wrapper_test.cc",
     ],
     deps = [
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
         "@com_google_googletest//:gtest_main",
     ],

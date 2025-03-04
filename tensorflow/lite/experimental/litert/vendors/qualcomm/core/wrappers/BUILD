@@ -33,6 +33,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils:log",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils",
     ],
 )
 
@@ -47,7 +48,7 @@ cc_library(
     deps = [
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils:log",
-        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils:utils",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
     ],
 )

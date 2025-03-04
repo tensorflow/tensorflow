@@ -72,6 +72,20 @@ TEST(ScaleOffsetQuantizeParamsWrapperTest, MoveConstructorTest) {
   EXPECT_EQ(dst.scaleOffsetEncoding.offset, -zero_point);
 }
 
+TEST(ScaleOffsetQuantizeParamsWrapperTest, QnnConstructorTest) {
+  ScaleOffsetQuantizeParamsWrapper wrapper1(1.5f, 10);
+  Qnn_QuantizeParams_t dst1 = QNN_QUANTIZE_PARAMS_INIT;
+  wrapper1.CloneTo(dst1);
+  ScaleOffsetQuantizeParamsWrapper wrapper2(dst1.scaleOffsetEncoding);
+  Qnn_QuantizeParams_t dst2 = QNN_QUANTIZE_PARAMS_INIT;
+  wrapper1.CloneTo(dst2);
+  EXPECT_EQ(dst1.encodingDefinition, dst2.encodingDefinition);
+  EXPECT_EQ(dst1.quantizationEncoding, dst2.quantizationEncoding);
+  EXPECT_FLOAT_EQ(dst1.scaleOffsetEncoding.scale,
+                  dst2.scaleOffsetEncoding.scale);
+  EXPECT_EQ(dst1.scaleOffsetEncoding.offset, dst2.scaleOffsetEncoding.offset);
+}
+
 TEST(AxisScaleOffsetQuantizeParamsWrapperTest, ConstructorTest) {
   std::int32_t axis = 1;
   std::vector<float> scales = {1.5f, 2.5f};
@@ -131,6 +145,28 @@ TEST(AxisScaleOffsetQuantizeParamsWrapperTest, MoveConstructorTest) {
                     scales[i]);
     EXPECT_EQ(dst.axisScaleOffsetEncoding.scaleOffset[i].offset,
               -zero_points[i]);
+  }
+}
+
+TEST(AxisScaleOffsetQuantizeParamsWrapperTest, QnnConstructorTest) {
+  std::int32_t axis = 1;
+  std::vector<float> scales = {1.5f, 2.5f};
+  std::vector<std::int32_t> zero_points = {10, 20};
+  AxisScaleOffsetQuantizeParamsWrapper wrapper1(axis, scales, zero_points);
+  Qnn_QuantizeParams_t dst1 = QNN_QUANTIZE_PARAMS_INIT;
+  wrapper1.CloneTo(dst1);
+  AxisScaleOffsetQuantizeParamsWrapper wrapper2(dst1.axisScaleOffsetEncoding);
+  Qnn_QuantizeParams_t dst2 = QNN_QUANTIZE_PARAMS_INIT;
+  wrapper1.CloneTo(dst2);
+  EXPECT_EQ(dst1.encodingDefinition, dst2.encodingDefinition);
+  EXPECT_EQ(dst1.quantizationEncoding, dst2.quantizationEncoding);
+  EXPECT_EQ(dst1.axisScaleOffsetEncoding.numScaleOffsets,
+            dst2.axisScaleOffsetEncoding.numScaleOffsets);
+  for (size_t i = 0; i < dst1.axisScaleOffsetEncoding.numScaleOffsets; ++i) {
+    EXPECT_EQ(dst1.axisScaleOffsetEncoding.scaleOffset[i].scale,
+              dst2.axisScaleOffsetEncoding.scaleOffset[i].scale);
+    EXPECT_EQ(dst1.axisScaleOffsetEncoding.scaleOffset[i].offset,
+              dst2.axisScaleOffsetEncoding.scaleOffset[i].offset);
   }
 }
 }  // namespace
