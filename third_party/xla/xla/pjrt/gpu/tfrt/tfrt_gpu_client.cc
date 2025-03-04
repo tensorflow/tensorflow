@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -252,7 +253,7 @@ GetTfrtGpuDevices(LocalClient* xla_client) {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
-    TfrtGpuClient::Options options) {
+    const GpuClientOptions& options) {
   TF_ASSIGN_OR_RETURN(
       LocalClient * xla_client,
       GetGpuXlaClient(options.platform_name, options.allowed_devices));

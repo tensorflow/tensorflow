@@ -21,16 +21,26 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
+using ::testing::HasSubstr;
 using ::testing::status::IsOkAndHolds;
 
+TEST(TfrtGpuClientTest, GpuClientOptions) {
+  GpuClientOptions options;
+  options.platform_name = "cuda";
+  options.allowed_devices = {0, 1};
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(options));
+  EXPECT_THAT(client->platform_version(), HasSubstr("cuda"));
+  EXPECT_EQ(client->device_count(), 2);
+}
+
 TEST(TfrtGpuClientTest, MemorySpace) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetTfrtGpuClient(TfrtGpuClient::Options()));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
   ASSERT_GE(client->devices().size(), 1);
 
   for (auto* device : client->devices()) {
@@ -49,8 +59,7 @@ TEST(TfrtGpuClientTest, MemorySpace) {
 }
 
 TEST(TfrtGpuClientTest, MemorySpacesUniqueIds) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetTfrtGpuClient(TfrtGpuClient::Options()));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
   ASSERT_GE(client->devices().size(), 1);
 
   absl::flat_hash_map<int, std::string> memories;
