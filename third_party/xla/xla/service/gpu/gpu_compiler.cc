@@ -210,6 +210,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/layout_assignment.h"
 #include "xla/service/gpu/transforms/move_copy_to_users.h"
 #include "xla/service/gpu/transforms/pipelined_p2p_rewriter.h"
+#include "xla/service/gpu/transforms/ragged_all_to_all_canonicalizer.h"
 #include "xla/service/gpu/transforms/ragged_all_to_all_decomposer.h"
 #include "xla/service/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/service/gpu/transforms/reduction_degenerate_dim_remover.h"
@@ -842,6 +843,7 @@ absl::Status RunCollectiveOptimizationPasses(
   const DebugOptions& debug_options = config.debug_options();
 
   HloPassPipeline collectives_pipeline("collective-optimizations");
+  collectives_pipeline.AddPass<RaggedAllToAllCanonicalizer>();
   if (debug_options.xla_gpu_unsupported_enable_ragged_all_to_all_decomposer()) {
     collectives_pipeline.AddPass<RaggedAllToAllDecomposer>();
   }

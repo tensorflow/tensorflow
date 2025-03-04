@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/log/log.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_runner.h"
@@ -31,6 +32,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::testing::HasSubstr;
 
 class RaggedAllToAllDecomposerTest : public HloRunnerAgnosticTestBase {
  public:
@@ -46,10 +49,10 @@ HloModule module
 ENTRY main {
   input = bf16[16] parameter(0)
   output = bf16[16] parameter(1)
-  input_offsets = s32[2] parameter(2)
-  send_sizes = s32[2] parameter(3)
-  output_offsets = s32[2] parameter(4)
-  recv_sizes = s32[2] parameter(5)
+  input_offsets = s64[2] parameter(2)
+  send_sizes = s64[2] parameter(3)
+  output_offsets = s64[2] parameter(4)
+  recv_sizes = s64[2] parameter(5)
   ROOT ra2a = bf16[16] ragged-all-to-all(input, output, input_offsets,
     send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
 }
@@ -62,7 +65,7 @@ ENTRY main {
   TF_EXPECT_OK(HloCSE(true).Run(module.get()));
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-    // CHECK: s32[2,1]{1,0} all-to-all
+    // CHECK: s64[2,1]{1,0} all-to-all
     // CHECK: dynamic-slice
     // CHECK: reshape
     // CHECK: concatenate
@@ -86,10 +89,10 @@ HloModule module
 ENTRY main {
   input = bf16[16] parameter(0)
   output = bf16[16] parameter(1)
-  input_offsets = s32[2] parameter(2)
-  send_sizes = s32[2] parameter(3)
-  output_offsets = s32[2] parameter(4)
-  recv_sizes = s32[2] parameter(5)
+  input_offsets = s64[2] parameter(2)
+  send_sizes = s64[2] parameter(3)
+  output_offsets = s64[2] parameter(4)
+  recv_sizes = s64[2] parameter(5)
   ROOT ra2a = bf16[16] ragged-all-to-all(input, output, input_offsets,
     send_sizes, output_offsets, recv_sizes), replica_groups={}
 }
@@ -108,10 +111,10 @@ HloModule module
 ENTRY main {
   input = bf16[16] parameter(0)
   output = bf16[16] parameter(1)
-  input_offsets = s32[4] parameter(2)
-  send_sizes = s32[4] parameter(3)
-  output_offsets = s32[4] parameter(4)
-  recv_sizes = s32[4] parameter(5)
+  input_offsets = s64[4] parameter(2)
+  send_sizes = s64[4] parameter(3)
+  output_offsets = s64[4] parameter(4)
+  recv_sizes = s64[4] parameter(5)
   ROOT ra2a = bf16[16] ragged-all-to-all(input, output, input_offsets,
     send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
 }
@@ -147,10 +150,10 @@ HloModule module
 ENTRY main {
   input = bf16[16,8,32] parameter(0)
   output = bf16[16,8,32] parameter(1)
-  input_offsets = s32[4] parameter(2)
-  send_sizes = s32[4] parameter(3)
-  output_offsets = s32[4] parameter(4)
-  recv_sizes = s32[4] parameter(5)
+  input_offsets = s64[4] parameter(2)
+  send_sizes = s64[4] parameter(3)
+  output_offsets = s64[4] parameter(4)
+  recv_sizes = s64[4] parameter(5)
   ROOT ra2a = bf16[16,8,32] ragged-all-to-all(input, output, input_offsets,
   send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3}}
 }
@@ -177,6 +180,31 @@ ENTRY main {
     // CHECK: select
     // CHECK: select
   )"));
+}
+
+TEST_F(RaggedAllToAllDecomposerTest, OffsetsAndSizesNotS64AreRejected) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  input = bf16[16,8,32] parameter(0)
+  output = bf16[16,8,32] parameter(1)
+  input_offsets = s32[4] parameter(2)
+  send_sizes = s32[4] parameter(3)
+  output_offsets = s32[4] parameter(4)
+  recv_sizes = s32[4] parameter(5)
+  ROOT ra2a = bf16[16,8,32] ragged-all-to-all(input, output, input_offsets,
+  send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3}}
+}
+)"));
+
+  RaggedAllToAllDecomposer decomposer;
+  absl::StatusOr<bool> status = decomposer.Run(module.get(), {});
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.status().message(),
+      HasSubstr("RaggedAllToAllDecomposer only supports S64 offsets. Was "
+                "`ragged-all-to-all-canonicalizer` pass executed?"));
 }
 
 }  // namespace
