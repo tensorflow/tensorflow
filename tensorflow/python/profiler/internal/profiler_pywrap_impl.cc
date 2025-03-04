@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"

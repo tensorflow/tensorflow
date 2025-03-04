@@ -24,8 +24,8 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/device_utils.h"
 #include "xla/tsl/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 

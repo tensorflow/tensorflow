@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 // TODO: b/323943471 - This macro should eventually be provided by Abseil.
 #ifndef ABSL_DEPRECATE_AND_INLINE

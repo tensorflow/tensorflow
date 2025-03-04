@@ -101,9 +101,9 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_interface",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -113,9 +113,9 @@ cc_library(
     deps = [
         ":profiler_interface",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_controller",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
