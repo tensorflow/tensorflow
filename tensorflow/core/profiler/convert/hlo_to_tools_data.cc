@@ -18,20 +18,19 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_proto_to_graph_view.h"
 #include "tensorflow/core/profiler/convert/hlo_proto_to_memory_visualization_utils.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -61,9 +60,9 @@ absl::StatusOr<std::string> ConvertHloProtoToMemoryViewer(
   }
 
   std::string json_output;
-  tensorflow::protobuf::util::JsonPrintOptions options;
+  tsl::protobuf::util::JsonPrintOptions options;
   options.always_print_primitive_fields = true;
-  auto encoded_status = tensorflow::protobuf::util::MessageToJsonString(
+  auto encoded_status = tsl::protobuf::util::MessageToJsonString(
       result_or.value(), &json_output, options);
   if (!encoded_status.ok()) {
     const auto& error_message = encoded_status.message();
