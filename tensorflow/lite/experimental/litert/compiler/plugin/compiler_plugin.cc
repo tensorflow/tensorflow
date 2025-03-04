@@ -45,6 +45,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_op_options.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 #include "tensorflow/lite/experimental/litert/compiler/plugin/algo.h"
 #include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
@@ -140,10 +141,9 @@ CompiledResult& CompiledResult::operator=(CompiledResult&& other) {
 namespace {
 
 #define RESOLVE_API_FUNC(name, dest) \
-  LITERT_RETURN_IF_ERROR(            \
-      ResolveLibSymbol<decltype(dest)>(lib_handle, name, &dest));
+  LITERT_ASSIGN_OR_RETURN(dest, lib.LookupSymbol<decltype(dest)>(name.data()));
 
-LiteRtStatus ResolvePluginApi(void* lib_handle,
+LiteRtStatus ResolvePluginApi(SharedLibrary& lib,
                               LiteRtCompilerPluginApi& result) {
   RESOLVE_API_FUNC(kLiteRtGetCompilerPluginVersion,
                    result.get_compiler_plugin_version);
@@ -229,11 +229,12 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
   CompilerPlugin plugin;
   LITERT_LOG(LITERT_INFO, "Loading plugin at: %s", lib_path.data());
 
-  LITERT_RETURN_IF_ERROR(OpenLib(lib_path, &plugin.lib_handle_));
+  LITERT_ASSIGN_OR_RETURN(
+      plugin.lib_,
+      SharedLibrary::Load(lib_path, RtldFlags::Now().Local().DeepBind()));
   LITERT_LOG(LITERT_INFO, "Loaded plugin at: %s", lib_path.data());
 
-  LITERT_RETURN_IF_ERROR(
-      ResolvePluginApi(plugin.lib_handle_, plugin.plugin_api_));
+  LITERT_RETURN_IF_ERROR(ResolvePluginApi(plugin.lib_, plugin.plugin_api_));
   LITERT_LOG(LITERT_INFO, "Resolved plugin api at: %s", lib_path.data());
 
   LITERT_RETURN_IF_ERROR(
@@ -298,19 +299,19 @@ Expected<std::vector<CompilerPlugin>> CompilerPlugin::LoadPlugins(
 
 CompilerPlugin::CompilerPlugin(CompilerPlugin&& other)
     : soc_models_(std::move(other.soc_models_)),
-      lib_handle_(std::move(other.lib_handle_)),
+      lib_(std::move(other.lib_)),
       plugin_api_(std::move(other.plugin_api_)),
       plugin_handle_(std::move(other.plugin_handle_)) {
   other.soc_models_ = {};
   other.plugin_api_ = {};
-  other.lib_handle_ = nullptr;
+  other.lib_.Close();
   other.plugin_handle_ = nullptr;
 }
 
 CompilerPlugin& CompilerPlugin::operator=(CompilerPlugin&& other) {
   if (this != &other) {
     std::swap(soc_models_, other.soc_models_);
-    std::swap(lib_handle_, other.lib_handle_);
+    std::swap(lib_, other.lib_);
     std::swap(plugin_api_, other.plugin_api_);
     std::swap(plugin_handle_, other.plugin_handle_);
   }
@@ -320,11 +321,6 @@ CompilerPlugin& CompilerPlugin::operator=(CompilerPlugin&& other) {
 CompilerPlugin::~CompilerPlugin() {
   if (plugin_handle_ != nullptr) {
     plugin_api_.destroy_compiler_plugin(plugin_handle_);
-  }
-  if (lib_handle_ != nullptr) {
-    if (kLiteRtStatusOk != CloseLib(lib_handle_)) {
-      LITERT_LOG(LITERT_WARNING, "%s", "Failed to close shared library\n");
-    }
   }
 }
 

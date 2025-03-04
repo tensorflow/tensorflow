@@ -33,6 +33,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_op_options",
+        "//tensorflow/lite/experimental/litert/cc:litert_shared_library",
         "//tensorflow/lite/experimental/litert/core:build_stamp",
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
         "//tensorflow/lite/experimental/litert/core:environment",

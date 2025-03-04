@@ -37,6 +37,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 
 //===----------------------------------------------------------------------===//
@@ -180,8 +181,13 @@ class QnnManager {
   // if backendCreate has not been called.
   LiteRtStatus FreeBackend();
 
-  void* lib_so_ = nullptr;
-  void* lib_system_so_ = nullptr;
+  // Handle to the shared library that implements the API. The library is
+  // released when the manager is destroyed.
+  SharedLibrary lib_;
+
+  // Handle to the system shared library that implements the API. The library is
+  // released when the manager is destroyed.
+  SharedLibrary lib_system_;
 
   const QnnInterface_t* interface_ = nullptr;
   const QnnSystemInterface_t* system_interface_ = nullptr;
