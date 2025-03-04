@@ -36,7 +36,9 @@ namespace litert {
 namespace internal {
 
 template Expected<float*> OpenClBuffer::Lock<float>();
+template Expected<char*> OpenClBuffer::Lock<char>();
 template Expected<void> OpenClBuffer::Unlock<float>();
+template Expected<void> OpenClBuffer::Unlock<char>();
 
 template <typename T>
 Expected<T*> OpenClBuffer::Lock() {
