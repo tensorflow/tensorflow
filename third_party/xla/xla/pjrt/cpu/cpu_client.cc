@@ -543,7 +543,7 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
                       compiler.LoadAotCompilationResult(str));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      aot_result->LoadExecutable(&compiler, /*executor=*/nullptr));
+      std::move(*aot_result).LoadExecutable(&compiler, /*executor=*/nullptr));
 
   // Set up other arguments for TfrtCpuExecutable
   // TODO(b/232263665): Remove duplicated code in DeserializeExecutable and

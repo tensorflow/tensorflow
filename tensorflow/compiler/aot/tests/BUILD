@@ -309,19 +309,6 @@ tfcompile_test_dep_configs = [
                 "no_mac",  # TODO(b/228273415)
             ],
         ),
-        tf_library(
-            name = "test_graph_tfmatmulandadd_with_profiling" + suffix,
-            testonly = 1,
-            config = "test_graph_tfmatmulandadd.config.pbtxt",
-            cpp_class = "MatMulAndAddCompWithProfiling",
-            enable_xla_hlo_profiling = True,
-            graph = "test_graph_tfmatmulandadd.pb",
-            mlir_components = mlir_component,
-            tags = [
-                "manual",
-                "no_mac",  # TODO(b/228273415)
-            ],
-        ),
     ]
     for suffix, mlir_component in tfcompile_test_dep_configs
 ]
@@ -395,21 +382,18 @@ tf_cc_test(
         ":test_graph_tfgather",
         ":test_graph_tfmatmul",
         ":test_graph_tfmatmulandadd",
-        ":test_graph_tfmatmulandadd_with_profiling",
         ":test_graph_tfsplits",
         ":test_graph_tftop_k",
         ":test_graph_tfvariable",
         ":test_graph_tfvariable_readonly",
         ":test_graph_tfvariable_sequential_updates",
-        "//tensorflow/core:lib",
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:regexp",
-        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/testlib:test",
-        "@local_xla//xla/service:hlo_profile_printer",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )
