@@ -592,6 +592,12 @@ std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
     return std::nullopt;
   }
 
+  if (EqualizeRanks(rewriter, op->getLoc(), input_lhs_val, input_rhs_val)
+          .failed())
+    return std::nullopt;
+  input_lhs_type = dyn_cast<ShapedType>(input_lhs_val.getType());
+  input_rhs_type = dyn_cast<ShapedType>(input_rhs_val.getType());
+
   if (output_is_qtype) {
     ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
     auto input_lhs_qtype = mlir::cast<mlir::quant::UniformQuantizedType>(
