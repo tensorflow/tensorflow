@@ -54,6 +54,7 @@ cc_library(
     ],
     deps = [
         ":mlrt_ops_inc_gen",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InliningUtils",
@@ -159,6 +160,7 @@ cc_library(
         ":tf_ops_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_side_effects",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:SideEffectInterfaces",
@@ -179,7 +181,9 @@ cc_library(
         ":tf_mlrt_ops",
         ":tf_mlrt_tpu_ops_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
     ],
 )
