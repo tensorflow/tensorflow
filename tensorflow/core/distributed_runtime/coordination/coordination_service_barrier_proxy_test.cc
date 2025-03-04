@@ -87,6 +87,8 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
   MOCK_METHOD(absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>,
               GetTaskState, (const std::vector<CoordinatedTask>& task),
               (override));
+  MOCK_METHOD(absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>,
+              GetJobState, (absl::string_view job_nam), (override));
   MOCK_METHOD(absl::Status, ReportError, (const absl::Status& error),
               (override));
   MOCK_METHOD(absl::Status, Shutdown, (), (override));

@@ -121,6 +121,7 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(ResetTask);
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(GetTaskState);
+  UNIMPLEMENTED(GetJobState);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(TryGetKeyValue);
   UNIMPLEMENTED(GetKeyValueDir);
@@ -620,6 +621,62 @@ TEST_F(CoordinateTwoTasksTest, TestTaskRestart) {
   EXPECT_THAT(s, StatusIs(absl::StatusCode::kAborted));
   // Aborted error is also propagated to other tasks in cluster.
   EXPECT_THAT(client_0_.GetStatus(), StatusIs(absl::StatusCode::kAborted));
+}
+
+TEST_F(CoordinateTwoTasksTest, GetJobStateSucceeds) {
+  // This test calls GetJobState on two successfully connected tasks.
+  EnableCoordinationService();
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+
+  std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+  *want[0].mutable_task() = task_0_;
+  want[0].set_incarnation(incarnation_0_);
+  want[0].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
+  *want[1].mutable_task() = task_1_;
+  want[1].set_incarnation(incarnation_1_);
+  want[1].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
+  EXPECT_THAT(coord_service_->GetJobState("worker"),
+              UnorderedPointwise(EqualsProto(), want));
+}
+
+TEST_F(CoordinateTwoTasksTest, GetJobStateReturnsDisconnected) {
+  // This test calls GetJobState on one successfully connected task and one
+  // disconnected task.
+  EnableCoordinationService();
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  ASSERT_OK(coord_service_->ResetTask(task_1_));
+
+  std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+  *want[0].mutable_task() = task_0_;
+  want[0].set_incarnation(incarnation_0_);
+  want[0].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
+  *want[1].mutable_task() = task_1_;
+  want[1].set_incarnation(incarnation_1_);
+  want[1].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED);
+  EXPECT_THAT(coord_service_->GetJobState("worker"),
+              UnorderedPointwise(EqualsProto(), want));
+}
+
+TEST_F(CoordinateTwoTasksTest, GetJobStateReturnsNewIncarnation) {
+  // This test calls GetJobState after one task has restarted with a new
+  // incarnation.
+  EnableCoordinationService();
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  ASSERT_OK(coord_service_->ResetTask(task_1_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_ + 1));
+
+  std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+  *want[0].mutable_task() = task_0_;
+  want[0].set_incarnation(incarnation_0_);
+  want[0].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
+  *want[1].mutable_task() = task_1_;
+  want[1].set_incarnation(incarnation_1_ + 1);
+  want[1].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
+  EXPECT_THAT(coord_service_->GetJobState("worker"),
+              UnorderedPointwise(EqualsProto(), want));
 }
 
 TEST_F(CoordinateTwoTasksTest, InsertKeyValue_Duplicate_Fail) {
