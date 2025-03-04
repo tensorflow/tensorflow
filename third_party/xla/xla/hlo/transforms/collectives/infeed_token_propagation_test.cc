@@ -979,5 +979,86 @@ ENTRY main {
   EXPECT_EQ(ordering.GetExecutionConstraint(core_outfeed, host_outfeed),
             HloOrdering::ExecutionConstraint::kUnordered);
 }
+
+TEST_F(InfeedTokenPropagationTest, ConditionalSharding) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+true_comp {
+  arg.0 = s32[] parameter(0), sharding={replicated}
+  token.0 = after-all()
+  infeed.0 = token[] outfeed(arg.0, token.0), outfeed_shape=s32[]
+  ROOT tuple.0 = tuple()
+}
+
+false_comp {
+  arg.0 = s32[] parameter(0), sharding={replicated}
+  ROOT tuple.0 = tuple()
+}
+
+ENTRY main {
+  arg.0 = s32[] parameter(0), sharding={replicated}
+  pred.0 = pred[] constant(true)
+  ROOT cond.0 = () conditional(pred.0, arg.0, arg.0), true_computation=true_comp, false_computation=false_comp
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  InfeedTokenPropagation itp;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  // The parameter should have its original sharding, and sharding for the
+  // appended token.
+  HloComputation* true_comp = FindComputation(module.get(), "true_comp");
+  HloInstruction* true_arg = true_comp->parameter_instruction(0);
+  ASSERT_TRUE(true_arg->has_sharding());
+  EXPECT_TRUE(true_arg->sharding().IsTuple());
+  EXPECT_EQ(true_arg->sharding().tuple_elements().size(), 2);
+  // Token can have arbitrary sharding, so we don't check it.
+  EXPECT_TRUE(true_arg->sharding().tuple_elements()[0].IsReplicated());
+}
+
+TEST_F(InfeedTokenPropagationTest, WhileSharding) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+body {
+  ROOT arg.0 = s32[] parameter(0), sharding={replicated}
+  token.0 = after-all()
+  outfeed.0 = token[] outfeed(arg.0, token.0), outfeed_shape=s32[]
+}
+
+cond {
+  arg.0 = s32[] parameter(0), sharding={replicated}
+  ROOT true.0 = pred[] constant(true)
+}
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  ROOT while.0 = s32[] while(arg.0), condition=cond, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  InfeedTokenPropagation itp;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  // The parameter should have its original sharding, and sharding for the
+  // appended token.
+  HloComputation* body_comp = FindComputation(module.get(), "body");
+  HloInstruction* body_arg = body_comp->parameter_instruction(0);
+  EXPECT_TRUE(body_arg->sharding().IsTuple());
+  EXPECT_EQ(body_arg->sharding().tuple_elements().size(), 2);
+  // Token can have arbitrary sharding, so we don't check it.
+  EXPECT_TRUE(body_arg->sharding().tuple_elements()[0].IsReplicated());
+
+  // All same for condition.
+  HloComputation* cond_comp = FindComputation(module.get(), "cond");
+  HloInstruction* cond_arg = cond_comp->parameter_instruction(0);
+  EXPECT_TRUE(cond_arg->sharding().IsTuple());
+  EXPECT_EQ(cond_arg->sharding().tuple_elements().size(), 2);
+  EXPECT_TRUE(cond_arg->sharding().tuple_elements()[0].IsReplicated());
+}
 }  // namespace
 }  // namespace xla

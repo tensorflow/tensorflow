@@ -667,6 +667,24 @@ ENTRY entry {
                               op::GetTupleElement(second_infeed))));
 }
 
+TEST_P(SpmdPartitioningTest, ManualInfeed) {
+  constexpr absl::string_view hlo = R"(
+HloModule module
+
+ENTRY entry {
+  token.0 = token[] after-all()
+  infeed.0 = (f32[32], token[]) infeed(token.0),
+    sharding={{manual}, {maximal device=0}}
+  ROOT gte.0 = f32[32] get-tuple-element(infeed.0), index=0, sharding={manual}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo, /*num_devices=*/2));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  // Manual infeed should be untouched.
+  EXPECT_THAT(root, op::GetTupleElement(
+                        AllOf(op::Infeed(), op::Shape("(f32[32], token[])"))));
+}
+
 TEST_P(SpmdPartitioningTest, TiledToReplicatedReduce) {
   absl::string_view hlo_string = R"(
 HloModule module
