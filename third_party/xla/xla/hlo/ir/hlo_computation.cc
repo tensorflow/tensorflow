@@ -258,6 +258,11 @@ HloInstruction* HloComputation::AddInstructionInternal(
   instruction_count_++;
   pinst->index_in_parent_ = index;
   instructions_.push_back(info);
+  for (HloComputation* called_computation : pinst->called_computations()) {
+    CHECK(parent() == nullptr || called_computation->parent() == parent())
+        << "Called computation " << called_computation->name()
+        << " is not in the same module as " << name();
+  }
   return pinst;
 }
 
