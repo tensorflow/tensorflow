@@ -249,7 +249,6 @@ tsl_cc_test(
     size = "medium",
     srcs = ["client_server_test.cc"],
     shard_count = 4,
-    tags = if_oss(["not_run:arm"]),
     deps = [
         "//xla/tsl/distributed_runtime/coordination:coordination_client",
         "//xla/tsl/distributed_runtime/coordination:coordination_service",
