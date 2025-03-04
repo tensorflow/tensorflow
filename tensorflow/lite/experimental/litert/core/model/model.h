@@ -884,8 +884,27 @@ std::optional<std::string> GetCustomOpCode(const LiteRtModelT& model,
 ::litert::Expected<LiteRtSubgraph> LookupSubgraph(
     const LiteRtModelT& model, absl::string_view signature_key);
 
+namespace detail {
+
+template <class Arg>
+void SetTflOptions(LiteRtOpT& litert_op, Arg&& arg) {
+  litert_op.tfl_option_ = std::forward<Arg>(arg);
+}
+
+template <class Arg>
+void SetTflOptions2(LiteRtOpT& litert_op, Arg&& arg) {
+  litert_op.tfl_option_2_ = std::forward<Arg>(arg);
+}
+
+template <class Arg>
+void SetTflOpCodes(LiteRtModelT& litert_model, Arg&& arg) {
+  litert_model.tfl_operator_codes_ = std::forward<Arg>(arg);
+}
+
+}  // namespace detail
+
 //
-// Utils
+// Misc Ir Containers
 //
 
 using LiteRtOpWithPartitionIndex = std::pair<LiteRtOp, LiteRtParamIndex>;
@@ -910,23 +929,52 @@ class LiteRtOpListT {
   std::list<LiteRtOpWithPartitionIndex> values_;
 };
 
-namespace detail {
+//
+// Traversal Utils
+//
 
-template <class Arg>
-void SetTflOptions(LiteRtOpT& litert_op, Arg&& arg) {
-  litert_op.tfl_option_ = std::forward<Arg>(arg);
+// Apply func to all the IR in the given model. Iteration behavior is determined
+// by the callback signature.
+template <class F>
+void ForEachIr(LiteRtModel model, F func) {
+  // Per subgraph callbacks.
+  using SgF1 = std::function<void(LiteRtSubgraph)>;
+  using SgF2 = std::function<void(LiteRtSubgraph, int32_t subgraph_ind)>;
+
+  // Per op callbacks.
+  using OpF1 = std::function<void(LiteRtOp)>;
+  using OpF2 = std::function<void(LiteRtSubgraph, LiteRtOp)>;
+  using OpF3 =
+      std::function<void(LiteRtSubgraph, int32_t subgraph_ind, LiteRtOp)>;
+
+  constexpr bool kIsSgOpF1 = std::is_convertible_v<F, SgF1>;
+  constexpr bool kIsSgF2 = std::is_convertible_v<F, SgF2>;
+  constexpr bool kIsOpF1 = std::is_convertible_v<F, OpF1>;
+  constexpr bool kIsOpF2 = std::is_convertible_v<F, OpF2>;
+  constexpr bool kIsOpF3 = std::is_convertible_v<F, OpF3>;
+
+  for (int i = 0; i < model->NumSubgraphs(); ++i) {
+    auto subgraph = model->Subgraphs()[i];
+
+    if constexpr (kIsSgF2) {
+      func(subgraph, i);
+    } else if constexpr (kIsSgOpF1) {
+      func(subgraph);
+    } else {
+      for (int j = 0; j < subgraph->Ops().size(); ++j) {
+        auto* op = subgraph->Ops()[j];
+        if constexpr (kIsOpF1) {
+          func(op);
+        } else if constexpr (kIsOpF2) {
+          func(subgraph, op);
+        } else if constexpr (kIsOpF3) {
+          func(subgraph, i, op);
+        } else {
+          static_assert(false, "Unsupported callback");
+        }
+      }
+    }
+  }
 }
-
-template <class Arg>
-void SetTflOptions2(LiteRtOpT& litert_op, Arg&& arg) {
-  litert_op.tfl_option_2_ = std::forward<Arg>(arg);
-}
-
-template <class Arg>
-void SetTflOpCodes(LiteRtModelT& litert_model, Arg&& arg) {
-  litert_model.tfl_operator_codes_ = std::forward<Arg>(arg);
-}
-
-}  // namespace detail
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_H_

@@ -339,7 +339,7 @@ TEST(ModelTensorTest, DefiningOp) {
 }
 
 //
-// Util
+// Misc Ir Containers
 //
 
 TEST(ModelOpListTest, Push) {
@@ -357,6 +357,57 @@ TEST(ModelOpListTest, PushWithIndex) {
   auto vec = op_list.Values();
   EXPECT_EQ(vec.front().first, &op);
   EXPECT_EQ(vec.front().second, 1);
+}
+
+//
+// Traversal Utils
+//
+
+TEST(CcForEachIrTest, OpF3) {
+  LiteRtModelT model;
+  model.EmplaceSubgraph().EmplaceOp();
+
+  int count = 0;
+  ForEachIr(&model, [&](LiteRtSubgraph subgraph, int32_t subgraph_index,
+                        LiteRtOp op) { count++; });
+  EXPECT_EQ(count, 1);
+}
+
+TEST(CcForEachIrTest, OpF1) {
+  LiteRtModelT model;
+  model.EmplaceSubgraph().EmplaceOp();
+
+  int count = 0;
+  ForEachIr(&model, [&](LiteRtOp op) { count++; });
+  EXPECT_EQ(count, 1);
+}
+
+TEST(CcForEachIrTest, OpF2) {
+  LiteRtModelT model;
+  model.EmplaceSubgraph().EmplaceOp();
+
+  int count = 0;
+  ForEachIr(&model, [&](LiteRtSubgraph subgraph, LiteRtOp op) { count++; });
+  EXPECT_EQ(count, 1);
+}
+
+TEST(CcForEachIrTest, SgF1) {
+  LiteRtModelT model;
+  model.EmplaceSubgraph().EmplaceOp();
+
+  int count = 0;
+  ForEachIr(&model, [&](LiteRtSubgraph subgraph) { count++; });
+  EXPECT_EQ(count, 1);
+}
+
+TEST(CcForEachIrTest, SgF2) {
+  LiteRtModelT model;
+  model.EmplaceSubgraph().EmplaceOp();
+
+  int count = 0;
+  ForEachIr(&model,
+            [&](LiteRtSubgraph subgraph, int32_t subgraph_index) { count++; });
+  EXPECT_EQ(count, 1);
 }
 
 }  // namespace
