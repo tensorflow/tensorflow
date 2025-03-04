@@ -405,6 +405,18 @@ cc_library(
         "@local_xla//xla:executable_run_options",
         "@local_xla//xla/service/cpu:buffer_desc",
         "//tensorflow/core/platform:types",
+        "@local_xla//xla/backends/cpu/codegen:aot_compiled_function_library",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@local_xla//xla/backends/cpu/runtime:function_library",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla/service/cpu:executable_proto_cc",
+        "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
+        "@local_xla//xla/backends/cpu/nanort:nanort_executable",
+        "@local_xla//xla/tsl/concurrency:async_value",
+        "@local_xla//xla/tsl/platform:env",
+        "//tensorflow/core:portable_gif_internal",
     ],
 )
 

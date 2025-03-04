@@ -311,6 +311,8 @@ def _tf_library(
             # include_standard_runtime_deps is False.  Without them, the
             # generated code will fail to compile.
             "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+            "@local_xla//xla/backends/cpu/runtime:kernel_c_api",
+            "@local_xla//xla/service/cpu:executable_proto_cc",
             "//tensorflow/core:framework_lite",
         ] + (need_xla_data_proto and [
             # If we're generating the program shape, we must depend on the

@@ -10,6 +10,7 @@ load(
     "if_llvm_x86_available",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -70,7 +71,7 @@ cc_library(
         ":embedded_protocol_buffers",
         ":llvm_targets",  # fixdeps: keep
         "//tensorflow/compiler/tf2xla",
-        "//tensorflow/compiler/tf2xla:mlir_tf2xla",
+        "//tensorflow/compiler/tf2xla:mlir_tf2xla",  # fixdeps: keep
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -85,7 +86,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -94,14 +95,18 @@ cc_library(
         "@llvm-project//llvm:Target",
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla:status_macros",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/backends/cpu/codegen:symbol_name_util",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:compile_only_client",
         "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service/cpu:buffer_info_util",
+        "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
         "@local_xla//xla/service/cpu:cpu_compiler",
+        "@local_xla//xla/stream_executor:platform",
         "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
@@ -173,6 +178,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_xla//xla:debug_options_flags",
