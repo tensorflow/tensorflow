@@ -211,15 +211,22 @@ class IfrtBackend::InOrderRequestsProcessor {
     while (auto entry = Pop()) {
       uint64_t op_id = entry->req->request_metadata().op_id();
       VLOG(3) << "Processing " << entry->req->ShortDebugString();
+      int request_case = entry->req->request_case();
       auto span = entry->xflow.Span<XFlowHelper::kRecvSend>();
       parent_->ProcessInternal(std::move(entry->req))
           .OnReady([p = std::move(entry->promise),
-                    xflow = std::move(entry->xflow),
+                    xflow = std::move(entry->xflow), request_case,
                     op_id](absl::StatusOr<Response> r) mutable {
             auto span = xflow.Span<XFlowHelper::kRecv>();
             if (!r.ok()) {
-              VLOG(3) << "Responding " << op_id << ": " << r.status();
-
+              absl::string_view request_type = "REQUEST_NOT_SET";
+              if (request_case != IfrtRequest::RequestCase::REQUEST_NOT_SET) {
+                request_type = IfrtRequest::descriptor()
+                                   ->FindFieldByNumber(request_case)
+                                   ->name();
+              }
+              LOG(WARNING) << "Responding " << request_type << "(" << op_id
+                           << "): " << r.status();
             } else {
               VLOG(3) << "Responding " << op_id << ": "
                       << (*r)->ShortDebugString();
