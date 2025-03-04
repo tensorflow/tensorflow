@@ -238,11 +238,16 @@ std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(
 //
 // #### Attributes
 //
-// * api_version: always 2 if present
+// * api_version: always 4 if present
 // * has_side_effect: always False if present
 // * called_computations: the comparator for scoring entries
-// * mhlo.backend_config: does not include `top_k` and includes:
+// * backend_config: does not include `top_k` and includes:
 //   * `reduction_dim`
+//
+// TODO(b/392911302): Cleanup mhlo.backend_config.
+// Note: api_version == 2 and mhlo.backend_config attribute supported for
+// backward compatibility, but should not be used and will be removed in the
+// future.
 //
 // #### Outputs
 //
@@ -252,8 +257,8 @@ std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(
 //
 // #### Constraints
 //
-// * (C1) the `mhlo.backend_config` attribute does not contain `top_k`
-// * (C2) the `mhlo.backend_config` attribute contains `reduction_dim`
+// * (C1) the `backend_config` dictionary does not contain `top_k`
+// * (C2) the `backend_config` dictionary contains `reduction_dim`
 // * (C3) len(inputs) == len(initial_values) == len(outputs)
 // * (C4) inputs have ranked type and have the same shape
 // * (C5) initial_values have ranked type and have rank 0
