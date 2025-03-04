@@ -31,6 +31,7 @@ from typing import Any, ClassVar, Dict, List, Tuple
 
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
+    color="yes",
     test_output="errors",
     verbose_failures=True,
     keep_going=True,
@@ -420,6 +421,7 @@ _TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD = Build(
         override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         profile="profile.json.gz",
         test_lang_filters="cc,py",
+        color="yes",
     ),
 )
 
@@ -445,6 +447,7 @@ _TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD = Build(
         override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         profile="profile.json.gz",
         test_lang_filters="cc,py",
+        color="yes",
     ),
 )
 
