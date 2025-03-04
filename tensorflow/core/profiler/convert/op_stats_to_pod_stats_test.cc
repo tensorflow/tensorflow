@@ -16,16 +16,13 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_stats.h"
 
 #include "google/protobuf/any.pb.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
