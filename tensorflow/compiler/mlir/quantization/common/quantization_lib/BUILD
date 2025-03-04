@@ -94,7 +94,6 @@ td_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
     ],
 )
