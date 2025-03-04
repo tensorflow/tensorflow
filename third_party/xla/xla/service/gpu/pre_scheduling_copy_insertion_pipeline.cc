@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/prepare_hlo_for_ir_emitting_pipeline.h"
+#include "xla/service/gpu/pre_scheduling_copy_insertion_pipeline.h"
 
 #include <cstdint>
 #include <memory>
@@ -38,17 +38,18 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
-    HloModule& hlo_module, HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+HloPassPipeline PreSchedulingCopyInsertionPipeline(
+    const HloModuleConfig& config,
+    HloDataflowAnalysis::CanShareBuffer can_share_buffer,
     const se::DeviceDescription& device_description) {
-  const DebugOptions& debug_options = hlo_module.config().debug_options();
+  const DebugOptions& debug_options = config.debug_options();
 
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
-  HloPassPipeline pipeline("GPU-ir-emit-prepare");
+  HloPassPipeline pipeline("pre-scheduling-copy-insertion");
   HloVerifierOpts opts =
       HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
           LayoutAssignment::InstructionCanChangeLayout);
@@ -65,7 +66,7 @@ HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
   // (and sometime after) copy insertion, to avoid dead code from interfering
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
-  if (hlo_module.config().alias_passthrough_params()) {
+  if (config.alias_passthrough_params()) {
     pipeline.AddPass<AliasPassthroughParams>();
   }
   pipeline.AddPass<LoopScheduleLinearizer>(can_share_buffer);

@@ -1346,9 +1346,9 @@ cc_library(
 )
 
 cc_library(
-    name = "prepare_hlo_for_ir_emitting_pipeline",
-    srcs = ["prepare_hlo_for_ir_emitting_pipeline.cc"],
-    hdrs = ["prepare_hlo_for_ir_emitting_pipeline.h"],
+    name = "pre_scheduling_copy_insertion_pipeline",
+    srcs = ["pre_scheduling_copy_insertion_pipeline.cc"],
+    hdrs = ["pre_scheduling_copy_insertion_pipeline.h"],
     deps = [
         "//xla:xla_proto_cc",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
@@ -1402,7 +1402,7 @@ cc_library(
         ":kernel_reuse_cache",
         ":matmul_utils",
         ":metrics",
-        ":prepare_hlo_for_ir_emitting_pipeline",
+        ":pre_scheduling_copy_insertion_pipeline",
         ":reduction_utils",
         ":runtime_intrinsics",
         ":stream_executor_util",

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_PREPARE_HLO_FOR_IR_EMITTING_PIPELINE_H_
-#define XLA_SERVICE_GPU_PREPARE_HLO_FOR_IR_EMITTING_PIPELINE_H_
+#ifndef XLA_SERVICE_GPU_PRE_SCHEDULING_COPY_INSERTION_PIPELINE_H_
+#define XLA_SERVICE_GPU_PRE_SCHEDULING_COPY_INSERTION_PIPELINE_H_
 
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -24,14 +24,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Function wrapper around the XLA GPU base pre-IR emission module preparation
-// pipeline. This pipeline must be run right before IR emission to ensure
-// correctness of the input module.
-HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
-    HloModule& hlo_module, HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+// Function wrapper around the XLA:GPU pre-scheduling copy insertion pipeline.
+// This pipeline must run before scheduling to ensure correctness.
+HloPassPipeline PreSchedulingCopyInsertionPipeline(
+    const HloModuleConfig& config,
+    HloDataflowAnalysis::CanShareBuffer can_share_buffer,
     const se::DeviceDescription& device_description);
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_PREPARE_HLO_FOR_IR_EMITTING_PIPELINE_H_
+#endif  // XLA_SERVICE_GPU_PRE_SCHEDULING_COPY_INSERTION_PIPELINE_H_

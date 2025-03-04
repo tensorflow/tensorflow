@@ -171,7 +171,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model_stats_collection.h"
-#include "xla/service/gpu/prepare_hlo_for_ir_emitting_pipeline.h"
+#include "xla/service/gpu/pre_scheduling_copy_insertion_pipeline.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -1282,6 +1282,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config) {
   tsl::profiler::TraceMe traceme("GpuCompiler::OptimizeHloModule");
+  const se::DeviceDescription& device_description =
+      gpu_target_config.device_description;
 
   CheckNotScheduled(hlo_module);
   LogDebugOptions(hlo_module);
@@ -1304,7 +1306,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunOptimizationPasses(hlo_module, gpu_target_config,
                                            layout_insensitive_algsimp_opts));
   se::GpuComputeCapability gpu_version =
-      gpu_target_config.device_description.gpu_compute_capability();
+      device_description.gpu_compute_capability();
   TF_RETURN_IF_ERROR(RunCollectiveOptimizationPasses(
       hlo_module, layout_insensitive_algsimp_opts, gpu_version));
 
@@ -1318,11 +1320,10 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   TF_RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
       hlo_module, gpu_version, dnn_version,
-      gpu_target_config.device_description.runtime_version()));
+      device_description.runtime_version()));
 
-  TF_RETURN_IF_ERROR(
-      RunLayoutAssignmentPasses(hlo_module, gpu_version, dnn_version,
-                                gpu_target_config.device_description));
+  TF_RETURN_IF_ERROR(RunLayoutAssignmentPasses(
+      hlo_module, gpu_version, dnn_version, device_description));
 
   TF_RETURN_IF_ERROR(RunLayoutNormalizationPasses(hlo_module, gpu_version));
 
@@ -1337,8 +1338,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunFusionPasses(hlo_module, gpu_target_config,
                                      thread_pool.get_mutable(),
                                      ShapeSizeBytesFunction()));
-  TF_RETURN_IF_ERROR(RunPostFusionPasses(
-      hlo_module, gpu_target_config.device_description, pointer_size_));
+  TF_RETURN_IF_ERROR(
+      RunPostFusionPasses(hlo_module, device_description, pointer_size_));
   TF_RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
       hlo_module, layout_insensitive_algsimp_opts, gpu_version,
@@ -1362,14 +1363,12 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
   return opts;
 }
 
-// Modifies the given HLO module so that it will be accepted by IrEmitter.
-// Unlike optimization passes, the passes are necessary for correctness.
-absl::Status GpuCompiler::PrepareHloModuleForIrEmitting(
-    HloModule* hlo_module, const se::DeviceDescription& device_description) {
-  return PrepareHloModuleForIrEmittingPipeline(
-             *hlo_module, GetCanShareBuffer(device_description),
+absl::Status GpuCompiler::RunPreSchedulingCopyInsertion(
+    HloModule& hlo_module, const se::DeviceDescription& device_description) {
+  return PreSchedulingCopyInsertionPipeline(
+             hlo_module.config(), GetCanShareBuffer(device_description),
              device_description)
-      .Run(hlo_module)
+      .Run(&hlo_module)
       .status();
 }
 
@@ -1747,18 +1746,18 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
                                        is_deviceless ? nullptr : stream_exec,
                                        options, gpu_target_config));
 
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(
-      module.get(), gpu_target_config.device_description));
+  const se::DeviceDescription& device_description =
+      gpu_target_config.device_description;
+  TF_RETURN_IF_ERROR(
+      RunPreSchedulingCopyInsertion(*module, device_description));
 
   const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &gpu_target_config.device_description.gpu_compute_capability());
+      &device_description.gpu_compute_capability());
   if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
     // This needs to run after every pass affecting fusions, which includes
-    // `CopyFusion`, which itself must run in the
-    // `PrepareHloModuleForIrEmitting` pipeline.
+    // `CopyFusion`, which runs just before.
     TF_RETURN_IF_ERROR(
-        FusionDispatchPipeline(gpu_target_config.device_description,
-                               ShapeSizeBytesFunction())
+        FusionDispatchPipeline(device_description, ShapeSizeBytesFunction())
             .Run(module.get())
             .status());
   }
