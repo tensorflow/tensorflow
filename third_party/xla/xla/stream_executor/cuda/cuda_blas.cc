@@ -1404,7 +1404,7 @@ void initialize_cublas() {
           });
 
   if (!status.ok()) {
-    LOG(ERROR) << "Unable to register cuBLAS factory: " << status.message();
+    LOG(INFO) << "Unable to register cuBLAS factory: " << status.message();
   }
 }
 
