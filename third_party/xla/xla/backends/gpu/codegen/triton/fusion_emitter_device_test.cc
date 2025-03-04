@@ -13,16 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "Eigen/Core"
 #include "llvm/IR/LLVMContext.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
@@ -41,9 +45,9 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -54,9 +58,11 @@ namespace xla {
 namespace gpu {
 namespace {
 
+constexpr ErrorSpec kExactMatch{/*aabs=*/0, /*arel=*/0};
+
 class TritonEmitterTest : public GpuCodegenTest {
  public:
-  const stream_executor::GpuComputeCapability& GpuComputeComp() {
+  const stream_executor::GpuComputeCapability& GpuComputeCapability() {
     return backend()
         .default_stream_executor()
         ->GetDeviceDescription()
@@ -96,8 +102,7 @@ ENTRY entry_computation {
 CHECK:  "tt.reduce"(%[[LOAD:.*]]) <{axis = 1 : i32}>
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest,
@@ -137,8 +142,7 @@ CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[ABS:.*]]) <{axis = 1 : i32}>
 CHECK:  tt.store %{{.*}}, %[[REDUCE]] : !tt.ptr<tensor<64xf32>>
 CHECK:  tt.store %{{.*}}, %[[ABS]] : !tt.ptr<tensor<64x512xf32>>
 )"));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest,
@@ -166,8 +170,7 @@ CHECK-SAME: {boundaryCheck = array<i32: 0>}
 CHECK:  tt.store
 CHECK-SAME: {boundaryCheck = array<i32: 0>}
 )"));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, SliceWithExtraOutputThatCanReuseTileDueToPadding) {
@@ -200,8 +203,7 @@ CHECK-SAME: {boundaryCheck = array<i32: 0>}
 CHECK:  tt.store
 CHECK-NOT: {boundaryCheck = array<i32: 0>}
 )"));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, BitcastReduceWithStride1Tiling) {
@@ -240,8 +242,7 @@ CHECK-COUNT-1:  tt.load
 CHECK: tt.reduce
 CHECK-COUNT-2:  tt.store
 )"));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, BitcastReduceWithStride4Tiling) {
@@ -309,8 +310,7 @@ CHECK-COUNT-4:  tt.expand_dims
 CHECK:  "tt.reduce"(%[[SELECT:.*]]) <{axis = 2 : i32}>
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, TestReductionWithTileSizeLargerThanSourceTensor) {
@@ -348,8 +348,7 @@ CHECK:    tt.reduce.return %[[MAXIMUM]] : f32
 CHECK:  })
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
@@ -553,8 +552,7 @@ CHECK-DAG:        tt.make_tensor_ptr %[[BASE_PTR3_STORE]], [%[[ROW_SUB]], %[[COL
 CHECK-NEXT:       tt.store {{.*}} : !tt.ptr<tensor<1x1x128xf32>>
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(
@@ -589,12 +587,11 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, NestedReducerFusionGetsCodegenedCorrectly) {
-  if (!SupportsBF16(GpuComputeComp())) {
+  if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
 
@@ -663,8 +660,7 @@ ENTRY main {
   ROOT _ = f32[16,32]{1,0} fusion(parameter_0,parameter_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","32"]}],"num_warps":"1"}}}
 })";
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(
@@ -718,8 +714,7 @@ ENTRY main {
 // CHECK:           tt.store {{.*}} : !tt.ptr<tensor<1x1x16xf32>>
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(
@@ -752,8 +747,7 @@ ENTRY main {
 }
 )";
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
@@ -924,8 +918,7 @@ ENTRY main {
       "block_level_fusion_config":{"output_tiles":[{"sizes":["2","5","16"]}],"num_warps":"4"}}}
 })";
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, TestSoftMaxWithTileElementsNotAllContiguous) {
@@ -991,8 +984,8 @@ ENTRY entry_computation {
   param_0.2 = f32[16,16,32] parameter(0)
   ROOT fusion = f32[4,4,8] fusion(param_0.2), kind=kCustom, calls=fused_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["2","2","8"]}],"num_warps":"1"}}}
 })";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0,
-                                                           /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-6,
+                                                           /*arel=*/1e-6}));
 }
 
 TEST_F(TritonEmitterTest, TestSliceWithTileElementsNotAllContiguousUnaligned) {
@@ -1040,8 +1033,7 @@ ENTRY main {
 CHECK: tt.reshape
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, BitcastIntoBroadcastIsLoweredCorrectly) {
@@ -1066,8 +1058,7 @@ ENTRY main {
 CHECK: tt.reshape
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, BitcastNormalizedLayoutsIsLoweredCorrectly) {
@@ -1094,8 +1085,7 @@ CHECK-NOT: tt.trans
 CHECK:     tt.store
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, BitcastNonNormalizedInputLayoutIsLoweredCorrectly) {
@@ -1122,8 +1112,7 @@ CHECK-NOT: tt.trans
 CHECK:     tt.store
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, BitcastNonNormalizedOutputLayoutIsLoweredCorrectly) {
@@ -1150,8 +1139,7 @@ CHECK:     tt.trans
 CHECK:     tt.store
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest,
@@ -1179,8 +1167,7 @@ CHECK:     tt.trans
 CHECK:     tt.store
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, BitcastTransposeOnlyIsLoweredCorrectly) {
@@ -1207,8 +1194,7 @@ CHECK-NOT: tt.trans
 CHECK:     tt.store
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest,
@@ -1250,8 +1236,7 @@ CHECK:     tt.broadcast
 CHECK:     tt.store
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 // TODO(b/353484968): move this test to a deviceless file.
@@ -1306,8 +1291,7 @@ CHECK-SAME:   tensor<4xi1> to tensor<4xi8>
 CHECK:      tt.store {{.*}} %[[CASTED_OUT]]
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, PredInputIsLoadedCorrectly) {
@@ -1344,8 +1328,7 @@ CHECK:      %[[I8_PARAM:.*]] = tt.load {{.*}} : !tt.ptr<tensor<4xi8>>
 CHECK:      arith.trunci %[[I8_PARAM]] : tensor<4xi8> to tensor<4xi1>
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, Transpose3D) {
@@ -1372,8 +1355,7 @@ CHECK:      %[[TILE:.*]] = tt.load {{.*}} : !tt.ptr<tensor<8x4x1xf32>>
 CHECK:      tt.trans %[[TILE]] {order = array<i32: 2, 0, 1>} : tensor<8x4x1xf32> -> tensor<1x8x4xf32>
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, Transpose3DWithExtraOutput) {
@@ -1407,8 +1389,7 @@ CHECK:         tt.trans %[[ABS]] {order = array<i32: 2, 0, 1>} : tensor<8x4x1xf3
 CHECK-COUNT-2: tt.store
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 // TODO(b/353484968): Delete this test once we have constraints to only
@@ -1431,8 +1412,7 @@ ENTRY main {
       "block_level_fusion_config":{"output_tiles":[{"sizes":["1","1", "20"]}],
                                    "num_warps":"4"}}}
 })";
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, StridedIota4DIsCodegeneratedCorrectly) {
@@ -1457,8 +1437,7 @@ CHECK:      %[[RANGE:.*]] = tt.make_range {{.*}} : tensor<64xi32>
 CHECK:      arith.muli{{.*}} %[[RANGE]]
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 class IotaEmitterParametrizedTest
@@ -1492,8 +1471,7 @@ CHECK:      arith.addi{{.*}} %[[RANGE]]
 CHECK:      tt.broadcast {{.*}} -> tensor<1x2x64x8x
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 INSTANTIATE_TEST_SUITE_P(IotaEmitterParametrizedTestSuite,
@@ -1521,8 +1499,7 @@ ENTRY entry_computation {
 CHECK:     tt.load
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, Chaining0DElementwiseScalarsIsSupported) {
@@ -1680,8 +1657,7 @@ CHECK:     tt.reduce
 CHECK:     tt.store
 )"));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 // Reproducer from b/384110192.
@@ -1734,9 +1710,52 @@ ENTRY entry_computation {
                                          ->shape();
 
   ASSERT_GT(Product(triton_fusion_shape.dimensions()), 1l << 32);
-  EXPECT_TRUE(RunAndCompareTwoModules(
-      std::move(triton_module), std::move(emitters_module),
-      ErrorSpec{/*aabs=*/0, /*arel=*/0}, /*run_hlo_passes=*/false));
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(triton_module),
+                                      std::move(emitters_module), kExactMatch,
+                                      /*run_hlo_passes=*/false));
+}
+
+TEST_F(TritonEmitterTest, ConvertF16ToF8E5M2Exhaustive) {
+  // TODO(b/396595945): enable post-Ampere once Triton respects RTNE semantics
+  // on H100.
+  if (auto cc =
+          std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
+    if (cc->IsAtLeastHopper()) {
+      GTEST_SKIP() << "Skipping tests above Ampere, Triton's conversion isn't "
+                      "always correct";
+    }
+  }
+
+  constexpr absl::string_view kHloTextTemplate = R"(
+computation {
+  p0 = f16[65536]{0} parameter(0)
+  ROOT convert = f8e5m2[65536]{0} convert(p0)
+}
+
+ENTRY entry_computation {
+  p0 = f16[65536]{0} constant({$0})
+  ROOT fusion = f8e5m2[65536]{0} fusion(p0), kind=kCustom,
+    calls=computation,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["256"]}],"num_warps":"1"}}}
+})";
+
+  std::vector<Eigen::half> all_f16_values;
+  for (int i = 0; i < 65536; i++) {
+    all_f16_values.push_back(
+        Eigen::numext::bit_cast<Eigen::half>(static_cast<uint16_t>(i)));
+  }
+
+  std::string hlo_text =
+      absl::Substitute(kHloTextTemplate, absl::StrJoin(all_f16_values, ", "));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), kExactMatch));
 }
 
 }  // namespace

@@ -19,5 +19,6 @@ temporary_patch_list = [
     "//third_party/triton:temporary/sm120.patch",
     "//third_party/triton:temporary/mmav5_warps.patch",
     "//third_party/triton:temporary/ptxas_blackwell.patch",
+    "//third_party/triton:temporary/f8e5m2_conversion.patch",
     # Add new patches just above this line
 ]
