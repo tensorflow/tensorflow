@@ -246,23 +246,6 @@ load("//crosstool:error_gpu_disabled.bzl", "error_gpu_disabled")
 error_gpu_disabled()
 """
 
-def _cuda_include_paths(repository_ctx):
-    return ["%s/include" % repository_ctx.path(f).dirname for f in [
-        repository_ctx.attr.cccl_version,
-        repository_ctx.attr.cublas_version,
-        repository_ctx.attr.cudart_version,
-        repository_ctx.attr.cudnn_version,
-        repository_ctx.attr.cufft_version,
-        repository_ctx.attr.cupti_version,
-        repository_ctx.attr.curand_version,
-        repository_ctx.attr.cusolver_version,
-        repository_ctx.attr.cusparse_version,
-        repository_ctx.attr.nvcc_version,
-        repository_ctx.attr.nvjitlink_version,
-        repository_ctx.attr.nvml_version,
-        repository_ctx.attr.nvtx_version,
-    ]]
-
 def _setup_toolchains(repository_ctx, cc, cuda_version):
     is_nvcc_and_clang = _use_nvcc_and_clang(repository_ctx)
     is_nvcc_for_cuda = _use_nvcc_for_cuda(repository_ctx)
@@ -301,7 +284,7 @@ def _setup_toolchains(repository_ctx, cc, cuda_version):
             cuda_defines["%{cuda_toolkit_path}"] = repository_ctx.attr.nvcc_binary.workspace_root
         else:
             cuda_defines["%{cuda_toolkit_path}"] = ""
-        cuda_defines["%{cuda_nvcc_files}"] = "if_cuda([\"@{nvcc_archive}//:bin\", \"@{nvcc_archive}//:nvvm\"])".format(
+        cuda_defines["%{cuda_nvcc_files}"] = "if_cuda([\"@{nvcc_archive}//:bin\"])".format(
             nvcc_archive = repository_ctx.attr.nvcc_binary.repo_name,
         )
         nvcc_relative_path = "%s/%s" % (
@@ -317,11 +300,8 @@ def _setup_toolchains(repository_ctx, cc, cuda_version):
     else:
         cuda_defines["%{compiler}"] = "unknown"
         cuda_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
-        cuda_includes = []
-        if enable_cuda(repository_ctx):
-            cuda_includes = _cuda_include_paths(repository_ctx)
         cuda_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
-            host_compiler_includes + cuda_includes,
+            host_compiler_includes,
         )
     cuda_defines["%{host_compiler_prefix}"] = "/usr/bin"
     cuda_defines["%{linker_bin_path}"] = ""
@@ -557,7 +537,6 @@ cuda_configure = repository_rule(
     environ = _ENVIRONS,
     attrs = {
         "environ": attr.string_dict(),
-        "cccl_version": attr.label(default = Label("@cuda_cccl//:version.txt")),
         "cublas_version": attr.label(default = Label("@cuda_cublas//:version.txt")),
         "cudart_version": attr.label(default = Label("@cuda_cudart//:version.txt")),
         "cudnn_version": attr.label(default = Label("@cuda_cudnn//:version.txt")),
@@ -567,10 +546,6 @@ cuda_configure = repository_rule(
         "cusolver_version": attr.label(default = Label("@cuda_cusolver//:version.txt")),
         "cusparse_version": attr.label(default = Label("@cuda_cusparse//:version.txt")),
         "nvcc_binary": attr.label(default = Label("@cuda_nvcc//:bin/nvcc")),
-        "nvcc_version": attr.label(default = Label("@cuda_nvcc//:version.txt")),
-        "nvjitlink_version": attr.label(default = Label("@cuda_nvjitlink//:version.txt")),
-        "nvml_version": attr.label(default = Label("@cuda_nvml//:version.txt")),
-        "nvtx_version": attr.label(default = Label("@cuda_nvtx//:version.txt")),
         "local_config_cuda_build_file": attr.label(default = Label("//third_party/gpus:local_config_cuda.BUILD")),
         "build_defs_tpl": attr.label(default = Label("//third_party/gpus/cuda:build_defs.bzl.tpl")),
         "cuda_build_tpl": attr.label(default = Label("//third_party/gpus/cuda/hermetic:BUILD.tpl")),
