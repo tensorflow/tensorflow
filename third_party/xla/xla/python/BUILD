@@ -287,6 +287,7 @@ cc_library(
 cc_library(
     name = "py_client",
     srcs = [
+        "ffi.cc",
         "py_array.cc",
         "py_client.cc",
         "py_compile_only_client.cc",
@@ -300,6 +301,7 @@ cc_library(
         "to_ifrt_sharding.cc",
     ],
     hdrs = [
+        "ffi.h",
         "py_array.h",
         "py_client.h",
         "py_compile_only_client.h",
@@ -370,6 +372,9 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/ffi/api:c_api",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:arithmetic",
