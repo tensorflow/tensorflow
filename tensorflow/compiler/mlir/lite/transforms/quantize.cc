@@ -607,9 +607,8 @@ struct QuantizePass : public impl::QuantizePassBase<QuantizePass> {
   quant::QuantizationSpecs quant_specs;
 };
 
-namespace quantize_patterns {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
-}
+
 namespace quantize_by_converter_patterns {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize_by_converter.inc"
 }
@@ -652,24 +651,29 @@ void QuantizePass::runOnOperation() {
        quant_specs.whole_model_verify, enable_log_if_failed_},
       quant_specs};
 
-  quantize_patterns::populateWithGenerated(patterns);
-
-  if (quant_specs.qdq_conversion_mode == quant::QDQConversionMode::kQDQNone) {
+  if (quant_specs.qdq_conversion_mode == quant::QDQConversionMode::kQDQStrict) {
+    patterns.add<StrictQuantizationPattern>(ctx, quant_params);
+    patterns.add<RemoveUnusedFQ, SquashDqQ, FuseDqQToRequant, FuseQQToRequant>(
+        ctx);
+  } else if (quant_specs.weight_quantization ||
+             quant_specs.use_fake_quant_num_bits ||
+             quant_specs.qdq_conversion_mode ==
+                 quant::QDQConversionMode::kQDQDynamic) {
+    patterns.add<SquashDqQ, EliminateRemnantConstQDQ>(ctx);
     quantize_by_converter_patterns::populateWithGenerated(patterns);
-  }
-
-  if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits ||
-      quant_specs.qdq_conversion_mode ==
-          quant::QDQConversionMode::kQDQDynamic) {
     patterns.add<TFLDynamicRangeQuantization>(ctx, quant_params);
   } else if (quant_specs.qdq_conversion_mode ==
-             quant::QDQConversionMode::kQDQStrict) {
-    patterns.add<StrictQuantizationPattern>(ctx, quant_params);
-    patterns.add<RemoveUnusedFQ>(ctx);
+             quant::QDQConversionMode::kQDQNone) {
+    patterns.add<SquashDqQ, EliminateRemnantConstQDQ>(ctx);
+    quantize_by_converter_patterns::populateWithGenerated(patterns);
+    patterns.add<TFLFullQuantization, TFLFullQuantizationReverse>(ctx,
+                                                                  quant_params);
   } else {
+    patterns.add<SquashDqQ, EliminateRemnantConstQDQ>(ctx);
     patterns.add<TFLFullQuantization, TFLFullQuantizationReverse>(ctx,
                                                                   quant_params);
   }
+
   (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Constant quantization is a lossy transformation, so they are applied only
