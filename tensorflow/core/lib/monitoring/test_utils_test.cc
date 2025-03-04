@@ -16,6 +16,11 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
+#include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "third_party/protobuf/text_format.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
