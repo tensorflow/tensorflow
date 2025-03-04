@@ -178,6 +178,10 @@ class Shape {
     dimensions_.push_back(value);
     dynamic_dimensions_.push_back(false);
   }
+  void add_dimensions(int64_t value, int64_t index) {
+    dimensions_.insert(dimensions_.begin() + index, value);
+    dynamic_dimensions_.insert(dynamic_dimensions_.begin() + index, false);
+  }
   void clear_dimensions() {
     dimensions_.clear();
     dynamic_dimensions_.clear();
