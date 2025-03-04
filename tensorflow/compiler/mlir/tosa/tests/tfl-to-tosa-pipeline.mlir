@@ -1356,6 +1356,69 @@ func.func @test_strided_slice_dynamic_end(%arg0: tensor<10x?x?xf32>) -> tensor<*
 
 // -----
 
+// CHECK-LABEL: test_strided_slice_padding_even
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<[4, 4, 64]> : tensor<3xindex>} : () -> !tosa.shape<3>
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.const_shape  {value = dense<0> : tensor<5xindex>} : () -> !tosa.shape<5>
+// CHECK-DAG: %[[VAL_3:.*]] = tosa.const_shape  {value = dense<[4, 1, 4, 1, 64]> : tensor<5xindex>} : () -> !tosa.shape<5>
+// CHECK-DAG: %[[VAL_4:.*]] = tosa.const_shape  {value = dense<[4, 2, 4, 2, 64]> : tensor<5xindex>} : () -> !tosa.shape<5>
+// CHECK-DAG: %[[VAL_5:.*]] = tosa.const_shape  {value = dense<[0, 1, 0, 1, 0, 0]> : tensor<6xindex>} : () -> !tosa.shape<6>
+// CHECK-DAG: %[[VAL_6:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
+// CHECK: %[[VAL_7:.*]] = tosa.pad %arg0, %[[VAL_5]], %[[VAL_6]] : (tensor<7x7x64xf32>, !tosa.shape<6>, tensor<1xf32>) -> tensor<8x8x64xf32>
+// CHECK: %[[VAL_8:.*]] = tosa.reshape %[[VAL_7]], %[[VAL_4]] : (tensor<8x8x64xf32>, !tosa.shape<5>) -> tensor<4x2x4x2x64xf32>
+// CHECK: %[[VAL_9:.*]] = tosa.slice %[[VAL_8]], %[[VAL_2]], %[[VAL_3]] : (tensor<4x2x4x2x64xf32>, !tosa.shape<5>, !tosa.shape<5>) -> tensor<4x1x4x1x64xf32>
+// CHECK: %[[VAL_10:.*]] = tosa.reshape %[[VAL_9]], %[[VAL_1]] : (tensor<4x1x4x1x64xf32>, !tosa.shape<3>) -> tensor<4x4x64xf32>
+func.func @test_strided_slice_padding_even(%arg0: tensor<7x7x64xf32>) -> tensor<*xf32> {
+  %begin = arith.constant dense<[0, 0, 0]> : tensor<3xi32>
+  %end = arith.constant dense<[0, 0, 64]> : tensor<3xi32>
+  %stride = arith.constant dense<[2, 2, 1]> : tensor<3xi32>
+  %0 = "tfl.strided_slice"(%arg0, %begin, %end, %stride)  {begin_mask = 15 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<7x7x64xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_strided_slice_padding_odd
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<[5, 5, 32]> : tensor<3xindex>} : () -> !tosa.shape<3>
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.const_shape  {value = dense<0> : tensor<5xindex>} : () -> !tosa.shape<5>
+// CHECK-DAG: %[[VAL_3:.*]] = tosa.const_shape  {value = dense<[5, 1, 5, 1, 32]> : tensor<5xindex>} : () -> !tosa.shape<5>
+// CHECK-DAG: %[[VAL_4:.*]] = tosa.const_shape  {value = dense<[5, 3, 5, 3, 32]> : tensor<5xindex>} : () -> !tosa.shape<5>
+// CHECK-DAG: %[[VAL_5:.*]] = tosa.const_shape  {value = dense<[0, 1, 0, 1, 0, 0]> : tensor<6xindex>} : () -> !tosa.shape<6>
+// CHECK-DAG: %[[VAL_6:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
+// CHECK: %[[VAL_7:.*]] = tosa.pad %arg0, %[[VAL_5]], %[[VAL_6]] : (tensor<14x14x32xf32>, !tosa.shape<6>, tensor<1xf32>) -> tensor<15x15x32xf32>
+// CHECK: %[[VAL_8:.*]] = tosa.reshape %[[VAL_7]], %[[VAL_4]] : (tensor<15x15x32xf32>, !tosa.shape<5>) -> tensor<5x3x5x3x32xf32>
+// CHECK: %[[VAL_9:.*]] = tosa.slice %[[VAL_8]], %[[VAL_2]], %[[VAL_3]] : (tensor<5x3x5x3x32xf32>, !tosa.shape<5>, !tosa.shape<5>) -> tensor<5x1x5x1x32xf32>
+// CHECK: %[[VAL_10:.*]] = tosa.reshape %[[VAL_9]], %[[VAL_1]] : (tensor<5x1x5x1x32xf32>, !tosa.shape<3>) -> tensor<5x5x32xf32>
+func.func @test_strided_slice_padding_odd(%arg0: tensor<14x14x32xf32>) -> tensor<*xf32> {
+  %begin = arith.constant dense<[0, 0, 0]> : tensor<3xi32>
+  %end = arith.constant dense<[0, 0, 32]> : tensor<3xi32>
+  %stride = arith.constant dense<[3, 3, 1]> : tensor<3xi32>
+  %0 = "tfl.strided_slice"(%arg0, %begin, %end, %stride)  {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<14x14x32xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_strided_slice_padding_pad_greater_than_1
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<[5, 5, 32]> : tensor<3xindex>} : () -> !tosa.shape<3>
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.const_shape  {value = dense<0> : tensor<5xindex>} : () -> !tosa.shape<5>
+// CHECK-DAG: %[[VAL_3:.*]] = tosa.const_shape  {value = dense<[5, 1, 5, 1, 32]> : tensor<5xindex>} : () -> !tosa.shape<5>
+// CHECK-DAG: %[[VAL_4:.*]] = tosa.const_shape  {value = dense<[5, 3, 5, 3, 32]> : tensor<5xindex>} : () -> !tosa.shape<5>
+// CHECK-DAG: %[[VAL_5:.*]] = tosa.const_shape  {value = dense<[0, 2, 0, 2, 0, 0]> : tensor<6xindex>} : () -> !tosa.shape<6>
+// CHECK-DAG: %[[VAL_6:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
+// CHECK: %[[VAL_7:.*]] = tosa.pad %arg0, %[[VAL_5]], %[[VAL_6]] : (tensor<13x13x32xf32>, !tosa.shape<6>, tensor<1xf32>) -> tensor<15x15x32xf32>
+// CHECK: %[[VAL_8:.*]] = tosa.reshape %[[VAL_7]], %[[VAL_4]] : (tensor<15x15x32xf32>, !tosa.shape<5>) -> tensor<5x3x5x3x32xf32>
+// CHECK: %[[VAL_9:.*]] = tosa.slice %[[VAL_8]], %[[VAL_2]], %[[VAL_3]] : (tensor<5x3x5x3x32xf32>, !tosa.shape<5>, !tosa.shape<5>) -> tensor<5x1x5x1x32xf32>
+// CHECK: %[[VAL_10:.*]] = tosa.reshape %[[VAL_9]], %[[VAL_1]] : (tensor<5x1x5x1x32xf32>, !tosa.shape<3>) -> tensor<5x5x32xf32>
+func.func @test_strided_slice_padding_pad_greater_than_1(%arg0: tensor<13x13x32xf32>) -> tensor<*xf32> {
+  %begin = arith.constant dense<[0, 0, 0]> : tensor<3xi32>
+  %end = arith.constant dense<[0, 0, 32]> : tensor<3xi32>
+  %stride = arith.constant dense<[3, 3, 1]> : tensor<3xi32>
+  %0 = "tfl.strided_slice"(%arg0, %begin, %end, %stride)  {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<13x13x32xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_select
 // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<1> : tensor<3xindex>}
 // CHECK: %[[VAR1:.*]] = tosa.reshape %arg2, %[[VAR0]] : (tensor<1xi1>, !tosa.shape<3>) -> tensor<1x1x1xi1>
