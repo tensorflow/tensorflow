@@ -969,8 +969,6 @@ void ForEachIr(LiteRtModel model, F func) {
           func(subgraph, op);
         } else if constexpr (kIsOpF3) {
           func(subgraph, i, op);
-        } else {
-          static_assert(false, "Unsupported callback");
         }
       }
     }
