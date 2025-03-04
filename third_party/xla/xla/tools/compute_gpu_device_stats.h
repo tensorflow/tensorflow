@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "third_party/tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 #ifndef XLA_TOOLS_COMPUTE_GPU_DEVICE_STATS_H_
@@ -30,6 +31,9 @@ namespace xla::gpu {
 struct GpuDeviceStats {
   double device_time_us = 0.0;
   double device_memcpy_time_us = 0.0;
+  int64_t peak_device_mem_bytes = 0;
+
+  tensorflow::profiler::OpStats op_stats;
 };
 
 // Structure to hold the calculated statistics for XEvent.
@@ -46,9 +50,9 @@ bool IsMemcpy(const tensorflow::profiler::XEvent& event,
 absl::StatusOr<LineStats> ProcessLineEvents(
     const tensorflow::profiler::XLine& line, int64_t memcpy_details_id);
 
-// Calculates GPU device and memcpy times from an XSpace.
-absl::StatusOr<GpuDeviceStats> CalculateDeviceTimeAndMemcpy(
-    const tensorflow::profiler::XSpace& xspace, absl::string_view device_name);
+// Calculates the GPU device statistics from an XSpace protobuf.
+absl::StatusOr<GpuDeviceStats> ComputeGPUDeviceStats(
+    const tensorflow::profiler::XSpace& xspace);
 
 // Reads an XSpace protobuf from a file and computes GPU statistics, and prints
 // them to stdout.  Returns an error status if something goes wrong.
