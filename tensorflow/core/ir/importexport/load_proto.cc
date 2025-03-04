@@ -14,10 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/ir/importexport/load_proto.h"
 
+#include <system_error>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "third_party/protobuf/message.h"
+#include "third_party/protobuf/message_lite.h"
 #include "tensorflow/core/ir/importexport/parse_text_proto.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
