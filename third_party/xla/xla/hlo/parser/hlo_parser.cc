@@ -6317,6 +6317,20 @@ bool HloParserImpl::ParseShape(Shape* result,
       ShapeUtil::IsScalar(*result)) {
     LayoutUtil::SetToDefaultLayout(result);
   }
+
+  if (lexer_.GetKind() == TokKind::kAttributeName &&
+      lexer_.GetStrVal() == "buffer_id") {
+    if (lexer_.Lex() != TokKind::kInt) {
+      return TokenError("buffer_id= attribute must be an integer");
+    }
+    int64_t buffer_id = lexer_.GetInt64Val();
+    if (buffer_id < 0) {
+      return TokenError("buffer_id= attribute must be an integer >= 0");
+    }
+    lexer_.Lex();
+    result->set_buffer_id(buffer_id);
+  }
+
   // We need to lookahead to see if a following open brace is the start of a
   // layout. The specific problematic case is:
   //
