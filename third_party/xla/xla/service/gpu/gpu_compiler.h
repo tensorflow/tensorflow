@@ -239,8 +239,9 @@ class GpuCompiler : public LLVMCompiler {
       bool relocatable, const HloModule* debug_module,
       const CompileOptions& options, std::optional<int> shard_number) = 0;
 
-  absl::Status PrepareHloModuleForIrEmitting(
-      HloModule* hlo_module, const se::DeviceDescription& device_description);
+  // Inserts and optimizes mandatory copies. Necessary for correctness.
+  absl::Status RunPreSchedulingCopyInsertion(
+      HloModule& hlo_module, const se::DeviceDescription& device_description);
 
   virtual absl::StatusOr<std::vector<uint8_t>> LinkModules(
       const stream_executor::DeviceDescription& device_description,
