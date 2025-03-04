@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_ASYNC_TYPE_HELPERS_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_ASYNC_TYPE_HELPERS_H_
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 
