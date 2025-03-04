@@ -1,44 +1,284 @@
+diff --git a/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc b/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
+index 750fcf1..1743279 100644
+--- a/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
+@@ -176,14 +176,31 @@ using DirectionBasedTensorShardings =
+ // The same holds for backwards propagation, except we allow expansion based
+ // on the result factor shardings but not the operands.
+ std::optional<DirectionBasedTensorShardings> getDirectionBasedTensorShardings(
+-    PropagationDirection direction, ArrayRef<TensorFactorShardings> operands,
++    PropagationDirection direction, Operation* op,
++    ArrayRef<TensorFactorShardings> operands,
+     ArrayRef<TensorFactorShardings> results) {
++  static const char* errMsg =
++      "since Shardy is propagating {0} for this op, Shardy may not "
++      "fully propagate to each of the multiple {1}s; {0} "
++      "propagation was designed with single {1} ops in mind. Let the "
++      "Shardy team know the operation that you'd like to be fully "
++      "supported.";
++  static llvm::once_flag flag;
+   switch (direction) {
+     case PropagationDirection::BOTH:
++      return std::make_pair(operands, results);
+     case PropagationDirection::FORWARD: {
++      if (op && results.size() > 1) {
++        emitOpWarningOnce(flag, op,
++                          llvm::formatv(errMsg, "forward", "result").str());
++      }
+       return std::make_pair(operands, results);
+     }
+     case PropagationDirection::BACKWARD: {
++      if (op && operands.size() > 1) {
++        emitOpWarningOnce(flag, op,
++                          llvm::formatv(errMsg, "backward", "operand").str());
++      }
+       return std::make_pair(results, operands);
+     }
+     case PropagationDirection::NONE:
+@@ -294,7 +311,7 @@ SmallVector<AxisRefAttr> BasicFactorPropagation::getCompatibleMajorAxes(
+   }
+ 
+   std::optional<DirectionBasedTensorShardings> tensorShardings =
+-      getDirectionBasedTensorShardings(direction, projection.getOperands(),
++      getDirectionBasedTensorShardings(direction, op, projection.getOperands(),
+                                        projection.getResults());
+   assert(tensorShardings.has_value());
+ 
+diff --git a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
+index 25c0b29..f9d1fc7 100644
+--- a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
+@@ -21,18 +21,15 @@ limitations under the License.
+ #include <memory>
+ #include <numeric>
+ 
+-#include "llvm/ADT/STLExtras.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/SymbolTable.h"
+-#include "mlir/IR/Value.h"
+ #include "mlir/Pass/Pass.h"
+ #include "mlir/Pass/PassRegistry.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "shardy/dialect/sdy/ir/constants.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+-#include "shardy/dialect/sdy/ir/utils.h"
+ #include "shardy/dialect/sdy/transforms/common/op_properties.h"
+ #include "shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
+@@ -54,55 +51,17 @@ namespace {
+ using GetDirectionToPropagateFnPtr = PropagationDirection (*)(Operation*,
+                                                               int64_t);
+ 
+-// Returns the direction to propagate based on whether any of the op's operands
+-// has multiple uses.
+-//
+-// The rational is that if any of the operands has multiple uses:
+-// - We don't want to propagate forward, to avoid introducing a conflict for
+-//   each use of the operand.
+-// - We don't want to propagate backwards, since there could be a conflict with
+-//   another use of the operand.
+-//
+-// If `allowMultiUse` is true, returns `BOTH` regardless of the number of uses.
+-PropagationDirection getDirectionBasedOnUses(Operation* op,
+-                                             bool allowMultiUse) {
+-  if (allowMultiUse) {
+-    return PropagationDirection::BOTH;
+-  }
+-
+-  bool anyOperandMultipleUses =
+-      llvm::any_of(op->getOperands(), [&](Value operand) {
+-        // We can ignore scalar operands, since they can't be sharded.
+-        return !operand.hasOneUse() && !isScalar(operand);
+-      });
+-  return anyOperandMultipleUses ? PropagationDirection::NONE
+-                                : PropagationDirection::BOTH;
+-}
+-
+-PropagationDirection isPassThroughOp(Operation* op, int64_t factorIndex,
+-                                     bool allowMultiUse) {
++PropagationDirection isPassThroughOp(Operation* op, int64_t) {
+   if (isElementwise(op) ||
+       isa<stablehlo::ReshapeOp, stablehlo::TransposeOp, DataFlowEdgeOp>(op)) {
+-    return getDirectionBasedOnUses(op, allowMultiUse);
++    return PropagationDirection::BOTH;
+   }
+   if (isa<stablehlo::DynamicSliceOp, stablehlo::DynamicUpdateSliceOp>(op)) {
+-    return intersectionOfPropagationDirections(
+-        getDirectionBasedOnUses(op, allowMultiUse),
+-        PropagationDirection::FORWARD);
++    return PropagationDirection::FORWARD;
+   }
+   return PropagationDirection::NONE;
+ }
+ 
+-PropagationDirection isPassThroughOpSingleUse(Operation* op,
+-                                              int64_t factorIndex) {
+-  return isPassThroughOp(op, factorIndex, /*allowMultiUse=*/false);
+-}
+-
+-PropagationDirection isPassThroughOpMultiUse(Operation* op,
+-                                             int64_t factorIndex) {
+-  return isPassThroughOp(op, factorIndex, /*allowMultiUse=*/true);
+-}
+-
+ // NOTE: if the `op` has no sharding rule, then we will assume it uses an
+ // identity sharding rule. For example, `DataFlowEdgeOp`.
+ PropagationDirection onlyPassThroughFactorsBroadcastBackward(
+@@ -118,9 +77,8 @@ PropagationDirection onlyPassThroughFactorsBroadcastBackward(
+   return PropagationDirection::BOTH;
+ }
+ 
+-constexpr std::array<GetDirectionToPropagateFnPtr, 4> opPropagationSchedule = {
+-    isPassThroughOpSingleUse, isPassThroughOpMultiUse,
+-    onlyPassThroughFactorsBroadcastBackward, propagateAny};
++constexpr std::array<GetDirectionToPropagateFnPtr, 3> opPropagationSchedule = {
++    isPassThroughOp, onlyPassThroughFactorsBroadcastBackward, propagateAny};
+ 
+ // Returns the direction in which the given operation should be propagated.
+ //
+diff --git a/shardy/dialect/sdy/transforms/propagation/test/op_priority_propagation.mlir b/shardy/dialect/sdy/transforms/propagation/test/op_priority_propagation.mlir
+index 6bf9bb5..36adf99 100644
+--- a/shardy/dialect/sdy/transforms/propagation/test/op_priority_propagation.mlir
++++ b/shardy/dialect/sdy/transforms/propagation/test/op_priority_propagation.mlir
+@@ -35,84 +35,6 @@ func.func @element_wise_over_dot_general_flipped_op_order(%arg0: tensor<8x8xf32>
+   return %2 : tensor<8x8xf32>
+ }
+ 
+-// If we propagated forward through element-wise ops with multiple uses in the
+-// first iteration, the sharding on dim 0 would have been propagated to the two
+-// add ops, which would result in two reshards instead of one.
+-// CHECK-LABEL: func @defer_forward_propagation_for_multi_use_ops
+-func.func @defer_forward_propagation_for_multi_use_ops(
+-    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>})
+-    -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>},
+-        tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>}) {
+-  // CHECK-NEXT: %[[SINE:.*]] = stablehlo.sine %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {?}]>]>}
+-  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[SINE]], %[[SINE]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
+-  // CHECK-NEXT: %[[ADD_2:.*]] = stablehlo.add %[[SINE]], %[[SINE]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
+-  // CHECK-NEXT: %[[COSINE_1:.*]] = stablehlo.cosine %[[ADD_1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
+-  // CHECK-NEXT: %[[COSINE_2:.*]] = stablehlo.cosine %[[ADD_2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
+-  // CHECK-NEXT: return %[[COSINE_1]], %[[COSINE_2]]
+-  %1 = stablehlo.sine %arg0 : tensor<8x8xf32>
+-  %2 = stablehlo.add %1, %1 : tensor<8x8xf32>
+-  %3 = stablehlo.add %1, %1 : tensor<8x8xf32>
+-  // Need the additinal ops since they will get the result sharding regardless
+-  // of op priority propagation.
+-  %4 = stablehlo.cosine %2 : tensor<8x8xf32>
+-  %5 = stablehlo.cosine %3 : tensor<8x8xf32>
+-  return %4, %5 : tensor<8x8xf32>, tensor<8x8xf32>
+-}
+-
+-// If we propagated forward through dynamic-slice op with multiple uses in the
+-// first iteration, the sharding on dim 0 would have been propagated to the two
+-// add ops.
+-// CHECK-LABEL: func @defer_forward_propagation_for_multi_use_dynamic_slice
+-func.func @defer_forward_propagation_for_multi_use_dynamic_slice(
+-    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>},
+-    %arg1: tensor<i32>, %arg2: tensor<i32>)
+-    -> (tensor<8x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>}) {
+-  // CHECK-NEXT: %[[DS:.*]] = stablehlo.dynamic_slice %arg0, %arg1, %arg2, sizes = [8, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {?}]>]>}
+-  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[DS]], %[[DS]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
+-  // CHECK-NEXT: %[[ADD_2:.*]] = stablehlo.add %[[DS]], %[[DS]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
+-  // CHECK-NEXT: %[[MUL:.*]] = stablehlo.multiply %[[ADD_1]], %[[ADD_2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
+-  // CHECK-NEXT: return %[[MUL]]
+-  %1 = stablehlo.dynamic_slice %arg0, %arg1, %arg2, sizes = [8, 2] : (tensor<8x8xf32>, tensor<i32>, tensor<i32>) -> tensor<8x2xf32>
+-  %2 = stablehlo.add %1, %1 : tensor<8x2xf32>
+-  %3 = stablehlo.add %1, %1 : tensor<8x2xf32>
+-  // Need the additinal op since it will get the result sharding regardless of
+-  // op priority propagation.
+-  %4 = stablehlo.multiply %2, %3 : tensor<8x2xf32>
+-  return %4 : tensor<8x2xf32>
+-}
+-
+-// If we propagated backwards through element-wise ops with a multi-use operand
+-// in the first iteration, the sharding on dim 1 would have been propagated to
+-// %arg0.
+-// CHECK-LABEL: func @defer_backwards_propagation_for_op_with_multi_use_operand(
+-// CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {?}]>})
+-func.func @defer_backwards_propagation_for_op_with_multi_use_operand(%arg0: tensor<8x8xf32>)
+-    -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>},
+-        tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>}) {
+-  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {?}]>]>}
+-  // CHECK-NEXT: %[[ADD_2:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
+-  // CHECK-NEXT: %[[SINE:.*]] = stablehlo.sine %[[ADD_1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {?}]>]>}
+-  // CHECK-NEXT: return %[[ADD_2]], %[[SINE]]
+-  %0 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
+-  %1 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
+-  %2 = stablehlo.sine %0 : tensor<8x8xf32>
+-  return %1, %2 : tensor<8x8xf32>, tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @defer_backwards_propagation_dynamic_slice(
+-// CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {"a", ?}]>}
+-func.func @defer_backwards_propagation_dynamic_slice(
+-    %arg0: tensor<8x8xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
+-    -> (tensor<8x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>},
+-        tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>}) {
+-  // CHECK-NEXT: %[[DS:.*]] = stablehlo.dynamic_slice %arg0, %arg1, %arg2, sizes = [8, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {?}]>]>}
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
+-  // CHECK-NEXT: return %[[DS]], %[[ADD]]
+-  %1 = stablehlo.dynamic_slice %arg0, %arg1, %arg2, sizes = [8, 2] : (tensor<8x8xf32>, tensor<i32>, tensor<i32>) -> tensor<8x2xf32>
+-  %2 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
+-  return %1, %2 : tensor<8x2xf32>, tensor<8x8xf32>
+-}
+-
+ // Verify that the element-wise ops are sharded on dim 1 due to the
+ // `sharding_constraint`. Without `sharding_constraint` haveing the
+ // `Elementwise` trait, then the element-wise ops would be sharded on dim 0
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..8ee25f9 100644
+index 8ee25f9..5758bb1 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,24 @@
+@@ -1,24 +1,13 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir b/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
-+--- a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
-++++ b/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
-+@@ -1,6 +1,6 @@
-+ # REQUIRES x86_64-registered-target
-+-# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=fast -print-pipeline-passes %s 2>&1 | FileCheck %s
-+-# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=greedy -print-pipeline-passes %s 2>&1 | FileCheck %s --check-prefix=CHECK-GREEDY
-++# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=fast -print-pipeline-passes %s -o - 2>&1 | FileCheck %s
-++# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=greedy -print-pipeline-passes %s -o - 2>&1 | FileCheck %s --check-prefix=CHECK-GREEDY
+-diff -ruN --strip-trailing-cr a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir b/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
+---- a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
+-+++ b/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
+-@@ -1,6 +1,6 @@
+- # REQUIRES x86_64-registered-target
+--# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=fast -print-pipeline-passes %s 2>&1 | FileCheck %s
+--# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=greedy -print-pipeline-passes %s 2>&1 | FileCheck %s --check-prefix=CHECK-GREEDY
+-+# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=fast -print-pipeline-passes %s -o - 2>&1 | FileCheck %s
+-+# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=greedy -print-pipeline-passes %s -o - 2>&1 | FileCheck %s --check-prefix=CHECK-GREEDY
++diff -ruN --strip-trailing-cr a/libc/src/stdlib/qsort_pivot.h b/libc/src/stdlib/qsort_pivot.h
++--- a/libc/src/stdlib/qsort_pivot.h
+++++ b/libc/src/stdlib/qsort_pivot.h
++@@ -9,6 +9,8 @@
++ #ifndef LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
++ #define LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
+  
+- # CHECK: regallocfast
+- # CHECK-GREEDY: greedy<all>
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+-@@ -9662,6 +9662,7 @@
+-         "lib/Target/LLVMIR/DataLayoutImporter.h",
+-         "lib/Target/LLVMIR/DebugImporter.cpp",
+-         "lib/Target/LLVMIR/DebugImporter.h",
+-+        "lib/Target/LLVMIR/LLVMImportInterface.cpp",
+-         "lib/Target/LLVMIR/LoopAnnotationImporter.cpp",
+-         "lib/Target/LLVMIR/LoopAnnotationImporter.h",
+-         "lib/Target/LLVMIR/ModuleImport.cpp",
+++#include "src/__support/macros/attributes.h"
+++
++ #include <stddef.h> // For size_t
 + 
-+ # CHECK: regallocfast
-+ # CHECK-GREEDY: greedy<all>
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+@@ -9662,6 +9662,7 @@
-+         "lib/Target/LLVMIR/DataLayoutImporter.h",
-+         "lib/Target/LLVMIR/DebugImporter.cpp",
-+         "lib/Target/LLVMIR/DebugImporter.h",
-++        "lib/Target/LLVMIR/LLVMImportInterface.cpp",
-+         "lib/Target/LLVMIR/LoopAnnotationImporter.cpp",
-+         "lib/Target/LLVMIR/LoopAnnotationImporter.h",
-+         "lib/Target/LLVMIR/ModuleImport.cpp",
++ namespace LIBC_NAMESPACE_DECL {
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index b853f00..667ae4e 100644
+index 667ae4e..691c322 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "cb7030dbe7f3f1947c31b3059958ff3968cc22ff"
--    LLVM_SHA256 = "531ad35a4d22db5c944e1495a3bb0bba53f7c535f4ba252063abcf4462e3876f"
-+    LLVM_COMMIT = "f6212c1cd3d8b827c7d7e2f6cf54b135c27eacc6"
-+    LLVM_SHA256 = "bba6d4c0020622b64202640a94504b957d3597e4f42e9b4f20cbcfa80a8aa41a"
+-    LLVM_COMMIT = "f6212c1cd3d8b827c7d7e2f6cf54b135c27eacc6"
+-    LLVM_SHA256 = "bba6d4c0020622b64202640a94504b957d3597e4f42e9b4f20cbcfa80a8aa41a"
++    LLVM_COMMIT = "fd9a882ce31cb0a53dba63528c15d76f088854b7"
++    LLVM_SHA256 = "99ab085087ea6a5f27f293a9f06c837eca57042bc6a7e11f3cd2d9d2168274b3"
  
      tf_http_archive(
          name = name,
