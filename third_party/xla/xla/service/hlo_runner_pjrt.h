@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_layout.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -95,6 +96,13 @@ class HloRunnerPjRt : public HloRunnerInterface {
   // true, the HLO passes will be run as part of compilation.
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
+
+  // Creates a runner-internal executable object given a runner and
+  // platform-specific serialized executable representation. The serialized
+  // representation must have been produced by a compiler of the same platform
+  // and version as this one.
+  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> DeserializeExecutable(
+      absl::Nonnull<const tsl::protobuf::Message*> serialized) const override;
 
   absl::StatusOr<Literal> ExecuteWithExecutable(
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
