@@ -10,6 +10,13 @@ load(
     "if_tsl_link_protobuf",
 )
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
+load(
+    "//xla/tsl:package_groups.bzl",
+    "DEFAULT_LOAD_VISIBILITY",
+    "LEGACY_TSL_PLATFORM_DEFAULT_BUILD_CONFIG_USERS",
+)
+
+visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_TSL_PLATFORM_DEFAULT_BUILD_CONFIG_USERS)
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.

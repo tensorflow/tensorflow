@@ -1,6 +1,9 @@
 """Common libraries for IFRT proxy."""
 
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
 
 def ifrt_proxy_cc_test(
         **kwargs):

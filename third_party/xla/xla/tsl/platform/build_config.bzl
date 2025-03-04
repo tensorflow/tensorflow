@@ -1,6 +1,11 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
 load(
+    "//xla/tsl:package_groups.bzl",
+    "DEFAULT_LOAD_VISIBILITY",
+    "LEGACY_TSL_PLATFORM_BUILD_CONFIG_USERS",
+)
+load(
     "//xla/tsl/platform/default:build_config.bzl",
     _pyx_library = "pyx_library",
     _tf_additional_all_protos = "tf_additional_all_protos",
@@ -39,6 +44,8 @@ load(
     _tsl_grpc_credentials_deps = "tsl_grpc_credentials_deps",
     _tsl_protobuf_deps = "tsl_protobuf_deps",
 )
+
+visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_TSL_PLATFORM_BUILD_CONFIG_USERS)
 
 pyx_library = _pyx_library
 tf_additional_all_protos = _tf_additional_all_protos

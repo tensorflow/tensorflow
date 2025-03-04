@@ -1,8 +1,11 @@
 """Helper rules for writing LIT tests."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl:tsl.bzl", "if_cuda_tools", "if_google", "if_oss")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
 
 def enforce_glob(files, **kwargs):
     """A utility to enforce that a list matches a glob expression.

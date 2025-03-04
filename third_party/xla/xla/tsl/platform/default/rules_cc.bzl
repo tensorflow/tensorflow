@@ -1,5 +1,9 @@
 """These are the same as Bazel's native cc_libraries."""
 
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
+
 _cc_binary = native.cc_binary
 _cc_import = native.cc_import
 _cc_shared_library = native.cc_shared_library
