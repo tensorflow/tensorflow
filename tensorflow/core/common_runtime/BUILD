@@ -2942,8 +2942,12 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ] + if_cuda(["@local_xla//xla/tsl/cuda:cudart"]),
 )
 
@@ -2959,6 +2963,10 @@ tf_cc_test(
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session_internal",
+        "@com_google_googletest//:gtest",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_xla//xla/tsl/platform:status_matchers",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -2969,7 +2977,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
         "@com_google_absl//absl/memory",
         "//tensorflow/cc:cc_ops",
         # Link with support for TensorFlow Debugger (tfdbg).

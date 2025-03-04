@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
@@ -2050,6 +2051,15 @@ absl::Status DirectSession::Finalize() {
   }
   execution_state_.reset();
   flib_def_.reset();
+
+  if (options_.config.experimental().finalize_function_library_runtime()) {
+    mutex_lock l2(callables_lock_);
+    for (auto& [_, callable] : callables_) {
+      TF_RETURN_IF_ERROR(callable.function_info->proc_flr->Finalize());
+      callable.function_info->flib_def->Clear();
+    }
+  }
+
   finalized_ = true;
   return absl::OkStatus();
 }
