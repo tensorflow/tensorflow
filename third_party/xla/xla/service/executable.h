@@ -357,6 +357,8 @@ class Executable {
     return hlo_module_->config().entry_computation_layout().result_shape();
   }
 
+  virtual const Shape& output_shape() const { return result_shape(); }
+
   // Returns the size of the executable in bytes. Returns -1 if this query is
   // not supported by the executable.
   //

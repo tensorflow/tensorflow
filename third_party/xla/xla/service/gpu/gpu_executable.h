@@ -106,7 +106,7 @@ class GpuExecutable : public Executable {
 
   const std::string& module_name() const { return module_name_; }
 
-  const xla::Shape& output_shape() const { return output_shape_; }
+  const xla::Shape& output_shape() const override { return output_shape_; }
 
   const absl::flat_hash_map<ShapeIndex, OutputInfo>& output_info() const {
     return output_info_;
