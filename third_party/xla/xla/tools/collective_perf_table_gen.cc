@@ -493,6 +493,8 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::Merge(
     profile_proto.set_flops(profiling_result.flops);
     profile_proto.set_clock_cycles(profiling_result.clock_cycles);
     profile_proto.set_fingerprint(profiling_result.fingerprint);
+    profile_proto.set_network_throughput_bytes_per_sec(
+        profiling_result.network_throughput);
 
     *result.mutable_entries()->at(device_descriptor).add_entries() =
         std::move(profile_proto);
