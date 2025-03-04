@@ -36,7 +36,16 @@ def _and_factory(x, y, name=None):
 
 def _div_factory(x, y, name=None):
   from tensorflow.python.ops import math_ops
+  from tensorflow.python.framework import dtypes
 
+  if (isinstance(x, tensor_lib.Tensor) and x.dtype == dtypes.bool) or (
+      isinstance(y, tensor_lib.Tensor) and y.dtype == dtypes.bool
+  ):
+    return  math_ops.div(
+              gen_math_ops.cast(x, dtypes.int32),
+              gen_math_ops.cast(y, dtypes.int32),
+              name=name,
+            )
   return math_ops.div(x, y, name=name)
 
 
@@ -96,7 +105,16 @@ def _subtract_factory(x, y, name=None):
 
 def _truediv_factory(x, y, name=None):
   from tensorflow.python.ops import math_ops
+  from tensorflow.python.framework import dtypes
 
+  if (isinstance(x, tensor_lib.Tensor) and x.dtype == dtypes.bool) or (
+      isinstance(y, tensor_lib.Tensor) and y.dtype == dtypes.bool
+  ):
+    return  math_ops.truediv(
+              gen_math_ops.cast(x, dtypes.int32),
+              gen_math_ops.cast(y, dtypes.int32),
+              name=name,
+            )
   return math_ops.truediv(x, y, name=name)
 
 
