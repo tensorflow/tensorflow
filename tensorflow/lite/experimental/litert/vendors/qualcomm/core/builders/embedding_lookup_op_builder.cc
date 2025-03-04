@@ -28,14 +28,14 @@ std::vector<OpWrapper> BuildEmbeddingLookupOp(
         "The data type of embedding lookup table is int8, but output data type "
         "is int16. Int8 table will be cast to int16.");
     std::vector<std::int16_t> int16_data;
-    size_t data_len =
-        std::accumulate(table_tensor.GetDims().begin(),
-                        table_tensor.GetDims().end(), 1, std::multiplies<>());
-    // TODO: do not cast
-    auto* int8_data = reinterpret_cast<const std::int8_t*>(
-        table_tensor.GetStaticTensorData());
+    size_t data_len = table_tensor.GetTensorNumElements();
+    auto int8_data = table_tensor.GetStaticTensorData<std::int8_t>();
+    if (!int8_data.has_value()) {
+      QNN_LOG_ERROR("Embedding lookup get int8 table failed.");
+      return res;
+    }
     for (int i = 0; i < data_len; ++i) {
-      int16_data.emplace_back(static_cast<std::int16_t>(int8_data[i]));
+      int16_data.emplace_back(static_cast<std::int16_t>((*int8_data)[i]));
     }
 
     TensorWrapper& int16_table_tensor = tensor_pool.CreateStaticTensor(
