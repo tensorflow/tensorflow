@@ -1732,12 +1732,7 @@ class HloInstruction {
   // when we clone hlo_computations and want to let the instructions to point
   // to the newly cloned nodes.
   void ReplaceCalledComputations(
-      absl::FunctionRef<HloComputation*(HloComputation*)> map_function) {
-    for (int64_t i = 0; i < called_computations().size(); ++i) {
-      mutable_rare()->called_computations[i] =
-          map_function(rare()->called_computations[i]);
-    }
-  }
+      absl::FunctionRef<HloComputation*(HloComputation*)> map_function);
 
   // Clears out the called computations.
   //
@@ -2405,9 +2400,8 @@ class HloInstruction {
 
   void DetachFrom(HloInstruction* usee) { usee->RemoveUser(this); }
 
-  void set_called_computation(int index, HloComputation* computation) {
-    mutable_rare()->called_computations[index] = computation;
-  }
+  void set_called_computation(int index, HloComputation* computation);
+
   // Indices of computations in called_computations for instructions which call
   // multiple computations.
   enum {
