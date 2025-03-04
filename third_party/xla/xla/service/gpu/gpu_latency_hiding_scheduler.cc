@@ -151,14 +151,22 @@ size_t CountOverlappingRanks(const std::vector<ReplicaGroup>& group,
 
 }  // namespace
 
-int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
-  int64_t size = ShapeUtil::ByteSizeOf(shape, pointer_size);
-  if (shape.IsTuple() || shape.is_static()) {
-    return size;
-  }
-  // Each dynamic dimension size is represented as a S32.
-  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
-  return size + metadata_size;
+HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction(
+    int64_t pointer_size, std::optional<int64_t> memory_space) {
+  return [pointer_size, memory_space](const Shape& shape) -> int64_t {
+    // Filter by memory space if specified
+    if (memory_space.has_value() && shape.has_layout() &&
+        shape.layout().memory_space() != memory_space.value()) {
+      return 0;
+    }
+    int64_t size = ShapeUtil::ByteSizeOf(shape, pointer_size);
+    if (shape.IsTuple() || shape.is_static()) {
+      return size;
+    }
+    // Each dynamic dimension size is represented as a S32.
+    int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
+    return size + metadata_size;
+  };
 }
 
 CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
@@ -540,7 +548,7 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::GetLatencyBetween(
             .xla_gpu_enable_approx_costly_collectives();
     bool is_all_reduce = from.GetInstr().opcode() == HloOpcode::kAllReduceStart;
     bool collective_size_exceeds_threshold =
-        GetSizeOfShape(from.GetInstr().shape(), pointer_size_) >
+        ShapeSizeBytesFunction(pointer_size_)(from.GetInstr().shape()) >
         kCostlyAllReduceThreshold;
     if (enable_approx_collectives && is_all_reduce &&
         collective_size_exceeds_threshold) {

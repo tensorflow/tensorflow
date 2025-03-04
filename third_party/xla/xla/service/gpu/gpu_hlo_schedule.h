@@ -34,7 +34,7 @@ namespace gpu {
 absl::Status RunAsyncCollectivesConversionPasses(HloModule* module);
 
 struct ScheduleMetadata {
-  int64_t scheduler_mem_limit;
+  uint64_t scheduler_mem_limit;
 };
 
 // Determines the schedule of HLO instructions for a module run on the GPU.

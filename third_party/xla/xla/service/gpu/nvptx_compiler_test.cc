@@ -74,7 +74,7 @@ class NVPTXCompilerTest : public HloTestBase {
 
     auto buffer_size_bytes_function =
         [](const BufferValue& buffer_value) -> int64_t {
-      return GetSizeOfShape(buffer_value.shape(), pointer_size);
+      return ShapeSizeBytesFunction(pointer_size)(buffer_value.shape());
     };
 
     return BufferAssigner::Run(
