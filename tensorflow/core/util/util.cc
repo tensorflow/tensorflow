@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-absl::string_view NodeNamePrefix(const absl::string_view& op_name) {
+absl::string_view NodeNamePrefix(const absl::string_view op_name) {
   absl::string_view sp(op_name);
   auto p = sp.find('/');
   if (p == absl::string_view::npos || p == 0) {
@@ -33,7 +33,7 @@ absl::string_view NodeNamePrefix(const absl::string_view& op_name) {
   }
 }
 
-absl::string_view NodeNameFullPrefix(const absl::string_view& op_name) {
+absl::string_view NodeNameFullPrefix(const absl::string_view op_name) {
   absl::string_view sp(op_name);
   auto p = sp.rfind('/');
   if (p == absl::string_view::npos || p == 0) {
