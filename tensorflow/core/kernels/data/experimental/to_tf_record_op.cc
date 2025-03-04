@@ -45,8 +45,7 @@ class ToTFRecordOp : public AsyncOpKernel {
 
   template <typename T>
   absl::Status ParseScalarArgument(OpKernelContext* ctx,
-                                   const absl::string_view& argument_name,
-                                   T* output) {
+                                   absl::string_view argument_name, T* output) {
     const Tensor* argument_t;
     TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
     if (!TensorShapeUtils::IsScalar(argument_t->shape())) {

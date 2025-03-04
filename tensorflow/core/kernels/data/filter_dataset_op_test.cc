@@ -11,6 +11,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/filter_dataset_op.h"
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
