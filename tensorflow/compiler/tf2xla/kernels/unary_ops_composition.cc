@@ -48,6 +48,11 @@ void PopulateXlaOpGeneratorMap(XlaOpGeneratorMap* op_generator_map) {
   add_xla_op_generator(#Name,      \
                        static_cast<xla::XlaOp (*)(xla::XlaOp)>(xla::Name));
 
+#define ADD_XLA_OP_GENERATOR_WITH_RESULT_ACCURACY(Name) \
+  add_xla_op_generator(#Name, [](xla::XlaOp operand) {  \
+    return xla::Name(operand, std::nullopt);            \
+  });
+
   ADD_XLA_OP_GENERATOR(Abs);
   ADD_XLA_OP_GENERATOR(Acos);
   ADD_XLA_OP_GENERATOR(Acosh);
@@ -59,7 +64,7 @@ void PopulateXlaOpGeneratorMap(XlaOpGeneratorMap* op_generator_map) {
   ADD_XLA_OP_GENERATOR(Cos);
   ADD_XLA_OP_GENERATOR(Cosh);
   ADD_XLA_OP_GENERATOR(Expm1);
-  ADD_XLA_OP_GENERATOR(Exp);
+  ADD_XLA_OP_GENERATOR_WITH_RESULT_ACCURACY(Exp);
   ADD_XLA_OP_GENERATOR(Floor);
   add_xla_op_generator(
       "Inv", [](xla::XlaOp x) { return xla::ScalarLike(x, 1.0) / x; });
@@ -70,7 +75,8 @@ void PopulateXlaOpGeneratorMap(XlaOpGeneratorMap* op_generator_map) {
   add_xla_op_generator("Rint", xla::RoundToEven);
   ADD_XLA_OP_GENERATOR(Round);
   ADD_XLA_OP_GENERATOR(Rsqrt);
-  add_xla_op_generator("Sigmoid", xla::Logistic);
+  add_xla_op_generator("Sigmoid",
+                       [](xla::XlaOp x) { return xla::Logistic(x); });
   ADD_XLA_OP_GENERATOR(Sin);
   ADD_XLA_OP_GENERATOR(Sinh);
   ADD_XLA_OP_GENERATOR(Sqrt);
