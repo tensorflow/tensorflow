@@ -34,7 +34,6 @@ tf_cc_binary(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:Support",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
     ],
