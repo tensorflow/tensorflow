@@ -3948,8 +3948,8 @@ absl::Status MoveComputationsFromModuleToModule(HloModule* from_module,
     computation_replacements[original_computation] = new_computation;
   }
 
-  to_module->ReplaceComputations(computation_replacements);
   to_module->MoveComputationsFrom(from_module);
+  to_module->ReplaceComputations(computation_replacements);
 
   *to_module->mutable_config().mutable_entry_computation_layout() =
       from_module->entry_computation_layout();
