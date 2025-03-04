@@ -49,10 +49,12 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
  public:
   // stream: a Stream on which the allocator can only be used. If non-null, the
   // allocator can not be used on any other stream.
-  TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream);
+  TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream,
+                     bool allows_asynchronous_deallocation = true);
 
   // Constructor for the cases where `stream` can not be provided.
-  TfAllocatorAdapter(tsl::Allocator *wrapped, Platform *platform);
+  TfAllocatorAdapter(tsl::Allocator *wrapped, Platform *platform,
+                     bool allows_asynchronous_deallocation = true);
 
   ~TfAllocatorAdapter() override;
 
@@ -69,7 +71,12 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
   // support for multiple GPU streams or allocators with different ordering
   // requirements, this code may need to change.
   // (This attribute has no effect on CPU.)
-  bool AllowsAsynchronousDeallocation() const override { return true; }
+  //
+  // In environments where there's no such run-ahead guarantee, we should
+  // disable asynchronous deallocation.
+  bool AllowsAsynchronousDeallocation() const override {
+    return allows_asynchronous_deallocation_;
+  }
 
   absl::StatusOr<Stream *> GetStream(int device_ordinal) override;
 
@@ -78,6 +85,7 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
  private:
   tsl::Allocator *wrapped_;
   Stream *stream_;
+  bool allows_asynchronous_deallocation_;
 };
 
 // Adapter class that wraps per-device TF allocators with corresponding streams
