@@ -60,7 +60,9 @@ static llvm::cl::list<std::string> libs(
     llvm::cl::list_init(llvm::ArrayRef<std::string>{
         "third_party/tensorflow/lite/experimental/litert/vendors/examples",
         "third_party/tensorflow/lite/experimental/litert/vendors/qualcomm/"
-        "compiler"}));
+        "compiler",
+        "third_party/tensorflow/lite/experimental/litert/vendors/"
+        "google_tensor/compiler"}));
 
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> outs(
