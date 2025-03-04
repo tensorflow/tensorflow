@@ -650,7 +650,7 @@ def _create_local_rocm_repository(repository_ctx):
             rocm_lib_srcs.append(lib.path)
             rocm_lib_outs.append("rocm/lib/" + lib.file_name)
 
-    clang_offload_bundler_path = rocm_config.llvm_path + "/bin/clang-offload-bundler"
+    clang_offload_bundler_path = rocm_toolkit_path + "/llvm/bin/clang-offload-bundler"
 
     have_hipblaslt = "1" if rocm_libs["hipblaslt"] != None else "0"
 
