@@ -128,14 +128,13 @@ absl::Status FuseInstructionsForConsumer(
   return absl::OkStatus();
 }
 
-// Annotates the given nested fusion with the given tile sizes.
-// Implementation for AnnotateDotLhs/RhsNestedFusion().
+// Annotates the given nested fusion with a contracting tile size.
+// Verifies that the nested fusion has a single contracting/non-contracting
+// dimensions.
 absl::Status AnnotateDotOperandNestedFusionImpl(
     HloFusionInstruction& nested_fusion, const HloDotInstruction& dot,
-    const TritonGemmConfig& config,
-    absl::Span<const int64_t> contracting_dimensions,  // Must be single element
-    absl::Span<const int64_t> batch_dimensions, int64_t contracting_dim_size,
-    int64_t non_contracting_dim_size) {
+    absl::Span<const int64_t> contracting_dimensions,
+    absl::Span<const int64_t> batch_dimensions, int64_t contracting_tile_size) {
   if (contracting_dimensions.size() != 1) {
     return absl::InternalError(
         absl::StrCat("Expected a single lhs contracting dimension but got ",
@@ -153,14 +152,10 @@ absl::Status AnnotateDotOperandNestedFusionImpl(
                      non_contracting_dimensions.size()));
   }
 
-  // We have a single contracting dimension, and a single non-contracting
-  // dimension. All the other output tile sizes are set to 1.
-  std::vector<int64_t> output_tile_sizes(dot.operand(0)->shape().rank(), 1);
-  output_tile_sizes[contracting_dimensions[0]] = contracting_dim_size;
-  output_tile_sizes[non_contracting_dimensions[0]] = non_contracting_dim_size;
-
   BlockLevelParameters block_level_parameters;
-  block_level_parameters.output_tile_sizes = {std::move(output_tile_sizes)};
+  // We are only interested in the contracting dimension (symbol K) of the
+  // nested fusion. Tiling of other dimensions is handled by the root fusion.
+  block_level_parameters.output_tile_sizes = {{contracting_tile_size}};
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       nested_fusion.backend_config<GpuBackendConfig>());
@@ -177,9 +172,8 @@ absl::Status AnnotateDotLhsNestedFusion(HloFusionInstruction& nested_fusion,
                                         const TritonGemmConfig& config) {
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   return AnnotateDotOperandNestedFusionImpl(
-      nested_fusion, dot, config,
-      dimension_numbers.lhs_contracting_dimensions(),
-      dimension_numbers.lhs_batch_dimensions(), config.block_k, config.block_m);
+      nested_fusion, dot, dimension_numbers.lhs_contracting_dimensions(),
+      dimension_numbers.lhs_batch_dimensions(), config.block_k);
 }
 
 absl::Status AnnotateDotRhsNestedFusion(HloFusionInstruction& nested_fusion,
@@ -187,9 +181,8 @@ absl::Status AnnotateDotRhsNestedFusion(HloFusionInstruction& nested_fusion,
                                         const TritonGemmConfig& config) {
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   return AnnotateDotOperandNestedFusionImpl(
-      nested_fusion, dot, config,
-      dimension_numbers.rhs_contracting_dimensions(),
-      dimension_numbers.rhs_batch_dimensions(), config.block_k, config.block_n);
+      nested_fusion, dot, dimension_numbers.rhs_contracting_dimensions(),
+      dimension_numbers.rhs_batch_dimensions(), config.block_k);
 }
 
 // Finds tile sizes for the root of the analysis that satisfy the
