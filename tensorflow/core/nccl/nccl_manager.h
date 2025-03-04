@@ -59,10 +59,6 @@ class NcclManager {
 
   static NcclManager* instance();
 
-#if TENSORFLOW_USE_ROCM
-  static int instance_count;
-#endif
-
   // Calls `ncclGetUniqueId` and returns the id as a string.  The returned value
   // may be shared with other participants on different nodes and passed in to
   // multi-node collective invocations.
