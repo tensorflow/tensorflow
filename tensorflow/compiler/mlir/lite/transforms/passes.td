@@ -337,6 +337,8 @@ def QuantizePass : Pass<"tfl-quantize", "mlir::func::FuncOp"> {
       Option<"enable_float16_quantization_",
               "enable-float16-quantization", "bool",
               "false", "Whether apply float16 quantization. If false, int8 quantization is applied.">,
+      Option<"qdq_conversion_mode_", "qdq-conversion-mode",
+             "std::string", "", "The type of qdq conversion (Static|Dynamic|Strict|NoQDQ).">,
   ];
 }
 

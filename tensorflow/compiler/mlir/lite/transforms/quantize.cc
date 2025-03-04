@@ -48,7 +48,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/lower_quant_annotations_helper.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
@@ -68,77 +70,96 @@ namespace {
 
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 
-// A base rewrite pattern which matches any N-in-M-out operations with
-// quantization parameters propagated to at least one of its operands. The
-// quantization parameters are annotated by the QuantizeOp/DequantizeOp pairs.
-// Each matched pattern are rewritten by its quantized alternatives.
-//
-// The concrete pattern, extends from this base pattern, can specify whether it
-// allows dynamic range quantized operands and results for the operations in the
-// current context. These "DynamicRangeQuantized" operands and results don't
-// have quantization parameters propagated to, so will be in float in the
-// quantized results. The concrete pattern should define the following two
-// functions:
-//
-//   bool AllowDynamicRangeQuantizedOperand(Operation *) const
-//   bool AllowDynamicRangeQuantizedResult(Operation *) const
-//
-// Full integer quantization disallows "DynamicRangeQuantized" operands or
-// results. Dynamic range quantization allows "DynamicRangeQuantized" operands
-// and results.
-template <typename ConcreteT, typename RootOpT = QuantizeOp>
+enum class OpQuantizationType { kSRQ, kDRQ, kWeightOnly, kUnsupported };
+
+static LogicalResult IsDrqTensor(Value value, Value& fq_input) {
+  if (auto composite_op = llvm::dyn_cast_or_null<stablehlo::CompositeOp>(
+          value.getDefiningOp())) {
+    if (IsDrqFakeQuant(composite_op)) {
+      fq_input = composite_op.getOperand(0);
+      return success();
+    }
+  }
+  return failure();
+}
+static LogicalResult HasDQParent(Value value, Value& dq_input) {
+  if (auto dq_op =
+          llvm::dyn_cast_or_null<DequantizeOp>(value.getDefiningOp())) {
+    dq_input = dq_op.getOperand();
+    return success();
+  }
+  return failure();
+}
+
+static OpQuantizationType GetOpQuantizationType(Operation* op) {
+  // The assumption here is that the op has at least one DQ operand since the
+  // pattern's root is that.
+  bool non_fq_input_seen = false;
+  Value fq_input, dq_input;
+  for (auto operand : op->getOperands()) {
+    if (IsDrqTensor(operand, fq_input).succeeded()) {
+      // As soon as a DRQ tensor is encountered, the op is DRQ.
+      return OpQuantizationType::kDRQ;
+    }
+
+    if (HasDQParent(operand, dq_input).succeeded()) {
+      // Operands with QDQ can not specify the quantization type.
+      continue;
+    }
+
+    auto element_type =
+        mlir::cast<TensorType>(operand.getType()).getElementType();
+    if (element_type.isF32()) {
+      non_fq_input_seen = true;
+    } else {
+      return OpQuantizationType::kUnsupported;
+    }
+  }
+  if (non_fq_input_seen) {
+    return OpQuantizationType::kWeightOnly;
+  }
+
+  return OpQuantizationType::kSRQ;
+}
+
+class RemoveUnusedFQ : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern<stablehlo::CompositeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const final {
+    if (IsDrqFakeQuant(op) && op->getUses().empty()) {
+      rewriter.eraseOp(op);
+      return success();
+    }
+    return rewriter.notifyMatchFailure(
+        op, "is not a drq fake quant op with no uses.");
+  }
+};
+
 class StrictQuantizationPattern : public RewritePattern {
  public:
-  using BaseType = StrictQuantizationPattern<ConcreteT, RootOpT>;
+  using BaseType = StrictQuantizationPattern;
 
   explicit StrictQuantizationPattern(MLIRContext* context,
                                      const quant::QuantPassSpec& quant_params)
       // Set the score to a large number so it is always preferred.
-      : RewritePattern(RootOpT::getOperationName(), 300, context),
+      : RewritePattern(DequantizeOp::getOperationName(), 300, context),
         quant_params_(quant_params) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
     llvm::SmallVector<Operation*, 4> quantizing_ops;
-
-    // Collect all the ops to quantize, as the user / producer of the root op.
-    if constexpr (std::is_same_v<RootOpT, DequantizeOp>) {
-      if (op->getNumResults() != 1) {
-        return failure();
-      }
-      auto users = op->getResult(0).getUsers();
-      quantizing_ops.append(users.begin(), users.end());
-    } else if constexpr (std::is_same_v<RootOpT, QuantizeOp>) {
-      if (op->getNumOperands() != 1) {
-        return failure();
-      }
-      Value quantize_operand = op->getOperand(0);
-      if (QuantizedType::getQuantizedElementType(quantize_operand.getType())) {
-        // The input of this QuantizeOp has already been quantized, i.e.
-        // rescale.
-        return failure();
-      }
-      DenseFPElementsAttr attr;
-      if (matchPattern(quantize_operand, m_Constant(&attr))) {
-        // Const-> QuantizeOp pattern will be handled separately.
-        return failure();
-      }
-      if (Operation* quantizing_op = quantize_operand.getDefiningOp()) {
-        quantizing_ops.push_back(quantizing_op);
-      }
+    if (op->getNumResults() != 1) {
+      return failure();
     }
+    auto users = op->getResult(0).getUsers();
+    quantizing_ops.append(users.begin(), users.end());
 
     tensorflow::DataType inference_type =
         quant_params_.quant_spec.inference_type;
-    bool weight_only_quantization =
-        quant_params_.quant_spec.weight_only_quantization;
     bool enable_verify = quant_params_.numeric_verify_spec.verify_numeric;
     bool enable_whole_model_verify =
         quant_params_.numeric_verify_spec.whole_model_verify;
-    absl::flat_hash_set<std::string> ops_blocklist =
-        quant_params_.quant_spec.ops_blocklist;
-    absl::flat_hash_set<std::string> nodes_blocklist =
-        quant_params_.quant_spec.nodes_blocklist;
     quant::CustomOpMap custom_map = quant_params_.quant_spec.custom_map;
 
     // Rewrite the floating-point ops to the quantized version, by fusing
@@ -158,8 +179,7 @@ class StrictQuantizationPattern : public RewritePattern {
       }
 
       if (!quant::IsOpQuantizable(quantizing_op) &&
-          !static_cast<const ConcreteT*>(this)->IsQuantizableCustomOp(
-              quantizing_op, custom_map)) {
+          !IsQuantizableCustomOp(quantizing_op, custom_map)) {
         if (!(enable_verify && enable_whole_model_verify)) {
           return failure();
         }
@@ -178,28 +198,18 @@ class StrictQuantizationPattern : public RewritePattern {
         return success();
       }
 
-      // Blocklist op is checked in advance for non-dynamic range quantization
-      // case.
-      if (!quant_params_.quant_spec.weight_quantization &&
-          (ops_blocklist.find(quantizing_op->getName().getStringRef().str()) !=
-           ops_blocklist.end())) {
-        return failure();
-      }
-
-      if (!nodes_blocklist.empty()) {
-        if (auto name_loc = quantizing_op->getLoc().dyn_cast<NameLoc>()) {
-          std::string sloc = name_loc.getName().str();
-          if (!sloc.empty() &&
-              (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
-            return failure();
-          }
-        }
-      }
-
       // An op with float inputs and outputs are expected when it's used by a
       // NumericVerify op. Skip this op.
       if (enable_verify && quant::UsedBy<NumericVerifyOp>(quantizing_op)) {
         continue;
+      }
+
+      auto op_quant_type = GetOpQuantizationType(quantizing_op);
+
+      if (op_quant_type == OpQuantizationType::kUnsupported) {
+        return rewriter.notifyMatchFailure(
+            quantizing_op, "Unsupported quantization type for op: " +
+                               quantizing_op->getName().getStringRef().str());
       }
 
       bool is_operand_or_result_modified = false;
@@ -214,37 +224,26 @@ class StrictQuantizationPattern : public RewritePattern {
           continue;
         }
 
-        auto ele_type = operand.getType().cast<TensorType>().getElementType();
-        if (static_cast<const ConcreteT*>(this)
-                ->AllowDynamicRangeQuantizedOperand(quantizing_op,
-                                                    custom_map)) {
-          auto dq_op = dyn_cast_or_null<DequantizeOp>(operand.getDefiningOp());
-
-          if (dq_op && inference_type == tensorflow::DT_QINT8 &&
-              !static_cast<const ConcreteT*>(this)->IsWeightOnlyOp(
-                  quantizing_op, ops_blocklist, weight_only_quantization,
-                  custom_map)) {
-            // Dynamic range quantization is applied by having QuantizeOp as an
-            // input. Only int8 weight is supported for now.
-            inputs.push_back(dq_op.getOperand());
-            is_operand_or_result_modified = true;
-          } else {
-            // Otherwise, it's the case where the operand is activations or the
-            // quantizing_op is non-supported/weight-only.
+        if (Value dq_input; HasDQParent(operand, dq_input).succeeded()) {
+          if (op_quant_type == OpQuantizationType::kWeightOnly) {
             inputs.push_back(operand);
+          } else {
+            // In both SRQ and DRQ cases, the DQ is fused in.
+            is_operand_or_result_modified = true;
+            inputs.push_back(dq_input);
           }
+        } else if (Value fq_input; IsDrqTensor(operand, fq_input).succeeded()) {
+          is_operand_or_result_modified = true;
+          inputs.push_back(fq_input);
+        } else if (auto ele_type =
+                       operand.getType().cast<TensorType>().getElementType();
+                   ele_type.isF32()) {
+          inputs.push_back(operand);
         } else {
-          if (auto dq_op =
-                  dyn_cast_or_null<DequantizeOp>(operand.getDefiningOp())) {
-            is_operand_or_result_modified = true;
-            inputs.push_back(dq_op.getOperand());
-          } else if (!ele_type.isF32()) {
-            // If the operand is an integer tensor, then it doesn't require the
-            // DequantizeOp in the pattern.
-            inputs.push_back(operand);
-          } else {
-            return failure();
-          }
+          return rewriter.notifyMatchFailure(
+              quantizing_op,
+              "unsupported operand received during quantization of : " +
+                  quantizing_op->getName().getStringRef().str());
         }
       }
 
@@ -289,18 +288,12 @@ class StrictQuantizationPattern : public RewritePattern {
                 {user.getResult(), enumerated_result.index()});
             output_types.push_back(user.getType());
             is_operand_or_result_modified = true;
-          } else if (!result_ele_type.isF32()) {
-            // If the result is an integer tensor, then it doesn't require the
-            // D op in the pattern.
-            outputs_replaced.insert({result, enumerated_result.index()});
-            output_types.push_back(result.getType());
-          } else if (static_cast<const ConcreteT*>(this)
-                         ->AllowDynamicRangeQuantizedResult(quantizing_op,
-                                                            custom_map)) {
+          } else if (result_ele_type.isF32()) {
             outputs_replaced.insert({result, enumerated_result.index()});
             output_types.push_back(result.getType());
           } else {
-            return failure();
+            return rewriter.notifyMatchFailure(
+                quantizing_op, "output of fake quantized op is not float32.");
           }
         }
 
@@ -374,6 +367,22 @@ class StrictQuantizationPattern : public RewritePattern {
   }
 
  private:
+  bool IsQuantizableCustomOp(Operation* op,
+                             const quant::CustomOpMap& custom_op_map) const {
+    // In some cases, ops may need to be quantized even though their op trait is
+    // not quantizable. For example, for the case of custom op various ops can
+    // be categorized as cusom ops despite each of them may require different
+    // behaviors. In that case, these ops can be marked in the custom map and
+    // treated separately in this pass.
+
+    auto custom_op = llvm::dyn_cast_or_null<CustomOp>(op);
+    if (!custom_op) return false;
+
+    // Custom op which is marked in the custom op map is quantizable.
+    std::string op_name = custom_op.getCustomCode().str();
+    return (custom_op_map.find(op_name) == custom_op_map.end()) ? false : true;
+  }
+
   // Reconnects float ops in the whole-model verify mode. Works for both
   // Quantizable ops and Unquantizable ops
   void RewireFloatModelBackbone(Operation* quantized_op,
@@ -588,6 +597,8 @@ struct QuantizePass : public impl::QuantizePassBase<QuantizePass> {
     enable_legacy_quantize_ = quant_specs.legacy_float_scale;
     enable_dynamic_range_quantization_ = quant_specs.weight_quantization;
     enable_weight_only_quantization_ = quant_specs.weight_only_quantization;
+    qdq_conversion_mode_ =
+        quant::GetQDQQuantModeString(quant_specs.qdq_conversion_mode);
   }
 
   void runOnOperation() override;
@@ -607,11 +618,16 @@ void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
+  // Following updates the quant spec from the pass options since the tests
+  // might have updated them.
   quant_specs.verify_numeric = enable_numeric_verify_;
   quant_specs.whole_model_verify = enable_whole_model_verify_;
   quant_specs.legacy_float_scale = enable_legacy_quantize_;
   quant_specs.weight_quantization = enable_dynamic_range_quantization_;
   quant_specs.weight_only_quantization = enable_weight_only_quantization_;
+  quant_specs.qdq_conversion_mode =
+      quant::GetQDQQuantModeFromString(qdq_conversion_mode_);
+
   if (!ops_blocklist_flag_.empty()) {
     quant_specs.ops_blocklist = absl::flat_hash_set<std::string>(
         ops_blocklist_flag_.begin(), ops_blocklist_flag_.end());
@@ -646,6 +662,10 @@ void QuantizePass::runOnOperation() {
       quant_specs.qdq_conversion_mode ==
           quant::QDQConversionMode::kQDQDynamic) {
     patterns.add<TFLDynamicRangeQuantization>(ctx, quant_params);
+  } else if (quant_specs.qdq_conversion_mode ==
+             quant::QDQConversionMode::kQDQStrict) {
+    patterns.add<StrictQuantizationPattern>(ctx, quant_params);
+    patterns.add<RemoveUnusedFQ>(ctx);
   } else {
     patterns.add<TFLFullQuantization, TFLFullQuantizationReverse>(ctx,
                                                                   quant_params);
