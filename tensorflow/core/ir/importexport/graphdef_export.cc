@@ -21,20 +21,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/PointerUnion.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/Sequence.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Threading.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -51,9 +56,9 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/functiondef_export.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/types/dialect.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 using tensorflow::AttrValue;
 using tensorflow::DataType;
