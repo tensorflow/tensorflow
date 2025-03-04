@@ -17,7 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_OPS_COMPAT_OP_COMPATIBILITY_LIB_H_
 
 #include <set>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
