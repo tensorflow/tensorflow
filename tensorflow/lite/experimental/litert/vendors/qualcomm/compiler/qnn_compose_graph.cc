@@ -453,6 +453,11 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
 
   ::qnn::TensorPool tensor_pool(
       [&qnn, &graph_mapper](::qnn::TensorWrapper& tensor_wrapper) {
+        // TODO: link compile options, and remove constexpr if
+        constexpr bool useQInt16AsQUint16 = true;
+        if constexpr (useQInt16AsQUint16) {
+          tensor_wrapper.ConvertQint16ToQuint16();
+        }
         qnn.Api()->tensorCreateGraphTensor(graph_mapper.QnnGraph(),
                                            &tensor_wrapper.GetQnnTensor());
       });
@@ -479,7 +484,7 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
     dump.clear();
     Dump(*op.Get(), dump);
     std::string s = dump.str();
-    LITERT_LOG(LITERT_INFO, "%s", s.data());
+    LITERT_LOG(LITERT_VERBOSE, "%s", s.data());
 
     std::vector<::qnn::TensorWrapperRef> input_tensors;
     for (const auto& input : op.Inputs()) {

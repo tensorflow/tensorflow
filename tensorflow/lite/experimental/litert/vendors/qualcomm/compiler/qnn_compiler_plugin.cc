@@ -27,7 +27,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -41,6 +40,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
+#include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 
 using ::litert::qnn::QnnManager;
 using LiteRtBufferId = uint32_t;
@@ -283,7 +283,13 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
 
   for (const auto& op : graph.Ops()) {
     // default constructed, won't add tensor to QNN
-    ::qnn::TensorPool tensor_pool;
+    ::qnn::TensorPool tensor_pool([](::qnn::TensorWrapper& tensor_wrapper) {
+      // TODO: link compile options, and remove constexpr if
+      constexpr bool useQInt16AsQUint16 = true;
+      if constexpr (useQInt16AsQUint16) {
+        tensor_wrapper.ConvertQint16ToQuint16();
+      }
+    });
     std::vector<::qnn::TensorWrapperRef> input_tensors;
     for (const auto& input : op.Inputs()) {
       ::qnn::TensorWrapper* res{nullptr};
