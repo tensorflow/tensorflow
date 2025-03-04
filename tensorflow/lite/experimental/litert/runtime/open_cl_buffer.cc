@@ -96,6 +96,11 @@ bool OpenClBuffer::IsSupported() {
 }
 
 Expected<OpenClBuffer> OpenClBuffer::Alloc(size_t bytes_size) {
+  if (!IsSupported()) {
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "OpenCL is not supported");
+  }
+
   litert::cl::Buffer buffer;
 
   litert::cl::ClContext* cl_context =
