@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "xla/tsl/profiler/utils/group_events.h"
 #include "xla/tsl/profiler/utils/preprocess_xplane.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
