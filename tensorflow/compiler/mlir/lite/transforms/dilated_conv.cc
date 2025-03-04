@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 
+#include <memory>
 #include <utility>
 
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
