@@ -3692,5 +3692,25 @@ TEST(XlaBuilderTest, UnorderedOutfeed) {
                                   m::Outfeed(m::Parameter(0), m::AfterAll()))));
 }
 
+TEST(XlaBuilderTest, InfeedTokenSharding) {
+  XlaBuilder b(TestName());
+  b.SetSharding(sharding_builder::Replicate());
+  const Shape s = ShapeUtil::MakeShape(PRED, {});
+  XlaOp infeed0 = Infeed(&b, s);
+  XlaOp infeed1 = Infeed(&b, s);
+  And(infeed0, infeed1);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const auto token_sharding,
+      HloSharding::FromProto(sharding_builder::AssignDevice(0)));
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->shape().IsToken()) {
+      ASSERT_TRUE(instruction->has_sharding());
+      EXPECT_EQ(instruction->sharding(), token_sharding);
+    }
+  }
+}
+
 }  // namespace
 }  // namespace xla

@@ -29,6 +29,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 namespace litert {
@@ -53,10 +54,7 @@ class TensorBuffer
       return Unexpected(kLiteRtStatusErrorInvalidArgument,
                         "Cannot duplicate a non-owned tensor buffer");
     }
-    if (auto status = LiteRtDuplicateTensorBuffer(Get());
-        status != kLiteRtStatusOk) {
-      return Unexpected(status, "Failed to duplicate managed tensor buffer");
-    }
+    LITERT_RETURN_IF_ERROR(LiteRtDuplicateTensorBuffer(Get()));
     return TensorBuffer(Get());
   }
 
@@ -65,11 +63,8 @@ class TensorBuffer
       size_t buffer_size) {
     LiteRtTensorBuffer tensor_buffer;
     auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(tensor_type);
-    if (auto status = LiteRtCreateManagedTensorBuffer(
-            buffer_type, &litert_tensor_type, buffer_size, &tensor_buffer);
-        status != kLiteRtStatusOk) {
-      return Unexpected(status, "Failed to create managed tensor buffer");
-    }
+    LITERT_RETURN_IF_ERROR(LiteRtCreateManagedTensorBuffer(
+        buffer_type, &litert_tensor_type, buffer_size, &tensor_buffer));
     return TensorBuffer(tensor_buffer);
   }
 
@@ -82,13 +77,9 @@ class TensorBuffer
     LiteRtTensorBuffer tensor_buffer;
     auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(tensor_type);
 
-    if (auto status = LiteRtCreateTensorBufferFromHostMemory(
-            &litert_tensor_type, host_mem_addr, buffer_size,
-            /*deallocator=*/nullptr, &tensor_buffer);
-        status != kLiteRtStatusOk) {
-      return Unexpected(status,
-                        "Failed to create tensor buffer from host memory");
-    }
+    LITERT_RETURN_IF_ERROR(LiteRtCreateTensorBufferFromHostMemory(
+        &litert_tensor_type, host_mem_addr, buffer_size,
+        /*deallocator=*/nullptr, &tensor_buffer));
     return TensorBuffer(tensor_buffer);
   }
 
@@ -104,14 +95,9 @@ class TensorBuffer
     LiteRtTensorBuffer tensor_buffer;
     auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(tensor_type);
 
-    if (auto status = LiteRtCreateTensorBufferFromAhwb(
-            &litert_tensor_type, ahwb, ahwb_offset,
-            /*deallocator=*/nullptr, &tensor_buffer);
-        status != kLiteRtStatusOk) {
-      return Unexpected(
-          status,
-          "Failed to create tensor buffer from Android Hardware Buffer");
-    }
+    LITERT_RETURN_IF_ERROR(LiteRtCreateTensorBufferFromAhwb(
+        &litert_tensor_type, ahwb, ahwb_offset,
+        /*deallocator=*/nullptr, &tensor_buffer));
     return TensorBuffer(tensor_buffer);
 #else
     return litert::Unexpected(
@@ -173,6 +159,60 @@ class TensorBuffer
                               "OpenCL is not supported on this platform");
 #endif
   }
+
+#if LITERT_HAS_OPENGL_SUPPORT
+  struct GlTexture {
+    GLenum target;
+    GLuint id;
+    GLenum format;
+    size_t size_bytes;
+    GLint layer;
+  };
+  static Expected<TensorBuffer> CreateFromGlTexture(
+      const RankedTensorType& tensor_type, GLenum target, GLuint id,
+      GLenum format, size_t size_bytes, GLint layer) {
+    LiteRtTensorBuffer tensor_buffer;
+    auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(tensor_type);
+    LITERT_RETURN_IF_ERROR(LiteRtCreateTensorBufferFromGlTexture(
+        &litert_tensor_type, target, id, format, size_bytes, layer,
+        /*deallocator=*/nullptr, &tensor_buffer));
+    return TensorBuffer(tensor_buffer);
+  }
+
+  Expected<GlTexture> GetGlTexture() const {
+    GlTexture gl_texture;
+    LITERT_RETURN_IF_ERROR(LiteRtGetTensorBufferGlTexture(
+        Get(), &gl_texture.target, &gl_texture.id, &gl_texture.format,
+        &gl_texture.size_bytes, &gl_texture.layer));
+    return gl_texture;
+  }
+
+  struct GlBuffer {
+    GLenum target;
+    GLuint id;
+    size_t size_bytes;
+    size_t offset;
+  };
+
+  static Expected<TensorBuffer> CreateFromGlBuffer(
+      const RankedTensorType& tensor_type, GLenum target, GLuint id,
+      size_t size_bytes, size_t offset) {
+    LiteRtTensorBuffer tensor_buffer;
+    auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(tensor_type);
+    LITERT_RETURN_IF_ERROR(LiteRtCreateTensorBufferFromGlBuffer(
+        &litert_tensor_type, target, id, size_bytes, offset,
+        /*deallocator=*/nullptr, &tensor_buffer));
+    return TensorBuffer(tensor_buffer);
+  }
+
+  Expected<GlBuffer> GetGlBuffer() const {
+    GlBuffer gl_buffer;
+    LITERT_RETURN_IF_ERROR(LiteRtGetTensorBufferGlBuffer(
+        Get(), &gl_buffer.target, &gl_buffer.id, &gl_buffer.size_bytes,
+        &gl_buffer.offset));
+    return gl_buffer;
+  }
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 
   Expected<LiteRtTensorBufferType> BufferType() const {
     LiteRtTensorBufferType tensor_buffer_type;

@@ -2448,18 +2448,6 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const std::string& config) {
     *instr.mutable_shape() = infeed_instruction_shape.ToProto();
     instr.set_infeed_config(config);
 
-    if (shape.IsArray() && sharding() &&
-        sharding()->type() == OpSharding::OTHER) {
-      // TODO(b/110793772): Support tiled array-shaped infeeds.
-      return InvalidArgument(
-          "Tiled sharding is not yet supported for array-shaped infeeds");
-    }
-
-    if (sharding() && sharding()->type() == OpSharding::REPLICATED) {
-      return InvalidArgument(
-          "Replicated sharding is not yet supported for infeeds");
-    }
-
     // Infeed takes a single token operand. Generate the token to pass to the
     // infeed.
     XlaOp token;
@@ -2505,12 +2493,21 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const std::string& config) {
                                                  HloOpcode::kInfeed, {token}));
     }
 
-    HloInstructionProto infeed_token;
-    *infeed_token.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
-    infeed_token.set_tuple_index(1);
-    TF_ASSIGN_OR_RETURN(infeed_token_,
-                        AddInstruction(std::move(infeed_token),
-                                       HloOpcode::kGetTupleElement, {infeed}));
+    auto get_token = [&]() -> absl::StatusOr<XlaOp> {
+      HloInstructionProto infeed_token;
+      *infeed_token.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
+      infeed_token.set_tuple_index(1);
+      return AddInstruction(std::move(infeed_token),
+                            HloOpcode::kGetTupleElement, {infeed});
+    };
+    if (sharding()) {
+      // Arbitrarily assign token to device 0.
+      OpSharding sharding = sharding_builder::AssignDevice(0);
+      XlaScopedShardingAssignment scoped_sharding(this, sharding);
+      TF_ASSIGN_OR_RETURN(infeed_token_, get_token());
+    } else {
+      TF_ASSIGN_OR_RETURN(infeed_token_, get_token());
+    }
 
     // The infeed instruction produces a tuple of the infed data and a token
     // type. Return XLA op containing the data.
