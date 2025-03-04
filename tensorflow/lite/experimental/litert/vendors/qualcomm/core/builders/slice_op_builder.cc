@@ -28,18 +28,24 @@ std::vector<OpWrapper> BuildSliceOp(
   }
 
   const auto input_rank = input_tensor.GetRank();
-  auto begin_data =
-      reinterpret_cast<const std::int32_t*>(begin_tensor.GetStaticTensorData());
-  auto size_data =
-      reinterpret_cast<const std::int32_t*>(size_tensor.GetStaticTensorData());
+  auto begin_data = begin_tensor.GetStaticTensorData<int32_t>();
+  if (!begin_data.has_value()) {
+    QNN_LOG_ERROR("Get begin_data failed.");
+    return res;
+  }
+  auto size_data = size_tensor.GetStaticTensorData<int32_t>();
+  if (!size_data.has_value()) {
+    QNN_LOG_ERROR("Get size_data failed.");
+    return res;
+  }
   std::vector<std::int32_t> range_data;
   range_data.reserve(input_rank * kRangeNumElements);
   for (size_t i = 0; i < input_rank; ++i) {
-    range_data.emplace_back(begin_data[i]);
-    if (size_data[i] == kSizeNegative) {
+    range_data.emplace_back((*begin_data)[i]);
+    if ((*size_data)[i] == kSizeNegative) {
       range_data.emplace_back(input_tensor.GetDim(i));
     } else {
-      range_data.emplace_back(begin_data[i] + size_data[i]);
+      range_data.emplace_back((*begin_data)[i] + (*size_data)[i]);
     }
     range_data.emplace_back(kDefaultStrideValue);
   }
