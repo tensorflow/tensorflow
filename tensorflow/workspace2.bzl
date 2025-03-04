@@ -913,6 +913,13 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/google/highway/archive/refs/tags/1.0.7.zip"),
     )
 
+    tf_http_archive(
+        name = "org_xprof",
+        sha256 = "6bcb67f9a67014046ddc7366e7b0b24a9904b1f827dab9e037f7170f6b8d22dd",
+        strip_prefix = "profiler-c0ca10d4c09e0731c25233b76e2bcf66a7262ce7",
+        urls = tf_mirror_urls("https://github.com/tensorflow/profiler/archive/c0ca10d4c09e0731c25233b76e2bcf66a7262ce7.zip"),
+    )
+
     # used for adding androidx.annotation dependencies in tflite android jni.
     maven_install(
         artifacts = [
