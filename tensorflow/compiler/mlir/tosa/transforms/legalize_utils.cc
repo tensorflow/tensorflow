@@ -1187,5 +1187,54 @@ tosa::MulOp CreateMulOpAndInfer(PatternRewriter& rewriter, Operation* op, Type r
       input2, getConstTensor<int8_t>(rewriter, op, shift, {1}).value());
 }
 
+Value reshapeScalarTo1D(PatternRewriter& rewriter, Location loc, Value value) {
+  ShapedType type = dyn_cast<ShapedType>(value.getType());
+  if (!type || !type.hasRank()) {
+    return nullptr;
+  }
+  if (type.getRank() == 1) {
+    return value;
+  }
+  if (type.getRank() != 0) {
+    return nullptr;
+  }
+
+  auto element_type = type.getElementType();
+  auto output_type = tensorflow::GetTypeFromTFTensorShape({1}, element_type);
+
+  // for rank-0 constant value, return a rank-1 constant value
+  mlir::DenseElementsAttr attr;
+  if (matchPattern(value, m_Constant(&attr))) {
+    auto storage_type = tensorflow::GetTypeFromTFTensorShape({1}, element_type);
+    auto element_qtype = dyn_cast<quant::QuantizedType>(element_type);
+    if (element_qtype) {
+      storage_type = tensorflow::GetTypeFromTFTensorShape(
+          {1}, element_qtype.getStorageType());
+    }
+
+    DenseElementsAttr const_attr;
+    if (attr.getElementType().isa<mlir::IntegerType>()) {
+      const_attr = DenseElementsAttr::get(storage_type,
+                                          {attr.getValues<mlir::APInt>()[0]});
+    } else if (attr.getElementType().isa<mlir::FloatType>()) {
+      const_attr = DenseElementsAttr::get(storage_type,
+                                          {attr.getValues<mlir::APFloat>()[0]});
+    } else {
+      // unexpected attribute element type
+      return nullptr;
+    }
+
+    auto const_op =
+        rewriter.create<tosa::ConstOp>(loc, output_type, const_attr);
+    return const_op.getResult();
+  }
+
+  // reshape rank0 value to rank1
+  auto rank1_scalar_shape = getTosaConstShape(rewriter, loc, {1});
+  Value rank1_value = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, loc, output_type, value, rank1_scalar_shape);
+  return rank1_value;
+}
+
 }  // namespace tosa
 }  // namespace mlir
