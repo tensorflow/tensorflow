@@ -1432,6 +1432,7 @@ cc_library(
     deps = [
         "@com_github_nlohmann_json//:json",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -72,6 +72,13 @@ load("@//tensorflow:workspace0.bzl", "tf_workspace0")
 tf_workspace0()
 
 load(
+    "@local_tsl//third_party/py:python_wheel.bzl",
+    "python_wheel_version_suffix_repository",
+)
+
+python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
+
+load(
     "@local_tsl//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
     "cuda_json_init_repository",
 )
