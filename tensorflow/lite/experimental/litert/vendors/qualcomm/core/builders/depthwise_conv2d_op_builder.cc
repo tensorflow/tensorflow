@@ -8,13 +8,13 @@
 #include <cstdint>
 #include <vector>
 
-#include "third_party/qairt/latest/include/QNN/QnnOpDef.h"
-#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
+#include "third_party/qairt/latest/include/QNN/QnnOpDef.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
 namespace qnn {
 
@@ -46,10 +46,8 @@ std::vector<OpWrapper> BuildDepthwiseConv2dOp(
       filter_tensor.GetDim(kBatchIndex), filter_tensor.GetDim(kChannelIndex)};
   TensorWrapper* reshaped_filter_tensor = nullptr;
   if (filter_tensor.IsTensorStatic()) {
-    reshaped_filter_tensor = &(tensor_pool.CreateStaticTensor(
-        filter_tensor.GetDataType(), filter_tensor.GetQuantParams(),
-        reshape_dims, filter_tensor.GetTensorSize(),
-        filter_tensor.GetStaticTensorData()));
+    reshaped_filter_tensor =
+        &(tensor_pool.CloneStaticTensorFrom(filter_tensor, reshape_dims));
   } else {
     reshaped_filter_tensor =
         &(tensor_pool.CloneNativeTensorFrom(filter_tensor, reshape_dims));

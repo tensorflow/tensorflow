@@ -113,4 +113,19 @@ TensorWrapper& TensorPool::CloneStaticTensorFrom(const TensorWrapper& src,
   return back;
 }
 
+TensorWrapper& TensorPool::CloneStaticTensorFrom(
+    const TensorWrapper& src, const std::vector<std::uint32_t>& dimentions) {
+  const auto id = tensor_wrappers_.size();
+  auto& back = tensor_wrappers_.emplace_back(
+      id, QNN_TENSOR_TYPE_STATIC, src.qnn_tensor_.v2.dataType,
+      src.quantize_params_, dimentions, src.qnn_tensor_.v2.clientBuf.dataSize,
+      src.qnn_tensor_.v2.clientBuf.data);
+
+  if (tensor_callback_) {
+    tensor_callback_(back);
+  }
+
+  return back;
+}
+
 }  // namespace qnn
