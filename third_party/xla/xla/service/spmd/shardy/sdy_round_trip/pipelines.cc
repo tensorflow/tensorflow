@@ -18,7 +18,9 @@ limitations under the License.
 #include <cassert>
 #include <functional>
 
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/service/hlo.pb.h"
@@ -37,6 +39,7 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
+using ::mlir::PassPipelineOptions;
 using ::mlir::PassPipelineRegistration;
 
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm) {
@@ -69,11 +72,27 @@ void registerSdyRoundTripExportPipeline() {
       addSdyRoundTripExportPipeline);
 }
 
+namespace {
+
+struct SdyRoundTripImportPipelineOptions
+    : public PassPipelineOptions<SdyRoundTripImportPipelineOptions> {
+  Option<bool> enable_constant_import{*this, "enable-constant-import",
+                                      llvm::cl::desc("Enable constant import."),
+                                      llvm::cl::init(true)};
+};
+
+void sdyRoundTripImportPipeline(
+    mlir::OpPassManager& pm, const SdyRoundTripImportPipelineOptions& options) {
+  addSdyRoundTripImportPipeline(pm, options.enable_constant_import);
+}
+
+}  // namespace
+
 void registerSdyRoundTripImportPipeline() {
-  PassPipelineRegistration<> importPipeline(
+  PassPipelineRegistration<SdyRoundTripImportPipelineOptions> importPipeline(
       "xla-sdy-round-trip-import-pipeline",
       "Run passes to import a StableHLO module into the SDY (Shardy) dialect.",
-      std::bind(addSdyRoundTripImportPipeline, std::placeholders::_1, true));
+      sdyRoundTripImportPipeline);
 }
 
 }  // namespace sdy
