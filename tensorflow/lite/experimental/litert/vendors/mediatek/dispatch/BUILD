@@ -54,6 +54,7 @@ litert_dynamic_lib(
         # copybara:uncomment "//third_party/neuro_pilot:latest_host_headers",
         "//tensorflow/lite/experimental/litert/c:litert_runtime_c_api_shared_lib",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
