@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/stream.h"
