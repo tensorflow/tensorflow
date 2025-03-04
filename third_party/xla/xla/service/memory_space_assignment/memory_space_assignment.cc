@@ -72,37 +72,22 @@ namespace xla {
 namespace memory_space_assignment {
 namespace {
 
-absl::Status InsertInstructionAndEnsureOperandsInserted(
-    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
-    absl::flat_hash_set<HloInstruction*>* inserted_instructions);
-
 // Insert an instruction to the schedule, and make sure its dependencies
 // (operands) are already in the schedule. If not, insert these operands
 // before the instruction.
-absl::Status EnsureInstructionAndOperandsInserted(
+void InsertInstructionAndEnsureOperandsInserted(
     HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
     absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
-  if (inserted_instructions->contains(new_instruction)) {
-    return absl::OkStatus();
+  if (!inserted_instructions->insert(new_instruction).second) {
+    VLOG(1) << "Already inserted: " << new_instruction->ToString();
+  } else {
+    for (HloInstruction* operand : new_instruction->operands()) {
+      InsertInstructionAndEnsureOperandsInserted(operand, new_sequence,
+                                                 inserted_instructions);
+    }
+    VLOG(1) << "Inserting: " << new_instruction->ToShortString();
+    new_sequence->push_back(new_instruction);
   }
-  return InsertInstructionAndEnsureOperandsInserted(
-      new_instruction, new_sequence, inserted_instructions);
-}
-
-// Same as above, but does not check if instruction is already inserted. This is
-// used when the caller already knows the instruction isn't inserted yet, to
-// speed up compilation.
-absl::Status InsertInstructionAndEnsureOperandsInserted(
-    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
-    absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
-  for (HloInstruction* operand : new_instruction->operands()) {
-    TF_RETURN_IF_ERROR(EnsureInstructionAndOperandsInserted(
-        operand, new_sequence, inserted_instructions));
-  }
-  VLOG(4) << "inserting: " << new_instruction->ToShortString();
-  new_sequence->push_back(new_instruction);
-  TF_RET_CHECK(inserted_instructions->insert(new_instruction).second);
-  return absl::OkStatus();
 }
 
 std::string InstructionScheduleToString(const HloLiveRange& hlo_live_range) {
@@ -1002,8 +987,8 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "before " << instruction_index << ": "
                     << new_instruction->ToString();
-            TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
-                new_instruction, &new_sequence, &inserted_instructions));
+            InsertInstructionAndEnsureOperandsInserted(
+                new_instruction, &new_sequence, &inserted_instructions);
           }
         }
       }
@@ -1028,8 +1013,8 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
             !inserted_instructions.contains(instruction)) {
           VLOG(4) << "inst " << instruction_index << ": "
                   << instruction->ToString();
-          TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
-              instruction, &new_sequence, &inserted_instructions));
+          InsertInstructionAndEnsureOperandsInserted(instruction, &new_sequence,
+                                                     &inserted_instructions);
         }
       }
 
@@ -1039,8 +1024,8 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "after " << instruction_index << ": "
                     << new_instruction->ToString();
-            TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
-                new_instruction, &new_sequence, &inserted_instructions));
+            InsertInstructionAndEnsureOperandsInserted(
+                new_instruction, &new_sequence, &inserted_instructions);
           }
         }
       }
@@ -1048,9 +1033,9 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
 
     // For rare cases where the original sequence is empty, ensure the root
     // instruction and its dependencies are scheduled.
-    TF_RETURN_IF_ERROR(EnsureInstructionAndOperandsInserted(
-        computation->root_instruction(), &new_sequence,
-        &inserted_instructions));
+    InsertInstructionAndEnsureOperandsInserted(
+        computation->root_instruction(), &new_sequence, &inserted_instructions);
+
     CHECK_EQ(new_sequence.size(), computation->instruction_count())
         << "New sequence for computation " << computation->name() << " has "
         << new_sequence.size() << " instructions, expects "

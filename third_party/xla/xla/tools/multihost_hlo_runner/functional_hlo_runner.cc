@@ -1319,7 +1319,7 @@ FunctionalHloRunner::CreateUninitializedArgumentsOnDevice(
 
   for (const auto& argument_buffers : argument_buffers_per_device) {
     for (const auto& buffer : argument_buffers) {
-      TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
+      TF_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
     }
   }
   LOG(INFO) << "Argument buffers are ready.";
@@ -1448,7 +1448,7 @@ FunctionalHloRunner::CopyArgumentsToDevice(
   }
   for (const auto& device_argument_buffers : argument_buffers) {
     for (const auto& device_buffer : device_argument_buffers) {
-      TF_RETURN_IF_ERROR(device_buffer->BlockHostUntilReady());
+      TF_RETURN_IF_ERROR(device_buffer->GetReadyFuture().Await());
     }
   }
   return argument_buffers;
@@ -1507,7 +1507,7 @@ FunctionalHloRunner::FetchAndLogOutput(
         TF_RET_CHECK(buffer->device() == output_buffers[i][0]->device())
             << "All outputs from a given vector of outputs should be for the "
                "same device";
-        TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
+        TF_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
       }
     }
   }

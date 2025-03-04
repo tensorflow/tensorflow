@@ -1597,7 +1597,7 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
         return InvalidArgument(
             "Buffer is potentially a device buffer with non default layout.");
       }
-      TF_RETURN_IF_ERROR(buffer.BlockHostUntilReady());
+      TF_RETURN_IF_ERROR(buffer.GetReadyFuture().Await());
     }
 
     // We must hold the GIL (or at least prevent Python GC) while writing to the
