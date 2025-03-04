@@ -179,6 +179,12 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_BOOL
     }
+    field {
+      name: "finalize_resource_manager"
+      number: 34
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
     enum_type {
       name: "MlirBridgeRollout"
       value {
