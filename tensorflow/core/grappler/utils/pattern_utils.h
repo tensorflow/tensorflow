@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_UTILS_H_
 
 #include "tensorflow/core/grappler/utils/graph_view.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
