@@ -215,15 +215,20 @@ build:dbg --per_file_copt=+.*,-xla.*@-g0
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
 
-build:rocm --copt=-Wno-gnu-offsetof-extensions
-build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
-build:rocm --define=using_rocm_hipcc=true
-build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
-build:rocm --define=xnn_enable_avxvnniint8=false
-build:rocm --define=xnn_enable_avx512fp16=false
-build:rocm --repo_env TF_NEED_ROCM=1
+build:rocm_base --copt=-Wno-gnu-offsetof-extensions
+build:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
+build:rocm_base --define=using_rocm_hipcc=true
+build:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
+build:rocm_base --define=xnn_enable_avxvnniint8=false
+build:rocm_base --define=xnn_enable_avx512fp16=false
+build:rocm_base --repo_env TF_NEED_ROCM=1
 
-build:rocm_clang_official --config=rocm
+# Depraceted, will be removed once all build/test scripts are migrated from --config=rocm.
+build:rocm --config=rocm_base 
+
+build:rocm_gcc --config=rocm_base
+
+build:rocm_clang_official --config=rocm_base
 build:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 build:rocm_clang_official --action_env=TF_ROCM_CLANG="1"
 build:rocm_clang_official --linkopt="-fuse-ld=lld"
