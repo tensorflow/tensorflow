@@ -2315,6 +2315,7 @@ def tf_custom_op_library(
         gpu_deps = None,
         linkopts = [],
         copts = [],
+        disable_disallowed_deps_check = False,
         **kwargs):
     """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels."""
 
@@ -2364,7 +2365,7 @@ def tf_custom_op_library(
         disallowed_deps = [
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
-        ],
+        ] if not disable_disallowed_deps_check else [],
         deps = deps,
     )
     tf_cc_shared_object(
