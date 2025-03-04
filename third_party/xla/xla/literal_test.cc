@@ -2520,6 +2520,14 @@ TEST_F(LiteralUtilTest, BroadcastVectorToMatrix1) {
             LiteralUtil::CreateR2<int64_t>({{1, 2}, {1, 2}}));
 }
 
+TEST_F(LiteralUtilTest, BroadcastVectorToMatrixWithZeroDim) {
+  Literal literal = LiteralUtil::CreateR1<int32_t>({1, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal broadcasted_literal,
+      literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S32, {2, 0}),
+                        /*dimensions=*/{0}));
+}
+
 TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
   Literal literal = LiteralUtil::CreateR0<int32_t>(9);
   TF_ASSERT_OK_AND_ASSIGN(

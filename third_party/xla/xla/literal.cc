@@ -1088,6 +1088,11 @@ absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
     }
   }
 
+  if (ShapeUtil::ElementsIn(result_shape) == 0) {
+    // Nothing to do.
+    return result;
+  }
+
   const char* source_data = static_cast<const char*>(src.untyped_data());
   char* result_data = static_cast<char*>(result.untyped_data());
 
