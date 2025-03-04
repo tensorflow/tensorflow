@@ -13,6 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <map>
+#include <set>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/common_runtime/constant_folding.h"
