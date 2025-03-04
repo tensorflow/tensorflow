@@ -29,3 +29,4 @@ from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver i
 from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import SlurmClusterResolver
 from tensorflow.python.distribute.cluster_resolver.tfconfig_cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.cluster_resolver.pbs_cluster_resolver import PBSClusterResolver
