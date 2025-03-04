@@ -6,10 +6,9 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
+        "//learning/brain/mlir:stablehlo_friends",
         "//third_party/golang/github_com/gomlx/gomlx:__subpackages__",
         "//xla:internal",
-        "//third_party/py/jax/_src/pallas/google/xla_export:__subpackages__",
-        "//learning/infra/mira/experimental/orbax_model:__subpackages__",  # For ConvertPrimitiveTypeToMlirType
     ]),
     licenses = ["notice"],
 )
