@@ -216,6 +216,7 @@ build:dbg --per_file_copt=+.*,-xla.*@-g0
 build:dbg --copt -DDEBUG_BUILD
 
 build:rocm --copt=-Wno-gnu-offsetof-extensions
+build:rocm --copt=-Wno-error=stringop-truncation
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm_hipcc=true
 build:rocm --define=tensorflow_mkldnn_contraction_kernel=0

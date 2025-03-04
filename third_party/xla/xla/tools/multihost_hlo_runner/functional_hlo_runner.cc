@@ -333,7 +333,8 @@ absl::StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
   build_options.set_process_index(task_id);
   build_options.set_process_count(num_nodes);
   build_options.set_key_value_store(kv_store);
-  if (raw_options.spmd_mode == SpmdMode::kUseSpmdPartitioning ||
+  if (replicas_and_partitions.partitions > 1 ||
+      raw_options.spmd_mode == SpmdMode::kUseSpmdPartitioning ||
       raw_options.spmd_mode == SpmdMode::kUseShardyPartitioning) {
     build_options.set_use_spmd_partitioning(true);
     if (raw_options.spmd_mode == SpmdMode::kUseShardyPartitioning) {
