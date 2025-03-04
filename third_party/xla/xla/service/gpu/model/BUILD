@@ -1031,3 +1031,18 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "interpolator",
+    hdrs = ["interpolator.h"],
+    deps = ["@com_google_absl//absl/log:check"],
+)
+
+xla_cc_test(
+    name = "interpolator_test",
+    srcs = ["interpolator_test.cc"],
+    deps = [
+        ":interpolator",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
