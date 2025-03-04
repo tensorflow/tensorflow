@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -56,6 +57,11 @@ absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
 absl::Status ConvertStablehloWithManyArgsToHloProto(
     mlir::ModuleOp module, xla::HloProto* hlo_proto,
     bool use_tuple_args = false);
+
+// Convert StableHLO module Text format -> StableHLO module -> to HloModule.
+// Restrict use of this API for CLI tools only.
+absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloTextToHLO(
+    std::unique_ptr<llvm::MemoryBuffer> stablehlo_text);
 
 }  // namespace xla
 
