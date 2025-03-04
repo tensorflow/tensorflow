@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/platform/status.h"
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 namespace libexport {
