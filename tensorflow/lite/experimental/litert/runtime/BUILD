@@ -69,6 +69,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_event",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/runtime/opencl:buffer",
         "//tensorflow/lite/experimental/litert/runtime/opencl:cl_command_queue",
