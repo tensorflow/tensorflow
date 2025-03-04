@@ -108,6 +108,8 @@ const ::litert::internal::TflOptions2& GetTflOptions2(
 
 ::litert::internal::TflOptions2&& TakeTflOptions2(LiteRtOpT& litert_op);
 
+void ClearTflOptions(LiteRtOpT& litert_op);
+
 // MODEL
 
 const std::vector<::litert::internal::TflOpCodePtr>& GetTflOpCodes(
@@ -505,6 +507,8 @@ class LiteRtOpT {
   friend ::litert::internal::TflOptions2&& detail::TakeTflOptions2(
       LiteRtOpT& litert_op);
 
+  friend void detail::ClearTflOptions(LiteRtOpT& litert_op);
+
  private:
   LiteRtOpCode litert_op_code_;
 
@@ -518,6 +522,14 @@ class LiteRtOpT {
   ::litert::internal::TflOptions tfl_option_;
   ::litert::internal::TflOptions2 tfl_option_2_;
 };
+
+// Clears any attribute data and sets the op to be a dispatch op.
+inline void MakeDispatchOp(LiteRtOpT& op) {
+  detail::ClearTflOptions(op);
+  op.ClearCustomOptions();
+  op.SetOpCode(kLiteRtOpCodeTflCustom);
+  detail::SetTflOpCodeInd(op, detail::kDispatchOpCodeTflInd);
+}
 
 //
 // Subgraph
@@ -906,6 +918,11 @@ void SetTflOptions(LiteRtOpT& litert_op, Arg&& arg) {
 template <class Arg>
 void SetTflOptions2(LiteRtOpT& litert_op, Arg&& arg) {
   litert_op.tfl_option_2_ = std::forward<Arg>(arg);
+}
+
+inline void ClearTflOptions(LiteRtOpT& litert_op) {
+  litert_op.tfl_option_2_.Reset();
+  litert_op.tfl_option_.Reset();
 }
 
 template <class Arg>
