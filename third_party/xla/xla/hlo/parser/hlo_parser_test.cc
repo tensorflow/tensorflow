@@ -4814,6 +4814,30 @@ TEST_F(HloParserTest, NegativeParameterNumber) {
               HasSubstr("parameter number must be >= 0"));
 }
 
+TEST_F(HloParserTest, ParseBufferIdScalar) {
+  std::string shape_string = "s32[]{buffer_id=10}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShape(S32, {});
+  ASSERT_FALSE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+  ASSERT_TRUE(Shape::Equal().IgnoreBufferId()(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseBufferIdArray) {
+  std::string shape_string = "f32[8,16]{buffer_id=120}{1,0}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShape(F32, {8, 16});
+  ASSERT_FALSE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+  ASSERT_TRUE(Shape::Equal().IgnoreBufferId()(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
 TEST_F(HloParserTest, DuplicateParameterNumberIsDetected) {
   const std::string kHloString = R"(
   ENTRY e {
