@@ -732,17 +732,17 @@ class PjRtClient {
     // Transfers 'data' into a sub-buffer of buffer_index starting at offset, of
     // length transfer_size. 'data' must be already laid out in the correct
     // on-device format, for example returned by a call to
-    // buffer->CopyRawToHost. If is_last_transfer is false then the buffer
-    // remains unavailable to consumers after the transfer completes. If
-    // is_last_transfer is true then the buffer becomes available to consumers
-    // after the transfer completes, and no transfer calls (or SetBufferError
-    // calls) into buffer_index can be made after this call. on_done is called
-    // when the transfer is complete but before the buffers are made available
-    // to their consumers. 'data' must remain in scope until on_done is called.
+    // buffer->CopyRawToHost. on_done is called when the transfer is complete
+    // but before the buffers are made available to their consumers.
+    // 'data' must remain in scope until on_done is called.
     virtual absl::Status TransferRawDataToSubBuffer(
         int buffer_index, const void* data, int64_t offset,
-        int64_t transfer_size, bool is_last_transfer,
-        absl::AnyInvocable<void() &&> on_done) = 0;
+        int64_t transfer_size, absl::AnyInvocable<void() &&> on_done) = 0;
+
+    // Indicates that data transfer for the buffer `buffer_index` is complete,
+    // thus the buffer becomes available to consumers. No transfer calls (or
+    // SetBufferError calls) into `buffer_index` can be made after this call.
+    virtual void MarkBufferCompletion(int buffer_index) = 0;
 
     // Indicates that a specific buffer should result in an error status. No
     // transfer calls (or further SetBufferError calls) into buffer_index can

@@ -959,16 +959,15 @@ AbstractAsyncHostToHostMemoryTransferManager::TransferLiteralToBuffer(
       [literal](void* b, int64_t size) {
         PackOrCopy(literal.shape().element_type(), literal, b, size);
       },
-      /*is_last_transfer=*/true, std::move(on_done));
+      std::move(on_done));
 }
 
 absl::Status
 AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToBuffer(
     int buffer_index, absl::string_view data,
     absl::AnyInvocable<void() &&> on_done) {
-  return TransferRawDataToSubBuffer(
-      buffer_index, data.data(), /*offset=*/0, data.size(),
-      /*is_last_transfer=*/true, std::move(on_done));
+  return TransferRawDataToSubBuffer(buffer_index, data.data(), /*offset=*/0,
+                                    data.size(), std::move(on_done));
 }
 
 // The definition events of `device_buffers_` must be ready before calling this
@@ -976,20 +975,20 @@ AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToBuffer(
 absl::Status
 AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
     int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
-    bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) {
+    absl::AnyInvocable<void() &&> on_done) {
   return FillRawDataToSubBuffer(
       buffer_index,
       [offset, data, transfer_size](void* b, int64_t size) {
         std::memcpy(reinterpret_cast<char*>(b) + offset, data, transfer_size);
       },
-      is_last_transfer, std::move(on_done));
+      std::move(on_done));
 }
 
 absl::Status
 AbstractAsyncHostToHostMemoryTransferManager::FillRawDataToSubBuffer(
     int buffer_index,
     absl::AnyInvocable<void(void* data, int64_t size)> fill_fn,
-    bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) {
+    absl::AnyInvocable<void() &&> on_done) {
   {
     // We release the lock when out of scope because
     // `async_work_runner_->Schedule` might sometimes run the closure in this
@@ -1005,7 +1004,7 @@ AbstractAsyncHostToHostMemoryTransferManager::FillRawDataToSubBuffer(
 
   CHECK(async_work_runner_ != nullptr);
   async_work_runner_->Schedule([this, fill_fn = std::move(fill_fn),
-                                is_last_transfer, on_done = std::move(on_done),
+                                on_done = std::move(on_done),
                                 buffer_index]() mutable -> void {
     tsl::RCReference<tsl::AsyncValue> event;
     {
@@ -1013,9 +1012,6 @@ AbstractAsyncHostToHostMemoryTransferManager::FillRawDataToSubBuffer(
       const auto& b = device_buffers_[buffer_index]->Buffers()[0];
       CHECK(b.IsConcrete());
       fill_fn(reinterpret_cast<char*>(b->data()), b->size());
-      if (is_last_transfer) {
-        last_transfer_finished_[buffer_index] = true;
-      }
       --buffer_transfers_in_flight_[buffer_index];
       --transfers_in_flight_;
       if (buffer_transfers_in_flight_[buffer_index] == 0 &&
@@ -1031,6 +1027,12 @@ AbstractAsyncHostToHostMemoryTransferManager::FillRawDataToSubBuffer(
     }
   });
   return absl::OkStatus();
+}
+
+void AbstractAsyncHostToHostMemoryTransferManager::MarkBufferCompletion(
+    int buffer_index) {
+  absl::MutexLock l(&mu_);
+  last_transfer_finished_[buffer_index] = true;
 }
 
 void AbstractAsyncHostToHostMemoryTransferManager::SetBufferError(
