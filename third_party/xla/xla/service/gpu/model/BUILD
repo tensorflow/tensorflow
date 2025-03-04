@@ -1046,3 +1046,49 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "collective_interpolator",
+    srcs = ["collective_interpolator.cc"],
+    hdrs = ["collective_interpolator.h"],
+    deps = [
+        ":gpu_hlo_cost_analysis",
+        ":hlo_op_profile_proto_cc",
+        ":interpolator",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_interpolator_test",
+    srcs = ["collective_interpolator_test.cc"],
+    deps = [
+        ":collective_interpolator",
+        ":hlo_op_profile_proto_cc",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
