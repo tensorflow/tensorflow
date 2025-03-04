@@ -467,7 +467,7 @@ Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
 
   // Wrap the partitioned subgraphs in a LiteRtModel.
   LiteRtModelT sliced_model;
-  sliced_model.TransferSubgraphs(std::move(subgraphs));
+  sliced_model.TransferSubgraphsFrom(std::move(subgraphs));
 
   // Copy op codes.
   const auto& op_codes = detail::GetTflOpCodes(model);

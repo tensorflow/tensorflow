@@ -13,7 +13,10 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["//tensorflow:internal"],
+    includes = [
+        "//tensorflow:internal",
+        "@local_xla//xla:internal",
+    ],
 )
 
 package_group(
@@ -23,6 +26,7 @@ package_group(
         "//tensorflow/python/eager/...",
         "//tensorflow/python/profiler/...",
         "//tensorflow/python/tpu/profiler/...",
+        "@local_xla//xla/tools/...",
     ],
 )
 
