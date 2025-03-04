@@ -713,13 +713,16 @@ Status CreateStaticEngine(const TRTOptimizationPass::ConversionParams& params,
       (info.precision_mode == TrtPrecisionMode::INT8 && info.use_calibration);
 
   // Create static engines with precision_mode fp32/fp16.
+  TrtUniquePtrType<nvinfer1::IRuntime> infer(
+      nvinfer1::createInferRuntime(*trt_logger));
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
   TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
       info.segment_graph_def, nullptr,
       calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
       max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
-      trt_allocator.get(), /*calibrator=*/nullptr, &engine,
-      info.use_calibration, params.use_implicit_batch,
+      trt_allocator.get(), infer.get(),
+      /*calibrator=*/nullptr, &engine, info.use_calibration,
+      params.use_implicit_batch,
       /*convert_successfully=*/nullptr, profile, info.engine_name,
       /*use_explicit_precision=*/params.use_explicit_precision, cluster));
   TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());

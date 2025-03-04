@@ -425,6 +425,14 @@ class TRTNetworkBuilder {
     StatusOr<nvinfer1::IShapeLayer*> shape_layer = this->Shape(input);
     TRT_ENSURE_PTR_OK(shape_layer);
     nvinfer1::ITensor* runtime_shape = (*shape_layer)->getOutput(0);
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+    // TODO(benbarsdell): Casting to int32 makes this match the pre-TRT10
+    // behavior, but it would be better to instead cast the other int32
+    // tensors to int64.
+    runtime_shape =
+        network_->addCast(*runtime_shape, nvinfer1::DataType::kINT32)
+            ->getOutput(0);
+#endif
 
     if (sub_one) {
       StatusOr<nvinfer1::IConstantLayer*> ones = this->Constant<int32>(1, 1);
@@ -601,9 +609,9 @@ class TRTNetworkBuilder {
       nvinfer1::ITensor* input, float quantize_scale, float dequantize_scale,
       const std::string& name) {
     TRT_ENSURE(input);
-    if (!IS_TRT_VERSION_GE(8, 0, 0, 0)) {
-      TRT_ENSURE(network_->hasExplicitPrecision());
-    }
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+    TRT_ENSURE(network_->hasExplicitPrecision());
+#endif
     TRT_ENSURE(IS_TRT_VERSION_GE(7, 1, 0, 0));
 
     static int count = 0;

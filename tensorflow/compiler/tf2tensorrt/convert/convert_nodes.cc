@@ -108,7 +108,9 @@ namespace {
 const char* LayerTypeToString(nvinfer1::LayerType layer_type) {
   switch (layer_type) {
     ADD_LAYER(CONVOLUTION)
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     ADD_LAYER(FULLY_CONNECTED)
+#endif
     ADD_LAYER(ACTIVATION)
     ADD_LAYER(POOLING)
     ADD_LAYER(LRN)
@@ -130,7 +132,9 @@ const char* LayerTypeToString(nvinfer1::LayerType layer_type) {
     ADD_LAYER(MATRIX_MULTIPLY)
     ADD_LAYER(RAGGED_SOFTMAX)
     ADD_LAYER(CONSTANT)
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     ADD_LAYER(RNN_V2)
+#endif
     ADD_LAYER(IDENTITY)
     ADD_LAYER(PLUGIN_V2)
     ADD_LAYER(SLICE)
@@ -1082,9 +1086,13 @@ Status Converter::Init(nvinfer1::ILogger* trt_logger) {
           : (1U << static_cast<int>(
                  nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH));
   if (use_explicit_precision_) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     flags |=
         (1U << static_cast<int>(
              nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_PRECISION));
+#else
+    return errors::Internal("Explicit precision is not supported since TensorRT 10");
+#endif
   }
   trt_network_.reset(trt_builder_->createNetworkV2(flags));
   if (!trt_network_) {
@@ -1252,7 +1260,8 @@ bool AbortCudaEngineBuild() {
 Status Converter::BuildCudaEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, int max_batch_size,
     size_t max_workspace_size_bytes, nvinfer1::IGpuAllocator* allocator,
-    TRTInt8Calibrator* calibrator, TrtShapeOptimizationProfile* profiles) {
+    nvinfer1::IRuntime* runtime, TRTInt8Calibrator* calibrator,
+    TrtShapeOptimizationProfile* profiles) {
   tensorflow::profiler::AnnotatedTraceMe activity(
       [&]() {
         return tensorflow::profiler::TraceMeOpOverride("TRTEngineOp",
@@ -1266,13 +1275,20 @@ Status Converter::BuildCudaEngine(
   }
 
   VLOG(1) << "Configuring TensorRT builder";
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   trt_builder_->setMaxBatchSize(max_batch_size);
+#endif
   trt_builder_->setGpuAllocator(allocator);
 
   // Create a network configuration and use it to build a TRT engine.
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config(
       trt_builder_->createBuilderConfig());
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   builder_config->setMaxWorkspaceSize(max_workspace_size_bytes);
+#else
+  builder_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE,
+                                     max_workspace_size_bytes);
+#endif
 
   // Create the algorithm selector. For TensorRT 7.x, the algorithm selector
   // cannot be used when building with INT8 calibration.
@@ -1429,23 +1445,45 @@ Status Converter::BuildCudaEngine(
       }
     }
   }
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   engine->reset(
       trt_builder_->buildEngineWithConfig(*network(), *builder_config));
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+  TrtUniquePtrType<nvinfer1::IHostMemory> serialized(
+      trt_builder_->buildSerializedNetwork(*network(), *builder_config));
+  if (!serialized) return errors::Internal("Failed to build TensorRT serialized network");
+  engine->reset(
+      runtime->deserializeCudaEngine(serialized->data(), serialized->size()));
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
   if (engine->get() == nullptr) {
     return errors::Internal("Failed to build TensorRT engine");
   }
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "TRT engine created";
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     int nbBindings = (*engine)->getNbBindings();
+#else
+    int nbBindings = (*engine)->getNbIOTensors();
+#endif
     VLOG(2) << "Number of engine bindings: " << nbBindings;
     for (int i = 0; i < nbBindings; i++) {
       auto get_location_string = [&engine](int i) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
         if ((*engine)->getLocation(i) == nvinfer1::TensorLocation::kDEVICE)
+#else
+        if ((*engine)->getTensorLocation((*engine)->getIOTensorName(i)) ==
+            nvinfer1::TensorLocation::kDEVICE)
+#endif
           return " on device";
         else
           return " on host";
       };
-      VLOG(2) << "Binding " << i << " name: " << (*engine)->getBindingName(i)
+      VLOG(2) << "Binding " << i << " name: "
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+              << (*engine)->getBindingName(i)
+#else
+              << (*engine)->getIOTensorName(i)
+#endif
               << get_location_string(i);
     }
   }
@@ -2060,11 +2098,19 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
   nvinfer1::ILayer* conv_layer = nullptr;
   if (is_conv2d_backprop_input) {
     nvinfer1::IDeconvolutionLayer* layer =
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
         params->converter->network()->addDeconvolution(
+#else
+        params->converter->network()->addDeconvolutionNd(
+#endif
             *tensor->trt_tensor(), noutput, kernel_size,
             weights->GetTrtWeights(), biases->GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     layer->setStride(stride);
+#else
+    layer->setStrideNd(stride);
+#endif
     // VALID padding is the default TRT behavior.
     if (padding_type == "SAME") {
       // SAME_UPPER means that post padding is preferred.
@@ -2076,18 +2122,30 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
     const nvinfer1::Weights empty_weights{nvinfer1::DataType::kFLOAT, nullptr,
                                           0};
     nvinfer1::IConvolutionLayer* layer =
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
         params->converter->network()->addConvolution(
+#else
+        params->converter->network()->addConvolutionNd(
+#endif
             *tensor->trt_tensor(), noutput, kernel_size,
             params->use_explicit_precision ? empty_weights
                                            : weights->GetTrtWeights(),
             empty_weights);
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     layer->setStride(stride);
+#else
+    layer->setStrideNd(stride);
+#endif
     if (padding_type == "SAME") {
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
     layer->setNbGroups(num_groups);
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     layer->setDilation(dilation);
+#else
+    layer->setDilationNd(dilation);
+#endif
     conv_layer = layer;
   }
 
@@ -2136,8 +2194,12 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
       nvinfer1::DimsHW pre_padding(0, 0);
       nvinfer1::DimsHW post_padding(height_diff, width_diff);
       nvinfer1::IPaddingLayer* padding_layer =
-          params->converter->network()->addPadding(*output_tensor->trt_tensor(),
-                                                   pre_padding, post_padding);
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+          params->converter->network()->addPadding(
+#else
+          params->converter->network()->addPaddingNd(
+#endif
+              *output_tensor->trt_tensor(), pre_padding, post_padding);
       output_tensor = padding_layer->getOutput(0);
       params->converter->SetLayerName(padding_layer, node_def, "pad");
     }
@@ -2212,6 +2274,11 @@ Status ConvertTranspose(const OpConverterParams* params) {
 
 Status ConvertShape(const OpConverterParams* params) {
   const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  DataType out_type;
+  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "out_type", &out_type));
+  nvinfer1::DataType trt_out_type;
+  TF_RETURN_IF_ERROR(TfTypeToTrtType(out_type, &trt_out_type));
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"input", TrtInputArg::kBoth}}));
   if (params->use_implicit_batch) {
@@ -2224,20 +2291,27 @@ Status ConvertShape(const OpConverterParams* params) {
   StatusOr<TRTNetworkBuilder> builder = TRTNetworkBuilder::Create(
       params->converter->network(), params->weight_store);
   TRT_ENSURE_OK(builder);
+  nvinfer1::ITensor* out_tensor;
   if (input_dims.IsStatic()) {
     // Create a const node with the value of the shape.
     StatusOr<nvinfer1::IConstantLayer*> const_layer =
         builder->ConstantShape(input_dims);
     TRT_ENSURE_PTR_OK(const_layer);
-    params->outputs->push_back(
-        TRT_TensorOrWeights((*const_layer)->getOutput(0)));
-    return OkStatus();
+    out_tensor = (*const_layer)->getOutput(0);
+  } else {
+    StatusOr<nvinfer1::IShapeLayer*> shape_layer =
+        builder->Shape(inputs.at(0).tensor()->trt_tensor());
+    TRT_ENSURE_PTR_OK(shape_layer);
+    params->converter->SetLayerName(*shape_layer, params->node_def, "shape");
+    out_tensor = (*shape_layer)->getOutput(0);
   }
-  StatusOr<nvinfer1::IShapeLayer*> shape_layer =
-      builder->Shape(inputs.at(0).tensor()->trt_tensor());
-  TRT_ENSURE_PTR_OK(shape_layer);
-  params->converter->SetLayerName(*shape_layer, params->node_def, "shape");
-  params->outputs->push_back(TRT_TensorOrWeights((*shape_layer)->getOutput(0)));
+  if (out_tensor->getType() != trt_out_type) {
+    nvinfer1::ICastLayer* cast_layer =
+        params->converter->network()->addCast(*out_tensor, trt_out_type);
+    TRT_ENSURE(cast_layer);
+    out_tensor = cast_layer->getOutput(0);
+  }
+  params->outputs->push_back(TRT_TensorOrWeights(out_tensor));
   return OkStatus();
 }
 
@@ -2430,6 +2504,14 @@ Status Converter::DynamicReshape(ITensorProxyPtr input,
   }
   ITensorProxyPtr shape =
       network()->addShape(*input->trt_tensor())->getOutput(0);
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+  // TODO(benbarsdell): Casting to int32 makes this match the pre-TRT10
+  // behavior, but it would be better to instead cast all the other int32
+  // tensors below to int64.
+  shape = network()
+              ->addCast(*shape->trt_tensor(), nvinfer1::DataType::kINT32)
+              ->getOutput(0);
+#endif
   // Build new shape = shape[:trt_axis] + [1] + shape[trt_axis:]
   std::vector<ITensorProxyPtr> concat_inputs;
   int max_num_slices = std::max(slices.size(), size_for_added_dims.size());
@@ -3264,7 +3346,11 @@ Status ConvertFusedConv2DBiasActivation(const OpConverterParams* params) {
   nvinfer1::IConvolutionLayer* conv_layer = nullptr;
   if (filter_format == "OIHW") {
     // Weights are already in the right order.
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     conv_layer = params->converter->network()->addConvolution(
+#else
+    conv_layer = params->converter->network()->addConvolutionNd(
+#endif
         *tensor->trt_tensor(), weights.Shape().dim(0), kernel_size,
         weights.GetTrtWeights(), biases.GetTrtWeights());
   } else {
@@ -3274,18 +3360,30 @@ Status ConvertFusedConv2DBiasActivation(const OpConverterParams* params) {
         params->weight_store->GetTempWeights(weights);
     TRT_ENSURE_OK(weights_kcrs);
     ReorderRSCKToKCRS(weights, &*weights_kcrs, 1);
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     conv_layer = params->converter->network()->addConvolution(
+#else
+    conv_layer = params->converter->network()->addConvolutionNd(
+#endif
         *tensor->trt_tensor(), weights.Shape().dim(3), kernel_size,
         weights_kcrs->GetTrtWeights(), biases.GetTrtWeights());
   }
   TFTRT_RETURN_ERROR_IF_NULLPTR(conv_layer, node_def.name());
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   conv_layer->setStride(stride);
+#else
+  conv_layer->setStrideNd(stride);
+#endif
   if (padding_type == "SAME") {
     conv_layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
   }
   params->converter->SetLayerName(conv_layer, node_def, "conv");
   conv_layer->setNbGroups(1);
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   conv_layer->setDilation(dilation);
+#else
+  conv_layer->setDilationNd(dilation);
+#endif
   ITensorProxyPtr output_tensor = conv_layer->getOutput(0);
 
   // Add activation if there is one.
@@ -3357,11 +3455,19 @@ Status ConvertPool(const OpConverterParams* params) {
         tensor, {0, 3, 1, 2}, &tensor, node_def, "to_NCHW"));
   }
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   nvinfer1::IPoolingLayer* layer = params->converter->network()->addPooling(
+#else
+  nvinfer1::IPoolingLayer* layer = params->converter->network()->addPoolingNd(
+#endif
       *tensor->trt_tensor(), type, ksize);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   layer->setStride(stride);
+#else
+  layer->setStrideNd(stride);
+#endif
   // VALID padding is the default TRT behavior.
   if (padding_type == "SAME") {
     // SAME_UPPER means that post padding is preferred.
@@ -3998,7 +4104,11 @@ Status ConvertPad(const OpConverterParams* params) {
         tensor, transpose_idx, &tensor, node_def, "to_pad"));
   }
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   nvinfer1::IPaddingLayer* layer = params->converter->network()->addPadding(
+#else
+  nvinfer1::IPaddingLayer* layer = params->converter->network()->addPaddingNd(
+#endif
       *tensor->trt_tensor(), pre_padding, post_padding);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->converter->SetLayerName(layer, node_def);
@@ -4682,10 +4792,27 @@ StatusOr<ITensorProxyPtr> ConvertFullyConnectedImpl(
           << ", n_output=" << noutput
           << " weights shape: " << weights.Shape().DebugString()
           << " to convert " << node_def.op();
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   nvinfer1::IFullyConnectedLayer* layer =
       params->converter->network()->addFullyConnected(
           *tensor_a->trt_tensor(), noutput, weights.GetTrtWeights(),
           biases.GetTrtWeights());
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+  nvinfer1::IConstantLayer* weights_layer =
+      params->converter->network()->addConstant(weights.Shape().AsTrtDims(),
+                                                weights.GetTrtWeights());
+  nvinfer1::IConstantLayer* bias_layer =
+      params->converter->network()->addConstant(biases.Shape().AsTrtDims(),
+                                                biases.GetTrtWeights());
+  nvinfer1::IMatrixMultiplyLayer* matmul_layer =
+      params->converter->network()->addMatrixMultiply(
+          *tensor_a->trt_tensor(), nvinfer1::MatrixOperation::kNONE,
+          *weights_layer->getOutput(0), nvinfer1::MatrixOperation::kNONE);
+  nvinfer1::IElementWiseLayer* layer =
+      params->converter->network()->addElementWise(
+          *matmul_layer->getOutput(0), *bias_layer->getOutput(0),
+          nvinfer1::ElementWiseOperation::kSUM);
+#endif  // !IS_TRT_VERSION_GE(10, 0, 0, 0)
 
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->converter->SetLayerName(layer, node_def);
@@ -4701,7 +4828,13 @@ StatusOr<ITensorProxyPtr> ConvertFullyConnectedImpl(
   TF_RETURN_IF_ERROR(PrepareTensorForShape(
       params->converter, TRT_TensorOrWeights(output_tensor), output_dim,
       /*validation_only=*/false, &output_tensor, node_def,
-      /*op_instance=*/1, /*origin_node_name=*/"FULLY_CONNECTED"));
+      /*op_instance=*/1,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+      /*origin_node_name=*/"FULLY_CONNECTED")
+#else
+      /*origin_node_name=*/"MATRIX_MULTIPLY")
+#endif
+  );
   return output_tensor;
 }
 
@@ -5005,6 +5138,14 @@ CalcDepthSpaceDynamicShape(const OpConverterParams* params, int block_size,
   ITensorProxyPtr shape = params->converter->network()
                               ->addShape(*inputs.at(0).tensor()->trt_tensor())
                               ->getOutput(0);
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+  // TODO(benbarsdell): Casting to int32 makes this match the pre-TRT10
+  // behavior, but it would be better to instead cast all the other int32
+  // tensors below to int64.
+  shape = params->converter->network()
+              ->addCast(*shape->trt_tensor(), nvinfer1::DataType::kINT32)
+              ->getOutput(0);
+#endif
   ITensorProxyPtr batch_size =
       params->converter->network()
           ->addSlice(*shape->trt_tensor(), {1, {0}}, {1, {1}}, {1, {1}})
@@ -5596,7 +5737,11 @@ Status ConvertResize(const OpConverterParams* params) {
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
   // Verify resize mode. Initialize resize mode if supported.
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   nvinfer1::ResizeMode resize_mode;
+#else
+  nvinfer1::InterpolationMode resize_mode;
+#endif
   if (node_def.op() == "ResizeBilinear") {
 #if IS_TRT_VERSION_GE(7, 1, 0, 0)
     if (!align_corners) {
@@ -5604,9 +5749,17 @@ Status ConvertResize(const OpConverterParams* params) {
           "Cannot Convert Bilinear Resize when align_corners=False");
     }
 #endif
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     resize_mode = nvinfer1::ResizeMode::kLINEAR;
+#else
+    resize_mode = nvinfer1::InterpolationMode::kLINEAR;
+#endif
   } else if (node_def.op() == "ResizeNearestNeighbor") {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     resize_mode = nvinfer1::ResizeMode::kNEAREST;
+#else
+    resize_mode = nvinfer1::InterpolationMode::kNEAREST;
+#endif
   } else {
     return errors::Unimplemented(node_def.op(), " is not yet implemented");
   }
@@ -5642,6 +5795,14 @@ Status ConvertResize(const OpConverterParams* params) {
     ITensorProxyPtr shape = params->converter->network()
                                 ->addShape(*inputs_tensor->trt_tensor())
                                 ->getOutput(0);
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+    // TODO(benbarsdell): Casting to int32 makes this match the pre-TRT10
+    // behavior, but it would be better to instead cast all the other int32
+    // tensors below to int64.
+    shape = params->converter->network()
+                ->addCast(*shape->trt_tensor(), nvinfer1::DataType::kINT32)
+                ->getOutput(0);
+#endif
     ITensorProxyPtr batch_size =
         params->converter->network()
             ->addSlice(*shape->trt_tensor(), {1, {0}}, {1, {1}}, {1, {1}})
@@ -5685,7 +5846,14 @@ Status ConvertResize(const OpConverterParams* params) {
 
   // Set layer parameters.
   layer->setResizeMode(resize_mode);
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   layer->setAlignCorners(align_corners);
+#else
+  if (align_corners) {
+    layer->setCoordinateTransformation(
+        nvinfer1::ResizeCoordinateTransformation::kALIGN_CORNERS);
+  }
+#endif
 
   // Set output shape.
   if (static_output_shape) {
@@ -5832,7 +6000,7 @@ Status ConvertGraphDefToEngine(
     int max_batch_size, size_t max_workspace_size_bytes,
     const std::vector<PartialTensorShape>& input_shapes,
     nvinfer1::ILogger* trt_logger, nvinfer1::IGpuAllocator* allocator,
-    TRTInt8Calibrator* calibrator,
+    nvinfer1::IRuntime* runtime, TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
@@ -6025,8 +6193,8 @@ Status ConvertGraphDefToEngine(
 
   // Build the engine.
   TF_RETURN_IF_ERROR(converter->BuildCudaEngine(
-      engine, max_batch_size, max_workspace_size_bytes, allocator, calibrator,
-      profiles));
+      engine, max_batch_size, max_workspace_size_bytes, allocator, runtime,
+      calibrator, profiles));
 
   VLOG(1) << "Finished conversion";
   return OkStatus();

@@ -157,27 +157,50 @@ TrtUniquePtrType<nvinfer1::IHostMemory> CreateSerializedEngine() {
 #endif
 
   // Build the engine.
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   builder->setMaxBatchSize(1);
+#endif
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builderConfig(
       builder->createBuilderConfig());
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   builderConfig->setMaxWorkspaceSize(1 << 20);
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
       builder->buildEngineWithConfig(*network, *builderConfig));
   EXPECT_NE(engine, nullptr);
   // Serialize the engine to create a model, then close everything.
   TrtUniquePtrType<nvinfer1::IHostMemory> model(engine->serialize());
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+  builderConfig->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE,
+                                    1 << 20);
+  TrtUniquePtrType<nvinfer1::IHostMemory> model(
+      builder->buildSerializedNetwork(*network, *builderConfig));
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
   return model;
 }
 
 template <typename T>
-unsigned GetBindingSizeBytes(const nvinfer1::ICudaEngine& engine, int index,
+unsigned GetBindingSizeBytes(const nvinfer1::ICudaEngine& engine,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                             int index,
+#else
+                             const char* name,
+#endif
                              unsigned batch_size) {
   unsigned vol = batch_size;
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   auto dims = engine.getBindingDimensions(index);
-  int vecDim = engine.getBindingVectorizedDim(index);
+  int vecDim = engine.getBindingVectorizedDim(name);
+#else
+  auto dims = engine.getTensorShape(name);
+  int vecDim = engine.getTensorVectorizedDim(name);
+#endif
   if (-1 != vecDim)  // i.e., 0 != lgScalarsPerVector
   {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     int scalarsPerVec = engine.getBindingComponentsPerElement(index);
+#else
+    int scalarsPerVec = engine.getTensorComponentsPerElement(name);
+#endif
     // Divide round up.
     dims.d[vecDim] = (dims.d[vecDim] + scalarsPerVec - 1 / scalarsPerVec);
     vol *= scalarsPerVec;
@@ -192,17 +215,32 @@ void Execute(nvinfer1::IExecutionContext* context, const float* input1,
   const nvinfer1::ICudaEngine& engine = context->getEngine();
 
   // We have two bindings: input and output.
-  ASSERT_EQ(engine.getNbBindings(), 4);
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+  int num_bindings = engine.getNbBindings();
   const int input_index1 = engine.getBindingIndex(kInputTensor1);
   const int input_index2 = engine.getBindingIndex(kInputTensor2);
   const int output_index1 = engine.getBindingIndex(kOutputTensor1);
   const int output_index2 = engine.getBindingIndex(kOutputTensor2);
+#else
+  int num_bindings = engine.getNbIOTensors();
+#endif
+  ASSERT_EQ(num_bindings, 4);
 
   // Create GPU buffers and a stream
-  std::vector<void*> buffers(engine.getNbBindings());
+  std::vector<void*> buffers(num_bindings);
   for (int i = 0; i < buffers.size(); i++) {
-    ASSERT_EQ(
-        0, cudaMalloc(&buffers[i], GetBindingSizeBytes<float>(engine, i, 1)));
+    ASSERT_EQ(0, cudaMalloc(&buffers[i], GetBindingSizeBytes<float>(engine,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                                                                    i,
+#else
+                                                                    engine
+                                                                        .getIOTensorName(
+                                                                            i),
+#endif
+                                                                    1)));
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+    context->setTensorAddress(engine.getIOTensorName(i), buffers[i]);
+#endif
   }
 
   cudaStream_t stream;
@@ -213,17 +251,26 @@ void Execute(nvinfer1::IExecutionContext* context, const float* input1,
   // Note that since the host buffer was not created as pinned memory, these
   // async copies are turned into sync copies. So the following synchronization
   // could be removed.
-  ASSERT_EQ(0, cudaMemcpyAsync(buffers[input_index1], input1, sizeof(float),
+  ASSERT_EQ(0, cudaMemcpyAsync(buffers[0], input1, sizeof(float),
                                cudaMemcpyHostToDevice, stream));
-  ASSERT_EQ(0, cudaMemcpyAsync(buffers[input_index2], input2, sizeof(float),
+  ASSERT_EQ(0, cudaMemcpyAsync(buffers[1], input2, sizeof(float),
                                cudaMemcpyHostToDevice, stream));
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   context->enqueueV2(buffers.data(), stream, nullptr);
-  ASSERT_EQ(0, cudaMemcpyAsync(output1, buffers[output_index1], sizeof(float),
+#else
+  context->enqueueV3(stream);
+#endif
+  ASSERT_EQ(0, cudaMemcpyAsync(output1, buffers[2], sizeof(float),
                                cudaMemcpyDeviceToHost, stream));
-  ASSERT_EQ(
-      0, cudaMemcpyAsync(output2, buffers[output_index2],
-                         GetBindingSizeBytes<int32>(engine, output_index2, 1),
-                         cudaMemcpyDeviceToHost, stream));
+  ASSERT_EQ(0, cudaMemcpyAsync(output2, buffers[3],
+                               GetBindingSizeBytes<int32>(engine,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                                                          output_index2,
+#else
+                                                          kOutputTensor2,
+#endif
+                                                          1),
+                               cudaMemcpyDeviceToHost, stream));
   cudaStreamSynchronize(stream);
 
   // Release the stream and the buffers
@@ -253,8 +300,13 @@ TEST(TensorrtTest, BasicFunctions) {
   Logger& logger = *Logger::GetLogger();
   TrtUniquePtrType<nvinfer1::IRuntime> runtime(
       nvinfer1::createInferRuntime(logger));
-  TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
-      runtime->deserializeCudaEngine(model->data(), model->size(), nullptr));
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine(runtime->deserializeCudaEngine(
+      model->data(), model->size()
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                         ,
+      nullptr
+#endif
+      ));
   TrtUniquePtrType<nvinfer1::IExecutionContext> context(
       engine->createExecutionContext());
 
@@ -262,11 +314,25 @@ TEST(TensorrtTest, BasicFunctions) {
   float input1 = 1234;
   float input2 = 567;
 
-  std::vector<float> output1(
-      GetBindingSizeBytes<float>(*engine, 2, 1) / sizeof(float), 0.0f);
+  std::vector<float> output1(GetBindingSizeBytes<float>(*engine,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                                                        2,
+#else
+                                                        kOutputTensor1,
+#endif
+                                                        1) /
+                                 sizeof(float),
+                             0.0f);
 
-  std::vector<float> output2(
-      GetBindingSizeBytes<int32>(*engine, 3, 1) / sizeof(int32), 0.0f);
+  std::vector<float> output2(GetBindingSizeBytes<int32>(*engine,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                                                        3,
+#else
+                                                        kOutputTensor2,
+#endif
+                                                        1) /
+                                 sizeof(int32),
+                             0.0f);
 
   ASSERT_EQ(output1.size(), 1);
   ASSERT_EQ(output2.size(), 1);

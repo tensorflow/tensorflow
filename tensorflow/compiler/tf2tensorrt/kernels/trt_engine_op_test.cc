@@ -66,7 +66,12 @@ class TRTEngineOpTestBase : public OpsTestBase {
  public:
   void AddSimpleTrtOp(DataType dtype, int max_cached_engines_count = 1,
                       PartialTensorShape shape = PartialTensorShape({-1, -1}),
-                      bool use_implicit_batch = true,
+                      bool use_implicit_batch
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                      = true,
+#else
+                      = false,
+#endif
                       bool allow_build_at_runtime = true,
                       bool static_engine = false) {
     // Create the GPU device.
@@ -207,6 +212,7 @@ constexpr std::array<TestParam, 2> TestParameters{TestParam{false},
 INSTANTIATE_TEST_CASE_P(TRTEngineOpTestInstantiation, TRTEngineOpTestWithParam,
                         ::testing::ValuesIn(TestParameters));
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
 TEST_F(TRTEngineOpTestBase, DynamicEngines) {
   // Test dynamic engine creation during inference time
   TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/4);
@@ -256,11 +262,16 @@ TEST_F(TRTEngineOpTestBase, DynamicEngines) {
   EXPECT_EQ(1, cache->count({TensorShape({3, 2})}));
   EXPECT_EQ(1, cache->count({TensorShape({10, 10})}));
 }
+#endif  // !IS_TRT_VERSION_GE(10, 0, 0, 0)
 
 TEST_F(TRTEngineOpTestBase, AllowBuildAtRuntime) {
   TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/1,
                                       PartialTensorShape({-1, -1}),
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
                                       /*use_implicit_batch=*/true,
+#else
+                                      /*use_implicit_batch=*/false,
+#endif
                                       /*allow_build_at_runtime=*/false);
 
   // Execute the op
