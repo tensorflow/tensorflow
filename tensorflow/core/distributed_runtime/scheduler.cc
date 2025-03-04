@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/scheduler.h"
 
+#include <cstdint>
+#include <deque>
 #include <queue>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
