@@ -28,7 +28,7 @@ litert_cc_lib_with_mtk(
         "neuron_adapter_api.h",
     ],
     tags = [
-        # Don't build/test in OS until qnn is available.
+        # Don't build/test in OS until neuron is available.
         "nobuilder",
         "notap",
     ],

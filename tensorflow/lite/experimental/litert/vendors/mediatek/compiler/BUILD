@@ -45,6 +45,7 @@ litert_dynamic_lib(
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek/schema:mediatek_litert_schema",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -73,6 +74,9 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
         "//tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations:add_op_legalization",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations:mul_op_legalization",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations:batch_matmul_op_legalization",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations:fully_connected_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations:operand_map",
     ],
 )
@@ -99,6 +103,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek/schema:mediatek_litert_schema",
     ],
 )
 
