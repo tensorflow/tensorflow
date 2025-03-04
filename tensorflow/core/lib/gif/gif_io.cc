@@ -20,10 +20,9 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/strings/str_cat.h"
+#include "gif_lib.h"  // from @gif
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/platform/gif.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
