@@ -344,8 +344,8 @@ message ShapeProto {
   repeated bool is_dynamic_dimension = 6;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal(),
-  // ShapeUtil::Compatible() and ShapeUtil::Hash() appropriately to account for
-  // the new field.
+  // ShapeUtil::Compatible() and Shape::Hash() appropriately to account for the
+  // new field.
 }
 // LINT.ThenChange( \
 //     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc)
