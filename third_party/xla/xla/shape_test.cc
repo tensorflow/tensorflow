@@ -36,6 +36,7 @@ class ShapeTest : public ::testing::Test {
   const Shape matrix_ = ShapeUtil::MakeShape(U32, {1, 2});
   const Shape matrix2_ =
       ShapeUtil::MakeShapeWithDenseLayout(S32, {3, 4}, {0, 1});
+  const Shape matrix_buffer_ = ShapeUtil::MakeShapeForBuffer(S32, {3, 4}, 200);
   const Shape tuple_ =
       ShapeUtil::MakeTupleShape({opaque_, scalar_, matrix_, matrix2_});
   const Shape nested_tuple_ =
@@ -58,11 +59,13 @@ TEST(Shape, ArrayCtorTreatsEmptyDynamicDimensionsAsAllStatic) {
 
 TEST_F(ShapeTest, ShapeToFromProto) {
   for (const Shape& shape :
-       {opaque_, token_, scalar_, matrix_, matrix2_, tuple_, nested_tuple_,
-        dynamic_matrix_, unbounded_}) {
+       {opaque_, token_, scalar_, matrix_, matrix2_, matrix_buffer_, tuple_,
+        nested_tuple_, dynamic_matrix_, unbounded_}) {
     Shape shape_copy(shape.ToProto());
     EXPECT_TRUE(ShapeUtil::Equal(shape, shape_copy))
         << shape << " != " << shape_copy;
+    EXPECT_EQ(shape.ToString(/*print_layout=*/true),
+              shape_copy.ToString(/*print_layout=*/true));
   }
 }
 
@@ -82,6 +85,8 @@ TEST_F(ShapeTest, ShapeToString) {
             scalar_with_tile_.ToString(/*print_layout=*/true));
   EXPECT_EQ("u32[1,2]{1,0}", matrix_.ToString(/*print_layout=*/true));
   EXPECT_EQ("s32[3,4]{0,1}", matrix2_.ToString(/*print_layout=*/true));
+  EXPECT_EQ("s32[3,4]{buffer_id=200}{1,0}",
+            matrix_buffer_.ToString(/*print_layout=*/true));
   EXPECT_EQ("(opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1})",
             tuple_.ToString(/*print_layout=*/true));
   EXPECT_EQ(
@@ -212,6 +217,18 @@ TEST_F(ShapeTest, IsStaticDimension) {
   EXPECT_TRUE(unbounded_.is_static_dimension(1));
 }
 
+TEST_F(ShapeTest, IsBuffer) {
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 6});
+  EXPECT_FALSE(shape.is_buffer());
+  EXPECT_EQ(shape.buffer_id(), 0);
+  EXPECT_EQ(shape.ToString(true), "f32[4,6]{1,0}");
+
+  Shape buffer_shape = ShapeUtil::MakeShapeForBuffer(F32, {4, 6}, 120);
+  EXPECT_TRUE(buffer_shape.is_buffer());
+  EXPECT_EQ(buffer_shape.buffer_id(), 120);
+  EXPECT_EQ(buffer_shape.ToString(true), "f32[4,6]{buffer_id=120}{1,0}");
+}
+
 TEST_F(ShapeTest, ProgramShapeToFromProto) {
   ProgramShape program_shape;
   *program_shape.add_parameters() = ShapeUtil::MakeShape(F32, {1, 2, 3});
@@ -294,8 +311,8 @@ TEST_F(ShapeTest, IgnoreSplitsComparison) {
 
 TEST_F(ShapeTest, SupportsAbslHash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
-      {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_, tuple_,
-       nested_tuple_, dynamic_matrix_}));
+      {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_,
+       matrix_buffer_, tuple_, nested_tuple_, dynamic_matrix_}));
 }
 
 void BM_ShapeCopy(::testing::benchmark::State& state) {

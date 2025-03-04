@@ -6319,16 +6319,39 @@ bool HloParserImpl::ParseShape(Shape* result,
       ShapeUtil::IsScalar(*result)) {
     LayoutUtil::SetToDefaultLayout(result);
   }
-  // We need to lookahead to see if a following open brace is the start of a
-  // layout. The specific problematic case is:
+
+  // We need to lookahead to see if following an open brace is the start of a
+  // buffer_id or layout. The specific problematic case is:
   //
   // ENTRY %foo (x: f32[42]) -> f32[123] {
   //  ...
   // }
   //
   // The open brace could either be the start of a computation or the start of a
-  // layout for the f32[123] shape. We consider it the start of a layout if the
-  // next token after the open brace is an integer or a colon.
+  // buffer_id or layout for the f32[123] shape. We consider it the start of a
+  // buffer_id if the next token is an attribute, the start of a layout if the
+  // next token is an integer or a colon.
+  if (lexer_.GetKind() == TokKind::kLbrace &&
+      lexer_.LookAhead() == TokKind::kAttributeName) {
+    lexer_.Lex();
+    if (lexer_.GetStrVal() != "buffer_id") {
+      return TokenError("expects buffer_id= attribute");
+    }
+    if (lexer_.Lex() != TokKind::kInt) {
+      return TokenError("buffer_id= attribute must be an integer");
+    }
+    int64_t buffer_id = lexer_.GetInt64Val();
+    if (buffer_id <= 0) {
+      return TokenError("buffer_id= attribute must be an integer > 0");
+    }
+    lexer_.Lex();
+    if (lexer_.GetKind() != TokKind::kRbrace) {
+      return TokenError("buffer_id= attribute must be followed by a '}'");
+    }
+    lexer_.Lex();
+    result->set_buffer_id(buffer_id);
+  }
+
   if (lexer_.GetKind() == TokKind::kLbrace &&
       (lexer_.LookAhead() == TokKind::kInt ||
        lexer_.LookAhead() == TokKind::kColon)) {

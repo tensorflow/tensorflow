@@ -5078,7 +5078,6 @@ cc_library(
     srcs = ["while_loop_all_reduce_code_motion.cc"],
     hdrs = ["while_loop_all_reduce_code_motion.h"],
     deps = [
-        ":call_graph",
         ":collective_ops_utils",
         "//xla:literal_util",
         "//xla:util",

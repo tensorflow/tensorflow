@@ -244,11 +244,21 @@ class Shape {
     }
   }
 
+  int64_t buffer_id() const { return buffer_id_; }
+  bool is_buffer() const { return buffer_id_ > 0; }
+  void set_buffer_id(int64_t buffer_id) {
+    CHECK(IsArray()) << ShortDebugString();
+    CHECK_GE(buffer_id, 0) << ShortDebugString();
+    buffer_id_ = buffer_id;
+  }
+  void clear_buffer_id() { buffer_id_ = 0; }
+
   void Clear() {
     element_type_ = PRIMITIVE_TYPE_INVALID;
     clear_dimensions();
     tuple_shapes_.clear();
     clear_layout();
+    clear_buffer_id();
   }
 
   std::string SerializeAsString() const {
@@ -320,6 +330,10 @@ class Shape {
       ignore_split_config_in_layout_ = true;
       return *this;
     }
+    Equal& IgnoreBufferId() {
+      ignore_buffer_id_ = true;
+      return *this;
+    }
 
    private:
     bool ignore_layout_ = false;
@@ -332,6 +346,7 @@ class Shape {
     bool ignore_dimensions_ = false;
     bool ignore_tail_padding_alignment_in_elements_in_layout_ = false;
     bool ignore_split_config_in_layout_ = false;
+    bool ignore_buffer_id_ = false;
   };
 
   // Test that all fields of the shape are the same, equivalent to Equal().
@@ -347,7 +362,7 @@ class Shape {
       return H::combine(std::move(h), s.tuple_shapes_size());
     }
     h = H::combine(std::move(h), s.element_type_, s.dimensions_,
-                   s.dynamic_dimensions_);
+                   s.dynamic_dimensions_, s.buffer_id_);
     if (kIsLayoutSensitive) {
       h = H::combine(std::move(h), s.layout_);
     }
@@ -377,6 +392,9 @@ class Shape {
 
   // The layout of the shape. Only relevant for arrays.
   std::optional<Layout> layout_;
+
+  // When the value is <=0, the corresponding HLO value is not in a buffer.
+  int64_t buffer_id_ = 0;
 };
 
 // Shape of the parameters and output of an XLA computation. This is analogous
