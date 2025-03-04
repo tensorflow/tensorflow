@@ -69,7 +69,9 @@ struct MeshWithUnamedAxes {
 // hasher. This is safe here since each element isn't mutable, so the key
 // is stable.
 struct MeshWithUnamedAxesInfo : public DenseMapInfo<MeshWithUnamedAxes> {
-  static inline MeshWithUnamedAxes getEmptyKey() { return {}; }
+  static inline MeshWithUnamedAxes getEmptyKey() {
+    return {{}, DeviceIdsMapInfo::getEmptyKey()};
+  }
 
   static inline MeshWithUnamedAxes getTombstoneKey() {
     return {{}, DeviceIdsMapInfo::getTombstoneKey()};
@@ -108,9 +110,15 @@ MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
   MeshWithUnamedAxesToFirstMeshMap meshWithUnamedAxesToFirstMeshMap;
   for (sdy::MeshOp meshOp : moduleOp.getOps<sdy::MeshOp>()) {
     SmallVector<int64_t> meshSizes;
-    meshSizes.reserve(meshOp.getMesh().getAxes().size());
-    for (sdy::MeshAxisAttr axis : meshOp.getMesh().getAxes()) {
+    sdy::MeshAttr meshAttr = meshOp.getMeshAttr();
+    meshSizes.reserve(meshAttr.getAxes().size());
+    for (sdy::MeshAxisAttr axis : meshAttr.getAxes()) {
       meshSizes.push_back(axis.getSize());
+    }
+    if (meshSizes.empty() && !meshOp.getMesh().isMaximal()) {
+      // This can happen for empty maximal meshes. Use {-1} for it since an
+      // empty/tombstone value can't be used as a key in the map.
+      meshSizes = {-1};
     }
     // NOTE: we don't allow an explicit iota list of device IDs as part of
     // verification. So we don't need to worry about an empty list of device IDs
@@ -200,11 +208,20 @@ class SdyRoundTripDedupMeshesPass
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
-    MeshToAxisMap duplicateMeshesToAxisMap =
-        buildDuplicateMeshesToAxisMap(moduleOp);
-    if (duplicateMeshesToAxisMap.empty()) {
+
+    // Exit early if there are no meshes or just one mesh.
+    auto meshIter = moduleOp.getOps<sdy::MeshOp>();
+    if (meshIter.empty()) {
       return;
     }
+    auto meshIterBegin = meshIter.begin();
+    std::advance(meshIterBegin, 1);
+    if (meshIterBegin == meshIter.end()) {
+      return;
+    }
+
+    MeshToAxisMap duplicateMeshesToAxisMap =
+        buildDuplicateMeshesToAxisMap(moduleOp);
     dedupMeshes(moduleOp, duplicateMeshesToAxisMap);
     eraseMeshes(moduleOp, duplicateMeshesToAxisMap);
   }

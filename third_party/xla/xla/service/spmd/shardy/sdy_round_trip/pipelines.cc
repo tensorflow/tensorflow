@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/dedup_meshes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_callback_custom_calls.h"
@@ -39,6 +40,7 @@ namespace sdy {
 using ::mlir::PassPipelineRegistration;
 
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm) {
+  pm.addPass(createSdyRoundTripDedupMeshesPass());
   pm.addPass(createExportNamedComputationsPass());
   pm.addPass(createSdyRoundTripExportOpsPass());
   pm.addPass(createSdyRoundTripShardMapExportPass());
