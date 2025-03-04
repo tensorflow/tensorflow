@@ -26,6 +26,9 @@
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
+
 #if LITERT_HAS_OPENGL_SUPPORT
 #include <GLES3/gl31.h>
 #include <GLES3/gl32.h>
@@ -41,6 +44,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #if LITERT_HAS_OPENGL_SUPPORT
 #include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/gl_texture.h"
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 #include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
 
@@ -90,8 +94,13 @@ class LiteRtTensorBufferT {
 #if LITERT_HAS_OPENGL_SUPPORT
   static litert::Expected<Ptr> CreateFromGlBuffer(
       const LiteRtRankedTensorType& tensor_type, GLenum target, GLuint id,
-      size_t bytes_size, size_t offset,
+      size_t size_bytes, size_t offset,
       LiteRtGlBufferDeallocator deallocator = nullptr);
+
+  static litert::Expected<Ptr> CreateFromGlTexture(
+      const LiteRtRankedTensorType& tensor_type, GLenum target, GLuint id,
+      GLenum format, size_t size_bytes, GLint layer,
+      LiteRtGlTextureDeallocator deallocator = nullptr);
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 
   static litert::Expected<Ptr> CreateManaged(
@@ -123,6 +132,7 @@ class LiteRtTensorBufferT {
   litert::Expected<std::pair<void*, int>> GetFastRpcBuffer();
   litert::Expected<litert::internal::OpenClBuffer*> GetOpenClBuffer();
 #if LITERT_HAS_OPENGL_SUPPORT
+  litert::Expected<litert::internal::GlTexture*> GetGlTexture();
   litert::Expected<litert::internal::GlBuffer*> GetGlBuffer();
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 
@@ -178,6 +188,15 @@ class LiteRtTensorBufferT {
     LiteRtFastRpcDeallocator deallocator;
   };
 
+  using BufferVariant =
+      std::variant<HostBuffer, AhwbBuffer, IonBuffer, DmaBufBuffer,
+                   FastRpcBuffer, litert::internal::OpenClBuffer
+#if LITERT_HAS_OPENGL_SUPPORT
+                   ,
+                   litert::internal::GlBuffer, litert::internal::GlTexture
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+                   >;
+
   LiteRtTensorBufferT(const LiteRtRankedTensorType& tensor_type,
                       LiteRtTensorBufferType buffer_type, size_t buffer_size,
                       size_t buffer_offset = 0);
@@ -213,16 +232,14 @@ class LiteRtTensorBufferT {
   LiteRtTensorBufferType buffer_type_;
   size_t buffer_size_;
   size_t buffer_offset_;
-  std::variant<HostBuffer, AhwbBuffer, IonBuffer, DmaBufBuffer, FastRpcBuffer,
-               litert::internal::OpenClBuffer
-#if LITERT_HAS_OPENGL_SUPPORT
-               ,
-               litert::internal::GlBuffer
-#endif  // LITERT_HAS_OPENGL_SUPPORT
-               >
-      buffer_;
+  BufferVariant buffer_;
   std::optional<litert::Event> event_;
   mutable std::atomic_int_fast32_t ref_;
+  // A map of memory backed buffers. Memory backed buffers are backed by the
+  // memory of buffer_. For example, a GL buffer can be backed by the memory of
+  // an AHWB buffer.
+  absl::flat_hash_map<LiteRtTensorBufferType, BufferVariant>
+      memory_backed_buffers_;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TENSOR_BUFFER_H_

@@ -27,25 +27,41 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
+#if LITERT_HAS_AHWB_SUPPORT
+#include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"
+#endif  // LITERT_HAS_AHWB_SUPPORT
+
 namespace litert {
 namespace internal {
 
 class GlBuffer {
  public:
-  explicit GlBuffer(tflite::gpu::gl::GlBuffer&& tflite_gl_buffer)
+  explicit GlBuffer(tflite::gpu::gl::GlBuffer&& tflite_gl_buffer
+#if LITERT_HAS_AHWB_SUPPORT
+                    ,
+                    AHardwareBuffer* ahwb = nullptr
+#endif  // LITERT_HAS_AHWB_SUPPORT
+                    )
       : tflite_gl_buffer_(std::move(tflite_gl_buffer)),
         deallocator_(nullptr),
-        size_(tflite_gl_buffer_.bytes_size()) {}
+        size_bytes_(tflite_gl_buffer.bytes_size())
+#if LITERT_HAS_AHWB_SUPPORT
+        ,
+        ahwb_(ahwb)
+#endif  // LITERT_HAS_AHWB_SUPPORT
+  {
+  }
 
-  GlBuffer(GLenum target, GLuint id, size_t bytes_size, size_t offset,
-           LiteRtGlBufferDeallocator deallocator) {
+  GlBuffer(GLenum target, GLuint id, size_t size_bytes, size_t offset,
+           LiteRtGlBufferDeallocator deallocator)
+      : size_bytes_(size_bytes) {
     if (deallocator != nullptr) {
       tflite_gl_buffer_ = tflite::gpu::gl::GlBuffer(
-          target, id, bytes_size, offset, /*has_ownership=*/false);
+          target, id, size_bytes, offset, /*has_ownership=*/false);
       deallocator_ = std::move(deallocator);
     } else {
       tflite_gl_buffer_ = tflite::gpu::gl::GlBuffer(
-          target, id, bytes_size, offset, /*has_ownership=*/true);
+          target, id, size_bytes, offset, /*has_ownership=*/true);
       deallocator_ = nullptr;
     }
   }
@@ -53,9 +69,16 @@ class GlBuffer {
     tflite_gl_buffer_ = std::move(other.tflite_gl_buffer_);
     deallocator_ = std::move(other.deallocator_);
     data_ = other.data_;
-    size_ = other.size_;
+    size_bytes_ = other.size_bytes_;
+#if LITERT_HAS_AHWB_SUPPORT
+    ahwb_ = other.ahwb_;
+#endif  // LITERT_HAS_AHWB_SUPPORT
+    // Reset the other GlBuffer to a default state.
     other.data_ = nullptr;
-    other.size_ = 0;
+    other.size_bytes_ = 0;
+#if LITERT_HAS_AHWB_SUPPORT
+    other.ahwb_ = nullptr;
+#endif  // LITERT_HAS_AHWB_SUPPORT
   }
 
   ~GlBuffer() {
@@ -70,6 +93,10 @@ class GlBuffer {
   static bool IsSupported() { return true; }
   static Expected<GlBuffer> Alloc(size_t bytes_size);
 
+#if LITERT_HAS_AHWB_SUPPORT
+  static Expected<GlBuffer> AllocFromAhwbBuffer(AhwbBuffer& ahwb_buffer);
+#endif  // LITERT_HAS_AHWB_SUPPORT
+
   template <typename T>
   Expected<T*> Lock();
 
@@ -78,7 +105,7 @@ class GlBuffer {
 
   GLenum target() const { return tflite_gl_buffer_.target(); }
   GLuint id() const { return tflite_gl_buffer_.id(); }
-  size_t bytes_size() const { return tflite_gl_buffer_.bytes_size(); }
+  size_t size_bytes() const { return tflite_gl_buffer_.bytes_size(); }
   size_t offset() const { return tflite_gl_buffer_.offset(); }
 
  private:
@@ -88,7 +115,10 @@ class GlBuffer {
   // The cpu memory buffer pointer.
   void* data_ = nullptr;
   // The size of the buffer in bytes.
-  size_t size_ = 0;
+  size_t size_bytes_ = 0;
+#if LITERT_HAS_AHWB_SUPPORT
+  AHardwareBuffer* ahwb_ = nullptr;
+#endif  // LITERT_HAS_AHWB_SUPPORT
 };
 
 }  // namespace internal
