@@ -14,7 +14,9 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 
+#include <cstddef>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -98,10 +100,29 @@ TEST(IrAllocatorTest, Transfer) {
   auto& other_op1 = other_ops.EmplaceBack();
   auto& other_op2 = other_ops.EmplaceBack();
 
-  ops.Transfer(std::move(other_ops));
+  ops.TransferFrom(std::move(other_ops));
 
   EXPECT_THAT(ops.Elements(),
               ElementsAreArray({&op1, &op2, &other_op1, &other_op2}));
+}
+
+TEST(IrAllocatorTest, TransferWithIndices) {
+  IrAllocator<LiteRtOpT> ops;
+  auto& op1 = ops.EmplaceBack();
+  auto& op2 = ops.EmplaceBack();
+
+  IrAllocator<LiteRtOpT> other_ops;
+  auto& other_op1 = other_ops.EmplaceBack();
+  auto& other_op2 = other_ops.EmplaceBack();
+  auto& other_op3 = other_ops.EmplaceBack();
+  auto& other_op4 = other_ops.EmplaceBack();
+
+  std::vector<size_t> indices = {1, 3};
+  ops.TransferFrom(other_ops, std::move(indices));
+
+  EXPECT_THAT(other_ops.Elements(), ElementsAreArray({&other_op1, &other_op3}));
+  EXPECT_THAT(ops.Elements(),
+              ElementsAreArray({&op1, &op2, &other_op2, &other_op4}));
 }
 
 }  // namespace
