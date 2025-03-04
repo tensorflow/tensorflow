@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/algorithm_util.h"
 
+#include <cstdint>
 #include <variant>
 
 #include "absl/status/status.h"
