@@ -101,6 +101,9 @@ LiteRtSignatureT MakeDefaultSignature(LiteRtSubgraph subgraph) {
 
 void LiteRtModelT::TransferSubgraphTo(LiteRtSubgraphT::Alloc& dest,
                                       std::vector<size_t> indices) {
+  if (indices.empty()) {
+    return;
+  }
   std::sort(indices.begin(), indices.end());
   std::vector<int> new_inds(subgraphs_.Size(), 0);
   auto num_removed = 0;

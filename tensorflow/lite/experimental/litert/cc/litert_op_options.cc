@@ -36,6 +36,8 @@ LiteRtStatus CompositeOptions::InitFromOp(LiteRtOp op) {
   LITERT_RETURN_IF_ERROR(
       LiteRtGetSHLOCompositeOpDecompositionSubgraphIndex(op, &subgraph));
 
+  this->op = op;
+
   return kLiteRtStatusOk;
 }
 
