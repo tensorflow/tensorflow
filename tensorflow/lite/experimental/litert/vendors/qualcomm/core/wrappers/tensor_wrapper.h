@@ -4,11 +4,11 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_WRAPPERS_TENSOR_WRAPPER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_WRAPPERS_TENSOR_WRAPPER_H_
 
-#include <cstring>
-#include <optional>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
