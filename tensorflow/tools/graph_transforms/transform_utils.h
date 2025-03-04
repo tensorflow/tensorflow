@@ -16,10 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_TRANSFORM_UTILS_H_
 #define TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_TRANSFORM_UTILS_H_
 
+#include <cstdint>
+#include <functional>
+#include <map>
 #include <set>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
