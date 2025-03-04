@@ -914,4 +914,8 @@ build:rbe_cross_compile_macos_x86 --jobs=100
 test:rbe_cross_compile_macos_x86 --jobs=100
 # END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS
+
+# Enable Java 21 language features
+common --java_runtime_version=remotejdk_21
+
 # LINT.ThenChange(//xla/tensorflow.bazelrc)
