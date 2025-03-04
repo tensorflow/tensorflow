@@ -167,6 +167,7 @@ cc_library(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:pattern_matcher",
         "@com_google_absl//absl/algorithm:container",
