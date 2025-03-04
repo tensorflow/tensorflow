@@ -1,13 +1,75 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/libc/src/stdlib/qsort_pivot.h b/libc/src/stdlib/qsort_pivot.h
---- a/libc/src/stdlib/qsort_pivot.h
-+++ b/libc/src/stdlib/qsort_pivot.h
-@@ -9,6 +9,8 @@
- #ifndef LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
- #define LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
+diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/Transfer.cpp b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+--- a/clang/lib/Analysis/FlowSensitive/Transfer.cpp
++++ b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+@@ -60,9 +60,7 @@
+   Value *LHSValue = Env.getValue(LHS);
+   Value *RHSValue = Env.getValue(RHS);
  
-+#include "src/__support/macros/attributes.h"
-+
- #include <stddef.h> // For size_t
+-  // When two unsupported values are compared, both are nullptr. Only supported
+-  // values should evaluate to equal.
+-  if (LHSValue == RHSValue && LHSValue)
++  if (LHSValue == RHSValue)
+     return Env.getBoolLiteralValue(true);
  
- namespace LIBC_NAMESPACE_DECL {
+   if (auto *LHSBool = dyn_cast_or_null<BoolValue>(LHSValue))
+@@ -800,14 +798,6 @@
+     Env.setValue(*S, Env.getIntLiteralValue(S->getValue()));
+   }
+ 
+-  // Untyped nullptr's aren't handled by NullToPointer casts, so they need to be
+-  // handled separately.
+-  void VisitCXXNullPtrLiteralExpr(const CXXNullPtrLiteralExpr *S) {
+-    auto &NullPointerVal =
+-        Env.getOrCreateNullPointerValue(S->getType()->getPointeeType());
+-    Env.setValue(*S, NullPointerVal);
+-  }
+-
+   void VisitParenExpr(const ParenExpr *S) {
+     // The CFG does not contain `ParenExpr` as top-level statements in basic
+     // blocks, however manual traversal to sub-expressions may encounter them.
+diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+--- a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
++++ b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+@@ -4974,41 +4974,6 @@
+       });
+ }
+ 
+-TEST(TransferTest, UnsupportedValueEquality) {
+-  std::string Code = R"(
+-    // An explicitly unsupported type by the framework.
+-    enum class EC {
+-      A,
+-      B
+-    };
+-  
+-    void target() {
+-      EC ec = EC::A;
+-
+-      bool unsupported_eq_same = (EC::A == EC::A);
+-      bool unsupported_eq_other = (EC::A == EC::B);
+-      bool unsupported_eq_var = (ec == EC::B);
+-
+-      (void)0; // [[p]]
+-    }
+-  )";
+-  runDataflow(
+-      Code,
+-      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+-         ASTContext &ASTCtx) {
+-        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+-
+-        // We do not model the values of unsupported types, so this
+-        // seemingly-trivial case will not be true either.
+-        EXPECT_TRUE(isa<AtomicBoolValue>(
+-            getValueForDecl<BoolValue>(ASTCtx, Env, "unsupported_eq_same")));
+-        EXPECT_TRUE(isa<AtomicBoolValue>(
+-            getValueForDecl<BoolValue>(ASTCtx, Env, "unsupported_eq_other")));
+-        EXPECT_TRUE(isa<AtomicBoolValue>(
+-            getValueForDecl<BoolValue>(ASTCtx, Env, "unsupported_eq_var")));
+-      });
+-}
+-
+ TEST(TransferTest, CorrelatedBranches) {
+   std::string Code = R"(
+     void target(bool B, bool C) {
