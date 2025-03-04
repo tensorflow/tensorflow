@@ -4,7 +4,7 @@
 // RUN:   --sparse-dot-to-llvm \
 // RUN: | FileCheck %s
 
-#shared = #ttg.shared<{vec = 1, perPhase=2, maxPhase=4, order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
+#shared = #ttg.nvmma_shared<{swizzlingByteWidth = 64, transposed = false, elementBitWidth = 16}>
 #mma = #ttg.nvidia_mma<{versionMajor = 3, warpsPerCTA = [4, 1], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [0, 1], instrShape = [16, 64, 16]}>
 #dot_meta_enc = #triton_xla.sparse_dot_meta<{parent=#mma}>
 
