@@ -47,7 +47,7 @@ using absl::StrCat;
 namespace {
 
 bool ShouldUseExplicitPrecision(const GraphDef& gdef) {
-  if (!IS_TRT_VERSION_GE(8, 0, 0, 0)) {
+  if (!IS_TRT_VERSION_GE(8, 0, 0, 0) || IS_TRT_VERSION_GE(10, 0, 0, 0)) {
     return false;
   }
   return absl::c_any_of(gdef.node(), [](const auto& node) {

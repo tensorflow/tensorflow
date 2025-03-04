@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -56,7 +57,11 @@ class TRTDeviceAllocator : public TRTBaseAllocator {
   }
   void* allocate(uint64_t size, uint64_t alignment,
                  uint32_t flags) noexcept override;
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   void free(void* memory) noexcept override;
+#else
+  bool deallocate(void* memory) noexcept override;
+#endif
 
  private:
   mutex mu_;
