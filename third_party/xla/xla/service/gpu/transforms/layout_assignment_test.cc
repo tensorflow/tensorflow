@@ -642,7 +642,7 @@ ENTRY entry {
 
 TEST_F(LayoutAssignmentTest, ConvCuDNNF8) {
   if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
+          se::CudaComputeCapability::kHopper)) {
     GTEST_SKIP() << "FP8 convolutions require HOPPER or newer archiecture.";
   }
 
@@ -667,7 +667,7 @@ TEST_F(LayoutAssignmentTest, ConvCuDNNF8) {
 
 TEST_F(LayoutAssignmentTest, ConvCuDNNBF16) {
   if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
+          se::CudaComputeCapability::kAmpere)) {
     GTEST_SKIP() << "Conv with Bfloat16 uses NHWC layout for "
                     "architectures with Tensor Cores.";
   }
@@ -692,7 +692,8 @@ TEST_F(LayoutAssignmentTest, ConvCuDNNBF16) {
 }
 
 TEST_F(LayoutAssignmentTest, ConvCuDNNFP16) {
-  if (!GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::kVolta)) {
     GTEST_SKIP() << "Conv with FP16 uses NHWC layout for "
                     "architectures with Tensor Cores.";
   }

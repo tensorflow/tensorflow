@@ -128,7 +128,7 @@ class ConvBfloat16Support : public FloatSupport {
                                  (cudnn_version.major_version() == 8 &&
                                   cudnn_version.minor_version() >= 2)) &&
                                 cuda_compute_capability.IsAtLeast(
-                                    se::CudaComputeCapability::AMPERE)) {}
+                                    se::CudaComputeCapability::kAmpere)) {}
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                    int64_t operand_index) const override {
@@ -154,7 +154,7 @@ class MatmulBfloat16Support : public FloatSupport {
       se::CudaComputeCapability cuda_compute_capability)
       : FloatSupport(BF16),
         is_matmul_bf16_supported_(cuda_compute_capability.IsAtLeast(
-            se::CudaComputeCapability::AMPERE)) {}
+            se::CudaComputeCapability::kAmpere)) {}
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                    int64_t operand_index) const override {

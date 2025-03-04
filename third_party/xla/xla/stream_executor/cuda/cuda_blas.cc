@@ -824,7 +824,7 @@ bool CUDABlas::GetBlasGemmAlgorithms(
   // still return the out_algorithms. Caller needs to make sure that in this
   // case, the returned vector is empty.
   if (stream->GetCudaComputeCapability().IsAtLeast(
-          CudaComputeCapability::AMPERE)) {
+          CudaComputeCapability::kAmpere)) {
     // Note: for NVIDIA Ampere Architecture GPUs and beyond, i.e. SM version >=
     // 80, the numbered algorithm options are equivalent to CUBLAS_GEMM_DEFAULT
     // or CUBLAS_GEMM_DEFAULT_TENSOR_OP respectively.
