@@ -70,6 +70,7 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using ::tsl::testing::IsOkAndHolds;
 namespace m = match;
 namespace op = xla::testing::opcode_matchers;
 
@@ -3741,6 +3742,49 @@ ENTRY test {
   EXPECT_EQ(slice->slice_strides(0), 2);
   EXPECT_EQ(slice->slice_strides(1), 4);
   EXPECT_EQ(slice->slice_strides(2), 5);
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceRedundantStrides) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY test {
+  param.0 = f32[6,7,32] parameter(0)
+  param.1 = f32[6,7,32,187] parameter(1)
+  slice.0 = f32[1,2,7] slice(param.0), slice={[2:3:2], [0:7:4], [0:32:5]}
+  slice.1 = f32[2,2,7] slice(param.0), slice={[2:6:3], [0:7:4], [0:32:5]}
+  slice.2 = f32[2,2,1] slice(param.0), slice={[2:6:3], [0:7:4], [0:32:32]}
+  slice.3 = f32[2,2,1,1] slice(param.1), slice={[2:6:3], [0:7:4], [0:32:32], [3:187:187]}
+  ROOT tuple = (f32[1,2,7], f32[2,2,7], f32[2,2,1], f32[2,2,1,1]) tuple(slice.0, slice.1, slice.2, slice.3)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* slice_0 = FindInstruction(module.get(), "slice.0");
+  EXPECT_EQ(slice_0->slice_starts(0), 2);
+  EXPECT_EQ(slice_0->slice_limits(0), 3);
+  EXPECT_EQ(slice_0->slice_strides(0), 1);
+
+  // No change to slice.1.
+  const HloInstruction* slice_1 = FindInstruction(module.get(), "slice.1");
+  EXPECT_EQ(slice_1->slice_starts(0), 2);
+  EXPECT_EQ(slice_1->slice_limits(0), 6);
+  EXPECT_EQ(slice_1->slice_strides(0), 3);
+
+  const HloInstruction* slice_2 = FindInstruction(module.get(), "slice.2");
+  EXPECT_EQ(slice_2->slice_starts(2), 0);
+  EXPECT_EQ(slice_2->slice_limits(2), 1);
+  EXPECT_EQ(slice_2->slice_strides(2), 1);
+
+  const HloInstruction* slice_3 = FindInstruction(module.get(), "slice.3");
+  EXPECT_EQ(slice_3->slice_starts(2), 0);
+  EXPECT_EQ(slice_3->slice_limits(2), 1);
+  EXPECT_EQ(slice_3->slice_strides(2), 1);
+  EXPECT_EQ(slice_3->slice_starts(3), 3);
+  EXPECT_EQ(slice_3->slice_limits(3), 4);
+  EXPECT_EQ(slice_3->slice_strides(3), 1);
 }
 
 // Test that empty operands of concatenates are removed.
