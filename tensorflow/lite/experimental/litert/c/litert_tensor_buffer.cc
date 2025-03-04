@@ -29,6 +29,10 @@
 #include <GLES3/gl32.h>
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 LiteRtStatus LiteRtCreateTensorBufferFromHostMemory(
     const LiteRtRankedTensorType* tensor_type, void* host_buffer_addr,
     size_t size, LiteRtHostMemoryDeallocator deallocator,
@@ -472,3 +476,7 @@ void LiteRtDestroyTensorBuffer(LiteRtTensorBuffer tensor_buffer) {
     delete tensor_buffer;
   }
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif

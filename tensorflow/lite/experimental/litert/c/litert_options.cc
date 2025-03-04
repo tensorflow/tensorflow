@@ -20,6 +20,10 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //
 // Op Options
 //
@@ -413,3 +417,7 @@ LiteRtStatus LiteRtGetSHLOCompositeOpDecompositionSubgraphIndex(
       opts.AsStableHLOCompositeOptions()->decomposition_subgraph_index;
   return kLiteRtStatusOk;
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
