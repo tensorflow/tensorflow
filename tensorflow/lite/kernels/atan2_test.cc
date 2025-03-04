@@ -23,7 +23,6 @@ namespace {
 
 template <typename T>
 tflite::TensorType GetTTEnum();
-
 template <>
 tflite::TensorType GetTTEnum<float>() {
   return tflite::TensorType_FLOAT32;
@@ -34,10 +33,19 @@ tflite::TensorType GetTTEnum<double>() {
   return tflite::TensorType_FLOAT64;
 }
 
+template <>
+tflite::TensorType GetTTEnum<Eigen::half>() {
+  return tflite::TensorType_FLOAT16;
+}
+
+template <>
+tflite::TensorType GetTTEnum<Eigen::bfloat16>() {
+  return tflite::TensorType_BFLOAT16;
+}
+
 class Atan2Model : public tflite::SingleOpModel {
  public:
-  Atan2Model(tflite::TensorData y,
-             tflite::TensorData x,
+  Atan2Model(tflite::TensorData y, tflite::TensorData x,
              tflite::TensorData output) {
     y_ = AddInput(y);
     x_ = AddInput(x);
@@ -47,9 +55,7 @@ class Atan2Model : public tflite::SingleOpModel {
   }
 
   template <typename T>
-  std::vector<T> GetOutput(
-      const std::vector<T>& y,
-      const std::vector<T>& x) {
+  std::vector<T> GetOutput(const std::vector<T>& y, const std::vector<T>& x) {
     PopulateTensor<T>(y_, y);
     PopulateTensor<T>(x_, x);
     Invoke();
@@ -68,7 +74,7 @@ class Atan2Test : public ::testing::Test {
   using FloatType = Float;
 };
 
-using TestTypes = ::testing::Types<float, double>;
+using TestTypes = ::testing::Types<float, double, Eigen::half, Eigen::bfloat16>;
 
 TYPED_TEST_SUITE(Atan2Test, TestTypes);
 
@@ -78,13 +84,16 @@ TYPED_TEST(Atan2Test, TestScalar) {
   tflite::TensorData x = {GetTTEnum<Float>(), {}};
   tflite::TensorData output = {GetTTEnum<Float>(), {}};
   Atan2Model m(y, x, output);
-  auto got = m.GetOutput<Float>({0.0}, {0.0});
+
+  auto got = m.GetOutput<Float>({Float(0.0)}, {Float(0.0)});
   ASSERT_EQ(got.size(), 1);
   EXPECT_FLOAT_EQ(got[0], 0.0);
-
-  ASSERT_FLOAT_EQ(m.GetOutput<Float>({1.0}, {0.0})[0], M_PI/2);
-  ASSERT_FLOAT_EQ(m.GetOutput<Float>({0.0}, {1.0})[0], 0.0);
-  ASSERT_FLOAT_EQ(m.GetOutput<Float>({-1.0}, {0.0})[0], -M_PI/2);
+  ASSERT_FLOAT_EQ(m.GetOutput<Float>({Float(1.0)}, {Float(0.0)})[0],
+                  Float(M_PI / 2));
+  ASSERT_FLOAT_EQ(m.GetOutput<Float>({Float(0.0)}, {Float(1.0)})[0],
+                  Float(0.0));
+  ASSERT_FLOAT_EQ(m.GetOutput<Float>({Float(-1.0)}, {Float(0.0)})[0],
+                  Float(-M_PI / 2));
 }
 
 TYPED_TEST(Atan2Test, TestBatch) {
@@ -93,15 +102,14 @@ TYPED_TEST(Atan2Test, TestBatch) {
   tflite::TensorData x = {GetTTEnum<Float>(), {4, 2, 1}};
   tflite::TensorData output = {GetTTEnum<Float>(), {4, 2, 1}};
   Atan2Model m(y, x, output);
-
-  std::vector<Float> y_data = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8};
-  std::vector<Float> x_data = {0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1};
-
+  std::vector<Float> y_data = {Float(0.1), Float(0.2), Float(0.3), Float(0.4),
+                               Float(0.5), Float(0.6), Float(0.7), Float(0.8)};
+  std::vector<Float> x_data = {Float(0.8), Float(0.7), Float(0.6), Float(0.5),
+                               Float(0.4), Float(0.3), Float(0.2), Float(0.1)};
   auto got = m.GetOutput<Float>(y_data, x_data);
-
   ASSERT_EQ(got.size(), 8);
   for (int i = 0; i < 8; ++i) {
-    EXPECT_FLOAT_EQ(got[i], std::atan2(y_data[i], x_data[i]));
+    EXPECT_FLOAT_EQ(got[i], Float(std::atan2(y_data[i], x_data[i])));
   }
 }
 
