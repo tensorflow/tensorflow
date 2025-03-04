@@ -1,4 +1,11 @@
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load(
+    "//tensorflow:tf_version.bzl",
+    "MAJOR_VERSION",
+    "MINOR_VERSION",
+    "PATCH_VERSION",
+    "TF_SEMANTIC_VERSION_SUFFIX",
+)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -44,5 +51,11 @@ cc_library(
 cc_library(
     name = "release_version",
     hdrs = ["release_version.h"],
+    defines = [
+        "TF_MAJOR_VERSION={}".format(MAJOR_VERSION),
+        "TF_MINOR_VERSION={}".format(MINOR_VERSION),
+        "TF_PATCH_VERSION={}".format(PATCH_VERSION),
+        'TF_VERSION_SUFFIX=\\"{}\\"'.format(TF_SEMANTIC_VERSION_SUFFIX),
+    ],
     visibility = ["//visibility:public"],
 )
