@@ -744,6 +744,11 @@ class PjRtClient {
         int64_t transfer_size, bool is_last_transfer,
         absl::AnyInvocable<void() &&> on_done) = 0;
 
+    // Indicates that data transfer for the buffer `buffer_index` is complete,
+    // and the buffer becomes available to consumers. No transfer calls (or
+    // SetBufferError calls) into `buffer_index` can be made after this call.
+    virtual void MarkBufferCompletion(int buffer_index) = 0;
+
     // Indicates that a specific buffer should result in an error status. No
     // transfer calls (or further SetBufferError calls) into buffer_index can
     // be made after this call.
