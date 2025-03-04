@@ -570,7 +570,7 @@ bzl_library(
     name = "build_config_root_bzl",
     srcs = ["build_config_root.bzl"],
     # copybara:uncomment parse_tests = False,
-    deps = ["@local_tsl//third_party/py/rules_pywrap:pywrap_bzl"],
+    deps = ["@local_xla//third_party/py/rules_pywrap:pywrap_bzl"],
 )
 
 bzl_library(
@@ -580,7 +580,7 @@ bzl_library(
     deps = [
         ":build_config_root_bzl",
         "//xla/tsl:tsl_bzl",
-        "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
+        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
     ],
 )
 

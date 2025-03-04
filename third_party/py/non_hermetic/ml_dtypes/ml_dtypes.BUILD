@@ -49,7 +49,7 @@ pybind_extension(
         ":float8",
         ":intn",
         "@eigen_archive//:eigen3",
-        "@local_tsl//third_party/py/numpy:headers",
+        "@local_xla//third_party/py/numpy:headers",
     ],
 )
 

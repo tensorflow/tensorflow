@@ -82,7 +82,7 @@ load(
     "if_tensorrt_exec",
 )
 load(
-    "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
+    "@local_xla//third_party/py/rules_pywrap:pywrap.bzl",
     "use_pywrap_rules",
     _pybind_extension = "pybind_extension",
     _stripped_cc_info = "stripped_cc_info",
@@ -3708,7 +3708,7 @@ def if_cuda_tools(if_true, if_false = []):
 # The config is used to determine if we need dependency on pre-built wheels.
 def if_wheel_dependency(if_true, if_false = []):
     return select({
-        "@local_tsl//third_party/py:enable_wheel_dependency": if_true,
+        "@local_xla//third_party/py:enable_wheel_dependency": if_true,
         "//conditions:default": if_false,
     })
 

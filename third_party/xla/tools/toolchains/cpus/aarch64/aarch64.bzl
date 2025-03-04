@@ -2,7 +2,7 @@
 """
 
 load(
-    "@local_tsl//third_party/remote_config:common.bzl",
+    "//third_party/remote_config:common.bzl",
     "err_out",
     "get_host_environ",
     "raw_exec",

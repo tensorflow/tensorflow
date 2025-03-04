@@ -2,7 +2,7 @@
 
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("@local_tsl//third_party/py/rules_pywrap:pywrap.bzl", "use_pywrap_rules")
+load("@local_xla//third_party/py/rules_pywrap:pywrap.bzl", "use_pywrap_rules")
 load(
     "@local_xla//xla/tsl:tsl.bzl",
     "clean_dep",
@@ -120,7 +120,7 @@ def pyx_library(
         native.cc_binary(
             name = shared_object_name,
             srcs = [stem + ".cpp"],
-            deps = cc_deps + ["@local_tsl//third_party/python_runtime:headers"],
+            deps = cc_deps + ["@local_xla//third_party/python_runtime:headers"],
             linkshared = 1,
             testonly = testonly,
             copts = copts,
