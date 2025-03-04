@@ -46,6 +46,11 @@ def parse_args() -> argparse.Namespace:
       description="Helper for building python wheel from pyproject.toml",
       fromfile_prefix_chars="@",
   )
+  parser.add_argument(
+      "--project_name",
+      required=True,
+      help="Name of the project",
+  )
   parser.add_argument("--pyproject", help="location of pyproject.toml file")
   parser.add_argument("--setup_py", help="location of setup.py file")
   parser.add_argument("--output", help="output directory")
@@ -153,6 +158,7 @@ def build_pyproject_wheel(
 
 
 def build_setup_py_wheel(
+    project_name: str,
     buildtree_path: str,
     output_dir: str,
     version: str,
@@ -161,6 +167,7 @@ def build_setup_py_wheel(
   """Builds a python wheel from a setup.py file.
 
   Args:
+    project_name: Name of the project.
     buildtree_path: Path to the build tree.
     output_dir: Output directory for the wheel.
     version: Version of the wheel.
@@ -168,7 +175,7 @@ def build_setup_py_wheel(
   """
   env = os.environ.copy()
 
-  env["PROJECT_NAME"] = "ai_edge_litert"
+  env["PROJECT_NAME"] = project_name
   env["PACKAGE_VERSION"] = version
 
   command = [
@@ -195,5 +202,9 @@ if __name__ == "__main__":
 
   prepare_build_tree(build_dir, arg_data, "ai_edge_litert")
   build_setup_py_wheel(
-      build_dir, arg_data.output, arg_data.version, arg_data.platform
+      arg_data.project_name,
+      build_dir,
+      arg_data.output,
+      arg_data.version,
+      arg_data.platform,
   )
