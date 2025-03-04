@@ -18,7 +18,8 @@ limitations under the License.
 #ifndef XLA_INDEX_UTIL_H_
 #define XLA_INDEX_UTIL_H_
 
-#include <vector>
+#include <cstddef>
+#include <cstdint>
 
 #include "absl/log/check.h"
 #include "absl/strings/str_join.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 

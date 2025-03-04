@@ -3070,6 +3070,27 @@ INSTANTIATE_TEST_SUITE_P(
 // Literal::Broadcast perfrormance benchmarks below.
 //===----------------------------------------------------------------------===//
 
+void BM_BroadcastScalarToMatrix(::testing::benchmark::State& state) {
+  const int d0 = state.range(0);
+  const int d1 = state.range(1);
+
+  Literal literal = LiteralUtil::CreateR0<int64_t>(42);
+
+  for (auto s : state) {
+    CHECK_OK(
+        literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {d0, d1}),
+                          /*dimensions=*/{}));
+  }
+
+  state.SetLabel(literal.shape().ToString() + " to " +
+                 ShapeUtil::MakeShape(S64, {d0, d1}).ToString());
+}
+
+BENCHMARK(BM_BroadcastScalarToMatrix)
+    ->ArgPair(16, 16)
+    ->ArgPair(16, 1024)
+    ->ArgPair(1024, 1024);
+
 void BM_BroadcastVectorToMatrix(::testing::benchmark::State& state) {
   const int d0 = state.range(0);
   const int d1 = state.range(1);
@@ -3077,19 +3098,17 @@ void BM_BroadcastVectorToMatrix(::testing::benchmark::State& state) {
   for (int i = 0; i < d0; i++) {
     v[i] = i;
   }
+
   Literal literal = LiteralUtil::CreateR1<int64_t>(v);
-  int count = 0;
+
   for (auto s : state) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        Literal broadcasted_literal,
+    CHECK_OK(
         literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {d0, d1}),
                           /*dimensions=*/{0}));
-    if (count == 0) {
-      state.SetLabel(literal.shape().ToString() + " to " +
-                     broadcasted_literal.shape().ToString());
-    }
-    count++;
   }
+
+  state.SetLabel(literal.shape().ToString() + " to " +
+                 ShapeUtil::MakeShape(S64, {d0, d1}).ToString());
 }
 
 BENCHMARK(BM_BroadcastVectorToMatrix)

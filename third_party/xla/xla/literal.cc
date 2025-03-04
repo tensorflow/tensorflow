@@ -1089,6 +1089,18 @@ absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
     }
   }
 
+  const char* source_data = static_cast<const char*>(src.untyped_data());
+  char* dest_data = static_cast<char*>(result.untyped_data());
+
+  // Fast path for broadcasting a scalar to a result shape.
+  if (ShapeUtil::ElementsIn(src_shape) == 1) {
+    for (size_t i = 0, e = ShapeUtil::ElementsIn(result_shape); i < e; ++i) {
+      memcpy(dest_data, source_data, PRIMITIVE_SIZE);
+      dest_data += PRIMITIVE_SIZE;
+    }
+    return result;
+  }
+
   // scratch_source_index is temporary storage space for the computed index into
   // the input literal.  We put it here to avoid allocating an std::vector in
   // every iteration of ShapeUtil::ForEachIndex.
@@ -1098,9 +1110,6 @@ absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
   // scratch_source_index
   absl::Span<int64_t> scratch_source_span(scratch_source_index);
   int64_t* scratch_source_array = scratch_source_span.data();
-
-  const char* source_data = static_cast<const char*>(src.untyped_data());
-  char* dest_data = static_cast<char*>(result.untyped_data());
 
   auto src_minor_to_major = LayoutUtil::MinorToMajor(src_shape);
   auto result_minor_to_major = LayoutUtil::MinorToMajor(result_shape);
@@ -1132,7 +1141,7 @@ absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
         return true;
       });
 
-  return std::move(result);
+  return result;
 }
 }  // anonymous namespace
 
