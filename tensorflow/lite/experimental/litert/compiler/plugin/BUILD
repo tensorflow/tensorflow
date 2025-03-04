@@ -76,6 +76,7 @@ cc_library(
 #         "//tensorflow/lite/experimental/litert/c:litert_model",
 #         "//tensorflow/lite/experimental/litert/c:litert_op_code",
 #         "//tensorflow/lite/experimental/litert/cc:litert_environment",
+#         "//tensorflow/lite/experimental/litert/cc:litert_op_options",
 #         "//tensorflow/lite/experimental/litert/core:build_stamp",
 #         "//tensorflow/lite/experimental/litert/core:filesystem",
 #         "//tensorflow/lite/experimental/litert/core/model",

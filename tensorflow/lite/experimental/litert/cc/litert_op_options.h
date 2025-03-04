@@ -32,6 +32,9 @@ struct OpOptions {
 
 // Struct to hold LiteRt composite ops.
 struct CompositeOptions : public OpOptions {
+  // Name for special composites representing manual partitions.
+  static constexpr absl::string_view kNpuCall = "odml.npu_call";
+
   // The root op.
   LiteRtOp op;
   // Decomposition subgraph.
@@ -44,7 +47,7 @@ struct CompositeOptions : public OpOptions {
 
 // Returns the composite info for the given op if it is a composite op.
 template <typename OptionsT>
-Expected<OptionsT> GetOptionsAs(const LiteRtOp& op) {
+Expected<OptionsT> GetOptionsAs(LiteRtOp op) {
   if constexpr (std::is_same_v<OptionsT, CompositeOptions>) {
     CompositeOptions options;
     LITERT_RETURN_IF_ERROR(options.InitFromOp(op));

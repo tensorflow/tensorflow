@@ -26,6 +26,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_op_options.h"
 #include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
@@ -381,6 +382,95 @@ TEST(PartitionTest, MappedCompositeOp) {
   ASSERT_TRUE(partition_result);
   // One new subgraph for the consumed composite op only, decomp not consumed.
   ASSERT_EQ(partition_result->second.Size(), 1);
+}
+
+TEST(PartitionTest, SimpleNpuCallComposite) {
+  auto model_wrap = testing::LoadTestFileModel("simple_composite.tflite");
+  ASSERT_TRUE(model_wrap);
+  auto& model = *model_wrap.Get();
+  auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
+
+  auto* decomp = model.Subgraphs()[1];
+
+  auto partition_result = PartitionModel(plugins->front(), model);
+  ASSERT_TRUE(partition_result);
+
+  auto& ops = partition_result->first;
+  ASSERT_EQ(ops.size(), 1);
+  ASSERT_EQ(ops.front()->OpCode(), kLiteRtOpCodeTflCustom);
+
+  auto& sgs = partition_result->second;
+  ASSERT_EQ(sgs.Size(), 1);
+  ASSERT_EQ(sgs.Elements().front(), decomp);
+}
+
+TEST(PartitionTest, MultiNpuCallComposite) {
+  auto model_wrap = testing::LoadTestFileModel("multi_composite.tflite");
+  ASSERT_TRUE(model_wrap);
+  auto& model = *model_wrap.Get();
+  auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
+
+  ASSERT_EQ(model.NumSubgraphs(), 4);
+  auto* decomp1 = model.Subgraphs()[1];
+  auto* non_npu_call_decomop = model.Subgraphs()[2];
+  auto* decomp2 = model.Subgraphs()[3];
+
+  auto partition_result = PartitionModel(plugins->front(), model);
+  ASSERT_TRUE(partition_result);
+
+  {
+    // Subgraphs to be compiled will be moved to the result from the model.
+    // Non-npu-call decompositions will be reindexed.
+    ASSERT_EQ(model.NumSubgraphs(), 2);
+    ASSERT_EQ(model.Subgraphs()[1], non_npu_call_decomop);
+    auto opts = GetOptionsAs<CompositeOptions>(model.Subgraph(0).Ops()[1]);
+    ASSERT_TRUE(opts);
+    ASSERT_EQ(opts->subgraph, 1);
+  }
+
+  {
+    // All npu call ops are now dispatch ops.
+    auto& ops = partition_result->first;
+
+    ASSERT_EQ(ops.size(), 2);
+    auto* first_dispatch_op = ops.front();
+    auto* second_dispatch_op = ops.back();
+
+    ASSERT_EQ(first_dispatch_op->OpCode(), kLiteRtOpCodeTflCustom);
+    ASSERT_EQ(first_dispatch_op, model.Subgraphs()[0]->Ops().front());
+
+    ASSERT_EQ(second_dispatch_op->OpCode(), kLiteRtOpCodeTflCustom);
+    ASSERT_EQ(second_dispatch_op, model.Subgraphs()[0]->Ops().back());
+  }
+
+  {
+    // Bodies to compile are the decompositions of npu call ops.
+    auto& sgs = partition_result->second;
+
+    ASSERT_EQ(sgs.Size(), 2);
+    ASSERT_EQ(sgs.Elements().front(), decomp1);
+    ASSERT_EQ(sgs.Elements().back(), decomp2);
+  }
+}
+
+TEST(PartitionTest, NestedNpuCallComposite) {
+  auto model_wrap = testing::LoadTestFileModel("nested_composite.tflite");
+  ASSERT_TRUE(model_wrap);
+  auto& model = *model_wrap.Get();
+  auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
+
+  ASSERT_EQ(model.NumSubgraphs(), 3);
+
+  auto partition_result = PartitionModel(plugins->front(), model);
+  ASSERT_TRUE(partition_result);
+
+  auto& ops = partition_result->first;
+  ASSERT_EQ(ops.size(), 1);
+  ASSERT_EQ(ops.front()->OpCode(), kLiteRtOpCodeTflCustom);
+
+  auto& sgs = partition_result->second;
+  ASSERT_EQ(sgs.Size(), 1);
+  ASSERT_EQ(sgs.Elements().front()->Op(0).OpCode(), kLiteRtOpCodeShloComposite);
 }
 
 }  // namespace
