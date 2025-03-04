@@ -23,6 +23,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <set>
 #include <string>
 #include <tuple>
@@ -354,6 +355,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     bool operator!=(const RequiredMemoryAssignment& other) const {
       return !(*this == other);
     }
+
+    std::string ToString() const;
   };
 
   // A struct that contains a pointer to loop-optimized allocation along with
@@ -627,6 +630,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // only_extend_existing_allocation is true, no new Allocations will be created
   // while processing the resulting AllocationRequest, and we only need to
   // extend an existing Allocation's end_time.
+  //
+  // * processed_allocation_values: The AllocationValues that have already been
+  //   processed for the same parent HloValue as is used in the request.
   AllocationRequest CreateAllocationRequest(
       AllocationValue& allocation_value,
       AllocationValue& allocation_value_to_update,
@@ -634,7 +640,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       AliasedOffset* preferred_offset, int64_t definition_time,
       bool require_no_copy_alternate_mem_allocation,
       const std::vector<int64_t>& all_use_times,
-      bool only_extend_existing_allocation);
+      bool only_extend_existing_allocation,
+      absl::Span<AllocationValue> processed_allocation_values);
 
   // Returns true, if the allocation value requires a pinned allocation in the
   // alternate memory space.
@@ -662,6 +669,18 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // alternate memory or a bitwise OR of failure reasons why they couldn't
   absl::StatusOr<AllocationResult> AllocateAllocationValues(
       absl::Span<AllocationValue> allocation_values);
+
+  // Checks for a situation in which an HloValue has more than one live
+  // AllocationValue at the same time, and the already processed AllocationValue
+  // has been given alternate memory at the start of the second AllocationValue.
+  // If such a case is detected, we set
+  // request.no_copy_chunk_inclusive_start_time with the time where the first
+  // AllocationValue left off. AllocateInAlternateMemoryNoCopy() takes advantage
+  // of that information.
+  void CheckAndUpdateForDualLiveAllocationValues(
+      const std::optional<RequiredMemoryAssignment>&
+          required_memory_assignment_at_start,
+      AllocationRequest& request);
 
   // Finds an allocation for an allocation request for a segment (see the
   // documentation for AllocationRequest above how a segment is defined).
