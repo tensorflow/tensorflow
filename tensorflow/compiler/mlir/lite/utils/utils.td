@@ -180,11 +180,6 @@ class HasRankAtLeast<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() >= " # n>>;
 
-// Checks value is not produced by a TFL_Quant or
-// from TFL_Quant Op with same quant type.
-def NotFromQuantOpOrSameQuantType : Constraint<
-  CPred<"tflite::NotFromQuantOpOrSameQuantType($0,$1)">>;
-
 // Accepts two inputs and check if both have the same element type.
 def SameElementType : Constraint<
   CPred<"getElementTypeOrSelf($0) == getElementTypeOrSelf($1)">>;

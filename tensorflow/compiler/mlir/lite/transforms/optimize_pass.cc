@@ -2481,6 +2481,32 @@ struct FuseLogSoftmax : public OpRewritePattern<TFL::SubOp> {
   }
 };
 
+// This is maintained for backward compatibility but not included in the strict
+// QDQ mode.
+// Equivalent to:
+// def eliminate_dq_q_pairs : Pat<
+//   (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt),
+//   (replaceWithValue $in),
+//   [(NotFromQuantOpOrSameQuantType $in, $qt)]>;
+struct EliminateQDQPairs : public OpRewritePattern<TFL::QuantizeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TFL::QuantizeOp q_op,
+                                PatternRewriter &rewriter) const override {
+    if (auto dq_op = dyn_cast_or_null<TFL::DequantizeOp>(
+            q_op.getInput().getDefiningOp())) {
+      if (tflite::NotFromQuantOpOrSameQuantType(dq_op.getInput(),
+                                                q_op.getQtypeAttr())) {
+        q_op.replaceAllUsesWith(dq_op.getInput());
+        return success();
+      }
+      return rewriter.notifyMatchFailure(q_op,
+                                         "preceding DequantizeOp has different "
+                                         "input than the quantize quant type.");
+    }
+    return rewriter.notifyMatchFailure(q_op, "not preceded by a DequantizeOp.");
+  }
+};
+
 // This is the UndoBroadcastFullyConnectedBiasAdd pattern in
 // optimize_patterns.td but accounting for QDQ preceding Add's RHS.
 // The following doesn't work in TableGen due to some issues reconstructing
@@ -2717,8 +2743,9 @@ void OptimizePass::runOnOperation() {
   if (!GetOptions().disable_fuse_mul_and_fc) {
     patterns.add<FuseMulAndFullyConnected>(ctx);
   }
-  if (GetOptions().enable_canonicalization)
+  if (GetOptions().enable_canonicalization) {
     AddCanonicalizationPatterns(ctx, &patterns);
+  }
   (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
@@ -2742,8 +2769,12 @@ void OptimizePass::runOnOperation() {
   if (!GetOptions().disable_fuse_mul_and_fc) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }
-  if (GetOptions().enable_canonicalization)
+  if (GetOptions().enable_canonicalization) {
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
+  }
+  if (!GetOptions().enable_strict_qdq_mode) {
+    phase_2_patterns.add<EliminateQDQPairs>(ctx);
+  }
   (void)applyPatternsGreedily(func, std::move(phase_2_patterns));
 }
 

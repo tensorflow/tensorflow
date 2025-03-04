@@ -74,8 +74,11 @@ void AddOptimizationPasses(const tflite::ConverterFlags& converter_flags,
       mlir::TFL::Create<mlir::TFL::OptimizeBroadcastLikePass>());
 
   // Add TFLite optimize pass.
+  mlir::TFL::OptimizePassOptions optimize_pass_options;
+  optimize_pass_options.enable_strict_qdq_mode =
+      converter_flags.strict_qdq_mode();
   std::unique_ptr<mlir::Pass> optimize_pass =
-      mlir::TFL::Create<mlir::TFL::OptimizePass>();
+      mlir::TFL::Create<mlir::TFL::OptimizePass>(optimize_pass_options);
   auto pass_ptr =
       dynamic_cast<mlir::TFL::MutableOptionsPass*>(optimize_pass.get());
   if (pass_ptr) pass_ptr->ApplyOptionsVisitor(converter_pass_options_setter);

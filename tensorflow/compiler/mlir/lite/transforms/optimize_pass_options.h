@@ -35,6 +35,10 @@ struct OptimizePassOptions : public mlir::detail::PassOptions {
       *this, "disable-fuse-mul-and-fc",
       llvm::cl::desc("Disable fuse mul and fc in the optimize pass"),
       llvm::cl::init(false)};
+  mlir::detail::PassOptions::Option<bool> enable_strict_qdq_mode{
+      *this, "enable-strict-qdq-mode",
+      llvm::cl::desc("Enable strict QDQ mode in the optimize pass"),
+      llvm::cl::init(false)};
 };
 
 }  // namespace TFL

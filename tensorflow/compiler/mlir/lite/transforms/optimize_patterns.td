@@ -64,6 +64,8 @@ def IsBiasShape : Constraint<
 
 def ReshapeNCHWBiasToNHWC : NativeCodeCall<"ReshapeNCHWBiasToNHWC($0, $1)">;
 
+def HasSameType : Constraint<CPred<[{$0.getType() == $1.getType()}]>>;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -263,14 +265,10 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
 foreach BinaryOp = [TFL_DivOp, TFL_MulOp]<Op> in
   defm : FuseMulOrDivWithConv2dOrDepthwiseConv2d<BinaryOp>;
 
-
-// This pattern applies when the same quantize/dequantize have been used twice
-// with the same scale. We want to remove the redundancy.
-// TODO(fengliuai): move this to the sanity check of pre-quantize pass.
-def eliminate_dq_q_pairs : Pat<
-  (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt),
-  (replaceWithValue $in),
-  [(NotFromQuantOpOrSameQuantType $in, $qt)]>;
+// Squash tfl.dequantize and tfl.quantize pairs.
+def : Pat<(TFL_QuantizeOp:$out (TFL_DequantizeOp $in), $qt),
+          (replaceWithValue $in),
+          [(HasSameType $in, $out)]>;
 
 // Matching HardSwish
 def MatchHardSwishPattern1 : Pat<
