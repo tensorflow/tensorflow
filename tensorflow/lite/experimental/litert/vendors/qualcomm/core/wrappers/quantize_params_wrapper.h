@@ -37,6 +37,14 @@ class ScaleOffsetQuantizeParamsWrapper final {
 
   void CloneTo(Qnn_QuantizeParams_t& dst);
 
+  float GetScale() const {
+    return qnn_quantize_param_.scaleOffsetEncoding.scale;
+  }
+
+  std::int32_t GetZeroPoint() const {
+    return -1 * qnn_quantize_param_.scaleOffsetEncoding.offset;
+  }
+
  private:
   Qnn_QuantizeParams_t qnn_quantize_param_ = QNN_QUANTIZE_PARAMS_INIT;
 };
@@ -58,6 +66,10 @@ class AxisScaleOffsetQuantizeParamsWrapper final {
   std::int32_t GetAxis() const;
 
   void SetAxis(const std::int32_t axis);
+
+  void GetScales(std::vector<float>& scales) const;
+
+  void GetZeroPoints(std::vector<std::int32_t>& zero_points) const;
 
  private:
   Qnn_QuantizeParams_t qnn_quantize_param_ = QNN_QUANTIZE_PARAMS_INIT;
