@@ -65,7 +65,6 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   pm->addPass(mt::createCombineOpsPass());
   pm->addPass(mt::createReorderBroadcastPass());
   pm->addPass(mlir::createCSEPass());
-  pm->addPass(mlir::createLoopInvariantCodeMotionPass());
   pm->addPass(mlir::createSymbolDCEPass());
   pm->addPass(mt::createLoopUnrollPass());
 
@@ -91,6 +90,9 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCSEPass());
 
   if (cc.IsAtLeastBlackwell()) {
+    pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
+    pm->addPass(mlir::createCanonicalizerPass());
+    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
     pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
     pm->addPass(mt::gpu::createTritonGPULoopScheduling({num_stages}));
     pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
@@ -101,10 +103,16 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   } else if (cc.IsAtLeastAmpere()) {
     // Even though we don't run on pre-Ampere architectures anymore, we keep
     // this check for consistency with the upstream pipeline
+    pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
+    pm->addPass(mlir::createCanonicalizerPass());
+    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
     pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
+    pm->addPass(mlir::createCanonicalizerPass());
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
     pm->addPass(mt::gpu::createTritonGPULoopScheduling({num_stages}));
     pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
+  } else {
+    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
   }
   pm->addPass(mt::gpu::createTritonGPUPrefetch());
   pm->addPass(
