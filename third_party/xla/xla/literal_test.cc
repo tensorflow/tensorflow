@@ -3116,6 +3116,29 @@ BENCHMARK(BM_BroadcastVectorToMatrix)
     ->ArgPair(16, 1024)
     ->ArgPair(1024, 1024);
 
+void BM_BroadcastMatrixToTensor(::testing::benchmark::State& state) {
+  const int d0 = state.range(0);
+  const int d1 = state.range(1);
+
+  Literal literal(ShapeUtil::MakeShape(S64, {d0, d1}));
+  CHECK_OK(literal.PopulateLinear<int64_t>(
+      [](int64_t linear_index) { return linear_index; }));
+
+  for (auto s : state) {
+    CHECK_OK(literal.Broadcast(
+        /*result_shape=*/ShapeUtil::MakeShape(S64, {4, d0, d1}),
+        /*dimensions=*/{1, 2}));
+  }
+
+  state.SetLabel(literal.shape().ToString() + " to " +
+                 ShapeUtil::MakeShape(S64, {4, d0, d1}).ToString());
+}
+
+BENCHMARK(BM_BroadcastMatrixToTensor)
+    ->ArgPair(16, 16)
+    ->ArgPair(16, 1024)
+    ->ArgPair(1024, 1024);
+
 //===----------------------------------------------------------------------===//
 // Literal::Populate(.*) performance benchmarks below.
 //===----------------------------------------------------------------------===//

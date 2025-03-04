@@ -27,7 +27,6 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -1090,56 +1089,53 @@ absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
   }
 
   const char* source_data = static_cast<const char*>(src.untyped_data());
-  char* dest_data = static_cast<char*>(result.untyped_data());
+  char* result_data = static_cast<char*>(result.untyped_data());
 
   // Fast path for broadcasting a scalar to a result shape.
   if (ShapeUtil::ElementsIn(src_shape) == 1) {
     for (size_t i = 0, e = ShapeUtil::ElementsIn(result_shape); i < e; ++i) {
-      memcpy(dest_data, source_data, PRIMITIVE_SIZE);
-      dest_data += PRIMITIVE_SIZE;
+      memcpy(result_data, source_data, PRIMITIVE_SIZE);
+      result_data += PRIMITIVE_SIZE;
     }
     return result;
   }
 
-  // scratch_source_index is temporary storage space for the computed index into
-  // the input literal.  We put it here to avoid allocating an std::vector in
-  // every iteration of ShapeUtil::ForEachIndex.
-  int src_shape_dims = src_shape.dimensions_size();
-  std::vector<int64_t> scratch_source_index(src_shape_dims);
-  // Make the span once outside the ForEachIndex... loop, pointing into
-  // scratch_source_index
-  absl::Span<int64_t> scratch_source_span(scratch_source_index);
-  int64_t* scratch_source_array = scratch_source_span.data();
+  // Each scalar in the source literal is broadcasted to this shape, we'll use
+  // this shape to iterate over all indices and copy data from source to result.
+  Shape broadcast_shape = result_shape;
+  for (int64_t d : dimensions) broadcast_shape.set_dimensions(d, 1);
 
   auto src_minor_to_major = LayoutUtil::MinorToMajor(src_shape);
   auto result_minor_to_major = LayoutUtil::MinorToMajor(result_shape);
 
-  ShapeUtil::ForEachIndexNoStatus(
-      result_shape, [&](absl::Span<const int64_t> output_index) {
-        // Compute dest_index
-        int64_t dest_index = IndexUtil::MultidimensionalIndexToLinearIndex(
-            result_shape, result_minor_to_major, output_index);
+  ShapeUtil::ForEachIndex(src_shape, [&](absl::Span<const int64_t> src_index) {
+    // Linear index into the source literal.
+    size_t src_linear_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+        src_shape, src_minor_to_major, src_index);
 
-        // Compute source_index
-        int64_t source_index;
-        for (int64_t i = 0, end = dimensions.size(); i < end; ++i) {
-          scratch_source_array[i] = output_index[dimensions[i]];
-        }
-        if (src_shape_dims == 1) {
-          // Fast path for this case
-          source_index = scratch_source_array[0];
-          DCHECK_EQ(source_index,
-                    IndexUtil::MultidimensionalIndexToLinearIndex(
-                        src_shape, src_minor_to_major, scratch_source_span));
-        } else {
-          source_index = IndexUtil::MultidimensionalIndexToLinearIndex(
-              src_shape, src_minor_to_major, scratch_source_span);
-        }
-        // Move one element from source_index in source to dest_index in dest
-        memcpy(dest_data + PRIMITIVE_SIZE * dest_index,
-               source_data + PRIMITIVE_SIZE * source_index, PRIMITIVE_SIZE);
-        return true;
-      });
+    // Storage for indexing into the result literal.
+    absl::InlinedVector<int64_t, 4> broadcast_index(broadcast_shape.rank(), 0);
+    absl::Span<int64_t> broadcast_index_span = absl::MakeSpan(broadcast_index);
+
+    // Iterate over the broadcast shape copying one element at a time.
+    do {
+      // Update broadcast index along the source dimensions.
+      for (int64_t i = 0, e = dimensions.size(); i < e; ++i) {
+        broadcast_index_span[dimensions[i]] = src_index[i];
+      }
+
+      size_t result_linear_index =
+          IndexUtil::MultidimensionalIndexToLinearIndex(
+              result_shape, result_minor_to_major, broadcast_index_span);
+
+      // Move one element from src_linear_index in source to
+      // result_linear_index in dest
+      memcpy(result_data + PRIMITIVE_SIZE * result_linear_index,
+             source_data + PRIMITIVE_SIZE * src_linear_index, PRIMITIVE_SIZE);
+    } while (IndexUtil::BumpIndices(broadcast_shape, broadcast_index_span));
+
+    return true;
+  });
 
   return result;
 }
