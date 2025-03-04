@@ -22,6 +22,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_compiled_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
@@ -74,8 +75,10 @@ TEST(CompiledModelGpuTest, Basic) {
   EXPECT_EQ(input_names.size(), 2);
   EXPECT_EQ(input_names.at(0), "arg0");
   EXPECT_EQ(input_names.at(1), "arg1");
+  EXPECT_EQ(*input_buffers[0].BufferType(), kLiteRtTensorBufferTypeOpenCl);
   ASSERT_TRUE(input_buffers[0].Write<float>(
       absl::MakeConstSpan(kTestInput0Tensor, kTestInput0Size)));
+  EXPECT_EQ(*input_buffers[1].BufferType(), kLiteRtTensorBufferTypeOpenCl);
   ASSERT_TRUE(input_buffers[1].Write<float>(
       absl::MakeConstSpan(kTestInput1Tensor, kTestInput1Size)));
 
@@ -86,6 +89,7 @@ TEST(CompiledModelGpuTest, Basic) {
   auto output_names = signatures[0].OutputNames();
   EXPECT_EQ(output_names.size(), 1);
   EXPECT_EQ(output_names.at(0), "tfl.add");
+  EXPECT_EQ(*output_buffers[0].BufferType(), kLiteRtTensorBufferTypeOpenCl);
   {
     auto lock_and_addr =
         litert::TensorBufferScopedLock::Create<const float>(output_buffers[0]);
