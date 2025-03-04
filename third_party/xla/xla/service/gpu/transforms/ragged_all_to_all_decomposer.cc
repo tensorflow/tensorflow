@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -113,13 +114,9 @@ HloInstruction* GetScalarValue(HloInstruction* hlo, int64_t index) {
           /*start_indices=*/{index},
           /*limit_indices=*/{index + 1},
           /*strides=*/{1}));
-  index_value = computation->AddInstruction(HloInstruction::CreateReshape(
+  return computation->AddInstruction(HloInstruction::CreateReshape(
       /*shape=*/ShapeUtil::MakeScalarShape(hlo->shape().element_type()),
       index_value));
-
-  // Convert to S64 for convenience.
-  return computation->AddInstruction(HloInstruction::CreateConvert(
-      /*shape=*/ShapeUtil::MakeScalarShape(S64), index_value));
 }
 
 // Returns a multi-index offset for the ith row. The tensors are always ragged
@@ -431,6 +428,12 @@ absl::StatusOr<bool> RaggedAllToAllDecomposer::Run(
     for (auto hlo : computation->MakeInstructionPostOrder()) {
       if (HloPredicateIsNotOp<HloOpcode::kRaggedAllToAll>(hlo)) {
         continue;
+      }
+
+      if (hlo->operand(2)->shape().element_type() != S64) {
+        return absl::InvalidArgumentError(
+            "RaggedAllToAllDecomposer only supports S64 offsets. Was "
+            "`ragged-all-to-all-canonicalizer` pass executed?");
       }
 
       TF_ASSIGN_OR_RETURN(bool result,

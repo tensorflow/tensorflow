@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdlib>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/container/fixed_array.h"
@@ -30,8 +31,11 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/mem.h"
+
+#define EIGEN_USE_THREADS
+
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 
@@ -40,14 +44,33 @@ class NanoRtExecutable {
   // Creates a new instance of the NanoRtExecutable from compatible XLA
   // executable.
   static absl::StatusOr<std::unique_ptr<NanoRtExecutable>> Create(
-      std::unique_ptr<Executable> executable,
-      std::shared_ptr<tsl::thread::ThreadPool> thread_pool);
+      std::unique_ptr<Executable> executable);
 
   // NanoRtExecutable can be asynchronous and return unavailable async value
   // that becomes available after the execution is complete. It is the caller's
   // responsibility to make sure that arguments, results and temp buffers are
   // alive during execution.
   using ExecuteEvent = tsl::Chain;
+
+  class ExecuteOptions {
+   public:
+    ExecuteOptions() : intra_op_thread_pool_(nullptr) {}
+    // Sets the thread pool device on which to run Eigen subcomputations.
+    //
+    // This field must be set for XLA:CPU models that call Eigen routines, but
+    // may be null otherwise.  Routines that use this field should always CHECK
+    // (or TF_RET_CHECK) that it's not null before dereferencing it, so that
+    // users get a clean crash rather than a segfault.
+    //
+    // Does not take ownership.
+    ExecuteOptions& set_intra_op_thread_pool(
+        const Eigen::ThreadPoolDevice* intra_op_thread_pool);
+
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool() const;
+
+   private:
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool_;
+  };
 
   // A non-owning read-only view into the XLA executable's argument buffer.
   class Argument {
@@ -106,13 +129,15 @@ class NanoRtExecutable {
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(absl::Span<const Argument> arguments,
                                            absl::Span<const Result> results,
-                                           PreallocatedTemp temp = {});
+                                           PreallocatedTemp temp = {},
+                                           ExecuteOptions options = {});
 
   template <size_t n>
   tsl::AsyncValueRef<ExecuteEvent> Execute(absl::Span<const Argument> arguments,
                                            absl::Span<const Result> results,
-                                           ManagedTemp<n>& temp) {
-    return Execute(arguments, results, temp.data());
+                                           ManagedTemp<n>& temp,
+                                           ExecuteOptions options = {}) {
+    return Execute(arguments, results, temp.data(), std::move(options));
   }
 
   // Returns the size of the temp buffer required to run the executable.
@@ -120,15 +145,12 @@ class NanoRtExecutable {
 
  private:
   NanoRtExecutable(std::unique_ptr<Executable> executable,
-                   std::shared_ptr<tsl::thread::ThreadPool> thread_pool,
                    std::vector<size_t> allocation_sizes,
                    std::vector<size_t> argument_to_allocation_index,
                    std::vector<size_t> result_to_allocation_index,
                    std::optional<size_t> temp_allocation_index);
 
   std::unique_ptr<Executable> executable_;
-  std::shared_ptr<tsl::thread::ThreadPool> thread_pool_;
-
   std::vector<size_t> allocation_sizes_;
 
   // A mapping from the argument/result index to the index of the corresponding

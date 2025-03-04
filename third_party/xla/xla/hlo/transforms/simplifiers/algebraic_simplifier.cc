@@ -31,6 +31,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -6641,6 +6642,45 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReverse(
   return false;
 }
 
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::RemoveRedundantStride(
+    absl::Nonnull<HloInstruction*> slice) {
+  CHECK(slice->opcode() == HloOpcode::kSlice);
+
+  std::vector<int64_t> index_to_change;
+  for (int64_t i = 0; i < slice->shape().rank(); ++i) {
+    const int64_t start = slice->slice_starts(i);
+    const int64_t stride = slice->slice_strides(i);
+    const int64_t limit = slice->slice_limits(i);
+
+    if (stride == 1) {
+      // Nothing to update.
+      continue;
+    }
+
+    if (stride >= limit || start + stride >= limit) {
+      index_to_change.push_back(i);
+    }
+  }
+
+  if (index_to_change.empty()) {
+    return false;
+  }
+
+  std::vector<int64_t> new_slice_limits = slice->slice_limits();
+  std::vector<int64_t> new_slice_strides = slice->slice_strides();
+  for (int64_t index : index_to_change) {
+    new_slice_limits[index] = slice->slice_starts(index) + 1;
+    new_slice_strides[index] = 1;
+  }
+
+  HloInstruction* slice_operand = slice->mutable_operand(0);
+  TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+      slice, HloInstruction::CreateSlice(slice->shape(), slice_operand,
+                                         slice->slice_starts(),
+                                         new_slice_limits, new_slice_strides)));
+  return true;
+}
+
 absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   // Delete no-op slices, i.e. where shape = operand shape.
   if (ReplaceInstructionIfCompatible(slice, slice->mutable_operand(0))) {
@@ -7073,6 +7113,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   }
   if (reversed) {
     return absl::OkStatus();
+  }
+
+  TF_ASSIGN_OR_RETURN(bool removed_redundant_stride,
+                      RemoveRedundantStride(slice));
+  if (removed_redundant_stride) {
+    VLOG(10) << "Removed redundant stride for slice op.";
   }
 
   return absl::OkStatus();

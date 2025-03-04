@@ -70,49 +70,19 @@ NcclRaggedAllToAllConfig GetNcclRaggedAllToAllConfig(
   return config;
 }
 
-// A wrapper around an raw data buffer that indexes values based on the
-// PrimitiveType that is stored in the buffer.
-class IntegerOperandData {
- public:
-  IntegerOperandData(PrimitiveType element_type, void* data)
-      : element_type_(element_type), data_(data) {}
-
-  int64_t get(int i) const {
-    switch (element_type_) {
-      case PrimitiveType::S32:
-      case PrimitiveType::U32:
-        return reinterpret_cast<int32_t*>(data_)[i];
-      case PrimitiveType::S64:
-      case PrimitiveType::U64:
-        return reinterpret_cast<int64_t*>(data_)[i];
-      default:
-        LOG(FATAL) << "Unsupported element type: " << element_type_;
-    }
-  }
-
-  int64_t operator[](int i) const { return get(i); }
-
- private:
-  PrimitiveType element_type_;
-  void* data_;
-};
-
 // Loads the offsets and sizes of the input and output ragged tensors from
 // device memory.
 //
 // The parameter `ragged_metadata_allocs` is a vector of pointers to the buffers
 // in the host memory allocated by StreamExecutor to copy data from the device
 // memory.
-absl::StatusOr<std::vector<IntegerOperandData>> LoadRaggedTensorMetadata(
+absl::Status LoadRaggedTensorMetadata(
     se::Stream& stream, const std::vector<DeviceBufferPair>& buffers,
     const std::vector<int64_t*>& ragged_metadata_allocs) {
-  std::vector<IntegerOperandData> indices;
-  for (int i = 0; i < kNumRaggedMetadataOperands; ++i) {
+  for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
     TF_RETURN_IF_ERROR(stream.Memcpy(ragged_metadata_allocs[i],
                                      buffers[i + 2].source_buffer,
                                      buffers[i + 2].source_buffer.size()));
-    indices.push_back(IntegerOperandData(buffers[i + 2].element_type,
-                                         ragged_metadata_allocs[i]));
   }
 
   // Wait for the copies to complete.
@@ -122,7 +92,7 @@ absl::StatusOr<std::vector<IntegerOperandData>> LoadRaggedTensorMetadata(
         blocked.message()));
   }
 
-  return indices;
+  return absl::OkStatus();
 }
 
 // Runs AllToAll on a buffer that contains ragged tensor metadata.
@@ -185,14 +155,13 @@ absl::Status RunRaggedAllToAll(
       output_offsets_buffer_pair.element_type, stream, comm));
   output_offsets_buffer_pair.source_buffer = output_offsets_device_buffer;
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<IntegerOperandData> ragged_metadata,
+  TF_RETURN_IF_ERROR(
       LoadRaggedTensorMetadata(stream, buffers, ragged_metadata_allocs));
 
-  const IntegerOperandData& input_offsets = ragged_metadata[0];
-  const IntegerOperandData& send_sizes = ragged_metadata[1];
-  const IntegerOperandData& output_offsets = ragged_metadata[2];
-  const IntegerOperandData& recv_sizes = ragged_metadata[3];
+  const int64_t* input_offsets = ragged_metadata_allocs[0];
+  const int64_t* send_sizes = ragged_metadata_allocs[1];
+  const int64_t* output_offsets = ragged_metadata_allocs[2];
+  const int64_t* recv_sizes = ragged_metadata_allocs[3];
 
   TF_RETURN_IF_ERROR(collectives->GroupStart());
 
@@ -252,15 +221,14 @@ absl::Status RunMemCpyRaggedAllToAll(
                                      GpuCollectives::On(stream)));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<IntegerOperandData> ragged_metadata,
-      LoadRaggedTensorMetadata(stream, buffers, ragged_metadata_allocs));
-
   int64_t num_updates_per_replica = num_total_updates / num_ranks;
 
-  const IntegerOperandData& input_offsets = ragged_metadata[0];
-  const IntegerOperandData& send_sizes = ragged_metadata[1];
-  const IntegerOperandData& output_offsets = ragged_metadata[2];
+  TF_RETURN_IF_ERROR(
+      LoadRaggedTensorMetadata(stream, buffers, ragged_metadata_allocs));
+
+  const int64_t* input_offsets = ragged_metadata_allocs[0];
+  const int64_t* send_sizes = ragged_metadata_allocs[1];
+  const int64_t* output_offsets = ragged_metadata_allocs[2];
 
   // Transfer a slice of data to each peer's output buffer.
   for (int64_t i = 0; i < num_updates_per_replica; ++i) {
@@ -313,6 +281,12 @@ NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
           "ragged-all-to-all must have the ragged dimension (0) in the most "
           "major position in the layout $0.",
           instr->shape().layout().ToString()));
+    }
+
+    if (instr->operand(2)->shape().element_type() != S64) {
+      return absl::InvalidArgumentError(
+          "RaggedAllToAllDecomposer only supports S64 offsets. Was "
+          "`ragged-all-to-all-canonicalizer` pass executed?");
     }
 
     return absl::OkStatus();
@@ -415,7 +389,7 @@ absl::Status NcclRaggedAllToAllStartThunk::RunNcclCollective(
 
   // Get buffer allocs to load sizes and offsets of ragged tensors from device
   // memory.
-  std::vector<int64_t*> ragged_metadata_allocs(4);
+  std::vector<int64_t*> ragged_metadata_allocs(kNumRaggedMetadataOperands);
   se::DeviceMemoryBase output_offsets_device_buffer;
   {
     absl::MutexLock lock(&mutex_);
