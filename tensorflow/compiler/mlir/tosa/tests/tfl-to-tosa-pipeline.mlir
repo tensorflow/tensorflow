@@ -3445,3 +3445,15 @@ func.func @test_cast_qi8(%arg0: tensor<13x21x3x!quant.uniform<i16:f32, 1.0:-1>>)
   %0 = "tfl.cast"(%arg0) : (tensor<13x21x3x!quant.uniform<i16:f32, 1.0:-1>>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
 }
+
+// -----
+
+// CHECK-LABEL: test_mul_with_unequal_ranks
+// CHECK-DAG: %[[VAL_10:.*]] = tosa.const_shape {value = dense<[1, 1, 1, 384]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[SHIFT:.*]] = "tosa.const"() <{value = dense<0> : tensor<1xi8>}>
+// CHECK: %[[VAR0:.*]] = tosa.reshape %arg1, %[[VAL_10]] : (tensor<384xf32>, !tosa.shape<4>) -> tensor<1x1x1x384xf32>
+// CHECK: %[[VAR1:.*]] = tosa.mul %arg0, %[[VAR0]], %[[SHIFT]] : (tensor<?x135x240x384xf32>, tensor<1x1x1x384xf32>, tensor<1xi8>)
+func.func @test_mul_with_unequal_ranks(%arg0: tensor<?x135x240x384xf32>, %arg1: tensor<384xf32>) -> tensor<?x135x240x384xf32> {
+  %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<?x135x240x384xf32>, tensor<384xf32>) -> tensor<?x135x240x384xf32>
+  func.return %0 : tensor<?x135x240x384xf32>
+}
