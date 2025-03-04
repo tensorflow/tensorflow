@@ -26,6 +26,7 @@ cc_library(
     hdrs = ["capture_profile.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
+        "//third_party/reactant:__subpackages__",
         "//xla/python:__pkg__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
@@ -92,6 +93,7 @@ cc_library(
     name = "profiler_client",
     hdrs = ["profiler_client.h"],
     visibility = internal_visibility([
+        "//third_party/reactant:__subpackages__",
         "//xla:__subpackages__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
