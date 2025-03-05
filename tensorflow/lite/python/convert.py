@@ -52,6 +52,7 @@ def _is_quantized_input_stats_required(
   Returns:
     True, if the `inference_type` or the `inference_input_type` is a quantized
     type and it is not post training quantization, else False.
+    THIS IS A TEST
   """
   quantized_inference_types = [
       _types_pb2.QUANTIZED_UINT8,
