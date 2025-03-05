@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -223,6 +224,14 @@ class HloRunnerInterface {
   // as part of compilation.
   virtual absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) = 0;
+
+  // Creates a runner-internal executable object given a runner and
+  // platform-specific serialized executable representation. The serialized
+  // representation must have been produced by a compiler of the same platform
+  // and version as this one.
+  virtual absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
+  DeserializeExecutable(
+      absl::Nonnull<const tsl::protobuf::Message*> serialized) const = 0;
 
   // Same as above, except it takes buffer assignment as input.
   // Note: The default implementation of the API here does not utilize the given

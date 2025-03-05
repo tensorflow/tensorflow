@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -497,6 +499,23 @@ HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
       CreateExecutable(module.get(), std::move(compile_options)));
   return std::make_unique<HloRunnerPjRtExecutable>(this,
                                                    std::move(pjrt_executable));
+}
+
+absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
+HloRunnerPjRt::DeserializeExecutable(
+    absl::Nonnull<const tsl::protobuf::Message*> serialized) const {
+  std::string serialized_string;
+  serialized->SerializeToString(&serialized_string);
+
+  // TODO: b/237720161 - According to the comment in the base class, the
+  // `options` argument is mandatory. However, our implementation is capable of
+  // handling the default case where it is not present. The options are
+  // serialized with the executable and we can read them from there.
+  // Remove this comment once the bug is closed.
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                      pjrt_client_->DeserializeExecutable(
+                          serialized_string, /*options=*/std::nullopt));
+  return std::make_unique<HloRunnerPjRtExecutable>(this, std::move(executable));
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
