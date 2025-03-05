@@ -669,6 +669,12 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
     return std::nullopt;
   }
 
+  if (EqualizeRanks(rewriter, op->getLoc(), x, y)
+          .failed())
+    return std::nullopt;
+  x_type = dyn_cast<ShapedType>(x.getType());
+  y_type = dyn_cast<ShapedType>(y.getType());
+
   // If the output is I8 then we need to rescale to I32
   // Then scale back to I8
   if (result_is_qtype) {
