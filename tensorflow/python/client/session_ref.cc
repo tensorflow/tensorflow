@@ -15,9 +15,17 @@ limitations under the License.
 #include "tensorflow/python/client/session_ref.h"
 
 #include <stdlib.h>
-#include <memory>
-#include <utility>
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
