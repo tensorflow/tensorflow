@@ -11,7 +11,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/auto_shard_dataset_op.h"
 
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/type_inference.h"
 #include "tensorflow/core/data/dataset_test_base.h"
