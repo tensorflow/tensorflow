@@ -24,7 +24,7 @@ in this tutorial allows you to switch between the
 [YAMNet/classifier](https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1),
 a model that recognizes sounds, and a model that recognizes specific spoken
 words, that was
-[trained](https://www.tensorflow.org/lite/models/modify/model_maker/speech_recognition)
+[trained](https://ai.google.dev/edge/litert/libraries/modify/speech_recognition)
 using the TensorFlow Lite [Model
 Maker](https://www.tensorflow.org/lite/models/modify/model_maker) tool. The
 models run predictions on audio clips that contain 15600 individual samples per
@@ -132,7 +132,7 @@ such as default minimum accuracy thresholds for predictions and labels for words
 or sounds that the model can recognize.
 
 A TensorFlow Lite model includes a `*.tflite` file containing the model. The
-model file contains the prediction logic and typically includes [metadata](../../models/convert/metadata)
+model file contains the prediction logic and typically includes [metadata](../../models/convert/metadata.md)
 about how to interpret prediction results, such as prediction class names. Model
 files should be stored in the `src/main/assets` directory of your development
 project, as in the code example:
@@ -211,7 +211,7 @@ data used to train the model.
 The
 [YAMNet/classifier model](https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1)
 and the customized
-[speech commands](https://www.tensorflow.org/lite/models/modify/model_maker/speech_recognition)
+[speech commands](https://ai.google.dev/edge/litert/libraries/modify/speech_recognition)
 models used in this code example accepts Tensor data objects that represent
 single-channel, or mono, audio clips recorded at 16kHz in 0.975 second clips
 (15600 samples). Running predictions on new audio data, your app must transform
@@ -349,7 +349,7 @@ the case of the models in the example app, the predictions are either a list of
 recognized sounds or words. The AudioClassifier options object used in the code
 example lets you set the maximum number of predictions with the
 `setMaxResults()` method, as shown in [Initialize the ML
-model](#Initialize_the_ML_model) section.
+model](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/android/tutorials/audio_classification.md#initialize-the-ml-model) section.
 
 To get the prediction results from the model:
 
