@@ -14,7 +14,6 @@ compiler/xla/tsl/mkl/build_defs.bzl:
 compiler/xla/tsl/package_groups.bzl:
 compiler/xla/tsl/profiler/BUILD:
 third_party/BUILD:
-third_party/__init__:.py
 third_party/absl/com_google_absl.BUILD:
 third_party/clang_toolchain/BUILD:
 third_party/clang_toolchain/cc_configure_clang.bzl:
