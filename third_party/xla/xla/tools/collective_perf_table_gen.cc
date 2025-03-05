@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tools/collective_perf_table_gen.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/service/gpu/model/hlo_op_profiler.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
@@ -98,6 +98,20 @@ struct ProfilingResult {
     }
   };
 };
+
+int64_t GetMedianRuntimeNs(const std::vector<ExecutionProfile>& profiles) {
+  std::vector<int64_t> runtimes;
+  runtimes.reserve(profiles.size());
+  for (const ExecutionProfile& profile : profiles) {
+    runtimes.push_back(profile.compute_time_ns());
+  }
+  std::sort(runtimes.begin(), runtimes.end());
+  size_t mid = runtimes.size() / 2;
+  if (runtimes.size() % 2 == 1) {
+    return runtimes[mid];
+  }
+  return runtimes[mid - 1] + (runtimes[mid] - runtimes[mid - 1]) / 2;
+}
 
 int64_t GetInputDim(CollectivePerfTableGen::CollectiveType type,
                     int64_t tensor_size_bytes,
@@ -279,12 +293,17 @@ std::unique_ptr<PjRtLoadedExecutable> CollectivePerfTableGen::Compile(
   return std::move(*executable);
 }
 
-void CollectivePerfTableGen::Run(PjRtLoadedExecutable& executable) {
+std::vector<ExecutionProfile> CollectivePerfTableGen::Run(
+    PjRtLoadedExecutable& executable) {
   FunctionalHloRunner::RunningOptions run_opts;
   run_opts.module_argument_mode =
       FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
+  run_opts.num_repeats = kNumProfilingRuns;
+  std::vector<ExecutionProfile> profiles;
+  run_opts.execution_profiles = &profiles;
   CHECK_OK(FunctionalHloRunner::Run(*pjrt_env_.client, &executable,
                                     /*arguments=*/{}, run_opts));
+  return profiles;
 }
 
 CollectivePerfTableGen::ProfilingData CollectivePerfTableGen::Profile(
@@ -299,19 +318,12 @@ CollectivePerfTableGen::ProfilingData CollectivePerfTableGen::Profile(
   }
 
   if (config_.task_id == 0) {
-    std::unique_ptr<HloOpProfiler::KernelTracer> tracer =
-        HloOpProfiler::GetKernelTracer();
-    for (int i = 0; i < kNumProfilingRuns; ++i) {
-      Run(*executable);
-    }
+    std::vector<ExecutionProfile> profiles = Run(*executable);
     return {
-        /*runtime=*/absl::Nanoseconds(
-            std::move(*tracer).getMedianKernelTimeNs()),
+        /*runtime=*/absl::Nanoseconds(GetMedianRuntimeNs(std::move(profiles))),
     };
   }
-  for (int i = 0; i < kNumProfilingRuns; ++i) {
-    Run(*executable);
-  }
+  Run(*executable);
   return {};
 }
 

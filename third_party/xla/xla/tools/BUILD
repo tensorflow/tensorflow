@@ -718,7 +718,6 @@ cc_library(
         "//xla/service:backend",
         "//xla/service:hlo_module_config",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
-        "//xla/service/gpu/model:hlo_op_profiler_lib",
         "//xla/service/gpu/model:hlo_op_profiles",
         "//xla/tools/multihost_hlo_runner:create_client",
         "//xla/tools/multihost_hlo_runner:functional_hlo_runner",

@@ -108,7 +108,7 @@ class CollectivePerfTableGen {
   std::unique_ptr<PjRtLoadedExecutable> Compile(
       std::unique_ptr<HloModule> module);
 
-  void Run(PjRtLoadedExecutable& executable);
+  std::vector<ExecutionProfile> Run(PjRtLoadedExecutable& executable);
 
   Config config_;
   std::unique_ptr<Backend> backend_;
