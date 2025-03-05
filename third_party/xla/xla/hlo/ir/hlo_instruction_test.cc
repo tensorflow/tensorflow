@@ -16,6 +16,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -71,6 +72,14 @@ TEST(HloInstruction, EraseFrontendAttribute) {
       << "key1 should not be erased";
   EXPECT_EQ(instr.get_frontend_attribute("key2"), std::nullopt)
       << "key2 should have been erased";
+}
+
+TEST(HloInstruction, DeriveComputeTypeAttribute) {
+  HloConstantInstruction instr0(ShapeUtil::MakeShape(U32, {3, 2}));
+  instr0.add_frontend_attribute(kXlaComputeTypeAttr, kXlaComputeTypeHost);
+  HloConstantInstruction instr1(ShapeUtil::MakeShape(U32, {3, 2}));
+  instr0.SetupDerivedInstruction(&instr1);
+  EXPECT_FALSE(instr1.has_frontend_attributes());
 }
 
 }  // namespace
