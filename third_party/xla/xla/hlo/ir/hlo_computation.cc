@@ -258,6 +258,13 @@ HloInstruction* HloComputation::AddInstructionInternal(
   instruction_count_++;
   pinst->index_in_parent_ = index;
   instructions_.push_back(info);
+  for (HloComputation* called_computation : pinst->called_computations()) {
+    CHECK(called_computation);
+    CHECK(parent() == nullptr || called_computation->parent() == parent())
+        << "Called computation " << called_computation->name()
+        << " is not in the same module as " << name();
+    IncrementCalledComputationCount(called_computation);
+  }
   return pinst;
 }
 
@@ -513,13 +520,13 @@ absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
 
   HloInstructionInfo* info = &instructions_[instruction->index_in_parent_];
   DCHECK_EQ(info->inst(), instruction);
-  info->inst()->set_parent(nullptr);
   to_be_deleted_.push_back(info->inst());  // Takes ownership
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
   // Clear all operands to avoid Null operands.
   to_be_deleted_.back()->RemoveAllOperands();
   to_be_deleted_.back()->ClearCalledComputations();
   to_be_deleted_.back()->MarkAsDead();
+  to_be_deleted_.back()->set_parent(nullptr);
 
   // If this instruction is a constant, clear the literal eagerly instead of
   // waiting for the instruction to be deleted in Cleanup(). This greatly
@@ -1832,4 +1839,21 @@ bool HloComputation::CanExpandIntoSingleInstruction() const {
       });
 }
 
+void HloComputation::IncrementCalledComputationCount(
+    HloComputation* computation) {
+  called_computations_[computation]++;
+}
+
+void HloComputation::DecrementCalledComputationCount(
+    HloComputation* computation) {
+  if (!computation) {
+    return;
+  }
+  auto it = called_computations_.find(computation);
+  CHECK(it != called_computations_.end());
+  --it->second;
+  if (it->second == 0) {
+    called_computations_.erase(it);
+  }
+}
 }  // namespace xla

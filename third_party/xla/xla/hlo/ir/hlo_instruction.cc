@@ -220,6 +220,26 @@ void HloInstruction::AppendComputation(HloComputation* computation) {
   mutable_rare()->called_computations.push_back(computation);
 }
 
+void HloInstruction::set_called_computation(int index,
+                                            HloComputation* computation) {
+  if (parent()) {
+    CHECK(parent()->parent() == nullptr ||
+          parent()->parent() == computation->parent());
+    parent()->IncrementCalledComputationCount(computation);
+  }
+  std::swap(computation, mutable_rare()->called_computations[index]);
+  if (parent()) {
+    parent()->DecrementCalledComputationCount(computation);
+  }
+}
+
+void HloInstruction::ReplaceCalledComputations(
+    absl::FunctionRef<HloComputation*(HloComputation*)> map_function) {
+  for (int64_t i = 0; i < called_computations().size(); ++i) {
+    set_called_computation(i, map_function(rare()->called_computations[i]));
+  }
+}
+
 HloInstruction* HloInstruction::AddInstruction(
     std::unique_ptr<HloInstruction> derived_instruction) {
   HloInstruction* derived =
@@ -2762,7 +2782,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
-  clone->set_parent(parent_);
   clone->backend_config_ = BackendConfigWrapper(backend_config_);
   // The new instruction's name will be uniquified when it's added to a
   // computation.
@@ -3518,7 +3537,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
   if (has_to_apply()) {
     CHECK_EQ(called_computations().size(), 1)
         << "Expected a to_apply computation for " << opcode();
-    rare_->called_computations[0] = computation;
+    set_called_computation(0, computation);
     return;
   }
   LOG(FATAL) << "Invalid opcode for to_apply(): " << opcode();
@@ -3557,12 +3576,12 @@ HloComputation* HloInstruction::while_body() const {
 
 void HloInstruction::set_while_condition(HloComputation* computation) {
   CHECK_EQ(HloOpcode::kWhile, opcode_);
-  rare_->called_computations[kConditionComputationIndex] = computation;
+  set_called_computation(kConditionComputationIndex, computation);
 }
 
 void HloInstruction::set_while_body(HloComputation* computation) {
   CHECK_EQ(HloOpcode::kWhile, opcode_);
-  rare_->called_computations[kBodyComputationIndex] = computation;
+  set_called_computation(kBodyComputationIndex, computation);
 }
 
 HloInstruction* HloInstruction::while_init() const {
@@ -3614,7 +3633,7 @@ int32_t HloInstruction::branch_index(HloComputation* computation) const {
 void HloInstruction::set_branch_computation(int b,
                                             HloComputation* computation) {
   CHECK_EQ(HloOpcode::kConditional, opcode_);
-  rare_->called_computations[b] = computation;
+  set_called_computation(b, computation);
 }
 
 std::string HloInstruction::SignatureString() const {
@@ -5919,6 +5938,17 @@ std::shared_ptr<OriginalValue> HloInstruction::original_value() const {
 void HloInstruction::set_original_value(
     std::shared_ptr<OriginalValue> original_value) {
   original_value_ = original_value;
+}
+
+void HloInstruction::ClearCalledComputations() {
+  if (has_rare()) {
+    if (parent()) {
+      for (HloComputation* computation : rare()->called_computations) {
+        parent()->DecrementCalledComputationCount(computation);
+      }
+    }
+    mutable_rare()->called_computations.clear();
+  }
 }
 
 }  // namespace xla

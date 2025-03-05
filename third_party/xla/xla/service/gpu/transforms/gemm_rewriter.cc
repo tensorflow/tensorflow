@@ -1783,7 +1783,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     std::unique_ptr<HloInstruction> result =
         gemm->CloneWithNewOperands(gemm->shape(), operands);
     TF_RETURN_IF_ERROR(result->set_backend_config(gpu_config));
-    TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
+    TF_RETURN_IF_ERROR(SetName(gemm->GetModule(), result.get()));
     if (slice) {
       result = slice->CloneWithNewOperands(
           slice->shape(), {slice->parent()->AddInstruction(std::move(result))});
@@ -1827,7 +1827,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::unique_ptr<HloInstruction> result = gemm->Clone();
     TF_RETURN_IF_ERROR(result->set_backend_config(gpu_config));
-    TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
+    TF_RETURN_IF_ERROR(SetName(gemm->GetModule(), result.get()));
 
     if (slice_or_bitcast) {
       result = slice_or_bitcast->CloneWithNewOperands(
