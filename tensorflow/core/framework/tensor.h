@@ -687,6 +687,9 @@ class Tensor {
   AllocatorMemoryType GetMemoryType() const { return buf_->GetMemoryType(); }
 
  private:
+  // Returns a StringPiece mapping the current tensor's buffer.
+  absl::string_view tensor_data_internal() const;
+
   void CheckType(DataType expected_dtype) const;
   void CheckTypeAndIsAligned(DataType expected_dtype) const;
   void CheckIsAlignedAndSingleElement() const;
