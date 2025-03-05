@@ -110,8 +110,8 @@ DispatchDelegate::CreateDelegateKernelInterface() {
 }  // namespace
 
 LiteRtDispatchDelegateOptions* LiteRtCreateDefaultDispatchDelegateOptions(
-    LiteRtEnvironmentT& environment) {
-  return new LiteRtDispatchDelegateOptions(environment);
+    LiteRtEnvironment environment) {
+  return new LiteRtDispatchDelegateOptions(*environment);
 }
 
 TfLiteStatus LiteRtAddDispatchDelegateOption(
@@ -142,8 +142,8 @@ void LiteRtDestroyDispatchDelegateOptions(
   delete options;
 }
 
-TfLiteDelegate* LiteRtCreateDispatchDelegate(
-    LiteRtEnvironmentT& environment, LiteRtDispatchDelegateOptions* options) {
+TfLiteOpaqueDelegate* LiteRtCreateDispatchDelegate(
+    LiteRtEnvironment environment, LiteRtDispatchDelegateOptions* options) {
   if (!options) {
     options = LiteRtCreateDefaultDispatchDelegateOptions(environment);
   }
@@ -158,14 +158,14 @@ namespace litert {
 
 DispatchDelegateOptionsPtr CreateDispatchDelegateOptionsPtr(
     LiteRtEnvironmentT& environment) {
-  return {LiteRtCreateDefaultDispatchDelegateOptions(environment),
+  return {LiteRtCreateDefaultDispatchDelegateOptions(&environment),
           LiteRtDestroyDispatchDelegateOptions};
 }
 
 DispatchDelegatePtr CreateDispatchDelegatePtr(
     LiteRtEnvironmentT& environment, DispatchDelegateOptionsPtr&& options) {
   return DispatchDelegatePtr(
-      LiteRtCreateDispatchDelegate(environment, options.release()),
+      LiteRtCreateDispatchDelegate(&environment, options.release()),
       LiteRtDestroyDispatchDelegate);
 }
 }  // namespace litert
