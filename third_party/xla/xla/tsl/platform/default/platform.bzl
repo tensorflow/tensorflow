@@ -1,4 +1,9 @@
 """Platform specific paths for various libraries and utilities."""
+
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
+
 CUDA_VERSION = ""
 
 CUDNN_VERSION = ""

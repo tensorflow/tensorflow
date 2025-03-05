@@ -14,6 +14,10 @@ xla_aot_compile(
 
 """
 
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
+
 xla_compile_tool = "//xla/service:xla_compile"
 
 def xla_aot_compile_cpu(

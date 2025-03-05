@@ -6,6 +6,11 @@ load(
     "if_rocm_is_configured",
 )
 load(
+    "//xla/tsl:package_groups.bzl",
+    "DEFAULT_LOAD_VISIBILITY",
+    "LEGACY_XLA_USERS",
+)
+load(
     "//xla/tsl:tsl.bzl",
     "tsl_copts",
 )
@@ -19,6 +24,8 @@ load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+
+visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_XLA_USERS)
 
 def xla_py_proto_library(**_kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.

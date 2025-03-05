@@ -1,5 +1,8 @@
 """Platform-specific build configurations."""
 
+# This file is used in OSS only. It is not transformed by copybara. Therefore all paths in this
+# file are OSS paths.
+
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
 load("@local_xla//third_party/py/rules_pywrap:pywrap.bzl", "use_pywrap_rules")
@@ -10,6 +13,12 @@ load(
     "if_tsl_link_protobuf",
 )
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
+
+# IMPORTANT: Do not remove this load statement. We rely on that //xla/tsl doesn't exist in g3
+# to prevent g3 .bzl files from loading this file.
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.

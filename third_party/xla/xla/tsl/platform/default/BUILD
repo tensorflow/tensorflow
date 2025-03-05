@@ -557,20 +557,29 @@ bzl_library(
     # "manual",
     # "notap",
     # ],
+    # visibility = internal_visibility(["//tensorflow:__subpackages__"]),
     # copybara:uncomment_end
-    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
+    deps = [
+        "//xla/tsl:package_groups_bzl",
+    ],
 )
 
 bzl_library(
     name = "rules_cc_bzl",
     srcs = ["rules_cc.bzl"],
+    # This .bzl file is only used in OSS and references OSS paths. Therefore it cannot be parsed
+    # correctly by the parse test in g3.
+    # copybara:uncomment parse_tests = False,
 )
 
 bzl_library(
     name = "build_config_root_bzl",
     srcs = ["build_config_root.bzl"],
     # copybara:uncomment parse_tests = False,
-    deps = ["@local_xla//third_party/py/rules_pywrap:pywrap_bzl"],
+    deps = [
+        "//xla/tsl:package_groups_bzl",
+        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
+    ],
 )
 
 bzl_library(

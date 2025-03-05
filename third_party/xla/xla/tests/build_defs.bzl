@@ -2,11 +2,14 @@
 
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:plugin.bzl", "plugins")
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
 load("//xla/tsl/platform/default:build_config.bzl", "strict_cc_test")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
 
 # Possible backend values for the GPU family.
 NVIDIA_GPU_BACKENDS = [
