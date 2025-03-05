@@ -58,6 +58,10 @@ class CpuEigenDotOperationTest
     auto hlo_module = CreateNewVerifiedModule();
     hlo_module->AddEntryComputation(std::move(entry_computation));
 
+    hlo_module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_cpu_use_thunk_runtime(false);
+
     CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options,
                                   filecheck_lines,
                                   /*match_optimized_ir=*/true);
