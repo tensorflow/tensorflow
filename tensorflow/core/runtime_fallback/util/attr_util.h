@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tfrt/bef/bef_encoding.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_attr_type.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
+#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
