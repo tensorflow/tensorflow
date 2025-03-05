@@ -145,12 +145,6 @@ common --noenable_bzlmod
 common --noincompatible_enable_cc_toolchain_resolution
 common --noincompatible_enable_android_toolchain_resolution
 
-# Use cc toolchains from apple_support for Apple builds.
-# https://github.com/bazelbuild/apple_support/tree/master?tab=readme-ov-file#bazel-6-setup
-build:macos --apple_crosstool_top=@local_config_apple_cc//:toolchain
-build:macos --crosstool_top=@local_config_apple_cc//:toolchain
-build:macos --host_crosstool_top=@local_config_apple_cc//:toolchain
-
 # Print a stacktrace when a test is killed
 test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 
@@ -194,6 +188,15 @@ build:macos --features=archive_param_file
 build:macos --linkopt=-Wl,-undefined,dynamic_lookup
 build:macos --host_linkopt=-Wl,-undefined,dynamic_lookup
 
+# Use the Apple toolchain for MacOS builds.
+build:macos --config=apple-toolchain
+
+# Use cc toolchains from apple_support for Apple builds (ios, macos, etc).
+# https://github.com/bazelbuild/apple_support/tree/master?tab=readme-ov-file#bazel-6-setup
+build:apple-toolchain --apple_crosstool_top=@local_config_apple_cc//:toolchain
+build:apple-toolchain --crosstool_top=@local_config_apple_cc//:toolchain
+build:apple-toolchain --host_crosstool_top=@local_config_apple_cc//:toolchain
+
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64
 build:macos_arm64 --macos_minimum_os=11.0
@@ -202,6 +205,7 @@ build:macos_arm64 --macos_minimum_os=11.0
 build:ios --apple_platform_type=ios
 build:ios --copt=-fembed-bitcode
 build:ios --copt=-Wno-c++11-narrowing
+build:ios --config=apple-toolchain
 build:ios_armv7 --config=ios
 build:ios_armv7 --cpu=ios_armv7
 build:ios_arm64 --config=ios
