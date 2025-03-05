@@ -94,7 +94,6 @@ cc_library(
     ],
     deps = [
         ":accelerator",
-        "//tensorflow/lite:shared_library",
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
