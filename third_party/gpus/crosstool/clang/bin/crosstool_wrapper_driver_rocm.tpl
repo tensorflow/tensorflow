@@ -34,11 +34,6 @@ HIP_RUNTIME_PATH = '%{hip_runtime_path}'
 HIP_RUNTIME_LIBRARY = '%{hip_runtime_library}'
 ROCR_RUNTIME_PATH = '%{rocr_runtime_path}'
 ROCR_RUNTIME_LIBRARY = '%{rocr_runtime_library}'
-RCCL_RUNTIME_PATH = '%{rccl_runtime_path}'
-MIOPEN_RUNTIME_PATH = '%{miopen_runtime_path}'
-ROCBLAS_RUNTIME_PATH = '%{rocblas_runtime_path}'
-HIPFFT_RUNTIME_PATH = '%{hipfft_runtime_path}'
-ROCRAND_RUNTIME_PATH = '%{rocrand_runtime_path}'
 VERBOSE = '%{crosstool_verbose}'=='1'
 CPU_COMPILER_IS_CLANG = '%{crosstool_clang}'=='1'
 
@@ -268,16 +263,6 @@ def main():
     gpu_linker_flags.append('-L' + HIP_RUNTIME_PATH)
     gpu_linker_flags.append('-Wl,-rpath=' + HIP_RUNTIME_PATH)
     gpu_linker_flags.append('-l' + HIP_RUNTIME_LIBRARY)
-    gpu_linker_flags.append('-L' + RCCL_RUNTIME_PATH)
-    gpu_linker_flags.append('-Wl,-rpath=' + RCCL_RUNTIME_PATH)
-    gpu_linker_flags.append('-L' + ROCBLAS_RUNTIME_PATH)
-    gpu_linker_flags.append('-Wl,-rpath=' + ROCBLAS_RUNTIME_PATH)
-    gpu_linker_flags.append('-L' + MIOPEN_RUNTIME_PATH)
-    gpu_linker_flags.append('-Wl,-rpath=' + MIOPEN_RUNTIME_PATH)
-    gpu_linker_flags.append('-L' + ROCRAND_RUNTIME_PATH)
-    gpu_linker_flags.append('-Wl,-rpath=' + ROCRAND_RUNTIME_PATH)
-    gpu_linker_flags.append('-L' + HIPFFT_RUNTIME_PATH)
-    gpu_linker_flags.append('-Wl,-rpath=' + HIPFFT_RUNTIME_PATH)
     gpu_linker_flags.append("-lrt")
     gpu_linker_flags.append("-lstdc++")
 
