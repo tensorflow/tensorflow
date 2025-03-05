@@ -121,11 +121,13 @@ std::ostream& operator<<(std::ostream& os, const SharedLibrary& lib) {
 
   os << kHeader;
 #if LITERT_IMPLEMENT_SHARED_LIBRARY_INFO
+#ifdef RTLD_DI_LMID
   if (Lmid_t dl_ns_idx; dlinfo(lib.handle_, RTLD_DI_LMID, &dl_ns_idx) != 0) {
     os << "Error getting lib namespace index: " << dlerror() << ".\n";
   } else {
     os << "LIB NAMESPACE INDEX: " << dl_ns_idx << "\n";
   }
+#endif
 
   if (link_map* lm; dlinfo(lib.handle_, RTLD_DI_LINKMAP, &lm) != 0) {
     os << "Error getting linked objects: " << dlerror() << ".\n";
