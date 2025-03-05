@@ -2,7 +2,7 @@
 # load("//devtools/deps/check:deps_check.bzl", "check_dependencies")
 #
 # copybara:uncomment_end
-load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "export_lrt_runtime_only_linkopt", "export_lrt_runtime_only_script")
+load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "copy_file", "export_lrt_runtime_only_linkopt", "export_lrt_runtime_only_script")
 load("//tensorflow/lite/experimental/litert/build_common:special_rule.bzl", "gles_deps", "gles_headers", "gles_linkopts")
 
 package(
@@ -483,6 +483,12 @@ cc_library(
     deps = [
         "@opencl_headers",
     ],
+)
+
+copy_file(
+    name = "copy_litert_runtime_c_api_so",
+    src = "//tensorflow/lite/experimental/litert/c:litert_runtime_c_api_so",
+    target = "libLiteRtRuntimeCApi.so",
 )
 
 # This is cc_library target based on `libLiteRtRuntimeCApi.so`.
