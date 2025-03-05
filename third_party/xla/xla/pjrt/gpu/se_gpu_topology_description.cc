@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
