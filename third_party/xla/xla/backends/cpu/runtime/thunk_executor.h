@@ -257,7 +257,13 @@ class ThunkExecutor {
                 NodesEdges nodes_out_edges, std::vector<NodeDef> nodes_defs,
                 const Options& options);
 
-  // Executes thunks sequentially starting from the first thunk in the sequence.
+  // Executes given `thunk` with `params` and adds tracing annotation to capture
+  // start and end events for profiling.
+  static tsl::AsyncValueRef<ExecuteEvent> TracedExecute(
+      Thunk& thunk, const Thunk::ExecuteParams& params);
+
+  // Executes thunks sequentially starting from the first thunk in the
+  // sequence.
   tsl::AsyncValueRef<ExecuteEvent> ExecuteSequential(
       const Thunk::ExecuteParams& params);
 
