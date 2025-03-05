@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/sort_json.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
@@ -2318,6 +2319,8 @@ void HloInstruction::SetupDerivedInstruction(
   if (has_rare()) {
     derived_instruction->set_result_accuracy(result_accuracy());
     derived_instruction->set_frontend_attributes(frontend_attributes());
+    // Offload annotations should not be implicitly derived.
+    derived_instruction->erase_frontend_attribute(kXlaComputeTypeAttr);
     derived_instruction->set_statistics_viz(statistics_viz());
   } else if (derived_instruction->has_rare()) {
     derived_instruction->mutable_rare()->frontend_attributes.Clear();
