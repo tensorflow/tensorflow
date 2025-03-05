@@ -1,284 +1,269 @@
-diff --git a/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc b/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
-index 750fcf1..1743279 100644
---- a/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
-@@ -176,14 +176,31 @@ using DirectionBasedTensorShardings =
- // The same holds for backwards propagation, except we allow expansion based
- // on the result factor shardings but not the operands.
- std::optional<DirectionBasedTensorShardings> getDirectionBasedTensorShardings(
--    PropagationDirection direction, ArrayRef<TensorFactorShardings> operands,
-+    PropagationDirection direction, Operation* op,
-+    ArrayRef<TensorFactorShardings> operands,
-     ArrayRef<TensorFactorShardings> results) {
-+  static const char* errMsg =
-+      "since Shardy is propagating {0} for this op, Shardy may not "
-+      "fully propagate to each of the multiple {1}s; {0} "
-+      "propagation was designed with single {1} ops in mind. Let the "
-+      "Shardy team know the operation that you'd like to be fully "
-+      "supported.";
-+  static llvm::once_flag flag;
-   switch (direction) {
-     case PropagationDirection::BOTH:
-+      return std::make_pair(operands, results);
-     case PropagationDirection::FORWARD: {
-+      if (op && results.size() > 1) {
-+        emitOpWarningOnce(flag, op,
-+                          llvm::formatv(errMsg, "forward", "result").str());
-+      }
-       return std::make_pair(operands, results);
-     }
-     case PropagationDirection::BACKWARD: {
-+      if (op && operands.size() > 1) {
-+        emitOpWarningOnce(flag, op,
-+                          llvm::formatv(errMsg, "backward", "operand").str());
-+      }
-       return std::make_pair(results, operands);
-     }
-     case PropagationDirection::NONE:
-@@ -294,7 +311,7 @@ SmallVector<AxisRefAttr> BasicFactorPropagation::getCompatibleMajorAxes(
-   }
- 
-   std::optional<DirectionBasedTensorShardings> tensorShardings =
--      getDirectionBasedTensorShardings(direction, projection.getOperands(),
-+      getDirectionBasedTensorShardings(direction, op, projection.getOperands(),
-                                        projection.getResults());
-   assert(tensorShardings.has_value());
- 
-diff --git a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
-index 25c0b29..f9d1fc7 100644
---- a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
-@@ -21,18 +21,15 @@ limitations under the License.
- #include <memory>
- #include <numeric>
- 
--#include "llvm/ADT/STLExtras.h"
- #include "mlir/IR/BuiltinOps.h"
- #include "mlir/IR/Operation.h"
- #include "mlir/IR/SymbolTable.h"
--#include "mlir/IR/Value.h"
- #include "mlir/Pass/Pass.h"
- #include "mlir/Pass/PassRegistry.h"
- #include "mlir/Support/LLVM.h"
- #include "mlir/Support/LogicalResult.h"
- #include "shardy/dialect/sdy/ir/constants.h"
- #include "shardy/dialect/sdy/ir/dialect.h"
--#include "shardy/dialect/sdy/ir/utils.h"
- #include "shardy/dialect/sdy/transforms/common/op_properties.h"
- #include "shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h"
- #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
-@@ -54,55 +51,17 @@ namespace {
- using GetDirectionToPropagateFnPtr = PropagationDirection (*)(Operation*,
-                                                               int64_t);
- 
--// Returns the direction to propagate based on whether any of the op's operands
--// has multiple uses.
--//
--// The rational is that if any of the operands has multiple uses:
--// - We don't want to propagate forward, to avoid introducing a conflict for
--//   each use of the operand.
--// - We don't want to propagate backwards, since there could be a conflict with
--//   another use of the operand.
--//
--// If `allowMultiUse` is true, returns `BOTH` regardless of the number of uses.
--PropagationDirection getDirectionBasedOnUses(Operation* op,
--                                             bool allowMultiUse) {
--  if (allowMultiUse) {
--    return PropagationDirection::BOTH;
--  }
--
--  bool anyOperandMultipleUses =
--      llvm::any_of(op->getOperands(), [&](Value operand) {
--        // We can ignore scalar operands, since they can't be sharded.
--        return !operand.hasOneUse() && !isScalar(operand);
--      });
--  return anyOperandMultipleUses ? PropagationDirection::NONE
--                                : PropagationDirection::BOTH;
--}
--
--PropagationDirection isPassThroughOp(Operation* op, int64_t factorIndex,
--                                     bool allowMultiUse) {
-+PropagationDirection isPassThroughOp(Operation* op, int64_t) {
-   if (isElementwise(op) ||
-       isa<stablehlo::ReshapeOp, stablehlo::TransposeOp, DataFlowEdgeOp>(op)) {
--    return getDirectionBasedOnUses(op, allowMultiUse);
-+    return PropagationDirection::BOTH;
-   }
-   if (isa<stablehlo::DynamicSliceOp, stablehlo::DynamicUpdateSliceOp>(op)) {
--    return intersectionOfPropagationDirections(
--        getDirectionBasedOnUses(op, allowMultiUse),
--        PropagationDirection::FORWARD);
-+    return PropagationDirection::FORWARD;
-   }
-   return PropagationDirection::NONE;
- }
- 
--PropagationDirection isPassThroughOpSingleUse(Operation* op,
--                                              int64_t factorIndex) {
--  return isPassThroughOp(op, factorIndex, /*allowMultiUse=*/false);
--}
--
--PropagationDirection isPassThroughOpMultiUse(Operation* op,
--                                             int64_t factorIndex) {
--  return isPassThroughOp(op, factorIndex, /*allowMultiUse=*/true);
--}
--
- // NOTE: if the `op` has no sharding rule, then we will assume it uses an
- // identity sharding rule. For example, `DataFlowEdgeOp`.
- PropagationDirection onlyPassThroughFactorsBroadcastBackward(
-@@ -118,9 +77,8 @@ PropagationDirection onlyPassThroughFactorsBroadcastBackward(
-   return PropagationDirection::BOTH;
- }
- 
--constexpr std::array<GetDirectionToPropagateFnPtr, 4> opPropagationSchedule = {
--    isPassThroughOpSingleUse, isPassThroughOpMultiUse,
--    onlyPassThroughFactorsBroadcastBackward, propagateAny};
-+constexpr std::array<GetDirectionToPropagateFnPtr, 3> opPropagationSchedule = {
-+    isPassThroughOp, onlyPassThroughFactorsBroadcastBackward, propagateAny};
- 
- // Returns the direction in which the given operation should be propagated.
- //
-diff --git a/shardy/dialect/sdy/transforms/propagation/test/op_priority_propagation.mlir b/shardy/dialect/sdy/transforms/propagation/test/op_priority_propagation.mlir
-index 6bf9bb5..36adf99 100644
---- a/shardy/dialect/sdy/transforms/propagation/test/op_priority_propagation.mlir
-+++ b/shardy/dialect/sdy/transforms/propagation/test/op_priority_propagation.mlir
-@@ -35,84 +35,6 @@ func.func @element_wise_over_dot_general_flipped_op_order(%arg0: tensor<8x8xf32>
-   return %2 : tensor<8x8xf32>
- }
- 
--// If we propagated forward through element-wise ops with multiple uses in the
--// first iteration, the sharding on dim 0 would have been propagated to the two
--// add ops, which would result in two reshards instead of one.
--// CHECK-LABEL: func @defer_forward_propagation_for_multi_use_ops
--func.func @defer_forward_propagation_for_multi_use_ops(
--    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>})
--    -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>},
--        tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>}) {
--  // CHECK-NEXT: %[[SINE:.*]] = stablehlo.sine %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {?}]>]>}
--  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[SINE]], %[[SINE]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
--  // CHECK-NEXT: %[[ADD_2:.*]] = stablehlo.add %[[SINE]], %[[SINE]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
--  // CHECK-NEXT: %[[COSINE_1:.*]] = stablehlo.cosine %[[ADD_1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
--  // CHECK-NEXT: %[[COSINE_2:.*]] = stablehlo.cosine %[[ADD_2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
--  // CHECK-NEXT: return %[[COSINE_1]], %[[COSINE_2]]
--  %1 = stablehlo.sine %arg0 : tensor<8x8xf32>
--  %2 = stablehlo.add %1, %1 : tensor<8x8xf32>
--  %3 = stablehlo.add %1, %1 : tensor<8x8xf32>
--  // Need the additinal ops since they will get the result sharding regardless
--  // of op priority propagation.
--  %4 = stablehlo.cosine %2 : tensor<8x8xf32>
--  %5 = stablehlo.cosine %3 : tensor<8x8xf32>
--  return %4, %5 : tensor<8x8xf32>, tensor<8x8xf32>
--}
--
--// If we propagated forward through dynamic-slice op with multiple uses in the
--// first iteration, the sharding on dim 0 would have been propagated to the two
--// add ops.
--// CHECK-LABEL: func @defer_forward_propagation_for_multi_use_dynamic_slice
--func.func @defer_forward_propagation_for_multi_use_dynamic_slice(
--    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>},
--    %arg1: tensor<i32>, %arg2: tensor<i32>)
--    -> (tensor<8x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>}) {
--  // CHECK-NEXT: %[[DS:.*]] = stablehlo.dynamic_slice %arg0, %arg1, %arg2, sizes = [8, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {?}]>]>}
--  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[DS]], %[[DS]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
--  // CHECK-NEXT: %[[ADD_2:.*]] = stablehlo.add %[[DS]], %[[DS]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
--  // CHECK-NEXT: %[[MUL:.*]] = stablehlo.multiply %[[ADD_1]], %[[ADD_2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
--  // CHECK-NEXT: return %[[MUL]]
--  %1 = stablehlo.dynamic_slice %arg0, %arg1, %arg2, sizes = [8, 2] : (tensor<8x8xf32>, tensor<i32>, tensor<i32>) -> tensor<8x2xf32>
--  %2 = stablehlo.add %1, %1 : tensor<8x2xf32>
--  %3 = stablehlo.add %1, %1 : tensor<8x2xf32>
--  // Need the additinal op since it will get the result sharding regardless of
--  // op priority propagation.
--  %4 = stablehlo.multiply %2, %3 : tensor<8x2xf32>
--  return %4 : tensor<8x2xf32>
--}
--
--// If we propagated backwards through element-wise ops with a multi-use operand
--// in the first iteration, the sharding on dim 1 would have been propagated to
--// %arg0.
--// CHECK-LABEL: func @defer_backwards_propagation_for_op_with_multi_use_operand(
--// CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {?}]>})
--func.func @defer_backwards_propagation_for_op_with_multi_use_operand(%arg0: tensor<8x8xf32>)
--    -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>},
--        tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>}) {
--  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {?}]>]>}
--  // CHECK-NEXT: %[[ADD_2:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
--  // CHECK-NEXT: %[[SINE:.*]] = stablehlo.sine %[[ADD_1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {?}]>]>}
--  // CHECK-NEXT: return %[[ADD_2]], %[[SINE]]
--  %0 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
--  %1 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
--  %2 = stablehlo.sine %0 : tensor<8x8xf32>
--  return %1, %2 : tensor<8x8xf32>, tensor<8x8xf32>
--}
--
--// CHECK-LABEL: func @defer_backwards_propagation_dynamic_slice(
--// CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {"a", ?}]>}
--func.func @defer_backwards_propagation_dynamic_slice(
--    %arg0: tensor<8x8xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
--    -> (tensor<8x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>},
--        tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>}) {
--  // CHECK-NEXT: %[[DS:.*]] = stablehlo.dynamic_slice %arg0, %arg1, %arg2, sizes = [8, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {?}]>]>}
--  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"a", ?}]>]>}
--  // CHECK-NEXT: return %[[DS]], %[[ADD]]
--  %1 = stablehlo.dynamic_slice %arg0, %arg1, %arg2, sizes = [8, 2] : (tensor<8x8xf32>, tensor<i32>, tensor<i32>) -> tensor<8x2xf32>
--  %2 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
--  return %1, %2 : tensor<8x2xf32>, tensor<8x8xf32>
--}
--
- // Verify that the element-wise ops are sharded on dim 1 due to the
- // `sharding_constraint`. Without `sharding_constraint` haveing the
- // `Elementwise` trait, then the element-wise ops would be sharded on dim 0
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 8ee25f9..5758bb1 100644
+index 5758bb1..3706e70 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,24 +1,13 @@
+@@ -1,13 +1,75 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir b/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
----- a/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
--+++ b/llvm/test/tools/llc/new-pm/x86_64-regalloc-pipeline.mir
--@@ -1,6 +1,6 @@
-- # REQUIRES x86_64-registered-target
---# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=fast -print-pipeline-passes %s 2>&1 | FileCheck %s
---# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=greedy -print-pipeline-passes %s 2>&1 | FileCheck %s --check-prefix=CHECK-GREEDY
--+# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=fast -print-pipeline-passes %s -o - 2>&1 | FileCheck %s
--+# RUN: llc -mtriple=x86_64-unknown-linux-gnu -enable-new-pm -O3 -regalloc-npm=greedy -print-pipeline-passes %s -o - 2>&1 | FileCheck %s --check-prefix=CHECK-GREEDY
-+diff -ruN --strip-trailing-cr a/libc/src/stdlib/qsort_pivot.h b/libc/src/stdlib/qsort_pivot.h
-+--- a/libc/src/stdlib/qsort_pivot.h
-++++ b/libc/src/stdlib/qsort_pivot.h
-+@@ -9,6 +9,8 @@
-+ #ifndef LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
-+ #define LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
-  
-- # CHECK: regallocfast
-- # CHECK-GREEDY: greedy<all>
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
--@@ -9662,6 +9662,7 @@
--         "lib/Target/LLVMIR/DataLayoutImporter.h",
--         "lib/Target/LLVMIR/DebugImporter.cpp",
--         "lib/Target/LLVMIR/DebugImporter.h",
--+        "lib/Target/LLVMIR/LLVMImportInterface.cpp",
--         "lib/Target/LLVMIR/LoopAnnotationImporter.cpp",
--         "lib/Target/LLVMIR/LoopAnnotationImporter.h",
--         "lib/Target/LLVMIR/ModuleImport.cpp",
-++#include "src/__support/macros/attributes.h"
-++
-+ #include <stddef.h> // For size_t
+-diff -ruN --strip-trailing-cr a/libc/src/stdlib/qsort_pivot.h b/libc/src/stdlib/qsort_pivot.h
+---- a/libc/src/stdlib/qsort_pivot.h
+-+++ b/libc/src/stdlib/qsort_pivot.h
+-@@ -9,6 +9,8 @@
+- #ifndef LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
+- #define LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
+- 
+-+#include "src/__support/macros/attributes.h"
+-+
+- #include <stddef.h> // For size_t
+- 
+- namespace LIBC_NAMESPACE_DECL {
++diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/Transfer.cpp b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
++--- a/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+++++ b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
++@@ -60,9 +60,7 @@
++   Value *LHSValue = Env.getValue(LHS);
++   Value *RHSValue = Env.getValue(RHS);
 + 
-+ namespace LIBC_NAMESPACE_DECL {
++-  // When two unsupported values are compared, both are nullptr. Only supported
++-  // values should evaluate to equal.
++-  if (LHSValue == RHSValue && LHSValue)
+++  if (LHSValue == RHSValue)
++     return Env.getBoolLiteralValue(true);
++ 
++   if (auto *LHSBool = dyn_cast_or_null<BoolValue>(LHSValue))
++@@ -800,14 +798,6 @@
++     Env.setValue(*S, Env.getIntLiteralValue(S->getValue()));
++   }
++ 
++-  // Untyped nullptr's aren't handled by NullToPointer casts, so they need to be
++-  // handled separately.
++-  void VisitCXXNullPtrLiteralExpr(const CXXNullPtrLiteralExpr *S) {
++-    auto &NullPointerVal =
++-        Env.getOrCreateNullPointerValue(S->getType()->getPointeeType());
++-    Env.setValue(*S, NullPointerVal);
++-  }
++-
++   void VisitParenExpr(const ParenExpr *S) {
++     // The CFG does not contain `ParenExpr` as top-level statements in basic
++     // blocks, however manual traversal to sub-expressions may encounter them.
++diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
++--- a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+++++ b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
++@@ -4974,41 +4974,6 @@
++       });
++ }
++ 
++-TEST(TransferTest, UnsupportedValueEquality) {
++-  std::string Code = R"(
++-    // An explicitly unsupported type by the framework.
++-    enum class EC {
++-      A,
++-      B
++-    };
++-  
++-    void target() {
++-      EC ec = EC::A;
++-
++-      bool unsupported_eq_same = (EC::A == EC::A);
++-      bool unsupported_eq_other = (EC::A == EC::B);
++-      bool unsupported_eq_var = (ec == EC::B);
++-
++-      (void)0; // [[p]]
++-    }
++-  )";
++-  runDataflow(
++-      Code,
++-      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
++-         ASTContext &ASTCtx) {
++-        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
++-
++-        // We do not model the values of unsupported types, so this
++-        // seemingly-trivial case will not be true either.
++-        EXPECT_TRUE(isa<AtomicBoolValue>(
++-            getValueForDecl<BoolValue>(ASTCtx, Env, "unsupported_eq_same")));
++-        EXPECT_TRUE(isa<AtomicBoolValue>(
++-            getValueForDecl<BoolValue>(ASTCtx, Env, "unsupported_eq_other")));
++-        EXPECT_TRUE(isa<AtomicBoolValue>(
++-            getValueForDecl<BoolValue>(ASTCtx, Env, "unsupported_eq_var")));
++-      });
++-}
++-
++ TEST(TransferTest, CorrelatedBranches) {
++   std::string Code = R"(
++     void target(bool B, bool C) {
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 667ae4e..691c322 100644
+index 691c322..6c22e69 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "f6212c1cd3d8b827c7d7e2f6cf54b135c27eacc6"
--    LLVM_SHA256 = "bba6d4c0020622b64202640a94504b957d3597e4f42e9b4f20cbcfa80a8aa41a"
-+    LLVM_COMMIT = "fd9a882ce31cb0a53dba63528c15d76f088854b7"
-+    LLVM_SHA256 = "99ab085087ea6a5f27f293a9f06c837eca57042bc6a7e11f3cd2d9d2168274b3"
+-    LLVM_COMMIT = "fd9a882ce31cb0a53dba63528c15d76f088854b7"
+-    LLVM_SHA256 = "99ab085087ea6a5f27f293a9f06c837eca57042bc6a7e11f3cd2d9d2168274b3"
++    LLVM_COMMIT = "22d8ba3dbc732fdf4acf830e741d972be282f827"
++    LLVM_SHA256 = "0d31e66240b0a24cc9a49ab310352de14c5d3294f5faee8ad9873915760bdb3a"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index f213d54..425157b 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -1,3 +1,136 @@
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
++--- stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
+++++ stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
++@@ -4,10 +4,10 @@
++ // CHECK-LABEL: @add
++ func.func @add(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
++                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>> {
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>}
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>}
++   // CHECK: %[[V2:.+]] = stablehlo.add %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 50>}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 50>}
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
++   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
++@@ -18,10 +18,10 @@
++ // CHECK-LABEL: @sub
++ func.func @sub(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
++                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>> {
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>}
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>}
++   // CHECK: %[[V2:.+]] = stablehlo.subtract %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 50>}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 50>}
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
++   %0 = "stablehlo.subtract"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
++@@ -32,10 +32,10 @@
++ // CHECK-LABEL: @mul
++ func.func @mul(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
++                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>> {
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
++   // CHECK: %[[V2:.+]] = stablehlo.multiply %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1717986918>, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 37>}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1717986918>, output_unsigned = false, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 37>}
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
++   %0 = "stablehlo.multiply"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
++@@ -46,10 +46,10 @@
++ // CHECK-LABEL: @div
++ func.func @div(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
++                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>> {
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
++   // CHECK: %[[V2:.+]] = stablehlo.divide %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1717986918>, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 37>}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1717986918>, output_unsigned = false, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 37>}
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
++   %0 = "stablehlo.divide"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
++@@ -60,10 +60,10 @@
++ // CHECK-LABEL: @max
++ func.func @max(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
++                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>> {
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
++   // CHECK: %[[V2:.+]] = stablehlo.maximum %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 51>}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 51>}
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
++   %0 = "stablehlo.maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
++@@ -74,10 +74,10 @@
++ // CHECK-LABEL: @min
++ func.func @min(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
++                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>> {
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
++   // CHECK: %[[V2:.+]] = stablehlo.minimum %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 51>}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 51>}
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
++   %0 = "stablehlo.minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
++@@ -87,9 +87,9 @@
++ // -----
++ // CHECK-LABEL: @abs
++ func.func @abs(%arg0 : tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>> {
++-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
+++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
++   // CHECK: %[[V1:.+]] = stablehlo.abs %[[V0]] : tensor<20x20xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V1]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1431655765>, output_zp = -128 : i32, per_channel = false, scale32 = true, shift = array<i8: 33>}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V1]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = -128 : i32, per_channel = false, scale32 = true, shift = array<i8: 33>}
++   // CHECK: return %[[V3]] : tensor<20x20x!quant.uniform<i8:f32, 1.500000e-01:-128>>
++   %0 = "stablehlo.abs"(%arg0) : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
++   return %0 : tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
++@@ -99,8 +99,8 @@
++ // CHECK-LABEL: @compareGE
++ func.func @compareGE(%arg0 : tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>,
++                    %arg1 : tensor<20x20x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<20x20xi1> {
++-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
++-  // CHECK: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
+++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
+++  // CHECK: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
++   // CHECK: %[[V2:.+]] = stablehlo.compare GE, %[[V0]], %[[V1]], TOTALORDER :
++   // CHECK: return %[[V2]]
++   %0 = stablehlo.compare GE, %arg0, %arg1, TOTALORDER : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>, tensor<20x20x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<20x20xi1>
++@@ -111,8 +111,8 @@
++ // CHECK-LABEL: @compareLT
++ func.func @compareLT(%arg0 : tensor<20x20x!quant.uniform<i16:f32, 0.025:-1>>,
++                    %arg1 : tensor<20x20x!quant.uniform<i16:f32, 0.075:-2>>) -> tensor<20x20xi1> {
++-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 17>}
++-  // CHECK: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 15>}
+++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 17>}
+++  // CHECK: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 15>}
++   // CHECK: %[[V2:.+]] = stablehlo.compare LT, %[[V0]], %[[V1]], TOTALORDER :
++   // CHECK: return %[[V2]]
++   %0 = stablehlo.compare LT, %arg0, %arg1, TOTALORDER : (tensor<20x20x!quant.uniform<i16:f32, 0.025:-1>>, tensor<20x20x!quant.uniform<i16:f32, 0.075:-2>>) -> tensor<20x20xi1>
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
++--- stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
+++++ stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
++@@ -3,7 +3,7 @@
++ // -----
++ // CHECK-LABEL: @rescale
++ func.func @rescale(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<2x2xi32> {
++-  %0 = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>} :
+++  %0 = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, input_unsigned = false, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>} :
++             (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<2x2xi32>
++ 
++   // convert input quantized type to storage type
+ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
+ --- stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
+ +++ stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
+@@ -31,6 +164,20 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeTo
+      return success();
+    }
+  };
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
++--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
+++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
++@@ -52,7 +52,9 @@
++       rewriter.getDenseI32ArrayAttr({multiplier}),
++       rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(shift)}),
++       rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(doubleRound),
++-      rewriter.getBoolAttr(perChannel));
+++      rewriter.getBoolAttr(perChannel),
+++      /*input_unsigned=*/rewriter.getBoolAttr(false),
+++      /*output_unsigned=*/rewriter.getBoolAttr(false));
++ 
++   return rescale_op.getResult();
++ }
+ diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+ --- stablehlo/stablehlo/dialect/Base.cpp
+ +++ stablehlo/stablehlo/dialect/Base.cpp
