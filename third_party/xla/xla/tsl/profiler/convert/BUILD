@@ -39,6 +39,7 @@ cc_library(
     deps = [
         "//xla/tsl/platform:macros",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 

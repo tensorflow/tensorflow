@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
 #include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/utils/device_caps_utils.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
+#include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
@@ -308,6 +310,11 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   }
   DutyCycleCombiner duty_cycle_combiner;
   // TODO(b/161942993) parallelize XPlane processing per thread.
+  HloModuleMap hlo_module_map;
+  if (options.generate_kernel_stats_db ||
+      (is_tpu && options.generate_op_metrics_db)) {
+    ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
+  }
   for (const XPlane* device_trace : device_planes) {
     if (options.generate_op_metrics_db) {
       if (!op_stats.has_perf_env()) {
@@ -323,8 +330,6 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
         if (!tsl::profiler::GetSparseCoreId(device_trace->name()).has_value()) {
           OpMetricsDb device_op_metrics_db =
               ConvertTpuDeviceTraceXPlaneToOpMetricsDb(*device_trace);
-          HloModuleMap hlo_module_map;
-          ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
           UpdateOpMetricsDbFromHloModuleMap(device_op_metrics_db,
                                             hlo_module_map);
           op_metrics_db_combiner.Combine(device_op_metrics_db);
@@ -343,8 +348,26 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       }
     }
     if (options.generate_kernel_stats_db) {
-      ConvertDeviceTraceXPlaneToKernelReports(*device_trace,
-                                              /*on_kernel_fn=*/{}, &reports);
+      ConvertDeviceTraceXPlaneToKernelReports(
+          *device_trace,
+          // TODO(cleanup): Move this to xplane_to_kernel_stats_db.cc
+          [&](const GpuEventStats& stats, KernelReport* kernel) {
+            if (!stats.IsXlaOp()) return;
+            const HloInstructionWrapper* hlo_instruction = GetHloInstruction(
+                hlo_module_map, stats.program_id, stats.hlo_op_names.back());
+            if (hlo_instruction != nullptr) {
+              kernel->set_op_name(std::string(hlo_instruction->TfOpName()));
+              bool tc_eligible = IsOpTensorCoreEligible(kernel->op_name());
+              if (VLOG_IS_ON(1) && !tc_eligible &&
+                  kernel->is_kernel_using_tensor_core()) {
+                VLOG(1) << "Detected new Op using TensorCores: "
+                        << kernel->op_name() << std::endl;
+              }
+              kernel->set_is_op_tensor_core_eligible(
+                  tc_eligible || kernel->is_op_tensor_core_eligible());
+            }
+          },
+          &reports);
     }
     XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(device_trace);
     DutyCycleTracker duty_cycle_tracker = ConstructDutyCycleTracker(visitor);
