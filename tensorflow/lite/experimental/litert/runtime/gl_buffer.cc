@@ -120,18 +120,18 @@ Expected<GlBuffer> GlBuffer::AllocFromAhwbBuffer(AhwbBuffer& ahwb_buffer) {
   glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
   // Create GL buffer object.
-  tflite::gpu::gl::GlBuffer tflite_gl_buffer(GL_SHADER_STORAGE_BUFFER, /*id=*/0,
+  tflite::gpu::gl::GlBuffer tflite_gl_buffer(GL_SHADER_STORAGE_BUFFER, gl_id,
                                              size_bytes, /*offset=*/0,
                                              /*has_ownership=*/false);
   return GlBuffer(std::move(tflite_gl_buffer), ahwb_buffer.ahwb);
 }
 #endif  // LITERT_HAS_AHWB_SUPPORT
 
-Expected<GlBuffer> GlBuffer::Alloc(size_t bytes_size) {
+Expected<GlBuffer> GlBuffer::Alloc(size_t size_bytes) {
   tflite::gpu::gl::GlBuffer tflite_gl_buffer;
 
   if (!tflite::gpu::gl::CreateReadWriteShaderStorageBuffer<std::byte>(
-           bytes_size, &tflite_gl_buffer)
+           size_bytes, &tflite_gl_buffer)
            .ok()) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                       "Failed to allocate GL buffer");
@@ -148,16 +148,23 @@ template Expected<void> GlBuffer::Unlock<char>();
 template <typename T>
 Expected<T*> GlBuffer::Lock() {
   absl::MutexLock lock(&mutex_);
+#if LITERT_HAS_AHWB_SUPPORT
+  if (ahwb_ != nullptr) {
+    LITERT_ASSIGN_OR_RETURN(void* data,
+                            litert::internal::AhwbBuffer::Lock(ahwb_));
+    return static_cast<T*>(data);
+  }
+#endif  // LITERT_HAS_AHWB_SUPPORT
   if (data_ == nullptr) {
     // Ensure the data is aligned.
-    if (auto rc =
-            posix_memalign(&data_, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT, size_);
+    if (auto rc = posix_memalign(&data_, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT,
+                                 size_bytes_);
         rc) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                         "Failed to allocate aligned memory");
     }
     if (auto status = tflite_gl_buffer_.Read(
-            absl::MakeSpan(static_cast<T*>(data_), size_ / sizeof(T)));
+            absl::MakeSpan(static_cast<T*>(data_), size_bytes_ / sizeof(T)));
         !status.ok()) {
       return Unexpected(
           kLiteRtStatusErrorRuntimeFailure,
@@ -170,13 +177,18 @@ Expected<T*> GlBuffer::Lock() {
 template <typename T>
 Expected<void> GlBuffer::Unlock() {
   absl::MutexLock lock(&mutex_);
+#if LITERT_HAS_AHWB_SUPPORT
+  if (ahwb_ != nullptr) {
+    return litert::internal::AhwbBuffer::Unlock(ahwb_);
+  }
+#endif  // LITERT_HAS_AHWB_SUPPORT
   if (data_ == nullptr) {
     return Error(
         kLiteRtStatusErrorRuntimeFailure,
         "Cannot unlock a buffer that wasn't locked in the first place");
   }
-  if (auto status = tflite_gl_buffer_.Write(
-          absl::MakeSpan(static_cast<const T*>(data_), size_ / sizeof(T)));
+  if (auto status = tflite_gl_buffer_.Write(absl::MakeSpan(
+          static_cast<const T*>(data_), size_bytes_ / sizeof(T)));
       !status.ok()) {
     return Unexpected(
         kLiteRtStatusErrorRuntimeFailure,

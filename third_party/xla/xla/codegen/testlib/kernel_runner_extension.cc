@@ -89,6 +89,12 @@ std::unique_ptr<HloInstruction> CreateComparisonHloInstruction(
   return HloInstruction::CreateCompare(shape, lhs, rhs, direction);
 }
 
+std::unique_ptr<HloInstruction> CreateCallHloInstruction(
+    const Shape& shape, std::vector<HloInstruction*> operands,
+    HloComputation* computation) {
+  return HloInstruction::CreateCall(shape, operands, computation);
+}
+
 HloModuleConfig DefaultHloModuleConfigWithDebugOptions() {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
@@ -250,6 +256,9 @@ NB_MODULE(_extension, kernel_runner_module) {
                   nb::keep_alive<0, 2>(), nb::keep_alive<0, 3>())
       .def_static("create_concatenate", &HloInstruction::CreateConcatenate,
                   nb::keep_alive<0, 2>())
+      .def_static("create_call", &CreateCallHloInstruction,
+                  nb::keep_alive<0, 1>(), nb::keep_alive<0, 2>(),
+                  nb::keep_alive<0, 3>())
       .def("name", &HloInstruction::name);
 
   nb::class_<HloComputation>(kernel_runner_module, "HloComputation")
@@ -300,7 +309,7 @@ NB_MODULE(_extension, kernel_runner_module) {
            })
       .def("add_computation",
            [](HloModule* self, std::unique_ptr<HloComputation> computation) {
-             self->AddComputation(std::move(computation), false);
+             self->AddEmbeddedComputation(std::move(computation));
            })
       .def("set_schedule",
            [](HloModule& self, HloSchedule schedule) {

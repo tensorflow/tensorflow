@@ -286,13 +286,13 @@ LiteRtStatus LiteRtGetTensorBufferGlTexture(LiteRtTensorBuffer tensor_buffer,
 
 LiteRtStatus LiteRtCreateTensorBufferFromGlBuffer(
     const LiteRtRankedTensorType* tensor_type, GLenum target, GLuint id,
-    size_t bytes_size, size_t offset, LiteRtGlBufferDeallocator deallocator,
+    size_t size_bytes, size_t offset, LiteRtGlBufferDeallocator deallocator,
     LiteRtTensorBuffer* tensor_buffer) {
   if (!tensor_type || !tensor_buffer) {
     return kLiteRtStatusErrorInvalidArgument;
   }
   auto created_tensor_buffer = LiteRtTensorBufferT::CreateFromGlBuffer(
-      *tensor_type, target, id, bytes_size, offset, deallocator);
+      *tensor_type, target, id, size_bytes, offset, deallocator);
   if (!created_tensor_buffer) {
     LITERT_LOG(LITERT_ERROR, "%s",
                created_tensor_buffer.Error().Message().data());
@@ -304,7 +304,7 @@ LiteRtStatus LiteRtCreateTensorBufferFromGlBuffer(
 
 LiteRtStatus LiteRtGetTensorBufferGlBuffer(LiteRtTensorBuffer tensor_buffer,
                                            GLenum* target, GLuint* id,
-                                           size_t* bytes_size, size_t* offset) {
+                                           size_t* size_bytes, size_t* offset) {
   if (!tensor_buffer || !target || !id) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -317,7 +317,7 @@ LiteRtStatus LiteRtGetTensorBufferGlBuffer(LiteRtTensorBuffer tensor_buffer,
   }
   *target = (*gl_buffer_expected)->target();
   *id = (*gl_buffer_expected)->id();
-  *bytes_size = (*gl_buffer_expected)->bytes_size();
+  *size_bytes = (*gl_buffer_expected)->size_bytes();
   *offset = (*gl_buffer_expected)->offset();
   return kLiteRtStatusOk;
 }
