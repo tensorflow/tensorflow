@@ -15,10 +15,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/parallel_batch_dataset_op.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -273,11 +275,17 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
+      int64_t max_parallelism = ctx->runner_threadpool_size();
+      int64_t min_parallelism =
+          std::min(GetAutotuneMinParallelism(ctx), max_parallelism);
+      LOG(INFO) << "Parallel batch at: " << prefix()
+                << " min parallelism is set to " << min_parallelism;
       return model::MakeAsyncKnownRatioNode(
           std::move(args),
           /*ratio=*/dataset()->batch_size_, /*memory_ratio=*/1.0,
-          {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                                /*max=*/ctx->runner_threadpool_size())});
+          {model::MakeParameter("parallelism", num_parallel_calls_,
+                                /*min=*/min_parallelism,
+                                /*max=*/max_parallelism)});
     }
 
     absl::Status SaveInternal(SerializationContext* ctx,

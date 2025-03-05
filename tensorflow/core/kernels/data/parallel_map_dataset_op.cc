@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <deque>
 #include <functional>
@@ -350,19 +351,26 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       if (use_unbounded_threadpool_) {
         max_parallelism_value *= kUnboundedThreadpoolAutotuningFactor;
       }
+
+      int64_t min_parallelism =
+          std::min(static_cast<double>(GetAutotuneMinParallelism(ctx)),
+                   max_parallelism_value);
+
+      LOG(INFO) << "Parallel map: " << prefix() << " min parallelism is set to "
+                << min_parallelism;
       if (num_parallel_calls_ &&
           dataset()->num_parallel_calls_ == model::kAutotune) {
         parameter = model::MakeParameter(
-            "parallelism", num_parallel_calls_, /*min=*/1,
+            "parallelism", num_parallel_calls_, /*min=*/min_parallelism,
             /*max=*/max_parallelism_value,
             // This is to ensure before this op has seen its first element,
             // `MaximumBufferedBytes()` can use the correct `parameter->value`
             // to estimate the maximum buffer bytes.
             GetAutotuneDefaultParallelism(ctx));
       } else {
-        parameter =
-            model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                                 /*max=*/max_parallelism_value);
+        parameter = model::MakeParameter("parallelism", num_parallel_calls_,
+                                         /*min=*/min_parallelism,
+                                         /*max=*/max_parallelism_value);
       }
       std::optional<int64_t> estimated_element_size =
           dataset()->GetEstimatedElementSize();

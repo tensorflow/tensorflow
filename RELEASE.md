@@ -45,8 +45,9 @@
 
 ### Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* `tf.data`
+    * Adds `autotune.min_parallelism` to `tf.data.Options` to enable faster
+      input pipeline warm up.
 
 ### Bug Fixes and Other Changes
 
