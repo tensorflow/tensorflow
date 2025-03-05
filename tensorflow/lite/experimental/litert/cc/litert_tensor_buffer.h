@@ -20,7 +20,6 @@
 #include <utility>
 
 #include "absl/types/span.h"
-#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -31,6 +30,10 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+
+#if LITERT_HAS_OPENCL_SUPPORT
+#include <CL/cl.h>
+#endif
 
 namespace litert {
 
@@ -135,16 +138,13 @@ class TensorBuffer
 #endif
   }
 
-  Expected<cl_mem> GetOpenClBuffer() const {
 #if LITERT_HAS_OPENCL_SUPPORT
+  Expected<cl_mem> GetOpenClBuffer() const {
     cl_mem cl_mem;
     LITERT_RETURN_IF_ERROR(LiteRtGetTensorBufferOpenClBuffer(Get(), &cl_mem));
     return cl_mem;
-#else
-    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                              "OpenCL is not supported on this platform");
-#endif
   }
+#endif
 
 #if LITERT_HAS_OPENGL_SUPPORT
   struct GlTexture {

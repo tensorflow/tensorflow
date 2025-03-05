@@ -18,10 +18,12 @@
 #include <memory.h>
 #include <stddef.h>
 
-#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#if LITERT_HAS_OPENCL_SUPPORT
+#include <CL/cl.h>
+#endif  // LITERT_HAS_OPENCL_SUPPORT
 #if LITERT_HAS_OPENGL_SUPPORT
 #include <GLES3/gl31.h>
 #include <GLES3/gl32.h>
