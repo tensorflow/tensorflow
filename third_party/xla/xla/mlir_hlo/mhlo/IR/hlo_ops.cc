@@ -1292,10 +1292,6 @@ LogicalResult SparseDotOp::verify() {
   return success();
 }
 
-// ===----------------------------------------------------------------------===//
-// ExpOp
-//===----------------------------------------------------------------------===//
-
 LogicalResult ResultAccuracyAttr::verify(
     ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError, APFloat atol,
     APFloat rtol, int64_t ulps, ResultAccuracyModeAttr mode) {
@@ -1304,7 +1300,176 @@ LogicalResult ResultAccuracyAttr::verify(
       stringifyResultAccuracyMode(mode.getValue()));
 }
 
+// ===---------------------------------------------------------------------===//
+// CbrtOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CbrtOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// CosineOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CosineOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// ExpOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult ExpOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// Expm1Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult Expm1Op::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// LogOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult LogOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// Log1pOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Log1pOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// LogisticOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult LogisticOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// RsqrtOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult RsqrtOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// SinOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SineOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// SqrtOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SqrtOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// TanOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TanOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// TanhOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TanhOp::verify() {
   if (auto attr = getResultAccuracyAttr()) {
     if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
                                           attr.getAtol(), attr.getRtol(),
