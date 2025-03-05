@@ -19,6 +19,8 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate_lib",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/experimental/tac:common",
+        "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -29,6 +31,8 @@ cc_library(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
     ],
 )
