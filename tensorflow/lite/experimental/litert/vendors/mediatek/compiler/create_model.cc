@@ -24,6 +24,9 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/add_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/batch_matmul_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/fully_connected_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/mul_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/operand_map.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
@@ -76,7 +79,17 @@ Expected<NeuronModelPtr> CreateModel(const NeuronAdapterApi& neuron_adapter_api,
         status =
             LegalizeAddOp(neuron_adapter_api, model->get(), operand_map, op);
         break;
-
+      case kLiteRtOpCodeTflMul:
+        status =
+            LegalizeMulOp(neuron_adapter_api, model->get(), operand_map, op);
+        break;
+      case kLiteRtOpCodeTflBatchMatmul:
+        status = LegalizeBatchMatMulOp(neuron_adapter_api, model->get(),
+                                       operand_map, op);
+        break;
+      case kLiteRtOpCodeTflFullyConnected:
+        status = LegalizeFullyConnectedOp(neuron_adapter_api, model->get(),
+                                          operand_map, op);
       default:
         return Error(kLiteRtStatusErrorRuntimeFailure, "Unsupported op");
     }
