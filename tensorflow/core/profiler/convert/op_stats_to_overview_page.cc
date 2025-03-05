@@ -80,9 +80,6 @@ void ComputeHostTips(OverviewPageRecommendation* re) {
       "input_pipeline_analyzer (especially Section 3 for the breakdown of "
       "input operations on the Host)");
   *re->add_host_tips() = MakeOverviewPageTip(
-      "tf_data_bottleneck_analysis (find the bottleneck in the tf.data input "
-      "pipeline)");
-  *re->add_host_tips() = MakeOverviewPageTip(
       "trace_viewer (look at the activities on the timeline of each Host "
       "Thread near the bottom of the trace view)");
 }
