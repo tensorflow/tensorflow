@@ -18,6 +18,8 @@ package_group(
 
 tsl_gpu_library(
     name = "profiler_backends",
+    add_gpu_deps_for_oss = False,
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     visibility = internal_visibility(["//xla:internal"]),
     deps = [
         "//xla/backends/profiler/cpu:host_tracer",
