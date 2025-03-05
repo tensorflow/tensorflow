@@ -558,26 +558,14 @@ Value EmitParameterLoad(EmitterLocOpBuilder b, Value pointer,
   }
 
   // Any other tensor pointer.
-  if (mt::isTensorPointerType(pointer.getType())) {
-    std::optional<mt::PaddingOption> padding;
-    if (!boundary_checks.empty()) {
-      padding = mt::PaddingOption::PAD_ZERO;
-    }
-    return b.create<mt::LoadOp>(pointer, boundary_checks, padding,
-                                mt::CacheModifier::NONE,
-                                mt::EvictionPolicy::NORMAL,
-                                /*isVolatile=*/false);
+  std::optional<mt::PaddingOption> padding;
+  if (!boundary_checks.empty()) {
+    padding = mt::PaddingOption::PAD_ZERO;
   }
-
-  // Non-tensor pointer.
-  //
-  // TODO(b/343013366): Remove this after we delete the legacy SoftMax code.
-  // It's the only place where this code-path is used.
-  return Splat(b,
-               b.create<mt::LoadOp>(pointer, mt::CacheModifier::NONE,
-                                    mt::EvictionPolicy::NORMAL,
-                                    /*isVolatile=*/false),
-               {});
+  return b.create<mt::LoadOp>(pointer, boundary_checks, padding,
+                              mt::CacheModifier::NONE,
+                              mt::EvictionPolicy::NORMAL,
+                              /*isVolatile=*/false);
 }
 
 // Grouped properties of tiled dimensions used to generate block pointers.
