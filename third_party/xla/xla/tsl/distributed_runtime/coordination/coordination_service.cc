@@ -148,6 +148,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                                const absl::Status& error) override;
   std::vector<CoordinatedTaskStateInfo> GetTaskState(
       const std::vector<CoordinatedTask>& task) override;
+  std::vector<CoordinatedTaskStateInfo> GetJobState(
+      absl::string_view job) override;
   absl::Status InsertKeyValue(std::string_view key,
                               std::string_view value) override;
   absl::Status InsertKeyValue(std::string_view key, std::string_view value,
@@ -1113,6 +1115,31 @@ CoordinationServiceStandaloneImpl::GetTaskState(
           cluster_state_[task_name]->GetTaskIncarnation());
       error = cluster_state_[task_name]->GetStatus();
     }
+    *state_info.mutable_task() = task;
+    state_info.set_error_code(error.raw_code());
+    state_info.set_error_message(std::string(error.message()));
+    if (!error.ok()) {
+      *state_info.mutable_error_payload()->mutable_source_task() = task;
+      state_info.mutable_error_payload()->set_is_reported_error(false);
+    }
+  }
+  return states_info;
+}
+
+std::vector<CoordinatedTaskStateInfo>
+CoordinationServiceStandaloneImpl::GetJobState(absl::string_view job_name) {
+  std::vector<CoordinatedTaskStateInfo> states_info;
+  absl::MutexLock l(&state_mu_);
+  for (const auto& [name, task_state] : cluster_state_) {
+    const CoordinatedTask task = GetTaskFromName(name);
+    if (task.job_name() != job_name) {
+      continue;
+    }
+
+    auto& state_info = states_info.emplace_back();
+    state_info.set_state(task_state->GetState());
+    state_info.set_incarnation(task_state->GetTaskIncarnation());
+    absl::Status error = task_state->GetStatus();
     *state_info.mutable_task() = task;
     state_info.set_error_code(error.raw_code());
     state_info.set_error_message(std::string(error.message()));

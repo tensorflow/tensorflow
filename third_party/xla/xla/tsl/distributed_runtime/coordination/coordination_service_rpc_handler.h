@@ -65,6 +65,10 @@ class CoordinationServiceRpcHandler {
                          tensorflow::GetTaskStateResponse* response,
                          StatusCallback done);
 
+  void GetJobStateAsync(const tensorflow::GetJobStateRequest* request,
+                        tensorflow::GetJobStateResponse* response,
+                        StatusCallback done);
+
   void InsertKeyValueAsync(const tensorflow::InsertKeyValueRequest* request,
                            tensorflow::InsertKeyValueResponse* response,
                            StatusCallback done);
