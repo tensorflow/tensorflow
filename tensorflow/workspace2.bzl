@@ -167,9 +167,9 @@ def _tf_repositories():
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "f3ea4fce53f3b31076958dbff229f0048dae15bf454929673c78292a56279d52",
-        strip_prefix = "kleidiai-847ebd19d0192528659b0a0fa2c6057eed674c6a",
-        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/847ebd19d0192528659b0a0fa2c6057eed674c6a/kleidiai-847ebd19d0192528659b0a0fa2c6057eed674c6a.zip"),
+        sha256 = "cb6af19d3ef21a0c683bd0c7c5b455c386dee0b7d0d4bc2cc0e14503019ff1e8",
+        strip_prefix = "kleidiai-1.4.0",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.4.0.zip"),
     )
 
     tf_http_archive(
