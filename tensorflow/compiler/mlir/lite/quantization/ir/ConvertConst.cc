@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/Passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantizeUtils.h"
 
 using namespace mlir;
 using namespace mlir::quantfork;
