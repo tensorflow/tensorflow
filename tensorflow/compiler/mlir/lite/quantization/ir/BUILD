@@ -78,12 +78,10 @@ cc_library(
         "ConvertConst.cc",
         "ConvertSimQuant.cc",
         "QuantOps.cc",
-        "QuantizeUtils.cc",
     ],
     hdrs = [
         "Passes.h",
         "QuantOps.h",
-        "QuantizeUtils.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [

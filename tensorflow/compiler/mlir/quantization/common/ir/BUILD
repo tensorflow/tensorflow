@@ -59,11 +59,13 @@ cc_library(
     srcs = [
         "FakeQuantSupport.cc",
         "QuantOps.cc",
+        "QuantizeUtils.cc",
         "UniformSupport.cc",
     ],
     hdrs = [
         "FakeQuantSupport.h",
         "QuantOps.h",
+        "QuantizeUtils.h",
         "UniformSupport.h",
     ],
     compatible_with = get_compatible_with_portable(),
