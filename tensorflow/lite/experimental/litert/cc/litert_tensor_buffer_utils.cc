@@ -17,7 +17,7 @@
 #include <string>
 
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
-#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
 
 std::string BufferTypeToString(LiteRtTensorBufferType buffer_type) {
   switch (buffer_type) {
