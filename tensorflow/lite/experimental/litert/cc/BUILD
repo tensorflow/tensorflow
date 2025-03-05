@@ -435,6 +435,7 @@ cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_types",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:matchers",
         "//tensorflow/lite/experimental/litert/test:simple_model",
@@ -485,7 +486,7 @@ cc_library(
     hdrs = ["litert_tensor_buffer_utils.h"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_types",
     ],
 )
 
