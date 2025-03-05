@@ -84,4 +84,12 @@ void AxisScaleOffsetQuantizeParamsWrapper::CloneTo(Qnn_QuantizeParams_t& dst) {
   dst = qnn_quantize_param_;
 }
 
+std::int32_t AxisScaleOffsetQuantizeParamsWrapper::GetAxis() const {
+  return qnn_quantize_param_.axisScaleOffsetEncoding.axis;
+}
+
+void AxisScaleOffsetQuantizeParamsWrapper::SetAxis(const std::int32_t axis) {
+  qnn_quantize_param_.axisScaleOffsetEncoding.axis = axis;
+}
+
 }  // namespace qnn
