@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"

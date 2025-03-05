@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
