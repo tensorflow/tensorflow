@@ -71,7 +71,7 @@
 
 # These are used to generate the ML wheel version string.
 # See the explanation in the file comment of
-# @local_tsl//third_party/py/python_wheel.bzl.
+# @local_xla//third_party/py/python_wheel.bzl.
 # The generated version suffix is used in
 # third_party/tensorflow/core/public/release_version.h and
 # third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
