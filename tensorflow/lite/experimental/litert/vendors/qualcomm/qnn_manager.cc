@@ -265,7 +265,10 @@ LiteRtStatus QnnManager::ValidateOp(const Qnn_OpConfig_t& op_config) {
 LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
                               std::optional<std::string> shared_library_dir,
                               std::optional<QnnHtpDevice_Arch_t> soc_model) {
-  if (shared_library_dir.has_value()) {
+  // Users can set ADSP_LIBRARY_PATH, if it is not set, we will set it to the
+  // shared library directory.
+  std::string adsp_library_path = getenv("ADSP_LIBRARY_PATH");
+  if (adsp_library_path.empty() && shared_library_dir.has_value()) {
     setenv("ADSP_LIBRARY_PATH", shared_library_dir->data(), /*overwrite=*/1);
   }
 
