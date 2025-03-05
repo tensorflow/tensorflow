@@ -54,8 +54,8 @@ TEST(TestCallGoogleTensorPlugin, PartitionSimpleMultiAdd) {
       plugin.get(), model.Subgraph(0)->Get(), &selected_op_list));
   const auto selected_ops = selected_op_list.Values();
 
-  ASSERT_EQ(selected_ops.size(), 2);
-  ASSERT_EQ(selected_ops[0].first->OpCode(), kLiteRtOpCodeTflMul);
+  ASSERT_EQ(selected_ops.size(), 4);
+  ASSERT_EQ(selected_ops[0].first->OpCode(), kLiteRtOpCodeTflAdd);
   ASSERT_EQ(selected_ops[1].first->OpCode(), kLiteRtOpCodeTflMul);
 }
 
