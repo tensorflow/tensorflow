@@ -1194,6 +1194,23 @@ TEST_F(WhileLoopUnrollerTest,
                    .has_value());
 }
 
+TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDSBigSteps) {
+  // In this version of the test, our dimension of interest gets incremented by
+  // three at time to that it takes on values {0, 3, 6, 9, 12}. The DS has slice
+  // size two, so cannot retrieve all index values (e.g. index 2).
+  auto module = MakeModuleWithDS(/*start=*/0, /*stop=*/15, /*step=*/3,
+                                 /*slice_size=*/2, /*dim_size=*/12);
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
+  EXPECT_TRUE(config.has_value());
+  HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
+  HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
+  HloInstruction* instr = body->GetInstructionWithName("slice");
+  EXPECT_FALSE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
+                   instr, input, HloOpcode::kDynamicSlice, config.value())
+                   .has_value());
+}
+
 TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDSClamp) {
   // In this version of the test, our dimension of interest gets incremented by
   // three at time to that it takes on values {0, 3}. The DS has slice size
@@ -1245,6 +1262,20 @@ TEST_F(WhileLoopUnrollerTest,
        AdvancedMatchShapeCoveringDUSIncrementByTwoMismatch) {
   auto module = MakeModuleWithDUS(/*start=*/0, /*stop=*/6, /*step=*/2,
                                   /*slice_size=*/2, /*dim_size=*/7);
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
+  EXPECT_TRUE(config.has_value());
+  HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
+  HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
+  HloInstruction* instr = body->GetInstructionWithName("slice");
+  EXPECT_FALSE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
+                   instr, input, HloOpcode::kDynamicUpdateSlice, config.value())
+                   .has_value());
+}
+
+TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDUSBigSteps) {
+  auto module = MakeModuleWithDS(/*start=*/0, /*stop=*/15, /*step=*/3,
+                                 /*slice_size=*/2, /*dim_size=*/12);
   HloInstruction* loop = module->entry_computation()->root_instruction();
   auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
   EXPECT_TRUE(config.has_value());
