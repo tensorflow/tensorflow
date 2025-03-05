@@ -17,7 +17,11 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
