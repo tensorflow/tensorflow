@@ -1329,12 +1329,14 @@ cc_library(
         "transforms/prepare_quantize_helper.cc",
         "transforms/quantize.cc",
         "transforms/quantize_variables.cc",
+        "transforms/tfl_quantization_driver.cc",
         "utils/generated_op_quant_spec_getters.inc",
     ],
     hdrs = [
         "transforms/lower_quant_annotations_helper.h",
         "transforms/passes.h",
         "transforms/prepare_quantize_helper.h",
+        "transforms/tfl_quantization_driver.h",
     ],
     deps = [
         "convert_type",
@@ -1360,6 +1362,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
