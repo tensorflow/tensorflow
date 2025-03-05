@@ -237,5 +237,20 @@ absl::Status UncompressElement(const CompressedElement& compressed,
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(CompressedElement,
                                        "tensorflow.data.CompressedElement");
 
+namespace {
+
+absl::Status CopyCompressedElementOnDevice(
+    const CompressedElement& from, CompressedElement* to,
+    std::function<absl::Status(const Tensor&, Tensor*)> copy_tensor_fn) {
+  *to = from;
+  return absl::Status();
+}
+
+INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(
+    CompressedElement, VariantDeviceCopyDirection::DEVICE_TO_HOST,
+    CopyCompressedElementOnDevice);
+
+}  // namespace
+
 }  // namespace data
 }  // namespace tensorflow
