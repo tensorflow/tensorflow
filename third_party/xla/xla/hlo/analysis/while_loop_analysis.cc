@@ -635,10 +635,19 @@ optional<Range> MatchTrivialLoopRange(const HloInstruction* while_op) {
 
   // We also need to round the bound down so that the difference between bound
   // and init_value is a multiple of the step size.
-  while_cond_bound_val.value() =
-      (while_cond_bound_val.value() - indvar_init_val.value()) /
-          trip_count_step * trip_count_step +
-      indvar_init_val.value();
+  // We want to round down the expression
+  // (while_cond_bound_val.value() - indvar_init_val.value()) to a multiple of
+  // trip_count_step by adjusting the bound value. We need to be careful not to
+  // run into overflows.
+  int64_t bound_value_remainder =
+      while_cond_bound_val.value() % trip_count_step;
+  int64_t init_value_remainder = indvar_init_val.value() % trip_count_step;
+  int64_t remainder =
+      (bound_value_remainder - init_value_remainder) % trip_count_step;
+  if (remainder < 0) {
+    remainder += trip_count_step;
+  }
+  while_cond_bound_val.value() -= remainder;
 
   const int64_t init_bitwidth =
       primitive_util::BitWidth(indvar_init.shape().element_type());
