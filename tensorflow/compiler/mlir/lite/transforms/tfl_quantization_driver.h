@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 namespace mlir {
@@ -108,8 +109,9 @@ class QuantizationDriver {
       const bool disable_per_channel,
       quant::OpQuantSpecGetter op_quant_spec_getter,
       quant::OpQuantScaleSpecGetter op_quant_scale_spec_getter,
-      const bool infer_tensor_range, const bool legacy_float_scale = false,
-      const bool is_qdq_conversion = false)
+      const bool infer_tensor_range,
+      const quant::QDQConversionMode qdq_conversion_mode,
+      const bool legacy_float_scale = false)
       : fn_(func_op),
         builder_(func_op.getBody()),
         is_signed_(is_signed),
@@ -119,7 +121,7 @@ class QuantizationDriver {
         op_quant_scale_spec_getter_(op_quant_scale_spec_getter),
         infer_tensor_range_(infer_tensor_range),
         legacy_float_scale_(legacy_float_scale),
-        is_qdq_conversion_(is_qdq_conversion) {}
+        qdq_conversion_mode_(qdq_conversion_mode) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -353,9 +355,8 @@ class QuantizationDriver {
   // quantized values are exactly the same with the TOCO quantizer.
   const bool legacy_float_scale_;
 
-  // If true, the model is a floating point graph with QDQ ops to be eliminated
-  // and fused into quantized kernels.
-  const bool is_qdq_conversion_;
+  // The type of qdq conversion.
+  const quant::QDQConversionMode qdq_conversion_mode_;
 };
 
 // Propagates quantization parameters across ops in this function and satisfies
@@ -370,13 +371,14 @@ class QuantizationDriver {
 void ApplyQuantizationParamsPropagation(
     func::FuncOp func, bool is_signed, int bit_width, bool disable_per_channel,
     quant::OpQuantSpecGetter op_quant_spec_getter, bool infer_tensor_ranges,
-    bool legacy_float_scale, bool is_qdq_conversion);
+    bool legacy_float_scale, quant::QDQConversionMode qdq_conversion_mode);
 
 void ApplyQuantizationParamsPropagation(
     func::FuncOp func, bool is_signed, int bit_width, bool disable_per_channel,
     quant::OpQuantSpecGetter op_quant_spec_getter,
     quant::OpQuantScaleSpecGetter op_quant_scale_spec_getter,
-    bool infer_tensor_ranges, bool legacy_float_scale, bool is_qdq_conversion);
+    bool infer_tensor_ranges, bool legacy_float_scale,
+    quant::QDQConversionMode qdq_conversion_mode);
 
 }  // namespace TFL
 }  // namespace mlir

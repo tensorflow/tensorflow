@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
@@ -818,7 +819,7 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
       // and TFL_ReshapeOp. And the output q-dq propagation for this Op is
       // performed in `PropagateTransposedPerAxisQuantDim` and
       // `PropagateReshapedPerAxisQuantDim` respectively.
-      if (is_qdq_conversion_ &&
+      if (qdq_conversion_mode_ != quant::QDQConversionMode::kQDQNone &&
           !scale_spec->required_same_quantized_axes_func()) {
         if (HasPerAxisQuantizedOperand(op)) continue;
       }
@@ -848,7 +849,7 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
     // If the model already contains immutable QDQs, require upstream to
     // explicitly fix output range instead.
     if (scale_spec->has_fixed_output_range && infer_tensor_range_ &&
-        !is_qdq_conversion_) {
+        qdq_conversion_mode_ == quant::QDQConversionMode::kQDQNone) {
       // Infer ranges from the activation ops. This is usually required for
       // the post-training quantization workflow.
       // TODO: b/323478683 - Different result can have different fixed range.
@@ -936,11 +937,11 @@ void ApplyQuantizationParamsPropagation(
     const bool disable_per_channel,
     const quant::OpQuantSpecGetter op_quant_spec_getter,
     const bool infer_tensor_ranges, const bool legacy_float_scale,
-    const bool is_qdq_conversion) {
+    quant::QDQConversionMode qdq_conversion_mode) {
   ApplyQuantizationParamsPropagation(
       func, is_signed, bit_width, disable_per_channel, op_quant_spec_getter,
       quant::GetDefaultQuantScaleSpec, infer_tensor_ranges, legacy_float_scale,
-      is_qdq_conversion);
+      qdq_conversion_mode);
 }
 
 void ApplyQuantizationParamsPropagation(
@@ -949,10 +950,11 @@ void ApplyQuantizationParamsPropagation(
     const quant::OpQuantSpecGetter op_quant_spec_getter,
     const quant::OpQuantScaleSpecGetter op_quant_scale_spec_getter,
     const bool infer_tensor_ranges, const bool legacy_float_scale,
-    const bool is_qdq_conversion) {
+    quant::QDQConversionMode qdq_conversion_mode) {
   QuantizationDriver(func, is_signed, bit_width, disable_per_channel,
                      op_quant_spec_getter, op_quant_scale_spec_getter,
-                     infer_tensor_ranges, legacy_float_scale, is_qdq_conversion)
+                     infer_tensor_ranges, qdq_conversion_mode,
+                     legacy_float_scale)
       .Run();
 }
 
