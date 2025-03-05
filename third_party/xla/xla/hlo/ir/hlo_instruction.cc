@@ -3042,6 +3042,7 @@ void HloInstruction::AppendOperand(HloInstruction* operand) {
     DCHECK(!operand->parent()->IsMarkedAsDead(operand))
         << "Operand " << operand->name() << " is already marked dead";
   }
+  CHECK(parent_ == nullptr || operand->parent_ == parent_);
   operands_.push_back(operand);
   operand->AddUser(this);
 }
@@ -3260,6 +3261,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
   RemoveUser(user);
 
   TF_RET_CHECK(absl::c_count(user->operands_, this) >= 0);
+  CHECK_EQ(new_producer->parent_, user->parent_);
   std::replace(user->operands_.begin(), user->operands_.end(), this,
                new_producer);
   new_producer->AddUser(user);
@@ -3294,6 +3296,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
   TF_RET_CHECK(user->operand(operand_number) == this)
       << "Expected operand " << operand_number << " of " << user->ToString()
       << " to be equal to " << ToString();
+  CHECK_EQ(new_producer->parent_, user->parent_);
   user->operands_[operand_number] = new_producer;
   new_producer->AddUser(user);
   return absl::OkStatus();
@@ -3318,6 +3321,7 @@ absl::Status HloInstruction::ReplaceOperandWithDifferentShape(
     return absl::OkStatus();
   }
 
+  CHECK_EQ(new_operand->parent_, parent_);
   operands_[operand_num] = new_operand;
 
   VLOG(3) << "Replacing operand " << operand_num << " of " << name() << " with "
@@ -3477,6 +3481,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
       // graph. new_producer remains the only user of this instruction.
       new_producer_is_user = true;
     } else {
+      CHECK_EQ(user->parent_, new_producer->parent_);
       std::replace(user->operands_.begin(), user->operands_.end(), this,
                    new_producer);
       new_producer->AddUser(user);
