@@ -673,8 +673,7 @@ class HloComputation {
   absl::Status ReplaceInstructionWithDifferentShape(
       HloInstruction* old_instruction, HloInstruction* new_instruction);
 
-  // Set/get the module containing this computation.
-  void set_parent(HloModule* module) { parent_ = module; }
+  // Get the module containing this computation.
   const HloModule* parent() const { return parent_; }
   HloModule* parent() { return parent_; }
 
@@ -959,6 +958,8 @@ class HloComputation {
   bool CanExpandIntoSingleInstruction() const;
 
  private:
+  friend class HloModule;
+
   explicit HloComputation(
       const std::string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
@@ -1010,6 +1011,12 @@ class HloComputation {
                                      bool ignore_safety_check);
 
   void SetInstruction(HloInstruction* instruction, InstructionType type);
+
+  // Private, because only HloModule should be able to set the parent.
+  // We maintain the invariant that a computation has a parent() if and only if
+  // the computation has been added to a module. Accordingly, the only way to
+  // set the parent of a computation is to add it to a module.
+  void set_parent(HloModule* module) { parent_ = module; }
 
   int64_t unique_id_;
   HloInstruction* root_instruction_;
