@@ -1,13 +1,20 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/libc/src/stdlib/qsort_pivot.h b/libc/src/stdlib/qsort_pivot.h
---- a/libc/src/stdlib/qsort_pivot.h
-+++ b/libc/src/stdlib/qsort_pivot.h
-@@ -9,6 +9,8 @@
- #ifndef LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
- #define LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -602,6 +602,7 @@
+     hdrs = ["src/__support/CPP/span.h"],
+     deps = [
+         ":__support_cpp_array",
++        ":__support_cpp_limits",
+         ":__support_cpp_type_traits",
+     ],
+ )
+@@ -611,6 +612,7 @@
+     hdrs = ["src/__support/CPP/string_view.h"],
+     deps = [
+         ":__support_common",
++        ":__support_cpp_limits",
+     ],
+ )
  
-+#include "src/__support/macros/attributes.h"
-+
- #include <stddef.h> // For size_t
- 
- namespace LIBC_NAMESPACE_DECL {
