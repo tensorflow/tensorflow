@@ -842,6 +842,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:memory_viewer_preprocess_proto_cc",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/service:hlo_proto_cc",
