@@ -4,7 +4,7 @@ load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_alias", 
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/core/profiler:internal"],
+    default_visibility = ["//visibility:public"],  # TODO(matthurd): Update to profiler:internal after xprof migration.
     licenses = ["notice"],
 )
 
@@ -974,7 +974,7 @@ cc_library(
     hdrs = ["tool_options.h"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings",
     ],
 )
 
