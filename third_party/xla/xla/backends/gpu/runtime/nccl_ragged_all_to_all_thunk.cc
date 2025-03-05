@@ -169,25 +169,29 @@ absl::Status RunRaggedAllToAll(
 
   TF_RETURN_IF_ERROR(collectives->GroupStart());
 
-  const DeviceBufferPair& data_buffer = buffers[0];
+  PrimitiveType element_type = buffers[0].element_type;
+
+  se::DeviceMemoryBase input_buffer = buffers[0].source_buffer;
+  se::DeviceMemoryBase output_buffer = buffers[1].destination_buffer;
+
   for (int64_t i = 0; i < num_updates_per_replica; ++i) {
     for (int peer = 0; peer < num_ranks; ++peer) {
       int64_t idx = peer * num_updates_per_replica + i;
-      se::DeviceMemoryBase send_slice = collectives->Slice(
-          data_buffer.source_buffer, data_buffer.element_type,
-          input_offsets[idx] * ragged_row_element_size,
-          send_sizes[idx] * ragged_row_element_size);
+      se::DeviceMemoryBase send_slice =
+          collectives->Slice(input_buffer, element_type,
+                             input_offsets[idx] * ragged_row_element_size,
+                             send_sizes[idx] * ragged_row_element_size);
 
-      se::DeviceMemoryBase recv_slice = collectives->Slice(
-          data_buffer.destination_buffer, data_buffer.element_type,
-          output_offsets[idx] * ragged_row_element_size,
-          recv_sizes[idx] * ragged_row_element_size);
+      se::DeviceMemoryBase recv_slice =
+          collectives->Slice(output_buffer, element_type,
+                             output_offsets[idx] * ragged_row_element_size,
+                             recv_sizes[idx] * ragged_row_element_size);
 
-      TF_RETURN_IF_ERROR(comm->Send(send_slice, data_buffer.element_type,
+      TF_RETURN_IF_ERROR(comm->Send(send_slice, element_type,
                                     send_sizes[idx] * ragged_row_element_size,
                                     RankId(peer), GpuCollectives::On(stream)));
 
-      TF_RETURN_IF_ERROR(comm->Recv(recv_slice, data_buffer.element_type,
+      TF_RETURN_IF_ERROR(comm->Recv(recv_slice, element_type,
                                     recv_sizes[idx] * ragged_row_element_size,
                                     RankId(peer), GpuCollectives::On(stream)));
     }
@@ -223,7 +227,11 @@ absl::Status RunMemCpyRaggedAllToAll(
       MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
 
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
-  const DeviceBufferPair& data_buffer = buffers[0];
+
+  PrimitiveType element_type = buffers[0].element_type;
+
+  se::DeviceMemoryBase input_buffer = buffers[0].source_buffer;
+  se::DeviceMemoryBase output_buffer = buffers[1].destination_buffer;
 
   TF_RETURN_IF_ERROR(
       LoadRaggedTensorMetadata(stream, buffers, ragged_metadata_allocs));
@@ -236,7 +244,7 @@ absl::Status RunMemCpyRaggedAllToAll(
 
   RendezvousValue rendezvous_value;
   rendezvous_value.rank = rank;
-  rendezvous_value.output_buffer = buffers[1].destination_buffer;
+  rendezvous_value.output_buffer = output_buffer;
   rendezvous_value.start_event = start_event;
   rendezvous_value.end_event = end_event;
 
@@ -275,12 +283,12 @@ absl::Status RunMemCpyRaggedAllToAll(
   for (int64_t i = 0; i < num_updates_per_replica; ++i) {
     for (int peer = 0; peer < num_ranks; ++peer) {
       int64_t idx = peer * num_updates_per_replica + i;
-      se::DeviceMemoryBase send_slice = collectives->Slice(
-          data_buffer.source_buffer, data_buffer.element_type,
-          input_offsets[idx] * ragged_row_element_size,
-          send_sizes[idx] * ragged_row_element_size);
+      se::DeviceMemoryBase send_slice =
+          collectives->Slice(input_buffer, element_type,
+                             input_offsets[idx] * ragged_row_element_size,
+                             send_sizes[idx] * ragged_row_element_size);
       se::DeviceMemoryBase dst_slice = collectives->Slice(
-          (*rendezvous_values)[peer].output_buffer, data_buffer.element_type,
+          (*rendezvous_values)[peer].output_buffer, element_type,
           output_offsets[idx] * ragged_row_element_size,
           send_sizes[idx] * ragged_row_element_size);
       TF_RETURN_IF_ERROR(
