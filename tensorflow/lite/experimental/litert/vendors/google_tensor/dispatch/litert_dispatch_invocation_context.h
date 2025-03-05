@@ -65,6 +65,8 @@ class LiteRtDispatchInvocationContextT {
   litert::Expected<void> Invoke();
   litert::Expected<void> InvokeAsync(int num_output_events,
                                      LiteRtEvent* output_events);
+  litert::Expected<void> StartMetricsCollection(int detail_level);
+  litert::Expected<void> StopMetricsCollection(LiteRtDispatchMetrics* metrics);
 
   litert::Expected<void> AttachInputEvent(int graph_input_index,
                                           LiteRtEvent input_event);
