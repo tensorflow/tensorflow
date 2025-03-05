@@ -22,6 +22,10 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/runtime/event.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 LiteRtStatus LiteRtCreateEventFromSyncFenceFd(int sync_fence_fd, bool owns_fd,
                                               LiteRtEvent* event) {
 #if LITERT_HAS_SYNC_FENCE_SUPPORT
@@ -50,3 +54,7 @@ LiteRtStatus LiteRtEventWait(LiteRtEvent event, int64_t timeout_in_ms) {
 }
 
 void LiteRtDestroyEvent(LiteRtEvent event) { delete event; }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
