@@ -49,10 +49,14 @@ class LiteRtDispatchDelegateOptions {
                  "to invalid value");
       return;
     }
-
+    std::string str_copy = std::string(option.value().str_value);
+    string_options_.push_back(std::move(str_copy));
+    LiteRtAny litert_any;
+    litert_any.type = kLiteRtAnyTypeString;
+    litert_any.str_value = string_options_.back().c_str();
     LiteRtDispatchOption dispatch_option = {
         /*.name=*/kDispatchOptionSharedLibraryDir,
-        /*.value=*/*option,
+        /*.value=*/litert_any,
     };
     AddOption(dispatch_option);
   }
@@ -77,6 +81,7 @@ class LiteRtDispatchDelegateOptions {
   }
 
  private:
+  std::vector<std::string> string_options_;
   std::vector<LiteRtDispatchOption> options_;
 };
 
