@@ -100,7 +100,6 @@ cc_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
@@ -111,11 +110,7 @@ cc_library(
     name = "profiler_controller",
     hdrs = ["profiler_controller.h"],
     deps = [
-        ":profiler_interface",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
-        "@local_tsl//tsl/profiler/lib:profiler_controller",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -153,7 +148,6 @@ cc_library(
     hdrs = ["traceme_encode.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
@@ -177,11 +171,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":context_types_hdrs",
-        ":traceme",
         ":traceme_encode",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
     ],
 )
@@ -239,8 +230,6 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/profiler/lib:profiler_lock",
     ],
