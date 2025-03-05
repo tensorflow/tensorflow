@@ -54,7 +54,8 @@ def TTXLA_SparseDotOp : TTXLA_Op<"sparse_dot", [
     let hasVerifier = 1;
 }
 
-def TTXLA_TileOp : TTXLA_Op<"tile", [Pure,
+// TODO(manany): Update example based on finalized changes.
+def TTXLA_TileOp : TTXLA_Op<"tile", [Pure, SameVariadicOperandSize,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Capture the tiling information of a tensor.";
   let description = [{
@@ -73,13 +74,23 @@ def TTXLA_TileOp : TTXLA_Op<"tile", [Pure,
 
   let arguments = (ins
     AnyRankedTensor:$tensor,
-    DenseI32ArrayAttr:$offsets,
-    DenseI32ArrayAttr:$sizes,
-    DenseI64ArrayAttr:$strides
+    Variadic<I32>:$offsets,
+    Variadic<I64>:$sizes,
+    Variadic<I64>:$strides
   );
   let results = (outs TTXLA_TiledTensorType:$tiled_tensor);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins
+      "Value":$tensor,
+      "ValueRange":$offsets,
+      "ValueRange":$sizes,
+      "ValueRange":$strides,
+      "ArrayRef<int32_t>":$tensor_shape
+    )>
+  ];
 }
 
 def TTXLA_ExtractOp : TTXLA_Op<"extract", [Pure,

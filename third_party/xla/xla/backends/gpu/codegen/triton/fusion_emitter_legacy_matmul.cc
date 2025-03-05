@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 
+#include <algorithm>
 #include <array>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <queue>
@@ -39,10 +41,12 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -51,6 +55,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
@@ -60,12 +65,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
@@ -91,12 +95,8 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
-#include "triton/Dialect/Triton/IR/Types.h"
 
 namespace xla::gpu {
 
@@ -539,25 +539,20 @@ Value AddPtr(EmitterLocOpBuilder b, Value ptr, Value offset) {
   return b.create<mt::AddPtrOp>(ptr.getType(), ptr, offset);
 }
 
-Value EmitParameterLoad(EmitterLocOpBuilder b, Value pointer,
-                        ArrayRef<int32_t> boundary_checks) {
-  if (mt::isTensorPointerType(pointer.getType())) {
-    std::optional<mt::PaddingOption> padding;
-    if (!boundary_checks.empty()) {
-      padding = mt::PaddingOption::PAD_ZERO;
-    }
-    return b.create<mt::LoadOp>(pointer, boundary_checks, padding,
-                                mt::CacheModifier::NONE,
-                                mt::EvictionPolicy::NORMAL,
-                                /*isVolatile=*/false);
+Value EmitParameterExtract(EmitterLocOpBuilder b, Value tile_or_base_ptr,
+                           ArrayRef<int32_t> boundary_checks,
+                           std::vector<Value> block_offsets) {
+  if (auto tiled_tensor_type = mlir::dyn_cast<mt::xla::TiledTensorType>(
+          tile_or_base_ptr.getType())) {
+    return b.create<mt::xla::ExtractOp>(
+        mlir::RankedTensorType::get(
+            tiled_tensor_type.getTileShape(),
+            StorageType(b, tiled_tensor_type.getElementType())),
+        tile_or_base_ptr, block_offsets);
   }
 
-  // EmitTensorPointer will not create a MakeTensorPtrOp for scalars.
-  return Splat(b,
-               b.create<mt::LoadOp>(pointer, mt::CacheModifier::NONE,
-                                    mt::EvictionPolicy::NORMAL,
-                                    /*isVolatile=*/false),
-               {});
+  // Loading a scalar.
+  return b.create<mlir::tensor::ExtractOp>(tile_or_base_ptr, {});
 }
 
 // Grouped properties of tiled dimensions used to generate block pointers.
@@ -1130,7 +1125,7 @@ class MatMulEmitterHelper {
   }
 
   bool IsNonTrivialTiledDimension(TritonFusionAnalysis::Scope scope,
-                                  int64_t dim_index) {
+                                  int64_t dim_index) const {
     switch (scope) {
       case TritonFusionAnalysis::Scope::LHS:
         return (dim_index == dims_.lhs_noncontracting_dim_idx && dims_.m > 1) ||
@@ -1151,12 +1146,56 @@ class MatMulEmitterHelper {
 
   bool NonTrivialTiledDimensionHasNoIterationAtParameter(
       TritonFusionAnalysis::Scope scope, const HloInstruction& hlo,
-      int64_t dim_index) {
+      int64_t dim_index) const {
     const TensorIterationSpec::DimIterationSpec* spec =
         analysis_.IterSpec(scope, &hlo, dim_index);
     return spec == nullptr ||
            (IsNonTrivialTiledDimension(scope, dim_index) && spec->size() == 1 &&
             (spec->at(0).count <= 1 || spec->at(0).stride == 0));
+  }
+
+  Value EmitNextContractingOffset(EmitterLocOpBuilder& b, const Side& side,
+                                  const HloInstruction& hlo,
+                                  int64_t contracting_dimension, Value ki,
+                                  int64_t block_k, Value iter_arg) const {
+    for (const DimProperties& dim : side.tiled_dims) {
+      if (dim.index != contracting_dimension ||
+          NonTrivialTiledDimensionHasNoIterationAtParameter(side.scope, hlo,
+                                                            dim.index)) {
+        continue;
+      }
+
+      const TensorIterationSpec::DimIterationSpec* spec =
+          analysis_.IterSpec(side.scope, &hlo, dim.index);
+      int64_t broadcast = spec->at(0).broadcast_multiplier;
+      if (broadcast > 1) {
+        if (broadcast != block_k) {
+          // If the broadcast multiplier is not equal to the block_k, we need
+          // to compute the increment conditionally. It has to advance by 1
+          // if the current block is the last one in the broadcasted fragment,
+          // and by 0 otherwise. Advance by 1 is computed as:
+          // ((ki + block_k) / broadcast) * broadcast == ki + block_k.
+          Value one = Cst32(b, 1);
+          Value zero = Cst32(b, 0);
+          Value add = b.create<ma::AddIOp>(ki, Cst32(b, block_k));
+          Value div = b.create<ma::DivSIOp>(add, Cst32(b, broadcast));
+          Value mul = b.create<ma::MulIOp>(div, Cst32(b, broadcast));
+          Value cond = b.create<ma::CmpIOp>(ma::CmpIPredicate::eq, mul, add);
+          return b.create<ma::SelectOp>(cond, one, zero);
+        } else {
+          // If the broadcast multiplier is equal to the block_k, we can
+          // advance by 1 unconditionally.
+          return Cst32(b, 1);
+        }
+      } else {
+        return Cst32(b, dim.block_size * dim.split_value);
+      }
+
+      return b.create<ma::AddIOp>(iter_arg,
+                                  Cst32(b, dim.block_size * dim.split_value));
+    }
+
+    CHECK(false) << "Contracting dimension not found!";
   }
 
   // Returns the increments necessary to advance the pointer or offset of the
@@ -1246,11 +1285,71 @@ class MatMulEmitterHelper {
     return Cst(b, index_ty_, stride_batch);
   }
 
-  // bases: The base pointers of each argument.
-  absl::StatusOr<Value> EmitTensorPointer(
+  absl::StatusOr<std::pair<Value, std::vector<Value>>>
+  EmitTileOrBasePtrAndComputeBlockOffsets(
       EmitterLocOpBuilder b, const HloInstruction* hlo, const Side& side,
       const ValueRange& bases, Value pid_k,
       std::vector<int32_t>& boundary_checks) {
+    // Compute the required parameters for triton_xla.tile. Also update the
+    // base pointer based on different scenarios such as concat, batch, and
+    // split_k.
+    MatMulEmitterHelper::TensorParams tensor_params;
+    Value base;
+    TF_ASSIGN_OR_RETURN(std::tie(tensor_params, base),
+                        ComputeTensorParamsAndUpdateBase(
+                            b, hlo, side, bases, pid_k, boundary_checks));
+
+    // Scalar. Return the base pointer.
+    if (tensor_params.block_dims.empty()) {
+      return std::make_pair(base, std::vector<Value>());
+    }
+
+    llvm::ArrayRef<int64_t> original_shape(hlo->shape().dimensions().data(),
+                                           hlo->shape().dimensions().size());
+    std::vector<int64_t> block_dims_int64;
+    std::transform(tensor_params.block_dims.begin(),
+                   tensor_params.block_dims.end(),
+                   std::back_inserter(block_dims_int64),
+                   [](int32_t value) { return static_cast<int64_t>(value); });
+
+    auto result_type = mt::xla::TiledTensorType::get(
+        b.getContext(), block_dims_int64, original_shape,
+        TritonType(b, hlo->shape().element_type()).value());
+    return std::make_pair(b.create<mt::xla::TileOp>(
+                               result_type, base, tensor_params.tensor_offsets,
+                               tensor_params.bounds, tensor_params.strides)
+                              .getResult(),
+                          tensor_params.block_offsets);
+  }
+
+ private:
+  struct ConcatParams {
+    // Index of concatenated dimension if present, -1 otherwise.
+    int dim_idx;
+    // Offsets along the concatenated dimension at which operands change.
+    std::vector<Value> boundaries;
+    // Block index along the concatenated dimension * block size.
+    Value dim_pid_offset;
+  };
+
+  struct TensorParams {
+    std::vector<Value> bounds;
+    std::vector<Value> strides;
+
+    // Offsets from tensor origin, same for all thread blocks.
+    std::vector<Value> tensor_offsets;
+    std::vector<int32_t> block_dims;
+
+    // Offsets for a given thread block, typically pid * block size.
+    // Used in a one-off AdvanceOp applied to the generated MakeTensorPtrOp.
+    std::vector<Value> block_offsets;
+  };
+
+  absl::StatusOr<std::pair<TensorParams, Value>>
+  ComputeTensorParamsAndUpdateBase(EmitterLocOpBuilder b,
+                                   const HloInstruction* hlo, const Side& side,
+                                   const ValueRange& bases, Value pid_k,
+                                   std::vector<int32_t>& boundary_checks) {
     Value base;
 
     // Concatenations of parameters are handled during generation of block
@@ -1289,44 +1388,8 @@ class MatMulEmitterHelper {
                           UpdateBaseForSplitKCase(b, hlo, side, base, pid_k));
     }
 
-    if (tensor_params.block_dims.empty()) {
-      // Load of a scalar.
-      return base;
-    }
-    auto tensor_ptr = mlir::cast<Value>(
-        b.create<mt::MakeTensorPtrOp>(
-             base, tensor_params.bounds, tensor_params.strides,
-             tensor_params.tensor_offsets, tensor_params.block_dims,
-             tensor_params.dim_order)
-            .getResult());
-    tensor_ptr = b.create<mt::AdvanceOp>(tensor_ptr.getType(), tensor_ptr,
-                                         tensor_params.block_offsets);
-    return tensor_ptr;
+    return std::make_pair(tensor_params, base);
   }
-
- private:
-  struct ConcatParams {
-    // Index of concatenated dimension if present, -1 otherwise.
-    int dim_idx;
-    // Offsets along the concatenated dimension at which operands change.
-    std::vector<Value> boundaries;
-    // Block index along the concatenated dimension * block size.
-    Value dim_pid_offset;
-  };
-
-  struct TensorParams {
-    std::vector<Value> bounds;
-    std::vector<Value> strides;
-
-    // Offsets from tensor origin, same for all thread blocks.
-    std::vector<Value> tensor_offsets;
-    std::vector<int32_t> block_dims;
-    std::vector<int32_t> dim_order;
-
-    // Offsets for a given thread block, typically pid * block size.
-    // Used in a one-off AdvanceOp applied to the generated MakeTensorPtrOp.
-    std::vector<Value> block_offsets;
-  };
 
   absl::Status AddDimToTensorParams(EmitterLocOpBuilder b,
                                     const HloInstruction* hlo, const Side& side,
@@ -1415,8 +1478,6 @@ class MatMulEmitterHelper {
     } else {
       tensor_params.block_dims.push_back(properties.block_size);
     }
-    tensor_params.dim_order.emplace(tensor_params.dim_order.begin(),
-                                    tensor_params.dim_order.size());
     return absl::OkStatus();
   }
 
@@ -1463,10 +1524,10 @@ class MatMulEmitterHelper {
     // dynamic slice operands are (input, start_index0, start_index1, ...)
     // so the start index corresponding to the ith dimension is bases[i+1].
     Value majormost_dim_start_index_ptr_val = bases[majormost_dim + 1];
-    Value majormost_dim_start_index_val = b.create<mt::LoadOp>(
-        majormost_dim_start_index_ptr_val, mt::CacheModifier::NONE,
-        mt::EvictionPolicy::NORMAL,
-        /*isVolatile=*/false);
+
+    Value majormost_dim_start_index_val = b.create<mlir::tensor::ExtractOp>(
+        majormost_dim_start_index_ptr_val, {});
+
     int64_t majormost_dim_start_index_upper_limit =
         hlo->operand(0)->shape().dimensions(majormost_dim) -
         hlo->dynamic_slice_sizes().at(majormost_dim);
@@ -1647,7 +1708,7 @@ class MatMulEmitterHelper {
   MatMulLaunchConfig launch_config_;
 };
 
-absl::StatusOr<SmallVector<Value>> GetArguments(mlir::triton::FuncOp fn,
+absl::StatusOr<SmallVector<Value>> GetArguments(mlir::FunctionOpInterface fn,
                                                 const HloInstruction& input) {
   if (input.opcode() == HloOpcode::kParameter) {
     return {{fn.getArgument(input.parameter_number())}};
@@ -2038,26 +2099,23 @@ class IterableInput {
                          /*boundary_checks=*/{}, block_k);
   }
 
-  Value EmitAdvance(EmitterLocOpBuilder b, MatMulEmitterHelper& emitter,
-                    Value ki, ValueRange iter_args) const {
-    SmallVector<Value> increments = emitter.EmitIncrements(
-        b, *side_, *hlo_instr_, contracting_dimension_, ki, block_k_);
-
-    if (increments.empty()) {
-      return iter_args[iter_arg_index_];
-    }
-
-    const Value& iter_arg = iter_args[iter_arg_index_];
-    return b.create<mt::AdvanceOp>(iter_arg.getType(), iter_arg, increments);
-  }
-
-  Value EmitLoad(EmitterLocOpBuilder b, ValueRange args) const {
-    Value param_value = EmitParameterLoad(b, args.front(), boundary_checks_);
+  Value EmitExtract(EmitterLocOpBuilder b, ValueRange args,
+                    std::vector<Value> block_offsets) const {
+    Value param_value =
+        EmitParameterExtract(b, args.front(), boundary_checks_, block_offsets);
     if (type_ != storage_type_) {
       // For example cast i8 to i1.
       param_value = Cast(b, param_value, type_);
     }
     return param_value;
+  }
+
+  Value EmitNextContractingOffset(EmitterLocOpBuilder& b,
+                                  const MatMulEmitterHelper& emitter, Value ki,
+                                  ValueRange iter_args) const {
+    return emitter.EmitNextContractingOffset(
+        b, *side_, *hlo_instr_, contracting_dimension_, ki, block_k_,
+        iter_args[iter_arg_index_]);
   }
 
   // Index of the iter_arg of the ForOp associated with this input.
@@ -2171,10 +2229,6 @@ Value EmitMaskOnInput(EmitterLocOpBuilder& b,
 Value EmitRegularMatmul(EmitterLocOpBuilder& b, Value lhs, Value rhs, Value acc,
                         const HloDotInstruction* dot_instr) {
   // Execute matrix multiplication of input tiles and pass the accumulator.
-  // TODO(manany): Should be looked into once we enable Hopper workloads.
-  // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
-  // lower precision than the output type. The change was introduced here:
-  // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
   auto dot_precision = InferDotPrecision(dot_instr);
 
   // Cast F32 inputs to BF16 if the algorithm is BF16_BF16_F32.
@@ -2230,17 +2284,25 @@ void EmitForLoopBody(EmitterLocOpBuilder& b, MatMulEmitterHelper& emitter,
                      const Scopes& scopes, const HloDotInstruction* dot_instr,
                      bool is_sparse, const MatMulDims& dims,
                      const llvm::SmallVector<IterableInput>& inputs, Value ki,
-                     ValueRange iter_args) {
+                     ValueRange iter_args, SmallVector<Value> tensor_ptrs,
+                     std::vector<std::vector<Value>> block_offsets_vector) {
   SmallVector<Value> args_for_yield;
   std::array<absl::flat_hash_map<const HloInstruction*, Value>, 3> values;
 
-  // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
+  // Load tiles of all parameters of LHS and RHS scopes.
   for (const IterableInput& input : inputs) {
-    Value param_value = input.EmitLoad(b, iter_args[input.iter_arg_index_]);
+    // Pass iter_args for the contracting dimension in the block offsets.
+    block_offsets_vector[input.iter_arg_index_][input.contracting_dimension_] =
+        iter_args[input.iter_arg_index_];
+    Value param_value =
+        input.EmitExtract(b, tensor_ptrs[input.iter_arg_index_],
+                          block_offsets_vector[input.iter_arg_index_]);
     CHECK(values[input.operand_index_]
               .insert({input.hlo_instr_, param_value})
               .second);
-    args_for_yield.push_back(input.EmitAdvance(b, emitter, ki, iter_args));
+    // Update iter_args with the next increment of the contracting dimension.
+    args_for_yield.push_back(
+        input.EmitNextContractingOffset(b, emitter, ki, iter_args));
   }
 
   // Emit all operations of LHS and RHS scopes.
@@ -2306,7 +2368,7 @@ void EmitForLoopBody(EmitterLocOpBuilder& b, MatMulEmitterHelper& emitter,
 absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
-    const HloFusionInstruction* fusion, mlir::triton::FuncOp fn,
+    const HloFusionInstruction* fusion, mlir::FunctionOpInterface fn,
     const BlockLevelParameters&) {
   // TODO b/315957220: Populate tma_metadata.
   stream_executor::gpu::TmaMetadata tma_metadata;
@@ -2355,7 +2417,9 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
 
   // Pointers to inputs of LHS scope, then RHS, then the accumulator
   // that change with every loop iteration and are passed between them.
+  SmallVector<Value> tensor_ptrs;
   SmallVector<Value> iter_args;
+  std::vector<std::vector<Value>> block_offsets_vector;
   int64_t step_k = block_k * split_k;
   for (const Side* side : scopes.input_scopes()) {
     for (const HloInstruction* input_hlo : ScopeInputs(analysis, side->scope)) {
@@ -2365,19 +2429,24 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
           IterableInput iter_input,
           IterableInput::CreateIterableInput(iter_args.size(), b, dims, side,
                                              input_hlo, step_k));
-      TF_ASSIGN_OR_RETURN(Value tensor_ptr,
-                          emitter.EmitTensorPointer(
+
+      Value tile_or_base_ptr;
+      std::vector<Value> block_offsets;
+      TF_ASSIGN_OR_RETURN(std::tie(tile_or_base_ptr, block_offsets),
+                          emitter.EmitTileOrBasePtrAndComputeBlockOffsets(
                               b, input_hlo, *side, arguments, scopes.pid_k(),
                               iter_input.boundary_checks_));
       inputs.push_back(iter_input);
-      iter_args.push_back(tensor_ptr);
+      tensor_ptrs.push_back(tile_or_base_ptr);
+      block_offsets_vector.push_back(block_offsets);
+      iter_args.push_back(block_offsets[iter_input.contracting_dimension_]);
     }
   }
 
   auto body_builder_callback = [&](mlir::OpBuilder&, mlir::Location, Value ki,
                                    ValueRange iter_args) -> void {
     EmitForLoopBody(b, emitter, scopes, dot_instr, is_sparse, dims, inputs, ki,
-                    iter_args);
+                    iter_args, tensor_ptrs, block_offsets_vector);
   };
 
   iter_args.push_back(accumulator_init);
@@ -2401,13 +2470,17 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
       std::vector<int32_t> boundary_checks;
       TF_ASSIGN_OR_RETURN(SmallVector<Value> arguments,
                           GetArguments(fn, *input));
-      TF_ASSIGN_OR_RETURN(
-          Value tensor_pointer,
-          emitter.EmitTensorPointer(b, input, scopes.out(), arguments,
-                                    scopes.pid_k(), boundary_checks));
+
+      Value tile_or_base_ptr;
+      std::vector<Value> block_offsets;
+      TF_ASSIGN_OR_RETURN(std::tie(tile_or_base_ptr, block_offsets),
+                          emitter.EmitTileOrBasePtrAndComputeBlockOffsets(
+                              b, input, scopes.out(), arguments, scopes.pid_k(),
+                              boundary_checks));
       TF_RET_CHECK(values_out
-                       .insert({input, EmitParameterLoad(b, tensor_pointer,
-                                                         boundary_checks)})
+                       .insert({input, EmitParameterExtract(b, tile_or_base_ptr,
+                                                            boundary_checks,
+                                                            block_offsets)})
                        .second);
     }
     TF_RETURN_IF_ERROR(EmitScope(b, libdevice_path, device_info, &analysis,
@@ -2421,14 +2494,30 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     const HloInstruction* producer =
         root->shape().IsTuple() ? root->operand(i) : root;
     std::vector<int32_t> boundary_checks;
+    Value tile_or_base_ptr;
+    std::vector<Value> block_offsets;
     TF_ASSIGN_OR_RETURN(
-        Value tensor_pointer,
-        emitter.EmitTensorPointer(
+        std::tie(tile_or_base_ptr, block_offsets),
+        emitter.EmitTileOrBasePtrAndComputeBlockOffsets(
             b, producer, scopes.out(),
             {fn.getArgument(i + dot_instr->parent()->num_parameters())},
             scopes.pid_k(), boundary_checks));
-    b.create<mt::StoreOp>(tensor_pointer, values_out[producer], boundary_checks,
-                          mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
+
+    if (auto tiled_tensor_type = mlir::dyn_cast<mt::xla::TiledTensorType>(
+            tile_or_base_ptr.getType())) {
+      auto insert_op = b.create<mt::xla::InsertOp>(
+          mlir::RankedTensorType::get(tiled_tensor_type.getTileShape(),
+                                      tiled_tensor_type.getElementType()),
+          values_out[producer], tile_or_base_ptr, block_offsets);
+      // TODO(manany): Is the insert tightly coupled with the return? Maybe we
+      // need to return the insert result similar to tma_metadata. Return
+      // should exist in fusion_emitter.cc.
+      b.create<mlir::func::ReturnOp>(insert_op.getResult());
+    } else {
+      ValueRange indices = {};
+      b.create<mlir::tensor::InsertOp>(values_out[producer], tile_or_base_ptr,
+                                       indices);
+    }
   }
   return tma_metadata;
 }

@@ -160,25 +160,28 @@ mlir::ParseResult parseDenseIntArrayAttr(mlir::AsmParser& parser,
   return mlir::success();
 }
 
+// TODO(manany): Something is probably wrong with the way I did the change here.
 ParseResult TileOp::parse(OpAsmParser& parser, OperationState& result) {
   OpAsmParser::UnresolvedOperand src;
   TiledTensorType tiled_tensor_type;
-  DenseI64ArrayAttr strides;
-  DenseI32ArrayAttr offsets, sizes;
-  if (parser.parseOperand(src) || parseDenseIntArrayAttr(parser, offsets) ||
-      parseDenseIntArrayAttr(parser, sizes) ||
-      parseDenseIntArrayAttr(parser, strides) ||
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> offsets, sizes, strides;
+  if (parser.parseOperand(src) ||
+      parser.parseOperandList(offsets, OpAsmParser::Delimiter::Square) ||
+      parser.parseOperandList(sizes, OpAsmParser::Delimiter::Square) ||
+      parser.parseOperandList(strides, OpAsmParser::Delimiter::Square) ||
       parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(tiled_tensor_type)) {
     return failure();
   }
+  auto offset_type = parser.getBuilder().getI32Type();
+  auto size_and_stride_type = parser.getBuilder().getI64Type();
   if (parser.resolveOperand(src, tiled_tensor_type.getOriginalType(),
-                            result.operands)) {
+                            result.operands) ||
+      parser.resolveOperands(offsets, offset_type, result.operands) ||
+      parser.resolveOperands(sizes, size_and_stride_type, result.operands) ||
+      parser.resolveOperands(strides, size_and_stride_type, result.operands)) {
     return failure();
   }
-  result.addAttribute("offsets", offsets);
-  result.addAttribute("sizes", sizes);
-  result.addAttribute("strides", strides);
   result.addTypes(tiled_tensor_type);
   return success();
 }
