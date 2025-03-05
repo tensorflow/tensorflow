@@ -391,29 +391,27 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
 // Returns an error if there are multiple or no roots without any users.
 absl::StatusOr<int64_t> GetRealRootIndex(
     absl::Span<const HloInstructionAdaptor> fusion_adaptor_roots) {
-  std::optional<int64_t> real_root_index{std::nullopt};
-  for (auto [idx, fusion_adaptor_root] :
-       llvm::enumerate(fusion_adaptor_roots)) {
-    if (fusion_adaptor_root.GetUsers().empty()) {
-      if (real_root_index.has_value()) {
-        return absl::FailedPreconditionError(
-            "Only simple multi-output fusions with one real root are "
-            "supported.");
-      }
-      real_root_index = idx;
-    }
-  }
-  if (!real_root_index.has_value()) {
+  auto has_no_users = [](const HloInstructionAdaptor& root) {
+    return root.GetUsers().empty();
+  };
+  auto it = absl::c_find_if(fusion_adaptor_roots, has_no_users);
+  if (it == fusion_adaptor_roots.end()) {
     return absl::FailedPreconditionError(
-        "Each fusion should have at least one root without users.");
+        "Each fusion should have at least one root without users but no root "
+        "was found.");
   }
-  return *real_root_index;
+  if (std::find_if(std::next(it), fusion_adaptor_roots.end(), has_no_users) !=
+      fusion_adaptor_roots.end()) {
+    return absl::FailedPreconditionError(
+        "Only simple multi-output fusions with one real root are supported but "
+        "multiple roots were found.");
+  }
+  return it - fusion_adaptor_roots.begin();
 }
 
 // Computes the indexing information for the roots of the 'fusion'.
 /*static*/ absl::StatusOr<RootIndexing> SymbolicTileAnalysis::GetRootIndexing(
     const HloFusionAdaptor& fusion, MLIRContext* ctx) {
-  // TODO(pifon): Handle the case of a single-instruction computation.
   auto fusion_adaptor_roots = fusion.GetRoots();
 
   TF_ASSIGN_OR_RETURN(int64_t real_root_index,
