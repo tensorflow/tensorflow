@@ -4912,6 +4912,30 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Dot(lhs, rhs), op::Shape("f32[24,19648]")));
 }
 
+TEST_P(SpmdPartitioningTest, DotTwoContractingDims) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = bf16[16,32,64] parameter(0), sharding={devices=[2,1,1,2]<=[4] last_tile_dim_replicate}
+  %rhs = bf16[16,32,7] parameter(1), sharding={devices=[2,2,1]<=[4]}
+  ROOT %dot = bf16[64,7] dot(%lhs, %rhs), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, sharding={devices=[4,1]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  const auto lhs = AllOf(op::Parameter(0), op::Shape("bf16[8,32,64]"));
+  const auto lhs_reshard =
+      AllOf(op::DynamicSlice(lhs, _, _, _), op::Shape("bf16[8,16,64]"));
+  const auto rhs = AllOf(op::Parameter(1), op::Shape("bf16[8,16,7]"));
+  const auto dot =
+      AllOf(op::AllReduce(op::AllReduce(op::Dot(lhs_reshard, rhs))),
+            op::Shape("bf16[64,7]"));
+  const auto dot_reshard =
+      AllOf(op::DynamicSlice(dot, _, _), op::Shape("bf16[16,7]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), dot_reshard);
+}
+
 TEST_P(SpmdPartitioningTest, WindowedEinsumTwoContractingDimsLhsReshard) {
   absl::string_view hlo_string = R"(
 HloModule module
