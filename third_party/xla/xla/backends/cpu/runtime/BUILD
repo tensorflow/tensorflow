@@ -278,7 +278,7 @@ cc_library(
     name = "thunk_executor",
     srcs = ["thunk_executor.cc"],
     hdrs = ["thunk_executor.h"],
-    defines = if_windows(["_ENABLE_EXTENDED_ALIGNED_STORAGE"]),
+    local_defines = if_windows(["_ENABLE_EXTENDED_ALIGNED_STORAGE"]),
     deps = [
         ":resource_use",
         ":thunk",
@@ -299,7 +299,10 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:numbers",
+        "@local_tsl//tsl/profiler/lib:connected_traceme",
+        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 
