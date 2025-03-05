@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 
@@ -1603,9 +1604,7 @@ class AnnotationReadySetLt {
   }
 };
 absl::StatusOr<HloGraphNode*> FindAndExtractBestAnnotatedNode(
-    DefaultSchedulerCore::SchedulingState& sched_state,
-    DefaultSchedulerCore::OverlapLimitRule
-        scheduling_instruction_crosses_overlap_limit) {
+    DefaultSchedulerCore::SchedulingState& sched_state) {
   using ScheduleCandidate = DefaultSchedulerCore::ScheduleCandidate;
   using CandidateResult = DefaultSchedulerCore::CandidateResult;
   AnnotationReadySetLt ready_lt;
@@ -1618,14 +1617,6 @@ absl::StatusOr<HloGraphNode*> FindAndExtractBestAnnotatedNode(
   for (auto ready_node_it = annotation_ready.begin(),
             e = annotation_ready.end();
        ready_node_it != e; ++ready_node_it) {
-    // If this node would cause the max_concurrent_resource count to go beyond
-    // the limit do not schedule it and pass to the next node.
-    if (scheduling_instruction_crosses_overlap_limit(sched_state,
-                                                     *ready_node_it)) {
-      VLOG(2) << "Annotation instructions crosses overlap limit:"
-              << (*ready_node_it)->GetInstr().name();
-      continue;
-    }
     ScheduleCandidate ready_candidate;
     ready_candidate.node = *ready_node_it;
     if (ready_chosen.node == nullptr) {
@@ -1699,10 +1690,8 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     }());
     VLOG(2) << "Current time: " << sched_state->current_time;
     // Find the best annotated node to schedule.
-    TF_ASSIGN_OR_RETURN(
-        HloGraphNode * node,
-        FindAndExtractBestAnnotatedNode(
-            *sched_state, scheduling_instruction_crosses_overlap_limit_));
+    TF_ASSIGN_OR_RETURN(HloGraphNode * node,
+                        FindAndExtractBestAnnotatedNode(*sched_state));
 
     TF_RET_CHECK(node != nullptr)
         << "Couldn't find an annotated node to schedule.";
