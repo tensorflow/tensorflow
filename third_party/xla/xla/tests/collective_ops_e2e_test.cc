@@ -1585,6 +1585,9 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
         GetModuleConfigForTest(kNumReplicas, kNumPartitions);
     auto ref_opts = GetDebugOptionsForTest();
     ref_opts.set_xla_gpu_enable_pipelined_collectives(false);
+    ref_opts.set_xla_gpu_enable_pipelined_all_reduce(false);
+    ref_opts.set_xla_gpu_enable_pipelined_all_gather(false);
+    ref_opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
     ref_config.set_debug_options(ref_opts);
     TF_ASSERT_OK_AND_ASSIGN(
         auto ref_module, ParseAndReturnVerifiedModule(hlo_string, ref_config));
@@ -1645,6 +1648,54 @@ ENTRY entry {
   p0 = bf16[5,8,16] parameter(0)
   tuple = (s32[], bf16[5,8,16], bf16[5,8,16]) tuple(c0, p0, p0)
   while = (s32[], bf16[5,8,16], bf16[5,8,16]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte = bf16[5,8,16] get-tuple-element(while), index=1
+}
+)";
+
+  CollectiveOpsComparePipelinedNonPipelined(hlo_string);
+}
+
+TEST_F(CollectiveOpsTestE2EPipelinedNonPipelined,
+       CollectivePipelinerForwardElementwise) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(bf16[5,8,16], bf16[])->bf16[5,8,16]}, allow_spmd_sharding_propagation_to_parameters={false,false}, num_partitions=2
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[5,8,16], bf16[5,8,16], bf16[]) parameter(0)
+  loop_index = s32[] get-tuple-element(param), index=0
+  c5 = s32[] constant(5)
+  ROOT cmp = pred[] compare(loop_index, c5), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[5,8,16], bf16[5,8,16], bf16[]) parameter(0)
+  loop_index = s32[] get-tuple-element(param), index=0
+  partial_output = bf16[5,8,16] get-tuple-element(param), index=1
+  slice_input = bf16[5,8,16] get-tuple-element(param), index=2
+  scale = bf16[] get-tuple-element(param), index=3
+  scale_bcast = bf16[1,8,16] broadcast(scale), dimensions={}
+  c0 = s32[] constant(0)
+  c1 = s32[] constant(1)
+  next_loop_index = s32[] add(loop_index, c1)
+  dynamic_slice = bf16[1,8,16] dynamic-slice(slice_input, loop_index, c0, c0), dynamic_slice_sizes={1,8,16}
+  all_reduce = bf16[1,8,16] all-reduce(dynamic_slice), replica_groups={}, to_apply=add, channel_id=1
+  all_reduce_scaled = bf16[1,8,16] multiply(all_reduce, scale_bcast)
+  updated_partial_output = bf16[5,8,16] dynamic-update-slice(partial_output, all_reduce_scaled, loop_index, c0, c0)
+  ROOT tuple = (s32[], bf16[5,8,16], bf16[5,8,16], bf16[]) tuple(next_loop_index, updated_partial_output, slice_input, scale)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[5,8,16] parameter(0)
+  p1 = bf16[] parameter(1)
+  tuple = (s32[], bf16[5,8,16], bf16[5,8,16], bf16[]) tuple(c0, p0, p0, p1)
+  while = (s32[], bf16[5,8,16], bf16[5,8,16], bf16[]) while(tuple), condition=while_cond, body=while_body
   ROOT gte = bf16[5,8,16] get-tuple-element(while), index=1
 }
 )";
