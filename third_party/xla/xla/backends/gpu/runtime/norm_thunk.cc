@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
