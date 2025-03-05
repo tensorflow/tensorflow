@@ -19,10 +19,10 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"

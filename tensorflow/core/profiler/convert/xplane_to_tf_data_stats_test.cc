@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
 
+#include <cstdint>
+
+#include <gmock/gmock.h>
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"

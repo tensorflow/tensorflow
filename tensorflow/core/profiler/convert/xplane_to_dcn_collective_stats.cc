@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/dcn_slack_analysis_combiner.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/xspace_to_dcn_slack_analysis.h"

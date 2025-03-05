@@ -16,29 +16,30 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -399,8 +400,8 @@ void ProcessActiveAllocations(int64_t peak_bytes_profile_step_id,
 // This function saves the MemoryProfileSnapshots referenced by
 // <active_allocations> max_num_snapshots.
 void SaveActiveAllocationSnapshots(
-    protobuf::RepeatedPtrField<MemoryProfileSnapshot>* snapshots,
-    protobuf::RepeatedPtrField<ActiveAllocation>* active_allocations) {
+    tsl::protobuf::RepeatedPtrField<MemoryProfileSnapshot>* snapshots,
+    tsl::protobuf::RepeatedPtrField<ActiveAllocation>* active_allocations) {
   std::vector<MemoryProfileSnapshot*> samples;
   // Puts the snapshots referenced by active_allocations in <samples>.
   for (const auto& allocation : *active_allocations) {
@@ -418,7 +419,7 @@ void SaveActiveAllocationSnapshots(
     new_index++;
   }
 
-  protobuf::RepeatedPtrField<MemoryProfileSnapshot> new_snapshots;
+  tsl::protobuf::RepeatedPtrField<MemoryProfileSnapshot> new_snapshots;
   new_snapshots.Reserve(samples.size());
   for (const auto& sample : samples) {
     *new_snapshots.Add() = std::move(*sample);
@@ -430,9 +431,9 @@ void SaveActiveAllocationSnapshots(
 // profile data.
 void SampleMemoryProfileTimeline(int64_t max_num_snapshots,
                                  PerAllocatorMemoryProfile* memory_profile) {
-  const protobuf::RepeatedPtrField<MemoryProfileSnapshot>& original_snapshots =
-      memory_profile->memory_profile_snapshots();
-  protobuf::RepeatedPtrField<MemoryProfileSnapshot>* timeline_snapshots =
+  const tsl::protobuf::RepeatedPtrField<MemoryProfileSnapshot>&
+      original_snapshots = memory_profile->memory_profile_snapshots();
+  tsl::protobuf::RepeatedPtrField<MemoryProfileSnapshot>* timeline_snapshots =
       memory_profile->mutable_sampled_timeline_snapshots();
   int64_t snapshot_count = original_snapshots.size();
   if (snapshot_count > max_num_snapshots) {
@@ -500,7 +501,7 @@ void ProcessMemoryProfileProto(int64_t max_num_snapshots,
        *memory_profile->mutable_memory_profile_per_allocator()) {
     PerAllocatorMemoryProfile* allocator_memory_profile =
         &id_and_allocator_profile.second;
-    protobuf::RepeatedPtrField<MemoryProfileSnapshot>* snapshots =
+    tsl::protobuf::RepeatedPtrField<MemoryProfileSnapshot>* snapshots =
         allocator_memory_profile->mutable_memory_profile_snapshots();
     // Sort the memory_profile_snapshots by time_offset_ps (ascending) in proto.
     absl::c_sort(*snapshots, [](const MemoryProfileSnapshot& a,
@@ -529,10 +530,10 @@ void ProcessMemoryProfileProto(int64_t max_num_snapshots,
 template <typename Proto>
 absl::Status ConvertProtoToJson(const Proto& proto_output,
                                 std::string* json_output) {
-  protobuf::util::JsonPrintOptions json_options;
+  tsl::protobuf::util::JsonPrintOptions json_options;
   json_options.always_print_primitive_fields = true;
-  auto status = protobuf::util::MessageToJsonString(proto_output, json_output,
-                                                    json_options);
+  auto status = tsl::protobuf::util::MessageToJsonString(
+      proto_output, json_output, json_options);
   if (!status.ok()) {
     // Convert error_msg google::protobuf::StringPiece (or absl::string_view) to
     // tensorflow::StringPiece.
