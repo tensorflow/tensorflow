@@ -259,7 +259,7 @@ void AddPreQuantizationStableHloToTfPasses(
   // Expand backward compatibility with the given StableHLO version by
   // decomposing newer StableHLO operations into equivalent operations supported
   // by that older version.
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
+  pass_manager.addPass(
       mlir::stablehlo::createStablehloCompatibilityExpanderPass(
           {tflite_supported_stablehlo_version}));
 
