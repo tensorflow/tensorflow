@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "xla/python/ifrt/host_callback.h"
 
+#include "xla/ffi/api/ffi.h"
+#include "xla/ffi/ffi_api.h"
+
 namespace xla {
 namespace ifrt {
 
 char HostCallback::ID = 0;
 char LoadedHostCallback::ID = 0;
+ffi::TypeId ifrt::FfiLoadedHostCallbacks::id = {};
+XLA_FFI_REGISTER_TYPE(ffi::GetXlaFfiApi(), "ffi_loaded_host_callbacks",
+                      &ifrt::FfiLoadedHostCallbacks::id);
 
 }  // namespace ifrt
 }  // namespace xla
