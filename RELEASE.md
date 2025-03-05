@@ -12,6 +12,7 @@
 * `tf.lite`
     * Interpreter:
       * `tf.lite.Interpreter` gives warning of future deletion and a redirection notice to its new location at `ai_edge_litert.interpreter`. See the [migration guide](https://ai.google.dev/edge/litert/migration) for details.
+* Tensorflow-tpu for this patch is skipped due to some sparsecore related bugs. We suggest to upgrade to 2.19.0 instead.  
 
 # Release 2.18.0
 
