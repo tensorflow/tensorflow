@@ -116,8 +116,10 @@ class CompiledModel
 
   CompiledModel() = default;
 
-  // Parameter `owned` indicates if the created CompiledModel object should take
-  // ownership of the provided `compiled_model` handle.
+  // Creates a CompiledModel instance.
+  //
+  // If `owned` is `true`, then the created object takes ownership of the
+  // `compiled_model` handle.
   explicit CompiledModel(LiteRtModel litert_model,
                          LiteRtCompiledModel compiled_model, bool owned = true)
       : internal::Handle<LiteRtCompiledModel, LiteRtDestroyCompiledModel>(
@@ -125,9 +127,13 @@ class CompiledModel
         model_(Model::CreateFromNonOwnedHandle(litert_model)) {}
 
   // Creates a CompiledModel from a TFLite file.
+  //
   // The model is loaded into memory and the caller takes ownership of the
   // returned CompiledModel object. The caller should keep the model alive
   // until the CompiledModel is destroyed.
+  //
+  // The given environment must outlive the compiled model and any execution
+  // running it.
   static Expected<CompiledModel> Create(litert::Environment& env,
                                         litert::Model& model,
                                         Options&& compilation_options) {
