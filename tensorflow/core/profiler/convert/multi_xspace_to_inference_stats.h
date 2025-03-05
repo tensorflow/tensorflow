@@ -28,6 +28,6 @@ StepEvents GetNonOverlappedStepEvents(XSpace* xspace);
 absl::Status ConvertMultiXSpaceToInferenceStats(
     const SessionSnapshot& session_snapshot, absl::string_view request_column,
     absl::string_view batch_column, InferenceStats* inference_stats);
-}
+}  // namespace tensorflow::profiler
 
 #endif  // TENSORFLOW_CORE_PROFILER_CONVERT_MULTI_XSPACE_TO_INFERENCE_STATS_H_

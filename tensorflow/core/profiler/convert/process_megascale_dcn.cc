@@ -18,8 +18,10 @@ limitations under the License.
 
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/convert/dcn_analysis.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
