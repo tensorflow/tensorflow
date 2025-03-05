@@ -785,7 +785,8 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
       // If the workflow requires inferring ranges from the content
       // (post-training quantization) and it is weight (filter) and hasn't
       // been quantized, we infer the quantization parameters from the content.
-      if (infer_tensor_range_ && IsWeight(constant_op) && !IsQuantized(op)) {
+      if (qdq_conversion_mode_ != quant::QDQConversionMode::kQDQStrict &&
+          infer_tensor_range_ && IsWeight(constant_op) && !IsQuantized(op)) {
         // The quantization parameters are determined by the content of the
         // constant.
         changed |= SetConstantResultParams(op);
