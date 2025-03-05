@@ -26,6 +26,7 @@ def TTXLA_SparseDotMetaEncodingAttr : DistributedEncoding<"SparseDotMetaEncoding
   let parameters = (ins "Attribute":$parent);
   let assemblyFormat = "`<``{` struct(params) `}``>`";
   let extraClassDeclaration = extraDistributedDeclaration # [{
+    unsigned getTotalElemsPerThread(ArrayRef<int64_t> shape) const;
     SmallVector<unsigned> getContigPerThread() {
       return getSizePerThread();
     };
