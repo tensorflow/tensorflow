@@ -92,16 +92,16 @@ struct OutputTilingInfo {
   IndexingMap output_tile_offset_indexing;
 };
 
-OutputTilingInfo ComputeOutputTilingInfo(const RootIndexing& root_indexing,
+OutputTilingInfo ComputeOutputTilingInfo(const IndexingMap& root_indexing,
                                          absl::Span<const int64_t> tile_sizes,
                                          mlir::MLIRContext* mlir_context) {
-  int64_t rank = root_indexing.real_root_indexing.GetDimVarsCount();
+  int64_t rank = root_indexing.GetDimVarsCount();
   CHECK_EQ(rank, tile_sizes.size());  // Crash OK
 
   llvm::SmallVector<int64_t> outer_loop_bounds;
   outer_loop_bounds.reserve(rank);
-  for (auto [dim_bounds, tile_size] : llvm::zip(
-           root_indexing.real_root_indexing.GetDimensionBounds(), tile_sizes)) {
+  for (auto [dim_bounds, tile_size] :
+       llvm::zip(root_indexing.GetDimensionBounds(), tile_sizes)) {
     CHECK_EQ(dim_bounds.lower, 0)
         << "Root indexing domain does not start at 0.";
     outer_loop_bounds.push_back(CeilOfRatio(dim_bounds.upper + 1, tile_size));
@@ -116,12 +116,9 @@ OutputTilingInfo ComputeOutputTilingInfo(const RootIndexing& root_indexing,
 
   std::vector<IndexingMap::Variable> dim_vars =
       DimVarsFromTensorSizes(outer_loop_bounds);
-  int64_t num_parallel_dims = rank - root_indexing.num_reduction_dims;
   // Name the dimension variables for convenience.
   for (auto&& [idx, dim_var] : llvm::enumerate(dim_vars)) {
-    dim_var.name = idx < num_parallel_dims
-                       ? absl::StrCat("pid_", idx)
-                       : absl::StrCat("rid_", idx - num_parallel_dims);
+    dim_var.name = absl::StrCat("pid_", idx);
   }
 
   IndexingMap output_tile_offset_indexing{
@@ -431,8 +428,7 @@ absl::StatusOr<int64_t> GetRealRootIndex(
 
   auto indexing_map = CreateIdentityMap(roots[real_root_index]->shape(), ctx);
   return RootIndexing{real_root_index, std::move(roots),
-                      /*real_root_indexing=*/std::move(indexing_map),
-                      /*num_reduction_dims=*/0};
+                      /*real_root_indexing=*/std::move(indexing_map)};
 }
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeComputation(
@@ -502,13 +498,12 @@ absl::StatusOr<int64_t> GetRealRootIndex(
         llvm::SmallVector<int64_t, 1> range_var_indices(
             operand_indexing_map.GetRangeVarsCount());
         absl::c_iota(range_var_indices, 0);
-        int64_t num_reduced_dims = operand_indexing_map.GetRangeVarsCount();
         auto nested_root_map = ConvertRangeVariablesToDimensions(
             operand_indexing_map, range_var_indices);
         RootIndexing nested_root_indexing{
             /*real_root_index=*/0,
             /*roots=*/ToInstructions(nested_fusion_adaptor->GetRoots()),
-            /*real_root_indexing=*/nested_root_map, num_reduced_dims};
+            /*real_root_indexing=*/nested_root_map};
 
         auto analysis_or = SymbolicTileAnalysis::AnalyzeFusionImpl(
             *nested_fusion_adaptor, ctx, nested_root_indexing,
@@ -773,20 +768,31 @@ absl::StatusOr<std::vector<const TiledHloInstruction*>> InitializeTiledRoots(
 // Returns the reduction tile size of the given HLO. At the moment, we
 // only support fusions with a single reduction dimension. This restriction can
 // be lifted in the future.
-absl::StatusOr<int64_t> GetReductionTileSize(const HloInstruction* hlo) {
+absl::StatusOr<int64_t> GetReductionTileSize(
+    const SymbolicTiledHloFusionInstruction& symbolic_fusion_tiling) {
+  const HloInstruction* hlo = symbolic_fusion_tiling.hlo();
   auto backend_config = hlo->backend_config<GpuBackendConfig>();
   if (!backend_config.ok()) {
     return absl::FailedPreconditionError(
         absl::StrCat("No gpu_backend_config in ", hlo->ToString()));
   }
-  BlockLevelParameters block_level_parameters =
+  auto output_tile_sizes =
       BlockLevelParameters::FromBlockLevelFusionConfig(
-          backend_config->fusion_backend_config().block_level_fusion_config());
-  const auto& output_tile_sizes = block_level_parameters.output_tile_sizes;
-  CHECK_EQ(output_tile_sizes.size(), 1);
-  const auto& first_root_tile_sizes = output_tile_sizes.front();
-  CHECK_EQ(first_root_tile_sizes.size(), 1);
-  return first_root_tile_sizes.front();
+          backend_config->fusion_backend_config().block_level_fusion_config())
+          .output_tile_sizes;
+  if (output_tile_sizes.size() != 1) {
+    return absl::FailedPreconditionError(
+        "Nested fusions should only have one root.");
+  }
+  const auto& indexing_map = symbolic_fusion_tiling.indexing_map();
+  auto symbol_expr =
+      mlir::getAffineSymbolExpr(0, indexing_map.GetMLIRContext());
+  const auto& results = indexing_map.GetAffineMap().getResults();
+  auto it = absl::c_find(results, symbol_expr);
+  if (it == results.end()) {
+    return absl::FailedPreconditionError("No symbol in indexing map results.");
+  }
+  return output_tile_sizes.front()[it - results.begin()];
 }
 
 }  // namespace
@@ -872,8 +878,8 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
   // TODO(b/390569102): This assumes that there is only one root that matters
   // for computing the tiling, and that it is the last symbolic tiled hlo
   // instruction in the list.
-  OutputTilingInfo output_tiling_info =
-      ComputeOutputTilingInfo(root_indexing_, tile_parameters, context_);
+  OutputTilingInfo output_tiling_info = ComputeOutputTilingInfo(
+      root_indexing_.real_root_indexing, tile_parameters, context_);
 
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
   absl::flat_hash_map<const SymbolicTiledHloInstruction*, TiledHloInstruction*>
@@ -932,7 +938,7 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
       std::vector<int64_t> nested_tiling_parameters(tile_parameters.begin(),
                                                     tile_parameters.end());
       TF_ASSIGN_OR_RETURN(int64_t reduction_tile_size,
-                          GetReductionTileSize(hlo));
+                          GetReductionTileSize(*symbolic_fusion_tiling));
       nested_tiling_parameters.push_back(reduction_tile_size);
 
       TF_ASSIGN_OR_RETURN(

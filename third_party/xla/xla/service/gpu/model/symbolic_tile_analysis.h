@@ -50,16 +50,15 @@ using SymbolicTileAnalysisOrError =
 struct RootIndexing {
   RootIndexing(int64_t real_root_index,
                absl::Span<const HloInstruction* const> roots,
-               IndexingMap real_root_indexing, int64_t num_reduction_dims)
+               IndexingMap real_root_indexing)
       : real_root_index(real_root_index),
         roots(roots.begin(), roots.end()),
-        real_root_indexing(std::move(real_root_indexing)),
-        num_reduction_dims(num_reduction_dims) {}
+        real_root_indexing(std::move(real_root_indexing)) {}
 
   const HloInstruction* GetRealRoot() const { return roots[real_root_index]; }
 
   // ID of the root that defines the indexing for other roots.
-  int64_t real_root_index = -1;
+  int64_t real_root_index;
 
   // `roots` contains the computation roots in increasing order of their
   // output index.
@@ -67,13 +66,6 @@ struct RootIndexing {
 
   // Indexing map to the "real" root.
   IndexingMap real_root_indexing;
-
-  // Number of reduction dimensions in the real root of a nested fusion that
-  // correspond to the dimensions reduced/contracted by the user of the nested
-  // fusion.
-  // At the moment the reduction dimensions correspond to the last
-  // `num_reduction_dims` dimensions in the `real_root_indexing` map.
-  int64_t num_reduction_dims = 0;
 };
 
 // An interface to implement additional emitter-specific constraints. This
