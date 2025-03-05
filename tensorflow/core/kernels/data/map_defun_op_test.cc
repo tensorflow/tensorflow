@@ -11,6 +11,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/map_defun_op.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
