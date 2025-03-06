@@ -630,7 +630,7 @@ class TypeSpec(
               TypeSpec.__nested_list_to_tuple(value.tolist()))
     raise ValueError(f"Cannot generate a hashable key for {self} because "
                      f"the _serialize() method "
-                     f"returned an unsupproted value of type {type(value)}")
+                     f"returned an unsupported value of type {type(value)}")
 
   @staticmethod
   def __nested_list_to_tuple(value):

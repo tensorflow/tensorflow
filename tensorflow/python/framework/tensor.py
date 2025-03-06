@@ -405,7 +405,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     ...   tf.TensorSpec([3,5]))
     Result shape: (None, 5)
 
-    Tracing may fail if a shape missmatch can be detected:
+    Tracing may fail if a shape mismatch can be detected:
 
     >>> cf = my_matmul.get_concrete_function(
     ...   tf.TensorSpec([None,3]),
@@ -1006,7 +1006,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     )
 
   def placeholder_value(self, placeholder_context):
-    """Generates a graph placholder with the given TensorSpec information."""
+    """Generates a graph placeholder with the given TensorSpec information."""
     if placeholder_context.unnest_only:
       return self
 

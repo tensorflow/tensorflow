@@ -94,7 +94,7 @@ def add_op_callback(callback_fn):
         #     `outputs` for downstream graph construction.
 
   Raises:
-    ValueEror: If `callback_fn` is `None` or not callable.
+    ValueError: If `callback_fn` is `None` or not callable.
   """
   # TODO(b/139668041): Implement support for overriding `EagerTensor`s from
   # callback.
