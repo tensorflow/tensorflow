@@ -278,8 +278,6 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       int64_t max_parallelism = ctx->runner_threadpool_size();
       int64_t min_parallelism =
           std::min(GetAutotuneMinParallelism(ctx), max_parallelism);
-      LOG(INFO) << "Parallel batch at: " << prefix()
-                << " min parallelism is set to " << min_parallelism;
       return model::MakeAsyncKnownRatioNode(
           std::move(args),
           /*ratio=*/dataset()->batch_size_, /*memory_ratio=*/1.0,
