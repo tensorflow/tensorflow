@@ -81,7 +81,7 @@ class MemoryChecker(object):
     that if there is a leak, it's happening similarly on every snapshot.
 
     The recommended number of `record_snapshot()` call depends on the testing
-    code complexity and the allcoation pattern.
+    code complexity and the allocation pattern.
     """
     self._python_memory_checker.record_snapshot()
 
