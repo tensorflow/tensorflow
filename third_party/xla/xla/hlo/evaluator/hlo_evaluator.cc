@@ -1036,6 +1036,11 @@ absl::StatusOr<Literal> HloEvaluator::EvaluateWithSubstitutions(
 
   std::unique_ptr<HloInstruction> cloned_instruction =
       instruction->CloneWithNewOperands(instruction->shape(), operands);
+  // TODO(phawkins): it's unfortunate that we need to call set_parent() here.
+  // It's probably better to avoid constructing new instructions here in the
+  // first place.
+  cloned_instruction->set_parent(
+      const_cast<HloComputation*>(instruction->parent()));
   auto result = Evaluate(cloned_instruction.get());
 
   return result;
