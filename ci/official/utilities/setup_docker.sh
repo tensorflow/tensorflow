@@ -38,15 +38,17 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
   env_file=$(mktemp)
   env | grep ^TFCI_ > "$env_file"
 
+  if [[ $(uname -s) == MSYS_NT* ]]; then
+    is_windows=true
+  else
+    is_windows=false
+  fi
+
   WORKING_DIR="$TFCI_GIT_DIR"
-  if [[ `uname -s | grep -P '^MSYS_NT'` ]]; then
+  if [[ "$is_windows" == true ]]; then
     env_file=$(cygpath -m $env_file)
-    # Host dirs can only be mapped to an existing drive inside the container, so
-    # T:\ is replaced with C:\.
-    _TFCI_OUTPUT_DIR_WIN=$(replace_drive_letter_with_c "$TFCI_OUTPUT_DIR")
-    sed -iE 's|^TFCI_OUTPUT_DIR=.*|TFCI_OUTPUT_DIR='"$_TFCI_OUTPUT_DIR_WIN"'|g' $env_file
-    WORKING_DIR=$(replace_drive_letter_with_c "$TFCI_GIT_DIR")
-    echo "GCE_METADATA_HOST=$IP_ADDR" > $env_file
+    WORKING_DIR=$(replace_drive_letter_with_prefix "$TFCI_GIT_DIR" "$TFCI_OUTPUT_WIN_DOCKER_DIR")
+    echo "GCE_METADATA_HOST=$IP_ADDR" >> $env_file
   fi
 
   docker run $TFCI_DOCKER_ARGS --name tf -w "$WORKING_DIR" -itd --rm \
@@ -55,7 +57,7 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
       "$TFCI_DOCKER_IMAGE" \
     bash
 
-  if [[ `uname -s | grep -P '^MSYS_NT'` ]]; then
+  if [[ "$is_windows" == true ]]; then
     # Allow requests from the container.
     # Additional setup is contained in ci/official/envs/rbe.
     CONTAINER_IP_ADDR=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' tf)

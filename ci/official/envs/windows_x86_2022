@@ -14,12 +14,22 @@
 # ==============================================================================
 TFCI_DOCKER_ENABLE=1
 TFCI_DOCKER_PULL_ENABLE=1
-TFCI_DOCKER_IMAGE="gcr.io/tensorflow-testing/tf-win2019-rbe@sha256:d3577d20dea75966faf7fd03479c71462441937df5694259109c2ee1d002a3dd"
+TFCI_DOCKER_IMAGE="gcr.io/tensorflow-testing/tf-win2022@sha256:915cb093630432c38b028f56bd31116a5559ebbc688d427b6092d86828ae03bc"
 TFCI_BAZEL_BAZELRC_ARGS="--output_user_root=C:/t"
-TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION"
+TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config=windows_x86_cpu"
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=windows_x86_cpu
 TFCI_OUTPUT_DIR=build_output
 TFCI_FIND_BIN=C:/tools/msys64/usr/bin/find.exe
+TFCI_LIB_SUFFIX="-cpu-windows-x86_64"
+# auditwheel is not supported for Windows
+TFCI_WHL_AUDIT_ENABLE=0
+TFCI_WHL_AUDIT_PLAT=0
+# Tests are extremely slow at the moment
+TFCI_WHL_BAZEL_TEST_ENABLE=0
+TFCI_WHL_SIZE_LIMIT=450M
+TFCI_WHL_SIZE_LIMIT_ENABLE=1
+TFCI_WHL_IMPORT_TEST_ENABLE=1
+TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS=""
 
 # TODO(belitskiy): Add a link to the Dockerfile comment that explains this more.
 # Used to simulate a T:\ drive within the container, to a limited extent,

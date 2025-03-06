@@ -54,11 +54,94 @@ function cp_normalized_srcjar() {
   cp "${tmp_dir}/new.jar" "${dest_jar}"
   rm -rf "${tmp_dir}"
 }
+
 DIR=$1
-TARBALL_SUFFIX=$2
 mkdir -p "$DIR"
-cp bazel-bin/tensorflow/tools/lib_package/libtensorflow.tar.gz "${DIR}/libtensorflow${TARBALL_SUFFIX}.tar.gz"
-cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz "${DIR}/libtensorflow_jni${TARBALL_SUFFIX}.tar.gz"
-cp bazel-bin/tensorflow/java/libtensorflow.jar "${DIR}"
-cp_normalized_srcjar bazel-bin/tensorflow/java/libtensorflow-src.jar "${DIR}/libtensorflow-src.jar"
-cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_proto.zip "${DIR}"
+TARBALL_SUFFIX=$2
+
+if [[ $(uname -s) != MSYS_NT* ]]; then
+  cp bazel-bin/tensorflow/tools/lib_package/libtensorflow.tar.gz "${DIR}/libtensorflow${TARBALL_SUFFIX}.tar.gz"
+  cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz "${DIR}/libtensorflow_jni${TARBALL_SUFFIX}.tar.gz"
+  cp bazel-bin/tensorflow/java/libtensorflow.jar "${DIR}"
+  cp_normalized_srcjar bazel-bin/tensorflow/java/libtensorflow-src.jar "${DIR}/libtensorflow-src.jar"
+  cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_proto.zip "${DIR}"
+else
+  LIB_PKG="$1/lib_package"
+  mkdir -p ${LIB_PKG}
+
+  # Zip up the .dll and the LICENSE for the JNI library.
+  cp bazel-bin/tensorflow/java/tensorflow_jni.dll ${LIB_PKG}/tensorflow_jni.dll
+  zip -j ${LIB_PKG}/libtensorflow_jni-cpu-windows-$(uname -m).zip \
+    ${LIB_PKG}/tensorflow_jni.dll \
+    bazel-bin/tensorflow/tools/lib_package/include/tensorflow/THIRD_PARTY_TF_JNI_LICENSES \
+    LICENSE
+  rm -f ${LIB_PKG}/tensorflow_jni.dll
+
+  # Zip up the .dll, LICENSE and include files for the C library.
+  mkdir -p ${LIB_PKG}/include/tensorflow/c
+  mkdir -p ${LIB_PKG}/include/tensorflow/c/eager
+  mkdir -p ${LIB_PKG}/include/tensorflow/core/platform
+  mkdir -p ${LIB_PKG}/include/xla/tsl/c
+  mkdir -p ${LIB_PKG}/include/tsl/platform
+  mkdir -p ${LIB_PKG}/lib
+  cp bazel-bin/tensorflow/tensorflow.dll ${LIB_PKG}/lib/tensorflow.dll
+  cp bazel-bin/tensorflow/tensorflow.lib ${LIB_PKG}/lib/tensorflow.lib
+  cp tensorflow/c/c_api.h \
+    tensorflow/c/tf_attrtype.h \
+    tensorflow/c/tf_buffer.h  \
+    tensorflow/c/tf_datatype.h \
+    tensorflow/c/tf_status.h \
+    tensorflow/c/tf_tensor.h \
+    tensorflow/c/tf_tensor_helper.h \
+    tensorflow/c/tf_tstring.h \
+    tensorflow/c/tf_file_statistics.h \
+    tensorflow/c/tensor_interface.h \
+    tensorflow/c/c_api_macros.h \
+    tensorflow/c/c_api_experimental.h \
+    ${LIB_PKG}/include/tensorflow/c
+  cp tensorflow/c/eager/c_api.h \
+    tensorflow/c/eager/c_api_experimental.h \
+    tensorflow/c/eager/dlpack.h \
+    ${LIB_PKG}/include/tensorflow/c/eager
+  cp tensorflow/core/platform/ctstring.h \
+    tensorflow/core/platform/ctstring_internal.h \
+    ${LIB_PKG}/include/tensorflow/core/platform
+  cp third_party/xla/xla/tsl/c/tsl_status.h ${LIB_PKG}/include/xla/tsl/c
+  cp third_party/xla/third_party/tsl/tsl/platform/ctstring.h \
+     third_party/xla/third_party/tsl/tsl/platform/ctstring_internal.h \
+     ${LIB_PKG}/include/tsl/platform
+  cp LICENSE ${LIB_PKG}/LICENSE
+  cp bazel-bin/tensorflow/tools/lib_package/THIRD_PARTY_TF_C_LICENSES ${LIB_PKG}/
+  cd ${LIB_PKG}
+  zip libtensorflow-cpu-windows-$(uname -m).zip \
+    lib/tensorflow.dll \
+    lib/tensorflow.lib \
+    include/tensorflow/c/eager/c_api.h \
+    include/tensorflow/c/eager/c_api_experimental.h \
+    include/tensorflow/c/eager/dlpack.h \
+    include/tensorflow/c/c_api.h \
+    include/tensorflow/c/tf_attrtype.h \
+    include/tensorflow/c/tf_buffer.h  \
+    include/tensorflow/c/tf_datatype.h \
+    include/tensorflow/c/tf_status.h \
+    include/tensorflow/c/tf_tensor.h \
+    include/tensorflow/c/tf_tensor_helper.h \
+    include/tensorflow/c/tf_tstring.h \
+    include/tensorflow/c/tf_file_statistics.h \
+    include/tensorflow/c/tensor_interface.h \
+    include/tensorflow/c/c_api_macros.h \
+    include/tensorflow/c/c_api_experimental.h \
+    include/tensorflow/core/platform/ctstring.h \
+    include/tensorflow/core/platform/ctstring_internal.h \
+    include/xla/tsl/c/tsl_status.h \
+    include/tsl/platform/ctstring.h \
+    include/tsl/platform/ctstring_internal.h \
+    LICENSE \
+    THIRD_PARTY_TF_C_LICENSES
+  rm -rf lib include
+
+  cd ..
+  tar -zcvf windows_cpu_libtensorflow_binaries.tar.gz $LIB_PKG
+  rm -rf $LIB_PKG
+
+fi
