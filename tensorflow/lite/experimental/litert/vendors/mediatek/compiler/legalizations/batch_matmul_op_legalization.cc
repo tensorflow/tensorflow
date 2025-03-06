@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC.
+// Copyright (c) 2025 MediaTek Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/add_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/batch_matmul_op_legalization.h"
 
 #include <cstdint>
 #include <vector>
@@ -27,10 +27,11 @@
 
 namespace litert::mediatek {
 
-Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
-                             NeuronModel* model, OperandMap& operand_map,
-                             const litert::Op& op) {
-  LITERT_LOG(LITERT_INFO, "Legalize Add");
+Expected<void> LegalizeBatchMatMulOp(const NeuronAdapterApi& neuron_adapter_api,
+                                     NeuronModel* model,
+                                     OperandMap& operand_map,
+                                     const litert::Op& op) {
+  LITERT_LOG(LITERT_INFO, "Legalize BatchMatMul");
   std::vector<uint32_t> input_indices;
   for (auto& input : op.Inputs()) {
     auto id = operand_map.GetOperandIndex(input);
@@ -40,20 +41,34 @@ Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
     input_indices.push_back(*id);
   }
 
-  // A NEURON_ADD operation takes a 3rd scalar operand, which is used to pass a
-  // TfLiteFusedActivation value.
-  uint32_t tfl_fused_activation;
+  // A NEURON_BATCH_MATMUL operation takes 2 scalar operand, which is used to
+  // pass a adjX, adjY value.
+  bool tfl_matmul_param_adj_x = 0, tfl_matmul_param_adj_y = 0;
   if (auto status =
-          LiteRtGetAddFusedActivationOption(op.Get(), &tfl_fused_activation);
+          LiteRtGetBatchMatmulAdjXOption(op.Get(), &tfl_matmul_param_adj_x);
       status != kLiteRtStatusOk) {
-    return Error(status, "Failed to get fused activation");
+    return Error(status, "Failed to get batch matmul adjX");
   }
-  auto fused_activation_operand_index =
-      operand_map.AddScalarInt32(tfl_fused_activation);
-  if (!fused_activation_operand_index) {
-    return fused_activation_operand_index.Error();
+
+  if (auto status =
+          LiteRtGetBatchMatmulAdjYOption(op.Get(), &tfl_matmul_param_adj_y);
+      status != kLiteRtStatusOk) {
+    return Error(status, "Failed to get batch matmul adjY");
   }
-  input_indices.push_back(*fused_activation_operand_index);
+
+  LITERT_LOG(LITERT_INFO, "The adjX: %d adjY: %d", tfl_matmul_param_adj_x,
+             tfl_matmul_param_adj_y);
+  auto adj_x_operand_index = operand_map.AddScalarBool(tfl_matmul_param_adj_x);
+  if (!adj_x_operand_index) {
+    return adj_x_operand_index.Error();
+  }
+  input_indices.push_back(*adj_x_operand_index);
+
+  auto adj_j_operand_index = operand_map.AddScalarBool(tfl_matmul_param_adj_y);
+  if (!adj_j_operand_index) {
+    return adj_j_operand_index.Error();
+  }
+  input_indices.push_back(*adj_j_operand_index);
 
   std::vector<uint32_t> output_indices;
   for (auto& output : op.Outputs()) {
@@ -65,11 +80,11 @@ Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
   }
 
   if (neuron_adapter_api.api().model_add_operation(
-          model, /*type=*/NEURON_ADD, input_indices.size(),
+          model, /*type=*/NEURON_BATCH_MATMUL, input_indices.size(),
           input_indices.data(), output_indices.size(),
           output_indices.data()) != NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
-                 "Failed to set value of NEURON_ADD fused activation");
+                 "Failed to set value of NEURON_BATCH_MATMUL");
   }
 
   return {};

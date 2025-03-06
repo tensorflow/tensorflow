@@ -22,6 +22,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/schema/schema_resolver.h"
 
 namespace litert::mediatek {
 
