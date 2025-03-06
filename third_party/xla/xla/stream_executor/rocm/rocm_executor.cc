@@ -826,6 +826,35 @@ bool RocmExecutor::SynchronizeAllActivity() {
   return rocm_context_->Synchronize().ok();
 }
 
+bool RocmExecutor::HostMemoryRegister(void* location, uint64_t size) {
+  VLOG(1) << "Called StreamExecutor::HostMemoryRegister(data=" << location
+          << ")";
+
+  std::unique_ptr<ActivateContext> activation = Activate();
+  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
+  auto status =
+      ToStatus(hipHostRegister(location, size, hipHostRegisterPortable));
+  if (!status.ok()) {
+    LOG(ERROR) << "error registering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
+}
+
+bool RocmExecutor::HostMemoryUnregister(void* location) {
+  VLOG(1) << "Called StreamExecutor::HostUnregister(data=" << location << ")";
+
+  std::unique_ptr<ActivateContext> activation = Activate();
+  auto status = ToStatus(hipHostUnregister(location));
+  if (!status.ok()) {
+    LOG(ERROR) << "error unregistering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
+}
+
 absl::Status RocmExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                                               uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
