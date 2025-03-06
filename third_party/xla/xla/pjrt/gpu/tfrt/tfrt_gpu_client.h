@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/platform.h"
@@ -176,11 +177,6 @@ class TfrtGpuDevice final : public PjRtDevice {
 
 class TfrtGpuClient final : public PjRtClient {
  public:
-  struct Options {
-    std::optional<std::set<int>> allowed_devices;
-    std::optional<std::string> platform_name;
-  };
-
   TfrtGpuClient(int process_index, xla::LocalClient* xla_client,
                 std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
                 std::unique_ptr<tsl::Allocator> host_memory_allocator,
@@ -236,7 +232,7 @@ class TfrtGpuClient final : public PjRtClient {
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
-    TfrtGpuClient::Options options);
+    const GpuClientOptions& options);
 
 }  // namespace xla
 
