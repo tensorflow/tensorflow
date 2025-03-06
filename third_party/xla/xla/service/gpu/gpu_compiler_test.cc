@@ -1857,6 +1857,42 @@ TEST_F(GpuCompilerTest,
                                                 std::nullopt));
 }
 
+TEST_F(GpuCompilerTest, DynamicSliceFusionReduceScatterMultipleBuffers) {
+  const char* hlo = R"(
+    HloModule test, replica_count=2
+    add {
+      x = s32[] parameter(0)
+      y = s32[] parameter(1)
+      ROOT add = s32[] add(x, y)
+    }
+    ENTRY main {
+      p0 = s32[2,2,32] parameter(0)
+      p1 = s32[8,32] parameter(1)
+      slice = s32[4,32] slice(p1), slice={[4:8], [0:32]}
+      rs1 = s32[2,32] reduce-scatter(slice), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      slice2 = s32[4,32] slice(p1), slice={[0:4], [0:32]}
+      rs2 = s32[2,32] reduce-scatter(slice2), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      ROOT tuple = tuple(rs1, rs2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  m->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_dynamic_slice_fusion(true);
+  TF_ASSERT_OK_AND_ASSIGN(m, GetOptimizedModule(std::move(m)));
+  const char* kExpected = R"(
+    // CHECK: dynamic-slice-fusion{{.*}} {
+    // CHECK-DAG: %[[slice1:.+]] = {{.+}} slice({{.+}}), slice={[4:8], [0:32]}
+    // CHECK-DAG: %[[slice2:.+]] = {{.+}} slice({{.+}}), slice={[0:4], [0:32]}
+    // CHECK-DAG: ROOT %[[rs:.+]] = {{.+}} reduce-scatter({{.*}} %[[slice1]], {{.*}} %[[slice2]]),
+    // CHECK-SAME{LITERAL}:                                      replica_groups={{0,1}}, dimensions={0}, to_apply=%add
+    // CHECK: ENTRY
+  )";
+  EXPECT_THAT(RunFileCheck(m->ToString(), kExpected),
+              ::tsl::testing::IsOkAndHolds(true));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
