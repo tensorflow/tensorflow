@@ -157,12 +157,24 @@ struct CanonicalizeApproxDynamicTopKOpPattern
       newOperands.push_back(op.getInitialValue(i));
     }
 
-    auto stablehloBackendConfig = "mhlo.backend_config";
-    auto backend_config = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(
-        impl->getAttr(stablehloBackendConfig));
+    mlir::DictionaryAttr backend_config;
+    if (impl.getApiVersion() ==
+        stablehlo::CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+      backend_config = mlir::cast<mlir::DictionaryAttr>(
+          impl.getBackendConfig().value_or(mlir::DictionaryAttr()));
+    } else {
+      // TODO(b/392911302): Cleanup code after XLA plugins and stored
+      // SavedModels are updated to support API v4 (~July 2025).
+      auto stablehloBackendConfig = "mhlo.backend_config";
+      backend_config = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(
+          impl->getAttr(stablehloBackendConfig));
+    }
+
     if (!backend_config)
       return rewriter.notifyMatchFailure(op,
-                                         "Missing backend_config attribute");
+                                         "Missing backend_config dictionary");
+
+    // Add static k attribute to backend_config.
     SmallVector<NamedAttribute> backend_config_attrs{backend_config.begin(),
                                                      backend_config.end()};
     backend_config_attrs.push_back(
@@ -171,8 +183,11 @@ struct CanonicalizeApproxDynamicTopKOpPattern
     auto newOp = rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
         op, op->getResultTypes(), newOperands, op->getAttrs());
     newOp.setCallTargetName("ApproxTopK");
-    newOp->setAttr(stablehloBackendConfig,
-                   rewriter.getDictionaryAttr(backend_config_attrs));
+    newOp.setBackendConfigAttr(
+        rewriter.getDictionaryAttr(backend_config_attrs));
+    newOp->removeDiscardableAttr("mhlo.backend_config");  // Erase if present.
+    newOp.setApiVersion(stablehlo::CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
     return success();
   }
 };
