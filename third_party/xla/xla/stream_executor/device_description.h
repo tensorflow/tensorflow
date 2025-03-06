@@ -71,15 +71,18 @@ class RocmComputeCapability {
 
   bool gfx9_mi200() const { return gfx_version() == "gfx90a"; }
 
-  bool gfx9_mi300() const { return gfx_version() == "gfx942"; }
+  bool gfx9_mi300_series() const {
+    return gfx_version() == "gfx942" || gfx_version() == "gfx950";
+  }
 
   bool gfx9_mi100_or_later() const {
-    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx942"};
+    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx942",
+                                                  "gfx950"};
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
   bool gfx9_mi200_or_later() const {
-    static constexpr absl::string_view kList[] = {"gfx90a", "gfx942"};
+    static constexpr absl::string_view kList[] = {"gfx90a", "gfx942", "gfx950"};
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
@@ -123,7 +126,7 @@ class RocmComputeCapability {
   }
 
   bool has_fp8_support() const {
-    return gfx9_mi300() || gfx1200() || gfx1201();
+    return gfx9_mi300_series() || gfx1200() || gfx1201();
   }
 
   std::string ToString() const { return gcn_arch_name(); }
@@ -147,6 +150,7 @@ class RocmComputeCapability {
       "gfx908",   // MI100
       "gfx90a",   // MI200
       "gfx942",   // MI300
+      "gfx950",   // MI355
       "gfx1030",  // RX68xx / RX69xx
       "gfx1100",  // RX7900
       "gfx1200", "gfx1201",
@@ -316,7 +320,7 @@ class DeviceDescription {
               return 16 * 1024;
             }
             // MI300 has 32KB L1 cache per CU.
-            if (capability.gfx9_mi300()) {
+            if (capability.gfx9_mi300_series()) {
               return 32 * 1024;
             }
           }
@@ -332,7 +336,7 @@ class DeviceDescription {
           if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
                                        RocmComputeCapability>) {
             // DRAM->L2 bus is 128 Byte width for MI300.
-            if (capability.gfx9_mi300()) {
+            if (capability.gfx9_mi300_series()) {
               return 128;
             }
           }
@@ -353,7 +357,7 @@ class DeviceDescription {
           if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
                                        RocmComputeCapability>) {
             // 16 works well on MI300.
-            if (capability.gfx9_mi300()) {
+            if (capability.gfx9_mi300_series()) {
               return 16;
             }
           }
