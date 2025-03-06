@@ -102,6 +102,8 @@ void TfLiteVarArrayFree(T* a) {
   free(a);
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
+
 TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src) {
   TfLiteQuantization dst;
   dst.type = src.type;
@@ -151,6 +153,8 @@ TfLiteSparsity* TfLiteSparsityClone(const TfLiteSparsity* const src) {
   *dst = TfLiteSparsityClone(*src);
   return dst;
 }
+
+#endif  // TF_LITE_STATIC_MEMORY
 
 }  // namespace
 
