@@ -14,7 +14,10 @@
 
 #include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 
+#if !LITERT_WINDOWS_OS
 #include <dlfcn.h>
+#endif
+
 #if defined(_GNU_SOURCE) && !defined(__ANDROID__) && !defined(__APPLE__)
 #define LITERT_IMPLEMENT_SHARED_LIBRARY_INFO 1
 #include <link.h>
@@ -28,6 +31,28 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+
+#if LITERT_WINDOWS_OS
+// Implement dummy functions from dlfnc.h on Windows.
+namespace {
+
+const char* dlerror() {
+  return "Windows is not supported for loading shared libraries.";
+}
+
+void* dlopen(const char*, int) { return NULL; }
+
+void dlclose(void*) {}
+
+void* dlsym(void*, const char*) { return NULL; }
+
+int dlinfo(void*, int, void*) { return -1; }
+
+#define RTLD_NEXT (void*)-1;
+#define RTLD_DEFAULT (void*)0;
+
+}  // namespace
+#endif
 
 namespace litert {
 
@@ -102,6 +127,7 @@ Expected<SharedLibrary> SharedLibrary::LoadImpl(
 
 Expected<void*> SharedLibrary::LookupSymbolImpl(const char* symbol_name) const {
   void* symbol = dlsym(handle_, symbol_name);
+
   if (!symbol) {
     return Error(kLiteRtStatusErrorDynamicLoading,
                  absl::StrFormat("Could not load symbol %s: %s.", symbol_name,
@@ -120,15 +146,17 @@ std::ostream& operator<<(std::ostream& os, const SharedLibrary& lib) {
   }
 
   os << kHeader;
-#if LITERT_IMPLEMENT_SHARED_LIBRARY_INFO
 #ifdef RTLD_DI_LMID
   if (Lmid_t dl_ns_idx; dlinfo(lib.handle_, RTLD_DI_LMID, &dl_ns_idx) != 0) {
     os << "Error getting lib namespace index: " << dlerror() << ".\n";
   } else {
     os << "LIB NAMESPACE INDEX: " << dl_ns_idx << "\n";
   }
+#else
+  os << "Cannot retrieve namespace index on this platform.\n";
 #endif
 
+#ifdef RTLD_DI_LINKMAP
   if (link_map* lm; dlinfo(lib.handle_, RTLD_DI_LINKMAP, &lm) != 0) {
     os << "Error getting linked objects: " << dlerror() << ".\n";
   } else {
@@ -144,7 +172,7 @@ std::ostream& operator<<(std::ostream& os, const SharedLibrary& lib) {
     }
   }
 #else
-  os << "Unsupported platform.\n";
+  os << "Cannot retrieve lib map on this platform.\n";
 #endif
   return os << kFooter;
 }

@@ -15,13 +15,17 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_SHARED_LIBRARY_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_SHARED_LIBRARY_H_
 
-#include <dlfcn.h>
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || \
+    defined(__NT__) || defined(_WIN64)
+#define LITERT_WINDOWS_OS 1
+#endif
 
-#include <cstring>
-#include <memory>
+#if !LITERT_WINDOWS_OS
+#include <dlfcn.h>
+#endif
+
 #include <ostream>
 #include <string>
-#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -40,27 +44,47 @@ struct RtldFlags {
   // NOLINTNEXTLINE(*-explicit-constructor): we want this to be passed as flags.
   operator int() { return flags; }
 
-  static constexpr RtldFlags Lazy() { return {RTLD_LAZY}; }
-  static constexpr RtldFlags Now() { return {RTLD_NOW}; }
+  static constexpr RtldFlags Lazy() {
+    return {
+#if defined(RTLD_LAZY)
+        RTLD_LAZY
+#endif
+    };
+  }
+  static constexpr RtldFlags Now() {
+    return {
+#if defined(RTLD_NOW)
+        RTLD_NOW
+#endif
+    };
+  }
   static constexpr RtldFlags Default() { return Lazy().Local().DeepBind(); }
   constexpr RtldFlags& Global() {
+#if defined(RTLD_GLOBAL)
     flags |= RTLD_GLOBAL;
+#endif
     return *this;
   }
   constexpr RtldFlags& Local() {
+#if defined(RTLD_LOCAL)
     flags |= RTLD_LOCAL;
+#endif
     return *this;
   }
   constexpr RtldFlags& NoDelete() {
+#if defined(RTLD_NODELETE)
     flags |= RTLD_NODELETE;
+#endif
     return *this;
   }
   constexpr RtldFlags& NoLoad() {
+#if defined(RTLD_NOLOAD)
     flags |= RTLD_NOLOAD;
+#endif
     return *this;
   }
   constexpr RtldFlags& DeepBind() {
-#ifdef RTLD_DEEPBIND
+#if defined(RTLD_DEEPBIND)
     flags |= RTLD_DEEPBIND;
 #endif
     return *this;
