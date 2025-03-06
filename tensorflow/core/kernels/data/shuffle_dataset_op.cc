@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 
+#include <atomic>
 #include <cstdint>
 #include <deque>
 #include <memory>
