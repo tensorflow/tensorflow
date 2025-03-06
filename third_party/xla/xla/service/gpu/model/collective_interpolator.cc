@@ -250,6 +250,24 @@ std::unique_ptr<HloModule> AllGatherModule(
   return module;
 }
 
+HloOpcode AsyncToSyncOpcode(const HloCollectiveInstruction& instr) {
+  HloOpcode opcode = instr.opcode();
+  switch (opcode) {
+    case HloOpcode::kAllGatherStart:
+      return HloOpcode::kAllGather;
+    case HloOpcode::kAllReduceStart:
+      return HloOpcode::kAllReduce;
+    case HloOpcode::kAsyncStart:
+      if (instr.async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+        return HloOpcode::kReduceScatter;
+      };
+      break;
+    default:
+      break;
+  }
+  return opcode;
+}
+
 }  // namespace
 
 /*static*/ absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
@@ -290,7 +308,7 @@ std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
   }
   std::array<int64_t, 2> point({bytes_transferred, *num_devices});
   CollectiveInterpolator::InterpolatorKey key{
-      /*opcode=*/instr.opcode(),
+      /*opcode=*/AsyncToSyncOpcode(instr),
       /*communication_type=*/*comm,
   };
   if (!interpolators_.contains(key)) {
@@ -305,10 +323,12 @@ std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
     const HloInstructionProfile& profile) {
   switch (*StringToHloOpcode(profile.instruction().opcode())) {
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
       return AllReduceModule(profile);
     case HloOpcode::kReduceScatter:
       return ReduceScatterModule(profile);
     case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
       return AllGatherModule(profile);
     default:
       LOG(FATAL) << "Unsupported profile instruction: "

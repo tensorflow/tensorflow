@@ -91,6 +91,7 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
     CollectiveDeviceList device_list;
     switch (opcode) {
       case HloOpcode::kAllReduce:
+      case HloOpcode::kAllReduceStart:
         device_list = CollectiveDeviceList(CommToDeviceList(comm, num_hosts));
         shape = ShapeUtil::MakeShape(PrimitiveType::F32, {tensor_size / 4});
         break;
@@ -103,6 +104,7 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
               device_list.iota_replica_group_list()->num_devices_per_group())});
         break;
       case HloOpcode::kAllGather:
+      case HloOpcode::kAllGatherStart:
         device_list = CollectiveDeviceList(CommToDeviceList(comm, num_hosts));
         shape = ShapeUtil::MakeShape(PrimitiveType::F32, {tensor_size / 4});
         break;
@@ -564,6 +566,18 @@ INSTANTIATE_TEST_SUITE_P(
             /*expected_duration=*/absl::Milliseconds(625),
         },
         {
+            /*test_name=*/"ARS_single_host_aligned_interpolate_tensor_size",
+            /*spec=*/
+            {
+                /*opcode=*/HloOpcode::kAllReduceStart,
+                /*comm=*/
+                CollectiveInterpolator::CommunicationType::SINGLE_HOST,
+                /*tensor_size=*/1024 + 256,
+                /*num_nodes=*/2,
+            },
+            /*expected_duration=*/absl::Milliseconds(625),
+        },
+        {
             /*test_name=*/"RS_rail_aligned_extrapolate_nodes",
             /*spec=*/
             {
@@ -844,6 +858,18 @@ INSTANTIATE_TEST_SUITE_P(
             /*spec=*/
             {
                 /*opcode=*/HloOpcode::kAllGather,
+                /*comm=*/
+                CollectiveInterpolator::CommunicationType::SINGLE_HOST,
+                /*tensor_size=*/1024 + 256,
+                /*num_nodes=*/2,
+            },
+            /*expected_duration=*/absl::Milliseconds(625),
+        },
+        {
+            /*test_name=*/"AGS_single_host_aligned_interpolate_tensor_size",
+            /*spec=*/
+            {
+                /*opcode=*/HloOpcode::kAllGatherStart,
                 /*comm=*/
                 CollectiveInterpolator::CommunicationType::SINGLE_HOST,
                 /*tensor_size=*/1024 + 256,
