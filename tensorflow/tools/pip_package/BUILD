@@ -361,7 +361,6 @@ py_test(
     tags = [
         "cpu",
         "manual",
-        "windows_excluded",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()),
 )
@@ -380,7 +379,6 @@ py_test(
     tags = [
         "gpu",
         "manual",
-        "windows_excluded",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()),
 )
@@ -392,7 +390,6 @@ py_test(
     tags = [
         "cpu",
         "manual",
-        "windows_excluded",
     ],
     deps = [
         ":tf_py_import",
@@ -410,7 +407,6 @@ py_test(
     tags = [
         "gpu",
         "manual",
-        "windows_excluded",
     ],
     deps = [
         ":tf_py_import",
