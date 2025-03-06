@@ -1,20 +1,32 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 load("@local_config_rocm//rocm:build_defs.bzl", "rocm_version_number", "select_threshold")
 
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
 package(default_visibility = ["//visibility:private"])
 
-bool_flag(
-    name = "use_rocm_hermetic_rpath",
-    build_setting_default = False,
+string_flag(
+    name = "rocm_path_type",
+    build_setting_default = "system",
+    values = [
+       "hermetic",
+       "multiple",
+       "system",
+    ]
 )
 
 config_setting(
     name = "build_hermetic",
     flag_values = {
-        ":use_rocm_hermetic_rpath": "True",
+        ":rocm_path_type": "hermetic",
+    },
+)
+
+config_setting(
+    name = "multiple_rocm_paths",
+    flag_values = {
+        ":rocm_path_type": "multiple",
     },
 )
 
@@ -128,6 +140,9 @@ cc_library(
     linkopts = select({
         ":build_hermetic": [
             "-Wl,-rpath,%{rocm_toolkit_path}/lib",
+        ],
+        ":multiple_rocm_paths": [
+            "-Wl,-rpath=%{rocm_lib_paths}",
         ],
         "//conditions:default": [
             "-Wl,-rpath,/opt/rocm/lib",

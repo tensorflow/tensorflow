@@ -56,6 +56,8 @@ _OS = "OS"
 _ROCM_VERSION = "ROCM_VERSION"
 
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
+_TF_ROCM_MULTIPLE_PATHS = "TF_ROCM_MULTIPLE_PATHS"
+_LLVM_PATH = "LLVM_PATH"
 
 def verify_build_defines(params):
     """Verify all variables that crosstool/BUILD.rocm.tpl expects are substituted.
@@ -595,12 +597,31 @@ def _setup_rocm_distro_dir(repository_ctx):
     bash_bin = get_bash_bin(repository_ctx)
     os = repository_ctx.os.environ.get(_OS)
     rocm_version = repository_ctx.os.environ.get(_ROCM_VERSION)
+    multiple_paths = repository_ctx.os.environ.get(_TF_ROCM_MULTIPLE_PATHS)
     if os and rocm_version:
         redist = rocm_redist[os][rocm_version]
         repository_ctx.file("rocm/.index")
         for archive in redist["archives"]:
             _download_package(repository_ctx, archive)
         return _get_rocm_config(repository_ctx, bash_bin, "{}/{}".format(_DISTRIBUTION_PATH, redist["rocm_root"]), "/{}".format(redist["rocm_root"]))
+    elif multiple_paths:
+        paths_list = multiple_paths.split(":")
+        for rocm_custom_path in paths_list:
+            cmd = "find " + rocm_custom_path + "/* \\( -type f -o -type l \\)"
+            result = execute(repository_ctx, [bash_bin, "-c", cmd]).stdout.strip().split("\n")
+            for file_path in result:
+                relative_path = file_path[len(rocm_custom_path):]
+                symlink_path = _DISTRIBUTION_PATH + relative_path
+                if files_exist(repository_ctx, [symlink_path], bash_bin)[0]:
+                    fail("File already present: " + relative_path)
+                else:
+                    repository_ctx.symlink(file_path, symlink_path)
+        llvm_path = repository_ctx.os.environ.get(_LLVM_PATH)
+        if llvm_path:
+            repository_ctx.symlink(llvm_path, _DISTRIBUTION_PATH + "/llvm")
+            repository_ctx.symlink(llvm_path, _DISTRIBUTION_PATH + "/lib/llvm")
+            repository_ctx.symlink(llvm_path + "/amdgcn", _DISTRIBUTION_PATH + "/amdgcn")
+        return _get_rocm_config(repository_ctx, bash_bin, _DISTRIBUTION_PATH, _DISTRIBUTION_PATH)
     else:
         rocm_path = repository_ctx.os.environ.get(_ROCM_TOOLKIT_PATH, _DEFAULT_ROCM_TOOLKIT_PATH)
         repository_ctx.report_progress("Using local rocm installation {}".format(rocm_path))  # buildifier: disable=print
@@ -675,6 +696,16 @@ def _create_local_rocm_repository(repository_ctx):
     if rocm_version_number >= 40500:
         repository_dict["%{hipsolver_lib}"] = rocm_libs["hipsolver"].file_name
         repository_dict["%{hipblas_lib}"] = rocm_libs["hipblas"].file_name
+
+    multiple_paths = repository_ctx.os.environ.get(_TF_ROCM_MULTIPLE_PATHS)
+    if multiple_paths:
+        paths_list = multiple_paths.split(":")
+        rocm_lib_paths = []
+        for rocm_custom_path in paths_list:
+            lib_path = rocm_custom_path + "/lib/"
+            if files_exist(repository_ctx, [lib_path], bash_bin)[0] and not lib_path in rocm_lib_paths:
+                rocm_lib_paths.append(lib_path)
+        repository_dict["%{rocm_lib_paths}"] = ":".join(rocm_lib_paths)
 
     repository_ctx.template(
         "rocm/BUILD",
