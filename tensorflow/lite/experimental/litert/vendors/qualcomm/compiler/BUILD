@@ -142,6 +142,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:elementwise_op_builder",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:embedding_lookup_op_builder",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:fully_connected_op_builder",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:fully_connected_op_builder_htp",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:gather_op_builder",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:gelu_op_builder",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:hard_swish_op_builder",

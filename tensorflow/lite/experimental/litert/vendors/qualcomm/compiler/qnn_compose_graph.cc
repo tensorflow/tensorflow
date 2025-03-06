@@ -48,6 +48,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/elementwise_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/embedding_lookup_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/fully_connected_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/fully_connected_op_builder_htp.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gather_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gelu_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/hard_swish_op_builder.h"
@@ -344,8 +345,16 @@ LiteRtStatus ConvertOp(
       bool keep_num_dims{};
       LITERT_RETURN_IF_ERROR(LiteRtGetFullyConnectedKeepNumDimsOption(
           litert_op.Get(), &keep_num_dims));
-      op_wrappers = ::qnn::BuildFullyConnectedOp(tensor_pool, input_tensors,
-                                                 output_tensors, keep_num_dims);
+      // TODO(jiunkaiy): Use compile interface to get useHtpPreferencs.
+      constexpr LiteRtQnnOptions qnn_options = LITERT_QNN_OPTIONS_INIT;
+      if (qnn_options.useHtpPreferencs) {
+        op_wrappers = ::qnn::BuildFullyConnectedOpHtp(
+            tensor_pool, input_tensors, output_tensors, keep_num_dims);
+      }
+      if (op_wrappers.empty()) {
+        op_wrappers = ::qnn::BuildFullyConnectedOp(
+            tensor_pool, input_tensors, output_tensors, keep_num_dims);
+      }
       break;
     }
     case LiteRtOpCode::kLiteRtOpCodeTflGather: {
