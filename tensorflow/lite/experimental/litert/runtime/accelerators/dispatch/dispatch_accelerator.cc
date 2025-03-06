@@ -18,7 +18,6 @@
 #include <string>
 #include <utility>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator.h"
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
@@ -32,85 +31,29 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 #include "tensorflow/lite/experimental/litert/runtime/accelerator_model_compilation_data.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerators/accelerator_implementation_helper.h"
 
 namespace litert {
 
-class NpuAccelerator final {
-  constexpr static const absl::string_view kName = "NpuAccelerator";
-  // Warning: this should be incremented every time the code of this accelerator
-  // is updated according to semanting versioning.
-  constexpr static const LiteRtApiVersion kVersion{1, 0, 0};
-  constexpr static const LiteRtHwAcceleratorSet kHwSupport =
-      kLiteRtHwAcceleratorNpu;
+namespace {
+constexpr const char kNpuAcceleratorName[] = "NpuAccelerator";
+constexpr const LiteRtApiVersion kNpuAcceleratorVersion{1, 0, 0};
+}  // namespace
 
+class NpuAccelerator final
+    : public internal::AcceleratorImplementationHelper<
+          NpuAccelerator, kNpuAcceleratorName, kNpuAcceleratorVersion,
+          kLiteRtHwAcceleratorNpu> {
  public:
   explicit NpuAccelerator(std::string library_folder)
       : library_folder_(std::move(library_folder)) {}
-
-  struct Deleter {
-    void operator()(NpuAccelerator* npu_accelerator) { delete npu_accelerator; }
-  };
-  using Ptr = std::unique_ptr<NpuAccelerator, Deleter>;
 
   static Expected<Ptr> Create(std::string library_folder) {
     LITERT_RETURN_IF_ERROR(
         !library_folder.empty(),
         Error(kLiteRtStatusErrorInvalidArgument,
               "Dispatch API implementation library folder was not specified."));
-    return Ptr(new NpuAccelerator(std::move(library_folder)));
-  }
-
-  // C API
-
-  // Deletes the accelerator data.
-  static void Destroy(void* npu_accelerator) {
-    Deleter()(reinterpret_cast<NpuAccelerator*>(npu_accelerator));
-  }
-
-  // Stores the accelerator's name in `name`.
-  static LiteRtStatus GetName(LiteRtAccelerator accelerator,
-                              const char** name) {
-    LITERT_ENSURE(accelerator != nullptr, kLiteRtStatusErrorInvalidArgument,
-                  "Accelerator handle is invalid.");
-    LITERT_ENSURE(name != nullptr, kLiteRtStatusErrorInvalidArgument,
-                  "Name pointer is null.");
-    *name = kName.data();
-    return kLiteRtStatusOk;
-  }
-
-  // Stores the accelerator's version in `version`.
-  static LiteRtStatus GetVersion(LiteRtAccelerator accelerator,
-                                 LiteRtApiVersion* version) {
-    LITERT_ENSURE(accelerator != nullptr, kLiteRtStatusErrorInvalidArgument,
-                  "Accelerator handle is invalid.");
-    LITERT_ENSURE(version != nullptr, kLiteRtStatusErrorInvalidArgument,
-                  "Version pointer is null.");
-    *version = kVersion;
-    return kLiteRtStatusOk;
-  }
-
-  // Stores the accelerator's hardware support in `hw_set`.
-  static LiteRtStatus GetHardwareSupport(LiteRtAccelerator accelerator,
-                                         LiteRtHwAcceleratorSet* hw_set) {
-    LITERT_ENSURE(accelerator != nullptr, kLiteRtStatusErrorInvalidArgument,
-                  "Accelerator handle is invalid.");
-    LITERT_ENSURE(hw_set != nullptr, kLiteRtStatusErrorInvalidArgument,
-                  "Harware support pointer is null.");
-    *hw_set = kHwSupport;
-    return kLiteRtStatusOk;
-  }
-
-  // Goes through the options in the linked list and returns the model
-  // compilation data if it exists.
-  static Expected<const litert::internal::ModelCompilationData*>
-  GetModelCompilationData(LiteRtAcceleratorCompilationOptions options) {
-    LiteRtApiVersion payload_version;
-    void* payload_data;
-    LITERT_RETURN_IF_ERROR(LiteRtFindAcceleratorCompilationOptionsData(
-        options, litert::internal::ModelCompilationData::kIdentifier,
-        &payload_version, &payload_data));
-    return reinterpret_cast<litert::internal::ModelCompilationData*>(
-        payload_data);
+    return Allocate(std::move(library_folder));
   }
 
   // Creates a Dispatch delegate instance.
@@ -127,7 +70,7 @@ class NpuAccelerator final {
 
     LITERT_ASSIGN_OR_RETURN(
         const litert::internal::ModelCompilationData* compilation_data,
-        GetModelCompilationData(options));
+        internal::GetModelCompilationData(options));
 
     LITERT_ENSURE(compilation_data->allocation_base,
                   kLiteRtStatusErrorRuntimeFailure,
@@ -179,19 +122,6 @@ class NpuAccelerator final {
   std::string library_folder_;
 };
 
-namespace {
-
-struct AcceleratorDestructor {
-  void operator()(LiteRtAccelerator accelerator) {
-    LiteRtDestroyAccelerator(accelerator);
-  }
-};
-
-using AcceleratorGuard =
-    std::unique_ptr<std::pointer_traits<LiteRtAccelerator>::element_type,
-                    AcceleratorDestructor>;
-
-}  // namespace
 }  // namespace litert
 
 extern "C" {
@@ -202,17 +132,10 @@ LiteRtStatus LiteRtRegisterNpuAccelerator(
                 "accelerator handle is invalid");
   LiteRtAccelerator accelerator_handle;
   LITERT_RETURN_IF_ERROR(LiteRtCreateAccelerator(&accelerator_handle));
-  litert::AcceleratorGuard accelerator(accelerator_handle);
-  LITERT_RETURN_IF_ERROR(LiteRtSetAcceleratorGetName(
-      accelerator.get(), litert::NpuAccelerator::GetName));
-  LITERT_RETURN_IF_ERROR(LiteRtSetAcceleratorGetVersion(
-      accelerator.get(), litert::NpuAccelerator::GetVersion));
-  LITERT_RETURN_IF_ERROR(LiteRtSetAcceleratorGetHardwareSupport(
-      accelerator.get(), litert::NpuAccelerator::GetHardwareSupport));
+  litert::internal::AcceleratorGuard accelerator(accelerator_handle);
 
-  LITERT_RETURN_IF_ERROR(LiteRtSetDelegateFunction(
-      accelerator.get(), litert::NpuAccelerator::CreateDelegate,
-      litert::NpuAccelerator::DestroyDelegate));
+  LITERT_RETURN_IF_ERROR(litert::internal::SetAcceleratorBoilerplateFunctions<
+                         litert::NpuAccelerator>(accelerator));
 
   std::string library_folder;
   if (options && options->library_folder) {

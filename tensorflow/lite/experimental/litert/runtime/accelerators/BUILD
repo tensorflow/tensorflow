@@ -35,3 +35,18 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
     ],
 )
+
+cc_library(
+    name = "accelerator_implementation_helper",
+    hdrs = ["accelerator_implementation_helper.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_registration",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "//tensorflow/lite/experimental/litert/runtime:accelerator_model_compilation_data",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)

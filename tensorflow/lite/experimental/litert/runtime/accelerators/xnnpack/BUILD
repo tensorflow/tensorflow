@@ -20,22 +20,19 @@ package(
 )
 
 cc_library(
-    name = "dispatch_accelerator",
-    srcs = ["dispatch_accelerator.cc"],
-    hdrs = ["dispatch_accelerator.h"],
+    name = "xnnpack_accelerator",
+    srcs = ["xnnpack_accelerator.cc"],
+    hdrs = ["xnnpack_accelerator.h"],
     deps = [
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/experimental/litert/c:litert_accelerator",
         "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_accelerator_registration",
         "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",
-        "//tensorflow/lite/experimental/litert/cc:litert_any",
-        "//tensorflow/lite/experimental/litert/cc:litert_dispatch_delegate",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core:environment",
-        "//tensorflow/lite/experimental/litert/runtime:accelerator_model_compilation_data",
         "//tensorflow/lite/experimental/litert/runtime/accelerators:accelerator_implementation_helper",
     ],
 )

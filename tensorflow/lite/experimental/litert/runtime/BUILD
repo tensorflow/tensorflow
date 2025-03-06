@@ -397,8 +397,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_accelerator_compilation_options",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_macros",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
