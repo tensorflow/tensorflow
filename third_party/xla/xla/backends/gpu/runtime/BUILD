@@ -1237,6 +1237,30 @@ cc_library(
     ],
 )
 
+xla_test(
+    name = "while_thunk_test",
+    srcs = ["while_thunk_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":thunk",
+        ":while_thunk",
+        "//xla:executable_run_options",
+        "//xla/service:executable",
+        "//xla/service:platform_util",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 cc_library(
     name = "wait_for_streams_thunk",
     srcs = ["wait_for_streams_thunk.cc"],

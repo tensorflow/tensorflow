@@ -126,7 +126,7 @@ TEST(ForAllThunksTest, WhileThunk) {
   body_thunk_sequence.push_back(std::move(body_thunk));
 
   WhileThunk while_thunk(
-      Thunk::ThunkInfo(), BufferAllocation::Slice(),
+      Thunk::ThunkInfo(), /*loop=*/nullptr, BufferAllocation::Slice(),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(condition_thunk_sequence)),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
