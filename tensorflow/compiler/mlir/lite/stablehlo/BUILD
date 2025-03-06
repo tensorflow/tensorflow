@@ -970,6 +970,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         ":prepare_hlo",
+        "//third_party/jsoncpp:json_compat",
         "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
         "@llvm-project//llvm:Support",
