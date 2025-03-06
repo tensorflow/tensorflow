@@ -1,0 +1,100 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+name: Performance Regression Presubmit
+permissions:
+  contents: read
+on:
+  workflow_dispatch:
+    inputs:
+      halt-for-connection:
+        description: 'Should this workflow run wait for a remote connection?'
+        type: choice
+        required: true
+        default: 'no'
+        options:
+        - 'yes'
+        - 'no'
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'main' }}
+
+jobs:
+  Tests:
+    strategy:
+      # Don't fail fast - want to see results for all builds even if one fails.
+      fail-fast: false
+      matrix:
+        job_info: [
+          {
+            pool: "linux-x86-n2-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 CPU 16 vcpu Presubmit",
+            bazel_arch_dir: "k8-opt"
+          },
+          {
+            pool: "linux-arm64-c4a-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            pretty_name: "XLA Linux ARM64 CPU 16 vcpu Presubmit",
+            bazel_arch_dir: "aarch64-opt"
+          },
+          {
+            pool: "linux-x86-n2-128",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 CPU 128 vcpu Presubmit",
+            bazel_arch_dir: "k8-opt"
+          }
+          # TODO(juliagmt): add GPU pools
+        ]
+    name: ${{ matrix.job_info.pretty_name }}
+    runs-on: ${{ matrix.job_info.pool }}
+    container: ${{ matrix.job_info.container }}
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 10
+    steps:
+      - name: Print machine specs
+        run: |
+          lscpu
+          free -h  # Memory information
+          df -h    # Disk space information
+          uname -a # Kernel information
+
+      - name: Checkout OpenXLA
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: "Run build.py"
+        run: |
+          ./build_tools/ci/build.py --build="${{ matrix.job_info.pretty_name }}_github_actions"
+
+      # TODO(juliagmt): replace with a more representative hlo
+      - name: Run xla/tests/fuzz/rand_000001.hlo
+        run: |
+          bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"  # Get directory from matrix
+          binary_path="./bazel-out/${bazel_arch_dir}/bin/xla/tools/run_hlo_module"
+          echo "Running test with binary: $binary_path"
+          if [[ -x "$binary_path" ]]; then
+            echo "Running test with binary: $binary_path"
+            $binary_path --input_format=hlo --reference_platform="" --platform=CPU xla/tests/fuzz/rand_000001.hlo
+          else
+            echo "Error: Binary not found at expected location: $binary_path"
+            exit 1
+          fi
+      # TODO(juliagmt): add GPU tests

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-name: CPU Benchmarks
+name: Nightly CPU Benchmarks
 permissions:
   contents: read
 on:
@@ -35,7 +35,12 @@ jobs:
           {
             os: "linux-arm64-c4a-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
-            pretty_name: "XLA Linux ARM64 CPU",
+            pretty_name: "XLA Linux ARM64 CPU with 16 vcpu",
+          },
+          {
+            os: "linux-arm64-c4a-64",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            pretty_name: "XLA Linux ARM64 CPU with 64 vcpu",
           },
           {
             os: "linux-x86-n2-128",

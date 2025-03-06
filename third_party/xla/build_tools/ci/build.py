@@ -52,6 +52,9 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//build_tools/...",
     "@local_tsl//tsl/...",
 )
+_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
+    "//xla/tools:run_hlo_module",
+)
 _KOKORO_ARTIFACTS_DIR = os.environ.get(
     "KOKORO_ARTIFACTS_DIR", "$KOKORO_ARTIFACTS_DIR"
 )
@@ -97,6 +100,11 @@ class BuildType(enum.Enum):
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
 
+  # Presubmit builds for regression testing.
+  XLA_LINUX_X86_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_ARM64_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+
   XLA_MACOS_X86_CPU_KOKORO = enum.auto()
   XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
 
@@ -131,6 +139,7 @@ class Build:
   test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   extra_setup_commands: Tuple[List[str], ...] = ()
+  subcommand: str = "test"
 
   def __post_init__(self):
     # pylint: disable=protected-access
@@ -183,10 +192,11 @@ class Build:
     # problems in practice.
     # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
     # MacOS VM.
-    if (
-        self.type_ != BuildType.XLA_MACOS_X86_CPU_KOKORO
-        and self.type_ != BuildType.XLA_MACOS_ARM64_CPU_KOKORO
-    ):
+    macos_build = (
+        self.type_ == BuildType.XLA_MACOS_X86_CPU_KOKORO
+        or self.type_ == BuildType.XLA_MACOS_ARM64_CPU_KOKORO
+    )
+    if not macos_build:
       cmds.append(
           retry(
               self.bazel_command(
@@ -194,7 +204,7 @@ class Build:
               )
           )
       )
-    cmds.append(self.bazel_command())
+    cmds.append(self.bazel_command(subcommand=self.subcommand))
     cmds.append(["bazel", "analyze-profile", "profile.json.gz"])
 
     return cmds
@@ -278,6 +288,39 @@ _XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD = (
         configs=("warnings", "rbe_linux_cuda_nvcc"),
         compute_capability=75,
     )
+)
+
+_XLA_LINUX_X86_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_X86_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "nonccl", "rbe_linux_cpu"),
+    target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    build_tag_filters=cpu_x86_tag_filter,
+    test_tag_filters=cpu_x86_tag_filter,
+    options=_DEFAULT_BAZEL_OPTIONS,
+    subcommand="build",
+)
+
+_XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "nonccl", "rbe_linux_cpu"),
+    target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    build_tag_filters=cpu_x86_tag_filter,
+    test_tag_filters=cpu_x86_tag_filter,
+    options=_DEFAULT_BAZEL_OPTIONS,
+    subcommand="build",
+)
+
+_XLA_LINUX_ARM64_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_ARM64_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
+    target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": False},
+    build_tag_filters=cpu_arm_tag_filter,
+    test_tag_filters=cpu_arm_tag_filter,
+    subcommand="build",
 )
 
 macos_tag_filter = (
