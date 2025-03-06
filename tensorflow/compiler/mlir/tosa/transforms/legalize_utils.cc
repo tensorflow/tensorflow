@@ -1236,5 +1236,76 @@ Value reshapeScalarTo1D(PatternRewriter& rewriter, Location loc, Value value) {
   return rank1_value;
 }
 
+LogicalResult broadcastLowRankTensor(PatternRewriter& rewriter, Operation* op,
+                                     Value& input1, Value& input2) {
+  auto input1_ty = llvm::dyn_cast<RankedTensorType>(input1.getType());
+  auto input2_ty = llvm::dyn_cast<RankedTensorType>(input2.getType());
+
+  if (!input1_ty || !input2_ty) {
+    return rewriter.notifyMatchFailure(op,
+                                       "input tensors should be all ranked");
+  }
+
+  int64_t input1_rank = input1_ty.getRank();
+  int64_t input2_rank = input2_ty.getRank();
+
+  if (input1_rank == input2_rank) return success();
+
+  Value high_rank_tensor, low_rank_tensor;
+  int64_t high_rank, low_rank;
+  if (input1_rank > input2_rank) {
+    high_rank_tensor = input1;
+    low_rank_tensor = input2;
+    high_rank = input1_rank;
+    low_rank = input2_rank;
+  } else {
+    high_rank_tensor = input2;
+    low_rank_tensor = input1;
+    high_rank = input2_rank;
+    low_rank = input1_rank;
+  }
+
+  ArrayRef<int64_t> high_rank_shape =
+      llvm::cast<RankedTensorType>(high_rank_tensor.getType()).getShape();
+  ArrayRef<int64_t> low_rank_shape =
+      llvm::cast<RankedTensorType>(low_rank_tensor.getType()).getShape();
+
+  // broadcasting if the first dimension of the low-rank tensor is '1'
+  // example hight_rank: [1,a,b,c]; low_rank: [1,d,e]; low_rank should broadcast
+  // to [1, a, d, e]
+  if (low_rank_shape[0] == 1) {
+    low_rank -= 1;
+  }
+  int64_t broadcast_rank = high_rank - low_rank;
+  SmallVector<int64_t> broadcast_shape(high_rank, 1);
+
+  for (int i = 0; i < broadcast_rank; i++) {
+    broadcast_shape[i] = high_rank_shape[i];
+  }
+
+  auto broadcast_shape_value =
+      getTosaConstShape(rewriter, op->getLoc(),
+                        tensorflow::ConvertMlirShapeToTF(broadcast_shape));
+
+  std::optional<Value> result = convertBroadcastToOp(
+      rewriter, op, low_rank_tensor, broadcast_shape_value);
+  if (!result) {
+    return rewriter.notifyMatchFailure(op,
+                                       "failed to broadcast low rank tensor "
+                                       "from convertBroadcastToOp");
+  }
+
+  low_rank_tensor = result.value();
+
+  if (input1_rank < input2_rank) {
+    input1 = low_rank_tensor;
+    input2 = high_rank_tensor;
+  } else {
+    input1 = high_rank_tensor;
+    input2 = low_rank_tensor;
+  }
+  return success();
+}
+
 }  // namespace tosa
 }  // namespace mlir
