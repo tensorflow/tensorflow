@@ -82,3 +82,30 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "gpu_event",
+    srcs = ["gpu_event.cc"],
+    hdrs = ["gpu_event.h"],
+    deps = [
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_event_test",
+    srcs = ["gpu_event_test.cc"],
+    deps = [
+        ":gpu_event",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
