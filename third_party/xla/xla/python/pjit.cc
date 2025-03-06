@@ -152,6 +152,8 @@ class PjitFunctionCache {
     // otherwise part of CallSignature.
     nb::object global_cache_key;
 
+    size_t cached_hash;
+
     bool operator==(const Key& other) const {
       bool global_cache_eq;
       try {
@@ -164,6 +166,10 @@ class PjitFunctionCache {
       }
       return function.ptr() == other.function.ptr() && global_cache_eq;
     }
+
+    struct Hash {
+      size_t operator()(const Key& key) const { return key.cached_hash; }
+    };
   };
 
   template <typename H>
@@ -198,7 +204,7 @@ class PjitFunctionCache {
   // self object lock in freethreading mode.
   Cache::LRUList lru_list_;
   // We use std::unordered_map because ABSL containers are not exception safe:
-  std::unordered_map<Key, std::unique_ptr<Value>, absl::Hash<Key>> functions_;
+  std::unordered_map<Key, std::unique_ptr<Value>, Key::Hash> functions_;
   // mu_ prevents concurrent insertions into functions_ if the gil or critical
   // section lock is released during insertion.
   absl::Mutex mu_;
@@ -231,6 +237,7 @@ std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::DefaultCache() {
   Key key;
   key.function = function;
   key.global_cache_key = global_cache_key;
+  key.cached_hash = absl::HashOf(key);
   auto insert = self->functions_.emplace(key, nullptr);
   if (!insert.second) {
     return insert.first->second->cache;
