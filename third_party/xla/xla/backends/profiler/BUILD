@@ -18,7 +18,7 @@ package_group(
 
 tsl_gpu_library(
     name = "profiler_backends",
-    visibility = internal_visibility(["//xla:internal"]),
+    visibility = ["//visibility:public"],
     deps = [
         "//xla/backends/profiler/cpu:host_tracer",
         "//xla/backends/profiler/cpu:metadata_collector",
