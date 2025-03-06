@@ -1,0 +1,14 @@
+// RUN: hlo-opt %s --platform=gpu --stage=hlo --passes=schedule-aware-collective-cse --xla_gpu_target_config_filename=%S/../gpu_specs/%{GPU}.txtpb --xla_gpu_experimental_collective_cse_distance_threshold=100 | FileCheck %s
+
+HloModule m
+
+// CHECK-COUNT-1: all-gather(
+
+ENTRY e {
+  param0 = s32[4] parameter(0)
+  all-gather.1 = s32[32] all-gather(param0), dimensions={0}, replica_groups=[1,8]<=[8], channel_id=1
+  all-gather.2 = s32[32] all-gather(param0), dimensions={0}, replica_groups=[1,8]<=[8], channel_id=2
+  all-gather.3 = s32[32] all-gather(param0), dimensions={0}, replica_groups=[1,8]<=[8], channel_id=3
+  add = s32[32] add(all-gather.1, all-gather.2)
+  ROOT add.1 = s32[32] add(add, all-gather.3)
+}

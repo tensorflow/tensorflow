@@ -247,6 +247,7 @@ limitations under the License.
 #include "xla/service/select_and_scatter_expander.h"
 #include "xla/service/sharding_remover.h"
 #include "xla/service/slow_operation_alarm.h"
+#include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/service/while_loop_all_reduce_code_motion.h"
@@ -981,6 +982,14 @@ absl::Status RunCollectiveOptimizationPasses(
       layout_insensitive_algsimp_opts, gpu_version);
 
   collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
+
+  if (debug_options.xla_gpu_experimental_collective_cse_distance_threshold() >
+      0) {
+    collectives_pipeline.AddPass<ScheduleAwareCollectiveOpsCSE>(
+        /*distance_threshold=*/debug_options
+            .xla_gpu_experimental_collective_cse_distance_threshold(),
+        /*for_replicas=*/false);
+  }
 
   // promote 16 bit integer all-reduce and reduce-scatter to 32-bit.
   const std::pair<PrimitiveType, PrimitiveType> ar_promoted_types[] = {

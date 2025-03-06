@@ -203,6 +203,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_pipeline_parallelism_opt_level(
       DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE);
 
+  opts.set_xla_gpu_experimental_collective_cse_distance_threshold(0);
+
   opts.set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(false);
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
@@ -2265,6 +2267,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_allow_get_default_platform),
       debug_options->xla_allow_get_default_platform(),
       "If false, GetDefaultPlatform will cause an error if called."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_collective_cse_distance_threshold",
+      int64_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_collective_cse_distance_threshold),
+      debug_options->xla_gpu_experimental_collective_cse_distance_threshold(),
+      "Set distance threshold for Collective CSE."));
 }  // NOLINT(readability/fn_size)1
 
 // Allocates flag_values and flag_objects; this function must not be called more
