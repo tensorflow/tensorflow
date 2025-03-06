@@ -537,7 +537,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithSpecifiedNumber) {
 // Enabling unified memory on pre-Pascal GPUs results in an initialization
 // error.
 TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
-  if (GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
+  if (GetComputeCapability().IsAtLeast(se::CudaComputeCapability::kPascal)) {
     return;
   }
 
@@ -559,7 +559,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   static constexpr tsl::PlatformDeviceId kPlatformDeviceId(0);
 
   // Exit early if running on pre-Pascal GPUs.
-  if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
+  if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::kPascal)) {
     LOG(INFO)
         << "Unified memory allocation is not supported with pre-Pascal GPUs.";
     return;

@@ -851,13 +851,13 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
     bool is_supported_f16_atomic =
         element_type.isF16() &&
-        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA);
+        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::kVolta);
     bool is_supported_bf16_atomic =
         element_type.isBF16() &&
-        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
+        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::kHopper);
     bool is_supported_f64_atomic =
         element_type.isF64() &&
-        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::PASCAL_);
+        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::kPascal);
     if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
       return emitNvidiaVectorizedAtomicFAdd(
           loc, modifier_arg, addr, vector_type, cuda_compute_capability, b);
@@ -882,7 +882,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           (vector_type.getNumElements() == 2 ||
            vector_type.getNumElements() == 4) &&
           cuda_compute_capability.IsAtLeast(
-              se::CudaComputeCapability::HOPPER))) {
+              se::CudaComputeCapability::kHopper))) {
       return failure();
     }
 

@@ -107,7 +107,7 @@ bool IsAmpere(stream_executor::GpuComputeCapability gpu_compute_capability) {
   return std::holds_alternative<se::CudaComputeCapability>(
              gpu_compute_capability) &&
          std::get<se::CudaComputeCapability>(gpu_compute_capability).major ==
-             stream_executor::CudaComputeCapability::AMPERE;
+             stream_executor::CudaComputeCapability::kAmpere;
 }
 
 // It's clear that those libraries could support more, but we only list the ones

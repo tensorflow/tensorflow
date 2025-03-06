@@ -560,7 +560,7 @@ ENTRY main {
   EXPECT_THAT(
       SoftmaxRewriterTriton(
           TestGpuDeviceInfo::RTXA6000DeviceInfo(
-              se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0}),
+              se::CudaComputeCapability{se::CudaComputeCapability::kVolta, 0}),
           HloCostAnalysis::DefaultShapeSize)
           .Run(module.get()),
       tsl::testing::StatusIs(

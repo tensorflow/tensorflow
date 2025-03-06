@@ -138,7 +138,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   // https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html#tensor-layout.
   if (auto* cc = std::get_if<se::CudaComputeCapability>(&gpu_version)) {
     // TODO(b/383560056): investigate chips below Hopper as well.
-    if (cc->IsAtLeast(se::CudaComputeCapability::HOPPER)) {
+    if (cc->IsAtLeast(se::CudaComputeCapability::kHopper)) {
       // With that said, cuDNN's documentation states that NHWC is not supported
       // for float64, so we use NCHW instead.
       if (input_ty == F64) {
@@ -172,7 +172,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
         std::get_if<se::CudaComputeCapability>(&gpu_version);
     bool is_volta =
         cuda_compute_capability &&
-        cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::VOLTA);
+        cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::kVolta);
     if (!isFloat16 || !is_volta ||
         instr->shape().tuple_shapes(0).dimensions_size() != 4) {
       return kAllNCHW;

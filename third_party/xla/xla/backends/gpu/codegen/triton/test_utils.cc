@@ -61,7 +61,7 @@ namespace xla::gpu {
 bool SupportsBF16(const stream_executor::GpuComputeCapability& cc) {
   if (std::holds_alternative<stream_executor::CudaComputeCapability>(cc)) {
     return std::get<stream_executor::CudaComputeCapability>(cc).IsAtLeast(
-        se::CudaComputeCapability::AMPERE);
+        se::CudaComputeCapability::kAmpere);
   } else if (std::holds_alternative<stream_executor::RocmComputeCapability>(
                  cc)) {
     return std::get<stream_executor::RocmComputeCapability>(cc)

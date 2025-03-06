@@ -1407,7 +1407,7 @@ TEST_F(GpuCompilerPassTest,
                 .cuda_compute_capability();
 
   bool expect_custom_kernel_fusion_rewriter_has_run =
-      cc.major == se::CudaComputeCapability::VOLTA;
+      cc.major == se::CudaComputeCapability::kVolta;
 
   constexpr absl::string_view constant_module = R"(
 HloModule noop
