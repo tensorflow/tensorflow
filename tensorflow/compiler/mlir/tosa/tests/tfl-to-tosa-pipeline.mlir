@@ -3360,6 +3360,36 @@ func.func @test_squared_difference_f32(%arg0: tensor<1x197x768xf32>, %arg1: tens
 
 // -----
 
+// CHECK-LABEL: test_squared_difference_with_unequal_ranks_qi8
+// CHECK: %[[C:.*]] = "tosa.const"() <{value = dense<0> : tensor<1xi8>}> : () -> tensor<1xi8>
+// CHECK: %[[CS:.*]] = tosa.const_shape  {value = dense<[1, 1, 1, 44]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK: %[[RH:.*]] = tosa.reshape %arg1, %[[CS]] : (tensor<44x!quant.uniform<i8:f32, 0.0050808675587177277:-16>>, !tosa.shape<4>) -> tensor<1x1x1x44x!quant.uniform<i8:f32, 0.0050808675587177277:-16>>
+// CHECK: %[[RS1:.*]] = tosa.rescale %arg0
+// CHECK: %[[RS2:.*]] = tosa.rescale %[[RH]]
+// CHECK: %[[SUB:.*]] = tosa.sub %[[RS1]], %[[RS2]]
+// CHECK: %[[MUL:.*]] = tosa.mul %[[SUB]], %[[SUB]], %[[C]]
+// CHECK: %[[RS3:.*]] = tosa.rescale %[[MUL]]
+func.func @test_squared_difference_with_unequal_ranks_qi8(%arg0: tensor<1x304x1x44x!quant.uniform<i8:f32, 0.6395336389541626:-2>>, %arg1: tensor<44x!quant.uniform<i8:f32, 0.0050808675587177277:-16>>) -> tensor<1x304x1x44x!quant.uniform<i8:f32, 26.360841751098633:-128>> {
+  %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x304x1x44x!quant.uniform<i8:f32, 0.6395336389541626:-2>>, tensor<44x!quant.uniform<i8:f32, 0.0050808675587177277:-16>>) -> tensor<1x304x1x44x!quant.uniform<i8:f32, 26.360841751098633:-128>>
+  func.return %0 : tensor<1x304x1x44x!quant.uniform<i8:f32, 26.360841751098633:-128>>
+}
+
+// -----
+
+// CHECK-LABEL: test_squared_difference_with_unequal_ranks_f32
+// CHECK: %[[C:.*]] = "tosa.const"() <{value = dense<0> : tensor<1xi8>}>
+// CHECK: %[[CS:.*]] = tosa.const_shape  {value = dense<[1, 1, 1, 44]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK: %[[RH:.*]] = tosa.reshape %arg1, %[[CS]] : (tensor<44xf32>, !tosa.shape<4>) -> tensor<1x1x1x44xf32>
+// CHECK: %[[SUB:.*]] = tosa.sub %arg0, %[[RH]]
+// CHECK: %[[MUL:.*]] = tosa.mul %[[SUB]], %[[SUB]], %[[C]]
+// CHECK: return %[[MUL]] : tensor<1x304x1x44xf32>
+func.func @test_squared_difference_with_unequal_ranks_f32(%arg0: tensor<1x304x1x44xf32>, %arg1: tensor<44xf32>) -> tensor<1x304x1x44xf32> {
+  %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x304x1x44xf32>, tensor<44xf32>) -> tensor<1x304x1x44xf32>
+  func.return %0 : tensor<1x304x1x44xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_broadcast_to_f32
 // CHECK-DAG: %[[VAL_10:.*]] = tosa.const_shape {value = dense<[1, 1, 13, 1]> : tensor<4xindex>} : () -> !tosa.shape<4>
 // CHECK-DAG: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<-0.000000e+00> : tensor<3x3x13x7xf32>}
