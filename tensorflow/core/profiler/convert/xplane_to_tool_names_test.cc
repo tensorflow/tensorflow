@@ -123,7 +123,6 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
       "framework_op_stats",
       "memory_profile",
       "pod_viewer",
-      "tf_data_bottleneck_analysis",
       "op_profile",
       "hlo_stats",
       "roofline_model",
