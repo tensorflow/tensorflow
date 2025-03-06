@@ -355,9 +355,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       int64_t min_parallelism =
           std::min(static_cast<double>(GetAutotuneMinParallelism(ctx)),
                    max_parallelism_value);
-
-      LOG(INFO) << "Parallel map: " << prefix() << " min parallelism is set to "
-                << min_parallelism;
       if (num_parallel_calls_ &&
           dataset()->num_parallel_calls_ == model::kAutotune) {
         parameter = model::MakeParameter(
