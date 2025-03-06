@@ -130,9 +130,9 @@ Status ReadSavedModel(absl::string_view export_dir,
                       "permissions for accessing it."));
 }
 
-Status ReadMetaGraphDefFromSavedModel(absl::string_view export_dir,
-                                      const std::unordered_set<string>& tags,
-                                      MetaGraphDef* const meta_graph_def) {
+absl::Status ReadMetaGraphDefFromSavedModel(
+    absl::string_view export_dir, const std::unordered_set<string>& tags,
+    MetaGraphDef* const meta_graph_def) {
   SavedModel saved_model_proto;
   TF_RETURN_IF_ERROR(ReadSavedModel(export_dir, &saved_model_proto));
   TF_ASSIGN_OR_RETURN(MetaGraphDef * m,
