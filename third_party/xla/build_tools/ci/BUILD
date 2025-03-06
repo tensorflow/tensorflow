@@ -36,7 +36,7 @@ genrule(
 
 diff_test(
     name = "build_command_golden_test",
-    failure_message = """Regenerate with `KOKORO_JOB_NAME=GOLDENS PYTHONDONTWRITEBYTECODE=1 python3 build.py > golden_commands.txt`.""",
+    failure_message = """Regenerate with `PYTHONDONTWRITEBYTECODE=1 python3 build.py --dump_commands > golden_commands.txt`.""",
     file1 = "golden_commands.txt",
     file2 = ":generated_build_commands",
     tags = ["not_run:arm"],

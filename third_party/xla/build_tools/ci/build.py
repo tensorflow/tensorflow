@@ -13,11 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""XLA build script for use in CI.
+r"""XLA build script for use in CI.
 
 This build script aims to be completely agnostic to the specifics of the VM, the
 exceptions are uses of `KOKORO_ARTIFACTS_DIR` and `GITHUB_WORKSPACE` to know
 where JAX or TensorFlow lives depending on which build is being executed.
+
+To update the goldens associated with this file, run:
+  ```PYTHONDONTWRITEBYTECODE=1 python3 build.py \
+      --dump_commands > golden_commands.txt```
 """
 import argparse
 import dataclasses
