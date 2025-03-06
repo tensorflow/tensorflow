@@ -77,7 +77,8 @@ absl::Status CreateTritonIrAndFileCheck(HloTestBase* test,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
                       test->ParseAndReturnVerifiedModule(hlo_text));
   auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
-  TF_RET_CHECK(comp != nullptr);
+  TF_RET_CHECK(comp != nullptr) << absl::StrCat(
+      "Computation '", triton_fusion_name, "' is not found in the module");
   auto fusion_backend_config = comp->FusionInstruction()
                                    ->backend_config<GpuBackendConfig>()
                                    ->fusion_backend_config();
