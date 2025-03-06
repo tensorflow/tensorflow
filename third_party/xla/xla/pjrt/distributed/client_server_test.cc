@@ -59,8 +59,7 @@ using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 using tsl::testing::StatusIs;
 
-constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
-constexpr int kMaxMissingHeartbeats = 5;
+constexpr absl::Duration kHeartbeatTimeout = absl::Milliseconds(2500);
 constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
 
 class ClientServerTest : public testing::Test {
@@ -70,8 +69,7 @@ class ClientServerTest : public testing::Test {
       std::shared_ptr<::grpc::Channel> channel = nullptr) {
     client_options.node_id = node_id;
     // Set a small heartbeat interval for quicker tests.
-    client_options.heartbeat_interval = kHeartbeatInterval;
-    client_options.max_missing_heartbeats = kMaxMissingHeartbeats;
+    client_options.heartbeat_timeout = kHeartbeatTimeout;
     if (channel == nullptr) {
       channel = coord_service_->server()->InProcessChannel(
           ::grpc::ChannelArguments());
@@ -86,8 +84,7 @@ class ClientServerTest : public testing::Test {
 
     service_options.num_nodes = num_nodes;
     // Set a small heartbeat interval for quicker tests.
-    service_options.heartbeat_interval = kHeartbeatInterval;
-    service_options.max_missing_heartbeats = kMaxMissingHeartbeats;
+    service_options.heartbeat_timeout = kHeartbeatTimeout;
 
     // Set up and register service on the gRPC server.
     coord_service_ = DistributedRuntimeService::Get(

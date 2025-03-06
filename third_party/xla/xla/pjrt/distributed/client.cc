@@ -86,8 +86,8 @@ DistributedRuntimeCoordinationServiceClient::
   config.set_service_leader("/job:jax_worker/task:0");
   config.set_cluster_register_timeout_in_ms(
       absl::ToInt64Milliseconds(options.init_timeout));
-  config.set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
-      options.heartbeat_interval * options.max_missing_heartbeats));
+  config.set_heartbeat_timeout_in_ms(
+      absl::ToInt64Milliseconds(options.heartbeat_timeout));
   config.set_cluster_register_with_barrier(true);
   config.set_shutdown_barrier_timeout_in_ms(
       absl::ToInt64Milliseconds(options.shutdown_timeout));
