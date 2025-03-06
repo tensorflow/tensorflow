@@ -58,6 +58,12 @@ struct PadContext {
       case kTfLiteInt32:
         SetResizingCategory<int32_t>(context);
         break;
+      case kTfLiteInt8:
+        SetResizingCategory<int8_t>(context);
+        break;
+      case kTfLiteInt16:
+        SetResizingCategory<int16_t>(context);
+        break;
       default:
         TF_LITE_KERNEL_LOG(context,
                            "Padding type %s is currently not supported by Pad.",
@@ -117,8 +123,12 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 PadContext* op_context) {
   if (op_context->paddings->type == kTfLiteInt64) {
     TF_LITE_ENSURE(context, (std::is_same_v<PaddingIntegerType, int64_t>));
-  } else {
+  } else if (op_context->paddings->type == kTfLiteInt32) {
     TF_LITE_ENSURE(context, (std::is_same_v<PaddingIntegerType, int32_t>));
+  } else if (op_context->paddings->type == kTfLiteInt8) {
+    TF_LITE_ENSURE(context, (std::is_same_v<PaddingIntegerType, int8_t>));
+  } else {
+    TF_LITE_ENSURE(context, (std::is_same_v<PaddingIntegerType, int16_t>));
   }
   // Ensures the paddings array is dims x 2.
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(op_context->paddings, 0),
@@ -161,6 +171,12 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     case kTfLiteInt32: {
       return ResizeOutputTensor<int32_t>(context, op_context);
     }
+    case kTfLiteInt8: {
+      return ResizeOutputTensor<int8_t>(context, op_context);
+    }
+    case kTfLiteInt16: {
+      return ResizeOutputTensor<int16_t>(context, op_context);
+    }
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Padding type %s is currently not supported by Pad.",
@@ -176,10 +192,13 @@ tflite::PadParams GetPadParams(TfLiteContext* context,
                                const PadContext& op_context) {
   tflite::PadParams op_params;
   if (!(op_context.paddings->type == kTfLiteInt64 &&
-        std::is_same_v<PaddingIntegerType,
-                       int64_t>)&&!(op_context.paddings->type == kTfLiteInt32 &&
-                                    std::is_same_v<PaddingIntegerType,
-                                                   int32_t>)) {
+        std::is_same_v<PaddingIntegerType, int64_t>) &&
+      !(op_context.paddings->type == kTfLiteInt32 &&
+        std::is_same_v<PaddingIntegerType, int32_t>) &&
+      !(op_context.paddings->type == kTfLiteInt8 &&
+        std::is_same_v<PaddingIntegerType, int8_t>) &&
+      !(op_context.paddings->type == kTfLiteInt16 &&
+        std::is_same_v<PaddingIntegerType, int16_t>)) {
     TF_LITE_KERNEL_LOG(context, "Padding type %s doesn't match typename.",
                        TfLiteTypeGetName(op_context.paddings->type));
     return op_params;
@@ -204,6 +223,12 @@ tflite::PadParams GetPadParams(TfLiteContext* context,
     }
     case kTfLiteInt32: {
       return GetPadParams<int32_t>(context, op_context);
+    }
+    case kTfLiteInt8: {
+      return GetPadParams<int8_t>(context, op_context);
+    }
+    case kTfLiteInt16: {
+      return GetPadParams<int16_t>(context, op_context);
     }
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -332,14 +357,76 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         }
       }
     } break;
+    case kTfLiteFloat16: {
+      Eigen::half pad_value =
+          op_context.constant_values == nullptr
+              ? static_cast<Eigen::half>(0.f)
+              : *GetTensorData<Eigen::half>(op_context.constant_values);
+      if (kernel_type == kReference) {
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(reference_ops, PadImageStyle, Eigen::half, pad_value);
+        } else {
+          TF_LITE_PAD(reference_ops, Pad, Eigen::half, pad_value);
+        }
+      } else if (kernel_type == kGenericOptimized) {
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(optimized_ops, PadImageStyle, Eigen::half, pad_value);
+        } else {
+          TF_LITE_PAD(optimized_ops, Pad, Eigen::half, pad_value);
+        }
+      }
+    } break;
+    case kTfLiteBFloat16: {
+      Eigen::bfloat16 pad_value =
+          op_context.constant_values == nullptr
+              ? static_cast<Eigen::bfloat16>(0.f)
+              : *GetTensorData<Eigen::bfloat16>(op_context.constant_values);
+      if (kernel_type == kReference) {
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(reference_ops, PadImageStyle, Eigen::bfloat16, pad_value);
+        } else {
+          TF_LITE_PAD(reference_ops, Pad, Eigen::bfloat16, pad_value);
+        }
+      } else if (kernel_type == kGenericOptimized) {
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(optimized_ops, PadImageStyle, Eigen::bfloat16, pad_value);
+        } else {
+          TF_LITE_PAD(optimized_ops, Pad, Eigen::bfloat16, pad_value);
+        }
+      }
+    } break;
     case kTfLiteUInt8: {
       EvalInt<uint8_t>(context, op_context, op_params);
     } break;
     case kTfLiteInt8: {
-      EvalInt<int8_t>(context, op_context, op_params);
+      if (op_context.input->quantization.type != kTfLiteNoQuantization) {
+        EvalInt<int8_t>(context, op_context, op_params);
+      } else {
+        int8_t pad_value =
+            op_context.constant_values == nullptr
+                ? 0
+                : *GetTensorData<int8_t>(op_context.constant_values);
+        if (kernel_type == kReference) {
+          TF_LITE_PAD(reference_ops, Pad, int8_t, pad_value);
+        } else if (kernel_type == kGenericOptimized) {
+          TF_LITE_PAD(optimized_ops, Pad, int8_t, pad_value);
+        }
+      }
     } break;
     case kTfLiteInt16: {
-      EvalInt<int16_t>(context, op_context, op_params);
+      if (op_context.input->quantization.type != kTfLiteNoQuantization) {
+        EvalInt<int16_t>(context, op_context, op_params);
+      } else {
+        int16_t pad_value =
+            op_context.constant_values == nullptr
+                ? 0
+                : *GetTensorData<int16_t>(op_context.constant_values);
+        if (kernel_type == kReference) {
+          TF_LITE_PAD(reference_ops, Pad, int16_t, pad_value);
+        } else if (kernel_type == kGenericOptimized) {
+          TF_LITE_PAD(optimized_ops, Pad, int16_t, pad_value);
+        }
+      }
     } break;
     case kTfLiteInt32: {
       int32_t pad_value =

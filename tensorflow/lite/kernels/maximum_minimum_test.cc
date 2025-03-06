@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "Eigen/Core"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/test_util.h"
@@ -244,5 +245,126 @@ TEST(MaximumOpTest, Int32WithBroadcastTest5D) {
       {TensorType_INT32, {1}}, {TensorType_INT32, {3, 1, 2, 1, 1}}, data1,
       data2, {1, 0, -1, -2, 2, 2});
 }
+
+TEST(MaximumOpTest, Float16Test) {
+  std::initializer_list<Eigen::half> data1 = {
+      Eigen::half(1.0),  Eigen::half(0.0),  Eigen::half(-1.0),
+      Eigen::half(11.0), Eigen::half(-2.0), Eigen::half(-1.44)};
+  std::initializer_list<Eigen::half> data2 = {
+      Eigen::half(-1.0), Eigen::half(0.0),  Eigen::half(1.0),
+      Eigen::half(12.0), Eigen::half(-3.0), Eigen::half(-1.43)};
+  TestModel<Eigen::half>(
+      BuiltinOperator_MAXIMUM, {TensorType_FLOAT16, {3, 1, 2}},
+      {TensorType_FLOAT16, {3, 1, 2}}, {TensorType_FLOAT16, {3, 1, 2}}, data1,
+      data2,
+      {Eigen::half(1.0), Eigen::half(0.0), Eigen::half(1.0), Eigen::half(12.0),
+       Eigen::half(-2.0), Eigen::half(-1.43)});
+  TestModel<Eigen::half>(
+      BuiltinOperator_MINIMUM, {TensorType_FLOAT16, {3, 1, 2}},
+      {TensorType_FLOAT16, {3, 1, 2}}, {TensorType_FLOAT16, {3, 1, 2}}, data1,
+      data2,
+      {Eigen::half(-1.0), Eigen::half(0.0), Eigen::half(-1.0),
+       Eigen::half(11.0), Eigen::half(-3.0), Eigen::half(-1.44)});
+}
+
+TEST(MaximumOpTest, BFloat16Test) {
+  std::initializer_list<Eigen::bfloat16> data1 = {
+      Eigen::bfloat16(1.0),  Eigen::bfloat16(0.0),  Eigen::bfloat16(-1.0),
+      Eigen::bfloat16(11.0), Eigen::bfloat16(-2.0), Eigen::bfloat16(-1.44)};
+  std::initializer_list<Eigen::bfloat16> data2 = {
+      Eigen::bfloat16(-1.0), Eigen::bfloat16(0.0),  Eigen::bfloat16(1.0),
+      Eigen::bfloat16(12.0), Eigen::bfloat16(-3.0), Eigen::bfloat16(-1.43)};
+  TestModel<Eigen::bfloat16>(
+      BuiltinOperator_MAXIMUM, {TensorType_BFLOAT16, {3, 1, 2}},
+      {TensorType_BFLOAT16, {3, 1, 2}}, {TensorType_BFLOAT16, {3, 1, 2}}, data1,
+      data2,
+      {Eigen::bfloat16(1.0), Eigen::bfloat16(0.0), Eigen::bfloat16(1.0),
+       Eigen::bfloat16(12.0), Eigen::bfloat16(-2.0), Eigen::bfloat16(-1.43)});
+  TestModel<Eigen::bfloat16>(
+      BuiltinOperator_MINIMUM, {TensorType_BFLOAT16, {3, 1, 2}},
+      {TensorType_BFLOAT16, {3, 1, 2}}, {TensorType_BFLOAT16, {3, 1, 2}}, data1,
+      data2,
+      {Eigen::bfloat16(-1.0), Eigen::bfloat16(0.0), Eigen::bfloat16(-1.0),
+       Eigen::bfloat16(11.0), Eigen::bfloat16(-3.0), Eigen::bfloat16(-1.44)});
+}
+
+TEST(MaximumOpTest, BFloat16WithBroadcastTest5DScalarY) {
+  std::initializer_list<Eigen::bfloat16> data1 = {
+      Eigen::bfloat16(1.0),  Eigen::bfloat16(0.0), Eigen::bfloat16(-1.0),
+      Eigen::bfloat16(-2.0), Eigen::bfloat16(3.0), Eigen::bfloat16(11.0)};
+  std::initializer_list<Eigen::bfloat16> data2 = {Eigen::bfloat16(2.0)};
+  TestModel<Eigen::bfloat16>(
+      BuiltinOperator_MAXIMUM, {TensorType_BFLOAT16, {3, 1, 2, 1, 1}},
+      {TensorType_BFLOAT16, {1}}, {TensorType_BFLOAT16, {3, 1, 2, 1, 1}}, data1,
+      data2,
+      {Eigen::bfloat16(2.0), Eigen::bfloat16(2.0), Eigen::bfloat16(2.0),
+       Eigen::bfloat16(2.0), Eigen::bfloat16(3.0), Eigen::bfloat16(11.0)});
+  TestModel<Eigen::bfloat16>(
+      BuiltinOperator_MINIMUM, {TensorType_BFLOAT16, {3, 1, 2, 1, 1}},
+      {TensorType_BFLOAT16, {1}}, {TensorType_BFLOAT16, {3, 1, 2, 1, 1}}, data1,
+      data2,
+      {Eigen::bfloat16(1.0), Eigen::bfloat16(0.0), Eigen::bfloat16(-1.0),
+       Eigen::bfloat16(-2.0), Eigen::bfloat16(2.0), Eigen::bfloat16(2.0)});
+}
+
+TEST(MaximumOpTest, Float16WithBroadcastTest5DScalarY) {
+  std::initializer_list<Eigen::half> data1 = {
+      Eigen::half(1.0),  Eigen::half(0.0), Eigen::half(-1.0),
+      Eigen::half(-2.0), Eigen::half(3.0), Eigen::half(11.0)};
+  std::initializer_list<Eigen::half> data2 = {Eigen::half(2.0)};
+  TestModel<Eigen::half>(
+      BuiltinOperator_MAXIMUM, {TensorType_FLOAT16, {3, 1, 2, 1, 1}},
+      {TensorType_FLOAT16, {1}}, {TensorType_FLOAT16, {3, 1, 2, 1, 1}}, data1,
+      data2,
+      {Eigen::half(2.0), Eigen::half(2.0), Eigen::half(2.0), Eigen::half(2.0),
+       Eigen::half(3.0), Eigen::half(11.0)});
+  TestModel<Eigen::half>(
+      BuiltinOperator_MINIMUM, {TensorType_FLOAT16, {3, 1, 2, 1, 1}},
+      {TensorType_FLOAT16, {1}}, {TensorType_FLOAT16, {3, 1, 2, 1, 1}}, data1,
+      data2,
+      {Eigen::half(1.0), Eigen::half(0.0), Eigen::half(-1.0), Eigen::half(-2.0),
+       Eigen::half(2.0), Eigen::half(2.0)});
+}
+
+TEST(MaximumOpTest, Float16WithBroadcastTest5D) {
+  std::initializer_list<Eigen::half> data1 = {
+      Eigen::half(1.0),  Eigen::half(0.0),   Eigen::half(-1.0),
+      Eigen::half(-2.0), Eigen::half(-1.44), Eigen::half(11.0)};
+  std::initializer_list<Eigen::half> data2 = {Eigen::half(0.5),
+                                              Eigen::half(2.0)};
+  TestModel<Eigen::half>(
+      BuiltinOperator_MAXIMUM, {TensorType_FLOAT16, {3, 1, 1, 1, 2}},
+      {TensorType_FLOAT16, {2}}, {TensorType_FLOAT16, {3, 1, 1, 1, 2}}, data1,
+      data2,
+      {Eigen::half(1.0), Eigen::half(2.0), Eigen::half(0.5), Eigen::half(2.0),
+       Eigen::half(0.5), Eigen::half(11.0)});
+  TestModel<Eigen::half>(
+      BuiltinOperator_MINIMUM, {TensorType_FLOAT16, {3, 1, 1, 1, 2}},
+      {TensorType_FLOAT16, {2}}, {TensorType_FLOAT16, {3, 1, 1, 1, 2}}, data1,
+      data2,
+      {Eigen::half(0.5), Eigen::half(0.0), Eigen::half(-1.0), Eigen::half(-2.0),
+       Eigen::half(-1.44), Eigen::half(2.0)});
+}
+
+TEST(MaximumOpTest, BFloat16WithBroadcastTest5D) {
+  std::initializer_list<Eigen::bfloat16> data1 = {
+      Eigen::bfloat16(1.0),  Eigen::bfloat16(0.0),   Eigen::bfloat16(-1.0),
+      Eigen::bfloat16(-2.0), Eigen::bfloat16(-1.44), Eigen::bfloat16(11.0)};
+  std::initializer_list<Eigen::bfloat16> data2 = {Eigen::bfloat16(0.5),
+                                                  Eigen::bfloat16(2.0)};
+  TestModel<Eigen::bfloat16>(
+      BuiltinOperator_MAXIMUM, {TensorType_BFLOAT16, {3, 1, 1, 1, 2}},
+      {TensorType_BFLOAT16, {2}}, {TensorType_BFLOAT16, {3, 1, 1, 1, 2}}, data1,
+      data2,
+      {Eigen::bfloat16(1.0), Eigen::bfloat16(2.0), Eigen::bfloat16(0.5),
+       Eigen::bfloat16(2.0), Eigen::bfloat16(0.5), Eigen::bfloat16(11.0)});
+  TestModel<Eigen::bfloat16>(
+      BuiltinOperator_MINIMUM, {TensorType_BFLOAT16, {3, 1, 1, 1, 2}},
+      {TensorType_BFLOAT16, {2}}, {TensorType_BFLOAT16, {3, 1, 1, 1, 2}}, data1,
+      data2,
+      {Eigen::bfloat16(0.5), Eigen::bfloat16(0.0), Eigen::bfloat16(-1.0),
+       Eigen::bfloat16(-2.0), Eigen::bfloat16(-1.44), Eigen::bfloat16(2.0)});
+}
+
 }  // namespace
 }  // namespace tflite
