@@ -3,7 +3,16 @@
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/embedding_lookup_op_builder.h"
 
-#include <numeric>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
+#include "third_party/qairt/latest/include/QNN/QnnOpDef.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 namespace qnn {
 namespace {
@@ -28,14 +37,15 @@ std::vector<OpWrapper> BuildEmbeddingLookupOp(
         "The data type of embedding lookup table is int8, but output data type "
         "is int16. Int8 table will be cast to int16.");
     std::vector<std::int16_t> int16_data;
-    size_t data_len =
-        std::accumulate(table_tensor.GetDims().begin(),
-                        table_tensor.GetDims().end(), 1, std::multiplies<>());
-    // TODO: do not cast
-    auto* int8_data = reinterpret_cast<const std::int8_t*>(
-        table_tensor.GetStaticTensorData());
+    size_t data_len = table_tensor.GetTensorNumElements();
+    auto int8_data = table_tensor.GetStaticTensorData<std::int8_t>();
+    if (!int8_data.has_value()) {
+      QNN_LOG_ERROR("Embedding lookup get int8 table failed.");
+      return res;
+    }
+    int16_data.reserve(data_len);
     for (int i = 0; i < data_len; ++i) {
-      int16_data.emplace_back(static_cast<std::int16_t>(int8_data[i]));
+      int16_data.emplace_back(static_cast<std::int16_t>((*int8_data)[i]));
     }
 
     TensorWrapper& int16_table_tensor = tensor_pool.CreateStaticTensor(

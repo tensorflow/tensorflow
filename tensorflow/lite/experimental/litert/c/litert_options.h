@@ -217,6 +217,120 @@ LiteRtStatus LiteRtGetSHLOCompositeOpName(LiteRtOp op, const char** name);
 LiteRtStatus LiteRtGetSHLOCompositeOpDecompositionSubgraphIndex(
     LiteRtOp op, int32_t* decomposition_subgraph_index);
 
+//==============================================================================
+//
+// Get option APIs for LiteRt Conv2d op.
+//  Options:
+// - padding : uint32_t
+// - stride_w : int32_t
+// - stride_h : int32_t
+// - fused_activation_function : uint32_t
+// - dilation_w_factor : int32_t
+// - dilation_h_factor : int32_t
+//
+//==============================================================================
+LiteRtStatus LiteRtGetConv2dPaddingOption(LiteRtOp op, uint32_t* padding);
+LiteRtStatus LiteRtGetConv2dStrideWOption(LiteRtOp op, int32_t* stride_w);
+LiteRtStatus LiteRtGetConv2dStrideHOption(LiteRtOp op, int32_t* stride_h);
+LiteRtStatus LiteRtGetConv2dFusedActivationOption(
+    LiteRtOp op, uint32_t* fused_activation_function);
+LiteRtStatus LiteRtGetConv2dDilationWOption(LiteRtOp op,
+                                            int32_t* dilation_w_factor);
+LiteRtStatus LiteRtGetConv2dDilationHOption(LiteRtOp op,
+                                            int32_t* dilation_h_factor);
+
+//==============================================================================
+//
+// Get option APIs for LiteRt DepthwiseConv2d op.
+//  Options:
+// - padding : uint32_t
+// - stride_w : int32_t
+// - stride_h : int32_t
+// - fused_activation_function : uint32_t
+// - dilation_w_factor : int32_t
+// - dilation_h_factor : int32_t
+//
+//==============================================================================
+LiteRtStatus LiteRtGetDepthwiseConv2dPaddingOption(LiteRtOp op,
+                                                   uint32_t* padding);
+LiteRtStatus LiteRtGetDepthwiseConv2dStrideWOption(LiteRtOp op,
+                                                   int32_t* stride_w);
+LiteRtStatus LiteRtGetDepthwiseConv2dStrideHOption(LiteRtOp op,
+                                                   int32_t* stride_h);
+LiteRtStatus LiteRtGetDepthwiseConv2dFusedActivationOption(
+    LiteRtOp op, uint32_t* fused_activation_function);
+LiteRtStatus LiteRtGetDepthwiseConv2dDilationWOption(
+    LiteRtOp op, int32_t* dilation_w_factor);
+LiteRtStatus LiteRtGetDepthwiseConv2dDilationHOptions(
+    LiteRtOp op, int32_t* dilation_h_factor);
+
+//==============================================================================
+//
+// Get option APIs for LiteRt AveragePool2d op.
+//  Options:
+// - padding : uint32_t
+// - stride_w : int32_t
+// - stride_h : int32_t
+// - filter_width : int32_t
+// - filter_height : int32_t
+// - fused_activation_function : uint32_t
+//
+//==============================================================================
+LiteRtStatus LiteRtGetAveragePool2dPaddingOption(LiteRtOp op,
+                                                 uint32_t* padding);
+LiteRtStatus LiteRtGetAveragePool2dStrideWOption(LiteRtOp op,
+                                                 int32_t* stride_w);
+LiteRtStatus LiteRtGetAveragePool2dStrideHOption(LiteRtOp op,
+                                                 int32_t* stride_h);
+LiteRtStatus LiteRtGetAveragePool2dFilterWidthOption(LiteRtOp op,
+                                                     int32_t* filter_width);
+LiteRtStatus LiteRtGetAveragePool2dFilterHeightOption(LiteRtOp op,
+                                                      int32_t* filter_height);
+LiteRtStatus LiteRtGetAveragePool2dFusedActivationOption(
+    LiteRtOp op, uint32_t* fused_activation_function);
+
+//==============================================================================
+//
+// Get option APIs for LiteRt ResizeBilinear op.
+//  Options:
+// - align_corners : bool
+// - half_pixel_centers : bool
+//
+//==============================================================================
+LiteRtStatus LiteRtGetResizeBilinearAlignCornersOption(LiteRtOp op,
+                                                       bool* align_corners);
+LiteRtStatus LiteRtGetResizeBilinearHalfPixelCenterOption(
+    LiteRtOp op, bool* half_pixel_centers);
+
+//==============================================================================
+//
+// Get option APIs for LiteRt LeakyRelu op.
+//  Options:
+// - alpha : float
+//
+//==============================================================================
+LiteRtStatus LiteRtGetLeakyReluAlphaOption(LiteRtOp op, float* alpha);
+
+//==============================================================================
+//
+// Get option APIs for LiteRt DepthToSpace op.
+//  Options:
+// - block_size : int32_t
+//
+//==============================================================================
+LiteRtStatus LiteRtGetDepthToSpaceBlockSizeOption(LiteRtOp op,
+                                                  int32_t* block_size);
+
+//==============================================================================
+//
+// Get option APIs for LiteRt SpaceToDepth op.
+//  Options:
+// - block_size : int32_t
+//
+//==============================================================================
+LiteRtStatus LiteRtGetSpaceToDepthBlockSizeOption(LiteRtOp op,
+                                                  int32_t* block_size);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
