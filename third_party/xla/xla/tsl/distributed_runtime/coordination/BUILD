@@ -1,4 +1,4 @@
-load("//xla/tsl:tsl.bzl", "if_oss", "internal_visibility", "tsl_gpu_library")
+load("//xla/tsl:tsl.bzl", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -67,7 +67,7 @@ cc_library(
 # Keeping the implementation as a separate build target.
 # This is an alwayslink library for statically registering "standalone" implementation.
 # Other implementations of the service will be provided in the future.
-tsl_gpu_library(
+cc_library(
     name = "coordination_service_impl",
     srcs = ["coordination_service.cc"],
     deps = [
@@ -137,7 +137,7 @@ tsl_cc_test(
     ],
 )
 
-tsl_gpu_library(
+cc_library(
     name = "coordination_service_agent",
     srcs = ["coordination_service_agent.cc"],
     hdrs = ["coordination_service_agent.h"],
