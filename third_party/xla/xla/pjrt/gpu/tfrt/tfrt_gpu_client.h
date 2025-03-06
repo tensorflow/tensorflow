@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_PJRT_GPU_TFRT_TFRT_GPU_CLIENT_H_
 #define XLA_PJRT_GPU_TFRT_TFRT_GPU_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -32,17 +34,24 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/client/local_client.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/utils.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -209,12 +218,39 @@ class TfrtGpuClient final : public PjRtClient {
     return platform_version_;
   }
 
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options) override;
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+      mlir::ModuleOp mlir_module, CompileOptions options) override;
+
+  // Helper function for creating PjRtStreamExecutorExecutables. Modifies
+  // `options` in-place.
+  struct ExecutableExtras {
+    std::shared_ptr<DeviceAssignment> device_assignment;
+    std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
+        addressable_device_logical_ids;
+    std::vector<PjRtDevice*> addressable_devices;
+  };
+  absl::StatusOr<ExecutableExtras> GetExecutableExtras(CompileOptions* options);
+
  private:
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
+      const XlaComputation& computation,
+      const std::vector<const Shape*>& argument_layout_pointers,
+      LayoutCanonicalizationCallback layout_canonicalization_callback,
+      CompileOptions options);
+
   int process_index_;
 
   xla::LocalClient* xla_client_;
 
   const std::string platform_version_;
+
+  // Device memory allocator. If owned, the allocator must outlive the devices,
+  // because it is the device destructor that waits for any outstanding work to
+  // complete.
+  se::DeviceMemoryAllocator* allocator_;
+  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
 
   // Includes all devices, including non-local devices on multi-host platforms.
   std::vector<std::unique_ptr<TfrtGpuDevice>> owned_devices_;
@@ -229,10 +265,149 @@ class TfrtGpuClient final : public PjRtClient {
   std::vector<std::unique_ptr<PjRtMemorySpace>> owned_memory_spaces_;
   // Pointers to `owned_memory_spaces_`.
   std::vector<PjRtMemorySpace*> memory_spaces_;
+
+  std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
     const GpuClientOptions& options);
+
+class TfrtGpuExecutable final : public PjRtLoadedExecutable {
+ public:
+  TfrtGpuExecutable(
+      std::vector<std::unique_ptr<LocalExecutable>> executables,
+      bool parameter_is_tupled_arguments,
+      std::shared_ptr<DeviceAssignment> device_assignment,
+      CompileOptions compile_options,
+      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
+      std::vector<PjRtDevice*> addressable_devices, TfrtGpuClient* client);
+
+  TfrtGpuClient* client() const override { return client_; }
+
+  absl::string_view name() const override;
+
+  int num_replicas() const override {
+    return executables_[0]->build_options().num_replicas();
+  }
+
+  int num_partitions() const override {
+    return executables_[0]->build_options().num_partitions();
+  }
+
+  int64_t SizeOfGeneratedCodeInBytes() const override {
+    int64_t size = 0;
+    for (auto& executable : executables_) {
+      size += executable->executable()->SizeOfGeneratedCodeInBytes();
+    }
+    return size;
+  }
+
+  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
+      const override;
+
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const override;
+
+  const DeviceAssignment& device_assignment() const override {
+    return *device_assignment_;
+  }
+
+  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
+      const override {
+    return addressable_device_logical_ids_;
+  }
+
+  absl::Span<PjRtDevice* const> addressable_devices() const override {
+    return addressable_devices_;
+  }
+
+  using PjRtLoadedExecutable::Execute;
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+      const ExecuteOptions& options,
+      std::optional<std::vector<PjRtFuture<>>>& returned_futures) override {
+    return Unimplemented("Not implemented");
+  }
+
+  using PjRtLoadedExecutable::ExecuteSharded;
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override {
+    return Unimplemented("Not implemented");
+  }
+
+  using PjRtLoadedExecutable::ExecutePortable;
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override {
+    return Unimplemented("Not implemented");
+  }
+
+  void Delete() override { executables_.clear(); }
+
+  bool IsDeleted() override { return executables_.empty(); }
+
+  absl::StatusOr<CompileOptions> GetCompileOptions() const override {
+    return compile_options_;
+  }
+
+  absl::StatusOr<std::string> FingerprintExecutable() const override {
+    return fingerprint_;
+  };
+
+  void SetInputHloSnapshotBits(HloModuleProto hlo_module,
+                               DebugOptions debug_options) {
+    input_hlo_snapshot_bits_ =
+        std::make_optional<InputHloSnapshotBits>(InputHloSnapshotBits{
+            HloModuleProto(std::move(hlo_module)), std::move(debug_options)});
+  }
+
+ private:
+  friend class TfrtGpuClient;
+
+  // Initializes information about which arguments to which executables must be
+  // donated due to aliases that were specified by the computation.
+  absl::Status SetUpDonation(bool tuple_inputs);
+
+  // Create shared pointers so we can free them after the execution: with
+  // asynchronous execution, the process being executed can outlive the
+  // executable itself.
+  TfrtGpuClient* const client_;
+  // One executable per partition.
+  std::vector<std::shared_ptr<LocalExecutable>> executables_;
+  // Per-executable sorted vector of parameters that have any aliased buffers
+  // and thus must be donated when executing the computation.
+  std::vector<std::vector<int>> parameters_that_must_be_donated_;
+  std::shared_ptr<DeviceAssignment> device_assignment_;
+  CompileOptions compile_options_;
+
+  // True if the executables were compiled expecting arguments in a single
+  // tuple.
+  const bool parameter_is_tupled_arguments_;
+
+  // The replica and partition indices of device_assignment_ to be run by this
+  // client. On single-host platforms without partitioning, this is all replicas
+  // (i.e. addressable_device_logical_ids_[i] = (i, 0)), but this may not be the
+  // case on multi-host platforms. If there are 4 replicas and 2 partitions on a
+  // single host platform, size of addressable_device_logical_ids_ is 4*2 = 8.
+  std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
+
+  // addressable_devices_[i] is the Device to which
+  // addressable_device_logical_ids_[i] is assigned. shared_ptrs instead of
+  // unique_ptrs to play well with the Python bindings (see xla.cc).
+  std::vector<PjRtDevice*> addressable_devices_;
+  std::string fingerprint_;
+
+  struct InputHloSnapshotBits {
+    HloModuleProto hlo_module;
+    DebugOptions debug_options;
+  };
+
+  // The unoptimized (unsharded) HloModule. Primarily used for debugging.
+  std::optional<InputHloSnapshotBits> input_hlo_snapshot_bits_;
+};
 
 }  // namespace xla
 
