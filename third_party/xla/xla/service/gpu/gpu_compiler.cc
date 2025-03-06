@@ -209,6 +209,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemv_rewriter.h"
 #include "xla/service/gpu/transforms/layout_assignment.h"
 #include "xla/service/gpu/transforms/move_copy_to_users.h"
+#include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/service/gpu/transforms/pipelined_p2p_rewriter.h"
 #include "xla/service/gpu/transforms/ragged_all_to_all_canonicalizer.h"
 #include "xla/service/gpu/transforms/ragged_all_to_all_decomposer.h"
@@ -374,7 +375,8 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* stream_exec) const override;
+      Compiler* compiler,
+      const se::StreamExecutor* stream_exec) const&& override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
   std::unique_ptr<HloModule> consume_optimized_module() override {
@@ -394,7 +396,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
 
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuThunkAotCompilationResult::LoadExecutable(
-    Compiler* compiler, const se::StreamExecutor* stream_exec) const {
+    Compiler* compiler, const se::StreamExecutor* stream_exec) const&& {
   // Recreate HloModule+HloModuleConfig from proto.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
@@ -1610,6 +1612,11 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       &pipeline, hlo_module, autotune_config, thread_pool,
       options.key_value_store,
       gpu_target_config.device_description.runtime_version()));
+
+  if (debug_options
+          .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms()) {
+    pipeline.AddPass<NestGemmFusion>();
+  }
   // Inline back the calls which have better performance with cuBLAS.
   pipeline.AddPass<CallInliner>();
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated

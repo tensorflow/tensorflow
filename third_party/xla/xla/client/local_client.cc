@@ -485,8 +485,9 @@ absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
       std::unique_ptr<xla::AotCompilationResult> aot_result,
       compiler->LoadAotCompilationResult(serialized_aot_result));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      aot_result->LoadExecutable(compiler, executor));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      std::move(*aot_result).LoadExecutable(compiler, executor));
   return std::make_unique<LocalExecutable>(std::move(executable),
                                            local_service_->mutable_backend(),
                                            updated_options);

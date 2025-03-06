@@ -75,6 +75,8 @@ INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange
                            r"tensorflow::internal::MakeCheckOpValueString|"
                            r"tensorflow::internal::PickUnusedPortOrDie|"
                            r"tensorflow::internal::ValidateDevice|"
+                           r"tsl::AsyncValue::CreateTypeInfoAndReturnTypeIdImpl|"
+                           r"tsl::AsyncValue::NotifyAvailable|"
                            r"tsl::internal::LogMessage|"
                            r"tsl::internal::LogString|"
                            r"tsl::internal::CheckOpMessageBuilder|"

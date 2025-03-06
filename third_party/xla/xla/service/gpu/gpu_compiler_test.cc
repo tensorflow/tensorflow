@@ -1037,7 +1037,8 @@ ENTRY e {
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
-        aot_result->LoadExecutable(compiler, aot_options.executor()));
+        std::move(*aot_result)
+            .LoadExecutable(compiler, aot_options.executor()));
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
         test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
@@ -1703,6 +1704,15 @@ TEST_F(PassOrderTest, GemmRewriterRunsAfterDotNormalizer) {
   VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
 }
 
+TEST_F(PassOrderTest, NestGemmFusionRunsAfterGemmFusionAutotuner) {
+  // NestGemmFusion expect to see __triton_gemm custom call with a backend
+  // config created by gemm_fusion_autotuner.
+  DebugOptions options = GetDebugOptionsForTest();
+  options.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
+  SetDebugOptions(options);
+  VerifyPassOrder("gemm-fusion-autotuner", "nest_gemm_fusion");
+}
+
 TEST_F(PassOrderTest,
        ReducePrecisionIsRemovedAfterAllCallsToSimplifyFPConversions) {
   // Because of an issue with JAX remat and `SimplifyFPConversions` (see PR:
@@ -1831,7 +1841,7 @@ TEST_F(GpuCompilerTest,
   const char* kExpected = R"(
     // CHECK:      dynamic-slice-fusion{{.+}} {
     // CHECK:        %[[slice:.+]] = {{.+}} slice({{.+}}), slice={[4:8], [0:32]}
-    // CHECK:        %[[rs:.+]] = {{.+}} reduce-scatter(%[[slice]]), 
+    // CHECK:        %[[rs:.+]] = {{.+}} reduce-scatter(%[[slice]]),
     // CHECK-SAME{LITERAL}:              replica_groups={{0,1}}, dimensions={0}
     // CHECK:        %[[bitcast:.+]] = {{.+}} bitcast(%[[rs]])
     // CHECK:        ROOT {{.+}} = {{.+}} dynamic-update-slice({{.+}}, %[[bitcast]], {{.+}})

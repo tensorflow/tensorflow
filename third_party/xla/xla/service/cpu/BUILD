@@ -366,6 +366,7 @@ cc_library(
         "@llvm-project//llvm:BitReader",
         "@llvm-project//llvm:BitWriter",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:OrcJIT",
@@ -478,7 +479,9 @@ cc_library(
         "//xla/stream_executor/host:host_platform_id",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
     ],
     alwayslink = True,  # Contains compiler registration
 )

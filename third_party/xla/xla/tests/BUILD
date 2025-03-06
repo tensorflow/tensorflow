@@ -313,6 +313,7 @@ xla_cc_binary(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/service:cpu_plugin",
+        "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Support",
