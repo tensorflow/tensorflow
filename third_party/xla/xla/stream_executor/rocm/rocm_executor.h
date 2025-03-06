@@ -110,6 +110,9 @@ class RocmExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 
+  bool HostMemoryRegister(void* location, uint64_t size) override;
+  bool HostMemoryUnregister(void* location) override;
+
   absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override;
 
   Stream* FindAllocatedStream(void* gpu_stream) override {
