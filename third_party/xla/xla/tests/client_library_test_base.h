@@ -125,68 +125,51 @@ class ClientLibraryTestBase : public ::testing::Test {
   // for integral types without the ErrorSpec parameter.
   template <typename NativeT>
   void ComputeAndCompareR0(XlaBuilder* builder, NativeT expected,
-                           absl::Span<GlobalData* const> arguments);
-  template <typename NativeT>
-  void ComputeAndCompareR0(XlaBuilder* builder, NativeT expected,
                            absl::Span<GlobalData* const> arguments,
-                           ErrorSpec error);
+                           std::optional<ErrorSpec> error = std::nullopt);
 
   template <typename NativeT>
   void ComputeAndCompareR1(XlaBuilder* builder,
                            absl::Span<const NativeT> expected,
-                           absl::Span<GlobalData* const> arguments);
-  template <typename NativeT>
-  void ComputeAndCompareR1(XlaBuilder* builder,
-                           absl::Span<const NativeT> expected,
                            absl::Span<GlobalData* const> arguments,
-                           ErrorSpec error);
+                           std::optional<ErrorSpec> error = std::nullopt);
 
   // As above, but uses a bitmap to hold the predicate vector to avoid
   // deficiencies of vector<bool>.
   void ComputeAndCompareR1(XlaBuilder* builder,
                            const tsl::core::Bitmap& expected,
-                           absl::Span<GlobalData* const> arguments);
+                           absl::Span<GlobalData* const> arguments,
+                           std::optional<ErrorSpec> error = std::nullopt);
 
   template <typename NativeT>
   void ComputeAndCompareR2(XlaBuilder* builder,
                            const Array2D<NativeT>& expected,
-                           absl::Span<GlobalData* const> arguments);
-  template <typename NativeT>
-  void ComputeAndCompareR2(XlaBuilder* builder,
-                           const Array2D<NativeT>& expected,
                            absl::Span<GlobalData* const> arguments,
-                           ErrorSpec error);
+                           std::optional<ErrorSpec> error = std::nullopt);
 
   template <typename NativeT>
   void ComputeAndCompareR3(XlaBuilder* builder,
                            const Array3D<NativeT>& expected,
-                           absl::Span<GlobalData* const> arguments);
-  template <typename NativeT>
-  void ComputeAndCompareR3(XlaBuilder* builder,
-                           const Array3D<NativeT>& expected,
                            absl::Span<GlobalData* const> arguments,
-                           ErrorSpec error);
+                           std::optional<ErrorSpec> error = std::nullopt);
 
   template <typename NativeT>
   void ComputeAndCompareR4(XlaBuilder* builder,
                            const Array4D<NativeT>& expected,
-                           absl::Span<GlobalData* const> arguments);
-  template <typename NativeT>
-  void ComputeAndCompareR4(XlaBuilder* builder,
-                           const Array4D<NativeT>& expected,
                            absl::Span<GlobalData* const> arguments,
-                           ErrorSpec error);
+                           std::optional<ErrorSpec> error = std::nullopt);
 
   // Build and run the computation and compare the result with the given
   // literal. shape_with_layout indicates the result layout to request when
   // calling Execute.
   void ComputeAndCompareLiteral(XlaBuilder* builder, const Literal& expected,
                                 absl::Span<GlobalData* const> arguments,
+                                std::optional<ErrorSpec> error = std::nullopt,
                                 const Shape* shape_with_layout = nullptr);
+
   void ComputeAndCompareLiteral(XlaBuilder* builder, const Literal& expected,
                                 absl::Span<GlobalData* const> arguments,
-                                ErrorSpec error,
-                                const Shape* shape_with_layout = nullptr);
+                                const Shape* shape_with_layout);
 
   // Build and run the computation and return the result as a literal.
   // shape_with_layout indicates the result layout to request when calling
@@ -199,10 +182,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   absl::Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,
       absl::Span<GlobalData* const> arguments,
-      const Shape* shape_with_layout = nullptr);
-  absl::Status ComputeAndCompareLiteralWithStatus(
-      XlaBuilder* builder, const Literal& expected,
-      absl::Span<GlobalData* const> arguments, ErrorSpec error,
+      std::optional<ErrorSpec> error = std::nullopt,
       const Shape* shape_with_layout = nullptr);
 
   // Compare the result of the computation to a strings. In XLA strings are
@@ -213,24 +193,18 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Convenience method for running a built computation, transferring the
   // result, and comparing it to the expected tuple literal.
   void ComputeAndCompareTuple(XlaBuilder* builder, const Literal& expected,
-                              absl::Span<GlobalData* const> arguments);
-  void ComputeAndCompareTuple(XlaBuilder* builder, const Literal& expected,
                               absl::Span<GlobalData* const> arguments,
-                              ErrorSpec error);
-
+                              std::optional<ErrorSpec> error = std::nullopt);
   // Convenience method for running a built computation and comparing the result
   // with the reference result.
   void ComputeAndCompare(XlaBuilder* builder,
-                         absl::Span<const Literal> arguments);
-  void ComputeAndCompare(XlaBuilder* builder,
-                         absl::Span<const Literal> arguments, ErrorSpec error);
-  template <typename NativeT>
-  void ComputeAndCompare(XlaBuilder* builder, const Array<NativeT>& expected,
-                         absl::Span<GlobalData* const> arguments);
+                         absl::Span<const Literal> arguments,
+                         std::optional<ErrorSpec> error = std::nullopt);
+
   template <typename NativeT>
   void ComputeAndCompare(XlaBuilder* builder, const Array<NativeT>& expected,
                          absl::Span<GlobalData* const> arguments,
-                         ErrorSpec error);
+                         std::optional<ErrorSpec> error = std::nullopt);
   // Create scalar operations for use in reductions.
   XlaComputation CreateScalarReluF32();
   XlaComputation CreateScalarMax();
@@ -410,6 +384,8 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   LocalClient* client_;
   LocalClient* ref_client_;  // To compute reference result.
+
+  // The execution options to use for the test.
   ExecutionOptions execution_options_;
 
  private:
@@ -446,23 +422,21 @@ class ClientLibraryTestBase : public ::testing::Test {
   template <typename T>
   static constexpr inline bool is_floating_or_complex_v =
       std::disjunction_v<is_specialized_floating_point<T>, is_complex<T>>;
+
+  template <typename NativeT>
+  void CheckErrorSpec(std::optional<ErrorSpec> error) {
+    if (error.has_value()) {
+      CHECK(is_floating_or_complex_v<NativeT>)
+          << "Float or complex type required when specifying an ErrorSpec";
+    }
+  }
 };
 
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR0(
     XlaBuilder* builder, NativeT expected,
-    absl::Span<GlobalData* const> arguments) {
-  Literal expected_literal = LiteralUtil::CreateR0<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
-                                                  arguments);
-}
-
-template <typename NativeT>
-void ClientLibraryTestBase::ComputeAndCompareR0(
-    XlaBuilder* builder, NativeT expected,
-    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(is_floating_or_complex_v<NativeT>,
-                "Float or complex type required when specifying an ErrorSpec");
+    absl::Span<GlobalData* const> arguments, std::optional<ErrorSpec> error) {
+  CheckErrorSpec<NativeT>(error);
   Literal expected_literal = LiteralUtil::CreateR0<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments, error);
@@ -471,18 +445,8 @@ void ClientLibraryTestBase::ComputeAndCompareR0(
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR1(
     XlaBuilder* builder, absl::Span<const NativeT> expected,
-    absl::Span<GlobalData* const> arguments) {
-  Literal expected_literal = LiteralUtil::CreateR1<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
-                                                  arguments);
-}
-
-template <typename NativeT>
-void ClientLibraryTestBase::ComputeAndCompareR1(
-    XlaBuilder* builder, absl::Span<const NativeT> expected,
-    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(is_floating_or_complex_v<NativeT>,
-                "Float or complex type required when specifying an ErrorSpec");
+    absl::Span<GlobalData* const> arguments, std::optional<ErrorSpec> error) {
+  CheckErrorSpec<NativeT>(error);
   Literal expected_literal = LiteralUtil::CreateR1<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments, error);
@@ -491,19 +455,8 @@ void ClientLibraryTestBase::ComputeAndCompareR1(
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR2(
     XlaBuilder* builder, const Array2D<NativeT>& expected,
-    absl::Span<GlobalData* const> arguments) {
-  Literal expected_literal =
-      LiteralUtil::CreateR2FromArray2D<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
-                                                  arguments);
-}
-
-template <typename NativeT>
-void ClientLibraryTestBase::ComputeAndCompareR2(
-    XlaBuilder* builder, const Array2D<NativeT>& expected,
-    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(is_floating_or_complex_v<NativeT>,
-                "Float or complex type required when specifying an ErrorSpec");
+    absl::Span<GlobalData* const> arguments, std::optional<ErrorSpec> error) {
+  CheckErrorSpec<NativeT>(error);
   Literal expected_literal =
       LiteralUtil::CreateR2FromArray2D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
@@ -513,19 +466,8 @@ void ClientLibraryTestBase::ComputeAndCompareR2(
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR3(
     XlaBuilder* builder, const Array3D<NativeT>& expected,
-    absl::Span<GlobalData* const> arguments) {
-  Literal expected_literal =
-      LiteralUtil::CreateR3FromArray3D<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
-                                                  arguments);
-}
-
-template <typename NativeT>
-void ClientLibraryTestBase::ComputeAndCompareR3(
-    XlaBuilder* builder, const Array3D<NativeT>& expected,
-    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(is_floating_or_complex_v<NativeT>,
-                "Float or complex type required when specifying an ErrorSpec");
+    absl::Span<GlobalData* const> arguments, std::optional<ErrorSpec> error) {
+  CheckErrorSpec<NativeT>(error);
   Literal expected_literal =
       LiteralUtil::CreateR3FromArray3D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
@@ -535,19 +477,8 @@ void ClientLibraryTestBase::ComputeAndCompareR3(
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR4(
     XlaBuilder* builder, const Array4D<NativeT>& expected,
-    absl::Span<GlobalData* const> arguments) {
-  Literal expected_literal =
-      LiteralUtil::CreateR4FromArray4D<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
-                                                  arguments);
-}
-
-template <typename NativeT>
-void ClientLibraryTestBase::ComputeAndCompareR4(
-    XlaBuilder* builder, const Array4D<NativeT>& expected,
-    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(is_floating_or_complex_v<NativeT>,
-                "Float or complex type required when specifying an ErrorSpec");
+    absl::Span<GlobalData* const> arguments, std::optional<ErrorSpec> error) {
+  CheckErrorSpec<NativeT>(error);
   Literal expected_literal =
       LiteralUtil::CreateR4FromArray4D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
@@ -557,18 +488,8 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompare(
     XlaBuilder* builder, const Array<NativeT>& expected,
-    absl::Span<GlobalData* const> arguments) {
-  Literal expected_literal = LiteralUtil::CreateFromArray<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
-                                                  arguments);
-}
-
-template <typename NativeT>
-void ClientLibraryTestBase::ComputeAndCompare(
-    XlaBuilder* builder, const Array<NativeT>& expected,
-    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(is_floating_or_complex_v<NativeT>,
-                "Float or complex type required when specifying an ErrorSpec");
+    absl::Span<GlobalData* const> arguments, std::optional<ErrorSpec> error) {
+  CheckErrorSpec<NativeT>(error);
   Literal expected_literal = LiteralUtil::CreateFromArray<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments, error);
