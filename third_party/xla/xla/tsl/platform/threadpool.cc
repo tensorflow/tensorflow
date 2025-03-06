@@ -21,16 +21,12 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/base/optimization.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/types.h"
-
-#define EIGEN_USE_THREADS
-
-#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/threadpool_interface.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/context.h"
 #include "tsl/platform/denormal.h"
@@ -42,6 +38,9 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 #endif  // DNNL_AARCH64_USE_ACL
 
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
+
 #ifdef TENSORFLOW_THREADSCALING_EXPERIMENTAL
 ABSL_FLAG(float, tensorflow_num_threads_scale_factor, 1.0,
           "Allows to scale all Tensorflow ThreadPools. Total number of threads "
@@ -50,9 +49,7 @@ ABSL_FLAG(float, tensorflow_num_threads_scale_factor, 1.0,
           "no-op.");
 #endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
 
-namespace tsl {
-
-namespace thread {
+namespace tsl::thread {
 
 struct EigenEnvironment {
   using EnvThread = Thread;
@@ -296,19 +293,9 @@ void ThreadPool::ScheduleWithHint(std::function<void()> fn, int start,
   underlying_threadpool_->ScheduleWithHint(std::move(fn), start, limit);
 }
 
-void ThreadPool::SetStealPartitions(
-    const std::vector<std::pair<unsigned, unsigned>>& partitions) {
-  // ThreadPool::SetStealPartitions is only called in the constructor of
-  // RunHandlerPool::Impl, which currently instantiates ThreadPool using a
-  // constructor that does not take user_threadpool. Thus we assume
-  // eigen_threadpool_ is not null here.
-  DCHECK(eigen_threadpool_ != nullptr);
-  eigen_threadpool_->SetStealPartitions(partitions);
-}
-
 Eigen::ThreadPoolInterface* ThreadPool::AsEigenThreadPool() const {
   DCHECK(underlying_threadpool_ != nullptr);
   return underlying_threadpool_;
 }
-}  // namespace thread
-}  // namespace tsl
+
+}  // namespace tsl::thread

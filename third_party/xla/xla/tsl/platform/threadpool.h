@@ -16,14 +16,15 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_THREADPOOL_H_
 #define XLA_TSL_PLATFORM_THREADPOOL_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 
+#include "absl/base/attributes.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/threadpool_interface.h"
-#include "xla/tsl/platform/types.h"
 
 namespace Eigen {
 class Allocator;
@@ -34,8 +35,7 @@ template <typename Environment>
 class ThreadPoolTempl;
 }  // namespace Eigen
 
-namespace tsl {
-namespace thread {
+namespace tsl::thread {
 
 struct EigenEnvironment;
 
@@ -56,6 +56,7 @@ class ThreadPool {
     // use of the specified parallelism, and may also cause inefficiencies due
     // to load balancing issues and stragglers.
     kAdaptive,
+
     // The Fixed Block Size scheduling strategy shards the given units of work
     // into shards of fixed size. In case the total number of units is not
     // evenly divisible by 'block_size', at most one of the shards may be of
@@ -73,6 +74,17 @@ class ThreadPool {
   // Size scheduling strategy.
   class SchedulingParams {
    public:
+    static SchedulingParams Fixed(int64_t block_size) {
+      return SchedulingParams(SchedulingStrategy::kFixedBlockSize, std::nullopt,
+                              block_size);
+    }
+
+    static SchedulingParams Adaptive(int64_t cost_per_unit) {
+      return SchedulingParams(SchedulingStrategy::kAdaptive, cost_per_unit,
+                              std::nullopt);
+    }
+
+    ABSL_DEPRECATED("Use SchedulingParams::Fixed or SchedulingParams::Adaptive")
     explicit SchedulingParams(SchedulingStrategy strategy,
                               std::optional<int64_t> cost_per_unit,
                               std::optional<int64_t> block_size)
@@ -138,21 +150,18 @@ class ThreadPool {
   // Schedules fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn);
 
-  void SetStealPartitions(
-      const std::vector<std::pair<unsigned, unsigned>>& partitions);
-
   void ScheduleWithHint(std::function<void()> fn, int start, int limit);
 
   // Returns the number of shards used by ParallelForFixedBlockSizeScheduling
   // with these parameters.
-  int NumShardsUsedByFixedBlockSizeScheduling(const int64_t total,
-                                              const int64_t block_size);
+  int NumShardsUsedByFixedBlockSizeScheduling(int64_t total,
+                                              int64_t block_size);
 
   // Returns the number of threads spawned by calling TransformRangeConcurrently
   // with these parameters.
   // Deprecated. Use NumShardsUsedByFixedBlockSizeScheduling.
-  int NumShardsUsedByTransformRangeConcurrently(const int64_t block_size,
-                                                const int64_t total);
+  int NumShardsUsedByTransformRangeConcurrently(int64_t block_size,
+                                                int64_t total);
 
   // ParallelFor shards the "total" units of work assuming each unit of work
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
@@ -165,18 +174,26 @@ class ThreadPool {
   // Context creation. Underestimating may not fully make use of the specified
   // parallelism, and may also cause inefficiencies due to load balancing
   // issues and stragglers.
+  ABSL_DEPRECATED("Use ParallelFor with a SchedulingParams argument")
   void ParallelFor(int64_t total, int64_t cost_per_unit,
-                   const std::function<void(int64_t, int64_t)>& fn);
+                   const std::function<void(int64_t begin, int64_t end)>& fn);
 
-  // Similar to ParallelFor above, but takes the specified scheduling strategy
-  // into account.
+  // Runs `fn` on `total` units of work in parallel. The number of parallel
+  // tasks processing the work is determined by the scheduling parameters.
   void ParallelFor(int64_t total, const SchedulingParams& scheduling_params,
-                   const std::function<void(int64_t, int64_t)>& fn);
+                   const std::function<void(int64_t begin, int64_t end)>& fn);
+
+  // Runs `fn` on `total` units of work in parallel using fixed block size
+  // scheduling strategy.
+  void ParallelFor(int64_t total,
+                   const std::function<void(int64_t begin, int64_t end)>& fn) {
+    return ParallelFor(total, SchedulingParams::Fixed(1), fn);
+  }
 
   // Same as ParallelFor with Fixed Block Size scheduling strategy.
-  // Deprecated. Prefer ParallelFor with a SchedulingStrategy argument.
+  ABSL_DEPRECATED("Use ParallelFor with a SchedulingParams argument")
   void TransformRangeConcurrently(
-      const int64_t block_size, const int64_t total,
+      int64_t block_size, int64_t total,
       const std::function<void(int64_t, int64_t)>& fn);
 
   // Shards the "total" units of work. For more details, see "ParallelFor".
@@ -194,15 +211,17 @@ class ThreadPool {
   // be used for small workloads. If each buffer is expensive, the buffers
   // should be stored in an array initially filled with null, and a buffer
   // should be allocated by fn the first time that the id is used.
+  ABSL_DEPRECATED(
+      "Use ParallelForWithWorkerId with a SchedulingParams argument")
   void ParallelForWithWorkerId(
       int64_t total, int64_t cost_per_unit,
-      const std::function<void(int64_t, int64_t, int)>& fn);
+      const std::function<void(int64_t begin, int64_t end, int thread_id)>& fn);
 
   // Similar to ParallelForWithWorkerId above, but takes the specified
   // scheduling strategy into account.
   void ParallelForWithWorkerId(
       int64_t total, const SchedulingParams& scheduling_params,
-      const std::function<void(int64_t, int64_t, int)>& fn);
+      const std::function<void(int64_t begin, int64_t end, int thread_id)>& fn);
 
   // Returns the number of threads in the pool.
   int NumThreads() const;
@@ -225,21 +244,22 @@ class ThreadPool {
   // Here, k = NumShardsUsedByFixedBlockSizeScheduling(total, block_size).
   // Requires 0 < block_size <= total.
   void ParallelForFixedBlockSizeScheduling(
-      const int64_t total, const int64_t block_size,
-      const std::function<void(int64_t, int64_t)>& fn);
+      int64_t total, int64_t block_size,
+      const std::function<void(int64_t begin, int64_t end)>& fn);
 
   // underlying_threadpool_ is the user_threadpool if user_threadpool is
   // provided in the constructor. Otherwise it is the eigen_threadpool_.
   Eigen::ThreadPoolInterface* underlying_threadpool_;
+
   // eigen_threadpool_ is instantiated and owned by thread::ThreadPool if
   // user_threadpool is not in the constructor.
   std::unique_ptr<Eigen::ThreadPoolTempl<EigenEnvironment>> eigen_threadpool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
+
   ThreadPool(const ThreadPool&) = delete;
   void operator=(const ThreadPool&) = delete;
 };
 
-}  // namespace thread
-}  // namespace tsl
+}  // namespace tsl::thread
 
 #endif  // XLA_TSL_PLATFORM_THREADPOOL_H_
