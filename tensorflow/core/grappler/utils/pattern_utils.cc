@@ -19,6 +19,10 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "tensorflow/core/grappler/utils/graph_view.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {

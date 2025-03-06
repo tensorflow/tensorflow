@@ -19,13 +19,19 @@ limitations under the License.
 #include <deque>
 #include <unordered_map>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace grappler {
