@@ -1970,6 +1970,11 @@ struct ParallelState {
     return execute_inline();
   }
 
+  // Don't try to handle scalar shapes in parallel.
+  if (ElementsIn(shape) == 1) {
+    return execute_inline();
+  }
+
   // Compute the dimensions of the "work" which are defined by the count of
   // elements in each dimension and the increment.
   std::vector<int64_t> work_dims(shape.dimensions_size());

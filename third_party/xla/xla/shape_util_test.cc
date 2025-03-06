@@ -817,6 +817,20 @@ TEST(ShapeUtilTest, ForEachIndexParallel_WithOddIncr) {
   }
 }
 
+TEST(ShapeUtilTest, ForEachIndexParallel_Scalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  int64_t output = 0;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
+    output = 5;
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{}, /*count=*/{},
+                                  /*incr=*/{}, set_func);
+  EXPECT_EQ(output, 5);
+}
+
 TEST(ShapeUtilTest, ForEachIndexParallel_CalledTwice) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64_t output[10][10];
