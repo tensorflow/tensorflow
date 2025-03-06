@@ -35,6 +35,7 @@ cc_library(
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:gpu_topology",
         "//xla/pjrt/gpu:gpu_topology_proto_cc",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
@@ -74,6 +75,7 @@ xla_cc_test(
     deps = [
         ":tfrt_gpu_client",
         "//xla/pjrt:host_memory_spaces",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:gpu_plugin",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
