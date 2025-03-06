@@ -974,7 +974,7 @@ cc_library(
     hdrs = ["tool_options.h"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings",
     ],
 )
 
