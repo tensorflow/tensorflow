@@ -128,7 +128,7 @@ message CollectiveBackendConfig {
   // within a loop.
   bool is_pipelined = 3;
   // Cost model prediction.
-  ReificationCost reification_cost = 4;
+  repeated ReificationCost reification_cost = 4;
 }
 
 // Backend config for cost model estimates.
@@ -147,6 +147,9 @@ message ReificationCost {
 
   // Estimate for memory access (read+write) time in microseconds.
   double memory_access_time_us = 4;
+
+  // Name of the internal cost modeling approach.
+  string name = 5;
 }
 
 // Backend config for a custom fusion (pre-compiled device kernel implementing a
