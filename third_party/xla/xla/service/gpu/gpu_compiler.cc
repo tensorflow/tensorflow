@@ -1633,6 +1633,12 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // also have unsorted update_window_dims.
   pipeline.AddPass<ScatterSimplifier>();
 
+  // Verify the host memory space before the host offloader pass
+  std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
+      std::make_unique<CpuGpuVerifierMetadata>(
+          HloVerifierOpts{}.VerifyNoHostMemorySpace());
+  pipeline.AddPass<HloVerifier>(std::move(verifier_metadata));
+
   pipeline.AddPass<HostOffloader>();
 
   TF_RETURN_IF_ERROR(
