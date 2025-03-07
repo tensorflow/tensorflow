@@ -14,8 +14,6 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/accelerators/auto_registration.h"
 
-#include <dlfcn.h>
-
 #include <utility>
 
 #include "absl/strings/string_view.h"
@@ -27,6 +25,15 @@
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 
 namespace litert {
+
+Expected<void> TriggerAcceleratorAutomaticRegistration(
+    LiteRtEnvironmentT& environment) {
+  // Register the GPU accelerator.
+  RegisterSharedObjectAccelerator(
+      environment, /*plugin_path=*/"libLiteRtGpuAccelerator.so",
+      /*registration_function_name=*/"LiteRtRegisterAcceleratorGpuOpenCl");
+  return {};
+};
 
 Expected<void> RegisterSharedObjectAccelerator(
     LiteRtEnvironmentT& environment, absl::string_view plugin_path,
