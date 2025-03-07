@@ -69,6 +69,8 @@ absl::Status RequestAndroidInfo(AndroidInfo* info_out) {
        model.find("Emulator") != std::string::npos ||                  // NOLINT
        model.find("Android SDK built for x86") !=                      // NOLINT
            std::string::npos ||                                        // NOLINT
+       model.find("Android SDK built for arm64") !=                    // NOLINT
+           std::string::npos ||                                        // NOLINT
        manufacturer.find("Genymotion") != std::string::npos ||         // NOLINT
        product.find("sdk_google") != std::string::npos ||              // NOLINT
        product.find("google_sdk") != std::string::npos ||              // NOLINT
