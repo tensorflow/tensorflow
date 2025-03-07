@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_reachability.h"
 
+#include <cstddef>
 #include <memory>
 #include <queue>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
