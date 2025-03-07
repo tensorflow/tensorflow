@@ -489,6 +489,8 @@ def _get_redistribution_urls(dist_info):
         arch_key = arch
         if arch_key == "linux-aarch64" and arch_key not in dist_info:
             arch_key = "linux-sbsa"
+        if arch_key not in dist_info:
+            continue
         if "relative_path" in dist_info[arch_key]:
             url_dict[_REDIST_ARCH_DICT[arch]] = [
                 dist_info[arch_key]["relative_path"],
