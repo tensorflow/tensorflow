@@ -30,7 +30,37 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+
+// When using an address sanitizer, `RTLD_DEEPBIND` is not supported. When using
+// one, we discard the flag and log an error.
+#ifdef __SANITIZE_ADDRESS__
+#define LITERT_ADDRESS_SANITIZER 1
+#elif defined(__has_feature) && __has_feature(address_sanitizer)
+#define LITERT_ADDRESS_SANITIZER 1
+#endif
+
+#if LITERT_ADDRESS_SANITIZER
+namespace litert {
+namespace {
+RtldFlags SanitizeFlagsInCaseOfAsan(RtldFlags flags) {
+  LITERT_LOG(
+      LITERT_WARNING,
+      "Trying to load a library using `RTLD_DEEPBIND` is not supported by "
+      "address sanitizers. In an effort to enable testing we strip the flag. "
+      "If this leads to unintended behaviour, either remove the "
+      "`RTLD_DEEPBIND` flag or run without an address sanitizer. "
+      "See https://github.com/google/sanitizers/issues/611 for more "
+      "information.");
+  flags.flags &= ~RTLD_DEEPBIND;
+  return flags;
+}
+}  // namespace
+}  // namespace litert
+#else
+#define SanitizeFlagsInCaseOfAsan(flags) (flags)
+#endif
 
 #if LITERT_WINDOWS_OS
 // Implement dummy functions from dlfnc.h on Windows.
@@ -107,7 +137,8 @@ Expected<SharedLibrary> SharedLibrary::LoadImpl(
                      "Cannot not load shared library: empty path.");
       }
       lib.path_ = path;
-      lib.handle_ = dlopen(lib.Path().c_str(), flags);
+      lib.handle_ =
+          dlopen(lib.Path().c_str(), SanitizeFlagsInCaseOfAsan(flags));
       if (!lib.handle_) {
         return Error(kLiteRtStatusErrorDynamicLoading,
                      absl::StrFormat("Could not load shared library %s: %s.",
