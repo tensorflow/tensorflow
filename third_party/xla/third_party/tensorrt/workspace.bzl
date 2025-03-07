@@ -16,6 +16,6 @@ def repo(name = "tensorrt_oss_archive"):
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVIDIA/TensorRT/archive/{commit}.tar.gz".format(commit = TRT_OSS_COMMIT),
             "https://github.com/NVIDIA/TensorRT/archive/{commit}.tar.gz".format(commit = TRT_OSS_COMMIT),
         ],
-        build_file = "//third_party/tensorrt/plugin:BUILD",
+        build_file = "//third_party/tensorrt/plugin:BUILD.bazel",
         patch_file = ["//third_party/tensorrt/plugin:tensorrt_oss.patch"],
     )

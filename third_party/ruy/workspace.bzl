@@ -10,5 +10,5 @@ def repo():
         strip_prefix = "ruy-3286a34cc8de6149ac6844107dfdffac91531e72",
         urls = tf_mirror_urls("https://github.com/google/ruy/archive/3286a34cc8de6149ac6844107dfdffac91531e72.zip"),
         # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/ruy.cmake)
-        build_file = "//third_party/ruy:BUILD",
+        build_file = "//third_party/ruy:BUILD.bazel",
     )
