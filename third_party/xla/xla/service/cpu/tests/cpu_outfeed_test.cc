@@ -56,6 +56,10 @@ CHECK: private unnamed_addr constant [48 x i8]
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
 
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
+
   CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
                                 /*match_optimized_ir=*/false);
 }
@@ -84,6 +88,10 @@ CHECK: private unnamed_addr constant [0 x i8]
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
 
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
+
   CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
                                 /*match_optimized_ir=*/false);
 }
@@ -111,6 +119,10 @@ CHECK: Outfeed
       /*features=*/"",
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
 
   CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
                                 /*match_optimized_ir=*/false);
