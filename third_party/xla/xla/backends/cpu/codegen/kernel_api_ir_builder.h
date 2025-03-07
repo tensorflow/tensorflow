@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -46,6 +46,12 @@ class KernelApiIrBuilder {
     bool generate_unique_c_style_kernel_entry_points;
 
     static Options FromHloModuleConfig(const HloModuleConfig& config);
+  };
+
+  enum class BufferValidation {
+    kNone,      // No validation is performed.
+    kDisjoint,  // Check that all buffers are disjoint (and any overlap between
+                // arguments and results is the same buffer)
   };
 
   // Thread dimensions of the kernel invocation.
@@ -96,7 +102,9 @@ class KernelApiIrBuilder {
     absl::InlinedVector<BufferAllocation::Slice, 8> result_buffers;
   };
 
-  KernelApiIrBuilder(llvm::LLVMContext& context, Options options);
+  KernelApiIrBuilder(
+      llvm::LLVMContext& context, Options options,
+      BufferValidation buffer_validation = BufferValidation::kDisjoint);
 
   // Emits a kernel prototype for the given HLO instruction.
   // buffer_assignment may be null, in which case we will not compute alias
@@ -109,6 +117,12 @@ class KernelApiIrBuilder {
       llvm::Module& module, absl::string_view name,
       absl::Span<const KernelParameter> arguments,
       absl::Span<const KernelParameter> results);
+
+  // Get the kernel name for the given HLO instruction.
+  // If generate_unique_c_style_kernel_entry_points is enabled, the name will
+  // be converted to a valid C name and prefixed with the HLO module name.
+  absl::StatusOr<std::string> GetKernelName(
+      const HloInstruction* instr, absl::string_view suffix = "") const;
 
   // Create a module with the given name, the name is given a prefix that is
   // specific to XLA and relied on further down the pipeline.
@@ -131,12 +145,25 @@ class KernelApiIrBuilder {
 
   Options options_;
 
+  BufferValidation buffer_validation_;
+
   llvm::StructType* thread_dim_ty_;
   llvm::StructType* thread_ty_;
   llvm::StructType* arg_ty_;
   llvm::StructType* call_frame_ty_;
   llvm::FunctionType* kernel_function_ty_;
 };
+
+inline bool operator==(const KernelApiIrBuilder::KernelParameter& lhs,
+                       const KernelApiIrBuilder::KernelParameter& rhs) {
+  return lhs.shape == rhs.shape && lhs.slice == rhs.slice;
+}
+
+template <typename Hash>
+Hash AbslHashValue(Hash hash,
+                   const KernelApiIrBuilder::KernelParameter& param) {
+  return Hash::combine(std::move(hash), param.shape, param.slice);
+}
 
 }  // namespace xla::cpu
 
