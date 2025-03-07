@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_UTILS_SPARSITY_FORMAT_CONVERTER_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_UTILS_SPARSITY_FORMAT_CONVERTER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "Eigen/Core"  // from @eigen_archive
