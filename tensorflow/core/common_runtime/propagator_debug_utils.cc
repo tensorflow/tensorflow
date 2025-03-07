@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/propagator_debug_utils.h"
 
+#include "absl/log/log.h"
 #include "tensorflow/core/common_runtime/entry.h"
 #include "tensorflow/core/common_runtime/graph_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
