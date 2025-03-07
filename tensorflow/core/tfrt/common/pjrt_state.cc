@@ -22,13 +22,13 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/tf_pjrt_client.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 

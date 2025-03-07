@@ -20,12 +20,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_state.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

@@ -23,12 +23,12 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
 

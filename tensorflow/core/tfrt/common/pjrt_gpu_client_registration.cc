@@ -21,10 +21,10 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
-#include "tsl/platform/statusor.h"
 namespace xla {
 
 absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetGpuClient(
