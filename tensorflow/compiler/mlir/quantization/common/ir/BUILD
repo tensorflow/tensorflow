@@ -78,3 +78,16 @@ cc_library(
         "@llvm-project//mlir:Support",
     ],
 )
+
+cc_library(
+    name = "QuantizeUtils",
+    srcs = ["QuantizeUtils.cc"],
+    hdrs = ["QuantizeUtils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":QuantOps",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
