@@ -16,15 +16,28 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "third_party/protobuf/text_format.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/core/example/example_parser_configuration.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/example_proto_helper.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
