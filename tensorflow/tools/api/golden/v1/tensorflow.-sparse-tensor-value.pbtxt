@@ -4,15 +4,15 @@ tf_class {
   is_instance: "<type \'tuple\'>"
   member {
     name: "dense_shape"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "indices"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "values"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
     name: "__init__"
