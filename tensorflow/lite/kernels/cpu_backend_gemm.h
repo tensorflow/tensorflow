@@ -44,7 +44,7 @@ namespace cpu_backend_gemm {
 // !TFLITE_WITH_RUY   |      gemmlowp   |  Ruy/gemmlowp* | eigen |
 // * - Ruy if NEON is not available.
 //
-//  On most ARM32/ARM64 platforms, the default is TFLITE_WITH_RUY:
+//  On ARM32/ARM64 platforms, the default is TFLITE_WITH_RUY:
 //  (default)         |      Ruy        |     Ruy        | Ruy   |
 //
 //  On other platforms (including x86), the default is !TFLITE_WITH_RUY:
