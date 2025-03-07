@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_SHIM_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_SHIM_TEST_UTIL_H_
 
+#include <cstddef>
 #include <initializer_list>
 #include <string>
 
