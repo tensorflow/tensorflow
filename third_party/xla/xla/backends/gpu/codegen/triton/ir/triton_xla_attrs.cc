@@ -20,11 +20,8 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
-#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
-#include "triton/Dialect/Triton/IR/Utility.h"
-#include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
 #include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
@@ -33,20 +30,6 @@ limitations under the License.
 namespace mlir::triton::xla {
 
 //--- SparseDotMetaEncodingAttr ---
-unsigned SparseDotMetaEncodingAttr::getTotalElemsPerThread(
-    ArrayRef<int64_t> shape, Type eltTy) const {
-  constexpr int kMetadataElementsPerWarp = 16;
-  auto mmaLayout = mlir::cast<gpu::NvidiaMmaEncodingAttr>(getParent());
-  return product<int64_t>(shape) /
-         (mmaLayout.getWarpsPerCTA()[0] * kMetadataElementsPerWarp);
-}
-
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getElemsPerThread(
-    ArrayRef<int64_t> shape, Type eltTy) const {
-  llvm_unreachable("getElemsPerThread is not supported for sparse dot meta");
-  return SmallVector<unsigned>();
-}
-
 SmallVector<unsigned> SparseDotMetaEncodingAttr::getCTAsPerCGA() const {
   return gpu::getCTAsPerCGA(getParent());
 }
