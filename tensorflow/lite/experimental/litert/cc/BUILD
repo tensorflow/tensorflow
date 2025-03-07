@@ -472,6 +472,7 @@ cc_test(
 #         "//tensorflow/lite/c:c_api_opaque",
 #         "//tensorflow/lite/c:common",
 #         "//tensorflow/lite/experimental/litert/c:litert_common",
+#         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
 #         "//tensorflow/lite/experimental/litert/test:common",
 #         "//tensorflow/lite/experimental/litert/test:simple_model",
 #         "//tensorflow/lite/kernels:builtin_ops",
