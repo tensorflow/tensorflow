@@ -25,9 +25,15 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/tools/optimization:optimization_pass_runner_lib",
+        "//third_party/protobuf",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_xla//xla:status_macros",
@@ -49,7 +55,9 @@ tf_cc_test(
     deps = [
         ":auto_clustering_test_helper",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -63,6 +71,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/jit:xla_activity_listener",
+        "//tensorflow/compiler/jit:xla_activity_proto_cc",
         "//tensorflow/compiler/jit:xla_compilation_cache_proto_cc",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/jit:xla_gpu_device",
@@ -75,10 +84,15 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//testing/base/public:gunit_for_library_testonly",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
@@ -99,6 +113,9 @@ tf_cc_test(
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -118,5 +135,8 @@ tf_cc_test(
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
