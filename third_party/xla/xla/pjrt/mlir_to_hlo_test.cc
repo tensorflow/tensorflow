@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/mlir_to_hlo.h"
 
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
