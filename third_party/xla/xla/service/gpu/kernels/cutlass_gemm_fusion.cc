@@ -64,7 +64,7 @@ struct RootWithWorkspace {
   HloInstruction* workspace;
 };
 
-static RootWithWorkspace MatchRootWithWorkspace(HloInstruction* root) {
+RootWithWorkspace MatchRootWithWorkspace(HloInstruction* root) {
   RootWithWorkspace result;
   if (Match(root, match::Tuple(match::Op(&result.root),
                                match::CustomCall(
