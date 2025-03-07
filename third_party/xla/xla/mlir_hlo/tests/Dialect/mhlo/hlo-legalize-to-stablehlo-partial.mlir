@@ -32,3 +32,19 @@ func.func @copy() -> tensor<2x1xi32> {
   // CHECK: return %[[COPY]]
   func.return %1 : tensor<2x1xi32>
 }
+
+// -----
+
+// Tokens flow between StableHLO and MHLO ops, so need to have special converson
+// logic. AddDependencyOp is the only op that doesn't exist in StableHLO but
+// uses token types, so it can have either StableHLO or MHLO token types as
+// input.
+
+// CHECK-LABEL: func @add_dependency
+func.func @add_dependency(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
+  // CHECK:      %[[TOK:.*]] = stablehlo.create_token {{.*}} : !stablehlo.token
+  // CHECK-NEXT: %[[COPY:.*]] = mhlo.add_dependency %arg0, %[[TOK]] : (tensor<3x4xf32>, !stablehlo.token) -> tensor<3x4xf32>
+  %0 = mhlo.create_token {xla_shape = "token[]"} : !mhlo.token
+  %1 = mhlo.add_dependency %arg0, %0 : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
+  return %1 : tensor<3x4xf32>
+}

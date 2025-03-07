@@ -21,6 +21,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/mlir_hlo",
         "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
@@ -37,7 +38,6 @@ cc_library(
     deps = [
         ":attribute_importer",
         ":hlo_utils",
-        "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -49,6 +49,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

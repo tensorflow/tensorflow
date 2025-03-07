@@ -35,6 +35,15 @@ limitations under the License.
 namespace xla {
 
 namespace stablehlo {
+// Converts the channel handle to attributes.
+mlir::NamedAttribute ConvertChannelHandle(const ChannelHandle& channel,
+                                          mlir::Builder* builder);
+mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id,
+                                          mlir::Builder* builder);
+
+absl::StatusOr<mlir::stablehlo::CustomCallApiVersion>
+ConvertCustomCallApiVersion(xla::CustomCallApiVersion api_version);
+
 // Converts the gather dimensions to attributes.
 mlir::stablehlo::GatherDimensionNumbersAttr ConvertGatherDimensionNumbers(
     const xla::GatherDimensionNumbers& dnums, mlir::Builder* builder);
@@ -50,6 +59,12 @@ mlir::stablehlo::DotAlgorithmAttr ConvertDotAlgorithm(
 // Converts the dot dimensions to attributes.
 mlir::stablehlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
     const DotDimensionNumbers& dnums, mlir::Builder* builder);
+
+// Converts the output operand aliasing to attributes.
+mlir::ArrayAttr ConvertOutputOperandAliasing(
+    const std::vector<std::pair<xla::ShapeIndex,
+                                std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
+    mlir::Builder* builder);
 
 // Converts an XLA PrecisionConfig to the corresponding MLIR attribute.
 mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,

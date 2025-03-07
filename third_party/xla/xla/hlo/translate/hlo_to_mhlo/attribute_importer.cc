@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -85,6 +86,43 @@ mlir::stablehlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
       builder->getContext(), update_window_dims, inserted_window_dims,
       input_batching_dims, scatter_indices_batching_dims,
       scatter_dims_to_operand_dims, dnums.index_vector_dim());
+}
+
+mlir::NamedAttribute ConvertChannelHandle(const ChannelHandle& channel,
+                                          mlir::Builder* builder) {
+  return builder->getNamedAttr(
+      "channel_handle",
+      mlir::stablehlo::ChannelHandleAttr::get(
+          builder->getContext(), channel.handle(), channel.type()));
+}
+
+mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id,
+                                          mlir::Builder* builder) {
+  ChannelHandle channel_handle;
+  if (channel_id) channel_handle.set_handle(*channel_id);
+  return stablehlo::ConvertChannelHandle(channel_handle, builder);
+}
+
+absl::StatusOr<mlir::stablehlo::CustomCallApiVersion>
+ConvertCustomCallApiVersion(xla::CustomCallApiVersion api_version) {
+  switch (api_version) {
+    case xla::CustomCallApiVersion::API_VERSION_UNSPECIFIED:
+      return mlir::stablehlo::CustomCallApiVersion::API_VERSION_UNSPECIFIED;
+    case xla::CustomCallApiVersion::API_VERSION_ORIGINAL:
+      return mlir::stablehlo::CustomCallApiVersion::API_VERSION_ORIGINAL;
+    case xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+      return mlir::stablehlo::CustomCallApiVersion::
+          API_VERSION_STATUS_RETURNING;
+    case xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
+      return mlir::stablehlo::CustomCallApiVersion::
+          API_VERSION_STATUS_RETURNING_UNIFIED;
+    case xla::CustomCallApiVersion::API_VERSION_TYPED_FFI:
+      return mlir::stablehlo::CustomCallApiVersion::API_VERSION_TYPED_FFI;
+    default:
+      return InvalidArgument("Unknown CustomCallApiVersion enum value #%d (%s)",
+                             api_version,
+                             xla::CustomCallApiVersion_Name(api_version));
+  }
 }
 
 mlir::stablehlo::DotAlgorithmAttr ConvertDotAlgorithm(
@@ -173,6 +211,23 @@ mlir::stablehlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
       arrayref(dnums.rhs_batch_dimensions()),
       arrayref(dnums.lhs_contracting_dimensions()),
       arrayref(dnums.rhs_contracting_dimensions()));
+}
+
+mlir::ArrayAttr ConvertOutputOperandAliasing(
+    const std::vector<std::pair<
+        xla::ShapeIndex, std::pair<int64_t, xla::ShapeIndex>>>& aliasInfo,
+    mlir::Builder* builder) {
+  auto arrayref = [](absl::Span<const int64_t> array) {
+    return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+  };
+  std::vector<mlir::Attribute> attrs;
+  for (auto& [output_tuple_idx, operand_idx] : aliasInfo) {
+    auto attr = mlir::stablehlo::OutputOperandAliasAttr::get(
+        builder->getContext(), arrayref(output_tuple_idx), operand_idx.first,
+        arrayref(operand_idx.second));
+    attrs.push_back(attr);
+  }
+  return builder->getArrayAttr(attrs);
 }
 
 mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
@@ -439,23 +494,14 @@ absl::StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
 
 absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version) {
-  switch (api_version) {
-    case xla::CustomCallApiVersion::API_VERSION_UNSPECIFIED:
-      return mlir::mhlo::CustomCallApiVersion::API_VERSION_UNSPECIFIED;
-    case xla::CustomCallApiVersion::API_VERSION_ORIGINAL:
-      return mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL;
-    case xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
-      return mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING;
-    case xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
-      return mlir::mhlo::CustomCallApiVersion::
-          API_VERSION_STATUS_RETURNING_UNIFIED;
-    case xla::CustomCallApiVersion::API_VERSION_TYPED_FFI:
-      return mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI;
-    default:
-      return InvalidArgument("Unknown CustomCallApiVersion enum value #%d (%s)",
-                             api_version,
-                             xla::CustomCallApiVersion_Name(api_version));
-  }
+  TF_ASSIGN_OR_RETURN(auto stablehlo_api_version,
+                      stablehlo::ConvertCustomCallApiVersion(api_version));
+  auto mhlo_api_version = mlir::mhlo::symbolizeCustomCallApiVersion(
+      mlir::stablehlo::stringifyCustomCallApiVersion(stablehlo_api_version));
+  if (!mhlo_api_version.has_value())
+    return InvalidArgument("Unknown CustomCallApiVersion enum value #%d",
+                           api_version);
+  return mhlo_api_version.value();
 }
 
 mlir::NamedAttribute ConvertChannelHandle(const ChannelHandle& channel,
@@ -465,6 +511,7 @@ mlir::NamedAttribute ConvertChannelHandle(const ChannelHandle& channel,
       mlir::mhlo::ChannelHandleAttr::get(builder->getContext(),
                                          channel.handle(), channel.type()));
 }
+
 mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id,
                                           mlir::Builder* builder) {
   ChannelHandle channel_handle;
