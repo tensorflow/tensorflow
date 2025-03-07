@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/model.h"
@@ -33,9 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/batch_util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/thread_annotations.h"
 
