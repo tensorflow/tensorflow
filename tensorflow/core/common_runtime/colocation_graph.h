@@ -17,8 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_COLOCATION_GRAPH_H_
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/inspecting_placer.h"

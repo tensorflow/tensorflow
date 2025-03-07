@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_COMPOSITE_DEVICE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_COMPOSITE_DEVICE_H_
 
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/allocator.h"
