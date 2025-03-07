@@ -237,6 +237,11 @@ absl::StatusOr<bool> HloConstantFolding::Run(
         continue;
       }
 
+      // Skip constant folding for instructions that cannot be safely removed.
+      if (!computation->IsSafelyRemovable(instruction)) {
+        continue;
+      }
+
       if (instruction->opcode() == HloOpcode::kPad &&
           instruction->operand(0)->opcode() == HloOpcode::kBroadcast &&
           instruction->operand(1)->opcode() == HloOpcode::kConstant) {
