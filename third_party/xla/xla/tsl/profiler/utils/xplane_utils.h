@@ -19,12 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "re2/re2.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/trace_utils.h"
@@ -170,6 +172,14 @@ bool IsEmpty(const XSpace& space);
 
 // Return true if grouping/step-tracking is done on the Xspace already.
 bool IsXSpaceGrouped(const XSpace& space);
+
+// Returns true if the plane name matches the regex.
+inline bool PlaneNameHit(absl::string_view plane_name,
+                         absl::string_view plane_name_regex) {
+  if (plane_name_regex.empty()) return true;
+  RE2 regex = RE2(plane_name_regex);
+  return RE2::PartialMatch(plane_name, regex);
+}
 
 // Mutate the XPlane by adding predefined XFlow. e.g. GPU kernel launches =>
 // GPU kernel events.
