@@ -3372,7 +3372,8 @@ PjRtStreamExecutorLoadedExecutable::GetOutputMemoryKinds() const {
 }
 
 absl::StatusOr<PjRtStreamExecutorClient::ExecutableExtras>
-PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
+PjRtStreamExecutorClient::GetExecutableExtras(
+    CompileOptions* options, bool allow_adjusting_device_assignment) {
   ExecutableExtras extras;
   std::shared_ptr<DeviceAssignment>& device_assignment =
       extras.device_assignment;
@@ -3424,7 +3425,8 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
       [this](int num_replicas, int num_partitions) {
         return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
       },
-      &num_replicas, &num_partitions, &device_assignment));
+      &num_replicas, &num_partitions, &device_assignment,
+      allow_adjusting_device_assignment));
 
   // Find devices that are addressable by this client/task.
   if (device_assignment != nullptr) {
@@ -3487,7 +3489,9 @@ PjRtStreamExecutorClient::CompileInternal(
 
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
 
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
+  TF_ASSIGN_OR_RETURN(
+      ExecutableExtras extras,
+      GetExecutableExtras(&options, options.compile_without_execution));
   std::shared_ptr<DeviceAssignment>& device_assignment =
       extras.device_assignment;
   std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&
@@ -3641,14 +3645,16 @@ absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
   }
   ExecutableAndOptionsProto proto;
   *proto.mutable_serialized_executable() = std::move(serialized);
+  // don't serialize the option compile_without_execution
   TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                       se_executable->compile_options_.ToProto());
   return proto.SerializeAsString();
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::DeserializeExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options) {
+PjRtStreamExecutorClient::LoadSerializedExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options,
+    const LoadOptions& load_options) {
   ExecutableAndOptionsProto proto;
   if (serialized.size() > std::numeric_limits<int>::max()) {
     return Internal(
@@ -3676,7 +3682,8 @@ PjRtStreamExecutorClient::DeserializeExecutable(
   VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
 
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
-                      GetExecutableExtras(&compile_options));
+                      GetExecutableExtras(&compile_options,
+                                          load_options.load_without_execution));
   std::shared_ptr<DeviceAssignment>& device_assignment =
       extras.device_assignment;
   std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&
@@ -3704,10 +3711,9 @@ PjRtStreamExecutorClient::DeserializeExecutable(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::LoadSerializedExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options,
-    const LoadOptions& load_options) {
-  return DeserializeExecutable(serialized, options);
+PjRtStreamExecutorClient::DeserializeExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
+  return LoadSerializedExecutable(serialized, options, LoadOptions());
 }
 
 bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,
