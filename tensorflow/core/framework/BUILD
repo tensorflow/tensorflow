@@ -43,6 +43,7 @@ default_visibility = [
     #internal nexus library,
     #internal nexus library tests,
     "//tensorflow/compiler/jit:__subpackages__",
+    #internal library,
 ]
 
 package(
@@ -1703,6 +1704,7 @@ tf_proto_library(
         ":types_proto",
     ],
     visibility = [
+        #internal library,
         "//tensorflow/core:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
