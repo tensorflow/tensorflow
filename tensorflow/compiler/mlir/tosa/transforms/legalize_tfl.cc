@@ -1296,17 +1296,28 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
     // TensorFlow Lite doesn't use the zero point when calculating
     // quantized average pool, while TOSA does. Force the TOSA
     // zero_points to zero to ensure that the calculations match
+    Location loc = op->getLoc();
+    const std::optional<Value> input_zp =
+      tosa::createZeroPointTensor(rewriter, loc, avg_pool_input.getType(), 0);
+    if (!input_zp.has_value())
+      return op->emitError("Failed to create input zero-point tensor for AvgPool2D op.");
 
-    auto input_zp_attr = rewriter.getI32IntegerAttr(0);
-    auto output_zp_attr = rewriter.getI32IntegerAttr(0);
+    const Value empty_output_val = rewriter.create<tensor::EmptyOp>(loc,
+      average_type.getShape(), average_type.getElementType());
+    const std::optional<Value> output_zp =
+      tosa::createZeroPointTensor(rewriter, loc, empty_output_val.getType(), 0);
+    if (!output_zp.has_value())
+      return op->emitError("Failed to create output zero-point tensor for AvgPool2D op.");
+
     result = CreateOpAndInfer<tosa::AvgPool2dOp>(
-        rewriter, op->getLoc(), average_type, avg_pool_input, kernel_size,
-        stride, pad, acc_attr, input_zp_attr, output_zp_attr);
+        rewriter, op->getLoc(), average_type, avg_pool_input, input_zp.value(),
+        output_zp.value(), kernel_size, stride, pad, acc_attr);
   } else {
     result = CreateOpAndInfer<tosa::AvgPool2dOp>(
-        rewriter, op->getLoc(), average_type, tfl_avgpool_op.getInput(),
-        kernel_size, stride, pad, acc_attr);
+        rewriter, op->getLoc(), average_type, avg_pool_input, kernel_size,
+        stride, pad, acc_attr);
   }
+
   if (average_type != output_type) {
     result = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(), output_type,
                                             result);
