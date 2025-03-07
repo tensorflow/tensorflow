@@ -98,9 +98,10 @@ absl::Nullable<Operation*> SkipUpwardsOptionalBroadcastInDimOp(
   return op;
 }
 
-class DeferActivationTransposeForAddOp : public OpRewritePattern<AddOp> {
+class DeferActivationTransposeForAddOp
+    : public OpRewritePattern<AddOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<AddOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(AddOp op) const override {
     // Only supports the case for 2D convolution.
@@ -133,9 +134,10 @@ class DeferActivationTransposeForAddOp : public OpRewritePattern<AddOp> {
 // to the result. The reduce function should be equivalent to
 // `stablehlo.maximum`, representing max pooling.
 class DeferActivationTransposeForMaxPoolReduceWindowOp
-    : public OpRewritePattern<mlir::stablehlo::ReduceWindowOp> {
+    : public OpRewritePattern<
+          mlir::stablehlo::ReduceWindowOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<mlir::stablehlo::ReduceWindowOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(mlir::stablehlo::ReduceWindowOp op) const override {
     if (failed(MatchMaxPoolReduceWindowOp(op))) return failure();
@@ -240,9 +242,10 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
 
 // Rewrites `maximum(transpose(%rhs), %lhs)` patterns to
 // `transpose(maximum(%rhs, transpose(%lhs)))`.
-class DeferActivationTransposeForMaxOp : public OpRewritePattern<MaxOp> {
+class DeferActivationTransposeForMaxOp
+    : public OpRewritePattern<MaxOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<MaxOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(MaxOp op) const override {
     Value input = op.getOperand(0);
