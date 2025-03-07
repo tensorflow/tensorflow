@@ -54,7 +54,8 @@ HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
     }
   }
 
-  if (producer->user_count() == 0) {
+  // In case of multi-output fusion, `producer` would already be deleted.
+  if (!allow_multi_output && producer->user_count() == 0) {
     TF_CHECK_OK(computation->RemoveInstruction(producer));
   }
 
@@ -81,7 +82,7 @@ TEST_F(FusionDeduplicationCacheTest, IdenticalInstructions_EqualId) {
 
   const HloInstruction* add2 = module->entry_computation()->root_instruction();
   const HloInstruction* add1 = add2->operand(0);
-  EXPECT_EQ(cache.GetInstructionId(*add1), cache.GetInstructionId(*add2));
+  EXPECT_EQ(cache.GetInstructionId(add1), cache.GetInstructionId(add2));
 }
 
 TEST_F(FusionDeduplicationCacheTest,
@@ -107,7 +108,7 @@ TEST_F(FusionDeduplicationCacheTest,
   const HloInstruction* add1 =
       module->GetComputationWithName("computation.1")->root_instruction();
   const HloInstruction* add2 = module->entry_computation()->root_instruction();
-  EXPECT_EQ(cache.GetInstructionId(*add1), cache.GetInstructionId(*add2));
+  EXPECT_EQ(cache.GetInstructionId(add1), cache.GetInstructionId(add2));
 }
 
 TEST_F(FusionDeduplicationCacheTest, IdenticalFusionInstructions_EqualId) {
@@ -131,21 +132,21 @@ TEST_F(FusionDeduplicationCacheTest, IdenticalFusionInstructions_EqualId) {
 
   FusionDeduplicationCache cache =
       FusionDeduplicationCache::Create(*module, IsFusible);
-  EXPECT_EQ(cache.GetInstructionId(*add1), cache.GetInstructionId(*add2));
-  EXPECT_EQ(cache.GetInstructionId(*log1), cache.GetInstructionId(*log2));
-  EXPECT_NE(cache.GetInstructionId(*add1), cache.GetInstructionId(*log1));
+  EXPECT_EQ(cache.GetInstructionId(add1), cache.GetInstructionId(add2));
+  EXPECT_EQ(cache.GetInstructionId(log1), cache.GetInstructionId(log2));
+  EXPECT_NE(cache.GetInstructionId(add1), cache.GetInstructionId(log1));
 
-  EXPECT_EQ(cache.GetFusionId(*log1, *add1), cache.GetFusionId(*log2, *add2));
+  EXPECT_EQ(cache.GetFusionId(log1, add1), cache.GetFusionId(log2, add2));
 
   HloInstruction* fusion1 = Fuse(log1, add1);
-  cache.UpdateFusedInstructionId(*fusion1, *log1, *add1,
+  cache.UpdateFusedInstructionId(fusion1, log1, add1,
                                  /*consumer_operand_index=*/0);
 
   HloInstruction* fusion2 = Fuse(log2, add2);
-  cache.UpdateFusedInstructionId(*fusion2, *log2, *add2,
+  cache.UpdateFusedInstructionId(fusion2, log2, add2,
                                  /*consumer_operand_index=*/0);
 
-  EXPECT_EQ(cache.GetInstructionId(*fusion1), cache.GetInstructionId(*fusion2));
+  EXPECT_EQ(cache.GetInstructionId(fusion1), cache.GetInstructionId(fusion2));
 }
 
 TEST_F(FusionDeduplicationCacheTest,
@@ -171,23 +172,23 @@ TEST_F(FusionDeduplicationCacheTest,
 
   FusionDeduplicationCache cache =
       FusionDeduplicationCache::Create(*module, IsFusible);
-  EXPECT_EQ(cache.GetInstructionId(*add1), cache.GetInstructionId(*add2));
-  EXPECT_EQ(cache.GetInstructionId(*log1), cache.GetInstructionId(*log2));
-  EXPECT_NE(cache.GetInstructionId(*add1), cache.GetInstructionId(*log1));
+  EXPECT_EQ(cache.GetInstructionId(add1), cache.GetInstructionId(add2));
+  EXPECT_EQ(cache.GetInstructionId(log1), cache.GetInstructionId(log2));
+  EXPECT_NE(cache.GetInstructionId(add1), cache.GetInstructionId(log1));
 
-  EXPECT_EQ(cache.GetFusionId(*log1, *add1), cache.GetFusionId(*log2, *add2));
+  EXPECT_EQ(cache.GetFusionId(log1, add1), cache.GetFusionId(log2, add2));
 
   HloInstruction* fusion1 = Fuse(log1, add1, /*allow_multi_output=*/true);
-  cache.UpdateFusedInstructionId(*fusion1, *log1, *add1,
+  cache.UpdateFusedInstructionId(fusion1, log1, add1,
                                  /*consumer_operand_index=*/0,
                                  /*allow_multi_output=*/true);
 
   HloInstruction* fusion2 = Fuse(log2, add2);
-  cache.UpdateFusedInstructionId(*fusion2, *log2, *add2,
+  cache.UpdateFusedInstructionId(fusion2, log2, add2,
                                  /*consumer_operand_index=*/0,
                                  /*allow_multi_output=*/true);
 
-  EXPECT_EQ(cache.GetInstructionId(*fusion1), cache.GetInstructionId(*fusion2));
+  EXPECT_EQ(cache.GetInstructionId(fusion1), cache.GetInstructionId(fusion2));
 }
 
 TEST_F(FusionDeduplicationCacheTest,
@@ -213,23 +214,23 @@ TEST_F(FusionDeduplicationCacheTest,
 
   FusionDeduplicationCache cache =
       FusionDeduplicationCache::Create(*module, IsFusible);
-  EXPECT_EQ(cache.GetInstructionId(*add1), cache.GetInstructionId(*add2));
-  EXPECT_EQ(cache.GetInstructionId(*log1), cache.GetInstructionId(*log2));
-  EXPECT_NE(cache.GetInstructionId(*add1), cache.GetInstructionId(*log1));
+  EXPECT_EQ(cache.GetInstructionId(add1), cache.GetInstructionId(add2));
+  EXPECT_EQ(cache.GetInstructionId(log1), cache.GetInstructionId(log2));
+  EXPECT_NE(cache.GetInstructionId(add1), cache.GetInstructionId(log1));
 
-  EXPECT_EQ(cache.GetFusionId(*log1, *add1), cache.GetFusionId(*log2, *add2));
+  EXPECT_EQ(cache.GetFusionId(log1, add1), cache.GetFusionId(log2, add2));
 
   HloInstruction* fusion1 = Fuse(log1, add1, /*allow_multi_output=*/true);
-  cache.UpdateFusedInstructionId(*fusion1, *log1, *add1,
+  cache.UpdateFusedInstructionId(fusion1, log1, add1,
                                  /*consumer_operand_index=*/0,
                                  /*allow_multi_output=*/true);
 
   HloInstruction* fusion2 = Fuse(log2, add2);
-  cache.UpdateFusedInstructionId(*fusion2, *log2, *add2,
+  cache.UpdateFusedInstructionId(fusion2, log2, add2,
                                  /*consumer_operand_index=*/0,
                                  /*allow_multi_output=*/false);
 
-  EXPECT_NE(cache.GetInstructionId(*fusion1), cache.GetInstructionId(*fusion2));
+  EXPECT_NE(cache.GetInstructionId(fusion1), cache.GetInstructionId(fusion2));
 }
 
 TEST_F(FusionDeduplicationCacheTest,
@@ -255,17 +256,17 @@ TEST_F(FusionDeduplicationCacheTest,
   FusionDeduplicationCache cache =
       FusionDeduplicationCache::Create(*module, IsFusible);
 
-  EXPECT_NE(cache.GetFusionId(*log1, *add1), cache.GetFusionId(*log2, *add2));
+  EXPECT_NE(cache.GetFusionId(log1, add1), cache.GetFusionId(log2, add2));
 
   HloInstruction* fusion1 = Fuse(log1, add1);
-  cache.UpdateFusedInstructionId(*fusion1, *log1, *add1,
+  cache.UpdateFusedInstructionId(fusion1, log1, add1,
                                  /*consumer_operand_index=*/0);
 
   HloInstruction* fusion2 = Fuse(log2, add2);
-  cache.UpdateFusedInstructionId(*fusion2, *log2, *add2,
+  cache.UpdateFusedInstructionId(fusion2, log2, add2,
                                  /*consumer_operand_index=*/1);
 
-  EXPECT_NE(cache.GetInstructionId(*fusion1), cache.GetInstructionId(*fusion2));
+  EXPECT_NE(cache.GetInstructionId(fusion1), cache.GetInstructionId(fusion2));
 }
 
 TEST_F(FusionDeduplicationCacheTest, OnlyFusibleInstructionsAreCached) {
@@ -293,8 +294,8 @@ TEST_F(FusionDeduplicationCacheTest, OnlyFusibleInstructionsAreCached) {
 
   // kParameter and kGetTupleElement are not fusible, so assignment of fusion
   // IDs started from `add`.
-  EXPECT_EQ(cache.GetInstructionId(*add), 0);
-  EXPECT_EQ(cache.GetInstructionId(*mul), 1);
+  EXPECT_EQ(cache.GetInstructionId(add), 0);
+  EXPECT_EQ(cache.GetInstructionId(mul), 1);
 }
 
 }  // namespace

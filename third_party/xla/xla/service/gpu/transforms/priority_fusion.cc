@@ -568,7 +568,7 @@ class PriorityFusionQueue {
       const HloInstruction* producer, const HloInstruction* consumer) {
     FusionDeduplicationCache::FusionId fusion_id = [&]() {
       absl::MutexLock lock(&fusion_deduplication_cache_mutex_);
-      return fusion_deduplication_cache_.GetFusionId(*producer, *consumer);
+      return fusion_deduplication_cache_.GetFusionId(producer, consumer);
     }();
 
     {
@@ -1020,7 +1020,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
         fusion_queue->PreFusion(producer, consumer);
         auto fusion_instruction = Fuse(producer, consumer);
         fusion_deduplication_cache.UpdateFusedInstructionId(
-            *fusion_instruction, *producer, *consumer, consumer_operand_index);
+            fusion_instruction, producer, consumer, consumer_operand_index);
         fusion_queue->OnFusingInstruction(fusion_instruction, producer,
                                           consumer);
 
