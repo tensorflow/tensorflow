@@ -29,8 +29,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ShuffleFCWeights::Run(Model* model, std::size_t op_index,
-                                           bool* modified) {
+absl::Status ShuffleFCWeights::Run(Model* model, std::size_t op_index,
+                                   bool* modified) {
   *modified = false;
   Operator* op = model->operators[op_index].get();
   if (op->type != OperatorType::kFullyConnected) {
