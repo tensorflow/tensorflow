@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <vector>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/c/c_api_types.h"
