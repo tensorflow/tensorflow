@@ -4,7 +4,11 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_WRAPPERS_TENSOR_WRAPPER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_WRAPPERS_TENSOR_WRAPPER_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
@@ -51,6 +55,8 @@ class TensorWrapper final {
     return quantize_params_;
   };
 
+  QuantizeParamsWrapperVariant& GetQuantParams() { return quantize_params_; };
+
   bool IsPerTensorQuantWithOffsetDiff(const TensorWrapper& rhs) const;
 
   bool IsQuant8() const {
@@ -93,6 +99,15 @@ class TensorWrapper final {
   const void* GetStaticTensorData() const {
     return qnn_tensor_.v2.clientBuf.data;
   };
+
+  void ConvertAxisScaleOffsetToScaleOffset() {
+    if (!std::holds_alternative<AxisScaleOffsetQuantizeParamsWrapper>(
+            quantize_params_)) {
+      return;
+    }
+
+    quantize_params_.emplace<ScaleOffsetQuantizeParamsWrapper>(0.0, 0);
+  }
 
   size_t GetTensorSize() const;
 
