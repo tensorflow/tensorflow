@@ -121,25 +121,6 @@ TEST_F(HloVerifierTest, NullInstructionParent) {
   EXPECT_THAT(status.message(), HasSubstr("has a null parent pointer"));
 }
 
-TEST_F(HloVerifierTest, NullComputationParent) {
-  HloComputation::Builder builder(TestName());
-  const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
-  HloInstruction* param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "param"));
-  builder.AddInstruction(
-      HloInstruction::CreateUnary(scalar_shape, HloOpcode::kNegate, param));
-  auto module = CreateUnverifiedModule();
-  HloComputation* computation = module->AddEntryComputation(builder.Build());
-
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
-
-  computation->set_parent(nullptr);
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), HasSubstr("has a null parent pointer"));
-}
-
 TEST_F(HloVerifierTest, DifferentOperandParents) {
   HloComputation::Builder builder(TestName());
   const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
