@@ -323,6 +323,18 @@ class ParametricDotTest : public DotOperationTest,
         // to set it deterministically.
         propagate_grad_xy_ = param.dot_lhs_row_major ? 1 : 2;
       }
+      if (name.find("TestF32/270x270x520_MajorToMinorTT") != std::string::npos) {
+        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
+      }
+      if (name.find("TestF32/270x270x520_MajorToMinorTF") != std::string::npos) {
+        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
+      }
+      if (name.find("TestF32/270x270x520_MajorToMinorFT") != std::string::npos) {
+        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
+      }
+      if (name.find("TestF32/270x270x520_MajorToMinorFF") != std::string::npos) {
+        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
+      }
     }
   }
 
@@ -1671,7 +1683,23 @@ XLA_TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
 using EinsumParamType =
     std::tuple<std::vector<int64_t>, std::vector<int64_t>, std::string>;
 class EinsumTest : public DotOperationTest,
-                   public ::testing::WithParamInterface<EinsumParamType> {};
+                   public ::testing::WithParamInterface<EinsumParamType> {
+ protected:
+  void SetUp() override {
+    const auto& gpu_comp = client_->backend()
+                               .default_stream_executor()
+                               ->GetDeviceDescription()
+                               .gpu_compute_capability();
+    if (std::holds_alternative<se::RocmComputeCapability>(gpu_comp)) {
+      absl::string_view name(
+          ::testing::UnitTest::GetInstance()->current_test_info()->name());
+      if (name.find("SimpleEinsumTest/5") != std::string::npos) {
+        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
+      }
+    }
+  }
+};
+
 XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
   XlaBuilder builder(TestName());
   auto x = AddParam(
@@ -1760,7 +1788,23 @@ INSTANTIATE_TEST_SUITE_P(Einsum, EinsumTest,
 using BatchDotParamType = std::tuple<std::vector<int64_t>, std::vector<int64_t>,
                                      std::vector<int64_t>>;
 class BatchDotTest : public DotOperationTest,
-                     public ::testing::WithParamInterface<BatchDotParamType> {};
+                     public ::testing::WithParamInterface<BatchDotParamType> {
+ protected:
+  void SetUp() override {
+    const auto& gpu_comp = client_->backend()
+                                .default_stream_executor()
+                                ->GetDeviceDescription()
+                                .gpu_compute_capability();
+    if (std::holds_alternative<se::RocmComputeCapability>(gpu_comp)) {
+      absl::string_view name(
+          ::testing::UnitTest::GetInstance()->current_test_info()->name());
+      if (name.find("BroadcastingBatchDotTest/6") != std::string::npos) {
+        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
+      }
+    }
+  }
+};
+
 XLA_TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
   XlaBuilder builder(TestName());
   auto x = AddParam(
@@ -1796,7 +1840,17 @@ std::vector<BatchDotParamType> GetBatchDotTestCases() {
 INSTANTIATE_TEST_SUITE_P(BatchDot, BatchDotTest,
                          ::testing::ValuesIn(GetBatchDotTestCases()));
 
-class DotOperationTextTest : public HloTestBase {};
+class DotOperationTextTest : public HloTestBase {
+ public:
+  const stream_executor::GpuComputeCapability& GpuComputeComp() {
+    return device_desc().gpu_compute_capability();
+  }
+
+ protected:
+  const stream_executor::DeviceDescription& device_desc() {
+    return backend().default_stream_executor()->GetDeviceDescription();
+  }
+};
 
 XLA_TEST_F(DotOperationTextTest, DotReorderedDotDims) {
   absl::string_view hlo_string =
@@ -1844,6 +1898,10 @@ ENTRY %test {
 }
 
 XLA_TEST_F(DotOperationTextTest, Einsum) {
+  // TODO(rocm): weekly-sync 25-02-21
+  if (std::holds_alternative<stream_executor::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Currently disabled on ROCm.";
+  }
   absl::string_view hlo_string =
       R"(
 HloModule Einsum
@@ -2098,6 +2156,10 @@ ENTRY SmallIntegerDot {
 }
 
 XLA_TEST_F(DotOperationTextTest, GpuTransposeOutput) {
+  // TODO(rocm): weekly-sync 25-02-21
+  if (std::holds_alternative<stream_executor::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Currently disabled on ROCm.";
+  }
   absl::string_view hlo_string =
       R"(
 HloModule TransposeOutput

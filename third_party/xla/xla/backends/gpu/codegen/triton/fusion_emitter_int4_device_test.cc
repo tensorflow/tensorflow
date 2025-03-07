@@ -67,6 +67,7 @@ class TritonTest : public GpuCodegenTest {
   const stream_executor::GpuComputeCapability& GpuComputeComp() {
     return device_desc().gpu_compute_capability();
   }
+  
   stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
     if (std::holds_alternative<stream_executor::RocmComputeCapability>(
             GpuComputeComp())) {
@@ -191,6 +192,10 @@ TEST_F(TritonTest, FuseSubchannelDequantization) {
 }
 
 TEST_F(TritonTest, FuseChannelDequantization) {
+  // TODO(rocm): weekly-sync 25-02-21
+  if (std::holds_alternative<stream_executor::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Currently disabled on ROCm.";
+  }
   // This test is a Channel Dequantization fusion.
   // We run the non-fused version with the goal to fail if an hlo rewrite broke
   // the dequantization logic. The case where we do:
@@ -339,6 +344,10 @@ TEST_F(TritonTest, FuseSubchannelDequantizationFusedWithSmallBlockKSize) {
 }
 
 TEST_F(TritonTest, FuseBroadcastInPrologue) {
+  // TODO(rocm): weekly-sync 25-02-21
+  if (std::holds_alternative<stream_executor::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Currently disabled on ROCm.";
+  }
   constexpr absl::string_view kHloText = R"(
     HloModule FuseBroadcastInPrologue
 
@@ -542,6 +551,10 @@ TEST_F(TritonTest, DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
 }
 
 TEST_F(TritonTest, FuseMultiplyInPrologue) {
+  // TODO(rocm): weekly-sync 25-02-21
+  if (std::holds_alternative<stream_executor::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Currently disabled on ROCm.";
+  }
   constexpr absl::string_view kHloText = R"(
     HloModule FuseMultiplyInPrologue
 

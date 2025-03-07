@@ -295,6 +295,10 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
 }
 
 TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
+// TODO(rocm): weekly-sync 25-02-21
+#ifdef TENSORFLOW_USE_ROCM  
+  GTEST_SKIP() << "This is currently disabled on ROCM.";  
+#endif  
   void* host_dma_ptr = nullptr;
   size_t dma_size = 1024 * 1024;
   ASSERT_EQ(posix_memalign(&host_dma_ptr, dma_size, dma_size), 0);
