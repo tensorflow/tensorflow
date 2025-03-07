@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -74,8 +75,8 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
           space_spec.network_througput_bytes);
       *profiles.add_entries() = entry;
     }
-    interpolator_ = *CollectiveInterpolator::Create(
-        profiles, TestGpuDeviceInfo::RTXA6000DeviceInfo());
+    device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+    interpolator_ = *CollectiveInterpolator::Create(profiles, device_info_);
   }
 
  protected:
@@ -154,6 +155,7 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
     return iota;
   }
 
+  se::DeviceDescription device_info_;
   std::unique_ptr<CollectiveInterpolator> interpolator_;
   std::vector<SpaceSpec> test_space_ = {
       {
