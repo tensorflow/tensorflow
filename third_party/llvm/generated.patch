@@ -1,13 +1,2207 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/libc/src/stdlib/qsort_pivot.h b/libc/src/stdlib/qsort_pivot.h
---- a/libc/src/stdlib/qsort_pivot.h
-+++ b/libc/src/stdlib/qsort_pivot.h
-@@ -9,6 +9,8 @@
- #ifndef LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
- #define LLVM_LIBC_SRC_STDLIB_QSORT_PIVOT_H
+diff -ruN --strip-trailing-cr a/libc/cmake/modules/LLVMLibCTestRules.cmake b/libc/cmake/modules/LLVMLibCTestRules.cmake
+--- a/libc/cmake/modules/LLVMLibCTestRules.cmake
++++ b/libc/cmake/modules/LLVMLibCTestRules.cmake
+@@ -36,7 +36,8 @@
+     if(NOT LIBC_WNO_ERROR)
+       # list(APPEND compile_options "-Werror")
+     endif()
+-    list(APPEND compile_options "-Wconversion")
++    # list(APPEND compile_options "-Wconversion")
++    # list(APPEND compile_options "-Wno-sign-conversion")
+     list(APPEND compile_options "-Wimplicit-fallthrough")
+     list(APPEND compile_options "-Wwrite-strings")
+     # Silence this warning because _Complex is a part of C99.
+diff -ruN --strip-trailing-cr a/libc/src/stdio/printf_core/parser.h b/libc/src/stdio/printf_core/parser.h
+--- a/libc/src/stdio/printf_core/parser.h
++++ b/libc/src/stdio/printf_core/parser.h
+@@ -57,8 +57,7 @@
+     if (!temp.has_value()) {                                                   \
+       section.has_conv = false;                                                \
+     } else {                                                                   \
+-      dst = static_cast<decltype(dst)>(                                        \
+-          cpp::bit_cast<int_type_of_v<arg_type>>(temp.value()));               \
++      dst = cpp::bit_cast<int_type_of_v<arg_type>>(temp.value());              \
+     }                                                                          \
+   }
+ #else
+@@ -131,7 +130,7 @@
+       } else if (internal::isdigit(str[cur_pos])) {
+         auto result = internal::strtointeger<int>(str + cur_pos, 10);
+         section.min_width = result.value;
+-        cur_pos = cur_pos + static_cast<size_t>(result.parsed_len);
++        cur_pos = cur_pos + result.parsed_len;
+       }
+       if (section.min_width < 0) {
+         section.min_width =
+@@ -154,7 +153,7 @@
+         } else if (internal::isdigit(str[cur_pos])) {
+           auto result = internal::strtointeger<int>(str + cur_pos, 10);
+           section.precision = result.value;
+-          cur_pos = cur_pos + static_cast<size_t>(result.parsed_len);
++          cur_pos = cur_pos + result.parsed_len;
+         }
+       }
  
-+#include "src/__support/macros/attributes.h"
-+
+@@ -266,8 +265,7 @@
+       case ('m'):
+         // %m is an odd conversion in that it doesn't consume an argument, it
+         // just takes the current value of errno as its argument.
+-        section.conv_val_raw =
+-            static_cast<fputil::FPBits<double>::StorageType>(libc_errno);
++        section.conv_val_raw = static_cast<int>(libc_errno);
+         break;
+ #endif // LIBC_COPT_PRINTF_DISABLE_STRERROR
+ #ifndef LIBC_COPT_PRINTF_DISABLE_WRITE_INT
+@@ -358,7 +356,7 @@
+       }
+       if (internal::isdigit(str[*local_pos])) {
+         const auto result = internal::strtointeger<int>(str + *local_pos, 10);
+-        *local_pos += static_cast<size_t>(result.parsed_len);
++        *local_pos += result.parsed_len;
+         return {lm, static_cast<size_t>(cpp::max(0, result.value))};
+       }
+       return {lm, 0};
+@@ -407,10 +405,10 @@
+   LIBC_INLINE size_t parse_index(size_t *local_pos) {
+     if (internal::isdigit(str[*local_pos])) {
+       auto result = internal::strtointeger<int>(str + *local_pos, 10);
+-      size_t index = static_cast<size_t>(result.value);
+-      if (str[*local_pos + static_cast<size_t>(result.parsed_len)] != '$')
++      size_t index = result.value;
++      if (str[*local_pos + result.parsed_len] != '$')
+         return 0;
+-      *local_pos = static_cast<size_t>(1 + result.parsed_len) + *local_pos;
++      *local_pos = 1 + result.parsed_len + *local_pos;
+       return index;
+     }
+     return 0;
+diff -ruN --strip-trailing-cr a/libc/src/stdio/printf_core/writer.h b/libc/src/stdio/printf_core/writer.h
+--- a/libc/src/stdio/printf_core/writer.h
++++ b/libc/src/stdio/printf_core/writer.h
+@@ -135,8 +135,7 @@
+     chars_written += static_cast<int>(length);
+ 
+     if (LIBC_LIKELY(wb->buff_cur + length <= wb->buff_len)) {
+-      inline_memset(wb->buff + wb->buff_cur,
+-                    static_cast<unsigned char>(new_char), length);
++      inline_memset(wb->buff + wb->buff_cur, new_char, length);
+       wb->buff_cur += length;
+       return WRITE_OK;
+     }
+diff -ruN --strip-trailing-cr a/libc/src/stdio/scanf_core/parser.h b/libc/src/stdio/scanf_core/parser.h
+--- a/libc/src/stdio/scanf_core/parser.h
++++ b/libc/src/stdio/scanf_core/parser.h
+@@ -78,7 +78,7 @@
+       if (internal::isdigit(str[cur_pos])) {
+         auto result = internal::strtointeger<int>(str + cur_pos, 10);
+         section.max_width = result.value;
+-        cur_pos = cur_pos + static_cast<size_t>(result.parsed_len);
++        cur_pos = cur_pos + result.parsed_len;
+       }
+ 
+       // TODO(michaelrj): add posix allocate flag support.
+@@ -150,11 +150,10 @@
+             char b = str[cur_pos + 1];
+             char start = (a < b ? a : b);
+             char end = (a < b ? b : a);
+-            scan_set.set_range(static_cast<size_t>(start),
+-                               static_cast<size_t>(end));
++            scan_set.set_range(start, end);
+             cur_pos += 2;
+           } else {
+-            scan_set.set(static_cast<size_t>(str[cur_pos]));
++            scan_set.set(str[cur_pos]);
+             ++cur_pos;
+           }
+         }
+@@ -238,10 +237,10 @@
+   LIBC_INLINE size_t parse_index(size_t *local_pos) {
+     if (internal::isdigit(str[*local_pos])) {
+       auto result = internal::strtointeger<int>(str + *local_pos, 10);
+-      size_t index = static_cast<size_t>(result.value);
+-      if (str[*local_pos + static_cast<size_t>(result.parsed_len)] != '$')
++      size_t index = result.value;
++      if (str[*local_pos + result.parsed_len] != '$')
+         return 0;
+-      *local_pos = static_cast<size_t>(1 + result.parsed_len) + *local_pos;
++      *local_pos = 1 + result.parsed_len + *local_pos;
+       return index;
+     }
+     return 0;
+diff -ruN --strip-trailing-cr a/libc/src/stdlib/quick_sort.h b/libc/src/stdlib/quick_sort.h
+--- a/libc/src/stdlib/quick_sort.h
++++ b/libc/src/stdlib/quick_sort.h
+@@ -167,9 +167,7 @@
+   }
+ }
+ 
+-constexpr size_t ilog2(size_t n) {
+-  return static_cast<size_t>(cpp::bit_width(n)) - 1;
+-}
++constexpr size_t ilog2(size_t n) { return cpp::bit_width(n) - 1; }
+ 
+ template <typename A, typename F>
+ LIBC_INLINE void quick_sort(A &array, const F &is_less) {
+diff -ruN --strip-trailing-cr a/libc/src/string/memory_utils/utils.h b/libc/src/string/memory_utils/utils.h
+--- a/libc/src/string/memory_utils/utils.h
++++ b/libc/src/string/memory_utils/utils.h
+@@ -263,7 +263,7 @@
+   static_assert(sizeof(ValueType) >= (sizeof(T) + ... + sizeof(TS)));
+   constexpr size_t SHIFT = sizeof(T) * 8;
+   if constexpr (Endian::IS_LITTLE) {
+-    store<T>(assume_aligned<sizeof(T)>(dst), T(value & T(~0)));
++    store<T>(assume_aligned<sizeof(T)>(dst), value & ~T(0));
+     if constexpr (sizeof...(TS) > 0)
+       store_aligned<ValueType, TS...>(value >> SHIFT, dst + sizeof(T));
+   } else if constexpr (Endian::IS_BIG) {
+@@ -293,7 +293,7 @@
+ // Advances the pointers p1 and p2 by offset bytes and decrease count by the
+ // same amount.
+ template <typename T1, typename T2>
+-LIBC_INLINE void adjust(uintptr_t offset, T1 *__restrict &p1,
++LIBC_INLINE void adjust(ptrdiff_t offset, T1 *__restrict &p1,
+                         T2 *__restrict &p2, size_t &count) {
+   p1 += offset;
+   p2 += offset;
+diff -ruN --strip-trailing-cr a/libc/src/string/string_utils.h b/libc/src/string/string_utils.h
+--- a/libc/src/string/string_utils.h
++++ b/libc/src/string/string_utils.h
+@@ -66,7 +66,7 @@
+   for (; reinterpret_cast<uintptr_t>(char_ptr) % sizeof(Word) != 0;
+        ++char_ptr) {
+     if (*char_ptr == '\0')
+-      return static_cast<size_t>(char_ptr - src);
++      return char_ptr - src;
+   }
+   // Step 2: read blocks
+   for (const Word *block_ptr = reinterpret_cast<const Word *>(char_ptr);
+@@ -77,7 +77,7 @@
+   for (; *char_ptr != '\0'; ++char_ptr) {
+     ;
+   }
+-  return static_cast<size_t>(char_ptr - src);
++  return char_ptr - src;
+ }
+ 
+ // Returns the length of a string, denoted by the first occurrence
+@@ -169,7 +169,7 @@
+   for (; *src && !bitset.test(*reinterpret_cast<const unsigned char *>(src));
+        ++src)
+     ;
+-  return static_cast<size_t>(src - initial);
++  return src - initial;
+ }
+ 
+ // Given the similarities between strtok and strtok_r, we can implement both
+@@ -189,14 +189,12 @@
+   if (LIBC_UNLIKELY(src == nullptr && ((src = *saveptr) == nullptr)))
+     return nullptr;
+ 
+-  static_assert(sizeof(char) == sizeof(cpp::byte),
+-                "bitset of 256 assumes char is 8 bits");
+   cpp::bitset<256> delimiter_set;
+   for (; *delimiter_string != '\0'; ++delimiter_string)
+-    delimiter_set.set(static_cast<size_t>(*delimiter_string));
++    delimiter_set.set(*delimiter_string);
+ 
+   if constexpr (SkipDelim)
+-    for (; *src != '\0' && delimiter_set.test(static_cast<size_t>(*src)); ++src)
++    for (; *src != '\0' && delimiter_set.test(*src); ++src)
+       ;
+   if (*src == '\0') {
+     *saveptr = src;
+@@ -204,7 +202,7 @@
+   }
+   char *token = src;
+   for (; *src != '\0'; ++src) {
+-    if (delimiter_set.test(static_cast<size_t>(*src))) {
++    if (delimiter_set.test(*src)) {
+       *src = '\0';
+       ++src;
+       break;
+diff -ruN --strip-trailing-cr a/libc/src/__support/big_int.h b/libc/src/__support/big_int.h
+--- a/libc/src/__support/big_int.h
++++ b/libc/src/__support/big_int.h
+@@ -284,7 +284,7 @@
+     if (i < 0)
+       return 0;
+     if (i >= int(N))
+-      return is_neg ? cpp::numeric_limits<word>::max() : 0;
++      return is_neg ? -1 : 0;
+     return array[i];
+   };
+   const size_t index_offset = offset / WORD_BITS;
+@@ -696,8 +696,7 @@
+     }
+     BigInt quotient;
+     WordType x_word = static_cast<WordType>(x);
+-    constexpr size_t LOG2_WORD_SIZE =
+-        static_cast<size_t>(cpp::bit_width(WORD_SIZE) - 1);
++    constexpr size_t LOG2_WORD_SIZE = cpp::bit_width(WORD_SIZE) - 1;
+     constexpr size_t HALF_WORD_SIZE = WORD_SIZE >> 1;
+     constexpr WordType HALF_MASK = ((WordType(1) << HALF_WORD_SIZE) - 1);
+     // lower = smallest multiple of WORD_SIZE that is >= e.
+@@ -1009,12 +1008,12 @@
+       BigInt subtractor = divider;
+       int cur_bit = multiword::countl_zero(subtractor.val) -
+                     multiword::countl_zero(remainder.val);
+-      subtractor <<= static_cast<size_t>(cur_bit);
++      subtractor <<= cur_bit;
+       for (; cur_bit >= 0 && remainder > 0; --cur_bit, subtractor >>= 1) {
+         if (remainder < subtractor)
+           continue;
+         remainder -= subtractor;
+-        quotient.set_bit(static_cast<size_t>(cur_bit));
++        quotient.set_bit(cur_bit);
+       }
+     }
+     return Division{quotient, remainder};
+@@ -1276,28 +1275,26 @@
+ template <typename T>
+ [[nodiscard]] LIBC_INLINE constexpr cpp::enable_if_t<is_big_int_v<T>, T>
+ rotl(T value, int rotate) {
+-  constexpr int N = cpp::numeric_limits<T>::digits;
++  constexpr unsigned N = cpp::numeric_limits<T>::digits;
+   rotate = rotate % N;
+   if (!rotate)
+     return value;
+   if (rotate < 0)
+     return cpp::rotr<T>(value, -rotate);
+-  return (value << static_cast<size_t>(rotate)) |
+-         (value >> (N - static_cast<size_t>(rotate)));
++  return (value << rotate) | (value >> (N - rotate));
+ }
+ 
+ // Specialization of cpp::rotr ('bit.h') for BigInt.
+ template <typename T>
+ [[nodiscard]] LIBC_INLINE constexpr cpp::enable_if_t<is_big_int_v<T>, T>
+ rotr(T value, int rotate) {
+-  constexpr int N = cpp::numeric_limits<T>::digits;
++  constexpr unsigned N = cpp::numeric_limits<T>::digits;
+   rotate = rotate % N;
+   if (!rotate)
+     return value;
+   if (rotate < 0)
+     return cpp::rotl<T>(value, -rotate);
+-  return (value >> static_cast<size_t>(rotate)) |
+-         (value << (N - static_cast<size_t>(rotate)));
++  return (value >> rotate) | (value << (N - rotate));
+ }
+ 
+ } // namespace cpp
+@@ -1314,7 +1311,7 @@
+   T out; // zero initialized
+   for (size_t i = 0; i <= QUOTIENT; ++i)
+     out[i] = i < QUOTIENT
+-                 ? cpp::numeric_limits<typename T::word_type>::max()
++                 ? -1
+                  : mask_trailing_ones<typename T::word_type, REMAINDER>();
+   return out;
+ }
+@@ -1330,7 +1327,7 @@
+   T out; // zero initialized
+   for (size_t i = QUOTIENT; i < T::WORD_COUNT; ++i)
+     out[i] = i > QUOTIENT
+-                 ? cpp::numeric_limits<typename T::word_type>::max()
++                 ? -1
+                  : mask_leading_ones<typename T::word_type, REMAINDER>();
+   return out;
+ }
+diff -ruN --strip-trailing-cr a/libc/src/__support/CPP/bit.h b/libc/src/__support/CPP/bit.h
+--- a/libc/src/__support/CPP/bit.h
++++ b/libc/src/__support/CPP/bit.h
+@@ -101,7 +101,7 @@
+     shift >>= 1;
+     mask >>= shift;
+   }
+-  return static_cast<int>(zero_bits);
++  return zero_bits;
+ }
+ #if __has_builtin(__builtin_ctzs)
+ ADD_SPECIALIZATION(countr_zero, unsigned short, __builtin_ctzs)
+@@ -140,7 +140,7 @@
+     else
+       zero_bits |= shift;
+   }
+-  return static_cast<int>(zero_bits);
++  return zero_bits;
+ }
+ #if __has_builtin(__builtin_clzs)
+ ADD_SPECIALIZATION(countl_zero, unsigned short, __builtin_clzs)
+@@ -226,7 +226,7 @@
+ template <typename T>
+ [[nodiscard]] LIBC_INLINE constexpr cpp::enable_if_t<cpp::is_unsigned_v<T>, T>
+ rotl(T value, int rotate) {
+-  constexpr int N = cpp::numeric_limits<T>::digits;
++  constexpr unsigned N = cpp::numeric_limits<T>::digits;
+   rotate = rotate % N;
+   if (!rotate)
+     return value;
+@@ -238,7 +238,7 @@
+ template <typename T>
+ [[nodiscard]] LIBC_INLINE constexpr cpp::enable_if_t<cpp::is_unsigned_v<T>, T>
+ rotr(T value, int rotate) {
+-  constexpr int N = cpp::numeric_limits<T>::digits;
++  constexpr unsigned N = cpp::numeric_limits<T>::digits;
+   rotate = rotate % N;
+   if (!rotate)
+     return value;
+diff -ruN --strip-trailing-cr a/libc/src/__support/CPP/span.h b/libc/src/__support/CPP/span.h
+--- a/libc/src/__support/CPP/span.h
++++ b/libc/src/__support/CPP/span.h
+@@ -11,7 +11,6 @@
  #include <stddef.h> // For size_t
  
- namespace LIBC_NAMESPACE_DECL {
+ #include "array.h" // For array
+-#include "limits.h"
+ #include "src/__support/macros/config.h"
+ #include "type_traits.h" // For remove_cv_t, enable_if_t, is_same_v, is_const_v
+ 
+@@ -49,8 +48,7 @@
+   using const_reference = const T &;
+   using iterator = T *;
+ 
+-  LIBC_INLINE_VAR static constexpr size_type dynamic_extent =
+-      cpp::numeric_limits<size_type>::max();
++  LIBC_INLINE_VAR static constexpr size_type dynamic_extent = -1;
+ 
+   LIBC_INLINE constexpr span() : span_data(nullptr), span_size(0) {}
+ 
+@@ -60,7 +58,7 @@
+       : span_data(first), span_size(count) {}
+ 
+   LIBC_INLINE constexpr span(pointer first, pointer end)
+-      : span_data(first), span_size(static_cast<size_t>(end - first)) {}
++      : span_data(first), span_size(end - first) {}
+ 
+   template <typename U, size_t N,
+             cpp::enable_if_t<is_compatible_v<U>, bool> = true>
+diff -ruN --strip-trailing-cr a/libc/src/__support/CPP/string.h b/libc/src/__support/CPP/string.h
+--- a/libc/src/__support/CPP/string.h
++++ b/libc/src/__support/CPP/string.h
+@@ -67,8 +67,7 @@
+       : string(cstr, ::LIBC_NAMESPACE::internal::string_length(cstr)) {}
+   LIBC_INLINE string(size_t size_, char value) {
+     resize(size_);
+-    static_assert(sizeof(char) == sizeof(uint8_t));
+-    inline_memset((void *)buffer_, static_cast<uint8_t>(value), size_);
++    inline_memset((void *)buffer_, value, size_);
+   }
+ 
+   LIBC_INLINE string &operator=(const string &other) {
+diff -ruN --strip-trailing-cr a/libc/src/__support/CPP/string_view.h b/libc/src/__support/CPP/string_view.h
+--- a/libc/src/__support/CPP/string_view.h
++++ b/libc/src/__support/CPP/string_view.h
+@@ -9,7 +9,6 @@
+ #ifndef LLVM_LIBC_SRC___SUPPORT_CPP_STRING_VIEW_H
+ #define LLVM_LIBC_SRC___SUPPORT_CPP_STRING_VIEW_H
+ 
+-#include "limits.h"
+ #include "src/__support/common.h"
+ #include "src/__support/macros/config.h"
+ 
+@@ -41,7 +40,7 @@
+   LIBC_INLINE static constexpr size_t length(const char *Str) {
+     for (const char *End = Str;; ++End)
+       if (*End == '\0')
+-        return static_cast<size_t>(End - Str);
++        return End - Str;
+   }
+ 
+   LIBC_INLINE bool equals(string_view Other) const {
+@@ -62,8 +61,7 @@
+ 
+   // special value equal to the maximum value representable by the type
+   // size_type.
+-  LIBC_INLINE_VAR static constexpr size_t npos =
+-      cpp::numeric_limits<size_t>::max();
++  LIBC_INLINE_VAR static constexpr size_t npos = -1;
+ 
+   LIBC_INLINE constexpr string_view() : Data(nullptr), Len(0) {}
+ 
+diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/aarch64/fenv_darwin_impl.h b/libc/src/__support/FPUtil/aarch64/fenv_darwin_impl.h
+--- a/libc/src/__support/FPUtil/aarch64/fenv_darwin_impl.h
++++ b/libc/src/__support/FPUtil/aarch64/fenv_darwin_impl.h
+@@ -63,7 +63,7 @@
+   // __fpcr_flush_to_zero bit in the FPCR register.  This control bit is
+   // located in a different place from FE_FLUSHTOZERO status bit relative to
+   // the other exceptions.
+-  LIBC_INLINE static uint32_t exception_value_from_status(uint32_t status) {
++  LIBC_INLINE static uint32_t exception_value_from_status(int status) {
+     return ((status & FE_INVALID) ? EX_INVALID : 0) |
+            ((status & FE_DIVBYZERO) ? EX_DIVBYZERO : 0) |
+            ((status & FE_OVERFLOW) ? EX_OVERFLOW : 0) |
+@@ -72,7 +72,7 @@
+            ((status & FE_FLUSHTOZERO) ? EX_FLUSHTOZERO : 0);
+   }
+ 
+-  LIBC_INLINE static uint32_t exception_value_from_control(uint32_t control) {
++  LIBC_INLINE static uint32_t exception_value_from_control(int control) {
+     return ((control & __fpcr_trap_invalid) ? EX_INVALID : 0) |
+            ((control & __fpcr_trap_divbyzero) ? EX_DIVBYZERO : 0) |
+            ((control & __fpcr_trap_overflow) ? EX_OVERFLOW : 0) |
+@@ -81,7 +81,7 @@
+            ((control & __fpcr_flush_to_zero) ? EX_FLUSHTOZERO : 0);
+   }
+ 
+-  LIBC_INLINE static uint32_t exception_value_to_status(uint32_t excepts) {
++  LIBC_INLINE static int exception_value_to_status(uint32_t excepts) {
+     return ((excepts & EX_INVALID) ? FE_INVALID : 0) |
+            ((excepts & EX_DIVBYZERO) ? FE_DIVBYZERO : 0) |
+            ((excepts & EX_OVERFLOW) ? FE_OVERFLOW : 0) |
+@@ -90,7 +90,7 @@
+            ((excepts & EX_FLUSHTOZERO) ? FE_FLUSHTOZERO : 0);
+   }
+ 
+-  LIBC_INLINE static uint32_t exception_value_to_control(uint32_t excepts) {
++  LIBC_INLINE static int exception_value_to_control(uint32_t excepts) {
+     return ((excepts & EX_INVALID) ? __fpcr_trap_invalid : 0) |
+            ((excepts & EX_DIVBYZERO) ? __fpcr_trap_divbyzero : 0) |
+            ((excepts & EX_OVERFLOW) ? __fpcr_trap_overflow : 0) |
+@@ -113,37 +113,34 @@
+ };
+ 
+ LIBC_INLINE int enable_except(int excepts) {
+-  uint32_t new_excepts =
+-      FEnv::exception_value_from_status(static_cast<uint32_t>(excepts));
++  uint32_t new_excepts = FEnv::exception_value_from_status(excepts);
+   uint32_t control_word = FEnv::get_control_word();
+   uint32_t old_excepts = FEnv::exception_value_from_control(control_word);
+   if (new_excepts != old_excepts) {
+     control_word |= FEnv::exception_value_to_control(new_excepts);
+     FEnv::set_control_word(control_word);
+   }
+-  return static_cast<int>(FEnv::exception_value_to_status(old_excepts));
++  return FEnv::exception_value_to_status(old_excepts);
+ }
+ 
+ LIBC_INLINE int disable_except(int excepts) {
+-  uint32_t disabled_excepts =
+-      FEnv::exception_value_from_status(static_cast<uint32_t>(excepts));
++  uint32_t disabled_excepts = FEnv::exception_value_from_status(excepts);
+   uint32_t control_word = FEnv::get_control_word();
+   uint32_t old_excepts = FEnv::exception_value_from_control(control_word);
+   control_word &= ~FEnv::exception_value_to_control(disabled_excepts);
+   FEnv::set_control_word(control_word);
+-  return static_cast<int>(FEnv::exception_value_to_status(old_excepts));
++  return FEnv::exception_value_to_status(old_excepts);
+ }
+ 
+ LIBC_INLINE int get_except() {
+   uint32_t control_word = FEnv::get_control_word();
+   uint32_t enabled_excepts = FEnv::exception_value_from_control(control_word);
+-  return static_cast<int>(FEnv::exception_value_to_status(enabled_excepts));
++  return FEnv::exception_value_to_status(enabled_excepts);
+ }
+ 
+ LIBC_INLINE int clear_except(int excepts) {
+   uint32_t status_word = FEnv::get_status_word();
+-  uint32_t except_value =
+-      FEnv::exception_value_from_status(static_cast<uint32_t>(excepts));
++  uint32_t except_value = FEnv::exception_value_from_status(excepts);
+   status_word &= ~FEnv::exception_value_to_status(except_value);
+   FEnv::set_status_word(status_word);
+   return 0;
+@@ -151,16 +148,13 @@
+ 
+ LIBC_INLINE int test_except(int excepts) {
+   uint32_t statusWord = FEnv::get_status_word();
+-  uint32_t ex_value =
+-      FEnv::exception_value_from_status(static_cast<uint32_t>(excepts));
+-  return static_cast<int>(statusWord &
+-                          FEnv::exception_value_to_status(ex_value));
++  uint32_t ex_value = FEnv::exception_value_from_status(excepts);
++  return statusWord & FEnv::exception_value_to_status(ex_value);
+ }
+ 
+ LIBC_INLINE int set_except(int excepts) {
+   uint32_t status_word = FEnv::get_status_word();
+-  uint32_t new_exceptions =
+-      FEnv::exception_value_from_status(static_cast<uint32_t>(excepts));
++  uint32_t new_exceptions = FEnv::exception_value_from_status(excepts);
+   status_word |= FEnv::exception_value_to_status(new_exceptions);
+   FEnv::set_status_word(status_word);
+   return 0;
+@@ -180,8 +174,7 @@
+                          : "s0", "s1" /* s0 and s1 are clobbered */);
+   };
+ 
+-  uint32_t to_raise =
+-      FEnv::exception_value_from_status(static_cast<uint32_t>(excepts));
++  uint32_t to_raise = FEnv::exception_value_from_status(excepts);
+   int result = 0;
+ 
+   if (to_raise & FEnv::EX_INVALID) {
+@@ -244,7 +237,7 @@
+ }
+ 
+ LIBC_INLINE int set_round(int mode) {
+-  uint32_t bit_value;
++  uint16_t bit_value;
+   switch (mode) {
+   case FE_TONEAREST:
+     bit_value = FEnv::TONEAREST;
+@@ -263,7 +256,7 @@
+   }
+ 
+   uint32_t control_word = FEnv::get_control_word();
+-  control_word &= ~(0x3u << FEnv::ROUNDING_CONTROL_BIT_POSITION);
++  control_word &= ~(0x3 << FEnv::ROUNDING_CONTROL_BIT_POSITION);
+   control_word |= (bit_value << FEnv::ROUNDING_CONTROL_BIT_POSITION);
+   FEnv::set_control_word(control_word);
+ 
+diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/aarch64/FEnvImpl.h b/libc/src/__support/FPUtil/aarch64/FEnvImpl.h
+--- a/libc/src/__support/FPUtil/aarch64/FEnvImpl.h
++++ b/libc/src/__support/FPUtil/aarch64/FEnvImpl.h
+@@ -110,7 +110,7 @@
+       (controlWord >> FEnv::ExceptionControlFlagsBitPosition) & 0x1F;
+   controlWord |= (newExcepts << FEnv::ExceptionControlFlagsBitPosition);
+   FEnv::writeControlWord(controlWord);
+-  return FEnv::exceptionStatusToMacro(static_cast<uint32_t>(oldExcepts));
++  return FEnv::exceptionStatusToMacro(oldExcepts);
+ }
+ 
+ LIBC_INLINE int disable_except(int excepts) {
+@@ -120,12 +120,12 @@
+       (controlWord >> FEnv::ExceptionControlFlagsBitPosition) & 0x1F;
+   controlWord &= ~(disabledExcepts << FEnv::ExceptionControlFlagsBitPosition);
+   FEnv::writeControlWord(controlWord);
+-  return FEnv::exceptionStatusToMacro(static_cast<uint32_t>(oldExcepts));
++  return FEnv::exceptionStatusToMacro(oldExcepts);
+ }
+ 
+ LIBC_INLINE int get_except() {
+   uint32_t controlWord = FEnv::getControlWord();
+-  uint32_t enabledExcepts =
++  int enabledExcepts =
+       (controlWord >> FEnv::ExceptionControlFlagsBitPosition) & 0x1F;
+   return FEnv::exceptionStatusToMacro(enabledExcepts);
+ }
+@@ -250,10 +250,8 @@
+   }
+ 
+   uint32_t controlWord = FEnv::getControlWord();
+-  controlWord &=
+-      static_cast<uint32_t>(~(0x3 << FEnv::RoundingControlBitPosition));
+-  controlWord |=
+-      static_cast<uint32_t>(bitValue << FEnv::RoundingControlBitPosition);
++  controlWord &= ~(0x3 << FEnv::RoundingControlBitPosition);
++  controlWord |= (bitValue << FEnv::RoundingControlBitPosition);
+   FEnv::writeControlWord(controlWord);
+ 
+   return 0;
+diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/FPBits.h b/libc/src/__support/FPUtil/FPBits.h
+--- a/libc/src/__support/FPUtil/FPBits.h
++++ b/libc/src/__support/FPUtil/FPBits.h
+@@ -247,11 +247,11 @@
+     using UP::UP;
+ 
+     LIBC_INLINE constexpr BiasedExponent(Exponent exp)
+-        : UP(static_cast<uint32_t>(static_cast<int32_t>(exp) + EXP_BIAS)) {}
++        : UP(static_cast<int32_t>(exp) + EXP_BIAS) {}
+ 
+     // Cast operator to get convert from BiasedExponent to Exponent.
+     LIBC_INLINE constexpr operator Exponent() const {
+-      return Exponent(static_cast<int32_t>(UP::value - EXP_BIAS));
++      return Exponent(UP::value - EXP_BIAS);
+     }
+ 
+     LIBC_INLINE constexpr BiasedExponent &operator++() {
+@@ -686,7 +686,7 @@
+   }
+ 
+   LIBC_INLINE constexpr void set_biased_exponent(StorageType biased) {
+-    UP::set_biased_exponent(BiasedExponent(static_cast<uint32_t>(biased)));
++    UP::set_biased_exponent(BiasedExponent((int32_t)biased));
+   }
+ 
+   LIBC_INLINE constexpr int get_exponent() const {
+diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/generic/sqrt_80_bit_long_double.h b/libc/src/__support/FPUtil/generic/sqrt_80_bit_long_double.h
+--- a/libc/src/__support/FPUtil/generic/sqrt_80_bit_long_double.h
++++ b/libc/src/__support/FPUtil/generic/sqrt_80_bit_long_double.h
+@@ -24,7 +24,7 @@
+ LIBC_INLINE void normalize(int &exponent,
+                            FPBits<long double>::StorageType &mantissa) {
+   const unsigned int shift = static_cast<unsigned int>(
+-      static_cast<size_t>(cpp::countl_zero(static_cast<uint64_t>(mantissa))) -
++      cpp::countl_zero(static_cast<uint64_t>(mantissa)) -
+       (8 * sizeof(uint64_t) - 1 - FPBits<long double>::FRACTION_LEN));
+   exponent -= shift;
+   mantissa <<= shift;
+diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/NormalFloat.h b/libc/src/__support/FPUtil/NormalFloat.h
+--- a/libc/src/__support/FPUtil/NormalFloat.h
++++ b/libc/src/__support/FPUtil/NormalFloat.h
+@@ -105,7 +105,7 @@
+ 
+     constexpr int SUBNORMAL_EXPONENT = -FPBits<T>::EXP_BIAS + 1;
+     if (exponent < SUBNORMAL_EXPONENT) {
+-      unsigned shift = static_cast<unsigned>(SUBNORMAL_EXPONENT - exponent);
++      unsigned shift = SUBNORMAL_EXPONENT - exponent;
+       // Since exponent > subnormalExponent, shift is strictly greater than
+       // zero.
+       if (shift <= FPBits<T>::FRACTION_LEN + 1) {
+@@ -160,7 +160,7 @@
+     if (bits.is_subnormal()) {
+       unsigned shift = evaluate_normalization_shift(bits.get_mantissa());
+       mantissa = static_cast<StorageType>(bits.get_mantissa() << shift);
+-      exponent = 1 - FPBits<T>::EXP_BIAS - static_cast<int32_t>(shift);
++      exponent = 1 - FPBits<T>::EXP_BIAS - shift;
+     } else {
+       exponent = bits.get_biased_exponent() - FPBits<T>::EXP_BIAS;
+       mantissa = ONE | bits.get_mantissa();
+diff -ruN --strip-trailing-cr a/libc/src/__support/high_precision_decimal.h b/libc/src/__support/high_precision_decimal.h
+--- a/libc/src/__support/high_precision_decimal.h
++++ b/libc/src/__support/high_precision_decimal.h
+@@ -264,7 +264,7 @@
+   LIBC_INLINE void left_shift(uint32_t shift_amount) {
+     uint32_t new_digits = this->get_num_new_digits(shift_amount);
+ 
+-    int32_t read_index = static_cast<int32_t>(this->num_digits - 1);
++    int32_t read_index = this->num_digits - 1;
+     uint32_t write_index = this->num_digits + new_digits;
+ 
+     uint64_t accumulator = 0;
+@@ -329,7 +329,7 @@
+         if (saw_dot) {
+           break;
+         }
+-        this->decimal_point = static_cast<int32_t>(total_digits);
++        this->decimal_point = total_digits;
+         saw_dot = true;
+       } else {
+         if (num_string[num_cur] == '0' && this->num_digits == 0) {
+@@ -350,7 +350,7 @@
+     }
+ 
+     if (!saw_dot)
+-      this->decimal_point = static_cast<int32_t>(total_digits);
++      this->decimal_point = total_digits;
+ 
+     if (num_cur < num_len &&
+         (num_string[num_cur] == 'e' || num_string[num_cur] == 'E')) {
+@@ -393,7 +393,7 @@
+         this->left_shift(MAX_SHIFT_AMOUNT);
+         shift_amount -= MAX_SHIFT_AMOUNT;
+       }
+-      this->left_shift(static_cast<uint32_t>(shift_amount));
++      this->left_shift(shift_amount);
+     }
+     // Right
+     else {
+@@ -401,7 +401,7 @@
+         this->right_shift(MAX_SHIFT_AMOUNT);
+         shift_amount += MAX_SHIFT_AMOUNT;
+       }
+-      this->right_shift(static_cast<uint32_t>(-shift_amount));
++      this->right_shift(-shift_amount);
+     }
+   }
+ 
+@@ -424,8 +424,8 @@
+       result *= 10;
+       ++cur_digit;
+     }
+-    return result +
+-           static_cast<T>(this->should_round_up(this->decimal_point, round));
++    return result + static_cast<unsigned int>(
++                        this->should_round_up(this->decimal_point, round));
+   }
+ 
+   // Extra functions for testing.
+diff -ruN --strip-trailing-cr a/libc/src/__support/integer_literals.h b/libc/src/__support/integer_literals.h
+--- a/libc/src/__support/integer_literals.h
++++ b/libc/src/__support/integer_literals.h
+@@ -47,7 +47,7 @@
+                                    size_t size) {
+   T value{};
+   for (; size; ++digits, --size) {
+-    value *= static_cast<unsigned int>(base);
++    value *= base;
+     value += *digits;
+   }
+   return value;
+diff -ruN --strip-trailing-cr a/libc/src/__support/integer_to_string.h b/libc/src/__support/integer_to_string.h
+--- a/libc/src/__support/integer_to_string.h
++++ b/libc/src/__support/integer_to_string.h
+@@ -405,7 +405,7 @@
+     // Returns the absolute value of 'value' as 'UNSIGNED_T'.
+     LIBC_INLINE static UNSIGNED_T abs(T value) {
+       if (cpp::is_unsigned_v<T> || value >= 0)
+-        return static_cast<UNSIGNED_T>(value); // already of the right sign.
++        return value; // already of the right sign.
+ 
+       // Signed integers are asymmetric (e.g., int8_t ∈ [-128, 127]).
+       // Thus negating the type's minimum value would overflow.
+@@ -422,8 +422,7 @@
+       if (value == cpp::numeric_limits<T>::min()) {
+         return cpp::bit_cast<UNSIGNED_T>(value);
+       } else {
+-        return static_cast<UNSIGNED_T>(
+-            -value); // legal and representable both as T and UNSIGNED_T.`
++        return -value; // legal and representable both as T and UNSIGNED_T.`
+       }
+     }
+ 
+diff -ruN --strip-trailing-cr a/libc/src/__support/memory_size.h b/libc/src/__support/memory_size.h
+--- a/libc/src/__support/memory_size.h
++++ b/libc/src/__support/memory_size.h
+@@ -77,8 +77,7 @@
+     if (!cpp::has_single_bit(alignment) || alignment > MAX_MEM_SIZE || !valid())
+       return SafeMemSize{type{-1}};
+ 
+-    type offset =
+-        static_cast<type>(offset_to(static_cast<size_t>(value), alignment));
++    type offset = offset_to(value, alignment);
+ 
+     if (LIBC_UNLIKELY(offset > static_cast<type>(MAX_MEM_SIZE) - value))
+       return SafeMemSize{type{-1}};
+diff -ruN --strip-trailing-cr a/libc/src/__support/OSUtil/darwin/io.h b/libc/src/__support/OSUtil/darwin/io.h
+--- a/libc/src/__support/OSUtil/darwin/io.h
++++ b/libc/src/__support/OSUtil/darwin/io.h
+@@ -17,8 +17,7 @@
+ 
+ LIBC_INLINE void write_to_stderr(cpp::string_view msg) {
+   LIBC_NAMESPACE::syscall_impl(4 /*SYS_write*/, 2 /* stderr */,
+-                               reinterpret_cast<long>(msg.data()),
+-                               static_cast<long>(msg.size()));
++                               reinterpret_cast<long>(msg.data()), msg.size());
+ }
+ 
+ } // namespace LIBC_NAMESPACE_DECL
+diff -ruN --strip-trailing-cr a/libc/src/__support/str_to_float.h b/libc/src/__support/str_to_float.h
+--- a/libc/src/__support/str_to_float.h
++++ b/libc/src/__support/str_to_float.h
+@@ -108,11 +108,11 @@
+   }
+ 
+   // Normalization
+-  uint32_t clz = static_cast<uint32_t>(cpp::countl_zero<StorageType>(mantissa));
++  uint32_t clz = cpp::countl_zero<StorageType>(mantissa);
+   mantissa <<= clz;
+ 
+-  int32_t exp2 = exp10_to_exp2(exp10) + FPBits::STORAGE_LEN + FPBits::EXP_BIAS -
+-                 static_cast<int32_t>(clz);
++  int32_t exp2 =
++      exp10_to_exp2(exp10) + FPBits::STORAGE_LEN + FPBits::EXP_BIAS - clz;
+ 
+   // Multiplication
+   const uint64_t *power_of_ten =
+@@ -225,8 +225,8 @@
+   }
+ 
+   // Normalization
+-  int32_t clz = static_cast<int32_t>(cpp::countl_zero(mantissa)) -
+-                ((sizeof(UInt128) - sizeof(StorageType)) * CHAR_BIT);
++  uint32_t clz = cpp::countl_zero(mantissa) -
++                 ((sizeof(UInt128) - sizeof(StorageType)) * CHAR_BIT);
+   mantissa <<= clz;
+ 
+   int32_t exp2 =
+@@ -802,7 +802,7 @@
+ 
+   // Handle subnormals.
+   if (biased_exponent <= 0) {
+-    amount_to_shift_right += static_cast<uint32_t>(1 - biased_exponent);
++    amount_to_shift_right += 1 - biased_exponent;
+     biased_exponent = 0;
+ 
+     if (amount_to_shift_right > FPBits::STORAGE_LEN) {
+@@ -909,7 +909,7 @@
+       cpp::numeric_limits<StorageType>::max() / BASE;
+   while (true) {
+     if (isdigit(src[index])) {
+-      uint32_t digit = static_cast<uint32_t>(b36_char_to_int(src[index]));
++      uint32_t digit = b36_char_to_int(src[index]);
+       seen_digit = true;
+ 
+       if (mantissa < bitstype_max_div_by_base) {
+@@ -956,7 +956,7 @@
+       if (result.has_error())
+         output.error = result.error;
+       int32_t add_to_exponent = result.value;
+-      index += static_cast<size_t>(result.parsed_len);
++      index += result.parsed_len;
+ 
+       // Here we do this operation as int64 to avoid overflow.
+       int64_t temp_exponent = static_cast<int64_t>(exponent) +
+@@ -1020,7 +1020,7 @@
+       cpp::numeric_limits<StorageType>::max() / BASE;
+   while (true) {
+     if (isalnum(src[index])) {
+-      uint32_t digit = static_cast<uint32_t>(b36_char_to_int(src[index]));
++      uint32_t digit = b36_char_to_int(src[index]);
+       if (digit < BASE)
+         seen_digit = true;
+       else
+@@ -1070,7 +1070,7 @@
+         output.error = result.error;
+ 
+       int32_t add_to_exponent = result.value;
+-      index += static_cast<size_t>(result.parsed_len);
++      index += result.parsed_len;
+ 
+       // Here we do this operation as int64 to avoid overflow.
+       int64_t temp_exponent = static_cast<int64_t>(exponent) +
+@@ -1135,7 +1135,7 @@
+ 
+   int error = 0;
+ 
+-  size_t index = static_cast<size_t>(first_non_whitespace(src) - src);
++  ptrdiff_t index = first_non_whitespace(src) - src;
+ 
+   if (src[index] == '+' || src[index] == '-') {
+     sign = src[index];
+@@ -1245,7 +1245,7 @@
+   // special 80 bit long doubles. Otherwise it should be inlined out.
+   set_implicit_bit<T>(result);
+ 
+-  return {result.get_val(), static_cast<ptrdiff_t>(index), error};
++  return {result.get_val(), index, error};
+ }
+ 
+ template <class T> LIBC_INLINE StrToNumResult<T> strtonan(const char *arg) {
+diff -ruN --strip-trailing-cr a/libc/src/__support/str_to_integer.h b/libc/src/__support/str_to_integer.h
+--- a/libc/src/__support/str_to_integer.h
++++ b/libc/src/__support/str_to_integer.h
+@@ -96,7 +96,7 @@
+   if (base < 0 || base == 1 || base > 36)
+     return {0, 0, EINVAL};
+ 
+-  src_cur = static_cast<size_t>(first_non_whitespace(src, src_len) - src);
++  src_cur = first_non_whitespace(src, src_len) - src;
+ 
+   char result_sign = '+';
+   if (src[src_cur] == '+' || src[src_cur] == '-') {
+@@ -119,7 +119,7 @@
+   ResultType const abs_max =
+       (is_positive ? cpp::numeric_limits<T>::max() : NEGATIVE_MAX);
+   ResultType const abs_max_div_by_base =
+-      abs_max / static_cast<ResultType>(base);
++      static_cast<ResultType>(abs_max / base);
+ 
+   while (src_cur < src_len && isalnum(src[src_cur])) {
+     int cur_digit = b36_char_to_int(src[src_cur]);
+@@ -141,17 +141,17 @@
+       result = abs_max;
+       error_val = ERANGE;
+     } else {
+-      result = result * static_cast<ResultType>(base);
++      result = static_cast<ResultType>(result * base);
+     }
+-    if (result > abs_max - static_cast<ResultType>(cur_digit)) {
++    if (result > abs_max - cur_digit) {
+       result = abs_max;
+       error_val = ERANGE;
+     } else {
+-      result = result + static_cast<ResultType>(cur_digit);
++      result = static_cast<ResultType>(result + cur_digit);
+     }
+   }
+ 
+-  ptrdiff_t str_len = is_number ? static_cast<ptrdiff_t>(src_cur) : 0;
++  ptrdiff_t str_len = is_number ? (src_cur) : 0;
+ 
+   if (error_val == ERANGE) {
+     if (is_positive || IS_UNSIGNED)
+diff -ruN --strip-trailing-cr a/libc/test/src/math/FModTest.h b/libc/test/src/math/FModTest.h
+--- a/libc/test/src/math/FModTest.h
++++ b/libc/test/src/math/FModTest.h
+@@ -54,7 +54,7 @@
+ 
+     // fmod (+inf, y) == aNaN plus invalid exception.
+     TEST_SPECIAL(inf, 3.0, aNaN, true, FE_INVALID);
+-    TEST_SPECIAL(inf, static_cast<float>(-1.1L), aNaN, true, FE_INVALID);
++    TEST_SPECIAL(inf, -1.1L, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(inf, 0.0, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(inf, neg_zero, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(inf, min_denormal, aNaN, true, FE_INVALID);
+@@ -65,7 +65,7 @@
+ 
+     // fmod (-inf, y) == aNaN plus invalid exception.
+     TEST_SPECIAL(neg_inf, 3.0, aNaN, true, FE_INVALID);
+-    TEST_SPECIAL(neg_inf, static_cast<float>(-1.1L), aNaN, true, FE_INVALID);
++    TEST_SPECIAL(neg_inf, -1.1L, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(neg_inf, 0.0, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(neg_inf, neg_zero, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(neg_inf, min_denormal, aNaN, true, FE_INVALID);
+@@ -76,7 +76,7 @@
+ 
+     // fmod (x, +0) == aNaN plus invalid exception.
+     TEST_SPECIAL(3.0, 0.0, aNaN, true, FE_INVALID);
+-    TEST_SPECIAL(static_cast<float>(-1.1L), 0.0, aNaN, true, FE_INVALID);
++    TEST_SPECIAL(-1.1L, 0.0, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(0.0, 0.0, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(neg_zero, 0.0, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(min_denormal, 0.0, aNaN, true, FE_INVALID);
+@@ -85,7 +85,7 @@
+ 
+     // fmod (x, -0) == aNaN plus invalid exception.
+     TEST_SPECIAL(3.0, neg_zero, aNaN, true, FE_INVALID);
+-    TEST_SPECIAL(static_cast<float>(-1.1L), neg_zero, aNaN, true, FE_INVALID);
++    TEST_SPECIAL(-1.1L, neg_zero, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(0.0, neg_zero, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(neg_zero, neg_zero, aNaN, true, FE_INVALID);
+     TEST_SPECIAL(min_denormal, neg_zero, aNaN, true, FE_INVALID);
+diff -ruN --strip-trailing-cr a/libc/test/src/stdio/printf_core/parser_test.cpp b/libc/test/src/stdio/printf_core/parser_test.cpp
+--- a/libc/test/src/stdio/printf_core/parser_test.cpp
++++ b/libc/test/src/stdio/printf_core/parser_test.cpp
+@@ -97,8 +97,7 @@
+   expected.has_conv = true;
+ 
+   expected.raw_string = {str, 2};
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -133,8 +132,7 @@
+       LIBC_NAMESPACE::printf_core::FormatFlags::LEADING_ZEROES |
+       LIBC_NAMESPACE::printf_core::FormatFlags::SPACE_PREFIX |
+       LIBC_NAMESPACE::printf_core::FormatFlags::ALTERNATE_FORM);
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -151,8 +149,7 @@
+ 
+   expected.raw_string = {str, 4};
+   expected.min_width = 12;
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -169,8 +166,7 @@
+ 
+   expected.raw_string = {str, 5};
+   expected.precision = 34;
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -187,8 +183,7 @@
+ 
+   expected.raw_string = {str, 3};
+   expected.precision = 0;
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -205,8 +200,7 @@
+ 
+   expected.raw_string = {str, 3};
+   expected.length_modifier = LIBC_NAMESPACE::printf_core::LengthModifier::h;
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -223,8 +217,7 @@
+ 
+   expected.raw_string = {str, 4};
+   expected.length_modifier = LIBC_NAMESPACE::printf_core::LengthModifier::ll;
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -242,8 +235,7 @@
+   expected.raw_string = {str, 5};
+   expected.length_modifier = LIBC_NAMESPACE::printf_core::LengthModifier::w;
+   expected.bit_width = 32;
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -261,8 +253,7 @@
+   expected.raw_string = {str, 6};
+   expected.length_modifier = LIBC_NAMESPACE::printf_core::LengthModifier::wf;
+   expected.bit_width = 32;
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -285,8 +276,7 @@
+   expected.min_width = 56;
+   expected.precision = 78;
+   expected.length_modifier = LIBC_NAMESPACE::printf_core::LengthModifier::j;
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -304,8 +294,7 @@
+   expected0.has_conv = true;
+ 
+   expected0.raw_string = {str, 2};
+-  expected0.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected0.conv_val_raw = arg1;
+   expected0.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected0, format_arr[0]);
+@@ -340,8 +329,7 @@
+   expected.flags = LIBC_NAMESPACE::printf_core::FormatFlags::LEFT_JUSTIFIED;
+   expected.min_width = INT_MAX;
+   expected.precision = INT_MAX;
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -363,8 +351,7 @@
+   expected.flags = LIBC_NAMESPACE::printf_core::FormatFlags::LEFT_JUSTIFIED;
+   expected.min_width = INT_MAX;
+   expected.precision = arg2;
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg3);
++  expected.conv_val_raw = arg3;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -382,8 +369,7 @@
+   expected.has_conv = true;
+ 
+   expected.raw_string = {str, 4};
+-  expected.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected.conv_val_raw = arg1;
+   expected.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected, format_arr[0]);
+@@ -401,8 +387,7 @@
+   expected0.has_conv = true;
+ 
+   expected0.raw_string = {str, 4};
+-  expected0.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected0.conv_val_raw = arg1;
+   expected0.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected0, format_arr[0]);
+@@ -436,8 +421,7 @@
+   expected0.has_conv = true;
+ 
+   expected0.raw_string = {str, 4};
+-  expected0.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected0.conv_val_raw = arg1;
+   expected0.conv_name = 'd';
+ 
+   ASSERT_PFORMAT_EQ(expected0, format_arr[0]);
+@@ -501,8 +485,7 @@
+ 
+   expected1.raw_string = {str + 12, 6};
+   expected1.length_modifier = LIBC_NAMESPACE::printf_core::LengthModifier::ll;
+-  expected1.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg3);
++  expected1.conv_val_raw = arg3;
+   expected1.conv_name = 'u';
+ 
+   EXPECT_PFORMAT_EQ(expected1, format_arr[1]);
+@@ -563,8 +546,7 @@
+   expected9.raw_string = {str + 41, 7};
+   expected9.min_width = 1;
+   expected9.precision = 1;
+-  expected9.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected9.conv_val_raw = arg1;
+   expected9.conv_name = 'c';
+ 
+   EXPECT_PFORMAT_EQ(expected9, format_arr[9]);
+@@ -584,16 +566,14 @@
+ 
+   expected0.has_conv = true;
+   expected0.raw_string = {str, 4};
+-  expected0.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg1);
++  expected0.conv_val_raw = arg1;
+   expected0.conv_name = 'd';
+ 
+   EXPECT_PFORMAT_EQ(expected0, format_arr[0]);
+ 
+   expected1.has_conv = true;
+   expected1.raw_string = {str + 4, 4};
+-  expected1.conv_val_raw =
+-      static_cast<LIBC_NAMESPACE::fputil::FPBits<double>::StorageType>(arg2);
++  expected1.conv_val_raw = arg2;
+   expected1.conv_name = 'd';
+ 
+   EXPECT_PFORMAT_EQ(expected1, format_arr[1]);
+diff -ruN --strip-trailing-cr a/libc/test/src/string/memmove_test.cpp b/libc/test/src/string/memmove_test.cpp
+--- a/libc/test/src/string/memmove_test.cpp
++++ b/libc/test/src/string/memmove_test.cpp
+@@ -93,8 +93,7 @@
+   Randomize(Buffer);
+   for (int Size = 0; Size < kMaxSize; ++Size)
+     for (int Overlap = -1; Overlap < Size;) {
+-      ASSERT_TRUE(
+-          CheckMemmove<Adaptor>(Buffer, static_cast<size_t>(Size), Overlap));
++      ASSERT_TRUE(CheckMemmove<Adaptor>(Buffer, Size, Overlap));
+       // Prevent quadratic behavior by skipping offset above kDenseOverlap.
+       if (Overlap > kDenseOverlap)
+         Overlap *= 2;
+diff -ruN --strip-trailing-cr a/libc/test/src/string/memory_utils/memory_check_utils.h b/libc/test/src/string/memory_utils/memory_check_utils.h
+--- a/libc/test/src/string/memory_utils/memory_check_utils.h
++++ b/libc/test/src/string/memory_utils/memory_check_utils.h
+@@ -157,7 +157,7 @@
+   uint16_t sum1 = 0;
+   uint16_t sum2 = 0;
+   for (char c : dst) {
+-    sum1 = (sum1 + static_cast<uint16_t>(c)) % 255U;
++    sum1 = (sum1 + c) % 255U;
+     sum2 = (sum2 + sum1) % 255U;
+   }
+   return static_cast<uint16_t>((sum2 << 8) | sum1);
+@@ -185,10 +185,8 @@
+ inline bool CheckMemmove(cpp::span<char> buffer, size_t size, int overlap) {
+   LIBC_ASSERT(buffer.size() > (2 * size + 1));
+   const size_t half_size = buffer.size() / 2;
+-  LIBC_ASSERT(static_cast<size_t>(overlap >= 0 ? overlap : -overlap) <
+-              half_size);
+-  cpp::span<char> head =
+-      buffer.first(half_size + static_cast<size_t>(overlap)).last(size);
++  LIBC_ASSERT((size_t)(overlap >= 0 ? overlap : -overlap) < half_size);
++  cpp::span<char> head = buffer.first(half_size + overlap).last(size);
+   cpp::span<char> tail = buffer.last(half_size).first(size);
+   LIBC_ASSERT(head.size() == size);
+   LIBC_ASSERT(tail.size() == size);
+diff -ruN --strip-trailing-cr a/libc/test/src/string/memory_utils/op_tests.cpp b/libc/test/src/string/memory_utils/op_tests.cpp
+--- a/libc/test/src/string/memory_utils/op_tests.cpp
++++ b/libc/test/src/string/memory_utils/op_tests.cpp
+@@ -174,7 +174,7 @@
+     static constexpr auto HeadTailImpl = SetAdaptor<Impl::head_tail>;
+     Buffer DstBuffer(2 * kSize);
+     for (size_t size = kSize; size < 2 * kSize; ++size) {
+-      const uint8_t value = size % 10;
++      const char value = size % 10;
+       auto dst = DstBuffer.span().subspan(0, size);
+       ASSERT_TRUE(CheckMemset<HeadTailImpl>(dst, value, size));
+     }
+@@ -185,7 +185,7 @@
+       static constexpr auto LoopImpl = SetAdaptor<Impl::loop_and_tail>;
+       Buffer DstBuffer(3 * kSize);
+       for (size_t size = kSize; size < 3 * kSize; ++size) {
+-        const uint8_t value = size % 10;
++        const char value = size % 10;
+         auto dst = DstBuffer.span().subspan(0, size);
+         ASSERT_TRUE((CheckMemset<LoopImpl>(dst, value, size)));
+       }
+diff -ruN --strip-trailing-cr a/libc/test/src/string/memory_utils/utils_test.cpp b/libc/test/src/string/memory_utils/utils_test.cpp
+--- a/libc/test/src/string/memory_utils/utils_test.cpp
++++ b/libc/test/src/string/memory_utils/utils_test.cpp
+@@ -47,7 +47,7 @@
+ TEST(LlvmLibcUtilsTest, Adjust2) {
+   char a, b;
+   const size_t base_size = 10;
+-  for (uintptr_t I = 0; I < 4; ++I) {
++  for (ptrdiff_t I = -2; I < 2; ++I) {
+     auto *p1 = &a;
+     auto *p2 = &b;
+     size_t size = base_size;
+diff -ruN --strip-trailing-cr a/libc/test/src/string/memset_test.cpp b/libc/test/src/string/memset_test.cpp
+--- a/libc/test/src/string/memset_test.cpp
++++ b/libc/test/src/string/memset_test.cpp
+@@ -27,7 +27,7 @@
+   static constexpr size_t kMaxSize = 400;
+   Buffer DstBuffer(kMaxSize);
+   for (size_t size = 0; size < kMaxSize; ++size) {
+-    const uint8_t value = size % 10;
++    const char value = size % 10;
+     auto dst = DstBuffer.span().subspan(0, size);
+     ASSERT_TRUE((CheckMemset<Adaptor>(dst, value, size)));
+   }
+diff -ruN --strip-trailing-cr a/libc/test/src/strings/bcopy_test.cpp b/libc/test/src/strings/bcopy_test.cpp
+--- a/libc/test/src/strings/bcopy_test.cpp
++++ b/libc/test/src/strings/bcopy_test.cpp
+@@ -87,8 +87,7 @@
+   Randomize(Buffer);
+   for (int Size = 0; Size < kMaxSize; ++Size)
+     for (int Overlap = -1; Overlap < Size;) {
+-      ASSERT_TRUE(
+-          CheckMemmove<Adaptor>(Buffer, static_cast<size_t>(Size), Overlap));
++      ASSERT_TRUE(CheckMemmove<Adaptor>(Buffer, Size, Overlap));
+       // Prevent quadratic behavior by skipping offset above kDenseOverlap.
+       if (Overlap > kDenseOverlap)
+         Overlap *= 2;
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/arg_list_test.cpp b/libc/test/src/__support/arg_list_test.cpp
+--- a/libc/test/src/__support/arg_list_test.cpp
++++ b/libc/test/src/__support/arg_list_test.cpp
+@@ -72,9 +72,9 @@
+   count += args.next_var<unsigned long>();
+   count += args.next_var<long long>();
+   count += args.next_var<unsigned long long>();
+-  count += static_cast<long int>(args.next_var<double>());
+-  count += static_cast<long int>(args.next_var<double>());
+-  count += static_cast<long int>(args.next_var<long double>());
++  count += args.next_var<double>();
++  count += args.next_var<double>();
++  count += args.next_var<long double>();
+   count += *args.next_var<int *>();
+   return count;
+ }
+@@ -112,8 +112,7 @@
+ 
+   S s = args.next_var<S>();
+   int last = args.next_var<int>();
+-  return static_cast<long int>(s.c + s.s + s.i + static_cast<long>(s.l) + s.f +
+-                               s.d + last);
++  return s.c + s.s + s.i + s.l + s.f + s.d + last;
+ }
+ 
+ TEST(LlvmLibcArgListTest, TestStructTypes) {
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/big_int_test.cpp b/libc/test/src/__support/big_int_test.cpp
+--- a/libc/test/src/__support/big_int_test.cpp
++++ b/libc/test/src/__support/big_int_test.cpp
+@@ -197,8 +197,8 @@
+     for (size_t i = 0; i < T::BITS; ++i) {
+       const auto l_one = T::all_ones() << i; // 0b111...000
+       const auto r_one = T::all_ones() >> i; // 0b000...111
+-      const int zeros = static_cast<int>(i);
+-      const int ones = static_cast<int>(T::BITS - static_cast<size_t>(zeros));
++      const int zeros = i;
++      const int ones = T::BITS - zeros;
+       ASSERT_EQ(cpp::countr_one(r_one), ones);
+       ASSERT_EQ(cpp::countl_one(l_one), ones);
+       ASSERT_EQ(cpp::countr_zero(l_one), zeros);
+@@ -871,13 +871,13 @@
+   ASSERT_EQ(static_cast<int>(c >> 64), 123);
+   ASSERT_EQ(static_cast<uint64_t>(d), static_cast<uint64_t>(b));
+   ASSERT_EQ(static_cast<uint64_t>(d >> 64), static_cast<uint64_t>(b >> 64));
+-  ASSERT_EQ(c + d, LL_Int128(a + static_cast<__uint128_t>(b)));
++  ASSERT_EQ(c + d, LL_Int128(a + b));
+ 
+   ASSERT_EQ(static_cast<int>(e), 1);
+   ASSERT_EQ(static_cast<int>(e >> 64), 123);
+   ASSERT_EQ(static_cast<uint64_t>(f), static_cast<uint64_t>(b));
+   ASSERT_EQ(static_cast<uint64_t>(f >> 64), static_cast<uint64_t>(b >> 64));
+-  ASSERT_EQ(LL_UInt192(e + f), LL_UInt192(a + static_cast<__uint128_t>(b)));
++  ASSERT_EQ(LL_UInt192(e + f), LL_UInt192(a + b));
+ }
+ 
+ TEST(LlvmLibcUIntClassTest, WordTypeUInt128Tests) {
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/blockstore_test.cpp b/libc/test/src/__support/blockstore_test.cpp
+--- a/libc/test/src/__support/blockstore_test.cpp
++++ b/libc/test/src/__support/blockstore_test.cpp
+@@ -27,7 +27,7 @@
+     for (auto iter = block_store.begin(); iter != end; ++iter, ++i) {
+       Element &e = *iter;
+       if (REVERSE) {
+-        int j = static_cast<int>(ELEMENT_COUNT - 1) - i;
++        int j = ELEMENT_COUNT - 1 - i;
+         ASSERT_EQ(e.a, j);
+         ASSERT_EQ(e.b, long(j * 2));
+         ASSERT_EQ(e.c, unsigned(j * 3));
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/CPP/bit_test.cpp b/libc/test/src/__support/CPP/bit_test.cpp
+--- a/libc/test/src/__support/CPP/bit_test.cpp
++++ b/libc/test/src/__support/CPP/bit_test.cpp
+@@ -24,7 +24,6 @@
+     unsigned char, unsigned short, unsigned int, unsigned long,
+     unsigned long long, UInt<128>>;
+ 
+-#ifdef FAKE_MACRO_DISABLE
+ TYPED_TEST(LlvmLibcBitTest, HasSingleBit, UnsignedTypes) {
+   constexpr auto ZERO = T(0);
+   constexpr auto ALL_ONES = T(~ZERO);
+@@ -47,33 +46,32 @@
+     EXPECT_FALSE(has_single_bit<T>(two_bits_value));
+   }
+ }
+-#endif
+ 
+ TYPED_TEST(LlvmLibcBitTest, CountLZero, UnsignedTypes) {
+   EXPECT_EQ(countl_zero<T>(T(0)), cpp::numeric_limits<T>::digits);
+   int expected = 0;
+-  for (T value = T(~0); value; value >>= 1, ++expected)
++  for (T value = ~T(0); value; value >>= 1, ++expected)
+     EXPECT_EQ(countl_zero<T>(value), expected);
+ }
+ 
+ TYPED_TEST(LlvmLibcBitTest, CountRZero, UnsignedTypes) {
+   EXPECT_EQ(countr_zero<T>(T(0)), cpp::numeric_limits<T>::digits);
+   int expected = 0;
+-  for (T value = T(~0); value; value <<= 1, ++expected)
++  for (T value = ~T(0); value; value <<= 1, ++expected)
+     EXPECT_EQ(countr_zero<T>(value), expected);
+ }
+ 
+ TYPED_TEST(LlvmLibcBitTest, CountLOne, UnsignedTypes) {
+   EXPECT_EQ(countl_one<T>(T(0)), 0);
+   int expected = cpp::numeric_limits<T>::digits;
+-  for (T value = T(~0); value; value <<= 1, --expected)
++  for (T value = ~T(0); value; value <<= 1, --expected)
+     EXPECT_EQ(countl_one<T>(value), expected);
+ }
+ 
+ TYPED_TEST(LlvmLibcBitTest, CountROne, UnsignedTypes) {
+   EXPECT_EQ(countr_one<T>(T(0)), 0);
+   int expected = cpp::numeric_limits<T>::digits;
+-  for (T value = T(~0); value; value >>= 1, --expected)
++  for (T value = ~T(0); value; value >>= 1, --expected)
+     EXPECT_EQ(countr_one<T>(value), expected);
+ }
+ 
+@@ -165,7 +163,7 @@
+ 
+ TYPED_TEST(LlvmLibcBitTest, RotateIsInvariantForZeroAndOne, UnsignedTypes) {
+   constexpr T all_zeros = T(0);
+-  constexpr T all_ones = T(~0);
++  constexpr T all_ones = ~T(0);
+   for (int i = 0; i < cpp::numeric_limits<T>::digits; ++i) {
+     EXPECT_EQ(rotl<T>(all_zeros, i), all_zeros);
+     EXPECT_EQ(rotl<T>(all_ones, i), all_ones);
+@@ -229,9 +227,8 @@
+ TYPED_TEST(LlvmLibcBitTest, CountOnes, UnsignedTypes) {
+   EXPECT_EQ(popcount(T(0)), 0);
+   for (int i = 0; i != cpp::numeric_limits<T>::digits; ++i)
+-    EXPECT_EQ(
+-        popcount<T>(cpp::numeric_limits<T>::max() >> static_cast<size_t>(i)),
+-        cpp::numeric_limits<T>::digits - i);
++    EXPECT_EQ(popcount<T>(cpp::numeric_limits<T>::max() >> i),
++              cpp::numeric_limits<T>::digits - i);
+ }
+ 
+ } // namespace cpp
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/fixedvector_test.cpp b/libc/test/src/__support/fixedvector_test.cpp
+--- a/libc/test/src/__support/fixedvector_test.cpp
++++ b/libc/test/src/__support/fixedvector_test.cpp
+@@ -92,7 +92,7 @@
+   LIBC_NAMESPACE::FixedVector<int, 5> vec(arr.begin(), arr.end());
+   ASSERT_EQ(vec.size(), arr.size());
+   for (auto it = vec.begin(); it != vec.end(); ++it) {
+-    auto idx = static_cast<size_t>(it - vec.begin());
++    auto idx = it - vec.begin();
+     ASSERT_EQ(*it, arr[idx]);
+   }
+ }
+@@ -102,7 +102,7 @@
+   const LIBC_NAMESPACE::FixedVector<int, 5> vec(arr.begin(), arr.end());
+   ASSERT_EQ(vec.size(), arr.size());
+   for (auto it = vec.begin(); it != vec.end(); ++it) {
+-    auto idx = static_cast<size_t>(it - vec.begin());
++    auto idx = it - vec.begin();
+     ASSERT_EQ(*it, arr[idx]);
+   }
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/hash_test.cpp b/libc/test/src/__support/hash_test.cpp
+--- a/libc/test/src/__support/hash_test.cpp
++++ b/libc/test/src/__support/hash_test.cpp
+@@ -78,7 +78,7 @@
+       }
+       for (size_t i = 0; i < sz; ++i) {
+         for (size_t j = 0; j < 8; ++j) {
+-          uint8_t mask = static_cast<uint8_t>(1 << j);
++          uint8_t mask = 1 << j;
+           mem.data[i] ^= mask;
+           {
+             LIBC_NAMESPACE::internal::HashState state{0xabcdef1234567890};
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/integer_to_string_test.cpp b/libc/test/src/__support/integer_to_string_test.cpp
+--- a/libc/test/src/__support/integer_to_string_test.cpp
++++ b/libc/test/src/__support/integer_to_string_test.cpp
+@@ -41,7 +41,7 @@
+   EXPECT(type, 12, "12");
+   EXPECT(type, 123, "123");
+   EXPECT(type, UINT8_MAX, "255");
+-  EXPECT(type, static_cast<uint8_t>(-1), "255");
++  EXPECT(type, -1, "255");
+ }
+ 
+ TEST(LlvmLibcIntegerToStringTest, INT8) {
+@@ -65,7 +65,7 @@
+   EXPECT(type, 1234, "1234");
+   EXPECT(type, 12345, "12345");
+   EXPECT(type, UINT16_MAX, "65535");
+-  EXPECT(type, static_cast<uint16_t>(-1), "65535");
++  EXPECT(type, -1, "65535");
+ }
+ 
+ TEST(LlvmLibcIntegerToStringTest, INT16) {
+@@ -99,7 +99,7 @@
+   EXPECT(type, 123456789, "123456789");
+   EXPECT(type, 1234567890, "1234567890");
+   EXPECT(type, UINT32_MAX, "4294967295");
+-  EXPECT(type, static_cast<uint32_t>(-1), "4294967295");
++  EXPECT(type, -1, "4294967295");
+ }
+ 
+ TEST(LlvmLibcIntegerToStringTest, INT32) {
+@@ -144,7 +144,7 @@
+   EXPECT(type, 1234567890, "1234567890");
+   EXPECT(type, 1234567890123456789, "1234567890123456789");
+   EXPECT(type, UINT64_MAX, "18446744073709551615");
+-  EXPECT(type, static_cast<uint64_t>(-1), "18446744073709551615");
++  EXPECT(type, -1, "18446744073709551615");
+ }
+ 
+ TEST(LlvmLibcIntegerToStringTest, INT64) {
+@@ -181,8 +181,7 @@
+   EXPECT(type, 0, "0");
+   EXPECT(type, 012345, "12345");
+   EXPECT(type, 0123456701234567012345, "123456701234567012345");
+-  EXPECT(type, static_cast<int64_t>(01777777777777777777777),
+-         "1777777777777777777777");
++  EXPECT(type, 01777777777777777777777, "1777777777777777777777");
+ }
+ 
+ TEST(LlvmLibcIntegerToStringTest, UINT64_Base_16) {
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/math_extras_test.cpp b/libc/test/src/__support/math_extras_test.cpp
+--- a/libc/test/src/__support/math_extras_test.cpp
++++ b/libc/test/src/__support/math_extras_test.cpp
+@@ -72,40 +72,34 @@
+ 
+ TYPED_TEST(LlvmLibcBitTest, FirstLeadingZero, UnsignedTypesNoBigInt) {
+   EXPECT_EQ(first_leading_zero<T>(cpp::numeric_limits<T>::max()), 0);
+-  for (int i = 0U; i != cpp::numeric_limits<T>::digits; ++i) {
+-    auto lhs = T(~(T(1) << size_t(i)));
+-    EXPECT_EQ(first_leading_zero<T>(lhs), cpp::numeric_limits<T>::digits - i);
+-  }
++  for (int i = 0U; i != cpp::numeric_limits<T>::digits; ++i)
++    EXPECT_EQ(first_leading_zero<T>(~(T(1) << i)),
++              cpp::numeric_limits<T>::digits - i);
+ }
+ 
+ TYPED_TEST(LlvmLibcBitTest, FirstLeadingOne, UnsignedTypesNoBigInt) {
+   EXPECT_EQ(first_leading_one<T>(static_cast<T>(0)), 0);
+-  for (int i = 0U; i != cpp::numeric_limits<T>::digits; ++i) {
+-    auto lhs = T(T(1) << size_t(i));
+-    EXPECT_EQ(first_leading_one<T>(lhs), cpp::numeric_limits<T>::digits - i);
+-  }
++  for (int i = 0U; i != cpp::numeric_limits<T>::digits; ++i)
++    EXPECT_EQ(first_leading_one<T>(T(1) << i),
++              cpp::numeric_limits<T>::digits - i);
+ }
+ 
+ TYPED_TEST(LlvmLibcBitTest, FirstTrailingZero, UnsignedTypesNoBigInt) {
+   EXPECT_EQ(first_trailing_zero<T>(cpp::numeric_limits<T>::max()), 0);
+-  for (int i = 0U; i != cpp::numeric_limits<T>::digits; ++i) {
+-    auto lhs = T(~(T(1) << size_t(i)));
+-    EXPECT_EQ(first_trailing_zero<T>(lhs), i + 1);
+-  }
++  for (int i = 0U; i != cpp::numeric_limits<T>::digits; ++i)
++    EXPECT_EQ(first_trailing_zero<T>(~(T(1) << i)), i + 1);
+ }
+ 
+ TYPED_TEST(LlvmLibcBitTest, FirstTrailingOne, UnsignedTypesNoBigInt) {
+   EXPECT_EQ(first_trailing_one<T>(cpp::numeric_limits<T>::max()), 0);
+-  for (int i = 0U; i != cpp::numeric_limits<T>::digits; ++i) {
+-    auto lhs = T(T(1) << size_t(i));
+-    EXPECT_EQ(first_trailing_one<T>(lhs), i + 1);
+-  }
++  for (int i = 0U; i != cpp::numeric_limits<T>::digits; ++i)
++    EXPECT_EQ(first_trailing_one<T>(T(1) << i), i + 1);
+ }
+ 
+ TYPED_TEST(LlvmLibcBitTest, CountZeros, UnsignedTypesNoBigInt) {
+   EXPECT_EQ(count_zeros(T(0)), cpp::numeric_limits<T>::digits);
+   for (int i = 0; i != cpp::numeric_limits<T>::digits; ++i)
+-    EXPECT_EQ(count_zeros<T>(cpp::numeric_limits<T>::max() >> size_t(i)), i);
++    EXPECT_EQ(count_zeros<T>(cpp::numeric_limits<T>::max() >> i), i);
+ }
+ 
+ using UnsignedTypes = testing::TypeList<
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/str_to_double_test.cpp b/libc/test/src/__support/str_to_double_test.cpp
+--- a/libc/test/src/__support/str_to_double_test.cpp
++++ b/libc/test/src/__support/str_to_double_test.cpp
+@@ -104,7 +104,7 @@
+       internal::simple_decimal_conversion<double>("123456789012345678900");
+ 
+   double_output_mantissa = double_result.num.mantissa;
+-  output_exp2 = static_cast<uint32_t>(double_result.num.exponent);
++  output_exp2 = double_result.num.exponent;
+ 
+   EXPECT_EQ(double_output_mantissa, uint64_t(0x1AC53A7E04BCDA));
+   EXPECT_EQ(output_exp2, uint32_t(1089));
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/str_to_float_test.cpp b/libc/test/src/__support/str_to_float_test.cpp
+--- a/libc/test/src/__support/str_to_float_test.cpp
++++ b/libc/test/src/__support/str_to_float_test.cpp
+@@ -59,7 +59,7 @@
+   auto float_result =
+       internal::simple_decimal_conversion<float>("123456789012345678900");
+   float_output_mantissa = float_result.num.mantissa;
+-  output_exp2 = static_cast<uint32_t>(float_result.num.exponent);
++  output_exp2 = float_result.num.exponent;
+   EXPECT_EQ(float_output_mantissa, uint32_t(0xd629d4));
+   EXPECT_EQ(output_exp2, uint32_t(193));
+   EXPECT_EQ(float_result.error, 0);
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/str_to_fp_test.h b/libc/test/src/__support/str_to_fp_test.h
+--- a/libc/test/src/__support/str_to_fp_test.h
++++ b/libc/test/src/__support/str_to_fp_test.h
+@@ -31,7 +31,7 @@
+     ASSERT_TRUE(result.has_value());
+ 
+     actual_output_mantissa = result->mantissa;
+-    actual_output_exp2 = static_cast<uint32_t>(result->exponent);
++    actual_output_exp2 = result->exponent;
+ 
+     EXPECT_EQ(actual_output_mantissa, expectedOutputMantissa);
+     EXPECT_EQ(actual_output_exp2, expectedOutputExp2);
+@@ -55,7 +55,7 @@
+     ASSERT_TRUE(result.has_value());
+ 
+     actual_output_mantissa = result->mantissa;
+-    actual_output_exp2 = static_cast<uint32_t>(result->exponent);
++    actual_output_exp2 = result->exponent;
+ 
+     EXPECT_EQ(actual_output_mantissa, expectedOutputMantissa);
+     EXPECT_EQ(actual_output_exp2, expectedOutputExp2);
+@@ -72,7 +72,7 @@
+     auto result = internal::simple_decimal_conversion<T>(numStart);
+ 
+     actual_output_mantissa = result.num.mantissa;
+-    actual_output_exp2 = static_cast<uint32_t>(result.num.exponent);
++    actual_output_exp2 = result.num.exponent;
+ 
+     EXPECT_EQ(actual_output_mantissa, expectedOutputMantissa);
+     EXPECT_EQ(actual_output_exp2, expectedOutputExp2);
+diff -ruN --strip-trailing-cr a/libc/test/UnitTest/ExecuteFunction.h b/libc/test/UnitTest/ExecuteFunction.h
+--- a/libc/test/UnitTest/ExecuteFunction.h
++++ b/libc/test/UnitTest/ExecuteFunction.h
+@@ -9,7 +9,6 @@
+ #ifndef LLVM_LIBC_TEST_UNITTEST_EXECUTEFUNCTION_H
+ #define LLVM_LIBC_TEST_UNITTEST_EXECUTEFUNCTION_H
+ 
+-#include "src/__support/CPP/limits.h"
+ #include "src/__support/macros/config.h"
+ #include <stdint.h>
+ 
+@@ -26,7 +25,7 @@
+   int platform_defined;
+   const char *failure = nullptr;
+ 
+-  static constexpr int TIMEOUT = cpp::numeric_limits<int>::max();
++  static constexpr unsigned TIMEOUT = ~0U;
+ 
+   static ProcessStatus error(const char *error) { return {0, error}; }
+   static ProcessStatus timed_out_ps() {
+@@ -42,8 +41,9 @@
+   int get_fatal_signal();
+ };
+ 
+-ProcessStatus invoke_in_subprocess(FunctionCaller *func,
+-                                   int timeout_ms = ProcessStatus::TIMEOUT);
++ProcessStatus
++invoke_in_subprocess(FunctionCaller *func,
++                     unsigned timeout_ms = ProcessStatus::TIMEOUT);
+ 
+ const char *signal_as_string(int signum);
+ 
+diff -ruN --strip-trailing-cr a/libc/test/UnitTest/ExecuteFunctionUnix.cpp b/libc/test/UnitTest/ExecuteFunctionUnix.cpp
+--- a/libc/test/UnitTest/ExecuteFunctionUnix.cpp
++++ b/libc/test/UnitTest/ExecuteFunctionUnix.cpp
+@@ -34,7 +34,7 @@
+   return WTERMSIG(platform_defined);
+ }
+ 
+-ProcessStatus invoke_in_subprocess(FunctionCaller *func, int timeout_ms) {
++ProcessStatus invoke_in_subprocess(FunctionCaller *func, unsigned timeout_ms) {
+   int pipe_fds[2];
+   if (::pipe(pipe_fds) == -1) {
+     delete func;
+diff -ruN --strip-trailing-cr a/libc/test/UnitTest/LibcTest.cpp b/libc/test/UnitTest/LibcTest.cpp
+--- a/libc/test/UnitTest/LibcTest.cpp
++++ b/libc/test/UnitTest/LibcTest.cpp
+@@ -158,13 +158,13 @@
+     }
+ 
+     tlog << green << "[ RUN      ] " << reset << TestName << '\n';
+-    [[maybe_unused]] const uint64_t start_time = static_cast<uint64_t>(clock());
++    [[maybe_unused]] const uint64_t start_time = clock();
+     RunContext Ctx;
+     T->SetUp();
+     T->setContext(&Ctx);
+     T->Run();
+     T->TearDown();
+-    [[maybe_unused]] const uint64_t end_time = static_cast<uint64_t>(clock());
++    [[maybe_unused]] const uint64_t end_time = clock();
+     switch (Ctx.status()) {
+     case RunContext::RunResult::Fail:
+       tlog << red << "[  FAILED  ] " << reset << TestName << '\n';
+diff -ruN --strip-trailing-cr a/libc/test/UnitTest/MemoryMatcher.h b/libc/test/UnitTest/MemoryMatcher.h
+--- a/libc/test/UnitTest/MemoryMatcher.h
++++ b/libc/test/UnitTest/MemoryMatcher.h
+@@ -49,7 +49,7 @@
+   MemoryView expected;
+   MemoryView actual;
+   bool mismatch_size = false;
+-  size_t mismatch_index = cpp::numeric_limits<size_t>::max();
++  size_t mismatch_index = -1;
+ 
+ public:
+   MemoryMatcher(MemoryView expectedValue) : expected(expectedValue) {}
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SplitKit.cpp b/llvm/lib/CodeGen/SplitKit.cpp
+--- a/llvm/lib/CodeGen/SplitKit.cpp
++++ b/llvm/lib/CodeGen/SplitKit.cpp
+@@ -598,25 +598,27 @@
+   if (!UseMI)
+     return false;
+ 
+-  Register Reg = Edit->getReg();
+-  const TargetRegisterClass *RC = MRI.getRegClass(Reg);
++  // Currently code assumes rematerialization only happens for a def at 0.
++  const unsigned DefOperandIdx = 0;
++  // We want to compute the static register class constraint for the instruction
++  // def. If it is a smaller subclass than getLargestLegalSuperClass at the use
++  // site, then rematerializing it will increase the constraints.
++  const TargetRegisterClass *DefConstrainRC =
++      DefMI->getRegClassConstraint(DefOperandIdx, &TII, &TRI);
++  if (!DefConstrainRC)
++    return false;
++
++  const TargetRegisterClass *RC = MRI.getRegClass(Edit->getReg());
+ 
+   // We want to find the register class that can be inflated to after the split
+   // occurs in recomputeRegClass
+   const TargetRegisterClass *SuperRC =
+       TRI.getLargestLegalSuperClass(RC, *MBB.getParent());
+ 
+-  // We want to compute the static register class constraint for the instruction
+-  // def. If it is a smaller subclass than getLargestLegalSuperClass at the use
+-  // site, then rematerializing it will increase the constraints.
+-  const TargetRegisterClass *DefConstrainRC =
+-      DefMI->getRegClassConstraintEffectForVReg(Reg, SuperRC, &TII, &TRI,
+-                                                /*ExploreBundle=*/true);
+-
++  Register DefReg = DefMI->getOperand(DefOperandIdx).getReg();
+   const TargetRegisterClass *UseConstrainRC =
+-      UseMI->getRegClassConstraintEffectForVReg(Reg, SuperRC, &TII, &TRI,
++      UseMI->getRegClassConstraintEffectForVReg(DefReg, SuperRC, &TII, &TRI,
+                                                 /*ExploreBundle=*/true);
+-
+   return UseConstrainRC->hasSubClass(DefConstrainRC);
+ }
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+@@ -13585,6 +13585,15 @@
+           UserPHI ? UserPHI->getIncomingBlock(UseEI.EdgeIdx)->getTerminator()
+                   : &getLastInstructionInBundle(UseEI.UserTE);
+       if (TEInsertPt == InsertPt) {
++        // If the users are the PHI nodes with the same incoming blocks - skip.
++        if (TEUseEI.UserTE->State == TreeEntry::Vectorize &&
++            TEUseEI.UserTE->getOpcode() == Instruction::PHI &&
++            UseEI.UserTE->State == TreeEntry::Vectorize &&
++            UseEI.UserTE->getOpcode() == Instruction::PHI &&
++            TEUseEI.UserTE != UseEI.UserTE &&
++            TEUseEI.UserTE->getMainOp()->getParent() ==
++                UseEI.UserTE->getMainOp()->getParent())
++          continue;
+         // If 2 gathers are operands of the same entry (regardless of whether
+         // user is PHI or else), compare operands indices, use the earlier one
+         // as the base.
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/ARM/splitkit.ll b/llvm/test/CodeGen/ARM/splitkit.ll
+--- a/llvm/test/CodeGen/ARM/splitkit.ll
++++ b/llvm/test/CodeGen/ARM/splitkit.ll
+@@ -94,7 +94,7 @@
+ 
+ declare i32 @__cxa_atexit(ptr, ptr, ptr)
+ 
+-declare ptr @wobble(ptr returned, ptr ) 
++declare ptr @wobble(ptr returned, ptr )
+ 
+ declare i32 @quux(...)
+ 
+@@ -236,6 +236,20 @@
+   resume { ptr, i32 } undef
+ }
+ 
++; CHECK-LABEL: func_reduced_remat_regclass_error:
++define void @func_reduced_remat_regclass_error(ptr %global.10, ptr %global.15) {
++bb14:
++  store i32 999, ptr %global.10, align 4
++  call void @llvm.memset.p0.i32(ptr null, i8 0, i32 12, i1 false)
++  call void @llvm.memcpy.p0.p0.i32(ptr null, ptr null, i32 60, i1 false)
++  %tmp34 = call ptr @_Znwm()
++  store i32 999, ptr %global.15, align 4
++  call void @llvm.memcpy.p0.p0.i32(ptr %global.10, ptr null, i32 52, i1 false)
++  call void @llvm.memset.p0.i32(ptr null, i8 0, i32 12, i1 false)
++  call void @llvm.memset.p0.i32(ptr null, i8 0, i32 12, i1 false)
++  ret void
++}
++
+ declare void @llvm.trap()
+ 
+ declare void @llvm.memcpy.p0.p0.i32(ptr , ptr , i32, i1)
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/ARM/splitkit-remat-regclass-constraint-regression.ll b/llvm/test/CodeGen/ARM/splitkit-remat-regclass-constraint-regression.ll
+--- a/llvm/test/CodeGen/ARM/splitkit-remat-regclass-constraint-regression.ll
++++ b/llvm/test/CodeGen/ARM/splitkit-remat-regclass-constraint-regression.ll
+@@ -0,0 +1,39 @@
++; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
++; RUN: llc -verify-machineinstrs -stress-regalloc=2 -o - %s | FileCheck %s
++
++; Check that no register class constraint error is produced during
++; rematerialization
++
++target triple = "thumbv7-apple-ios"
++
++declare ptr @_Znwm()
++
++define void @func() {
++; CHECK-LABEL: func:
++; CHECK:       @ %bb.0: @ %bb14
++; CHECK-NEXT:    str lr, [sp, #-4]!
++; CHECK-NEXT:    movs r0, #0
++; CHECK-NEXT:    movs r1, #4
++; CHECK-NEXT:    str r0, [r1]
++; CHECK-NEXT:    movs r1, #8
++; CHECK-NEXT:    str r0, [r1]
++; CHECK-NEXT:    str r0, [r0]
++; CHECK-NEXT:    bl __Znwm
++; CHECK-NEXT:    movs r1, #0
++; CHECK-NEXT:    movs r0, #4
++; CHECK-NEXT:    str r1, [r0]
++; CHECK-NEXT:    movs r0, #8
++; CHECK-NEXT:    str r1, [r0]
++; CHECK-NEXT:    str r1, [r1]
++; CHECK-NEXT:    ldr lr, [sp], #4
++; CHECK-NEXT:    bx lr
++bb14:
++  call void @llvm.memset.p0.i32(ptr null, i8 0, i32 12, i1 false)
++  %tmp34 = call ptr @_Znwm()
++  call void @llvm.memset.p0.i32(ptr null, i8 0, i32 12, i1 false)
++  ret void
++}
++
++declare void @llvm.memset.p0.i32(ptr writeonly captures(none), i8, i32, i1 immarg) #0
++
++attributes #0 = { nocallback nofree nounwind willreturn memory(argmem: write) }
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fptosi-sat-vector-128.ll b/llvm/test/CodeGen/X86/fptosi-sat-vector-128.ll
+--- a/llvm/test/CodeGen/X86/fptosi-sat-vector-128.ll
++++ b/llvm/test/CodeGen/X86/fptosi-sat-vector-128.ll
+@@ -241,21 +241,21 @@
+ ; CHECK-NEXT:    movaps %xmm0, {{[-0-9]+}}(%r{{[sb]}}p) # 16-byte Spill
+ ; CHECK-NEXT:    callq __fixsfti@PLT
+ ; CHECK-NEXT:    movq %rdx, %r15
+-; CHECK-NEXT:    xorl %edx, %edx
++; CHECK-NEXT:    xorl %r14d, %r14d
+ ; CHECK-NEXT:    movaps {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovbq %rdx, %rax
+-; CHECK-NEXT:    movabsq $-9223372036854775808, %r14 # imm = 0x8000000000000000
+-; CHECK-NEXT:    cmovbq %r14, %r15
++; CHECK-NEXT:    cmovbq %r14, %rax
++; CHECK-NEXT:    movabsq $-9223372036854775808, %rcx # imm = 0x8000000000000000
++; CHECK-NEXT:    cmovbq %rcx, %r15
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+ ; CHECK-NEXT:    movabsq $9223372036854775807, %rbp # imm = 0x7FFFFFFFFFFFFFFF
+ ; CHECK-NEXT:    cmovaq %rbp, %r15
+ ; CHECK-NEXT:    movq $-1, %rcx
+ ; CHECK-NEXT:    cmovaq %rcx, %rax
+ ; CHECK-NEXT:    ucomiss %xmm0, %xmm0
+-; CHECK-NEXT:    cmovpq %rdx, %rax
++; CHECK-NEXT:    cmovpq %r14, %rax
+ ; CHECK-NEXT:    movq %rax, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+-; CHECK-NEXT:    cmovpq %rdx, %r15
++; CHECK-NEXT:    cmovpq %r14, %r15
+ ; CHECK-NEXT:    movaps (%rsp), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    movhlps {{.*#+}} xmm0 = xmm0[1,1]
+ ; CHECK-NEXT:    movaps %xmm0, {{[-0-9]+}}(%r{{[sb]}}p) # 16-byte Spill
+@@ -264,16 +264,16 @@
+ ; CHECK-NEXT:    movq %rdx, %r13
+ ; CHECK-NEXT:    movaps {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    movl $0, %eax
+-; CHECK-NEXT:    cmovbq %rax, %r12
+-; CHECK-NEXT:    cmovbq %r14, %r13
++; CHECK-NEXT:    cmovbq %r14, %r12
++; CHECK-NEXT:    movabsq $-9223372036854775808, %rax # imm = 0x8000000000000000
++; CHECK-NEXT:    cmovbq %rax, %r13
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+ ; CHECK-NEXT:    cmovaq %rbp, %r13
+-; CHECK-NEXT:    movq $-1, %rcx
+-; CHECK-NEXT:    cmovaq %rcx, %r12
++; CHECK-NEXT:    movq $-1, %rax
++; CHECK-NEXT:    cmovaq %rax, %r12
+ ; CHECK-NEXT:    ucomiss %xmm0, %xmm0
+-; CHECK-NEXT:    cmovpq %rax, %r12
+-; CHECK-NEXT:    cmovpq %rax, %r13
++; CHECK-NEXT:    cmovpq %r14, %r12
++; CHECK-NEXT:    cmovpq %r14, %r13
+ ; CHECK-NEXT:    movaps (%rsp), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    shufps {{.*#+}} xmm0 = xmm0[3,3,3,3]
+ ; CHECK-NEXT:    movaps %xmm0, {{[-0-9]+}}(%r{{[sb]}}p) # 16-byte Spill
+@@ -1187,14 +1187,14 @@
+ ; CHECK-NEXT:    # xmm0 = mem[0],zero,zero,zero
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+ ; CHECK-NEXT:    cmovbq %r12, %rax
+-; CHECK-NEXT:    movabsq $-9223372036854775808, %r13 # imm = 0x8000000000000000
+-; CHECK-NEXT:    cmovbq %r13, %rdx
++; CHECK-NEXT:    movabsq $-9223372036854775808, %rbp # imm = 0x8000000000000000
++; CHECK-NEXT:    cmovbq %rbp, %rdx
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+ ; CHECK-NEXT:    movabsq $9223372036854775807, %r15 # imm = 0x7FFFFFFFFFFFFFFF
+ ; CHECK-NEXT:    cmovaq %r15, %rdx
+ ; CHECK-NEXT:    movq $-1, %rcx
+ ; CHECK-NEXT:    cmovaq %rcx, %rax
+-; CHECK-NEXT:    movq $-1, %rbp
++; CHECK-NEXT:    movq $-1, %r13
+ ; CHECK-NEXT:    ucomiss %xmm0, %xmm0
+ ; CHECK-NEXT:    cmovpq %r12, %rax
+ ; CHECK-NEXT:    movq %rax, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+@@ -1209,10 +1209,10 @@
+ ; CHECK-NEXT:    # xmm0 = mem[0],zero,zero,zero
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+ ; CHECK-NEXT:    cmovbq %r12, %rax
+-; CHECK-NEXT:    cmovbq %r13, %rdx
++; CHECK-NEXT:    cmovbq %rbp, %rdx
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+ ; CHECK-NEXT:    cmovaq %r15, %rdx
+-; CHECK-NEXT:    cmovaq %rbp, %rax
++; CHECK-NEXT:    cmovaq %r13, %rax
+ ; CHECK-NEXT:    movq $-1, %r14
+ ; CHECK-NEXT:    ucomiss %xmm0, %xmm0
+ ; CHECK-NEXT:    cmovpq %r12, %rax
+@@ -1228,7 +1228,7 @@
+ ; CHECK-NEXT:    # xmm0 = mem[0],zero,zero,zero
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+ ; CHECK-NEXT:    cmovbq %r12, %rax
+-; CHECK-NEXT:    cmovbq %r13, %rdx
++; CHECK-NEXT:    cmovbq %rbp, %rdx
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+ ; CHECK-NEXT:    cmovaq %r15, %rdx
+ ; CHECK-NEXT:    cmovaq %r14, %rax
+@@ -1247,7 +1247,8 @@
+ ; CHECK-NEXT:    # xmm0 = mem[0],zero,zero,zero
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+ ; CHECK-NEXT:    cmovbq %r12, %rax
+-; CHECK-NEXT:    cmovbq %r13, %rdx
++; CHECK-NEXT:    cmovbq %rbp, %rdx
++; CHECK-NEXT:    movq %rbp, %r13
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+ ; CHECK-NEXT:    cmovaq %r15, %rdx
+ ; CHECK-NEXT:    cmovaq %r14, %rax
+@@ -1286,17 +1287,16 @@
+ ; CHECK-NEXT:    movss {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 4-byte Reload
+ ; CHECK-NEXT:    # xmm0 = mem[0],zero,zero,zero
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    movl $0, %eax
+-; CHECK-NEXT:    cmovbq %rax, %r14
+-; CHECK-NEXT:    movabsq $-9223372036854775808, %rcx # imm = 0x8000000000000000
+-; CHECK-NEXT:    cmovbq %rcx, %r15
++; CHECK-NEXT:    cmovbq %r12, %r14
++; CHECK-NEXT:    movabsq $-9223372036854775808, %rax # imm = 0x8000000000000000
++; CHECK-NEXT:    cmovbq %rax, %r15
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+ ; CHECK-NEXT:    cmovaq %r13, %r15
+-; CHECK-NEXT:    movq $-1, %rcx
+-; CHECK-NEXT:    cmovaq %rcx, %r14
++; CHECK-NEXT:    movq $-1, %rax
++; CHECK-NEXT:    cmovaq %rax, %r14
+ ; CHECK-NEXT:    ucomiss %xmm0, %xmm0
+-; CHECK-NEXT:    cmovpq %rax, %r14
+-; CHECK-NEXT:    cmovpq %rax, %r15
++; CHECK-NEXT:    cmovpq %r12, %r14
++; CHECK-NEXT:    cmovpq %r12, %r15
+ ; CHECK-NEXT:    movdqa {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    psrldq {{.*#+}} xmm0 = xmm0[14,15],zero,zero,zero,zero,zero,zero,zero,zero,zero,zero,zero,zero,zero,zero
+ ; CHECK-NEXT:    callq __extendhfsf2@PLT
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fptoui-sat-vector-128.ll b/llvm/test/CodeGen/X86/fptoui-sat-vector-128.ll
+--- a/llvm/test/CodeGen/X86/fptoui-sat-vector-128.ll
++++ b/llvm/test/CodeGen/X86/fptoui-sat-vector-128.ll
+@@ -263,17 +263,17 @@
+ ; CHECK-NEXT:    movaps %xmm0, {{[-0-9]+}}(%r{{[sb]}}p) # 16-byte Spill
+ ; CHECK-NEXT:    callq __fixunssfti@PLT
+ ; CHECK-NEXT:    movq %rdx, %r15
+-; CHECK-NEXT:    xorl %ebp, %ebp
++; CHECK-NEXT:    xorl %r14d, %r14d
+ ; CHECK-NEXT:    xorps %xmm0, %xmm0
+ ; CHECK-NEXT:    movaps {{[-0-9]+}}(%r{{[sb]}}p), %xmm1 # 16-byte Reload
+ ; CHECK-NEXT:    ucomiss %xmm0, %xmm1
+-; CHECK-NEXT:    cmovbq %rbp, %r15
+-; CHECK-NEXT:    cmovbq %rbp, %rax
++; CHECK-NEXT:    cmovbq %r14, %r15
++; CHECK-NEXT:    cmovbq %r14, %rax
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm1
+-; CHECK-NEXT:    movq $-1, %r14
+-; CHECK-NEXT:    cmovaq %r14, %rax
++; CHECK-NEXT:    movq $-1, %rbp
++; CHECK-NEXT:    cmovaq %rbp, %rax
+ ; CHECK-NEXT:    movq %rax, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+-; CHECK-NEXT:    cmovaq %r14, %r15
++; CHECK-NEXT:    cmovaq %rbp, %r15
+ ; CHECK-NEXT:    movaps (%rsp), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    movhlps {{.*#+}} xmm0 = xmm0[1,1]
+ ; CHECK-NEXT:    movaps %xmm0, {{[-0-9]+}}(%r{{[sb]}}p) # 16-byte Spill
+@@ -282,11 +282,11 @@
+ ; CHECK-NEXT:    movq %rdx, %r13
+ ; CHECK-NEXT:    movaps {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovbq %rbp, %r13
+-; CHECK-NEXT:    cmovbq %rbp, %r12
++; CHECK-NEXT:    cmovbq %r14, %r13
++; CHECK-NEXT:    cmovbq %r14, %r12
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovaq %r14, %r12
+-; CHECK-NEXT:    cmovaq %r14, %r13
++; CHECK-NEXT:    cmovaq %rbp, %r12
++; CHECK-NEXT:    cmovaq %rbp, %r13
+ ; CHECK-NEXT:    movaps (%rsp), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    shufps {{.*#+}} xmm0 = xmm0[3,3,3,3]
+ ; CHECK-NEXT:    movaps %xmm0, {{[-0-9]+}}(%r{{[sb]}}p) # 16-byte Spill
+@@ -1149,18 +1149,18 @@
+ ; CHECK-NEXT:    callq __extendhfsf2@PLT
+ ; CHECK-NEXT:    movd %xmm0, {{[-0-9]+}}(%r{{[sb]}}p) # 4-byte Folded Spill
+ ; CHECK-NEXT:    callq __fixunssfti@PLT
+-; CHECK-NEXT:    xorl %r13d, %r13d
++; CHECK-NEXT:    xorl %r12d, %r12d
+ ; CHECK-NEXT:    pxor %xmm0, %xmm0
+ ; CHECK-NEXT:    movss {{[-0-9]+}}(%r{{[sb]}}p), %xmm1 # 4-byte Reload
+ ; CHECK-NEXT:    # xmm1 = mem[0],zero,zero,zero
+ ; CHECK-NEXT:    ucomiss %xmm0, %xmm1
+-; CHECK-NEXT:    cmovbq %r13, %rdx
+-; CHECK-NEXT:    cmovbq %r13, %rax
++; CHECK-NEXT:    cmovbq %r12, %rdx
++; CHECK-NEXT:    cmovbq %r12, %rax
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm1
+-; CHECK-NEXT:    movq $-1, %r12
+-; CHECK-NEXT:    cmovaq %r12, %rax
++; CHECK-NEXT:    movq $-1, %r13
++; CHECK-NEXT:    cmovaq %r13, %rax
+ ; CHECK-NEXT:    movq %rax, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+-; CHECK-NEXT:    cmovaq %r12, %rdx
++; CHECK-NEXT:    cmovaq %r13, %rdx
+ ; CHECK-NEXT:    movq %rdx, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+ ; CHECK-NEXT:    movaps {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    shufps {{.*#+}} xmm0 = xmm0[1,1,1,1]
+@@ -1170,12 +1170,12 @@
+ ; CHECK-NEXT:    movss {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 4-byte Reload
+ ; CHECK-NEXT:    # xmm0 = mem[0],zero,zero,zero
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovbq %r13, %rdx
+-; CHECK-NEXT:    cmovbq %r13, %rax
++; CHECK-NEXT:    cmovbq %r12, %rdx
++; CHECK-NEXT:    cmovbq %r12, %rax
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovaq %r12, %rax
++; CHECK-NEXT:    cmovaq %r13, %rax
+ ; CHECK-NEXT:    movq %rax, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+-; CHECK-NEXT:    cmovaq %r12, %rdx
++; CHECK-NEXT:    cmovaq %r13, %rdx
+ ; CHECK-NEXT:    movq %rdx, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+ ; CHECK-NEXT:    movdqa {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    psrlq $48, %xmm0
+@@ -1185,12 +1185,12 @@
+ ; CHECK-NEXT:    movss {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 4-byte Reload
+ ; CHECK-NEXT:    # xmm0 = mem[0],zero,zero,zero
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovbq %r13, %rdx
+-; CHECK-NEXT:    cmovbq %r13, %rax
++; CHECK-NEXT:    cmovbq %r12, %rdx
++; CHECK-NEXT:    cmovbq %r12, %rax
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovaq %r12, %rax
++; CHECK-NEXT:    cmovaq %r13, %rax
+ ; CHECK-NEXT:    movq %rax, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+-; CHECK-NEXT:    cmovaq %r12, %rdx
++; CHECK-NEXT:    cmovaq %r13, %rdx
+ ; CHECK-NEXT:    movq %rdx, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+ ; CHECK-NEXT:    movaps {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    movhlps {{.*#+}} xmm0 = xmm0[1,1]
+@@ -1200,12 +1200,12 @@
+ ; CHECK-NEXT:    movss {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 4-byte Reload
+ ; CHECK-NEXT:    # xmm0 = mem[0],zero,zero,zero
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovbq %r13, %rdx
+-; CHECK-NEXT:    cmovbq %r13, %rax
++; CHECK-NEXT:    cmovbq %r12, %rdx
++; CHECK-NEXT:    cmovbq %r12, %rax
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovaq %r12, %rax
++; CHECK-NEXT:    cmovaq %r13, %rax
+ ; CHECK-NEXT:    movq %rax, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+-; CHECK-NEXT:    cmovaq %r12, %rdx
++; CHECK-NEXT:    cmovaq %r13, %rdx
+ ; CHECK-NEXT:    movq %rdx, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+ ; CHECK-NEXT:    movdqa {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    psrldq {{.*#+}} xmm0 = xmm0[10,11,12,13,14,15],zero,zero,zero,zero,zero,zero,zero,zero,zero,zero
+@@ -1216,12 +1216,12 @@
+ ; CHECK-NEXT:    movss {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 4-byte Reload
+ ; CHECK-NEXT:    # xmm0 = mem[0],zero,zero,zero
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovbq %r13, %rbp
+-; CHECK-NEXT:    cmovbq %r13, %rax
++; CHECK-NEXT:    cmovbq %r12, %rbp
++; CHECK-NEXT:    cmovbq %r12, %rax
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovaq %r12, %rax
++; CHECK-NEXT:    cmovaq %r13, %rax
+ ; CHECK-NEXT:    movq %rax, {{[-0-9]+}}(%r{{[sb]}}p) # 8-byte Spill
+-; CHECK-NEXT:    cmovaq %r12, %rbp
++; CHECK-NEXT:    cmovaq %r13, %rbp
+ ; CHECK-NEXT:    movaps {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    shufps {{.*#+}} xmm0 = xmm0[3,3,3,3]
+ ; CHECK-NEXT:    callq __extendhfsf2@PLT
+@@ -1232,11 +1232,11 @@
+ ; CHECK-NEXT:    movss {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 4-byte Reload
+ ; CHECK-NEXT:    # xmm0 = mem[0],zero,zero,zero
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovbq %r13, %r15
+-; CHECK-NEXT:    cmovbq %r13, %r14
++; CHECK-NEXT:    cmovbq %r12, %r15
++; CHECK-NEXT:    cmovbq %r12, %r14
+ ; CHECK-NEXT:    ucomiss {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
+-; CHECK-NEXT:    cmovaq %r12, %r14
+-; CHECK-NEXT:    cmovaq %r12, %r15
++; CHECK-NEXT:    cmovaq %r13, %r14
++; CHECK-NEXT:    cmovaq %r13, %r15
+ ; CHECK-NEXT:    movdqa {{[-0-9]+}}(%r{{[sb]}}p), %xmm0 # 16-byte Reload
+ ; CHECK-NEXT:    psrldq {{.*#+}} xmm0 = xmm0[14,15],zero,zero,zero,zero,zero,zero,zero,zero,zero,zero,zero,zero,zero,zero
+ ; CHECK-NEXT:    callq __extendhfsf2@PLT
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/splitkit-remat-broken-subreg-constraint.mir b/llvm/test/CodeGen/X86/splitkit-remat-broken-subreg-constraint.mir
+--- a/llvm/test/CodeGen/X86/splitkit-remat-broken-subreg-constraint.mir
++++ b/llvm/test/CodeGen/X86/splitkit-remat-broken-subreg-constraint.mir
+@@ -0,0 +1,45 @@
++# NOTE: Assertions have been autogenerated by utils/update_mir_test_checks.py UTC_ARGS: --version 5
++# RUN: llc -mtriple=x86_64-- -run-pass=greedy -verify-regalloc -stress-regalloc=2 -o - %s | FileCheck %s
++
++# Test verifier error which happened after 8476a5d480304 during
++# rematerialization.
++
++---
++name:            remat_regclass_verifier_error
++tracksRegLiveness: true
++body:             |
++  bb.0:
++    liveins: $rax, $rbx, $rcx, $rdi
++
++    ; CHECK-LABEL: name: remat_regclass_verifier_error
++    ; CHECK: liveins: $rax, $rbx, $rcx, $rdi
++    ; CHECK-NEXT: {{  $}}
++    ; CHECK-NEXT: dead [[COPY:%[0-9]+]]:gr64 = COPY $rax
++    ; CHECK-NEXT: dead [[COPY1:%[0-9]+]]:gr64 = COPY $rbx
++    ; CHECK-NEXT: [[COPY2:%[0-9]+]]:gr64 = COPY $rcx
++    ; CHECK-NEXT: MOV64mr %stack.0, 1, $noreg, 0, $noreg, [[COPY2]] :: (store (s64) into %stack.0)
++    ; CHECK-NEXT: [[COPY3:%[0-9]+]]:gr64 = COPY $rdi
++    ; CHECK-NEXT: undef [[MOV32r0_:%[0-9]+]].sub_32bit:gr64_with_sub_8bit = MOV32r0 implicit-def dead $eflags
++    ; CHECK-NEXT: dead [[COPY3:%[0-9]+]]:gr64 = CMOV64rr [[COPY3]], [[MOV32r0_]], 10, implicit undef $eflags
++    ; CHECK-NEXT: undef [[MOV32r0_1:%[0-9]+]].sub_32bit:gr64_with_sub_8bit = MOV32r0 implicit-def dead $eflags
++    ; CHECK-NEXT: [[MOV64rm:%[0-9]+]]:gr64 = MOV64rm %stack.0, 1, $noreg, 0, $noreg :: (load (s64) from %stack.0)
++    ; CHECK-NEXT: [[MOV64rm:%[0-9]+]]:gr64 = CMOV64rr [[MOV64rm]], [[MOV32r0_1]], 10, implicit undef $eflags
++    ; CHECK-NEXT: dead [[COPY4:%[0-9]+]]:gr64 = COPY $rdi
++    ; CHECK-NEXT: undef [[MOV32r0_2:%[0-9]+]].sub_32bit:gr64_with_sub_8bit = MOV32r0 implicit-def dead $eflags
++    ; CHECK-NEXT: [[CMOV64rr:%[0-9]+]]:gr64 = CMOV64rr [[MOV64rm]], [[MOV32r0_2]], 10, implicit undef $eflags
++    ; CHECK-NEXT: $rax = COPY [[CMOV64rr]]
++    ; CHECK-NEXT: RET 0, $rax
++    %0:gr64 = COPY $rax
++    %1:gr64 = COPY $rbx
++    undef %2.sub_32bit:gr64_with_sub_8bit = MOV32r0 implicit-def dead $eflags
++    %0:gr64 = COPY $rcx
++    %1:gr64 = COPY %0
++    %0:gr64 = COPY $rdi
++    %0:gr64 = CMOV64rr %0, %2, 10, implicit undef $eflags
++    %1:gr64 = CMOV64rr %1, %2, 10, implicit undef $eflags
++    %3:gr64 = COPY $rdi
++    %3:gr64 = CMOV64rr %1, %2, 10, implicit undef $eflags
++    $rax = COPY %3
++    RET 0, killed $rax
++...
++
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/statepoint-invoke-ra-enter-at-end.mir b/llvm/test/CodeGen/X86/statepoint-invoke-ra-enter-at-end.mir
+--- a/llvm/test/CodeGen/X86/statepoint-invoke-ra-enter-at-end.mir
++++ b/llvm/test/CodeGen/X86/statepoint-invoke-ra-enter-at-end.mir
+@@ -343,9 +343,8 @@
+   ; CHECK-NEXT:   [[MOV64rm4:%[0-9]+]]:gr64 = NOT64r [[MOV64rm4]]
+   ; CHECK-NEXT:   CMP64rr [[MOV64rm4]], [[COPY7]], implicit-def $eflags
+   ; CHECK-NEXT:   undef [[MOV32ri1:%[0-9]+]].sub_32bit:gr64_with_sub_8bit = MOV32ri 0
+-  ; CHECK-NEXT:   [[COPY8:%[0-9]+]]:gr64 = COPY [[MOV32ri1]]
+-  ; CHECK-NEXT:   [[MOV64rm4:%[0-9]+]]:gr64 = CMOV64rr [[MOV64rm4]], [[COPY8]], 4, implicit killed $eflags
+-  ; CHECK-NEXT:   INLINEASM &"lock btsq $0,($1)", 1 /* sideeffect attdialect */, 4784137 /* reguse:GR64 */, [[COPY8]], 4784137 /* reguse:GR64 */, undef %56:gr64, 12 /* clobber */, implicit-def dead early-clobber $df, 12 /* clobber */, implicit-def early-clobber $fpsw, 12 /* clobber */, implicit-def dead early-clobber $eflags
++  ; CHECK-NEXT:   [[MOV64rm4:%[0-9]+]]:gr64 = CMOV64rr [[MOV64rm4]], [[MOV32ri1]], 4, implicit killed $eflags
++  ; CHECK-NEXT:   INLINEASM &"lock btsq $0,($1)", 1 /* sideeffect attdialect */, 4784137 /* reguse:GR64 */, [[MOV32ri1]], 4784137 /* reguse:GR64 */, undef %56:gr64, 12 /* clobber */, implicit-def dead early-clobber $df, 12 /* clobber */, implicit-def early-clobber $fpsw, 12 /* clobber */, implicit-def dead early-clobber $eflags
+   ; CHECK-NEXT:   LCMPXCHG32 undef %67:gr64, 1, $noreg, 0, $noreg, [[COPY6]], implicit-def dead $eax, implicit-def dead $eflags, implicit undef $eax :: (load store acquire monotonic (s32) on `ptr addrspace(1) undef`, addrspace 1)
+   ; CHECK-NEXT:   ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp
+   ; CHECK-NEXT:   $rdi = COPY [[COPY5]]
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/buildvectors-parent-phi-nodes.ll b/llvm/test/Transforms/SLPVectorizer/X86/buildvectors-parent-phi-nodes.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/buildvectors-parent-phi-nodes.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/buildvectors-parent-phi-nodes.ll
+@@ -0,0 +1,54 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-generic-linux-gnu -mattr=+avx < %s | FileCheck %s
++
++define void @test(ptr %0, float %1) {
++; CHECK-LABEL: define void @test(
++; CHECK-SAME: ptr [[TMP0:%.*]], float [[TMP1:%.*]]) #[[ATTR0:[0-9]+]] {
++; CHECK-NEXT:    [[TMP3:%.*]] = load float, ptr [[TMP0]], align 4
++; CHECK-NEXT:    [[TMP4:%.*]] = insertelement <2 x float> <float 0.000000e+00, float poison>, float [[TMP3]], i32 1
++; CHECK-NEXT:    [[TMP5:%.*]] = insertelement <4 x float> <float poison, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00>, float [[TMP3]], i32 0
++; CHECK-NEXT:    [[TMP6:%.*]] = insertelement <2 x float> poison, float [[TMP1]], i32 0
++; CHECK-NEXT:    [[TMP7:%.*]] = shufflevector <2 x float> [[TMP6]], <2 x float> poison, <2 x i32> zeroinitializer
++; CHECK-NEXT:    br label %[[BB8:.*]]
++; CHECK:       [[BB8]]:
++; CHECK-NEXT:    [[TMP9:%.*]] = phi <4 x float> [ [[TMP15:%.*]], %[[BB8]] ], [ [[TMP5]], [[TMP2:%.*]] ]
++; CHECK-NEXT:    [[TMP10:%.*]] = phi <2 x float> [ [[TMP7]], %[[BB8]] ], [ [[TMP4]], [[TMP2]] ]
++; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <2 x float> [[TMP10]], <2 x float> poison, <4 x i32> <i32 0, i32 1, i32 0, i32 0>
++; CHECK-NEXT:    [[TMP12:%.*]] = fmul <4 x float> [[TMP9]], zeroinitializer
++; CHECK-NEXT:    [[TMP13:%.*]] = fadd <4 x float> [[TMP12]], zeroinitializer
++; CHECK-NEXT:    store <4 x float> [[TMP13]], ptr [[TMP0]], align 16
++; CHECK-NEXT:    [[TMP14:%.*]] = fmul <4 x float> [[TMP11]], zeroinitializer
++; CHECK-NEXT:    [[TMP15]] = fadd <4 x float> [[TMP14]], zeroinitializer
++; CHECK-NEXT:    br label %[[BB8]]
++;
++  %3 = load float, ptr %0, align 4
++  br label %4
++
++4:
++  %5 = phi float [ %1, %4 ], [ %3, %2 ]
++  %6 = phi float [ %1, %4 ], [ 0.000000e+00, %2 ]
++  %7 = phi float [ %28, %4 ], [ 0.000000e+00, %2 ]
++  %8 = phi float [ %26, %4 ], [ 0.000000e+00, %2 ]
++  %9 = phi float [ %26, %4 ], [ %3, %2 ]
++  %10 = phi float [ %24, %4 ], [ 0.000000e+00, %2 ]
++  %11 = fmul float %9, 0.000000e+00
++  %12 = fadd float %11, 0.000000e+00
++  %13 = fmul float %7, 0.000000e+00
++  %14 = fadd float %13, 0.000000e+00
++  %15 = fmul float %10, 0.000000e+00
++  %16 = fadd float %15, 0.000000e+00
++  %17 = fmul float %8, 0.000000e+00
++  %18 = fadd float %17, 0.000000e+00
++  %19 = insertelement <4 x float> zeroinitializer, float %12, i64 0
++  %20 = insertelement <4 x float> %19, float %14, i64 1
++  %21 = insertelement <4 x float> %20, float %16, i64 2
++  %22 = insertelement <4 x float> %21, float %18, i64 3
++  store <4 x float> %22, ptr %0, align 16
++  %23 = fmul float %6, 0.000000e+00
++  %24 = fadd float %23, 0.000000e+00
++  %25 = fmul float %6, 0.000000e+00
++  %26 = fadd float %25, 0.000000e+00
++  %27 = fmul float %5, 0.000000e+00
++  %28 = fadd float %27, 0.000000e+00
++  br label %4
++}
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -602,6 +602,7 @@
+     hdrs = ["src/__support/CPP/span.h"],
+     deps = [
+         ":__support_cpp_array",
++        ":__support_cpp_limits",
+         ":__support_cpp_type_traits",
+     ],
+ )
+@@ -611,6 +612,7 @@
+     hdrs = ["src/__support/CPP/string_view.h"],
+     deps = [
+         ":__support_common",
++        ":__support_cpp_limits",
+     ],
+ )
+ 
