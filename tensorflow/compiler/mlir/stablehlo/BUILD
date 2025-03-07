@@ -1,3 +1,4 @@
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@local_xla//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
@@ -15,6 +16,8 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//tensorflow/compiler/mlir/lite/stablehlo/...",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/...",
         "//tensorflow/compiler/tests/...",
     ],
 )
@@ -83,6 +86,51 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = 1,
+)
+
+gentbl_cc_library(
+    name = "passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=OdmlStablehlo",
+            ],
+            "transforms/stablehlo_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/stablehlo_passes.td",
+    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
+cc_library(
+    name = "unfuse_batch_norm_pass",
+    srcs = [
+        "transforms/mhlo_passes/unfuse_batch_norm_pass.cc",
+    ],
+    hdrs = [
+        "transforms/stablehlo_passes.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@local_xla//xla/mlir_hlo",
     ],
     alwayslink = 1,
