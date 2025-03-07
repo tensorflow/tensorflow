@@ -30,7 +30,7 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "error_util_test",
     srcs = ["error_util_test.cc"],
     linkstatic = 1,

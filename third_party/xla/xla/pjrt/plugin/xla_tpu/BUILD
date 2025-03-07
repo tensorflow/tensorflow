@@ -1,3 +1,4 @@
+load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -24,7 +25,7 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "xla_tpu_pjrt_client_test",
     srcs = ["xla_tpu_pjrt_client_test.cc"],
     tags = ["no_oss"],
@@ -33,7 +34,7 @@ cc_test(
         "//xla/pjrt:pjrt_common",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test",
     ],
 )

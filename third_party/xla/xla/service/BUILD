@@ -5502,7 +5502,7 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-cc_test(
+xla_cc_test(
     name = "custom_call_target_registry_test",
     srcs = ["custom_call_target_registry_test.cc"],
     deps = [

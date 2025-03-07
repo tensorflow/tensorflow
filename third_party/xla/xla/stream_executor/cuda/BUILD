@@ -1181,7 +1181,7 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "cuda_version_parser_test",
     srcs = ["cuda_version_parser_test.cc"],
     deps = [
@@ -1499,7 +1499,7 @@ cc_library(
     deps = ["@com_google_absl//absl/strings:str_format"],
 )
 
-cc_test(
+xla_cc_test(
     name = "compilation_options_test",
     srcs = ["compilation_options_test.cc"],
     deps = [
@@ -1910,7 +1910,7 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "tma_util_test",
     srcs = ["tma_util_test.cc"],
     tags = [

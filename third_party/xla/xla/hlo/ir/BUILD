@@ -286,7 +286,7 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "ptrvec_test",
     srcs = ["ptrvec_test.cc"],
     deps = [

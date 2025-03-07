@@ -628,7 +628,6 @@ cc_library(
 )
 
 xla_cc_test(
-    # cc_test(
     name = "collective_permute_valid_iteration_annotator_test",
     srcs = ["collective_permute_valid_iteration_annotator_test.cc"],
     deps = [

@@ -1,11 +1,11 @@
-# Description:
-#   ROCm-platform specific StreamExecutor support code.
+"""ROCm-platform specific StreamExecutor support code."""
 
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_hipblaslt",
     "rocm_library",
 )
+load("//xla:xla.bzl", "xla_cc_test")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -863,7 +863,7 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "rocm_version_parser_test",
     srcs = ["rocm_version_parser_test.cc"],
     tags = [
@@ -1016,7 +1016,7 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "rocm_status_test",
     srcs = ["rocm_status_test.cc"],
     tags = [
