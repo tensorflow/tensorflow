@@ -63,9 +63,9 @@ bool ComputeRandomUniformArray(Model* model, RandomUniformOperator* op) {
   return true;
 }
 
-::tensorflow::Status ResolveConstantRandomUniform::Run(Model* model,
-                                                       std::size_t op_index,
-                                                       bool* modified) {
+absl::Status ResolveConstantRandomUniform::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* base_op = it->get();
