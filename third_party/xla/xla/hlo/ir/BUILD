@@ -73,6 +73,7 @@ cc_library(
         "//xla:shape_layout",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:sort_json",
         "//xla:status_macros",
         "//xla:types",
@@ -126,6 +127,7 @@ xla_cc_test(
     deps = [
         ":hlo",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:test_main",
         "@com_google_googletest//:gtest",
