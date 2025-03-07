@@ -13,7 +13,10 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["//tensorflow:internal"],
+    includes = [
+        "//tensorflow:internal",
+        "@local_xla//xla:internal",
+    ],
 )
 
 package_group(
