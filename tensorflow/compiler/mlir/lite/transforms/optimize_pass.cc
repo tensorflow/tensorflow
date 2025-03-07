@@ -2531,8 +2531,8 @@ struct EliminateQDQPairs : public OpRewritePattern<TFL::QuantizeOp> {
 //    (HasRankAtLeast<2> $bias),
 //    (IsDefinedByFullyConnectedOp $lhs)]>;
 struct UndoBroadcastFullyConnectedBiasAddWithQDQs
-    : public OpRewritePattern<TFL::AddOp> {
-  using OpRewritePattern::OpRewritePattern;
+    : public OpRewritePattern<TFL::AddOp>::SplitMatchAndRewrite {
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
   LogicalResult match(TFL::AddOp add_op) const override {
     if (!add_op->hasOneUse()) {
       return failure();
