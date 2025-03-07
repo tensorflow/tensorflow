@@ -67,9 +67,9 @@ class PrepareTpuComputationForTfExportPass
 };
 
 class RewriteXlaHostComputeMlir
-    : public OpRewritePattern<TF::_XlaHostComputeMlirOp> {
+    : public OpRewritePattern<TF::_XlaHostComputeMlirOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<TF::_XlaHostComputeMlirOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(TF::_XlaHostComputeMlirOp op) const override {
     if (op.getManualSharding()) {
