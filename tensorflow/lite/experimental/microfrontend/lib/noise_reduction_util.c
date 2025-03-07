@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/noise_reduction_util.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 void NoiseReductionFillConfigWithDefaults(struct NoiseReductionConfig* config) {
   config->smoothing_bits = 10;
