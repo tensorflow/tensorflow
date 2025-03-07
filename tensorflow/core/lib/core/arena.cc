@@ -26,6 +26,7 @@ limitations under the License.
 #include <assert.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <vector>
 
 #include "tensorflow/core/lib/math/math_util.h"
