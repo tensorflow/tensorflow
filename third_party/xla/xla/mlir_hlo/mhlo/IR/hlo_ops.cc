@@ -3331,6 +3331,19 @@ void DynamicReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // DynamicSliceOp
 //===----------------------------------------------------------------------===//
 
+// Pattern: dynamic_slice(splat_cst, start, end) -> resized_splat_cst
+OpFoldResult DynamicSliceOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  if (!operands[0]) return nullptr;
+
+  auto cst_attr = operands[0].dyn_cast<DenseElementsAttr>();
+  if (cst_attr && cst_attr.isSplat()) {
+    return cst_attr.resizeSplat(getResult().getType());
+  }
+
+  return nullptr;
+}
+
 namespace {
 // Canonicalizes DynamicSlice ops that can be replaced instead with Slice ops.
 // This canonicalization is applied the case when the `begin` input values are
