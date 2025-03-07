@@ -26,7 +26,7 @@ inline const absl::string_view kDevicePlacement = "annotate_device_placement";
 inline const absl::string_view kMemoryTargetPinnedHost = "pinned_host";
 inline const absl::string_view kMemoryTargetUnpinnedHost = "unpinned_host";
 inline const absl::string_view kMemoryTargetDevice = "device";
-inline const absl::string_view kMemoryTargetDeviceSram = "device_sram";
+inline const absl::string_view kMemoryTargetDeviceSram = "vmem";
 inline const absl::string_view kMemoryTargetPinnedDevice = "pinned_device";
 
 // Internal annotations:
