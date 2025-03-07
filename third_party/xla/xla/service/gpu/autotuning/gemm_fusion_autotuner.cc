@@ -1460,8 +1460,6 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
   XLA_SCOPED_LOGGING_TIMER("GEMM fusion autotuner");
 
   const DebugOptions& debug_options = module->config().debug_options();
-  const bool shard_autotuning = debug_options.xla_gpu_shard_autotuning() &&
-                                key_value_store_.process_count > 1;
   GemmFusionAutotunerImpl autotuner(config_, toolkit_version_, debug_options,
                                     thread_pool_);
   GemmFusionCollector fusion_collector(&autotuner);
@@ -1469,6 +1467,10 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
       GemmFusionCollectorResult fusions,
       fusion_collector.CollectGemmFusions(*module, execution_threads));
   AutotuneCacheKeySet keys_of_this_rank;
+
+  const bool shard_autotuning = debug_options.xla_gpu_shard_autotuning() &&
+                                key_value_store_.process_count > 1 &&
+                                autotuner.IsAutotuningEnabled();
   if (shard_autotuning) {
     if (key_value_store_.key_value_store == nullptr) {
       return absl::FailedPreconditionError(
