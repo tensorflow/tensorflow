@@ -30,6 +30,7 @@ func.func @main(%arg0: tensor<1x?x512xf32, #mhlo.type_extensions<bounds = [?, 18
 // CHECK-LITERAL: HloModule main
 func.func @main(%arg0: tensor<?xf32, #mhlo.type_extensions<bounds = [5]>>) -> tensor<1x?xf32, #mhlo.type_extensions<bounds = [?, 5]>> {
   %0 = mhlo.reshape %arg0 : (tensor<?xf32, #mhlo.type_extensions<bounds = [5]>>) -> tensor<1x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>
-  // CHECK: f32[1,<=5] reshape(f32[<=5]
+  // CHECK: %[[ARG0:.+]] = f32[<=5] parameter(0)
+  // CHECK: f32[1,<=5] reshape(%[[ARG0]])
   return %0 : tensor<1x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>
 }

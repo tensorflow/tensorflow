@@ -285,7 +285,11 @@ TEST_F(AlgorithmTest, Algorithm_BF16_BF16_F32_on_BF16_input_for_multiply) {
     CHECK:    %[[reduce:.*]] = f32[256]{0} reduce(
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto ok,
+      RunFileCheck(
+          module->ToString(HloPrintOptions().set_print_operand_shape(true)),
+          pattern));
   ASSERT_TRUE(ok);
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(module), ErrorSpec{/*aabs=*/1e-7, /*arel=*/1e-7}));

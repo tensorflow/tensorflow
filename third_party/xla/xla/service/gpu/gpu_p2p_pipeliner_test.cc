@@ -245,22 +245,22 @@ TEST_F(GpuP2PPipelinerTest, SendRecvForwardCycle) {
     // back edge and one set for the forward edge. Also check that the send/recv
     // target pairs and validation attributes are correct.
     CHECK: %[[RECV_BWD_START:.*]] = {{.*}} after-all()
-    CHECK: %[[RECV_BWD:.*]] = {{.*}} recv(token[] %[[RECV_BWD_START:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs={{[{][{]}}3,0{{[}][}]}},_xla_send_recv_validation={{[{][{]}}2,9{{[}][}]}}}
-    CHECK: %[[RECV_DONE_BWD:.*]] = {{.*}} recv-done({{.*}} %[[RECV_BWD:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+    CHECK: %[[RECV_BWD:.*]] = {{.*}} recv(%[[RECV_BWD_START:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs={{[{][{]}}3,0{{[}][}]}},_xla_send_recv_validation={{[{][{]}}2,9{{[}][}]}}}
+    CHECK: %[[RECV_DONE_BWD:.*]] = {{.*}} recv-done(%[[RECV_BWD:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
     CHECK: %[[RECV_FWD_START:.*]] = {{.*}} after-all()
-    CHECK: %[[RECV_FWD:.*]] = {{.*}} recv(token[] %[[RECV_FWD_START:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1",_xla_send_recv_source_target_pairs={{[{][{]}}0,1},{1,2},{2,3{{[}][}]}},_xla_send_recv_validation={{[{][{]}}0,6},{0,7},{1,8{{[}][}]}}}
-    CHECK: %[[RECV_DONE_FWD:.*]] = {{.*}} recv-done((f32[2,2]{1,0}, u32[], token[]) %[[RECV_FWD:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
-    CHECK: %[[SEND_BWD:.*]] = {{.*}} send({{.*}} %[[RECV_BWD_START:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs={{[{][{]}}3,0{{[}][}]}},_xla_send_recv_validation={{[{][{]}}2,9{{[}][}]}}}
-    CHECK: %[[SEND_DONE_BWD:.*]] = {{.*}} send-done({{.*}} %[[SEND_BWD:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-    CHECK: %[[SEND_FWD:.*]] = {{.*}} send({{.*}} %[[RECV_FWD_START:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1",_xla_send_recv_source_target_pairs={{[{][{]}}0,1},{1,2},{2,3{{[}][}]}},_xla_send_recv_validation={{[{][{]}}0,6},{0,7},{1,8{{[}][}]}}}
-    CHECK: %[[SEND_DONE_FWD:.*]] = {{.*}} send-done({{.*}} %[[SEND_FWD:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
+    CHECK: %[[RECV_FWD:.*]] = {{.*}} recv(%[[RECV_FWD_START:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1",_xla_send_recv_source_target_pairs={{[{][{]}}0,1},{1,2},{2,3{{[}][}]}},_xla_send_recv_validation={{[{][{]}}0,6},{0,7},{1,8{{[}][}]}}}
+    CHECK: %[[RECV_DONE_FWD:.*]] = {{.*}} recv-done(%[[RECV_FWD:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
+    CHECK: %[[SEND_BWD:.*]] = {{.*}} send(%[[RECV_BWD_START:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs={{[{][{]}}3,0{{[}][}]}},_xla_send_recv_validation={{[{][{]}}2,9{{[}][}]}}}
+    CHECK: %[[SEND_DONE_BWD:.*]] = {{.*}} send-done(%[[SEND_BWD:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+    CHECK: %[[SEND_FWD:.*]] = {{.*}} send(%[[RECV_FWD_START:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1",_xla_send_recv_source_target_pairs={{[{][{]}}0,1},{1,2},{2,3{{[}][}]}},_xla_send_recv_validation={{[{][{]}}0,6},{0,7},{1,8{{[}][}]}}}
+    CHECK: %[[SEND_DONE_FWD:.*]] = {{.*}} send-done(%[[SEND_FWD:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
     // Check that the total iterations of the while loop in the output is 1
     // fewer than the max iteration of the input HLO.
     CHECK: %[[WHILE_COND:.*]] (cond_param: {{.*}}
     CHECK-NEXT: %[[COND_PARAM:.*]] = {{.*}} parameter(0)
-    CHECK: %[[CURRENT_ITER:.*]] = {{.*}} get-tuple-element({{.*}} %[[COND_PARAM:.*]]), index=0
+    CHECK: %[[CURRENT_ITER:.*]] = {{.*}} get-tuple-element(%[[COND_PARAM:.*]]), index=0
     CHECK: %[[TWO:.*]] = {{.*}} constant(2)
-    CHECK: ROOT %[[COMPARE:.*]] = pred[] compare({{.*}} %[[CURRENT_ITER:.*]], {{.*}} %[[TWO:.*]]), direction=LT
+    CHECK: ROOT %[[COMPARE:.*]] = pred[] compare(%[[CURRENT_ITER:.*]], %[[TWO:.*]]), direction=LT
 
     // Check that after transformation, main function in ENTRY contains the
     // first iteration of the while loop.
@@ -268,22 +268,22 @@ TEST_F(GpuP2PPipelinerTest, SendRecvForwardCycle) {
 
     // Set up dummy send and recv.
     CHECK: %[[RECV_BWD_DUMMY_START:.*]] = {{.*}} after-all()
-    CHECK: %[[RECV_BWD_DUMMY:.*]] = {{.*}} recv(token[] %[[RECV_BWD_DUMMY_START:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs={{[{][{]}}3,0{{[}][}]}},_xla_send_recv_validation="invalid"}
-    CHECK: %[[RECV_DONE_BWD_DUMMY:.*]] = {{.*}} recv-done({{.*}} %[[RECV_BWD_DUMMY:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+    CHECK: %[[RECV_BWD_DUMMY:.*]] = {{.*}} recv(%[[RECV_BWD_DUMMY_START:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs={{[{][{]}}3,0{{[}][}]}},_xla_send_recv_validation="invalid"}
+    CHECK: %[[RECV_DONE_BWD_DUMMY:.*]] = {{.*}} recv-done(%[[RECV_BWD_DUMMY:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
 
     // Execute what was previously iter 0 of the while loop.
     CHECK: %[[RECV_FWD_FIRST_ITER_START:.*]] = {{.*}} after-all()
-    CHECK: %[[RECV_FWD_FIRST_ITER:.*]] = {{.*}} recv(token[] %[[RECV_FWD_FIRST_ITER_START:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1",_xla_send_recv_source_target_pairs={{[{][{]}}0,1},{1,2},{2,3{{[}][}]}},_xla_send_recv_validation={{[{][{]}}0,0},{1,0},{1,0{{[}][}]}}}
-    CHECK: %[[RECV_DONE_FWD_FIRST_ITER:.*]] = {{.*}} recv-done({{.*}} %[[RECV_FWD_FIRST_ITER:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
-    CHECK: %[[SEND_BWD_DUMMY:.*]] = {{.*}} send({{.*}} %[[RECV_DUMMY_START:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs={{[{][{]}}3,0{{[}][}]}},_xla_send_recv_validation="invalid"}
-    CHECK: %[[SEND_DONE_BWD_DUMMY:.*]] = {{.*}} send-done({{.*}} %[[SEND_BWD_DUMMY:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-    CHECK: %[[SEND_FWD_FIRST_ITER:.*]] = {{.*}} send({{.*}} %[[RECV_FWD_FIRST_ITER_START:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1",_xla_send_recv_source_target_pairs={{[{][{]}}0,1},{1,2},{2,3{{[}][}]}},_xla_send_recv_validation={{[{][{]}}0,0},{1,0},{1,0{{[}][}]}}}
-    CHECK: %[[SEND_DONE_FWD_FIRST_ITER:.*]] = {{.*}} send-done({{.*}} %[[SEND_FWD_FIRST_ITER:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
+    CHECK: %[[RECV_FWD_FIRST_ITER:.*]] = {{.*}} recv(%[[RECV_FWD_FIRST_ITER_START:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1",_xla_send_recv_source_target_pairs={{[{][{]}}0,1},{1,2},{2,3{{[}][}]}},_xla_send_recv_validation={{[{][{]}}0,0},{1,0},{1,0{{[}][}]}}}
+    CHECK: %[[RECV_DONE_FWD_FIRST_ITER:.*]] = {{.*}} recv-done(%[[RECV_FWD_FIRST_ITER:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
+    CHECK: %[[SEND_BWD_DUMMY:.*]] = {{.*}} send(%[[RECV_DUMMY_START:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs={{[{][{]}}3,0{{[}][}]}},_xla_send_recv_validation="invalid"}
+    CHECK: %[[SEND_DONE_BWD_DUMMY:.*]] = {{.*}} send-done(%[[SEND_BWD_DUMMY:.*]]), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
+    CHECK: %[[SEND_FWD_FIRST_ITER:.*]] = {{.*}} send(%[[RECV_FWD_FIRST_ITER_START:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1",_xla_send_recv_source_target_pairs={{[{][{]}}0,1},{1,2},{2,3{{[}][}]}},_xla_send_recv_validation={{[{][{]}}0,0},{1,0},{1,0{{[}][}]}}}
+    CHECK: %[[SEND_DONE_FWD_FIRST_ITER:.*]] = {{.*}} send-done(%[[SEND_FWD_FIRST_ITER:.*]]), channel_id=2, frontend_attributes={_xla_send_recv_pipeline="1"}
 
     // Set up main loop, starting from iter 1.
     CHECK: %[[START_LOOP_FROM_ITER_ONE:.*]] = u32[] constant(1)
-    CHECK: %[[LOOP_INPUT:.*]] = {{.*}} tuple({{.*}} %[[START_LOOP_FROM_ITER_ONE:.*]])
-    CHECK: %[[WHILE:.*]] = {{.*}} while({{.*}} %[[LOOP_INPUT:.*]]), {{.*}}
+    CHECK: %[[LOOP_INPUT:.*]] = {{.*}} tuple(%[[START_LOOP_FROM_ITER_ONE:.*]])
+    CHECK: %[[WHILE:.*]] = {{.*}} while(%[[LOOP_INPUT:.*]]), {{.*}}
   )")
                   .value());
 }
