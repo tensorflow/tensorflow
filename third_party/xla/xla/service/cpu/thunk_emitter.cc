@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/codegen/call_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
@@ -548,11 +549,32 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReduceScatterThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
     const HloInstruction* instruction) {
-  TF_ASSIGN_OR_RETURN(
-      ThunkSequence called_sequence,
-      EmitHloComputation(instruction->called_computations().front()));
-  return ThunkSequence::Of<CallThunk>(ThunkInfo(instruction),
-                                      std::move(called_sequence));
+  if (std::optional<std::string> maybe_small_call =
+          instruction->get_frontend_attribute("xla_cpu_small_call");
+      maybe_small_call.has_value() && *maybe_small_call == "true") {
+    CallKernelEmitter emitter(instruction, &buffer_assignment_,
+                              &target_machine_features_);
+    TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
+                        emitter.EmitKernelDefinition());
+
+    auto [kernel_spec, kernel_source] = std::move(kernel_definition).release();
+    auto llvm_ir_kernel_source = absl::WrapUnique<LlvmIrKernelSource>(
+        tsl::down_cast<LlvmIrKernelSource*>(kernel_source.release()));
+
+    kernels_.push_back(
+        {kernel_spec.name(),
+         std::move(*llvm_ir_kernel_source).thread_safe_module()});
+
+    return MakeKernelThunkSequence(
+        instruction, std::move(kernel_spec),
+        /*min_alignment=*/cpu_function_runtime::MinAlign());
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        ThunkSequence called_sequence,
+        EmitHloComputation(instruction->called_computations().front()));
+    return ThunkSequence::Of<CallThunk>(ThunkInfo(instruction),
+                                        std::move(called_sequence));
+  }
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(

@@ -159,43 +159,6 @@ ParallelPartitionBounds EmitParallelPartitionBounds(
   return bounds;
 }
 
-// Implementation detail for ComputationsTransitivelyContainCustomCall, which
-// recursively checks whether a computation contains a custom call.
-bool RecursivelyCheckForCustomCall(
-    const HloComputation& computation,
-    absl::flat_hash_map<const HloComputation*, bool>& custom_call_map) {
-  bool contains_custom_call = computation.IsCustomCallComputation();
-
-  for (const HloInstruction* instruction : computation.instructions()) {
-    for (const HloComputation* nested_computation :
-         instruction->called_computations()) {
-      if (const auto itr = custom_call_map.find(nested_computation);
-          itr != custom_call_map.end()) {
-        return itr->second;
-      }
-      contains_custom_call |=
-          RecursivelyCheckForCustomCall(*nested_computation, custom_call_map);
-    }
-  }
-
-  custom_call_map[&computation] = contains_custom_call;
-  return contains_custom_call;
-}
-
-// For each called computation in operation, determines whether that computation
-// calls a custom-call function, either directly or indirectly (e.g. because it
-// calls another computation that does).
-absl::flat_hash_map<const HloComputation*, bool>
-ComputationsTransitivelyContainCustomCall(const HloInstruction* instr) {
-  absl::flat_hash_map<const HloComputation*, bool> custom_call_map;
-
-  for (const HloComputation* computation : instr->called_computations()) {
-    RecursivelyCheckForCustomCall(*computation, custom_call_map);
-  }
-
-  return custom_call_map;
-}
-
 }  // namespace
 
 ElementalKernelEmitter::ElementalKernelEmitter(
@@ -342,9 +305,12 @@ ElementalKernelEmitter::ThreadLocalCallbackFactory(llvm::IRBuilderBase& builder,
     HloComputation* nested_computation = instr_->to_apply();
     bool is_reducer = instr_->opcode() == HloOpcode::kReduce ||
                       instr_->opcode() == HloOpcode::kReduceWindow;
-    TF_RETURN_IF_ERROR(ir_emitter->EmitNestedComputation(
-        *nested_computation, llvm_ir::IrName(nested_computation->name()),
-        is_reducer));
+    TF_RETURN_IF_ERROR(
+        ir_emitter
+            ->EmitNestedComputation(*nested_computation,
+                                    llvm_ir::IrName(nested_computation->name()),
+                                    is_reducer)
+            .status());
   }
 
   return [ir_emitter = std::move(ir_emitter), &builder](
