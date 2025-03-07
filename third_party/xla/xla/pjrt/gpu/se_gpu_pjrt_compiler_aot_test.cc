@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/compiler.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/statusor.h"
 
@@ -92,15 +93,12 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
   context.loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
+
   xla::CompileOptions opts;
   opts.target_config = gpu_target_config;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          compiler.Compile(opts, mlir_module.get(), *topology,
-                                           /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                          se_client->Load(std::move(executable)));
+                          se_client->CompileAndLoad(mlir_module.get(), opts));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
@@ -119,17 +117,12 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
                           GetXlaComputation(kProgram));
-  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
-                          se_client->GetTopologyDescription());
+
   xla::CompileOptions opts;
   opts.target_config = gpu_target_config;
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtExecutable> executable,
-      compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
-      se_client->Load(std::move(executable)));
+  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
+                          se_client->CompileAndLoad(computation, opts));
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
@@ -185,14 +178,8 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
                           GetXlaComputation(kProgramIdentity));
-  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
-                          se_client->GetTopologyDescription());
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtExecutable> executable,
-      compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
-      se_client->Load(std::move(executable)));
+  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
+                          se_client->CompileAndLoad(computation, opts));
 
   // Serialize the executable and deserialize it without failure.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
@@ -201,7 +188,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
       auto deserialized_executable,
       se_client->DeserializeExecutable(serialized_executable, std::nullopt));
 
-  EXPECT_EQ(deserialized_executable->name(), "Identity");
+  EXPECT_EQ(deserialized_executable->GetExecutable()->name(), "Identity");
 }
 
 }  // namespace

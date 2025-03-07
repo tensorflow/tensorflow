@@ -578,7 +578,8 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   friend class DonationTransactionPeer;
 };
 
-class TfrtGpuExecutable final : public PjRtLoadedExecutable {
+class TfrtGpuExecutable final : public PjRtLoadedExecutable,
+                                public PjRtExecutable {
  public:
   TfrtGpuExecutable(
       std::vector<std::unique_ptr<LocalExecutable>> executables,
@@ -587,6 +588,11 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
       CompileOptions compile_options,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids,
       std::vector<PjRtDevice*> addressable_devices, TfrtGpuClient* client);
+
+  // Returns the PjRtExecutable that this PjRtLoadedExecutable wraps.
+  std::unique_ptr<PjRtExecutable> GetExecutable() const override {
+    return std::make_unique<PjRtExecutableForwarder>(this);
+  }
 
   TfrtGpuClient* client() const override { return client_; }
 

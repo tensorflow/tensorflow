@@ -36,11 +36,13 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -110,13 +112,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessXla) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          compiler.Compile(xla::CompileOptions(), computation,
-                                           *topology, client.get()));
-  const LoadOptions load_options;
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                          client->Load(std::move(executable), load_options));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto loaded_executable,
+      client->CompileAndLoad(computation, xla::CompileOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
@@ -178,14 +176,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlir) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(xla::CompileOptions(), mlir_module.get(), *topology,
-                       client.get()));
-  const LoadOptions load_options;
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                          client->Load(std::move(executable), load_options));
+      auto loaded_executable,
+      client->CompileAndLoad(mlir_module.get(), xla::CompileOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
