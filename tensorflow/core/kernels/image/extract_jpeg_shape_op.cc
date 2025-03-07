@@ -15,7 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc
 
-#include <memory>
+#include <limits>
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
