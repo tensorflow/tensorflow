@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <array>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <ios>
 #include <string>
