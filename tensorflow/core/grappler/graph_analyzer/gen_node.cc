@@ -14,8 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/graph_analyzer/gen_node.h"
-#include "absl/memory/memory.h"
+
+#include <memory>
+
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/grappler/graph_analyzer/hash_tools.h"
 #include "tensorflow/core/grappler/op_types.h"

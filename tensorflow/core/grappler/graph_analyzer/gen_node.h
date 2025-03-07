@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
