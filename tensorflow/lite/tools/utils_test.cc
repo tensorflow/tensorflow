@@ -71,6 +71,34 @@ void TestTfLiteTensorToInt64Array(TfLiteType type) {
   }
 }
 
+template <typename T>
+void TestFloat32ArrayToInputTensorData(TfLiteType type) {
+  const std::vector<float> kFloatList = {1.0, 2.0, 3.0, 4.0};
+  utils::InputTensorData tensor;
+  const auto status = utils::Float32ArrayToInputTensorData(
+      kFloatList, 4 * sizeof(T), type, tensor);
+  ASSERT_EQ(status, kTfLiteOk);
+  ASSERT_EQ(tensor.bytes, 4 * sizeof(T));
+  T* data = reinterpret_cast<T*>(tensor.data.get());
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_THAT(static_cast<float>(data[i]), FloatEq(kFloatList[i]));
+  }
+}
+
+template <typename T>
+void TestInt64ArrayToInputTensorData(TfLiteType type) {
+  const std::vector<int64_t> kInt64List = {1, 2, 3, 4};
+  utils::InputTensorData tensor;
+  const auto status = utils::Int64ArrayToInputTensorData(
+      kInt64List, 4 * sizeof(T), type, tensor);
+  ASSERT_EQ(status, kTfLiteOk);
+  ASSERT_EQ(tensor.bytes, 4 * sizeof(T));
+  T* data = reinterpret_cast<T*>(tensor.data.get());
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(static_cast<int64_t>(data[i]), kInt64List[i]);
+  }
+}
+
 // Tests TfLiteTensorToFloat32Array for supported TfLiteTypes.
 TEST(Utils, TfLiteTensorToFloat32Array) {
   TestTfLiteTensorToFloat32Array<float>(kTfLiteFloat32);
@@ -88,5 +116,32 @@ TEST(Utils, TfLiteTensorToInt64Array) {
   TestTfLiteTensorToInt64Array<uint64_t>(kTfLiteUInt64);
 }
 
+// Tests ArrayToInputTensorData for converting float array to InputTensorData.
+TEST(Utils, Float32ArrayToInputTensorData) {
+  TestFloat32ArrayToInputTensorData<float>(kTfLiteFloat32);
+  TestFloat32ArrayToInputTensorData<double>(kTfLiteFloat64);
+  TestFloat32ArrayToInputTensorData<int8_t>(kTfLiteInt8);
+  TestFloat32ArrayToInputTensorData<uint8_t>(kTfLiteUInt8);
+  TestFloat32ArrayToInputTensorData<int16_t>(kTfLiteInt16);
+  TestFloat32ArrayToInputTensorData<uint16_t>(kTfLiteUInt16);
+  TestFloat32ArrayToInputTensorData<int>(kTfLiteInt32);
+  TestFloat32ArrayToInputTensorData<uint32_t>(kTfLiteUInt32);
+  TestFloat32ArrayToInputTensorData<int64_t>(kTfLiteInt64);
+  TestFloat32ArrayToInputTensorData<uint64_t>(kTfLiteUInt64);
+}
+
+// Tests ArrayToInputTensorData for converting int64 array to InputTensorData.
+TEST(Utils, Int64ArrayToInputTensorData) {
+  TestInt64ArrayToInputTensorData<float>(kTfLiteFloat32);
+  TestInt64ArrayToInputTensorData<double>(kTfLiteFloat64);
+  TestInt64ArrayToInputTensorData<int8_t>(kTfLiteInt8);
+  TestInt64ArrayToInputTensorData<uint8_t>(kTfLiteUInt8);
+  TestInt64ArrayToInputTensorData<int16_t>(kTfLiteInt16);
+  TestInt64ArrayToInputTensorData<uint16_t>(kTfLiteUInt16);
+  TestInt64ArrayToInputTensorData<int>(kTfLiteInt32);
+  TestInt64ArrayToInputTensorData<uint32_t>(kTfLiteUInt32);
+  TestInt64ArrayToInputTensorData<int64_t>(kTfLiteInt64);
+  TestInt64ArrayToInputTensorData<uint64_t>(kTfLiteUInt64);
+}
 }  // namespace
 }  // namespace tflite::tools
