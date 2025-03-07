@@ -541,23 +541,6 @@ Value AddPtr(EmitterLocOpBuilder b, Value ptr, Value offset) {
 
 Value EmitParameterLoad(EmitterLocOpBuilder b, Value pointer,
                         ArrayRef<int32_t> boundary_checks) {
-  // 0-D MakeTensorPtrOp
-  //
-  // Triton tries to access the -1 element of a vector and segfaults when
-  // lowering the code to load a 0-D tensor to LLVM. The workaround is to load a
-  // regular pointer + a splat.
-  if (auto make_tensor_ptr = pointer.getDefiningOp<mt::MakeTensorPtrOp>()) {
-    if (make_tensor_ptr.getOffsets().empty()) {
-      return Splat(b,
-                   b.create<mt::LoadOp>(make_tensor_ptr.getBase(),
-                                        mt::CacheModifier::NONE,
-                                        mt::EvictionPolicy::NORMAL,
-                                        /*isVolatile=*/false),
-                   {});
-    }
-  }
-
-  // Any other tensor pointer.
   if (mt::isTensorPointerType(pointer.getType())) {
     std::optional<mt::PaddingOption> padding;
     if (!boundary_checks.empty()) {
@@ -569,10 +552,7 @@ Value EmitParameterLoad(EmitterLocOpBuilder b, Value pointer,
                                 /*isVolatile=*/false);
   }
 
-  // Non-tensor pointer.
-  //
-  // TODO(b/343013366): Remove this after we delete the legacy SoftMax code.
-  // It's the only place where this code-path is used.
+  // EmitTensorPointer will not create a MakeTensorPtrOp for scalars.
   return Splat(b,
                b.create<mt::LoadOp>(pointer, mt::CacheModifier::NONE,
                                     mt::EvictionPolicy::NORMAL,
