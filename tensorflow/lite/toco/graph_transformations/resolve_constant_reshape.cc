@@ -27,9 +27,8 @@ limitations under the License.
 namespace toco {
 
 // Resolves a constant reshape operation by copying the buffer.
-::tensorflow::Status ResolveConstantReshape::Run(Model* model,
-                                                 std::size_t op_index,
-                                                 bool* modified) {
+absl::Status ResolveConstantReshape::Run(Model* model, std::size_t op_index,
+                                         bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
