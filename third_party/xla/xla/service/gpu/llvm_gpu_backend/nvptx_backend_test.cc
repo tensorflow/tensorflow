@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <utility>
 
+#include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "tsl/platform/test.h"
