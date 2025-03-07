@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape_util.h"
@@ -62,16 +64,23 @@ TEST(HloInstruction, AddFrontendAttributes) {
   EXPECT_EQ(instr.get_frontend_attribute("key2").value(), "value2");
 }
 
-TEST(HloInstruction, EraseFrontendAttribute) {
-  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
-  instr.add_frontend_attribute("key1", "value1");
-  instr.add_frontend_attribute("key2", "value2");
-  EXPECT_EQ(instr.erase_frontend_attribute("key2"), 1);
-  EXPECT_EQ(instr.erase_frontend_attribute("not_a_key"), 0);
-  EXPECT_EQ(instr.get_frontend_attribute("key1").value(), "value1")
-      << "key1 should not be erased";
-  EXPECT_EQ(instr.get_frontend_attribute("key2"), std::nullopt)
-      << "key2 should have been erased";
+TEST(HloInstruction, CustomCallInstructionStorage) {
+  HloCustomCallInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}),
+                                 /*operands=*/{}, "custom_call_target",
+                                 /*opaque=*/"",
+                                 CustomCallApiVersion::API_VERSION_ORIGINAL);
+  EXPECT_EQ(instr.GetPerInstructionStorage(), nullptr);
+  auto* storage1 = new HloCustomCallInstruction::PerInstructionStorage();
+  auto* storage2 = new HloCustomCallInstruction::PerInstructionStorage();
+
+  instr.SetPerInstructionStorage(
+      std::unique_ptr<HloCustomCallInstruction::PerInstructionStorage>(
+          storage1));
+  instr.SetPerInstructionStorage(
+      std::unique_ptr<HloCustomCallInstruction::PerInstructionStorage>(
+          storage2));
+
+  EXPECT_EQ(instr.GetPerInstructionStorage(), storage1);
 }
 
 TEST(HloInstruction, DeriveComputeTypeAttribute) {
