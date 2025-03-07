@@ -668,11 +668,12 @@ void ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
 template <typename FuncBodyRewritePatternT,
           typename = std::enable_if_t<std::is_base_of_v<
               EntryFuncBodyQuantizationPattern, FuncBodyRewritePatternT>>>
-class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
+class XlaCallModuleOpToCallOp
+    : public OpRewritePattern<TF::XlaCallModuleOp>::SplitMatchAndRewrite {
  public:
   explicit XlaCallModuleOpToCallOp(
       MLIRContext& ctx, const bool enable_per_channel_quantized_weight)
-      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx),
+      : OpRewritePattern<TF::XlaCallModuleOp>::SplitMatchAndRewrite(&ctx),
         enable_per_channel_quantized_weight_(
             enable_per_channel_quantized_weight) {}
 
@@ -725,10 +726,12 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
 // Quantizes only when the nested region consists of ops whose quantization
 // parameters can be propagated from outside.
 class QuantizeOpWithRegionPattern
-    : public OpRewritePattern<quantfork::DequantizeCastOp> {
+    : public OpRewritePattern<
+          quantfork::DequantizeCastOp>::SplitMatchAndRewrite {
  public:
   explicit QuantizeOpWithRegionPattern(MLIRContext& ctx)
-      : OpRewritePattern<quantfork::DequantizeCastOp>(&ctx) {};
+      : OpRewritePattern<quantfork::DequantizeCastOp>::SplitMatchAndRewrite(
+            &ctx) {};
 
   LogicalResult match(quantfork::DequantizeCastOp op) const final {
     // Match only when there is one user of the dequantize op.

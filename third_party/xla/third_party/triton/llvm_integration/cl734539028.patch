@@ -1,0 +1,86 @@
+
+--- a/bin/triton-llvm-opt.cpp	2024-05-02 01:41:56.000000000 -0700
++++ b/bin/triton-llvm-opt.cpp	2025-03-07 11:11:00.000000000 -0800
+@@ -91,7 +91,7 @@
+   }
+   // If we are supposed to override the target triple or data layout, do so now.
+   if (!TargetTriple.empty())
+-    M->setTargetTriple(Triple::normalize(TargetTriple));
++    M->setTargetTriple(llvm::Triple(Triple::normalize(TargetTriple)));
+   auto optPipeline = makeOptimizingPipeline();
+   if (auto err = optPipeline(M.get())) {
+     llvm::errs() << "Failed to optimize LLVM IR " << err << "\n";
+
+--- a/lib/Dialect/Triton/Transforms/ReorderBroadcast.cpp	2025-02-03 07:46:30.000000000 -0800
++++ b/lib/Dialect/Triton/Transforms/ReorderBroadcast.cpp	2025-03-07 06:55:04.000000000 -0800
+@@ -38,10 +38,11 @@
+ 
+ // elementwise(splat(a), splat(b), ...) => splat(elementwise(a, b, ...))
+ struct MoveSplatAfterElementwisePattern
+-    : public OpTraitRewritePattern<OpTrait::Elementwise> {
++    : public OpTraitRewritePattern<OpTrait::Elementwise>::SplitMatchAndRewrite {
+ 
+   MoveSplatAfterElementwisePattern(MLIRContext *context)
+-      : OpTraitRewritePattern(context) {}
++      : SplitMatchAndRewrite(Pattern::MatchTraitOpTypeTag(),
++                             TypeID::get<OpTrait::Elementwise>(), 1, context) {}
+ 
+   LogicalResult match(Operation *op) const override {
+     if (!isMemoryEffectFree(op)) {
+@@ -103,10 +104,13 @@
+ // This also generalizes to multiple arguments when the rest are splat-like
+ // Not handled: multiple broadcasted arguments
+ struct MoveBroadcastAfterElementwisePattern
+-    : public OpTraitRewritePattern<OpTrait::Elementwise> {
++    : public OpTraitRewritePattern<OpTrait::Elementwise>::SplitMatchAndRewrite {
++
++  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+ 
+   MoveBroadcastAfterElementwisePattern(MLIRContext *context)
+-      : OpTraitRewritePattern(context) {}
++      : SplitMatchAndRewrite(Pattern::MatchTraitOpTypeTag(),
++                             TypeID::get<OpTrait::Elementwise>(), 1, context) {}
+ 
+   LogicalResult match(Operation *op) const override {
+     if (!isMemoryEffectFree(op)) {
+
+--- a/python/BUILD	2025-01-31 01:23:09.000000000 -0800
++++ b/python/BUILD	2025-03-07 09:43:22.000000000 -0800
+@@ -40,6 +40,7 @@
+         "@llvm-project//llvm:Passes",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//llvm:Target",
++        "@llvm-project//llvm:TargetParser",
+         "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
+         "@llvm-project//mlir:BytecodeWriter",
+         "@llvm-project//mlir:ControlFlowDialect",
+
+--- a/python/src/llvm.cc	2025-01-21 05:40:49.000000000 -0800
++++ b/python/src/llvm.cc	2025-03-07 09:43:22.000000000 -0800
+@@ -1,6 +1,7 @@
+-﻿#include "mlir/IR/BuiltinOps.h" // mlir::ModuleOp
++#include "mlir/IR/BuiltinOps.h" // mlir::ModuleOp
+ #include "mlir/Target/LLVMIR/LLVMTranslationInterface.h"
+ #include "mlir/Target/LLVMIR/ModuleTranslation.h"
++#include "third_party/llvm/llvm-project/llvm/include/llvm/TargetParser/Triple.h"
+ #include "triton/Tools/Sys/GetEnv.hpp"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/IR/LLVMContext.h"
+@@ -59,7 +60,7 @@
+   opt.MCOptions.AsmVerbose = true;
+   opt.MCOptions.PreserveAsmComments = true;
+   std::unique_ptr<llvm::TargetMachine> machine{target->createTargetMachine(
+-      module->getTargetTriple(), proc, features, opt, llvm::Reloc::PIC_,
++      module->getTargetTriple().str(), proc, features, opt, llvm::Reloc::PIC_,
+       std::nullopt,
+       disableLLVMOpt ? llvm::CodeGenOptLevel::None
+                      : llvm::CodeGenOptLevel::Aggressive)};
+@@ -132,7 +133,7 @@
+   // module->print(llvm::outs(), nullptr);
+ 
+   // create machine
+-  module.setTargetTriple(triple);
++  module.setTargetTriple(llvm::Triple(triple));
+   auto machine = createTargetMachine(&module, proc, enable_fp_fusion, features);
+   // set data layout
+   module.setDataLayout(machine->createDataLayout());
