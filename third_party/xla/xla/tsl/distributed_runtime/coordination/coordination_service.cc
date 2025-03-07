@@ -148,6 +148,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                                const absl::Status& error) override;
   std::vector<CoordinatedTaskStateInfo> GetTaskState(
       const std::vector<CoordinatedTask>& task) override;
+  std::vector<CoordinatedTaskStateInfo> GetJobState(
+      absl::string_view job) override;
   absl::Status InsertKeyValue(std::string_view key,
                               std::string_view value) override;
   absl::Status InsertKeyValue(std::string_view key, std::string_view value,
@@ -365,11 +367,11 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
 
     explicit TaskState(absl::string_view task) { task_name_ = task; }
 
-    CoordinatedTaskState GetState() { return state_; }
-    absl::Status GetStatus() { return status_; }
-    bool IsRecoverable() { return recoverable_; }
+    CoordinatedTaskState GetState() const { return state_; }
+    absl::Status GetStatus() const { return status_; }
+    bool IsRecoverable() const { return recoverable_; }
     void SetRecoverable(bool recoverable) { recoverable_ = recoverable; }
-    uint64_t GetTaskIncarnation() { return task_incarnation_; }
+    uint64_t GetTaskIncarnation() const { return task_incarnation_; }
     void SetTaskIncarnation(uint64_t task_incarnation) {
       task_incarnation_ = task_incarnation;
     }
@@ -446,6 +448,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   // potentially finishing some of the pending calls. The AlivenessStates should
   // be refreshed, for example, after a task has failed.
   void RefreshAliveness() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+
+  static CoordinatedTaskStateInfo CreateTaskStateInfo(
+      const CoordinatedTask& task, const TaskState& state);
 
   std::unique_ptr<CoordinationClientCache> client_cache_;
   Env& env_;
@@ -1098,28 +1103,46 @@ absl::Status CoordinationServiceStandaloneImpl::ReportTaskError(
   return absl::OkStatus();
 }
 
+CoordinatedTaskStateInfo CoordinationServiceStandaloneImpl::CreateTaskStateInfo(
+    const CoordinatedTask& task, const TaskState& state) {
+  CoordinatedTaskStateInfo info;
+  info.set_state(state.GetState());
+  info.set_incarnation(state.GetTaskIncarnation());
+  absl::Status error = state.GetStatus();
+  *info.mutable_task() = task;
+  info.set_error_code(error.raw_code());
+  info.set_error_message(std::string(error.message()));
+  if (!error.ok()) {
+    *info.mutable_error_payload()->mutable_source_task() = task;
+    info.mutable_error_payload()->set_is_reported_error(false);
+  }
+  return info;
+}
+
 std::vector<CoordinatedTaskStateInfo>
 CoordinationServiceStandaloneImpl::GetTaskState(
     const std::vector<CoordinatedTask>& tasks) {
   std::vector<CoordinatedTaskStateInfo> states_info;
+  states_info.reserve(tasks.size());
+
+  absl::MutexLock l(&state_mu_);
   for (const auto& task : tasks) {
-    const std::string task_name = GetTaskName(task);
-    auto& state_info = states_info.emplace_back();
-    absl::Status error;
-    {
-      absl::MutexLock l(&state_mu_);
-      state_info.set_state(cluster_state_[task_name]->GetState());
-      state_info.set_incarnation(
-          cluster_state_[task_name]->GetTaskIncarnation());
-      error = cluster_state_[task_name]->GetStatus();
+    states_info.push_back(
+        CreateTaskStateInfo(task, *cluster_state_[GetTaskName(task)]));
+  }
+  return states_info;
+}
+
+std::vector<CoordinatedTaskStateInfo>
+CoordinationServiceStandaloneImpl::GetJobState(absl::string_view job_name) {
+  absl::MutexLock l(&state_mu_);
+  std::vector<CoordinatedTaskStateInfo> states_info;
+  for (const auto& [name, task_state] : cluster_state_) {
+    const CoordinatedTask task = GetTaskFromName(name);
+    if (task.job_name() != job_name) {
+      continue;
     }
-    *state_info.mutable_task() = task;
-    state_info.set_error_code(error.raw_code());
-    state_info.set_error_message(std::string(error.message()));
-    if (!error.ok()) {
-      *state_info.mutable_error_payload()->mutable_source_task() = task;
-      state_info.mutable_error_payload()->set_is_reported_error(false);
-    }
+    states_info.push_back(CreateTaskStateInfo(task, *cluster_state_[name]));
   }
   return states_info;
 }

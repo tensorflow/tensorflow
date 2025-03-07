@@ -137,6 +137,10 @@ class CoordinationServiceAgent {
   virtual absl::StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>>
   GetTaskState(const std::vector<tensorflow::CoordinatedTask>& task) = 0;
 
+  // Gets status of a remote job.
+  virtual absl::StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>>
+  GetJobState(absl::string_view job_name) = 0;
+
   // Report error to coordination service. This will invoke the error callback.
   // Note that the error payload will set `is_reported_error` to true, to
   // distinguish user-specified errors from internal service or RPC failures.
