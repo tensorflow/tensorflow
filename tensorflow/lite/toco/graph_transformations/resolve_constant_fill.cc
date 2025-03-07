@@ -46,9 +46,8 @@ bool ComputeFillArray(Model* model, FillOperator* op) {
   return true;
 }
 
-::tensorflow::Status ResolveConstantFill::Run(Model* model,
-                                              std::size_t op_index,
-                                              bool* modified) {
+absl::Status ResolveConstantFill::Run(Model* model, std::size_t op_index,
+                                      bool* modified) {
   *modified = false;
   const auto fill_it = model->operators.begin() + op_index;
   auto* base_op = fill_it->get();
