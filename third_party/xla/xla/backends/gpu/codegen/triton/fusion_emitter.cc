@@ -1558,6 +1558,24 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
         shared_mem_bytes, device_info.shared_memory_per_block_optin()));
   }
 
+  if (std::holds_alternative<se::CudaComputeCapability>(cc) &&
+      std::get<se::CudaComputeCapability>(cc).IsBlackwell()) {
+    // https://docs.nvidia.com/cuda/parallel-thread-execution/#tensor-memory
+    constexpr int kTensorMemoryColumns = 512;
+    const int tensor_mem_columns =
+        triton_module
+            ->getAttrOfType<mlir::IntegerAttr>("ttg.tensor_memory_size")
+            .getInt();
+    if (tensor_mem_columns > 0) {
+      VLOG(2) << "Tensor memory usage: " << tensor_mem_columns << " columns";
+    }
+    if (tensor_mem_columns > kTensorMemoryColumns) {
+      return absl::ResourceExhaustedError(absl::StrFormat(
+          "Tensor memory size limit exceeded: requested %d, available: %d",
+          tensor_mem_columns, kTensorMemoryColumns));
+    }
+  }
+
   if (emit_kernel) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<llvm::Module> ll_triton_module,
