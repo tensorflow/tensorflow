@@ -203,7 +203,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
       se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,
                                           LoadOptions()));
 
-  EXPECT_EQ(deserialized_executable->name(), "Identity");
+  EXPECT_EQ(deserialized_executable->GetExecutable()->name(), "Identity");
 }
 
 }  // namespace

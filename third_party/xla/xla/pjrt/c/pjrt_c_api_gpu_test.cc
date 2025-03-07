@@ -273,7 +273,7 @@ TEST_F(PjrtCApiGpuExecutableTest, GetCompiledMemoryStats) {
   TF_ASSERT_OK_AND_ASSIGN(auto stats,
                           pjrt::GetCompiledMemoryStats(api_, executable.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref_stats,
-                          executable->executable->GetCompiledMemoryStats());
+                          executable.get()->get()->GetCompiledMemoryStats());
   EXPECT_EQ(ref_stats.generated_code_size_in_bytes,
             stats.generated_code_size_in_bytes);
   EXPECT_EQ(ref_stats.argument_size_in_bytes, stats.argument_size_in_bytes);

@@ -1765,8 +1765,9 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
     std::optional<xla::PjRtFuture<>> returned_future;
     bool fill_future = args->device_complete_events != nullptr;
-    PJRT_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
-                          args->executable->get()->GetCompileOptions());
+    PJRT_ASSIGN_OR_RETURN(
+        xla::CompileOptions compile_options,
+        args->executable->get()->GetExecutable()->GetCompileOptions());
     if (compile_options.compile_portable_executable) {
       PJRT_ASSIGN_OR_RETURN(
           cpp_buffer_list,
@@ -1862,7 +1863,8 @@ PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_LoadedExecutable_GetExecutable_Args",
       PJRT_LoadedExecutable_GetExecutable_Args_STRUCT_SIZE, args->struct_size));
-  args->executable = new PJRT_Executable{args->loaded_executable->executable};
+  args->executable =
+      new PJRT_Executable{args->loaded_executable->executable->GetExecutable()};
   return nullptr;
 }
 
@@ -2619,9 +2621,15 @@ PJRT_Client::PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client)
       topology(pjrt::GetStatusOrTopologyDescription(*client)) {}
 
 PJRT_Executable::PJRT_Executable(
-    std::shared_ptr<xla::PjRtExecutable> executable)
-    : executable(std::move(executable)),
-      fingerprint(this->executable->FingerprintExecutable()) {}
+    std::shared_ptr<xla::PjRtExecutable> shared_executable)
+    : shared_executable(std::move(shared_executable)),
+      fingerprint(this->shared_executable->FingerprintExecutable()) {
+  executable = this->shared_executable.get();
+}
+
+PJRT_Executable::PJRT_Executable(xla::PjRtExecutable* unowned_executable)
+    : executable(unowned_executable),
+      fingerprint(executable->FingerprintExecutable()) {}
 
 PJRT_LoadedExecutable::PJRT_LoadedExecutable(
     std::shared_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
