@@ -127,7 +127,7 @@ TEST_F(StableHloAxpyTest, CompileCPUTestProgram) {
 }
 
 TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
-  // TODO(masonchang): Use GetCpuClient() once the C API supports
+  // TODO(b/375660658): Use GetCpuClient() once the C API supports
   // BufferFromHostLiteral.
   xla::CpuClientOptions options;
   options.cpu_device_count = 4;
