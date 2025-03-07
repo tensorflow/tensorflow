@@ -2020,6 +2020,36 @@ TEST(XlaBuilderTest, ExpWithResultAccuracy) {
   EXPECT_EQ(root->result_accuracy().mode(), ResultAccuracy::DEFAULT);
 }
 
+TEST(XlaBuilderTest, RsqrtWithResultAccuracy) {
+  XlaBuilder b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {1, 1});
+  ResultAccuracy result_accuracy;
+  ResultAccuracy::Tolerance tolerance;
+  tolerance.set_ulps(120.0f);
+  *result_accuracy.mutable_tolerance() = tolerance;
+  Rsqrt(Parameter(&b, 0, shape, "p0"), result_accuracy);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  const HloInstruction* root = GetRoot(*module);
+
+  EXPECT_EQ(root->result_accuracy().tolerance().ulps(), 120.0f);
+  EXPECT_EQ(root->result_accuracy().mode(), ResultAccuracy::DEFAULT);
+}
+
+TEST(XlaBuilderTest, CosineWithResultAccuracy) {
+  XlaBuilder b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {1, 1});
+  ResultAccuracy result_accuracy;
+  ResultAccuracy::Tolerance tolerance;
+  tolerance.set_ulps(120.0f);
+  *result_accuracy.mutable_tolerance() = tolerance;
+  Cos(Parameter(&b, 0, shape, "p0"), result_accuracy);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  const HloInstruction* root = GetRoot(*module);
+
+  EXPECT_EQ(root->result_accuracy().tolerance().ulps(), 120.0f);
+  EXPECT_EQ(root->result_accuracy().mode(), ResultAccuracy::DEFAULT);
+}
+
 //============================================================================//
 // Experimental Test
 //============================================================================//
@@ -3560,34 +3590,34 @@ TEST(XlaBuilderTest, UnboundedXor) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
-INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, XlaBuilderUnboundedUnaryOpTest,
-                         ::testing::ValuesIn<UnaryOpTestCase>(
-                             {{"f32[?]", "f32[?]", &Abs},
-                              {"f32[?]", "f32[?]", &Cbrt},
-                              {"f32[?]", "f32[?]", &Ceil},
-                              {"u32[?]", "u32[?]", &Clz},
-                              {"f32[?]", "f32[?]", &Cos},
-                              {"f32[?]", "f32[?]", &Erf},
-                              {"f32[?]", "f32[?]",
-                               [](XlaOp x) { return Exp(x); }},
-                              {"f32[?]", "f32[?]", &Expm1},
-                              {"f32[?]", "f32[?]", &Floor},
-                              {"f32[?]", "f32[?]", &Imag},
-                              {"f32[?]", "pred[?]", &IsFinite},
-                              {"f32[?]", "f32[?]", &Log},
-                              {"f32[?]", "f32[?]", &Log1p},
-                              {"f32[?]", "f32[?]", &Logistic},
-                              {"f32[?]", "f32[?]", &Neg},
-                              {"s32[?]", "s32[?]", &Not},
-                              {"u32[?]", "u32[?]", &PopulationCount},
-                              {"f32[?]", "f32[?]", &Real},
-                              {"f32[?]", "f32[?]", &Round},
-                              {"f32[?]", "f32[?]", &RoundNearestEven},
-                              {"f32[?]", "f32[?]", &Rsqrt},
-                              {"f32[?]", "f32[?]", &Sign},
-                              {"f32[?]", "f32[?]", &Sin},
-                              {"f32[?]", "f32[?]", &Sqrt},
-                              {"f32[?]", "f32[?]", &Tanh}}));
+INSTANTIATE_TEST_SUITE_P(
+    UnboundedDynamism, XlaBuilderUnboundedUnaryOpTest,
+    ::testing::ValuesIn<UnaryOpTestCase>(
+        {{"f32[?]", "f32[?]", &Abs},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Cbrt(x); }},
+         {"f32[?]", "f32[?]", &Ceil},
+         {"u32[?]", "u32[?]", &Clz},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Cos(x); }},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Erf(x); }},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Exp(x); }},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Expm1(x); }},
+         {"f32[?]", "f32[?]", &Floor},
+         {"f32[?]", "f32[?]", &Imag},
+         {"f32[?]", "pred[?]", &IsFinite},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Log(x); }},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Log1p(x); }},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Logistic(x); }},
+         {"f32[?]", "f32[?]", &Neg},
+         {"s32[?]", "s32[?]", &Not},
+         {"u32[?]", "u32[?]", &PopulationCount},
+         {"f32[?]", "f32[?]", &Real},
+         {"f32[?]", "f32[?]", &Round},
+         {"f32[?]", "f32[?]", &RoundNearestEven},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Rsqrt(x); }},
+         {"f32[?]", "f32[?]", &Sign},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Sin(x); }},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Sqrt(x); }},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Tanh(x); }}}));
 
 INSTANTIATE_TEST_SUITE_P(
     UnboundedDynamism, XlaBuilderUnboundedBinaryOpTest,
