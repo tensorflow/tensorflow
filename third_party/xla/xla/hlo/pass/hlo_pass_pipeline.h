@@ -48,6 +48,15 @@ class HloPassPipeline : public HloPassInterface {
   }
   absl::string_view name() const override { return name_; }
 
+  // Add a pass to the pipeline.
+  template <typename T>
+  T& AddPass(std::unique_ptr<T> pass) {
+    CHECK(!run_called_) << "AddPass cannot be called after Run";
+    T* underlying_ptr = pass.get();
+    passes_.push_back(std::move(pass));
+    return *underlying_ptr;
+  }
+
   // Add a pass to the pipeline. It should be called with the arguments for the
   // pass constructor:
   //
@@ -56,10 +65,7 @@ class HloPassPipeline : public HloPassInterface {
   // Returns a reference to the added pass.
   template <typename T, typename... Args>
   T& AddPass(Args&&... args) {
-    CHECK(!run_called_) << "AddPass cannot be called after Run";
-    auto pass = new T(std::forward<Args>(args)...);
-    passes_.push_back(std::unique_ptr<T>(pass));
-    return *pass;
+    return AddPass(std::make_unique<T>(std::forward<Args>(args)...));
   }
 
   // Add an invariant-checking pass to the pipeline. It will be run before and

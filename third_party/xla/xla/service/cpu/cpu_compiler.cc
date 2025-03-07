@@ -439,6 +439,52 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
   }
 }
 
+std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
+    absl::string_view name, HloModule* module) {
+  // Run the following passes to a fixed point.
+  auto pipeline =
+      std::make_unique<HloPassFix<HloPassPipeline>>(std::string(name));
+  AddHloVerifier(pipeline.get(), HloVerifierOpts{},
+                 /*debug_only=*/true);
+
+  AlgebraicSimplifierOptions options;
+  options.set_enable_dot_strength_reduction(false);
+  // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
+  // other platforms do, so it should be changed.
+  options.set_minmax_propagate_nan(false);
+  options.set_supports_non_canonical_dots(false);
+  options.set_executing_on_cpu(true);
+  pipeline->AddPass<AlgebraicSimplifier>(options);
+  pipeline->AddPass<SortSimplifier>();
+  pipeline->AddPass<HloDCE>();
+  pipeline->AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+
+  // Needs to happen after algebraic simplifier.
+  pipeline->AddPass<TreeReductionRewriter>();
+
+  // BatchNormExpander can create zero-sized ops, so zero-sized HLO
+  // elimination has to come after that pass.
+  pipeline->AddPass<ZeroSizedHloElimination>();
+
+  pipeline->AddPass<WhileLoopInvariantCodeMotion>();
+  pipeline->AddPass<TupleSimplifier>();
+  pipeline->AddPass<WhileLoopConstantSinking>();
+  pipeline->AddPass<WhileLoopSimplifier>();
+
+  // TODO(b/134075051): Re-enable after b/134075051 is fixed.
+  // pipeline->AddPass<SliceSinker>();
+
+  pipeline->AddPass<HloDCE>();
+  pipeline->AddPass<ReshapeMover>();
+  pipeline->AddPass<HloConstantFolding>(
+      options::FoldAllConstants(module->config())
+          ? HloConstantFolding::Level::kAgressive
+          : HloConstantFolding::Level::kDefault);
+  pipeline->AddPass<ConditionalSimplifier>();
+
+  return pipeline;
+}
+
 }  // namespace
 
 absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
@@ -645,50 +691,17 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
   }
 
-  // Run the following passes to a fixed point.
-  [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification"),
-   module] {
-    AddHloVerifier(&pipeline, HloVerifierOpts{},
-                   /*debug_only=*/true);
+  pipeline.AddPass(CreateSimplificationPipeline("simplification", module));
 
-    AlgebraicSimplifierOptions options;
-    options.set_enable_dot_strength_reduction(false);
-    // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
-    // other platforms do, so it should be changed.
-    options.set_minmax_propagate_nan(false);
-    options.set_supports_non_canonical_dots(false);
-    options.set_executing_on_cpu(true);
-    pipeline.AddPass<AlgebraicSimplifier>(options);
-    pipeline.AddPass<SortSimplifier>();
-    pipeline.AddPass<HloDCE>();
-    pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
-
-    // Needs to happen after algebraic simplifier.
-    pipeline.AddPass<TreeReductionRewriter>();
-
-    // BatchNormExpander can create zero-sized ops, so zero-sized HLO
-    // elimination has to come after that pass.
-    pipeline.AddPass<ZeroSizedHloElimination>();
-
-    pipeline.AddPass<WhileLoopInvariantCodeMotion>();
-    pipeline.AddPass<TupleSimplifier>();
-    pipeline.AddPass<WhileLoopConstantSinking>();
-    pipeline.AddPass<WhileLoopSimplifier>();
-
-    // TODO(b/134075051): Re-enable after b/134075051 is fixed.
-    // pipeline.AddPass<SliceSinker>();
-
-    pipeline.AddPass<HloDCE>();
-    pipeline.AddPass<ReshapeMover>();
-    pipeline.AddPass<HloConstantFolding>(
-        options::FoldAllConstants(module->config())
-            ? HloConstantFolding::Level::kAgressive
-            : HloConstantFolding::Level::kDefault);
-    pipeline.AddPass<ConditionalSimplifier>();
-  }();
-
+  // Scatter expander is sandwiched between two simplification pipelines to
+  // enable constant folding with the original scatter instructions (which is
+  // more efficient than with the expanded version) but then to also ensure that
+  // the resulting while loops are simplified.
   pipeline.AddPass<SelectAndScatterExpander>();
   pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+
+  pipeline.AddPass(CreateSimplificationPipeline(
+      "post_scatter_expansion_simplification", module));
 
   pipeline.AddPass<BitcastDtypesExpander>();
 
