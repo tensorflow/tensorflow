@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/strings/cord.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/platform.h"
 
