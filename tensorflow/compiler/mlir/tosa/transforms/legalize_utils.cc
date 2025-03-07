@@ -1155,7 +1155,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
     if (mlir::isa<QuantizedType>(op.getType().getElementType())) {
       return;
     }
-    auto ety = op.getValue().getShapedType().getElementType();
+    auto ety = op.getValues().getShapedType().getElementType();
     auto new_ty = mlir::cast<TensorType>(op.getType()).clone(ety);
     op.getResult().setType(new_ty);
   });
