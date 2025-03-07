@@ -22,6 +22,7 @@ lit_test_suite(
             "fusion.hlo",
             "if_conditional.hlo",
             "import.hlo",
+            "import_locs.hlo",
             "import_async.hlo",
             "import_bounded_dynamism.hlo",
             "import_entry_computation_layout.hlo",
