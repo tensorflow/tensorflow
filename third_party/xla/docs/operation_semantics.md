@@ -2789,6 +2789,38 @@ relative order of the equal values is preserved. Two elements `e1` and `e2` are
 equal if and only if `comparator(e1, e2) = comparator(e2, e1) = false`. By
 default, `is_stable` is set to false.
 
+## TopK
+
+See also
+[`XlaBuilder::TopK`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+`TopK` finds the values and indices of the `k` largest or smallest elements for
+the last dimension of the given tensor.
+
+**`TopK(operand, k, largest)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | --------------------
+`operand` | `XlaOp` | The tensor from which to extract the top `k` elements. The tensor must have rank greater or equal to one. The size of the last dimension of the tensor must be greater or equal to `k`.
+`k`       | `int64` | The number of elements to extract.
+`largest` | `bool`  | Whether to extract the largest or smallest `k` elements.
+
+For an input tensor of rank 1 (an array), finds the `k` largest or smallest
+entries in the array and outputs a tuple of two arrays `(values, indices)`. Thus
+`values[j]` is the `j`-th largest/smallest entry in `operand`, and its index is
+`indices[j]`.
+
+For an input tensor of rank larger than 1, computes the top `k` entries along
+the last dimension, preserving all other dimensions (rows) in the output. Thus,
+for an operand of shape `[A, B, ..., P, Q]` where `Q >= k` the output is a tuple
+`(values, indices)` where:
+
+```
+values.shape = indices.shape = [A, B, ..., P, k]
+```
+
+If two elements within a row are equal, the lower-index element appears first.
+
 ## Transpose
 
 See also the `tf.reshape` operation.
