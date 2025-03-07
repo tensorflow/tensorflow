@@ -19,8 +19,15 @@
 
 # Docker on Windows has difficulty using volumes other than C:\, when it comes
 # to setting up up volume mappings.
-# Thus, the drive letter is replaced with C:\, in case it's
-# something else (ex. T:), which is frequently the case inside Kokoro jobs.
-function replace_drive_letter_with_c () {
-  sed -E "s|^[a-zA-Z]:|C:|g" <<< $1
+# Thus, the drive letter is replaced with the passed prefix.
+# If no prefix is passed, by default, it's replaced with C:\, in case it's
+# something else (ex. T:), which is a volume used in internal CI.
+function replace_drive_letter_with_prefix () {
+  local path_prefix
+  if [[ -z "$2" ]]; then
+    path_prefix="C:"
+  else
+    path_prefix="$2"
+  fi
+  sed -E "s|^[a-zA-Z]:|${path_prefix}|g" <<< "$1"
 }

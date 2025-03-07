@@ -15,7 +15,7 @@
 source ci/official/envs/linux_x86
 TFCI_BAZEL_COMMON_ARGS="--repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config release_cpu_linux --config=tpu"
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_tpu
-TFCI_BUILD_PIP_PACKAGE_ARGS="--repo_env=WHEEL_NAME=tensorflow_tpu"
+TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=tensorflow_tpu"
 TFCI_LIB_SUFFIX="-tpu-linux-x86_64"
 TFCI_WHL_BAZEL_TEST_ENABLE=0
 TFCI_WHL_IMPORT_TEST_ENABLE=0
