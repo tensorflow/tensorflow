@@ -44,12 +44,15 @@ limitations under the License.
 
 namespace xla::cpu {
 
-class KernelApiIrBuilderTest : public HloTestBase {
+template <bool ValidateBuffers>
+class KernelApiIrBuilderTestBase : public HloTestBase {
  public:
-  KernelApiIrBuilderTest()
+  KernelApiIrBuilderTestBase()
       : module_("KernelApiIrBuilderTest", context_),
-        kernel_api_ir_builder_(context_,
-                               KernelApiIrBuilder::Options{true, 256}) {}
+        kernel_api_ir_builder_(
+            context_, KernelApiIrBuilder::Options{true, 256},
+            ValidateBuffers ? KernelApiIrBuilder::BufferValidation::kDisjoint
+                            : KernelApiIrBuilder::BufferValidation::kNone) {}
 
   llvm::IRBuilder<> getBuilder() { return llvm::IRBuilder<>(context_); }
 
@@ -83,6 +86,10 @@ class KernelApiIrBuilderTest : public HloTestBase {
   llvm::Module module_;
   KernelApiIrBuilder kernel_api_ir_builder_;
 };
+
+using KernelApiIrBuilderTest = KernelApiIrBuilderTestBase<true>;
+using KernelApiIrBuilderTestNoBufferValidation =
+    KernelApiIrBuilderTestBase<false>;
 
 namespace {
 
@@ -292,6 +299,138 @@ TEST_F(KernelApiIrBuilderTest, MixedBuffers) {
   // the output.
   EXPECT_EQ(prototype.invariant_arguments.size(), 1);
   EXPECT_TRUE(prototype.invariant_arguments.contains(0));
+}
+
+TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
+  auto hlo = std::make_unique<HloModule>("test", HloModuleConfig());
+
+  auto shape = ShapeUtil::MakeShape(PrimitiveType::F32, {4, 2});
+
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice arg0(&alloc, /*offset=*/0, /*size=*/256);
+  BufferAllocation::Slice arg1(&alloc, /*offset=*/256, /*size=*/256);
+  BufferAllocation::Slice res0(&alloc, /*offset=*/288, /*size=*/512);
+  BufferAllocation::Slice res1(&alloc, /*offset=*/768, /*size=*/256);
+  BufferAllocation::Slice res2(&alloc, /*offset=*/1024, /*size=*/256);
+
+  std::vector<KernelApiIrBuilder::KernelParameter> arguments = {{shape, arg0},
+                                                                {shape, arg1}};
+  std::vector<KernelApiIrBuilder::KernelParameter> results = {
+      {shape, res0}, {shape, res1}, {shape, res2}};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto prototype,
+                          EmitKernelPrototype("test", arguments, results));
+  llvm::IRBuilder<> builder = getBuilder();
+  builder.SetInsertPoint(prototype.function->getEntryBlock().getTerminator());
+
+  auto* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context()), 0);
+  llvm_ir::IrArray::Index index(zero, shape, &builder);
+
+  // Emit loads from arguments and results buffers to test alias scope metadata.
+  EXPECT_NE(prototype.arguments[0].EmitReadArrayElement(index, &builder),
+            nullptr);
+  EXPECT_NE(prototype.arguments[1].EmitReadArrayElement(index, &builder),
+            nullptr);
+  EXPECT_NE(prototype.results[0].EmitReadArrayElement(index, &builder),
+            nullptr);
+  EXPECT_NE(prototype.results[1].EmitReadArrayElement(index, &builder),
+            nullptr);
+  EXPECT_NE(prototype.results[2].EmitReadArrayElement(index, &builder),
+            nullptr);
+
+  // clang-format off
+  ASSERT_TRUE(*RunFileCheck(DumpToString(),
+                            absl::StrCat(R"(
+    CHECK: define ptr @test(ptr %0) #0 {
+
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 0
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 0
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 1
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 2
+    CHECK:      load i64
+    CHECK:      load i64
+    CHECK:      load i64
+
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 1
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 0
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 1
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 2
+    CHECK:      load i64
+    CHECK:      load i64
+    CHECK:      load i64
+
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK:      load ptr
+    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 0, i32 0
+    CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0:.+]], !dereferenceable ![[DEREF_BYTES:.+]], !align ![[ALIGNMENT:.+]]
+
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK:      load ptr
+    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 1, i32 0
+    CHECK:      %[[ARG1:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0]], !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
+
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK:      load ptr
+    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 2, i32 0
+    CHECK:      %[[ARG2:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0]], !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
+
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK:      load ptr
+    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 3, i32 0
+    CHECK:      %[[ARG3:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0]], !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
+
+    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK:      load ptr
+    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 4, i32 0
+    CHECK:      %[[ARG4:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0]], !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
+
+    CHECK-NEXT: %[[PTR0:.+]] = getelementptr inbounds float, ptr %[[ARG0]]
+    CHECK:      load float, ptr %[[PTR0]], align 4,
+    CHECK-SAME:                            !invariant.load ![[EMPTY_NODE:.+]],
+    CHECK-SAME:                            !noalias ![[ARG0_NOALIAS:.+]]
+
+    CHECK-NEXT: %[[PTR1:.+]] = getelementptr inbounds float, ptr %[[ARG1]]
+    CHECK:      load float, ptr %[[PTR1]], align 4,
+    CHECK-SAME:                            !noalias ![[ARG1_NOALIAS:.+]]
+
+    CHECK-NEXT: %[[PTR2:.+]] = getelementptr inbounds float, ptr %[[ARG2]]
+    CHECK:      load float, ptr %[[PTR2]], align 4, !alias.scope ![[ARG2_SCOPE:.+]],
+    CHECK:                                          !noalias ![[ARG4_SCOPE:.+]]
+
+    CHECK-NEXT: %[[PTR3:.+]] = getelementptr inbounds float, ptr %[[ARG3]]
+    CHECK:      load float, ptr %[[PTR3]], align 4, !alias.scope ![[ARG3_SCOPE:.+]],
+    CHECK:                                          !noalias ![[ARG4_SCOPE]]
+
+    CHECK-NEXT: %[[PTR4:.+]] = getelementptr inbounds float, ptr %[[ARG4]]
+    CHECK:      load float, ptr %[[PTR4]], align 4, !alias.scope ![[ARG4_SCOPE]],
+    CHECK:                                          !noalias ![[ARG4_NOALIAS:.+]]
+
+    CHECK:      ret ptr null
+    CHECK: }
+
+    #0 = { uwtable "frame-pointer"="all" "prefer-vector-width"="256" }
+    CHECK-DAG: ![[ALIGNMENT]] = !{i64 )", cpu_function_runtime::MinAlign(), R"(}
+    CHECK-DAG: ![[EMPTY_NODE]] = !{}
+    CHECK-DAG: ![[DOMAIN:.+]] = !{!"XLA host kernel test AA domain"}
+    CHECK-DAG: ![[RES0:.+]] = !{!"{{.*}}, offset:288, size:512}", ![[DOMAIN]]}
+    CHECK-DAG: ![[RES1:.+]] = !{!"{{.*}}, offset:768, size:256}", ![[DOMAIN]]}
+    CHECK-DAG: ![[RES2:.+]] = !{!"{{.*}}, offset:1024, size:256}", ![[DOMAIN]]}
+    CHECK-DAG: ![[ARG2_SCOPE]] = !{![[RES0]]}
+    CHECK-DAG: ![[ARG3_SCOPE]] = !{![[RES1]]}
+    CHECK-DAG: ![[ARG4_SCOPE]] = !{![[RES2]]}
+    CHECK-DAG: ![[ARG0_NOALIAS]] = !{![[RES0]], ![[RES1]], ![[RES2]]}
+    CHECK-DAG: ![[ARG1_NOALIAS]] = !{![[RES1]], ![[RES2]]}
+    CHECK-DAG: ![[ARG4_NOALIAS]] = !{![[RES0]], ![[RES1]]}
+  )")));
+  // clang-format on
+
+  // Match for dereferenceable metadata in separate check, because depending on
+  // the alignment value, it may be the same scope as align, and may be a
+  // separate one. It's impossible to match both these cases in one FileCheck.
+  ASSERT_TRUE(*RunFileCheck(DumpToString(), R"(
+    CHECK:      {{.+}} = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES:.+]],
+    CHECK: ![[DEREF_BYTES]] = !{i64 32}
+  )"));
 }
 
 }  // namespace
