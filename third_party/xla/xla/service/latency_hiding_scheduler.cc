@@ -362,6 +362,18 @@ int64_t AsyncTracker::GetNumResourcesPerInstruction(
                                        instr);
 }
 
+// Returns the number of "occupy" type of resources used by the instructions in
+// the given computation. If there are multiple instructions in the computation
+// that have the exact same resource usages, it only counts one of them. For
+// example, if there are two non-overlapping async all-gathers in a while loop,
+// this will have 1 for all-gather in the returned map for the while
+// instruction. This is because there is no proof that those all-gathers will
+// overlap each other and over- counting such resources causes the while not
+// being scheduled due to the resource limits (checked in
+// scheduling_node_crosses_overlap_limit).
+//
+// If an instruction uses multiple instances of the same "occupy" type of
+// resource, that number is respected and returned in the resulting map.
 const absl::flat_hash_map<int64_t, int64_t>&
 AsyncTracker::RecursivelyComputeResourceMap(
     const HloComputation* computation) const {
@@ -371,16 +383,28 @@ AsyncTracker::RecursivelyComputeResourceMap(
   }
   per_opcode_map = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
   auto* m = per_opcode_map.get();
+  absl::flat_hash_set<int64_t> seen_resources_per_comp;
   for (HloInstruction* instr : computation->instructions()) {
     if (IsSupportedAsyncDone(*instr)) {
+      absl::flat_hash_set<int64_t> seen_resources_per_inst;
       for (const auto& resource : GetResourcesFromInstruction(*instr)) {
+        if (seen_resources_per_comp.contains(resource.first)) {
+          continue;
+        }
         ++(*m)[resource.first];
+        seen_resources_per_inst.insert(resource.first);
       }
+      seen_resources_per_comp.insert(seen_resources_per_inst.begin(),
+                                     seen_resources_per_inst.end());
     }
     for (const HloComputation* called_comp : instr->called_computations()) {
       for (auto& called_per_opcode_pair :
            RecursivelyComputeResourceMap(called_comp)) {
+        if (seen_resources_per_comp.contains(called_per_opcode_pair.first)) {
+          continue;
+        }
         (*m)[called_per_opcode_pair.first] += called_per_opcode_pair.second;
+        seen_resources_per_comp.insert(called_per_opcode_pair.first);
       }
     }
   }
@@ -407,6 +431,9 @@ int64_t AsyncTracker::GetNumResourcesPerInstruction(
     auto opcode_it = map.find(resource_type);
     if (opcode_it != map.end()) {
       num_resources += opcode_it->second;
+      // We can return early if we have found the resource we are looking for.
+      // There is no need to check each called computation.
+      break;
     }
   }
   return num_resources;
