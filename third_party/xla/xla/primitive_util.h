@@ -19,7 +19,6 @@ limitations under the License.
 #define XLA_PRIMITIVE_UTIL_H_
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -27,7 +26,6 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -420,10 +418,27 @@ using PrimitiveTypeConstant =
     std::integral_constant<PrimitiveType, kPrimitiveType>;
 
 // Returns true if values of the given primitive type are held in array shapes.
-inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
+inline constexpr bool IsArrayType(const PrimitiveType primitive_type) {
+  // Note: the definition of this function used to be
+  //   ... && primitive_type > PRIMITIVE_TYPE_INVALID &&
+  //          primitive_type < PrimitiveType_ARRAYSIZE;
+  //
+  // However, this assumes that:
+  //   1. PRIMITIVE_TYPE_INVALID is the smallest value in the enum.
+  //   2. The enum values starts at 0 and is contiguous.
+  //
+  // These assumptions are unreliable and can be unintentionally broken (e.g.
+  // if we remove a deprecated enum value).
+  //
+  // Also, that definition is not forward compatible with new enum values:
+  // if the code reads an enum value written by a newer version of the code,
+  // it may get a value it doesn't know about, which will be outside the range
+  // of the enum. In that case, the code will think the type is not an array
+  // type, which is most likely incorrect.
+  //
+  // As a result, we explicitly check for the types that are *not* array types.
   return primitive_type != TUPLE && primitive_type != OPAQUE_TYPE &&
-         primitive_type != TOKEN && primitive_type > PRIMITIVE_TYPE_INVALID &&
-         primitive_type < PrimitiveType_ARRAYSIZE;
+         primitive_type != TOKEN && primitive_type != PRIMITIVE_TYPE_INVALID;
 }
 
 constexpr bool IsMXType(PrimitiveType type) {
