@@ -19,8 +19,6 @@ import "tensorflow/core/framework/function.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/protobuf/tpu/compile_metadata.proto";
 
-option cc_enable_arenas = true;
-
 // The input to LegalizeMlirToHlo to reproduce a legalization failure.
 message LegalizeMlirToHloReproducer {
   // The TPUCompileMetadataProto used during legalization.
@@ -32,6 +30,7 @@ message LegalizeMlirToHloReproducer {
   oneof computation {
     // The MLIR module to be legalized.
     string mlir_module = 3;
+
     // The FunctionDefLibrary to be legalized.
     tensorflow.FunctionDefLibrary function_def_library = 4;
   }
