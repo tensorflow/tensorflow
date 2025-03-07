@@ -121,10 +121,7 @@ py_strict_binary(
 py_strict_library(
     name = "ncu_rep_lib",
     srcs = ["ncu_rep_lib.py"],
-    deps = [
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
-    ],
+    deps = ["@absl_py//absl:app"],
 )
 
 py_strict_test(
@@ -132,7 +129,6 @@ py_strict_test(
     srcs = ["ncu_rep_test.py"],
     deps = [
         ":ncu_rep_lib",
-        "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
     ],
 )

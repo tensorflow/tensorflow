@@ -19,7 +19,6 @@ xla_cc_test(
         ":cpu_client",
         "//xla/pjrt:pjrt_client_test_common",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
 

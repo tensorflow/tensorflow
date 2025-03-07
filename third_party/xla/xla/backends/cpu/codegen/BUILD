@@ -199,7 +199,6 @@ cc_library(
     deps = [
         ":target_machine_features",
         "//xla:shape_util",
-        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/algorithm:container",
@@ -221,7 +220,6 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service/llvm_ir:ir_array",
@@ -354,7 +352,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:JITLink",
-        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
     ],
@@ -411,7 +408,5 @@ xla_cc_test(
         ":symbol_name_util",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
     ],
 )

@@ -99,7 +99,6 @@ cc_library(
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/service:hlo_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

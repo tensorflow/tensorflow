@@ -52,11 +52,6 @@ cc_library(
     # copybara:uncomment_end
     textual_hdrs = ["device_time_measurement.h"],
     deps = [
-        # copybara:comment_begin(oss-only)
-        ":no_op_device_time_measurement",
-        # copybara:comment_end
-        # copybara:uncomment_begin(google-only)
-        # "//learning/brain/google/runtime:device_runtime_profiling",
         # copybara:uncomment_end
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",

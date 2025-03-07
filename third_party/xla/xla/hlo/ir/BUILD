@@ -182,9 +182,6 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",
         "//xla/service:hlo_module_config",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -219,7 +216,6 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -259,7 +255,6 @@ xla_cc_test(
         ":hlo_instruction_utils",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_query",
-        "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@com_google_googletest//:gtest",
     ],
@@ -327,7 +322,6 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/log:globals",
         "@com_google_googletest//:gtest",
     ],
 )

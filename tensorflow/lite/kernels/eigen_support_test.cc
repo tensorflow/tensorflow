@@ -71,11 +71,13 @@ TEST(EigenSupport, SingleThreaded) {
   EXPECT_EQ(thread_pool_device->numThreadsInPool(), 1);
 
   bool executed = false;
-  auto notification =
-      thread_pool_device->enqueue([&executed]() { executed = true; });
-  ASSERT_NE(notification, nullptr);
-  notification->Wait();
-  delete notification;
+  // NOLINTNEXTLINE: clang-tidy missing-includes false positive
+  Eigen::Barrier barrier(1);
+  thread_pool_device->enqueueNoNotification([&executed, &barrier]() {
+    executed = true;
+    barrier.Notify();
+  });
+  barrier.Wait();
   EXPECT_TRUE(executed);
 
   DecrementUsageCounter(&context);
@@ -91,11 +93,13 @@ TEST(EigenSupport, MultiThreaded) {
   EXPECT_EQ(thread_pool_device->numThreads(), 2);
 
   bool executed = false;
-  auto notification =
-      thread_pool_device->enqueue([&executed]() { executed = true; });
-  ASSERT_NE(notification, nullptr);
-  notification->Wait();
-  delete notification;
+  // NOLINTNEXTLINE: clang-tidy missing-includes false positive
+  Eigen::Barrier barrier(1);
+  thread_pool_device->enqueueNoNotification([&executed, &barrier]() {
+    executed = true;
+    barrier.Notify();
+  });
+  barrier.Wait();
   EXPECT_TRUE(executed);
 
   DecrementUsageCounter(&context);
