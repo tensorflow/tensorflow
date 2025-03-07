@@ -48,7 +48,6 @@ class GpuClique : public Clique {
   bool IsLocal() const { return num_communicators() == key_.devices().size(); }
 
   const GpuCliqueKey& key() const { return key_; }
-  const std::optional<CliqueIds>& ids() const { return ids_; }
 
   std::string DebugString() const final;
   absl::Status HealthCheck() const final;
