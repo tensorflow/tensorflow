@@ -51,6 +51,7 @@ constexpr char kUncompilableFunctionName[] = "UncompilableFn";
 constexpr char kUncompilableFunctionNodeName[] = "n_c_uncompilable";
 constexpr char kUncompilableFunctionTwoName[] = "UncompilableFnTwo";
 constexpr char kUncompilableFunctionNodeTwoName[] = "n_d_uncompilable";
+constexpr char kNonMaxSuppressionNodeName[] = "NonMaxSuppression";
 
 // A dummy OpKernel for testing.
 class DummyCompilableOp : public XlaOpKernel {
@@ -63,6 +64,7 @@ class DummyCompilableOp : public XlaOpKernel {
 
 // Register the DummyCompilableOp kernel for CPU.
 REGISTER_OP("InputFloatOp").Output("o: float");
+REGISTER_OP("InputInt32Op").Output("o: int32");
 REGISTER_OP("CompilableOp").Input("i: float").Output("o: float");
 REGISTER_XLA_OP(Name("CompilableOp").Device(DEVICE_CPU_XLA_JIT),
                 DummyCompilableOp);
@@ -552,6 +554,91 @@ TEST_F(CompilabilityCheckUtilTest, TestCanTriggerXlaCompilation) {
   TF_ASSERT_OK(root.ToGraphDef(&graph_def));
 
   EXPECT_TRUE(CanTriggerXlaCompilation(graph_def));
+}
+
+TEST_F(CompilabilityCheckUtilTest, CheckNonMaxSuppressionV3UncompilableSlowOp) {
+  GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+  auto opts = builder.opts();
+
+  Node* boxes = ops::SourceOp("InputFloatOp", opts);
+  Node* scores = ops::SourceOp("InputFloatOp", opts);
+  Node* max_output_size = ops::SourceOp("InputInt32Op", opts);
+  Node* iou_threshold = ops::SourceOp("InputFloatOp", opts);
+  Node* score_threshold = ops::SourceOp("InputFloatOp", opts);
+
+  NodeBuilder non_max_suppression_builder(
+      kNonMaxSuppressionNodeName, "NonMaxSuppressionV3", opts.op_registry());
+  non_max_suppression_builder.Input(boxes)
+      .Input(scores)
+      .Input(max_output_size)
+      .Input(iou_threshold)
+      .Input(score_threshold)
+      .Attr("T", DT_FLOAT);
+  Node* non_max_suppression;
+  non_max_suppression =
+      builder.opts().FinalizeBuilder(&non_max_suppression_builder);
+
+  GraphDef graph_def;
+  TF_EXPECT_OK(builder.ToGraphDef(&graph_def));
+  auto* flib_runtime = GetFunctionLibraryRuntime();
+
+  EXPECT_FALSE(checker_->IsCompilableNode(*non_max_suppression, flib_runtime));
+
+  const auto uncompilable_nodes =
+      checker_->FindUncompilableNodes(*non_max_suppression, flib_runtime);
+  ASSERT_EQ(1, uncompilable_nodes.size());
+  auto node_info_it =
+      uncompilable_nodes.find(NameAttrList().ShortDebugString());
+  ASSERT_NE(uncompilable_nodes.end(), node_info_it);
+
+  const auto& uncompilable_nodes_inside_function = node_info_it->second.second;
+  ASSERT_EQ(1, uncompilable_nodes_inside_function.size());
+  const auto& uncompilable_node_info = uncompilable_nodes_inside_function.at(0);
+  EXPECT_TRUE(absl::StrContains(uncompilable_node_info.uncompilable_reason,
+                                "slow operation"));
+}
+
+TEST_F(CompilabilityCheckUtilTest, CheckNonMaxSuppressionV4UncompilableSlowOp) {
+  GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+  auto opts = builder.opts();
+
+  Node* boxes = ops::SourceOp("InputFloatOp", opts);
+  Node* scores = ops::SourceOp("InputFloatOp", opts);
+  Node* max_output_size = ops::SourceOp("InputInt32Op", opts);
+  Node* iou_threshold = ops::SourceOp("InputFloatOp", opts);
+  Node* score_threshold = ops::SourceOp("InputFloatOp", opts);
+
+  NodeBuilder non_max_suppression_v4_builder(
+      kNonMaxSuppressionNodeName, "NonMaxSuppressionV4", opts.op_registry());
+  non_max_suppression_v4_builder.Input(boxes)
+      .Input(scores)
+      .Input(max_output_size)
+      .Input(iou_threshold)
+      .Input(score_threshold)
+      .Attr("T", DT_FLOAT);
+  Node* non_max_suppression_v4;
+  non_max_suppression_v4 =
+      builder.opts().FinalizeBuilder(&non_max_suppression_v4_builder);
+
+  GraphDef graph_def;
+  TF_EXPECT_OK(builder.ToGraphDef(&graph_def));
+  auto* flib_runtime = GetFunctionLibraryRuntime();
+
+  EXPECT_FALSE(
+      checker_->IsCompilableNode(*non_max_suppression_v4, flib_runtime));
+
+  const auto uncompilable_nodes =
+      checker_->FindUncompilableNodes(*non_max_suppression_v4, flib_runtime);
+  ASSERT_EQ(1, uncompilable_nodes.size());
+  auto node_info_it =
+      uncompilable_nodes.find(NameAttrList().ShortDebugString());
+  ASSERT_NE(uncompilable_nodes.end(), node_info_it);
+
+  const auto& uncompilable_nodes_inside_function = node_info_it->second.second;
+  ASSERT_EQ(1, uncompilable_nodes_inside_function.size());
+  const auto& uncompilable_node_info = uncompilable_nodes_inside_function.at(0);
+  EXPECT_TRUE(absl::StrContains(uncompilable_node_info.uncompilable_reason,
+                                "slow operation"));
 }
 
 }  // namespace
