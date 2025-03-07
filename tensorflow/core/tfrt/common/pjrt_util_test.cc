@@ -17,6 +17,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
