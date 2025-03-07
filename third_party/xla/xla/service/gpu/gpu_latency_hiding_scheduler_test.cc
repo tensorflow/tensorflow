@@ -652,5 +652,186 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
             GetIndexByName(main_instructions, "tuple"));
 }
 
+TEST_F(GpuLatencyHidingSchedulerBaseTest, ScheduleP2PWithMultipliers) {
+  absl::string_view kHloModule = R"(
+    HloModule test, num_partitions=4
+
+    ENTRY main {
+      p0 = f32[64] parameter(0)
+      p1 = f32[64] parameter(1)
+      p2 = f32[64] parameter(2)
+
+      // Send on p2p resource.
+      after_all = token[] after-all()
+      send_start = (f32[64], u32[], token[]) send(p0, after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}},_xla_gpu_collective_stream="p2p"}
+      send_done = token[] send-done(send_start)
+
+      // Collective-permute on p2p resource.
+      cp_start = (f32[64], f32[64], u32[], u32[])
+          collective-permute-start(p1),
+          source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, channel_id=1,
+          frontend_attributes={_xla_gpu_collective_stream="p2p"},
+          control-predecessors={send_done}
+      cp_done = f32[64] collective-permute-done(cp_start)
+
+      // Multiple "expensive" ops to overlap with.
+      add_0 = f32[64] add(p2, p2)
+      add_1 = f32[64] add(add_0, add_0)
+      add_2 = f32[64] add(add_1, add_1)
+
+      // Recv on p2p resource.
+      recv_start = (f32[64], u32[], token[]) recv(after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}},_xla_gpu_collective_stream="p2p"},
+          control-predecessors={cp_done}
+      recv_done = (f32[64], token[]) recv-done(recv_start)
+      recv_data = f32[64] get-tuple-element(recv_done), index=0
+
+      ROOT tuple = (f32[64], f32[64]) tuple(cp_done, add_2)
+    }
+  )";
+
+  // Set the expense for adds so that they will overlap with the send,
+  // collective-permute, and recv of these same latency cost.
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add_0" cost_us: 5120000.0 }
+    costs { name: "add_1" cost_us: 100000.0 }
+    costs { name: "add_2" cost_us: 30000.0 }
+  )pb";
+  auto config = GetModuleConfig(
+      kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
+          PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
+                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  auto schedule = module->schedule();
+
+  VLOG(3) << module->schedule().ToString();
+  HloComputation* main_computation = FindComputation(module.get(), "main");
+  std::vector<HloInstruction*> main_instructions =
+      schedule.sequence(main_computation).instructions();
+
+  // Expect each add op to overlap with one of the collectives: send,
+  // collective-permute, and recv.
+  //   - send_start
+  //   - add_0
+  //   - send_done
+  //   - cp_start
+  //   - add_1
+  //   - cp_done
+  //   - recv_start
+  //   - add_2
+  //   - recv_done
+  EXPECT_LT(GetIndexByName(main_instructions, "send_start"),
+            GetIndexByName(main_instructions, "add_0"));
+  EXPECT_LT(GetIndexByName(main_instructions, "add_0"),
+            GetIndexByName(main_instructions, "send_done"));
+  EXPECT_LT(GetIndexByName(main_instructions, "send_done"),
+            GetIndexByName(main_instructions, "cp_start"));
+  EXPECT_LT(GetIndexByName(main_instructions, "cp_start"),
+            GetIndexByName(main_instructions, "add_1"));
+  EXPECT_LT(GetIndexByName(main_instructions, "add_1"),
+            GetIndexByName(main_instructions, "cp_done"));
+  EXPECT_LT(GetIndexByName(main_instructions, "cp_done"),
+            GetIndexByName(main_instructions, "recv_start"));
+  EXPECT_LT(GetIndexByName(main_instructions, "recv_start"),
+            GetIndexByName(main_instructions, "add_2"));
+  EXPECT_LT(GetIndexByName(main_instructions, "add_2"),
+            GetIndexByName(main_instructions, "recv_done"));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ScheduleP2P32PartitionsWithMultipliers) {
+  absl::string_view kHloModule = R"(
+    HloModule test, num_partitions=32
+
+    ENTRY main {
+      p0 = f32[64] parameter(0)
+      p1 = f32[64] parameter(1)
+      p2 = f32[64] parameter(2)
+
+      // Send on p2p resource.
+      after_all = token[] after-all()
+      send_start = (f32[64], u32[], token[]) send(p0, after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}},_xla_gpu_collective_stream="p2p"}
+      send_done = token[] send-done(send_start)
+
+      // Collective-permute on p2p resource.
+      cp_start = (f32[64], f32[64], u32[], u32[])
+          collective-permute-start(p1),
+          source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, channel_id=1,
+          frontend_attributes={_xla_gpu_collective_stream="p2p"},
+          control-predecessors={send_done}
+      cp_done = f32[64] collective-permute-done(cp_start)
+
+      // Multiple "expensive" ops to overlap with.
+      add_0 = f32[64] add(p2, p2)
+      add_1 = f32[64] add(add_0, add_0)
+      add_2 = f32[64] add(add_1, add_1)
+
+      // Recv on p2p resource.
+      recv_start = (f32[64], u32[], token[]) recv(after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}},_xla_gpu_collective_stream="p2p"},
+          control-predecessors={cp_done}
+      recv_done = (f32[64], token[]) recv-done(recv_start)
+      recv_data = f32[64] get-tuple-element(recv_done), index=0
+
+      ROOT tuple = (f32[64], f32[64]) tuple(cp_done, add_2)
+    }
+  )";
+
+  // Set the expense for adds so that they will overlap with the send,
+  // collective-permute, and recv of these same latency cost.
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add_0" cost_us: 5120000.0 }
+    costs { name: "add_1" cost_us: 160000.0 }
+    costs { name: "add_2" cost_us: 30000.0 }
+  )pb";
+  auto config = GetModuleConfig(
+      kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
+          PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
+                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  auto schedule = module->schedule();
+
+  VLOG(3) << module->schedule().ToString();
+  HloComputation* main_computation = FindComputation(module.get(), "main");
+  std::vector<HloInstruction*> main_instructions =
+      schedule.sequence(main_computation).instructions();
+
+  // Expect each add op to overlap with one of the collectives: send,
+  // collective-permute, and recv.
+  //   - send_start
+  //   - add_0
+  //   - send_done
+  //   - cp_start
+  //   - add_1
+  //   - cp_done
+  //   - recv_start
+  //   - add_2
+  //   - recv_done
+  EXPECT_LT(GetIndexByName(main_instructions, "send_start"),
+            GetIndexByName(main_instructions, "add_0"));
+  EXPECT_LT(GetIndexByName(main_instructions, "add_0"),
+            GetIndexByName(main_instructions, "send_done"));
+  EXPECT_LT(GetIndexByName(main_instructions, "send_done"),
+            GetIndexByName(main_instructions, "cp_start"));
+  EXPECT_LT(GetIndexByName(main_instructions, "cp_start"),
+            GetIndexByName(main_instructions, "add_1"));
+  EXPECT_LT(GetIndexByName(main_instructions, "add_1"),
+            GetIndexByName(main_instructions, "cp_done"));
+  EXPECT_LT(GetIndexByName(main_instructions, "cp_done"),
+            GetIndexByName(main_instructions, "recv_start"));
+  EXPECT_LT(GetIndexByName(main_instructions, "recv_start"),
+            GetIndexByName(main_instructions, "add_2"));
+  EXPECT_LT(GetIndexByName(main_instructions, "add_2"),
+            GetIndexByName(main_instructions, "recv_done"));
+}
+
 }  // namespace
 }  // namespace xla::gpu
