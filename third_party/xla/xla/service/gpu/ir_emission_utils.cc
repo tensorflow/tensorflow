@@ -664,5 +664,119 @@ bool IsDynamicSliceFusion(const HloInstruction* instr) {
          name == kDynamicSliceFusionWithDynamicAddressComputationConfigName;
 }
 
+std::optional<InductionVariableFunctionalDependency>
+ResolveFunctionalDependencyOnInductionVariable(
+    absl::Span<const HloInstruction* const> call_stack,
+    const HloInstruction* parameter) {
+  if (call_stack.empty()) {
+    return std::nullopt;
+  }
+
+  VLOG(5) << "Looking for defining while loop of " << parameter->name();
+
+  // Walk up the call stack, tracking the origin of `parameter`.
+  const HloInstruction* argument = parameter;
+  auto call_stack_it = call_stack.rbegin();
+  auto call_stack_end = call_stack.rend();
+  for (; call_stack_it != call_stack_end &&
+         argument->opcode() == HloOpcode::kParameter &&
+         ((*call_stack_it)->opcode() == HloOpcode::kFusion ||
+          (*call_stack_it)->opcode() == HloOpcode::kAsyncStart ||
+          (*call_stack_it)->opcode() == HloOpcode::kCall);
+       ++call_stack_it) {
+    argument = (*call_stack_it)->operand(argument->parameter_number());
+  }
+
+  if (call_stack_it == call_stack_end) {
+    return std::nullopt;
+  }
+
+  VLOG(5) << "Arrived at " << argument->name() << " in "
+          << (*call_stack_it)->name();
+
+  // Find a unique parameter and a gte in the transitive dependencies of
+  // `argument`.
+  const HloInstruction* unique_param = nullptr;
+  const HloInstruction* unique_gte = nullptr;
+  absl::flat_hash_set<const HloInstruction*> seen{argument};
+  std::queue<const HloInstruction*> queue;
+  queue.push(argument);
+  while (!queue.empty()) {
+    const auto* instruction = queue.front();
+    queue.pop();
+
+    if (instruction->opcode() == HloOpcode::kCustomCall ||
+        instruction->HasSideEffect()) {
+      VLOG(5) << "Found an unsafe operation.";
+      return std::nullopt;
+    }
+
+    if (instruction->opcode() == HloOpcode::kParameter) {
+      if (unique_param || !instruction->shape().IsTuple()) {
+        VLOG(5) << "Failed to match parameters.";
+        return std::nullopt;
+      }
+      unique_param = instruction;
+    }
+
+    if (instruction->opcode() == HloOpcode::kGetTupleElement) {
+      if (unique_gte) {
+        VLOG(5) << "Found non-unique GTEs.";
+        return std::nullopt;
+      }
+      unique_gte = instruction;
+    }
+
+    for (auto* operand : instruction->operands()) {
+      if (seen.insert(operand).second) {
+        queue.push(operand);
+      }
+    }
+  }
+
+  if (!unique_param || !unique_gte || unique_gte->operand(0) != unique_param) {
+    VLOG(5) << "Did not find a parameter or GTE or they don't match.";
+    return std::nullopt;
+  }
+
+  VLOG(5) << "Parameter and GTE: " << unique_param->name() << ", "
+          << unique_gte->name();
+
+  // Continue walking up through call instructions.
+  while (call_stack_it != call_stack_end &&
+         (*call_stack_it)->opcode() == HloOpcode::kCall &&
+         unique_param->opcode() == HloOpcode::kParameter) {
+    unique_param = (*call_stack_it)->operand(unique_param->parameter_number());
+    ++call_stack_it;
+  }
+
+  // Find the while loop for 'unique_param'.
+  auto while_instr_it = std::find_if(
+      call_stack_it, call_stack_end, [&](const HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kWhile &&
+               unique_param == instr->while_body()->parameter_instruction(0);
+      });
+
+  if (while_instr_it == call_stack_end) {
+    VLOG(5) << "Did not find a while loop.";
+    return std::nullopt;
+  }
+
+  auto config =
+      (*while_instr_it)->backend_config<xla::WhileLoopBackendConfig>();
+  if (!config.ok() || !config->has_known_induction_variable() ||
+      unique_gte->tuple_index() !=
+          config->known_induction_variable().tuple_index()) {
+    VLOG(5) << "Failed to verify that the offset depends on the induction "
+               "variable.";
+    return std::nullopt;
+  }
+
+  VLOG(5) << "While loop for " << parameter->name() << ": "
+          << (*while_instr_it)->name();
+  return InductionVariableFunctionalDependency{argument, *while_instr_it,
+                                               unique_gte};
+}
+
 }  // namespace gpu
 }  // namespace xla

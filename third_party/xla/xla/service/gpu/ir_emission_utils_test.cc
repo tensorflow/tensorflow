@@ -1124,5 +1124,152 @@ ENTRY e {
                          kTestProtoFingerprint));
 }
 
+constexpr absl::string_view kWhileLoopTestModule = R"(
+    identity {
+      ROOT p0 = s32[] parameter(0)
+    }
+    identity2 {
+      ROOT p0 = s32[] parameter(0)
+    }
+
+    remainder {
+      p0 = s32[] parameter(0)
+      c4 = s32[] constant(4)
+      ROOT remainder = s32[] remainder(p0, c4)
+    }
+
+    call_body {
+      p0 = s32[] parameter(0)
+      ROOT called_fusion = s32[] fusion(p0), kind=kLoop, calls=identity
+    }
+
+    add_values {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT sum = s32[] add(p0, p1)
+    }
+
+    while_body {
+      p0 = (s32[], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      ivar_copy = s32[] copy(ivar)
+
+      // `derived` and `call` are functionally dependent on the induction variable.
+      derived = s32[] fusion(ivar_copy), kind=kLoop, calls=remainder
+      call = s32[] call(derived), to_apply=call_body
+
+      side_effect = s32[] custom-call(), custom_call_target=""
+
+      // `derived_with_invalid_dep` and `not_functionally_dependent` are not, because
+      // they have a custom call in their transitive dependencies.
+      derived_with_invalid_dep = s32[] fusion(ivar_copy, side_effect), kind=kLoop,
+        calls=add_values
+      not_functionally_dependent = s32[] fusion(derived_with_invalid_dep),
+        kind=kLoop, calls=identity2
+
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar_copy, c1)
+      use = s32[] add(call, not_functionally_dependent)
+
+      ROOT result = (s32[], s32[]) tuple(next_ivar, use)
+    }
+
+    compare {
+      p0 = s32[] parameter(0)
+      c5 = s32[] constant(5)
+      ROOT cmp = pred[] compare(p0, c5), direction=LT
+    }
+
+    condition {
+      p0 = (s32[], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      ROOT cmp = pred[] fusion(ivar), kind=kLoop, calls=compare
+    }
+
+    ENTRY main {
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[]) tuple(c0, c0)
+      ROOT while = (s32[], s32[]) while(tuple),
+          condition=condition, body=while_body,
+          backend_config={"known_induction_variable":{"tuple_index":"0"}}
+    }
+)";
+
+TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependency) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kWhileLoopTestModule));
+
+  auto* while_body = module->GetComputationWithName("while_body");
+
+  const HloInstruction* loop = module->entry_computation()->root_instruction();
+  const HloInstruction* call = while_body->GetInstructionWithName("call");
+  const HloInstruction* called_fusion =
+      module->GetComputationWithName("call_body")
+          ->GetInstructionWithName("called_fusion");
+  auto result = ResolveFunctionalDependencyOnInductionVariable(
+      /*call_stack=*/{loop, call, called_fusion},
+      module->GetComputationWithName("identity")->root_instruction());
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->derived_value,
+            while_body->GetInstructionWithName("derived"));
+  EXPECT_EQ(result->loop, loop);
+  EXPECT_EQ(result->induction_var, while_body->GetInstructionWithName("ivar"));
+}
+
+TEST_F(IrEmissionUtilsTest,
+       ResolveWhileLoopDependencyUnknownInductionVariable) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kWhileLoopTestModule));
+
+  auto* while_body = module->GetComputationWithName("while_body");
+
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  loop->clear_backend_config();
+  const HloInstruction* call = while_body->GetInstructionWithName("call");
+  const HloInstruction* called_fusion =
+      module->GetComputationWithName("call_body")
+          ->GetInstructionWithName("called_fusion");
+  auto result = ResolveFunctionalDependencyOnInductionVariable(
+      /*call_stack=*/{loop, call, called_fusion},
+      module->GetComputationWithName("identity")->root_instruction());
+
+  ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencyWhileLoopNotInCallStack) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kWhileLoopTestModule));
+
+  auto* while_body = module->GetComputationWithName("while_body");
+  const HloInstruction* call = while_body->GetInstructionWithName("call");
+  const HloInstruction* called_fusion =
+      module->GetComputationWithName("call_body")
+          ->GetInstructionWithName("called_fusion");
+  auto result = ResolveFunctionalDependencyOnInductionVariable(
+      /*call_stack=*/{call, called_fusion},
+      module->GetComputationWithName("identity")->root_instruction());
+
+  ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencySideEffect) {
+  // Verifies that we detect `not_functionally_dependent` depends on an
+  // instruction that has a side effect.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kWhileLoopTestModule));
+
+  auto* while_body = module->GetComputationWithName("while_body");
+
+  const HloInstruction* loop = module->entry_computation()->root_instruction();
+  const HloInstruction* called_fusion =
+      while_body->GetInstructionWithName("not_functionally_dependent");
+  auto result = ResolveFunctionalDependencyOnInductionVariable(
+      /*call_stack=*/{loop, called_fusion},
+      module->GetComputationWithName("identity2")->root_instruction());
+
+  ASSERT_FALSE(result.has_value());
+}
+
 }  // namespace gpu
 }  // namespace xla
