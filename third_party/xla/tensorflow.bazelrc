@@ -227,6 +227,7 @@ build:rocm_base --repo_env TF_NEED_ROCM=1
 build:rocm --config=rocm_base 
 
 build:rocm_gcc --config=rocm_base
+build:rocm_gcc --copt=-Wno-stringop-truncation
 
 build:rocm_clang_official --config=rocm_base
 build:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
