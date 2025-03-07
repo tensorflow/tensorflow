@@ -2230,21 +2230,18 @@ namespace {
 // * The input's defining op is another tfl.reshape.
 // TODO(antiagainst): This pattern probably should be moved to the peephole
 // category, after we have the infra for peephole passes.
-struct RemoveAdjacentReshape : public RewritePattern::SplitMatchAndRewrite {
+struct RemoveAdjacentReshape : public RewritePattern {
   explicit RemoveAdjacentReshape(MLIRContext* context)
-      : RewritePattern::SplitMatchAndRewrite(ReshapeOp::getOperationName(), 1,
-                                             context) {}
+      : RewritePattern(ReshapeOp::getOperationName(), 1, context) {}
 
-  LogicalResult match(Operation* op) const override {
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
     auto thisOp = cast<ReshapeOp>(op);
-    auto prevOp = thisOp.getOperand(0).getDefiningOp();
-    return isa_and_nonnull<ReshapeOp>(prevOp) ? success() : failure();
-  }
-
-  void rewrite(Operation* op, PatternRewriter& rewriter) const override {
-    auto thisOp = cast<ReshapeOp>(op);
-    auto prevOp = cast<ReshapeOp>(thisOp.getOperand(0).getDefiningOp());
-
+    auto prevOp =
+        dyn_cast_or_null<ReshapeOp>(thisOp.getOperand(0).getDefiningOp());
+    if (!prevOp) {
+      return failure();
+    }
     // Replace
     //   %1 = "tfl.reshape"(%0, %shape0)
     //   %2 = "tfl.reshape"(%1, %shape1)
@@ -2252,6 +2249,7 @@ struct RemoveAdjacentReshape : public RewritePattern::SplitMatchAndRewrite {
     //   %2 = "tfl.reshape"(%0, %shape1)
     rewriter.replaceOpWithNewOp<ReshapeOp>(
         op, thisOp.getType(), prevOp.getOperand(0), thisOp.getOperand(1));
+    return success();
   }
 };
 
@@ -2963,12 +2961,12 @@ namespace {
 
 /// This pattern matches and remove a tfl.fake_quant if all the users of this op
 /// and itself have "minmax" attribute set.
-struct DropFakeQuant : public RewritePattern::SplitMatchAndRewrite {
+struct DropFakeQuant : public RewritePattern {
   explicit DropFakeQuant(MLIRContext* context)
-      : RewritePattern::SplitMatchAndRewrite(FakeQuantOp::getOperationName(), 1,
-                                             context) {}
+      : RewritePattern(FakeQuantOp::getOperationName(), 1, context) {}
 
-  LogicalResult match(Operation* op) const override {
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
     // We only match the op with valid "minmax" attribute.
     if (!HasValidMinMaxAttribute(op)) return failure();
 
@@ -2978,12 +2976,9 @@ struct DropFakeQuant : public RewritePattern::SplitMatchAndRewrite {
     for (auto* operand : fakeQuantOp.getResult().getUsers())
       if (!HasValidMinMaxAttribute(operand)) return failure();
 
-    return success();
-  }
-
-  void rewrite(Operation* op, PatternRewriter& rewriter) const override {
     // Replace the matched FakeQuantOp by its primary operand.
     rewriter.replaceOp(op, op->getOperand(0));
+    return success();
   }
 };
 }  // end anonymous namespace

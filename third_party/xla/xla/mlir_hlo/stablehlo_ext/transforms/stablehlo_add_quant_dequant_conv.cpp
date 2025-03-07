@@ -56,10 +56,11 @@ Type getQuantizedType(Location loc, PatternRewriter& rewriter,
 }
 
 struct AddQuantDeQuantAfterConvolutionOp final
-    : OpRewritePattern<mlir::stablehlo::ConvolutionOp>::SplitMatchAndRewrite {
-  using SplitMatchAndRewrite::SplitMatchAndRewrite;
+    : OpRewritePattern<mlir::stablehlo::ConvolutionOp> {
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(stablehlo::ConvolutionOp op) const override {
+  LogicalResult matchAndRewrite(stablehlo::ConvolutionOp op,
+                                PatternRewriter& rewriter) const override {
     // Match a stablehlo.convolution op if
     // 1. Its operands are defined by stablehlo.uniform_dequantize op,
     // 2. It has a single user.
@@ -77,11 +78,6 @@ struct AddQuantDeQuantAfterConvolutionOp final
     if (isa<stablehlo::UniformQuantizeOp>(*op->getUsers().begin()))
       return failure();
 
-    return success();
-  }
-
-  void rewrite(stablehlo::ConvolutionOp op,
-               PatternRewriter& rewriter) const override {
     auto* clonedConvOp = rewriter.clone(*op);
     auto convResultType =
         cast<ShapedType>(clonedConvOp->getResult(0).getType());
@@ -94,6 +90,7 @@ struct AddQuantDeQuantAfterConvolutionOp final
             op.getLoc(), op.getType(),
             /*input=*/stablehloQuantizeOp.getResult());
     rewriter.replaceAllUsesWith(op, stablehloDeQuantizeOp.getResult());
+    return success();
   }
 };
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
@@ -28,8 +29,9 @@ limitations under the License.
 namespace xla {
 absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     const {
+  LOG(INFO) << "StreamExecutorExecutable::SerializeExecutable";
   if (aot_executables_.empty()) {
-    return absl::InternalError("No local executable");
+    return absl::InternalError("No local executable here!");
   }
   if (aot_executables_.size() != 1) {
     return absl::UnimplementedError(

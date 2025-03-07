@@ -46,6 +46,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -586,7 +587,7 @@ absl::string_view StreamExecutorGpuClient::platform_version() const {
 #elif GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
   return "cuda " STRINGIFY(CUDART_VERSION);
 #else
-  return "<unknown>";
+  return "<unknown1>";
 #endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
 }
 
@@ -860,6 +861,32 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawDeviceToHost(
             "StreamExecutorGpuClient::CopyRawDeviceToHost",
             keys.traceme_context_id);
       });
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+StreamExecutorGpuClient::CompileAndLoad(mlir::ModuleOp module,
+                                        CompileOptions options) {
+  auto executable = PjRtStreamExecutorClient::CompileAndLoad(module, options);
+
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
+  for (const PjRtDevice* device : addressable_devices()) {
+    LocalDeviceState* local_device_state =
+        tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
+            ->local_device_state();
+    int64_t free_memory, total_memory;
+    if (local_device_state != nullptr) {
+      se::StreamExecutor* executor = local_device_state->executor();
+      int device_ordinal = executor->device_ordinal();
+      if (executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
+        gpu_metrics::RecordFreeGpuSystemMemory(device_ordinal, free_memory);
+      } else {
+        LOG(ERROR) << "Failed to query available memory for GPU "
+                   << device_ordinal;
+      }
+    }
+  }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return executable;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>

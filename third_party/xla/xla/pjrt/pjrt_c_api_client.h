@@ -300,6 +300,7 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override {
+    LOG(INFO) << "In PjRtCApiClient::GetHloCostAnalysis";
     return Unimplemented(
         "PJRT C API does not support GetHloCostAnalysis. Please report an "
         "issue at https://github.com/google/jax/issues if you need this "
@@ -590,10 +591,17 @@ class PjRtCApiExecutable : public PjRtExecutable {
   std::unique_ptr<PJRT_Executable, ::pjrt::PJRT_ExecutableDeleter> executable_;
 };
 
-class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
+class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable,
+                                 public PjRtExecutable {
  public:
   PjRtCApiLoadedExecutable(PjRtCApiClient* client,
                            PJRT_LoadedExecutable* executable);
+
+  // Returns the PjRtExecutable that this PjRtLoadedExecutable wraps.
+  std::unique_ptr<PjRtExecutable> GetExecutable() const override {
+    LOG(INFO) << "In PjRtCApiLoadedExecutable::GetExecutable";
+    return std::make_unique<PjRtExecutableForwarder>(this);
+  }
 
   PjRtClient* client() const override { return client_; }
   absl::string_view name() const override { return executable_->name(); }
@@ -606,7 +614,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
 
   absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
   GetCostAnalysis() const override {
-    return executable_->GetCostAnalysis();
+    LOG(INFO) << "In PjRtCApiLoadedExecutable::GetCostAnalysis";
+    auto result = executable_->GetCostAnalysis();
+    LOG(INFO) << "Result: " << result.status();
+    return result;
   }
 
   const DeviceAssignment& device_assignment() const override {

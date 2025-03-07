@@ -288,7 +288,8 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
   bool is_deleted_ = false;
 };
 
-class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
+class InterpreterLoadedExecutable final : public PjRtLoadedExecutable,
+                                          public PjRtExecutable {
  public:
   explicit InterpreterLoadedExecutable(
       absl::Nonnull<PjRtClient*> client, std::unique_ptr<HloModule> hlo_module,
@@ -311,6 +312,10 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
       hlo_evaluator_->set_dynamic_dimension_inference(
           &dynamic_dimension_inference_.value());
     }
+  }
+
+  std::unique_ptr<PjRtExecutable> GetExecutable() const override {
+    return std::make_unique<PjRtExecutableForwarder>(this);
   }
 
   int num_replicas() const override {
@@ -441,7 +446,7 @@ class InterpreterClient final : public PjRtClient {
 
   absl::string_view platform_name() const override { return "interpreter"; }
 
-  absl::string_view platform_version() const override { return "<unknown>"; }
+  absl::string_view platform_version() const override { return "<unknown3>"; }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;

@@ -28,12 +28,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -263,7 +265,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   PjRtPlatformId platform_id() const override { return platform_id_; }
   absl::string_view platform_name() const override { return platform_name_; }
-  absl::string_view platform_version() const override { return "<unknown>"; }
+  absl::string_view platform_version() const override { return "<unknown2>"; }
 
   // Most platforms expect device-to-device transfers to be enqueued on the
   // source d2d stream, but some platforms use the destination d2d stream. This
@@ -843,7 +845,8 @@ AllocateDestinationBuffer(
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
 // the build options).
-class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
+class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable,
+                                           public PjRtExecutable {
  public:
   PjRtStreamExecutorLoadedExecutable(
       std::vector<std::unique_ptr<LocalExecutable>> executables,
@@ -856,6 +859,11 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
 
   ~PjRtStreamExecutorLoadedExecutable() override = default;
 
+  // Returns the PjRtExecutable that this PjRtLoadedExecutable wraps.
+  std::unique_ptr<PjRtExecutable> GetExecutable() const override {
+    return std::make_unique<PjRtExecutableForwarder>(this);
+  }
+
   PjRtStreamExecutorClient* client() const override { return client_; }
 
   absl::string_view name() const override;
@@ -866,6 +874,14 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
 
   int num_partitions() const override {
     return executables_[0]->build_options().num_partitions();
+  }
+
+  // Returns named values for cost properties of this executable (such as
+  // operations, size of input/outputs, and run time estimate). Properties may
+  // differ for different platforms.
+  absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const override {
+    return PjRtLoadedExecutable::GetCostAnalysis();
   }
 
   int64_t SizeOfGeneratedCodeInBytes() const override {
@@ -912,6 +928,10 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override;
+
+  absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override {
+    return PjRtExecutable::GetOutputShapes();
+  }
 
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(

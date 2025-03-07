@@ -31,10 +31,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/compiler.h"
@@ -48,6 +50,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -132,7 +136,18 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   if (!options.target_config) {
     if (client != nullptr) {
       TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-      return client->CompileAndLoad(computation, options);
+      TF_ASSIGN_OR_RETURN(auto loaded_executable,
+                          client->CompileAndLoad(computation, options));
+      auto* se_gpu_loaded_executable =
+          dynamic_cast<PjRtStreamExecutorLoadedExecutable*>(
+              loaded_executable.get());
+      if (se_gpu_loaded_executable == nullptr) {
+        return absl::InternalError(
+            "Compiled executable is not a PjRtStreamExecutorLoadedExecutable");
+      }
+      loaded_executable.release();
+      return std::unique_ptr<PjRtStreamExecutorLoadedExecutable>(
+          se_gpu_loaded_executable);
     }
     const auto& gpu_topology =
         tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
