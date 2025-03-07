@@ -14,10 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/list_flex_ops.h"
 
-#include <fstream>
-#include <sstream>
+#include <cstdint>
+#include <cstring>
 #include <string>
-#include <vector>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "json/json.h"
