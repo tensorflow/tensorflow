@@ -67,6 +67,7 @@ cc_library(
     name = "dispatch_api_shared_lib",
     srcs = [":dispatch_api_so"],
     linkstatic = 1,
+    visibility = ["//visibility:public"],
 )
 
 # Copies the shared library so that it is available for use in test data as libLiteRtDispatch_GoogleTensor.so.
