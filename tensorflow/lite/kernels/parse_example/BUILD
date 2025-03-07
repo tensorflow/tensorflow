@@ -29,8 +29,14 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:tensor",
+        "//third_party/protobuf/io",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@flatbuffers",
     ] + select({
         "//tensorflow:android": [
@@ -66,6 +72,10 @@ tf_cc_test(
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "//third_party/protobuf",
+        "//third_party/protobuf/io",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ] + select({
         "//tensorflow:android": [
@@ -109,8 +119,14 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:tensor",
+        "//third_party/protobuf/io",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@flatbuffers",
     ],
 )
@@ -134,6 +150,10 @@ tf_cc_test(
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "//third_party/protobuf",
+        "//third_party/protobuf/io",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )
