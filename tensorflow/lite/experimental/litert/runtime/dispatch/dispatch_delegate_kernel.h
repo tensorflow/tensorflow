@@ -34,6 +34,8 @@
 namespace litert {
 namespace internal {
 
+class ExternalLiteRtBufferContext;
+
 // A TFL kernel that the interpreter calls to dispatch execution through the
 // Dispatch API.
 class DispatchDelegateKernel
@@ -93,7 +95,10 @@ class DispatchDelegateKernel
   std::string graph_name_;
   LiteRtDispatchDeviceContext device_context_;
   LiteRtDispatchInvocationContext invocation_context_ = nullptr;
+  // Indicates whether the Dispatch API can be invoked asynchronously.
   const bool async_dispatch_;
+
+  ExternalLiteRtBufferContext* buffer_context_ = nullptr;
 
   // Indicates whether the input tensor buffer requires a CPU sync before
   // invoking the Dispatch API.
