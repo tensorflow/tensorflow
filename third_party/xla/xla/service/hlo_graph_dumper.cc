@@ -1613,6 +1613,55 @@ const HloInstruction* HloDotDumper::GetNodeForEdge(
   return instr;
 }
 
+// Detect if an instruction is an AsyncCollectiveFusion parameter that is
+// implementation details.
+bool IsAcfPrameter(const xla::HloInstruction* instruction) {
+  // Parameter is fused
+  if (instruction->opcode() != xla::HloOpcode::kParameter ||
+      !instruction->IsFused())
+    return false;
+
+  // Parameter piped through and is only consumed by 1 user
+  // Parameter 0 consumed by both root and all-gather will always persist.
+  if (instruction->user_count() != 1) return false;
+
+  const xla::HloComputation* parent_computation = instruction->parent();
+  int64_t parameter_number = instruction->parameter_number();
+  xla::HloInstruction* fusion_instruction =
+      parent_computation->FusionInstruction();
+  const xla::HloInstruction* parameterOperand =
+      fusion_instruction->operand(parameter_number);
+  // Operand is get-tuple-element
+  if (parameterOperand->opcode() != xla::HloOpcode::kGetTupleElement) {
+    return false;
+  }
+  constexpr absl::string_view kAcfComputationName = "async_collective_fusion";
+  constexpr absl::string_view kAcsInstructionName = "async-collective-start";
+  constexpr absl::string_view kAcdInstructionName = "async-collective-done";
+
+  const xla::HloInstruction* gteOperand = parameterOperand->operand(0);
+  // Parameter is fused into AsyncCollectiveFusion, operand is gte from
+  // AsyncCollectiveStart and user is the root node of ACF
+  if (absl::StartsWith(parent_computation->name(), kAcfComputationName)) {
+    return absl::StartsWith(gteOperand->name(), kAcsInstructionName) &&
+           instruction->users()[0] == parent_computation->root_instruction();
+  } else if (absl::StartsWith(fusion_instruction->name(),
+                              kAcdInstructionName)) {
+    // Parameter is fused into AsyncCollectiveDone, mapped from Params in
+    // AsyncCollectiveFusion - operand is gte from ACF
+    return absl::StartsWith(
+        gteOperand->fused_instructions_computation()->name(),
+        kAcfComputationName);
+  }
+  return false;
+}
+
+// Rules to filter out input nodes (no operands) that are implementation
+// details.
+bool ShouldFilterInputNode(const HloInstruction* instr) {
+  return IsAcfPrameter(instr);
+}
+
 // Gets a NodeFilter that includes roughly all instructions whose distance from
 // root is <= radius.
 NodeFilter MakeNodeRadiusAroundFilter(
@@ -1629,7 +1678,7 @@ NodeFilter MakeNodeRadiusAroundFilter(
     std::tie(instr, depth) = worklist.front();
     worklist.pop_front();
 
-    nodes[instr] = kNormalNode;
+    nodes[instr] = ShouldFilterInputNode(instr) ? kHideNode : kNormalNode;
     if (depth == radius) {
       continue;
     }
@@ -1731,7 +1780,8 @@ NodeFilter MakeNodeRadiusAroundFilter(
           return it->second;
         }
         // Show all nodes in subcomputations.
-        if (instr->parent() != root->parent()) {
+        if (instr->parent() != root->parent() &&
+            !ShouldFilterInputNode(instr)) {
           return kNormalNode;
         }
         return kHideNode;
@@ -1841,7 +1891,7 @@ static std::pair<int, int> FusionVisualizerStateKey(
 static absl::StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   class WritableStringFile : public tsl::WritableFile {
    public:
-    explicit WritableStringFile(std::string* data) : data_(data){};
+    explicit WritableStringFile(std::string* data) : data_(data) {};
     ~WritableStringFile() override = default;
 
     absl::Status Append(absl::string_view data) override {
