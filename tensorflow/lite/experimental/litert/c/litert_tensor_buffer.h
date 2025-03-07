@@ -24,6 +24,8 @@
 #if LITERT_HAS_OPENCL_SUPPORT
 #include <CL/cl.h>
 #endif  // LITERT_HAS_OPENCL_SUPPORT
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
+
 #if LITERT_HAS_OPENGL_SUPPORT
 #include <GLES3/gl31.h>
 #include <GLES3/gl32.h>
@@ -49,18 +51,6 @@ extern "C" {
 LITERT_DEFINE_HANDLE(LiteRtTensorBuffer);
 
 #define LITERT_HOST_MEMORY_BUFFER_ALIGNMENT 64
-
-typedef enum {
-  kLiteRtTensorBufferTypeUnknown = 0,
-  kLiteRtTensorBufferTypeHostMemory = 1,
-  kLiteRtTensorBufferTypeAhwb = 2,
-  kLiteRtTensorBufferTypeIon = 3,
-  kLiteRtTensorBufferTypeDmaBuf = 4,
-  kLiteRtTensorBufferTypeFastRpc = 5,
-  kLiteRtTensorBufferTypeOpenCl = 6,
-  kLiteRtTensorBufferTypeGlBuffer = 7,
-  kLiteRtTensorBufferTypeGlTexture = 8,
-} LiteRtTensorBufferType;
 
 typedef void (*LiteRtHostMemoryDeallocator)(void* addr);
 typedef void (*LiteRtAhwbDeallocator)(AHardwareBuffer* ahwb);
@@ -191,12 +181,12 @@ LiteRtStatus LiteRtGetTensorBufferGlTexture(LiteRtTensorBuffer tensor_buffer,
 
 LiteRtStatus LiteRtCreateTensorBufferFromGlBuffer(
     const LiteRtRankedTensorType* tensor_type, GLenum target, GLuint id,
-    size_t bytes_size, size_t offset, LiteRtGlBufferDeallocator deallocator,
+    size_t size_bytes, size_t offset, LiteRtGlBufferDeallocator deallocator,
     LiteRtTensorBuffer* buffer);
 
 LiteRtStatus LiteRtGetTensorBufferGlBuffer(LiteRtTensorBuffer tensor_buffer,
                                            GLenum* target, GLuint* id,
-                                           size_t* bytes_size, size_t* offset);
+                                           size_t* size_bytes, size_t* offset);
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 
 // Create a buffer backed by managed memory for a given size.

@@ -19,10 +19,12 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
@@ -45,6 +47,10 @@ namespace {
 
 using ::litert::RankedTensorType;
 using ::litert::TensorBuffer;
+using ::testing::Ne;
+#if LITERT_HAS_OPENGL_SUPPORT
+using ::testing::Eq;
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 
 constexpr const float kTensorData[] = {10, 20, 30, 40};
 
@@ -506,6 +512,56 @@ TEST(TensorBuffer, FromGlTexture) {
           RankedTensorType(kTensorType), gl_texture.target(), gl_texture.id(),
           gl_texture.format(), gl_texture.bytes_size(), gl_texture.layer()));
 }
+
+#if LITERT_HAS_AHWB_SUPPORT
+TEST(TensorBuffer, GetGlBufferFromAhwb) {
+  std::unique_ptr<tflite::gpu::gl::EglEnvironment> env;
+  ASSERT_TRUE(tflite::gpu::gl::EglEnvironment::NewEglEnvironment(&env).ok());
+
+  // Create AHWB Tensor buffer.
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer ahwb_tensor_buffer,
+      TensorBuffer::CreateManaged(kLiteRtTensorBufferTypeAhwb,
+                                  RankedTensorType(kTensorType),
+                                  sizeof(kTensorData)));
+
+  // Write to AHWB Tensor buffer.
+  LITERT_ASSERT_OK(ahwb_tensor_buffer.Write<float>(absl::MakeConstSpan(
+      kTensorData, sizeof(kTensorData) / sizeof(kTensorData[0]))));
+
+  LITERT_ASSERT_OK_AND_ASSIGN(TensorBuffer::GlBuffer gl_buffer,
+                              ahwb_tensor_buffer.GetGlBuffer());
+  EXPECT_THAT(gl_buffer.target, Eq(GL_SHADER_STORAGE_BUFFER));
+  EXPECT_THAT(gl_buffer.id, Ne(0));
+  EXPECT_THAT(gl_buffer.size_bytes, Eq(sizeof(kTensorData)));
+  EXPECT_THAT(gl_buffer.offset, Eq(0));
+
+  // Read from GL buffer.
+  // TODO(gcarranza): Add GlBuffer ReadLock functionality to LiteRT
+  // TensorBuffer. GlBuffer::Unlock currently writes to GL buffer.
+  tflite::gpu::gl::GlBuffer gl_buffer_from_ahwb(
+      gl_buffer.target, gl_buffer.id, gl_buffer.size_bytes, gl_buffer.offset,
+      /*has_ownership=*/false);
+  float read_data[sizeof(kTensorData) / sizeof(kTensorData[0])];
+  ASSERT_OK(gl_buffer_from_ahwb.Read<float>(absl::MakeSpan(read_data)));
+  ASSERT_EQ(std::memcmp(read_data, kTensorData, sizeof(kTensorData)), 0);
+}
+#endif  // LITERT_HAS_AHWB_SUPPORT
+
 #endif  // LITERT_HAS_OPENGL_SUPPORT
+
+TEST(TensorBuffer, GetAhwb) {
+  if (!litert::internal::AhwbBuffer::IsSupported()) {
+    GTEST_SKIP() << "AHardwareBuffers are not supported on this platform; "
+                    "skipping the test";
+  }
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer tensor_buffer,
+      TensorBuffer::CreateManaged(kLiteRtTensorBufferTypeAhwb,
+                                  RankedTensorType(kTensorType),
+                                  sizeof(kTensorData)));
+  LITERT_ASSERT_OK_AND_ASSIGN(AHardwareBuffer * ahwb, tensor_buffer.GetAhwb());
+  EXPECT_THAT(ahwb, Ne(nullptr));
+}
 
 }  // namespace
