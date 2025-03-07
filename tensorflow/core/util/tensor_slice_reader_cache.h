@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
