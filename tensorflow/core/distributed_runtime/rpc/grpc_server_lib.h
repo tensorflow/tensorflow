@@ -112,7 +112,7 @@ class GrpcServer : public ServerInterface {
   // Add master eager context to local eager service in order to handle enqueue
   // requests from remote workers.
   absl::Status AddMasterEagerContextToEagerService(
-      const tensorflow::uint64 context_id,
+      tensorflow::uint64 context_id,
       tensorflow::EagerContext* context) override;
   // Update the set of workers that can be reached by the GRPC server
   absl::Status UpdateServerDef(const ServerDef& server_def) override;
