@@ -47,28 +47,6 @@ def ConvertFloatNvidiaPass : Pass<"xla-gpu-convert-float-nvidia", "mlir::ModuleO
   let constructor = "CreateConvertFloatNvidiaPass()";
 }
 
-def VectorizeLoadsAndStoresPass :
-   Pass<"xla-gpu-vectorize-loads-stores", "mlir::func::FuncOp"> {
-  let summary = "Vectorizes loads and stores.";
-
-  let description = [{
-    Rewrites tensor.extract and tensor.insert ops inside loops to their vector
-    equivalents (vector.transfer_read and vector.transfer_write + vector.extract
-    and vector.insert).
-  }];
-
-  let dependentDialects = [
-    "mlir::vector::VectorDialect",
-  ];
-
-  let options = [
-    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
-           "Serialized stream_executor::GPUDeviceInfo proto.">,
-  ];
-
-  let constructor = "CreateVectorizeLoadsAndStoresPass()";
-}
-
 def FuseLoopsPass : Pass<"xla-gpu-fuse-loops", "mlir::func::FuncOp"> {
   let summary = "Fuse xla_gpu.loop.";
   let description = [{
