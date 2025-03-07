@@ -15,6 +15,8 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//tensorflow/compiler/mlir/lite/...",
+        "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/tests/...",
     ],
 )
@@ -87,3 +89,37 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+# LINT.IfChange(legalize_tf_xla_call_module_to_stablehlo_pass)
+cc_library(
+    name = "legalize_tf_xla_call_module_to_stablehlo_pass",
+    srcs = [
+        "transforms/legalize_tf_xla_call_module_to_stablehlo_pass.cc",
+    ],
+    hdrs = [
+        "transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_serialization",
+        "@stablehlo//:vhlo_ops",
+    ],
+    alwayslink = 1,
+)
+# LINT.ThenChange(//tensorflow/compiler/mlir/lite/stablehlo:legalize_tf_xla_call_module_to_stablehlo_pass)
