@@ -385,6 +385,7 @@ cc_library(
     srcs = ["xplane_to_op_stats.cc"],
     hdrs = ["xplane_to_op_stats.h"],
     copts = tf_profiler_copts(),
+    visibility = ["@local_xla//xla/tsl/profiler:friends"],
     deps = [
         ":duty_cycle_combiner",
         ":duty_cycle_tracker",
