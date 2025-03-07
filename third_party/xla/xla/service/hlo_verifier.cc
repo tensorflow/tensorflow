@@ -3082,6 +3082,350 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   std::optional<int64_t> num_devices_;
 };
 
+bool SameShape(const Shape& a, const Shape& b, bool ignore_buffer_id) {
+  Shape::Equal equal;
+  if (ignore_buffer_id) {
+    equal.IgnoreBufferId();
+  }
+  return equal(a, b);
+}
+
+// Verifies a buffer result produced by the given instruction can have at most
+// one user that writes the buffer.
+//
+// When `inst` has a tuple result, `result_index` is the index of the tuple
+// element that has the buffer.
+absl::Status CheckWritersForBuffer(const HloInstruction* inst,
+                                   int64_t buffer_id, int result_index) {
+  if (!inst->shape().IsTuple()) {
+    if (inst->user_count() > 1) {
+      return InvalidArgument(
+          "an HLO value with buffer_id has more than one writers (or unpins): "
+          "%d",
+          buffer_id);
+    }
+  }
+
+  const HloInstruction* gte = nullptr;
+  for (auto* user : inst->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement &&
+        user->tuple_index() == result_index) {
+      if (gte != nullptr) {
+        return InvalidArgument(
+            "an HLO value with buffer_id has more than one writers (or "
+            "unpins): %d",
+            buffer_id);
+      }
+      gte = user;
+    }
+  }
+
+  if (gte != nullptr) {
+    TF_RETURN_IF_ERROR(CheckWritersForBuffer(gte, buffer_id, 0));
+  }
+
+  return absl::OkStatus();
+}
+
+// Verifies all buffer results produced by the given instruction can have at
+// most one user that writes the buffer.
+absl::Status CheckWritersForBuffer(const HloInstruction* inst) {
+  const Shape& shape = inst->shape();
+  if (shape.is_buffer()) {
+    return CheckWritersForBuffer(inst, shape.buffer_id(), 0);
+  }
+
+  if (!shape.IsTuple()) {
+    return absl::OkStatus();
+  }
+
+  for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
+    const Shape& subshape = shape.tuple_shapes(i);
+    if (subshape.is_buffer()) {
+      TF_RETURN_IF_ERROR(CheckWritersForBuffer(inst, subshape.buffer_id(), i));
+    }
+    // We already ensure no nested buffers in results.
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status VerifyPin(const HloInstruction* inst) {
+  if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsArray() ||
+      inst->operand(0)->shape().is_buffer()) {
+    return InvalidArgument(
+        "custom-call to pin must have one array non-buffer operand");
+  }
+
+  if (!inst->shape().is_buffer()) {
+    return InvalidArgument("custom-call to pin must have one buffer result");
+  }
+
+  if (!SameShape(inst->operand(0)->shape(), inst->shape(),
+                 /*ignore_buffer_id=*/true)) {
+    return InvalidArgument(
+        "custom-call to pin must have the same shape as the operand");
+  }
+
+  return CheckWritersForBuffer(inst, inst->shape().buffer_id(), 0);
+}
+
+absl::Status VerifyAllocateBuffer(const HloInstruction* inst) {
+  if (inst->operand_count() != 0) {
+    return InvalidArgument(
+        "custom-call to allocateBuffer can't have an operand");
+  }
+
+  if (!inst->shape().is_buffer()) {
+    return InvalidArgument("custom-call to pin must have one buffer result");
+  }
+
+  return CheckWritersForBuffer(inst, inst->shape().buffer_id(), 0);
+}
+
+absl::Status VerifyUnpin(const HloInstruction* inst) {
+  if (inst->operand_count() != 1 || !inst->operand(0)->shape().is_buffer()) {
+    return InvalidArgument("custom-call to pin must have one buffer operand");
+  }
+
+  if (!inst->shape().IsArray() || inst->shape().is_buffer()) {
+    return InvalidArgument(
+        "custom-call to pin must have one array non-buffer result");
+  }
+
+  if (!SameShape(inst->operand(0)->shape(), inst->shape(),
+                 /*ignore_buffer_id=*/true)) {
+    return InvalidArgument(
+        "custom-call to unpin must have the same shape as the operand");
+  }
+
+  return absl::OkStatus();
+}
+
+// Verifies a tuple with buffers can only be used as a computation root or
+// as a while-init, and the computation can't be an entry computation. We rely
+// on type compatibility to ensure a computation with buffers in its root can
+// only be a while-body/while-init computation.
+absl::Status VerifyTuple(const HloInstruction* inst) {
+  const Shape& shape = inst->shape();
+  bool has_buffer = shape.IsTuple()
+                        ? absl::c_any_of(shape.tuple_shapes(),
+                                         [](const Shape& subshape) {
+                                           return subshape.is_buffer();
+                                         })
+                        : shape.is_buffer();
+  if (!has_buffer) {
+    return absl::OkStatus();
+  }
+  int64_t user_count = inst->user_count();
+  if (user_count == 0 && inst->parent()->root_instruction() == inst &&
+      !inst->parent()->IsEntryComputation()) {
+    return absl::OkStatus();
+  } else if (user_count == 1 &&
+             inst->users().front()->opcode() == HloOpcode::kWhile) {
+    return absl::OkStatus();
+  }
+
+  return InvalidArgument(
+      "tuple with buffers can only be used as while-init or while-body root: "
+      "%s",
+      inst->ToString());
+}
+
+absl::Status VerifyNoBuffers(const Shape& shape,
+                             absl::string_view error_message) {
+  if (shape.is_buffer()) {
+    return InvalidArgument("%s", error_message);
+  }
+
+  if (!shape.IsTuple()) {
+    return absl::OkStatus();
+  }
+
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      shape,
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        if (subshape.is_buffer()) {
+          return InvalidArgument("%s", error_message);
+        }
+        return absl::OkStatus();
+      });
+}
+
+static constexpr int kNoResultIndex = -1;
+absl::Status VerifyBuffersInOperands(
+    const HloInstruction* inst, absl::flat_hash_map<int64_t, int>& buffer_ids) {
+  auto add_source_buffer = [&](int64_t buffer_id) -> absl::Status {
+    if (buffer_ids.contains(buffer_id)) {
+      return InvalidArgument("buffer_id is used multiple times in operands: %d",
+                             buffer_id);
+    }
+    buffer_ids.insert({buffer_id, kNoResultIndex});
+    return absl::OkStatus();
+  };
+
+  // For operands, we verify:
+  //   Different operands should not have the same buffer_id.
+  //   Can't have nested buffers in tuple operands.
+  for (auto* operand : inst->operands()) {
+    const Shape& shape = operand->shape();
+    if (shape.is_buffer()) {
+      TF_RETURN_IF_ERROR(add_source_buffer(shape.buffer_id()));
+    }
+    if (shape.IsTuple()) {
+      TF_RETURN_IF_ERROR(VerifyNoBuffers(
+          shape, absl::StrCat("buffers nested in operands are not allowed: ",
+                              inst->ToString())));
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status VerifyBuffersInResults(
+    const HloInstruction* inst, absl::flat_hash_map<int64_t, int>& buffer_ids) {
+  auto add_dest_buffer = [&](int64_t buffer_id,
+                             int result_index) -> absl::Status {
+    if (!buffer_ids.contains(buffer_id)) {
+      return InvalidArgument(
+          "buffer_id is used in result but not in operands: %d", buffer_id);
+    }
+    auto it = buffer_ids.find(buffer_id);
+    if (it->second != kNoResultIndex) {
+      return InvalidArgument("buffer_id is used multiple times in result: %d",
+                             buffer_id);
+    }
+    buffer_ids[buffer_id] = result_index;
+    return absl::OkStatus();
+  };
+
+  // For results, we verify:
+  //   The buffer_id of a result should also be present in the operands.
+  //   Different results can't have the same buffer_id.
+  //   If a result is a tuple, a tuple element is either a buffer or the element
+  //     doesn't have any nested buffers inside.
+  const Shape& shape = inst->shape();
+  if (shape.is_buffer()) {
+    TF_RETURN_IF_ERROR(add_dest_buffer(shape.buffer_id(), 0));
+  }
+  if (shape.IsTuple()) {
+    for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
+      const Shape& subshape = shape.tuple_shapes(i);
+      if (subshape.is_buffer()) {
+        TF_RETURN_IF_ERROR(add_dest_buffer(subshape.buffer_id(), i));
+      }
+      if (subshape.IsTuple()) {
+        TF_RETURN_IF_ERROR(VerifyNoBuffers(
+            subshape,
+            absl::StrCat("buffers nested in results are not allowed: ",
+                         inst->ToString())));
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+// Verifies the use of buffers in a custom-call instruction:
+// - A buffer_id has to be used in an operand and a result.
+// - no two operands or results can have the same buffer_id.
+// - An SSA value with a valid buffer id can only be updated at most once.
+//
+absl::Status VerifyCustomCall(const HloInstruction* inst) {
+  // Record the buffer_ids found in operands and the corresponding result index
+  // with the same buffer_id.
+  absl::flat_hash_map<int64_t, int> buffer_ids;
+
+  TF_RETURN_IF_ERROR(VerifyBuffersInOperands(inst, buffer_ids));
+  TF_RETURN_IF_ERROR(VerifyBuffersInResults(inst, buffer_ids));
+
+  if (buffer_ids.empty()) {
+    return absl::OkStatus();
+  }
+
+  // Verify all buffer_ids in operands are also in results.
+  for (auto [buffer_id, result_index] : buffer_ids) {
+    if (result_index == kNoResultIndex) {
+      return InvalidArgument(
+          "buffer_id is used in operands but not in result: %d in %s",
+          buffer_id, inst->ToString());
+    }
+  }
+
+  // Ensure that an SSA buffer result can have at most users that writes the
+  // buffer.
+  for (auto [buffer_id, result_index] : buffer_ids) {
+    TF_RETURN_IF_ERROR(CheckWritersForBuffer(inst, buffer_id, result_index));
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status VerifyNoBuffers(const HloInstruction* inst,
+                             absl::string_view error_message) {
+  std::string error_message_with_instr =
+      std::string(error_message) + inst->ToString();
+  TF_RETURN_IF_ERROR(VerifyNoBuffers(inst->shape(), error_message_with_instr));
+  for (auto* operand : inst->operands()) {
+    TF_RETURN_IF_ERROR(
+        VerifyNoBuffers(operand->shape(), error_message_with_instr));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status VerifyNoBuffers(const HloModule& module) {
+  for (auto* comp : module.computations()) {
+    for (auto* inst : comp->instructions()) {
+      // Allow allocateBuffer but not pin or unpin.
+      if (inst->IsCustomCall("pin") || inst->IsCustomCall("unpin")) {
+        return InvalidArgument(
+            "custom-calls for pin or unpin aren't allowed: %s",
+            inst->ToString());
+      }
+      std::string error_message = "Seen buffers while no buffers are allowed:";
+      TF_RETURN_IF_ERROR(VerifyNoBuffers(inst, error_message));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status VerifyBuffers(const HloModule& module,
+                           const HloVerifierOpts& opts) {
+  if (!opts.AllowBuffers()) {
+    return VerifyNoBuffers(module);
+  }
+
+  std::string error_message =
+      "Seen buffers while buffers aren't allowed in this context:";
+
+  for (auto* comp : module.computations()) {
+    for (auto* inst : comp->instructions()) {
+      if (inst->IsCustomCall("pin")) {
+        TF_RETURN_IF_ERROR(VerifyPin(inst));
+      } else if (inst->IsCustomCall("allocateBuffer")) {
+        TF_RETURN_IF_ERROR(VerifyAllocateBuffer(inst));
+      } else if (inst->IsCustomCall("unpin")) {
+        TF_RETURN_IF_ERROR(VerifyUnpin(inst));
+      } else if (inst->opcode() == HloOpcode::kCustomCall) {
+        TF_RETURN_IF_ERROR(VerifyCustomCall(inst));
+      } else if (inst->opcode() == HloOpcode::kTuple) {
+        TF_RETURN_IF_ERROR(VerifyTuple(inst));
+      } else if (inst->opcode() == HloOpcode::kWhile) {
+        TF_RETURN_IF_ERROR(CheckWritersForBuffer(inst));
+      } else if (inst->opcode() == HloOpcode::kParameter) {
+        if (comp->IsEntryComputation()) {
+          TF_RETURN_IF_ERROR(VerifyNoBuffers(inst, error_message));
+        }
+        TF_RETURN_IF_ERROR(CheckWritersForBuffer(inst));
+      } else if (inst->opcode() != HloOpcode::kGetTupleElement) {
+        TF_RETURN_IF_ERROR(VerifyNoBuffers(inst, error_message));
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::StatusOr<bool> HloVerifier::Run(
@@ -3105,7 +3449,8 @@ absl::StatusOr<bool> HloVerifier::Run(
         VerifyChannels(*module, target_metadata_->GetVerifierOpts()));
     TF_RETURN_IF_ERROR(VerifyInstructionNameUnchanged(
         *module, target_metadata_->GetVerifierOpts()));
-
+    TF_RETURN_IF_ERROR(
+        VerifyBuffers(*module, target_metadata_->GetVerifierOpts()));
     std::unique_ptr<ShapeVerifier> shape_verifier =
         target_metadata_->GetVerifier();
     InstructionVerifier instruction_verifier(

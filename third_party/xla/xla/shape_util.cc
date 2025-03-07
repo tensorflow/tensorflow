@@ -290,6 +290,14 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   return shape;
 }
 
+/* static */ Shape ShapeUtil::MakeShapeForBuffer(
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    int64_t buffer_id) {
+  Shape shape = MakeShape(element_type, dimensions);
+  shape.set_buffer_id(buffer_id);
+  return shape;
+}
+
 /* static */ Shape ShapeUtil::MakeScalarShape(PrimitiveType element_type) {
   return MakeShape(element_type, {});
 }
@@ -735,6 +743,9 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     print_one(i);
   }
   printer->Append("]");
+  if (shape.is_buffer()) {
+    printer->Append(StrCat("{buffer_id=", shape.buffer_id(), "}"));
+  }
 }
 
 /* static */ void ShapeUtil::PrintHumanStringWithLayout(xla::Printer* printer,
