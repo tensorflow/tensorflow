@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstring>
 #include <limits>
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -91,6 +92,12 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node, int axis,
     case kTfLiteFloat32:
       TF_LITE_CONCATENATION(float);
       break;
+    case kTfLiteFloat16:
+      TF_LITE_CONCATENATION(Eigen::half);
+      break;
+    case kTfLiteBFloat16:
+      TF_LITE_CONCATENATION(Eigen::bfloat16);
+      break;
     case kTfLiteInt32:
       TF_LITE_CONCATENATION(int32);
       break;
@@ -142,10 +149,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
-                 input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
-                     input_type == kTfLiteInt8 || input_type == kTfLiteInt16 ||
-                     input_type == kTfLiteInt32 || input_type == kTfLiteInt64 ||
-                     input_type == kTfLiteBool || input_type == kTfLiteUInt32);
+                 input_type == kTfLiteFloat32 || input_type == kTfLiteFloat16 ||
+                     input_type == kTfLiteBFloat16 ||
+                     input_type == kTfLiteUInt8 || input_type == kTfLiteInt8 ||
+                     input_type == kTfLiteInt16 || input_type == kTfLiteInt32 ||
+                     input_type == kTfLiteInt64 || input_type == kTfLiteBool ||
+                     input_type == kTfLiteUInt32);
 
   // Check to see if we can calculate the output now.
   bool all_inputs_at_prepare = true;
