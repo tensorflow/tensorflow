@@ -52,6 +52,7 @@ cc_library(
     hdrs = ["gpu_codegen_test.h"],
     tags = tf_cuda_tests_tags(),
     deps = [
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla/hlo/testlib:filecheck",
@@ -100,6 +101,7 @@ xla_test(
         "//xla:error_spec",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -141,6 +143,7 @@ xla_cc_test(
         "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:xla_proto_cc",
         "//xla/service:gpu_plugin",
         "//xla/service:hlo_module_config",
         "//xla/tests:hlo_test_base",
@@ -156,6 +159,7 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
@@ -170,6 +174,7 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:executable",
@@ -228,6 +233,7 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
+        "//xla:xla_proto_cc",
         "//xla/hlo/parser:hlo_parser",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/strings",
@@ -248,6 +254,8 @@ xla_test(
         "//xla:error_spec",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:hlo_test_base",
@@ -265,6 +273,7 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
+        "//xla:xla_proto_cc",
         "//xla/hlo/testlib:verified_hlo_module",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
@@ -310,6 +319,7 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_googletest//:gtest_main",
     ],
@@ -327,6 +337,7 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
@@ -347,6 +358,7 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
         "@com_google_googletest//:gtest_main",
@@ -643,6 +655,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":gpu_codegen_test",
+        "//xla:xla_proto_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -653,6 +666,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
         "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest_main",
     ],
@@ -695,6 +709,7 @@ xla_test(
     ]),
     deps = [
         "//xla:error_spec",
+        "//xla:xla_proto_cc",
         "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
@@ -722,7 +737,7 @@ xla_test(
             "//xla/tsl/lib/core:status_test_util",
         ],
         ["@com_google_googletest//:gtest_main"],  # b/317293391
-    ),
+    ) + ["//xla:xla_proto_cc"],
 )
 
 xla_test(
@@ -764,6 +779,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
@@ -783,6 +799,7 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
@@ -798,6 +815,7 @@ cc_library(
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
     alwayslink = True,  # This library registers test cases at static initialization time.
 )
