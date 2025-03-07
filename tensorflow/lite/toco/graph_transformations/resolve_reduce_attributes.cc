@@ -44,9 +44,8 @@ bool ResolveAttributes(Model* model, T* op) {
   return true;
 }
 
-::tensorflow::Status ResolveReduceAttributes::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ResolveReduceAttributes::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   Operator* op = model->operators[op_index].get();
   switch (op->type) {
