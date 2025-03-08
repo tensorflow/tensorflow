@@ -583,8 +583,10 @@ std::vector<int64_t> HloSharding::TileOffsetForDevice(const Shape& shape,
   std::vector<int64_t> index = TileIndexForDevice(device);
   for (int64_t i = 0; i < index.size(); ++i) {
     const int64_t shape_dim = shape.dimensions(i);
-    index[i] = std::min(
-        index[i] * CeilOfRatio(shape_dim, tile_assignment_.dim(i)), shape_dim);
+    index[i] =
+        std::min(index[i] * ComputeShardedDimension(shape, shape_dim,
+                                                    tile_assignment_.dim(i)),
+                 shape_dim);
   }
   return index;
 }
@@ -977,6 +979,23 @@ OpSharding HloSharding::ToProto() const {
   return result;
 }
 
+int64_t HloSharding::ComputeShardedDimension(const Shape& shape, int64_t dim,
+                                             int64_t num_devices) const {
+  if (!shape.has_layout()) {
+    return CeilOfRatio<int64_t>(shape.dimensions(dim), num_devices);
+  }
+  std::vector<int64_t> physical_dims =
+      shape.has_layout() ? LayoutUtil::MakeLogicalToPhysical(shape.layout())
+                         : std::vector<int64_t>();
+  int64_t physical_dim = physical_dims[dim];
+  if (physical_dim < shape.layout().tiles(0).dimensions().size()) {
+    int64_t tile_dim = shape.layout().tiles(0).dimension(physical_dim);
+    return (shape.dimensions(dim) + tile_dim * num_devices - 1) /
+           (tile_dim * num_devices) * tile_dim;
+  }
+  return CeilOfRatio<int64_t>(shape.dimensions(dim), num_devices);
+}
+
 Shape HloSharding::TileShape(const Shape& shape) const {
   if (IsTileMaximal() || IsManual() || IsUnknown()) {
     return shape;
@@ -984,7 +1003,7 @@ Shape HloSharding::TileShape(const Shape& shape) const {
   Shape result_shape = shape;
   for (int64_t i = 0; i < TiledDataRank(); ++i) {
     result_shape.set_dimensions(
-        i, CeilOfRatio<int64_t>(shape.dimensions(i), tile_assignment_.dim(i)));
+        i, ComputeShardedDimension(shape, i, tile_assignment_.dim(i)));
   }
   return result_shape;
 }
@@ -998,11 +1017,10 @@ Shape HloSharding::TileShape(const Shape& shape, int64_t device) const {
   Shape result_shape = shape;
   for (int64_t i = 0; i < index.size(); ++i) {
     const int64_t shape_dim = shape.dimensions(i);
-    int64_t offset = std::min(
-        index[i] * CeilOfRatio(shape_dim, tile_assignment_.dim(i)), shape_dim);
-    int64_t limit = std::min(
-        (index[i] + 1) * CeilOfRatio(shape_dim, tile_assignment_.dim(i)),
-        shape_dim);
+    int64_t sharded_dim =
+        ComputeShardedDimension(shape, i, tile_assignment_.dim(i));
+    int64_t offset = std::min(index[i] * sharded_dim, shape_dim);
+    int64_t limit = std::min((index[i] + 1) * sharded_dim, shape_dim);
     result_shape.set_dimensions(i, limit - offset);
   }
   return result_shape;
