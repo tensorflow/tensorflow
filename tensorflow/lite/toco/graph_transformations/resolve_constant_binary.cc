@@ -191,9 +191,9 @@ bool EvaluateBinaryOperatorOnConstantInputs(Model* model,
 }
 }  // namespace
 
-::tensorflow::Status ResolveConstantBinaryOperator::Run(Model* model,
-                                                        std::size_t op_index,
-                                                        bool* modified) {
+absl::Status ResolveConstantBinaryOperator::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
   *modified = false;
   const auto binary_it = model->operators.begin() + op_index;
   const auto* binary_op = binary_it->get();
