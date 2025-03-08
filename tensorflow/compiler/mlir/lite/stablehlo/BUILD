@@ -291,9 +291,9 @@ cc_library(
         ":stablehlo_unfuse_batch_norm_pass",
         ":tf_stablehlo",
         ":unfold_splat_constant_pass",
-        ":unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/stablehlo:fold_broadcast_pass",
+        "//tensorflow/compiler/mlir/stablehlo:unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
@@ -385,33 +385,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "unfuse_batch_norm_pass",
-    srcs = [
-        "transforms/mhlo_passes/unfuse_batch_norm_pass.cc",
-    ],
-    hdrs = [
-        "transforms/stablehlo_passes.h",
-    ],
-    copts = [
-        "-Ithird_party",
-    ],
-    deps = [
-        ":passes_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
     ],
     alwayslink = 1,
 )
@@ -1129,11 +1102,11 @@ tf_cc_binary(
         ":tfl_legalize_chlo",
         ":tfl_legalize_hlo",
         ":tfl_stablehlo",
-        ":unfuse_batch_norm_pass",
         ":uniform_quantized_stablehlo_to_tfl_pass",
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",
         "//tensorflow/compiler/mlir/stablehlo:fold_broadcast_pass",
+        "//tensorflow/compiler/mlir/stablehlo:unfuse_batch_norm_pass",
     ],
 )
 
