@@ -39,7 +39,8 @@ namespace gpu {
 struct NcclRaggedAllToAllConfig {
   NcclCollectiveConfig config;
   int64_t num_total_updates = 1;
-  int64_t ragged_row_element_size = 1;
+  int64_t num_input_rows = 1;
+  int64_t num_row_elements = 1;
 };
 
 // Thunk that performs a NCCL-based Ragged-All-to-All among CUDA GPU-based
@@ -75,11 +76,15 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
  private:
   bool is_local() const;
   bool should_use_memcpy() const { return p2p_memcpy_enabled_ && is_local(); }
+  bool should_use_one_shot_kernel() const {
+    return one_shot_kernel_enabled_ && is_local();
+  }
 
   const NcclRaggedAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
   int64_t device_count_ = -1;
   const bool p2p_memcpy_enabled_;
+  const bool one_shot_kernel_enabled_;
 
   absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*,

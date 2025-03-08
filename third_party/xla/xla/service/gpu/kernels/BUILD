@@ -263,6 +263,71 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "ragged_all_to_all_kernel",
+    srcs = ["ragged_all_to_all_kernel.cc"],
+    hdrs = ["ragged_all_to_all_kernel.h"],
+    visibility = [":friends"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_stream_header",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ] + if_cuda_is_configured([
+        ":ragged_all_to_all_kernel_gpu",
+    ]),
+)
+
+cuda_library(
+    name = "ragged_all_to_all_kernel_gpu",
+    srcs = ["ragged_all_to_all_kernel.cu.cc"],
+    hdrs = ["ragged_all_to_all_kernel_common.h"],
+    deps = [
+        "@local_config_cuda//cuda:cuda_headers",  # build_cleaner: keep
+    ],
+)
+
+xla_test(
+    name = "ragged_all_to_all_kernel_test",
+    srcs = ["ragged_all_to_all_kernel_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":ragged_all_to_all_kernel",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_handle",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor/gpu:gpu_init",
+        "//xla/stream_executor/host:host_platform",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 #===--------------------------------------------------------------------------------------------===#
 # CUTLASS Gemm <-> xla::gpu::kernel::CustomKernel adaptor
 #===--------------------------------------------------------------------------------------------===#

@@ -91,5 +91,13 @@ TEST(HloInstruction, DeriveComputeTypeAttribute) {
   EXPECT_FALSE(instr1.has_frontend_attributes());
 }
 
+TEST(HloInstruction, DeriveComputeTypeAttribute) {
+  HloConstantInstruction instr0(ShapeUtil::MakeShape(U32, {3, 2}));
+  instr0.add_frontend_attribute(kXlaComputeTypeAttr, kXlaComputeTypeHost);
+  HloConstantInstruction instr1(ShapeUtil::MakeShape(U32, {3, 2}));
+  instr0.SetupDerivedInstruction(&instr1);
+  EXPECT_FALSE(instr1.has_frontend_attributes());
+}
+
 }  // namespace
 }  // namespace xla
