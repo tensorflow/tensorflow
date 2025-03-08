@@ -14,19 +14,29 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/import_tensorflow.h"
 
+#include <complex>
+#include <cstdint>
+#include <initializer_list>
+#include <limits>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_port.h"
 
 namespace toco {
