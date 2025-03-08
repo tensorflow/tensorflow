@@ -65,6 +65,7 @@ xla_cc_test(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@eigen_archive//:eigen3",
     ],
 )
 

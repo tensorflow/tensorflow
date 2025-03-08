@@ -23,6 +23,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "Eigen/ThreadPool"
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -39,6 +41,8 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
+
+#define EIGEN_USE_THREADS
 
 namespace xla::cpu {
 namespace {
@@ -205,6 +209,55 @@ TEST(NanoRtClientTest, CompileAndRunConditionalComputation) {
 
   ASSERT_TRUE(event.IsConcrete());
   EXPECT_EQ(r0_value, 8.0f);
+}
+
+TEST(NanoRtClientTest, CompileAndRunModelWithThreadPool) {
+  // Implements matmul(A, C) + matmul(B, C)
+  absl::string_view hlo = R"(
+    HloModule test_module
+
+ENTRY test_module {
+  first = f32[1024,4096] parameter(0)
+  second = f32[1024,4096] parameter(1)
+  mul_par = f32[4096,4096] parameter(2)
+  matmul_1 = f32[1024,4096] dot(first, mul_par), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  matmul_2 = f32[1024,4096] dot(second, mul_par), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT add = f32[1024,4096] add(matmul_1, matmul_2)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  XlaComputation computation(module->ToProto());
+
+  NanoRtClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+
+  std::vector<float> first(1024 * 4096, 1.0f);
+  std::vector<float> second(1024 * 4096, 1.0f);
+  std::vector<float> mul(4096 * 4096, 1.0f);
+  std::vector<float> result(1024 * 4096);
+
+  const float expected_result = 4096 * 2;
+
+  // Prepare executable parameters, results and temp storage.
+  Arguments arguments = {
+      {first.data(), static_cast<int64_t>(first.size())},
+      {second.data(), static_cast<int64_t>(second.size())},
+      {mul.data(), static_cast<int64_t>(mul.size())},
+  };
+  Results results = {{result.data(), static_cast<int64_t>(result.size())}};
+  NanoRtExecutable::ManagedTemp<32> temp(executable->temp_buffer_size());
+
+  Eigen::ThreadPool tp(2);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  NanoRtExecutable::ExecuteOptions execute_options;
+  execute_options.set_intra_op_thread_pool(&device);
+  auto event = executable->Execute(arguments, results, temp, execute_options);
+  tsl::BlockUntilReady(event);
+
+  EXPECT_TRUE(event.IsConcrete());
+  EXPECT_EQ(result[0], expected_result);
 }
 
 //===----------------------------------------------------------------------===//

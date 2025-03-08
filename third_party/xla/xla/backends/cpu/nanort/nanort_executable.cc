@@ -183,12 +183,19 @@ NanoRtExecutable::ExecuteOptions&
 NanoRtExecutable::ExecuteOptions::set_intra_op_thread_pool(
     const Eigen::ThreadPoolDevice* intra_op_thread_pool) {
   intra_op_thread_pool_ = intra_op_thread_pool;
+  task_runner_ = intra_op_thread_pool_ ? std::make_unique<ThreadPoolTaskRunner>(
+                                             intra_op_thread_pool_->getPool())
+                                       : nullptr;
   return *this;
 }
 
 const Eigen::ThreadPoolDevice*
 NanoRtExecutable::ExecuteOptions::intra_op_thread_pool() const {
   return intra_op_thread_pool_;
+}
+
+ThreadPoolTaskRunner* NanoRtExecutable::ExecuteOptions::task_runner() const {
+  return task_runner_.get();
 }
 
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
@@ -265,7 +272,7 @@ static se::DeviceMemoryBase ToDeviceMemory(
 
 tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
     absl::Span<const Argument> arguments, absl::Span<const Result> results,
-    PreallocatedTemp temp, ExecuteOptions options) {
+    PreallocatedTemp temp, const ExecuteOptions& options) {
   TraceMe trace([&] {
     return TraceMeEncode("NanoRtExecutable::Execute",
                          {{"name", executable_->module().name()}});
@@ -331,20 +338,21 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
 
   cpu::BufferAllocations allocations(std::move(buffers));
 
-  // Use the intra-op thread pool to offload thunk executor tasks.
-  auto* intra_op_thread_pool = options.intra_op_thread_pool();
-  ThreadPoolTaskRunner task_runner(
-      intra_op_thread_pool ? intra_op_thread_pool->getPool() : nullptr);
-
   Thunk::ExecuteParams execute_params = {
       executable->function_library(),
       &allocations,
       /*xfeed=*/nullptr,
-      intra_op_thread_pool,
-      &task_runner,
+      options.intra_op_thread_pool(),
+      options.task_runner(),
   };
 
-  return executable->thunks().Execute(execute_params);
+  auto execute_event = executable->thunks().Execute(execute_params);
+
+  if (options.task_runner()) {
+    tsl::BlockUntilReady(execute_event);
+  }
+
+  return execute_event;
 }
 
 size_t NanoRtExecutable::temp_buffer_size() const {
