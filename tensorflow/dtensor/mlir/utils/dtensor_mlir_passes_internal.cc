@@ -18,9 +18,8 @@ limitations under the License.
 #include <cstdlib>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/dtensor/mlir/create_dtensor_mlir_passes.h"
-
 
 namespace tensorflow {
 namespace dtensor {
