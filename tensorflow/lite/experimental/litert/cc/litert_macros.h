@@ -110,7 +110,12 @@ class ErrorStatusReturnHelper {
 
   // NOLINTBEGIN(*-explicit-constructor): This class transparently converts to
   // `LiteRtStatus` and `litert::Exepected`.
-  operator LiteRtStatus() const noexcept { return error_.Status(); }
+  operator LiteRtStatus() const noexcept {
+    if (!error_.Message().empty()) {
+      LITERT_LOG(LITERT_ERROR, "%s", error_.Message().data());
+    }
+    return error_.Status();
+  }
 
   template <class T>
   operator litert::Expected<T>() const noexcept {
