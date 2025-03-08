@@ -1858,11 +1858,8 @@ PJRT_Error* PJRT_Executable_DeserializeAndLoad(
 
 PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
     PJRT_LoadedExecutable_GetExecutable_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_LoadedExecutable_GetExecutable_Args",
-      PJRT_LoadedExecutable_GetExecutable_Args_STRUCT_SIZE, args->struct_size));
-  args->executable = new PJRT_Executable{args->loaded_executable->executable};
-  return nullptr;
+  return new PJRT_Error{
+      xla::Unimplemented("PJRT_LoadedExecutable_GetExecutable is deprecated.")};
 }
 
 // ---------------------------------- Buffers ----------------------------------
@@ -2618,12 +2615,12 @@ PJRT_Client::PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client)
       topology(pjrt::GetStatusOrTopologyDescription(*client)) {}
 
 PJRT_Executable::PJRT_Executable(
-    std::shared_ptr<xla::PjRtExecutable> executable)
+    std::unique_ptr<xla::PjRtExecutable> executable)
     : executable(std::move(executable)),
       fingerprint(this->executable->FingerprintExecutable()) {}
 
 PJRT_LoadedExecutable::PJRT_LoadedExecutable(
-    std::shared_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
+    std::unique_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
     : executable(std::move(executable)), client(client) {
   pjrt::PopulatePjrtExecutableAddressableDevices(this);
 }
