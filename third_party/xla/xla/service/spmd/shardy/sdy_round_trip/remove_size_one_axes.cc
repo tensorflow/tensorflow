@@ -105,14 +105,8 @@ TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
   llvm::copy_if(sharding.getReplicatedAxes(),
                 std::back_inserter(replicatedAxes), isNotSizeOne);
 
-  // Remove for inlined mesh.
-  mlir::Attribute meshOrRef = sharding.getMeshOrRef();
-  if (auto mesh = mlir::dyn_cast<MeshAttr>(meshOrRef)) {
-    meshOrRef = removeSizeOneAxes(mesh);
-  }
-
-  return TensorShardingAttr::get(sharding.getContext(), meshOrRef, dimShardings,
-                                 replicatedAxes);
+  return TensorShardingAttr::get(sharding.getContext(), sharding.getMeshOrRef(),
+                                 dimShardings, replicatedAxes);
 }
 
 void removeSizeOneManualAxes(ManualComputationOp manualComputationOp,
@@ -159,10 +153,6 @@ class SdyRoundTripRemoveSizeOneAxesPass
             removeSizeOneManualAxes(manualComputationOp, symbolTable);
           }
         });
-
-    for (auto meshOp : moduleOp.getOps<MeshOp>()) {
-      meshOp.setMeshAttr(removeSizeOneAxes(meshOp.getMesh()));
-    }
   }
 
   StringRef getArgument() const override {
