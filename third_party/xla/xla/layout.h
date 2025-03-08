@@ -46,7 +46,6 @@ class Tile {
   static Tile CreateFromProto(const TileProto& tile_proto) {
     return Tile(tile_proto.dimensions());
   }
-  TileProto ToProto() const;
   void SetProto(TileProto& tile_proto) const;
 
   bool operator==(const Tile& other) const {
@@ -66,11 +65,6 @@ class Tile {
 
   Tile& add_dimensions(int64_t value) {
     dimensions_.push_back(value);
-    return *this;
-  }
-
-  Tile& clear_dimensions() {
-    dimensions_.clear();
     return *this;
   }
 
@@ -109,23 +103,17 @@ class SplitConfig {
     return SplitConfig(split_config_proto.dimension(),
                        split_config_proto.split_indices());
   }
-  SplitConfigProto ToProto() const;
   void SetProto(SplitConfigProto& split_config_proto) const;
 
   bool operator==(const SplitConfig& other) const {
     return dimension() == other.dimension() &&
            split_indices() == other.split_indices();
   }
-  bool operator!=(const SplitConfig& other) const { return !(*this == other); }
 
   std::string ToString() const;
 
   // Returns the dimension that is split.
   int64_t dimension() const { return dimension_; }
-  SplitConfig& set_dimension(int64_t dimension) {
-    dimension_ = dimension;
-    return *this;
-  }
 
   // Returns the indices where splits occur.
   absl::Span<const int64_t> split_indices() const { return split_indices_; }
@@ -133,10 +121,6 @@ class SplitConfig {
   int64_t split_indices_size() const { return split_indices_.size(); }
   SplitConfig& add_split_indices(int64_t split_index) {
     split_indices_.push_back(split_index);
-    return *this;
-  }
-  SplitConfig& clear_split_indices() {
-    split_indices_.clear();
     return *this;
   }
 
@@ -285,10 +269,6 @@ class Layout {
   DimLevelType dim_level_type(int index) const {
     return dim_attributes_[index].dim_level_type;
   }
-  Layout& set_dim_level_type(int index, DimLevelType dim_level_type) {
-    dim_attributes_[index].dim_level_type = dim_level_type;
-    return *this;
-  }
   Layout& add_dim_level_type(DimLevelType dim_level_type) {
     while (n_dim_level_types_ >= dim_attributes_.size()) {
       dim_attributes_.push_back(DimInfo());
@@ -305,10 +285,6 @@ class Layout {
   // Methods for accessing the dim_unique array.
   int dim_unique_size() const { return n_dim_unique_; }
   bool dim_unique(int index) const { return dim_attributes_[index].dim_unique; }
-  Layout& set_dim_unique(int index, bool unique) {
-    dim_attributes_[index].dim_unique = unique;
-    return *this;
-  }
   Layout& add_dim_unique(bool unique) {
     while (n_dim_unique_ >= dim_attributes_.size()) {
       dim_attributes_.push_back(DimInfo());
@@ -322,10 +298,6 @@ class Layout {
   int dim_ordered_size() const { return n_dim_ordered_; }
   bool dim_ordered(int index) const {
     return dim_attributes_[index].dim_ordered;
-  }
-  Layout& set_dim_ordered(int index, bool ordered) {
-    dim_attributes_[index].dim_ordered = ordered;
-    return *this;
   }
   Layout& add_dim_ordered(bool ordered) {
     while (n_dim_ordered_ >= dim_attributes_.size()) {
@@ -414,9 +386,6 @@ class Layout {
   const SplitConfig& split_configs(int index) const {
     return split_configs_.at(index);
   }
-  SplitConfig* mutable_split_configs(int index) {
-    return &split_configs_.at(index);
-  }
   Layout& add_split_configs(const SplitConfig& split_config) {
     split_configs_.push_back(split_config);
     return *this;
@@ -438,11 +407,6 @@ class Layout {
   }
   void set_dynamic_shape_metadata_prefix_bytes(int64_t bytes) {
     dynamic_shape_metadata_prefix_bytes_ = bytes;
-  }
-
-  void Swap(Layout* other) {
-    using std::swap;
-    swap(*this, *other);
   }
 
   void Clear() { *this = Layout(); }
