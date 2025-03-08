@@ -283,7 +283,7 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
   coordination_service_ =
       new GrpcCoordinationServiceImpl(compute_pool, &builder);
 
-  profiler_service_ = profiler::CreateProfilerService();
+  profiler_service_ = tsl::profiler::CreateProfilerService();
   builder.RegisterService(profiler_service_.get());
 
   // Add any extra services to be started.
