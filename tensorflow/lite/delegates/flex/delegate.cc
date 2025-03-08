@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/delegate.h"
 
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <utility>
-#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/context_util.h"

@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/kernel.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <set>
@@ -22,6 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/node_def.pb.h"
