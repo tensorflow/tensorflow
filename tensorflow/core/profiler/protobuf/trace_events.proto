@@ -49,8 +49,6 @@ package tensorflow.profiler;
 
 import "tensorflow/core/profiler/protobuf/task.proto";
 
-option cc_enable_arenas = true;
-
 // A 'Trace' contains metadata for the individual traces of a system.
 message Trace {
   // The devices that this trace has information about. Maps from device_id to
@@ -102,7 +100,8 @@ message Resource {
   optional uint32 num_events = 3;
 }
 
-/* TraceEvent can represent four kinds of different events specified by
+/**
+ * TraceEvent can represent four kinds of different events specified by
  * go/trace-event-format
  * 1. Complete/Duration Event
  * 2. Flow Event
@@ -132,6 +131,7 @@ message TraceEvent {
     EVENT_TYPE_ASYNC = 3;
     EVENT_TYPE_COUNTER = 4;
   }
+
   optional EventType type = 14;
 
   // The id of the device that this event occurred on. The full dataset should
@@ -148,6 +148,7 @@ message TraceEvent {
   oneof name_oneof {
     // The name of this trace event.
     string name = 3;
+
     // Reference of the name in Trace's name_table (e.g. in SStable format).
     fixed64 name_ref = 12;
   }
@@ -185,6 +186,7 @@ message TraceEvent {
     FLOW_MID = 2;
     FLOW_END = 3;
   }
+
   optional FlowEntryType flow_entry_type = 10;
   optional uint32 flow_category = 11;
 
@@ -194,5 +196,6 @@ message TraceEvent {
   // serial> as unique ids, serial is optional and only required when timestamp
   // is not unique.
   optional uint32 serial = 13;
+
   reserved 4;
 }
