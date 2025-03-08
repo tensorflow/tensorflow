@@ -249,25 +249,6 @@ void ThreadPool::ParallelFor(int64_t total, int64_t cost_per_unit,
 }
 
 void ThreadPool::ParallelForWithWorkerId(
-    int64_t total, int64_t cost_per_unit,
-    const std::function<void(int64_t, int64_t, int)>& fn) {
-  CHECK_GE(total, 0);
-  CHECK_EQ(total, (int64_t)(Eigen::Index)total);
-
-  threadpool_device_->parallelFor(total,
-                                  Eigen::TensorOpCost(0, 0, cost_per_unit),
-                                  [this, &fn](int64_t start, int64_t limit) {
-                                    // ParallelFor may use the current thread to
-                                    // do some work synchronously. When calling
-                                    // CurrentThreadId() from outside of the
-                                    // thread pool, we get -1, so we can shift
-                                    // every id up by 1.
-                                    int id = CurrentThreadId() + 1;
-                                    fn(start, limit, id);
-                                  });
-}
-
-void ThreadPool::ParallelForWithWorkerId(
     int64_t total, const SchedulingParams& scheduling_params,
     const std::function<void(int64_t, int64_t, int)>& fn) {
   ParallelFor(total, scheduling_params,

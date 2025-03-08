@@ -67,7 +67,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
     auto partial_bins = partial_bins_t.matrix<bool>();
     partial_bins.setZero();
     thread_pool->ParallelForWithWorkerId(
-        arr.size(), 8 /* cost */,
+        arr.size(), thread::ThreadPool::SchedulingParams::Adaptive(8),
         [&](int64_t start_ind, int64_t limit_ind, int64_t worker_id) {
           for (int64_t i = start_ind; i < limit_ind; i++) {
             Tidx value = arr(i);
@@ -140,7 +140,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
       auto partial_bins = partial_bins_t.matrix<T>();
       partial_bins.setZero();
       thread_pool->ParallelForWithWorkerId(
-          arr_size, 8 /* cost */,
+          arr_size, thread::ThreadPool::SchedulingParams::Adaptive(8),
           [&](int64_t start_ind, int64_t limit_ind, int64_t worker_id) {
             if (weights.size()) {
               for (int64_t i = start_ind; i < limit_ind; i++) {
@@ -181,7 +181,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
     ThreadPool* thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
     thread_pool->ParallelForWithWorkerId(
-        num_rows, 8 /* cost */,
+        num_rows, thread::ThreadPool::SchedulingParams::Adaptive(8),
         [&](int64_t start_row, int64_t end_row, int64_t worker_id) {
           for (int64_t i = start_row; i < end_row; ++i) {
             for (int64_t j = 0; j < num_cols; ++j) {

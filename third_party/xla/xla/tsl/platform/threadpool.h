@@ -196,7 +196,8 @@ class ThreadPool {
       int64_t block_size, int64_t total,
       const std::function<void(int64_t, int64_t)>& fn);
 
-  // Shards the "total" units of work. For more details, see "ParallelFor".
+  // Runs `fn` on `total` units of work in parallel. The number of parallel
+  // tasks processing the work is determined by the scheduling parameters.
   //
   // The function is passed a thread_id between 0 and NumThreads() *inclusive*.
   // This is because some work can happen on the caller thread while the threads
@@ -211,14 +212,6 @@ class ThreadPool {
   // be used for small workloads. If each buffer is expensive, the buffers
   // should be stored in an array initially filled with null, and a buffer
   // should be allocated by fn the first time that the id is used.
-  ABSL_DEPRECATED(
-      "Use ParallelForWithWorkerId with a SchedulingParams argument")
-  void ParallelForWithWorkerId(
-      int64_t total, int64_t cost_per_unit,
-      const std::function<void(int64_t begin, int64_t end, int thread_id)>& fn);
-
-  // Similar to ParallelForWithWorkerId above, but takes the specified
-  // scheduling strategy into account.
   void ParallelForWithWorkerId(
       int64_t total, const SchedulingParams& scheduling_params,
       const std::function<void(int64_t begin, int64_t end, int thread_id)>& fn);
