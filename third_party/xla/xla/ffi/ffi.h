@@ -137,6 +137,8 @@ class AnyBuffer {
     return se::DeviceMemoryBase(untyped_data(), size_bytes());
   }
 
+  const XLA_FFI_Buffer* buf() const { return buf_; }
+
  private:
   const XLA_FFI_Buffer* buf_;
 };
