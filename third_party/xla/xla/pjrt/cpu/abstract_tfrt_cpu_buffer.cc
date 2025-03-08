@@ -1033,6 +1033,12 @@ AbstractAsyncHostToHostMemoryTransferManager::FillRawDataToSubBuffer(
   return absl::OkStatus();
 }
 
+void AbstractAsyncHostToHostMemoryTransferManager::MarkBufferCompletion(
+    int buffer_index) {
+  absl::MutexLock l(&mu_);
+  last_transfer_finished_[buffer_index] = true;
+}
+
 void AbstractAsyncHostToHostMemoryTransferManager::SetBufferError(
     int buffer_index, absl::Status error) {
   absl::MutexLock l(&mu_);
