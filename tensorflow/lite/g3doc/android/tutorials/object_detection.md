@@ -147,7 +147,7 @@ convert data such as images, into a tensor data format that can be processed by
 the model you are using.
 
 The example app uses the TensorFlow Lite
-[Task library for vision](../../inference_with_metadata/task_library/overview#supported_tasks)
+[Task library for vision](../../inference_with_metadata/task_library/overview.md#supported-tasks)
 to enable execution of the object detection machine learning model. The
 following instructions explain how to add the required library dependencies to
 your own Android app project.
@@ -263,7 +263,7 @@ device, such as Graphics Processing Units (GPUs), Tensor Processing Units
 TensorFlow Lite models is recommended, but not required.
 
 The object detector is initialized using the current settings on the thread that
-is using it. You can use CPU and [NNAPI](../../android/delegates/nnapi)
+is using it. You can use CPU and [NNAPI](../../android/delegates/nnapi.md)
 delegates with detectors that are created on the main thread and used on a
 background thread, but the thread that initialized the detector must use the GPU
 delegate.
@@ -290,7 +290,7 @@ when (currentDelegate) {
 ```
 
 For more information about using hardware acceleration delegates with TensorFlow
-Lite, see [TensorFlow Lite Delegates](../../performance/delegates).
+Lite, see [TensorFlow Lite Delegates](../../performance/delegates.md).
 
 ## Prepare data for the model
 
