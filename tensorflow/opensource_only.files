@@ -314,10 +314,6 @@ tf_staging/third_party/py/python_init_rules.bzl:
 tf_staging/third_party/py/python_init_toolchains.bzl:
 tf_staging/third_party/py/python_repo.bzl:
 tf_staging/third_party/pybind11.BUILD:
-tf_staging/third_party/remote_config/BUILD.tpl:
-tf_staging/third_party/remote_config/common.bzl:
-tf_staging/third_party/remote_config/remote_platform_configure.bzl:
-tf_staging/third_party/repo.bzl:
 tf_staging/third_party/six.BUILD:
 tf_staging/third_party/snappy.BUILD:
 tf_staging/third_party/spirv_llvm_translator/spirv_llvm_translator.BUILD:
