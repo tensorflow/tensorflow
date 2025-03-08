@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_TFL_QUANTIZATION_DRIVER_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_TFL_QUANTIZATION_DRIVER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_COMMON_QUANTIZATION_LIB_QUANTIZATION_DRIVER_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_COMMON_QUANTIZATION_LIB_QUANTIZATION_DRIVER_H_
 
 #include <memory>
 #include <utility>
@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 
 // The state for each op result during the quantization parameters propagation.
 struct QuantState {
@@ -380,7 +380,7 @@ void ApplyQuantizationParamsPropagation(
     bool infer_tensor_ranges, bool legacy_float_scale,
     quant::QDQConversionMode qdq_conversion_mode);
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_TFL_QUANTIZATION_DRIVER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_COMMON_QUANTIZATION_LIB_QUANTIZATION_DRIVER_H_

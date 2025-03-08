@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/lite/transforms/tfl_quantization_driver.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_driver.h"
 
 #include <cmath>
 #include <cstdint>
@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 namespace {
 
 constexpr int32_t kBiasMax = std::numeric_limits<int32_t>::max() / 2;
@@ -959,5 +959,5 @@ void ApplyQuantizationParamsPropagation(
       .Run();
 }
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir
