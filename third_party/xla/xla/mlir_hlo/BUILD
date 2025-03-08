@@ -1083,6 +1083,7 @@ gentbl_cc_library(
 cc_library(
     name = "stablehlo_extension_passes",
     srcs = [
+        "stablehlo_ext/transforms/chlo_preserve_high_level_ops.cpp",
         "stablehlo_ext/transforms/chlo_recompose_ops.cpp",
         "stablehlo_ext/transforms/sdy_refine_shapes.cpp",
         "stablehlo_ext/transforms/stablehlo_add_quant_dequant_conv.cpp",
