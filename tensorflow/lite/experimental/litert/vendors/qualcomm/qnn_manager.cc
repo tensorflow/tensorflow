@@ -274,7 +274,7 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
     setenv("ADSP_LIBRARY_PATH", shared_library_dir->data(), /*overwrite=*/1);
   }
 
-  auto lib_qnn_htp_so_path = kLibQnnHtpSo;
+  std::string lib_qnn_htp_so_path = kLibQnnHtpSo;
   // If shared_library_dir is provided, we will try to find the libQnnHtp.so
   // in the directory.
   if (shared_library_dir.has_value()) {
@@ -282,7 +282,7 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
     litert::internal::FindLiteRtSharedLibsHelper(
         shared_library_dir->data(), kLibQnnHtpSo, /*full_match=*/true, results);
     if (!results.empty()) {
-      lib_qnn_htp_so_path = results[0].c_str();
+      lib_qnn_htp_so_path = results[0];
       shared_library_dir =
           std::filesystem::path(lib_qnn_htp_so_path).parent_path();
     }
