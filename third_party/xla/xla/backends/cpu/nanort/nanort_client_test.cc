@@ -289,7 +289,7 @@ static void BM_PjRtAddScalars(benchmark::State& state) {
   auto computation = CreateAddScalarsComputation();
 
   CompileOptions compile_options;
-  auto executable = (*client)->Compile(*computation, compile_options);
+  auto executable = (*client)->CompileAndLoad(*computation, compile_options);
 
   // Storage for executable arguments.
   alignas(32) float p0_value = 1.0f;
@@ -323,7 +323,7 @@ static void BM_PjRtFibonacci(benchmark::State& state) {
   auto computation = CreateFibonacciComputation();
 
   CompileOptions compile_options;
-  auto executable = (*client)->Compile(*computation, compile_options);
+  auto executable = (*client)->CompileAndLoad(*computation, compile_options);
 
   // Storage for executable arguments.
   alignas(32) float p0_value = 1.0f;
