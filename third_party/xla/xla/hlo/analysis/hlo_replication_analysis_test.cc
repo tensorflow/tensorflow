@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
