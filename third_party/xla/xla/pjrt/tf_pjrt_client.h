@@ -244,13 +244,13 @@ class TfPjRtClient : public PjRtClient {
       const override {
     return wrapped_->GetHloCostAnalysis();
   }
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override {
-    return WrapExecutable(wrapped_->Compile(computation, options));
+    return WrapExecutable(wrapped_->CompileAndLoad(computation, options));
   }
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) override {
-    return WrapExecutable(wrapped_->Compile(std::move(module), options));
+    return WrapExecutable(wrapped_->CompileAndLoad(std::move(module), options));
   }
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
