@@ -2666,7 +2666,7 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_2ReplicasPerGroups) {
     output_offsets = s64[32] parameter(4)
     recv_sizes = s64[32] parameter(5)
     ROOT ra2a = f32[8192,1024] ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes), channel_id=3,
+      input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,4},{1,5},{2,6},{3,7}}
   })";
 
