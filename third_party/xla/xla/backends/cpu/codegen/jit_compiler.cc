@@ -188,7 +188,8 @@ absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
   // Set up module for codegen for the target machine at hand.
   module.withModuleDo([&](llvm::Module& m) {
     m.setDataLayout(target_machine_->createDataLayout());
-    m.setTargetTriple(target_machine_->getTargetTriple().getTriple());
+    m.setTargetTriple(
+        llvm::Triple(target_machine_->getTargetTriple().getTriple()));
   });
 
   // Add module to the selected dynamic library.
