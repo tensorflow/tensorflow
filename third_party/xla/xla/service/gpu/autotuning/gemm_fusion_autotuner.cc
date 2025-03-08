@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <atomic>
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
