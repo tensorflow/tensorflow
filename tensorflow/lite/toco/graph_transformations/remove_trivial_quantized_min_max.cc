@@ -71,9 +71,9 @@ bool IsTrivialMinMax(GraphTransformation* transformation, const Model& model,
 
 // Attempts to remove min/max functions if the quantization params indicate that
 // the representable values fall inside the clip range.
-::tensorflow::Status RemoveTrivialQuantizedMinMax::Run(Model* model,
-                                                       std::size_t op_index,
-                                                       bool* modified) {
+absl::Status RemoveTrivialQuantizedMinMax::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* op = it->get();
