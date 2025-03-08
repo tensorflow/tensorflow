@@ -34,6 +34,7 @@ std::vector<OpWrapper> BuildEmbeddingLookupOp(
     // TODO: do not cast
     auto* int8_data = reinterpret_cast<const std::int8_t*>(
         table_tensor.GetStaticTensorData());
+    int16_data.reserve(data_len);
     for (int i = 0; i < data_len; ++i) {
       int16_data.emplace_back(static_cast<std::int16_t>(int8_data[i]));
     }
