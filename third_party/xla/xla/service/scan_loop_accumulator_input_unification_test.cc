@@ -38,7 +38,7 @@ using ScanLoopAccumulatorInputUnificationTest = HloTestBase;
 HloInstruction* GetTopLevelWhileInstruction(HloModule* module) {
   for (HloInstruction* instr :
        module->entry_computation()->MakeInstructionPostOrder()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
+    if (HloPredicateIsOp<HloOpcode::kWhile>(instr)) {
       return instr;
     }
   }
@@ -122,7 +122,7 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest, UnifyAccumulatorInput) {
   // Index 2 and 3 of the while are replaced with the input arrays.
   for (HloInstruction* instr :
        module->entry_computation()->MakeInstructionPostOrder()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
+    if (HloPredicateIsOp<HloOpcode::kWhile>(instr)) {
       EXPECT_EQ(instr->while_init()->operand(2)->opcode(),
                 HloOpcode::kConstant);
     }
@@ -224,7 +224,7 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest, UnifyAccumulatorInput2) {
   // Index 2 and 3 of the while are replaced with the input arrays.
   for (HloInstruction* instr :
        module->entry_computation()->MakeInstructionPostOrder()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
+    if (HloPredicateIsOp<HloOpcode::kWhile>(instr)) {
       EXPECT_EQ(instr->while_init()->operand(2)->opcode(),
                 HloOpcode::kConstant);
       EXPECT_EQ(instr->while_init()->operand(3)->opcode(),
@@ -466,7 +466,7 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest, MultipleUsersInput) {
   // Only index 2 is replaced with the array.
   for (HloInstruction* instr :
        module->entry_computation()->MakeInstructionPostOrder()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
+    if (HloPredicateIsOp<HloOpcode::kWhile>(instr)) {
       EXPECT_EQ(instr->while_init()->operand(2)->opcode(),
                 HloOpcode::kConstant);
     }
