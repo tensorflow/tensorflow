@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iterator>
-#include <memory>
 #include <utility>
 
 #include "stablehlo/dialect/StablehloOps.h"
