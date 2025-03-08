@@ -88,7 +88,6 @@ py_strict_test(
         "no_oss",
     ],
     deps = [
-        ":_extension",
         ":testlib",
         "//third_party/py/numpy",
         "//xla/python:xla_extension",

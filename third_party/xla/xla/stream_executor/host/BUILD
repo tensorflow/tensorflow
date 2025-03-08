@@ -82,7 +82,6 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_common",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:env",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",

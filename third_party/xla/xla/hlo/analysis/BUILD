@@ -410,7 +410,6 @@ xla_cc_test(
     deps = [
         ":hlo_alias_analysis",
         ":hlo_ordering",
-        "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -419,7 +418,6 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/transforms/simplifiers:flatten_call_graph",
-        "//xla/hlo/utils:hlo_matchers",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_value",
         "//xla/tsl/lib/core:status_test_util",

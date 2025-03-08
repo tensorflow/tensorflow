@@ -92,13 +92,10 @@ cc_library(
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
@@ -173,9 +170,7 @@ cc_library(
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -192,8 +187,6 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
@@ -224,7 +217,6 @@ cc_library(
         "//xla/backends/cpu/collectives:in_process_collectives",
         "//xla/ffi:execution_context",
         "//xla/runtime:buffer_use",
-        "//xla/service:buffer_assignment",
         "//xla/service:global_device_id",
         "//xla/service/cpu:cpu_executable_run_options",
         "//xla/service/cpu:cpu_runtime",
@@ -233,7 +225,6 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/profiler/lib:traceme",
@@ -302,7 +293,6 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 
@@ -344,12 +334,10 @@ cc_library(
     deps = [
         ":thunk",
         ":thunk_executor",
-        "//xla/service:buffer_assignment",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -397,10 +385,8 @@ cc_library(
         ":collective_thunk",
         ":thunk",
         "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/core/collectives:communicator",
-        "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
@@ -411,7 +397,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -428,7 +413,6 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -466,24 +450,17 @@ cc_library(
         ":thunk",
         "//xla:executable_run_options",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -511,14 +488,9 @@ xla_cc_test(
         ":convolution_thunk",
         ":convolution_thunk_test_util",
         ":thunk",
-        ":thunk_testlib",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla/service:buffer_assignment",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -535,7 +507,6 @@ cc_library(
         ":thunk",
         "//xla:shape_util",
         "//xla:util",
-        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/core/collectives:communicator",
         "//xla/service:buffer_assignment",
@@ -550,7 +521,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -576,7 +546,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -592,7 +561,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/core/collectives:communicator",
-        "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
@@ -603,7 +571,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -634,7 +601,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -701,7 +667,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -759,7 +724,6 @@ cc_library(
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -814,7 +778,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -859,7 +822,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -898,7 +860,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -942,7 +903,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -997,7 +957,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -1068,7 +1027,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -1101,7 +1059,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -1152,7 +1109,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -1198,7 +1154,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -1281,14 +1236,10 @@ cc_library(
     deps = [
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/math:math_util",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -1300,16 +1251,11 @@ xla_cc_test(
         ":work_queue",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
 )

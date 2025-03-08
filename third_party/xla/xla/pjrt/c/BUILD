@@ -379,7 +379,6 @@ cc_library(
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:gpu_topology",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
-        "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # To register GPU AOT compiler
         "//xla/python:custom_call_batch_partitioner",
         "//xla/python:custom_partition_callback",
         "//xla/python:inspect_sharding",  # To register "InspectSharding" custom partitioning handler.
@@ -513,17 +512,13 @@ xla_cc_test(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_wrapper_impl",
         "//xla:shape_util",
-        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:version",
@@ -536,7 +531,6 @@ xla_cc_test(
     deps = [
         ":pjrt_c_api_cpu",
         ":pjrt_c_api_test_common",
-        ":pjrt_c_api_wrapper_impl",
         "@com_google_googletest//:gtest_main",
     ],
 )
