@@ -338,7 +338,7 @@ class OpNode {
       // the Tensorflow tensor.
       CopyShapeAndType(context, *tf_tensor, tensor);
     }
-    tensorflow::StringPiece t_data = tf_tensor->tensor_data();
+    absl::string_view t_data = tf_tensor->tensor_data();
     if (tf_tensor->NumElements() != NumElements(tensor) ||
         tf_tensor->TotalBytes() != tensor->bytes) {
       TF_LITE_KERNEL_LOG(context,
@@ -819,7 +819,7 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
                          NumElements(tensor));
       return kTfLiteError;
     }
-    tensorflow::StringPiece t_data = tf_tensor.tensor_data();
+    absl::string_view t_data = tf_tensor.tensor_data();
     memcpy(tensor->data.raw, t_data.data(), t_data.size());
   }
 
