@@ -64,7 +64,9 @@ absl::Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
         "SavedModel checkpoint object graph was not the correct type.");
   }
 
-  if (!object_graph->ParseFromString(object_graph_tensor.scalar<tstring>()())) {
+  const tstring* object_graph_string = reinterpret_cast<const tstring*>(
+      object_graph_tensor.tensor_data().data());
+  if (!object_graph->ParseFromString(*object_graph_string)) {
     return absl::Status(
         absl::StatusCode::kFailedPrecondition,
         "SavedModel checkpoint object graph could not be deserialized.");

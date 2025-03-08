@@ -2560,7 +2560,8 @@ versions {
 bool IsCUDATensor(const Tensor& t) {
 #ifdef GOOGLE_CUDA
   cudaPointerAttributes attributes;
-  cudaError_t err = cudaPointerGetAttributes(&attributes, t.data());
+  cudaError_t err =
+      cudaPointerGetAttributes(&attributes, t.tensor_data().data());
   if (err == cudaErrorInvalidValue) return false;
   CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
   return (attributes.type == cudaMemoryTypeDevice);
