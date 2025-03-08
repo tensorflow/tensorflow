@@ -79,9 +79,11 @@ TEST(AdapterTest, CompileSuccess) {
   LITERT_LOG(LITERT_INFO, "buffer_str size: %d", buffer_str.size());
   LITERT_LOG(LITERT_INFO, "Compling model...");
   absl::string_view soc_model = "P25";
+  litert::google_tensor::Flags flags;
+  flags.clear();
   std::string compiled_code;
   auto compile_status = adapter_result.Value()->api().compile(
-      buffer_str, soc_model, &compiled_code);
+      buffer_str, soc_model, flags, &compiled_code);
   ASSERT_OK(compile_status);
   ASSERT_FALSE(compiled_code.empty());
 }

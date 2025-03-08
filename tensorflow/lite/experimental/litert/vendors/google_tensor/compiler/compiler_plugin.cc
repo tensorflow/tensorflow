@@ -19,6 +19,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -226,13 +227,28 @@ void LiteRtDestroyCompiledResult(LiteRtCompiledResult compiled_result) {
 //
 
 // Plugins can hold state.
-struct LiteRtCompilerPluginT {};
+struct LiteRtCompilerPluginT {
+  using Flag = std::pair<std::string, std::string>;
+  std::vector<Flag> flags;
+};
 
 LiteRtStatus LiteRtCompilerPluginSetFlags(LiteRtCompilerPlugin compiler_plugin,
                                           LiteRtParamIndex num_flags,
                                           const char** keys,
                                           const char** values) {
-  // IMPLEMENT ME
+  auto& flags = compiler_plugin->flags;
+  if (flags.size() != 0) {
+    LITERT_LOG(LITERT_INFO, "Overwriting existing flags");
+    flags.clear();
+  }
+  flags.resize(num_flags);
+  for (int i = 0; i < num_flags; ++i) {
+    auto& flag = flags[i];
+    flag.first = std::string(keys[i]);
+    flag.second = std::string(values[i]);
+    LITERT_LOG(LITERT_INFO, "Setting Flag: %s = %s", flag.first.c_str(),
+               flag.second.c_str());
+  }
   return kLiteRtStatusOk;
 }
 
@@ -315,11 +331,11 @@ LiteRtStatus LiteRtCompilerPluginCompile(
 
   // Compile model.
   LITERT_LOG(LITERT_INFO, "%s", "Compiling model...");
-  // TODO(abhirs): add support for multiple bytecodes
+  // TODO(b/398984678): add support for multiple bytecodes
   absl::string_view soc_model_view(soc_model);
   std::string compiled;
   auto compile_status = adapter_result.Value()->api().compile(
-      buffer_str, soc_model_view, &compiled);
+      buffer_str, soc_model_view, compiler_plugin->flags, &compiled);
 
   if (!compile_status.ok()) {
     LITERT_LOG(
@@ -335,7 +351,8 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   result->byte_code = std::string(compiled.data(), compiled.size());
   // Generate per_op_data.
   for (auto i = 0; i < num_partitions; ++i) {
-    result->per_op_data.emplace_back(absl::StrFormat("Partition_%d", i));
+    result->per_op_data.emplace_back(
+        absl::StrFormat("Partition_%d", static_cast<int>(i)));
   }
   *compiled_result = result.release();
   return kLiteRtStatusOk;
