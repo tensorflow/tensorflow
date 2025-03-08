@@ -427,9 +427,9 @@ class UniformDequantizeFunctionCallPattern {
 // %4 = stablehlo.uniform_dequantize %3  // Dequantize the output.
 // ```
 class ComposeUniformQuantizedConvolutionOp
-    : public OpRewritePattern<stablehlo::ConvolutionOp> {
+    : public OpRewritePattern<stablehlo::ConvolutionOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<stablehlo::ConvolutionOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(stablehlo::ConvolutionOp op) const final {
     // Verify operands' types.
@@ -881,9 +881,9 @@ class ComposeUniformQuantizedConvolutionOp
 // cast isn't present, the filter constant (%3) should be i8 quantized values
 // disguised in f32.
 class ComposeUniformQuantizedDotGeneralOp
-    : public OpRewritePattern<stablehlo::DotGeneralOp> {
+    : public OpRewritePattern<stablehlo::DotGeneralOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
   LogicalResult match(stablehlo::DotGeneralOp op) const final {
     auto input_i8_to_f32_convert_op =
         TryCast<stablehlo::ConvertOp>(op.getOperand(0).getDefiningOp(),
@@ -1304,9 +1304,9 @@ class ComposeUniformQuantizedDotGeneralOp
 // %5 = stablehlo.uniform_dequantize %4  // Dequantize the output.
 // ```
 class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
-    : public OpRewritePattern<stablehlo::DotGeneralOp> {
+    : public OpRewritePattern<stablehlo::DotGeneralOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(stablehlo::DotGeneralOp op) const final {
     // q1 - z1
