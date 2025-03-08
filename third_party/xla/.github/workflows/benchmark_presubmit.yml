@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-name: Performance Regression Presubmit
+name: Presubmit Benchmarks
 permissions:
   contents: read
 on:
@@ -46,21 +46,30 @@ jobs:
             pool: "linux-x86-n2-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
             pretty_name: "XLA Linux x86 CPU 16 vcpu Presubmit",
-            bazel_arch_dir: "k8-opt"
+            bazel_arch_dir: "k8-opt",
+            platform: "CPU"
           },
           {
             pool: "linux-arm64-c4a-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
             pretty_name: "XLA Linux ARM64 CPU 16 vcpu Presubmit",
-            bazel_arch_dir: "aarch64-opt"
+            bazel_arch_dir: "aarch64-opt",
+            platform: "CPU"
           },
           {
             pool: "linux-x86-n2-128",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
             pretty_name: "XLA Linux x86 CPU 128 vcpu Presubmit",
-            bazel_arch_dir: "k8-opt"
-          }
-          # TODO(juliagmt): add GPU pools
+            bazel_arch_dir: "k8-opt",
+            platform: "CPU"
+          },
+          {
+            pool: "linux-x86-g2-16-l4-1gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 GPU T4 16 vcpu Presubmit",
+            bazel_arch_dir: "k8-opt",
+            platform: "GPU"
+          },
         ]
     name: ${{ matrix.job_info.pretty_name }}
     runs-on: ${{ matrix.job_info.pool }}
@@ -84,17 +93,24 @@ jobs:
         run: |
           ./build_tools/ci/build.py --build="${{ matrix.job_info.pretty_name }}_github_actions"
 
-      # TODO(juliagmt): replace with a more representative hlo
-      - name: Run xla/tests/fuzz/rand_000001.hlo
+      # Run the corresponding HLO tests based on platform
+      - name: Run HLO tests
         run: |
           bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"  # Get directory from matrix
-          binary_path="./bazel-out/${bazel_arch_dir}/bin/xla/tools/run_hlo_module"
-          echo "Running test with binary: $binary_path"
-          if [[ -x "$binary_path" ]]; then
-            echo "Running test with binary: $binary_path"
-            $binary_path --input_format=hlo --reference_platform="" --platform=CPU xla/tests/fuzz/rand_000001.hlo
+          binary_path=""
+          test_hlo_file=""
+
+          if [[ ${{ matrix.job_info.platform }} == "CPU" ]]; then
+            binary_path="./bazel-out/${bazel_arch_dir}/bin/xla/tools/run_hlo_module"
+            test_hlo_file="xla/tools/hlo_opt/tests/cpu_hlo.hlo"
+            echo "Running CPU test with binary: $binary_path"
+            $binary_path --input_format=hlo --reference_platform="" --platform="${{ matrix.job_info.platform }}" $test_hlo_file
+          elif [[ ${{ matrix.job_info.platform }} == "GPU" ]]; then
+            binary_path="./bazel-out/${bazel_arch_dir}/bin/xla/tools/multihost_hlo_runner/hlo_runner_main_gpu"
+            test_hlo_file="xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo"
+            echo "Running GPU test with binary: $binary_path"
+            $binary_path --device_type=gpu --log_output=True --use_spmd_partitioning --profile_execution=True  $test_hlo_file
           else
-            echo "Error: Binary not found at expected location: $binary_path"
+            echo "Unsupported platform: ${{ matrix.job_info.platform }}"
             exit 1
           fi
-      # TODO(juliagmt): add GPU tests
