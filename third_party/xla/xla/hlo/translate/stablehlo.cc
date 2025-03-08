@@ -22,8 +22,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SMLoc.h"
+#include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
@@ -31,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "stablehlo/dialect/Register.h"
@@ -43,7 +48,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -142,7 +147,7 @@ absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
                                         xla::HloProto* hlo_proto) {
   if (!module) return absl::InvalidArgumentError("Module is null");
 
-  TF_RETURN_IF_ERROR(StablehloToMhlo(module, /*run_canonicalizer=*/true));
+  TF_RETURN_IF_ERROR(StablehloToMhlo(module, /*run_canonicalizer=*/false));
 
   mlir::MlirToHloConversionOptions options;
   options.return_tuple = false;
@@ -167,6 +172,23 @@ absl::Status ConvertStablehloWithManyArgsToHloProto(mlir::ModuleOp module,
   module->removeAttr("mhlo.xla_entry_computation_parameter_tiles");
   TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloTextToHLO(
+    std::unique_ptr<llvm::MemoryBuffer> stablehlo_text) {
+  auto source_mgr = std::make_shared<llvm::SourceMgr>();
+  source_mgr->AddNewSourceBuffer(std::move(stablehlo_text), llvm::SMLoc());
+  mlir::DialectRegistry registry;
+  RegisterMlirToHloDependentDialects(registry);
+  registry.insert<mlir::func::FuncDialect>();
+  mlir::MLIRContext context(registry);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceFile<mlir::ModuleOp>(*source_mgr, &context);
+  if (!module) {
+    return absl::InvalidArgumentError(
+        "Failed to parse StableHLO text: could not create MLIR ModuleOp.");
+  }
+  return ConvertStablehloToHlo(module.get());
 }
 
 }  // namespace xla
