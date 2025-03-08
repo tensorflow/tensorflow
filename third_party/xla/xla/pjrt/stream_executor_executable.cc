@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "xla/pjrt/stream_executor_executable.h"
 
-#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/compiler.h"
 #include "tsl/platform/statusor.h"
