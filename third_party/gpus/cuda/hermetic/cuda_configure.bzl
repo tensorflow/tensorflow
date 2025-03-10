@@ -26,7 +26,13 @@ load(
     "to_list_of_strings",
 )
 load(
+    "//third_party/gpus/cuda/hermetic:cuda_redist_versions.bzl",
+    "PTX_VERSION_DICT",
+)
+load(
     "//third_party/remote_config:common.bzl",
+    "execute",
+    "get_bash_bin",
     "get_cpu_value",
     "get_host_environ",
     "realpath",
@@ -97,6 +103,18 @@ def _verify_build_defines(params):
 def get_cuda_version(repository_ctx):
     return (get_host_environ(repository_ctx, HERMETIC_CUDA_VERSION) or
             get_host_environ(repository_ctx, TF_CUDA_VERSION))
+
+def _is_clang(cc):
+    return "clang" in cc
+
+def _get_clang_major_version(repository_ctx, cc):
+    """Gets the major version of the clang at `cc`"""
+    cmd = "echo __clang_major__ | \"%s\" -E -P -" % cc
+    result = execute(
+        repository_ctx,
+        [get_bash_bin(repository_ctx), "-c", cmd],
+    )
+    return result.stdout.strip()
 
 def enable_cuda(repository_ctx):
     """Returns whether to build with CUDA support."""
@@ -182,8 +200,44 @@ def _compute_capabilities(repository_ctx):
 
     return capabilities
 
-def _compute_cuda_extra_copts(compute_capabilities, is_clang):
-    copts = ["--no-cuda-include-ptx=all"] if is_clang else []
+def _ptx_version_to_int(version):
+    major, minor = version.split(".")
+    return int(major + minor)
+
+def _compute_cuda_ptx_version_copt(repository_ctx, cuda_version, cc):
+    if not _is_clang(cc):
+        return []
+    clang_version = _get_clang_major_version(repository_ctx, cc)
+    cuda_version = ".".join(cuda_version.split(".")[:2])
+    clang_dict = PTX_VERSION_DICT["clang"]
+    cuda_dict = PTX_VERSION_DICT["cuda"]
+    if clang_version not in clang_dict:
+        _auto_configure_fail(
+            ("The supported Clang versions are {supported_versions}. Please" +
+             " add max PTX version supported by Clang major version={version}.")
+                .format(
+                supported_versions = clang_dict.keys(),
+                version = clang_version,
+            ),
+        )
+    if cuda_version not in cuda_dict:
+        _auto_configure_fail(
+            ("The supported CUDA versions are {supported_versions}. Please" +
+             " add max PTX version supported by CUDA version={version}.")
+                .format(
+                supported_versions = cuda_dict.keys(),
+                version = cuda_version,
+            ),
+        )
+    ptx_version = min(
+        _ptx_version_to_int(clang_dict[clang_version]),
+        _ptx_version_to_int(cuda_dict[cuda_version]),
+    )
+    return ["--cuda-feature=+ptx{version}".format(version = ptx_version)]
+
+def _compute_cuda_extra_copts(repository_ctx, cuda_version, compute_capabilities, cc):
+    copts = ["--no-cuda-include-ptx=all"] if _is_clang(cc) else []
+    copts.extend(_compute_cuda_ptx_version_copt(repository_ctx, cuda_version, cc))
     for capability in compute_capabilities:
         if capability.startswith("compute_"):
             capability = capability.replace("compute_", "sm_")
@@ -291,7 +345,7 @@ def _setup_toolchains(repository_ctx, cc, cuda_version):
     })
 
     cuda_defines["%{builtin_sysroot}"] = tf_sysroot
-    is_clang_compiler = "clang" in cc
+    is_clang_compiler = _is_clang(cc)
     if not enable_cuda(repository_ctx):
         cuda_defines["%{cuda_toolkit_path}"] = ""
         cuda_defines["%{cuda_nvcc_files}"] = "[]"
@@ -455,8 +509,10 @@ def _create_local_cuda_repository(repository_ctx):
         {
             "%{cuda_is_configured}": "True",
             "%{cuda_extra_copts}": _compute_cuda_extra_copts(
+                repository_ctx,
+                cuda_config.cuda_version,
                 cuda_config.compute_capabilities,
-                "clang" in cc,
+                cc,
             ),
             "%{cuda_gpu_architectures}": str(cuda_config.compute_capabilities),
             "%{cuda_version}": cuda_config.cuda_version,

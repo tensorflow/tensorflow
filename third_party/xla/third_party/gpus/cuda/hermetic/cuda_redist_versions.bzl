@@ -174,6 +174,31 @@ CUDA_NCCL_WHEELS = {
     "12.8.0": CUDA_12_NCCL_WHEEL_DICT,
 }
 
+# Ensures PTX version compatibility w/ Clang & ptxas in cuda_configure.bzl
+PTX_VERSION_DICT = {
+    # To find, invoke `llc -march=nvptx64 -mcpu=help 2>&1 | grep ptx | sort -V | tail -n 1`
+    "clang": {
+        "14": "7.5",
+        "15": "7.5",
+        "16": "7.8",
+        "17": "8.1",
+        "18": "8.3",
+        "19": "8.5",
+        "20": "8.7",
+    },
+    # To find, look at https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#release-notes
+    "cuda": {
+        "11.8": "7.8",
+        "12.1": "8.1",
+        "12.2": "8.2",
+        "12.3": "8.3",
+        "12.4": "8.4",
+        "12.5": "8.5",
+        "12.6": "8.5",
+        "12.8": "8.7",
+    },
+}
+
 REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
     "nvidia_driver": {
         "repo_name": "cuda_driver",

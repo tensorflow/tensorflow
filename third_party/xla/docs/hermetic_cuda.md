@@ -152,24 +152,29 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
    details.
 
 ## Upgrade hermetic CUDA/CUDNN version
-1. Create and submit a pull request with updated `CUDA_REDIST_JSON_DICT`,
-   `CUDA_REDIST_JSON_DICT` dictionaries in
-   [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
-   Update `CUDA_NCCL_WHEELS` in
-   [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
-   if needed.
+1.  Create and submit a pull request with updated `CUDA_REDIST_JSON_DICT`,
+    `CUDA_REDIST_JSON_DICT` dictionaries in
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
-   Update `REDIST_VERSIONS_TO_BUILD_TEMPLATES` in
-   [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
-   if needed.
+    Update `CUDA_NCCL_WHEELS` in
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+    if needed.
 
-2. For each Google ML project create a separate pull request with updated
-   `HERMETIC_CUDA_VERSION` and `HERMETIC_CUDNN_VERSION` in `.bazelrc` file.
+    Update `REDIST_VERSIONS_TO_BUILD_TEMPLATES` in
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+    if needed.
 
-   The PR presubmit job executions will launch bazel tests and download hermetic
-   CUDA/CUDNN distributions. Verify that the presubmit jobs passed before
-   submitting the PR.
+    Update `PTX_VERSION_DICT` in
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+    if needed.
+
+2.  For each Google ML project create a separate pull request with updated
+    `HERMETIC_CUDA_VERSION` and `HERMETIC_CUDNN_VERSION` in `.bazelrc` file.
+
+    The PR presubmit job executions will launch bazel tests and download
+    hermetic CUDA/CUDNN distributions. Verify that the presubmit jobs passed
+    before submitting the PR.
 
 ## Pointing to CUDA/CUDNN/NCCL redistributions on local file system
 
