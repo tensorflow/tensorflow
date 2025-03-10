@@ -36,39 +36,32 @@ namespace tensorflow {
 
 bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
                           bool use_4d_tensor) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
   // Tensor Core supports efficient convolution with fp16 for NVIDIA Volta+
   // GPUs and bf16/tf32 for Ampere+ GPUs in NHWC data layout. In all other
   // configurations it's more efficient to run computation in NCHW data format.
-  bool use_nhwc_fp16 =
-      data_type == DT_HALF && stream->GetCudaComputeCapability().IsAtLeast(
-                                  se::CudaComputeCapability::VOLTA) || 
-                                  UseNhwcLayoutForConvOnRocm(stream);
-#if GOOGLE_CUDA
   bool use_nhwc_tf32 = data_type == DT_FLOAT &&
                        stream->GetCudaComputeCapability().IsAtLeast(
                            se::CudaComputeCapability::kAmpere) &&
                        tensorflow::tensor_float_32_execution_enabled();
-<<<<<<< HEAD
-
-=======
   bool use_nhwc_fp16 =
       data_type == DT_HALF && stream->GetCudaComputeCapability().IsAtLeast(
                                   se::CudaComputeCapability::kVolta);
   bool use_nhwc_bf16 =
       data_type == DT_BFLOAT16 && stream->GetCudaComputeCapability().IsAtLeast(
                                       se::CudaComputeCapability::kAmpere);
->>>>>>> upstream/master
   if (use_4d_tensor) {
     return use_nhwc_fp16 || use_nhwc_tf32 || use_nhwc_bf16;
   }
-#else
+  return CUDNN_VERSION >= 8000 &&
+         (use_nhwc_fp16 || use_nhwc_tf32 || use_nhwc_bf16);
+#elif TENSORFLOW_USE_ROCM
+  bool use_nhwc_fp16 = data_type == DT_HALF && UseNhwcLayoutForConvOnRocm(stream);
   return use_nhwc_fp16;
-#endif
 #else
   // fast NHWC implementation is a CUDA/ROCM only feature
   return false;
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 // Finds the best convolution algorithm for the given ConvLaunch (cuda

@@ -94,14 +94,7 @@ def register_extension_info(**kwargs):
 
 # version for the shared libraries, can
 # not contain rc or alpha, only numbers.
-<<<<<<< HEAD
-# Also update tensorflow/core/public/version.h
-# and tensorflow/tools/pip_package/setup.py
-WHEEL_VERSION = "2.19.0.620-dev20241212"
-VERSION = "2.19.0"
-=======
 VERSION = TF_VERSION
->>>>>>> upstream/master
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
