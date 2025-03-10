@@ -119,10 +119,11 @@ Expected<GlBuffer> GlBuffer::AllocFromAhwbBuffer(AhwbBuffer& ahwb_buffer) {
   // Unbind the buffer.
   glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-  // Create GL buffer object.
+  // Create GL buffer object. We assume ownership of the GL buffer id so that it
+  // will be automatically deallocated when the internal::GlBuffer is destroyed.
   tflite::gpu::gl::GlBuffer tflite_gl_buffer(GL_SHADER_STORAGE_BUFFER, gl_id,
                                              size_bytes, /*offset=*/0,
-                                             /*has_ownership=*/false);
+                                             /*has_ownership=*/true);
   return GlBuffer(std::move(tflite_gl_buffer), ahwb_buffer.ahwb);
 }
 #endif  // LITERT_HAS_AHWB_SUPPORT

@@ -31,6 +31,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/util/tensor_type_util.h"
@@ -41,6 +42,8 @@
 #include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/gl_texture.h"
 #endif  // LITERT_HAS_OPENGL_SUPPORT
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_utils.h"
 #include "tensorflow/lite/experimental/litert/runtime/ion_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
 
@@ -148,27 +151,24 @@ LiteRtTensorBufferT::CreateManagedOnHostMemory(
   }
 
   LiteRtHostMemoryDeallocator deallocator = ::free;
-  auto tensor_buffer = CreateFromHostMemory(
-      tensor_type,
-      absl::MakeSpan(static_cast<uint8_t*>(host_memory_ptr), buffer_size),
-      deallocator);
-  if (!tensor_buffer) {
-    return Unexpected(tensor_buffer.Error());
-  }
+  LITERT_ASSIGN_OR_RETURN(
+      LiteRtTensorBufferT::Ptr tensor_buffer,
+      CreateFromHostMemory(
+          tensor_type,
+          absl::MakeSpan(static_cast<uint8_t*>(host_memory_ptr), buffer_size),
+          deallocator));
 
-  return std::move(*tensor_buffer);
+  return std::move(tensor_buffer);
 }
 
 Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateFromAhwb(
     const LiteRtRankedTensorType& tensor_type, AHardwareBuffer* ahwb,
     size_t ahwb_offset, LiteRtAhwbDeallocator deallocator) {
-  auto buffer_size = litert::internal::AhwbBuffer::GetSize(ahwb);
-  if (!buffer_size) {
-    return Unexpected(buffer_size.Error());
-  }
+  LITERT_ASSIGN_OR_RETURN(size_t buffer_size,
+                          litert::internal::AhwbBuffer::GetSize(ahwb));
 
   Ptr tensor_buffer(new LiteRtTensorBufferT(
-      tensor_type, kLiteRtTensorBufferTypeAhwb, *buffer_size, ahwb_offset));
+      tensor_type, kLiteRtTensorBufferTypeAhwb, buffer_size, ahwb_offset));
   tensor_buffer->buffer_ = AhwbBuffer{
       .ahwb = ahwb,
       .deallocator = deallocator,
@@ -183,11 +183,9 @@ Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateFromAhwb(
 
 Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateManagedAhwbBuffer(
     const LiteRtRankedTensorType& tensor_type, size_t buffer_size) {
-  auto buffer = litert::internal::AhwbBuffer::Alloc(buffer_size);
-  if (!buffer) {
-    return Unexpected(buffer.Error());
-  }
-  return CreateFromAhwb(tensor_type, buffer->ahwb, /*ahwb_offset=*/0,
+  LITERT_ASSIGN_OR_RETURN(litert::internal::AhwbBuffer buffer,
+                          litert::internal::AhwbBuffer::Alloc(buffer_size));
+  return CreateFromAhwb(tensor_type, buffer.ahwb, /*ahwb_offset=*/0,
                         /*deallocator=*/litert::internal::AhwbBuffer::Free);
 }
 
@@ -353,11 +351,11 @@ Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateFromGlTexture(
 
 Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateFromGlBuffer(
     const LiteRtRankedTensorType& tensor_type, GLenum target, GLuint id,
-    size_t bytes_size, size_t offset, LiteRtGlBufferDeallocator deallocator) {
+    size_t size_bytes, size_t offset, LiteRtGlBufferDeallocator deallocator) {
   Ptr tensor_buffer(new LiteRtTensorBufferT(
-      tensor_type, kLiteRtTensorBufferTypeGlBuffer, bytes_size));
+      tensor_type, kLiteRtTensorBufferTypeGlBuffer, size_bytes));
   tensor_buffer->buffer_.emplace<litert::internal::GlBuffer>(
-      target, id, bytes_size, offset, deallocator);
+      target, id, size_bytes, offset, deallocator);
   return tensor_buffer;
 }
 
@@ -453,55 +451,74 @@ Expected<void> LiteRtTensorBufferT::IsValid() {
 }
 
 Expected<void*> LiteRtTensorBufferT::GetHostBuffer() {
-  if (buffer_type_ != kLiteRtTensorBufferTypeHostMemory) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Unexpected tensor buffer type");
+  if (buffer_type_ == kLiteRtTensorBufferTypeHostMemory) {
+    return std::get<HostBuffer>(buffer_).addr;
   }
-  return std::get<HostBuffer>(buffer_).addr;
+  return Unexpected(
+      kLiteRtStatusErrorRuntimeFailure,
+      absl::StrFormat("Cannot get %s buffer from %s tensor buffer",
+                      BufferTypeToString(kLiteRtTensorBufferTypeHostMemory),
+                      BufferTypeToString(buffer_type_)));
 }
 
 Expected<AHardwareBuffer*> LiteRtTensorBufferT::GetAhwbBuffer() {
-  if (buffer_type_ != kLiteRtTensorBufferTypeAhwb) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Unexpected tensor buffer type");
+  if (buffer_type_ == kLiteRtTensorBufferTypeAhwb) {
+    return std::get<AhwbBuffer>(buffer_).ahwb;
   }
-  return std::get<AhwbBuffer>(buffer_).ahwb;
+  return Unexpected(
+      kLiteRtStatusErrorRuntimeFailure,
+      absl::StrFormat("Cannot get %s buffer from %s tensor buffer",
+                      BufferTypeToString(kLiteRtTensorBufferTypeAhwb),
+                      BufferTypeToString(buffer_type_)));
 }
 
 Expected<std::pair<void*, int>> LiteRtTensorBufferT::GetIonBuffer() {
-  if (buffer_type_ != kLiteRtTensorBufferTypeIon) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Unexpected tensor buffer type");
+  if (buffer_type_ == kLiteRtTensorBufferTypeIon) {
+    auto buffer = std::get<IonBuffer>(buffer_);
+    return std::make_pair(buffer.addr, buffer.fd);
   }
-  auto buffer = std::get<IonBuffer>(buffer_);
-  return std::make_pair(buffer.addr, buffer.fd);
+  return Unexpected(
+      kLiteRtStatusErrorRuntimeFailure,
+      absl::StrFormat("Cannot get %s buffer from %s tensor buffer",
+                      BufferTypeToString(kLiteRtTensorBufferTypeIon),
+                      BufferTypeToString(buffer_type_)));
 }
 
 Expected<std::pair<void*, int>> LiteRtTensorBufferT::GetDmaBufBuffer() {
-  if (buffer_type_ != kLiteRtTensorBufferTypeDmaBuf) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Unexpected tensor buffer type");
+  if (buffer_type_ == kLiteRtTensorBufferTypeDmaBuf) {
+    auto buffer = std::get<DmaBufBuffer>(buffer_);
+    return std::make_pair(buffer.addr, buffer.fd);
   }
-  auto buffer = std::get<DmaBufBuffer>(buffer_);
-  return std::make_pair(buffer.addr, buffer.fd);
+  return Unexpected(
+      kLiteRtStatusErrorRuntimeFailure,
+      absl::StrFormat("Cannot get %s buffer from %s tensor buffer",
+                      BufferTypeToString(kLiteRtTensorBufferTypeDmaBuf),
+                      BufferTypeToString(buffer_type_)));
 }
 
 Expected<std::pair<void*, int>> LiteRtTensorBufferT::GetFastRpcBuffer() {
-  if (buffer_type_ != kLiteRtTensorBufferTypeFastRpc) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Unexpected tensor buffer type");
+  if (buffer_type_ == kLiteRtTensorBufferTypeFastRpc) {
+    auto buffer = std::get<FastRpcBuffer>(buffer_);
+    return std::make_pair(buffer.addr, buffer.fd);
   }
-  auto buffer = std::get<FastRpcBuffer>(buffer_);
-  return std::make_pair(buffer.addr, buffer.fd);
+
+  return Unexpected(
+      kLiteRtStatusErrorRuntimeFailure,
+      absl::StrFormat("Cannot get %s buffer from %s tensor buffer",
+                      BufferTypeToString(kLiteRtTensorBufferTypeFastRpc),
+                      BufferTypeToString(buffer_type_)));
 }
 
 Expected<litert::internal::OpenClBuffer*>
 LiteRtTensorBufferT::GetOpenClBuffer() {
-  if (buffer_type_ != kLiteRtTensorBufferTypeOpenCl) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Unexpected tensor buffer type");
+  if (buffer_type_ == kLiteRtTensorBufferTypeOpenCl) {
+    return &std::get<litert::internal::OpenClBuffer>(buffer_);
   }
-  return &std::get<litert::internal::OpenClBuffer>(buffer_);
+  return Unexpected(
+      kLiteRtStatusErrorRuntimeFailure,
+      absl::StrFormat("Cannot get %s buffer from %s tensor buffer",
+                      BufferTypeToString(kLiteRtTensorBufferTypeOpenCl),
+                      BufferTypeToString(buffer_type_)));
 }
 
 #if LITERT_HAS_OPENGL_SUPPORT
@@ -514,11 +531,39 @@ Expected<litert::internal::GlTexture*> LiteRtTensorBufferT::GetGlTexture() {
 }
 
 Expected<litert::internal::GlBuffer*> LiteRtTensorBufferT::GetGlBuffer() {
-  if (buffer_type_ != kLiteRtTensorBufferTypeGlBuffer) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Unexpected tensor buffer type");
+  if (buffer_type_ == kLiteRtTensorBufferTypeGlBuffer) {
+    return &std::get<litert::internal::GlBuffer>(buffer_);
   }
-  return &std::get<litert::internal::GlBuffer>(buffer_);
+#if LITERT_HAS_AHWB_SUPPORT
+  if (buffer_type_ == kLiteRtTensorBufferTypeAhwb) {
+    if (auto it = memory_backed_buffers_.find(kLiteRtTensorBufferTypeGlBuffer);
+        it != memory_backed_buffers_.end()) {
+      BufferVariant& memory_backed_buffer = it->second;
+      return &std::get<litert::internal::GlBuffer>(memory_backed_buffer);
+    }
+    // Create a new GL buffer from the AHWB buffer if not found.
+    litert::internal::AhwbBuffer ahwb_buffer = {
+        .ahwb = std::get<AhwbBuffer>(buffer_).ahwb};
+
+    LITERT_ASSIGN_OR_RETURN(
+        litert::internal::GlBuffer gl_buffer_from_ahwb,
+        litert::internal::GlBuffer::AllocFromAhwbBuffer(ahwb_buffer));
+
+    auto [it, inserted] = memory_backed_buffers_.insert(
+        {kLiteRtTensorBufferTypeGlBuffer, std::move(gl_buffer_from_ahwb)});
+    LITERT_RETURN_IF_ERROR(
+        inserted == true,
+        Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                   "Failed to insert GL buffer into memory backed buffers"));
+    return &std::get<litert::internal::GlBuffer>(it->second);
+  }
+#endif  // LITERT_HAS_AHWB_SUPPORT
+
+  return Unexpected(
+      kLiteRtStatusErrorRuntimeFailure,
+      absl::StrFormat("Cannot get %s buffer from %s tensor buffer",
+                      BufferTypeToString(kLiteRtTensorBufferTypeGlBuffer),
+                      BufferTypeToString(buffer_type_)));
 }
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 
