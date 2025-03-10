@@ -75,6 +75,7 @@ cc_library(
     hdrs = ["utils.h"],
     deps = [
         ":constants",
+        "//xla/mlir_hlo",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",

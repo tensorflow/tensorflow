@@ -40,10 +40,6 @@ std::unique_ptr<mlir::Pass> CreateConvertIndexTypePass();
 std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass();
 std::unique_ptr<mlir::Pass> CreateFuseLoopsPass();
 std::unique_ptr<mlir::Pass> CreatePeelLoopsPass();
-std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
-    const std::string& gpu_device_info = "");
-std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
-    const se::DeviceDescription& device_description);
 
 #define GEN_PASS_REGISTRATION
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
