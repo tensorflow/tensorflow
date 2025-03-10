@@ -28,6 +28,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -45,10 +46,11 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_module_config",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:test_benchmark",
     ],
 )
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -108,6 +109,15 @@ std::unique_ptr<HloDfsReachability> HloDfsReachability::Build(
   }
 
   return res;
+}
+
+void HloDfsReachability::OnInstructionReplaced(const HloInstruction* previous,
+                                               const HloInstruction* now) {
+  auto it = instruction_to_idx_.find(previous);
+  CHECK(it != instruction_to_idx_.end());
+  auto inserted = instruction_to_idx_.insert({now, it->second}).second;
+  CHECK(inserted);
+  instruction_to_idx_.erase(it);
 }
 
 }  // namespace xla
