@@ -23,7 +23,6 @@ limitations under the License.
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_graph.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
-#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_interop.h"
 #include "xla/backends/cpu/runtime/parallel_loop_runner.h"
