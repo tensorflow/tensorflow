@@ -15,8 +15,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/attribute/attribute.h"
 
 #include <array>
+#include <cstdint>
 #include <cstring>
-#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

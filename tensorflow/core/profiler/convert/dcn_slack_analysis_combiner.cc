@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/dcn_slack_analysis_combiner.h"
 
+#include <cstdint>
+
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 

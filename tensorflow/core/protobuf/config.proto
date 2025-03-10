@@ -777,9 +777,17 @@ message ConfigProto {
     // disabled, and parallel execution is allowed.
     bool disable_eager_executor_streaming_enqueue = 26;
 
+    // If true, the function library runtime will be finalized when the session
+    // is finalized.
+    bool finalize_function_library_runtime = 33;
+
+    // If true, the resource manager will be finalized when the session
+    // is finalized.
+    bool finalize_resource_manager = 34;
+
     reserved 25;
 
-    // Next: 33
+    // Next: 35
   }
 
   Experimental experimental = 16;

@@ -168,7 +168,8 @@ namespace {
 
 void populateChloToHighLevelMhloOpPatterns(MLIRContext *,
                                            RewritePatternSet *patterns) {
-  patterns->add<mhlo::RaggedDotChloToMhlo>(patterns->getContext());
+  patterns->add<mhlo::RaggedDotChloToMhlo>(patterns->getContext(),
+                                           /*benefit=*/10);
   populateWithGenerated(*patterns);
 }
 

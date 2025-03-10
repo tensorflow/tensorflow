@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_CPU_CPU_DEVICE_H_
 #define XLA_PJRT_CPU_CPU_DEVICE_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
+#include "xla/pjrt/cpu/tfrt_cpu_async_execution_tracker.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -87,6 +89,13 @@ class TfrtCpuDevice final : public PjRtDevice {
     return nullptr;
   }
 
+  absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
+                                       absl::Status error) override;
+
+  TfrtCpuAsyncExecutionTracker* async_execution_tracker() {
+    return async_execution_tracker_.get();
+  }
+
  private:
   PjRtClient* client_ = nullptr;
   CpuDeviceDescription description_;
@@ -97,6 +106,8 @@ class TfrtCpuDevice final : public PjRtDevice {
   // Semaphore used to limit how many programs can be enqueued by the host
   // ahead of the device.
   Semaphore max_inflight_computations_semaphore_;
+
+  std::unique_ptr<TfrtCpuAsyncExecutionTracker> async_execution_tracker_;
 };
 
 }  // namespace xla

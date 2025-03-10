@@ -21,10 +21,12 @@ tensorflow/lite/schema/schema.fbs
 """
 
 import copy
+import functools
 import random
 import re
 import struct
 import sys
+from typing import Optional, Type, TypeVar, Union
 
 import flatbuffers
 
@@ -453,3 +455,69 @@ def count_resource_variables(model):
       if builtin_code == schema_fb.BuiltinOperator.VAR_HANDLE:
         unique_shared_names.add(op.builtinOptions.sharedName)
   return len(unique_shared_names)
+
+
+OptsT = TypeVar('OptsT')
+
+
+def get_options_as(
+    op: Union[schema_fb.Operator, schema_fb.OperatorT], opts_type: Type[OptsT]
+) -> Optional[OptsT]:
+  """Get the options of an operator as the specified type.
+
+  Requested type must be an object-api type (ends in 'T').
+
+  Args:
+    op: The operator to get the options from.
+    opts_type: The type of the options to get.
+
+  Returns:
+    The options as the specified type, or None if the options are not of the
+    specified type.
+
+  Raises:
+    ValueError: If the specified type is not a valid options type.
+  """
+
+  err = ValueError(f'Unsupported options type: {opts_type}')
+  type_name: str = opts_type.__name__
+  if not type_name.endswith('T'):
+    raise err
+  base_type_name = type_name.removesuffix('T')
+  is_opt_1_type = hasattr(schema_fb.BuiltinOptions, base_type_name)
+  if not is_opt_1_type and not hasattr(
+      schema_fb.BuiltinOptions2, base_type_name
+  ):
+    raise err
+
+  @functools.singledispatch
+  def _get_opts(unused_op):
+    return None
+
+  @_get_opts.register
+  def _(op: schema_fb.Operator):
+    if not is_opt_1_type:
+      enum_val = getattr(schema_fb.BuiltinOptions2, base_type_name)
+      opts_creator = schema_fb.BuiltinOptions2Creator
+      raw_ops = op.BuiltinOptions2()
+      actual_enum_val = op.BuiltinOptions2Type()
+    else:
+      enum_val = getattr(schema_fb.BuiltinOptions, base_type_name)
+      opts_creator = schema_fb.BuiltinOptionsCreator
+      raw_ops = op.BuiltinOptions()
+      actual_enum_val = op.BuiltinOptionsType()
+    if raw_ops is None or actual_enum_val != enum_val:
+      return None
+    return opts_creator(enum_val, raw_ops)
+
+  @_get_opts.register
+  def _(op: schema_fb.OperatorT):
+    if is_opt_1_type:
+      raw_ops_t = op.builtinOptions
+    else:
+      raw_ops_t = op.builtinOptions2
+    if raw_ops_t is None or not isinstance(raw_ops_t, opts_type):
+      return None
+    return raw_ops_t
+
+  return _get_opts(op)

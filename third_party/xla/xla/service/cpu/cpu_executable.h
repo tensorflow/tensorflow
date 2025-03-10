@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/constant_allocation.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
@@ -56,16 +57,6 @@ namespace cpu {
 // architecture, so JIT-ed code and host code share the same ABI.
 class CpuExecutable : public Executable {
  public:
-  // A storage (or an alias) for constant allocations data.
-  struct ConstantAllocation {
-    se::DeviceMemoryBase AsDeviceMemoryBase() const;
-
-    BufferAllocation::Index index = -1;
-    std::variant<std::monostate, std::unique_ptr<Literal>,
-                 absl::Span<const uint8_t>>
-        data;
-  };
-
   // Creates a CpuExecutable from JIT compiled cpu function by resolving
   // `entry_function_name` in the `jit`.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
@@ -173,6 +164,10 @@ class CpuExecutable : public Executable {
   }
 
   FunctionLibrary* function_library() const { return function_library_.get(); }
+
+  std::unique_ptr<FunctionLibrary> consume_function_library() && {
+    return std::move(function_library_);
+  }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the

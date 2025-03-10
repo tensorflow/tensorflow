@@ -1,8 +1,11 @@
 """Platform-specific build configurations."""
 
+# This file is used in OSS only. It is not transformed by copybara. Therefore all paths in this
+# file are OSS paths.
+
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("@local_tsl//third_party/py/rules_pywrap:pywrap.bzl", "use_pywrap_rules")
+load("@local_xla//third_party/py/rules_pywrap:pywrap.bzl", "use_pywrap_rules")
 load(
     "@local_xla//xla/tsl:tsl.bzl",
     "clean_dep",
@@ -10,6 +13,12 @@ load(
     "if_tsl_link_protobuf",
 )
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
+
+# IMPORTANT: Do not remove this load statement. We rely on that //xla/tsl doesn't exist in g3
+# to prevent g3 .bzl files from loading this file.
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.
@@ -120,7 +129,7 @@ def pyx_library(
         native.cc_binary(
             name = shared_object_name,
             srcs = [stem + ".cpp"],
-            deps = cc_deps + ["@local_tsl//third_party/python_runtime:headers"],
+            deps = cc_deps + ["@local_xla//third_party/python_runtime:headers"],
             linkshared = 1,
             testonly = testonly,
             copts = copts,
@@ -810,24 +819,66 @@ def tf_protobuf_deps():
 def tsl_protobuf_deps():
     return if_tsl_link_protobuf([clean_dep("@com_google_protobuf//:protobuf")], [clean_dep("@com_google_protobuf//:protobuf_headers")])
 
-# When tsl_protobuf_header_only is true, we need to add the protobuf library
-# back into our binaries explicitly.
-def tsl_cc_test(
+def strict_cc_test(
         name,
         linkstatic = True,
-        deps = [],
+        shuffle_tests = True,
+        args = None,
+        fail_if_no_test_linked = True,
         **kwargs):
-    """A wrapper around cc_test that adds protobuf deps if needed.
+    """A drop-in replacement for cc_test that enforces some good practices by default.
 
-    It also defaults to linkstatic = True, which is a good practice for catching duplicate
-    symbols at link time (e.g. linking in two main() functions).
+    This should be lightweight and not add any dependencies by itself.
 
-    Use tsl_cc_test instead of cc_test in all .../tsl/... directories.
+    Args:
+      name: The name of the test.
+      linkstatic: Whether to link statically.
+      shuffle_tests: Whether to shuffle the test cases.
+      args: The arguments to pass to the test.
+      fail_if_no_test_linked: Whether to fail if no tests are linked. Unimplemented in OSS as
+          --gtest_fail_if_no_test_linked is not available in the OSS build as of 2025-02-27.
+      **kwargs: Other arguments to pass to the test.
     """
+
+    _ = fail_if_no_test_linked  # buildifier: disable=unused-variable
+
+    if args == None:
+        args = []
+
+    if shuffle_tests:
+        # Shuffle tests to avoid test ordering dependencies.
+        args = args + ["--gtest_shuffle"]
 
     native.cc_test(
         name = name,
         linkstatic = linkstatic,
+        args = args,
+        **kwargs
+    )
+
+# When tsl_protobuf_header_only is true, we need to add the protobuf library
+# back into our binaries explicitly.
+def tsl_cc_test(
+        name,
+        deps = [],
+        **kwargs):
+    """A wrapper around strict_cc_test that adds protobuf deps if needed.
+
+    It also defaults to linkstatic = True, which is a good practice for catching duplicate
+    symbols at link time (e.g. linking in two main() functions).
+
+    By default, it also shuffles the tests to avoid test ordering dependencies.
+
+    Use tsl_cc_test instead of cc_test in all .../tsl/... directories.
+
+    Args:
+      name: The name of the test.
+      deps: The dependencies of the test.
+      **kwargs: Other arguments to pass to the test.
+    """
+
+    strict_cc_test(
+        name = name,
         deps = deps + if_tsl_link_protobuf(
             [],
             [

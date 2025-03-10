@@ -6,7 +6,10 @@ These rules have to be outside of mkl/build_defs.bzl, otherwise we would have cy
 """
 
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
 
 def onednn_graph_cc_library(srcs = [], hdrs = [], deps = [], **kwargs):
     """cc_library rule that has empty src, hdrs and deps if not building with Graph API."""
@@ -17,10 +20,15 @@ def onednn_graph_cc_library(srcs = [], hdrs = [], deps = [], **kwargs):
         **kwargs
     )
 
-def onednn_graph_cc_test(srcs = [], deps = [], **kwargs):
+def onednn_graph_cc_test(
+        srcs = [],
+        deps = [],
+        **kwargs):
     """xla_cc_test rule that has empty src and deps if not building with Graph API."""
     xla_cc_test(
         srcs = if_graph_api(srcs),
         deps = if_graph_api(deps) + ["@com_google_googletest//:gtest_main"],
+        # If not building with Graph API, we don't have any tests linked.
+        fail_if_no_test_linked = False,
         **kwargs
     )

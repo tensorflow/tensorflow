@@ -15,16 +15,17 @@
 #include "tensorflow/lite/experimental/litert/runtime/event.h"
 
 #include <fcntl.h>
-#include <poll.h>
-#include <unistd.h>
 
 #include <cerrno>
 #include <cstdint>
-#include <cstring>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+
+#if LITERT_HAS_SYNC_FENCE_SUPPORT
+#include <poll.h>
+#include <unistd.h>
+#endif  // LITERT_HAS_SYNC_FENCE_SUPPORT
 
 using litert::Error;
 using litert::Expected;
@@ -58,11 +59,13 @@ Expected<void> LiteRtEventT::Wait(int64_t timeout_in_ms) {
 #endif
 }
 
+#if LITERT_HAS_SYNC_FENCE_SUPPORT
 namespace {
 inline bool IsFdValid(int fd) {
   return ::fcntl(fd, F_GETFD) != -1 || errno != EBADF;
 }
 }  // namespace
+#endif
 
 LiteRtEventT::~LiteRtEventT() {
 #if LITERT_HAS_SYNC_FENCE_SUPPORT

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_DIAGNOSTICS_H_
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 

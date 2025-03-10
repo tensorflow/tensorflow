@@ -23,9 +23,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -120,7 +123,6 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
       "framework_op_stats",
       "memory_profile",
       "pod_viewer",
-      "tf_data_bottleneck_analysis",
       "op_profile",
       "hlo_stats",
       "roofline_model",

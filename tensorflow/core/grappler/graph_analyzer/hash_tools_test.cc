@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/graph_analyzer/hash_tools.h"
 
+#include <cstddef>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 

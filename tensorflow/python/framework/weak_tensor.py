@@ -196,7 +196,7 @@ class EagerWeakTensor(core.Value, WeakTensor):
 
   __name__ = "tf.EagerWeakTensor"
 
-  # Methods that are only avilable for EagerTensor.
+  # Methods that are only available for EagerTensor.
   def numpy(self):
     """Copy of the contents of this EagerWeakTensor into a NumPy array or scalar."""
     if not isinstance(self.tensor, ops.EagerTensor):

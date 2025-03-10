@@ -2801,21 +2801,9 @@ class Subgraph {
       case kTfLiteBuiltinFloor:
         return VisitFloorNode(subgraph, delegate, logging_context, node_index,
                               node, context->tensors, input_output_tensors);
-      case kTfLiteBuiltinGelu: {
-        const TfLiteGeluParams* gelu_params =
-            static_cast<const TfLiteGeluParams*>(node->builtin_data);
-        // Sorry, we don't do approximates here, only the real thing to full
-        // accuracy.
-        // TODO(b/338031720) - Add support for the tanh-based GELU
-        // approximation.
-        if (gelu_params->approximate) {
-          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                   "Unsupported approximate Gelu.");
-          return kTfLiteError;
-        }
+      case kTfLiteBuiltinGelu:
         return VisitGeluNode(subgraph, delegate, logging_context, node_index,
                              node, context->tensors, input_output_tensors);
-      }
       case kTfLiteBuiltinHardSwish:
         return VisitHardSwishNode(subgraph, delegate, logging_context,
                                   node_index, node, context->tensors,
@@ -4415,9 +4403,15 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
+    const TfLiteGeluParams* gelu_params =
+        static_cast<const TfLiteGeluParams*>(node->builtin_data);
+
     if (subgraph != nullptr) {
-      const xnn_status status = xnn_define_gelu(
+      const xnn_status status = xnn_define_unary(
           subgraph,
+          /*type=*/gelu_params->approximate ? xnn_unary_approxgelu
+                                            : xnn_unary_gelu,
+          /*params=*/nullptr,
           /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
           /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
           /*flags=*/0);
@@ -6462,12 +6456,12 @@ class Subgraph {
               head_per_query, (size_t)query_proj.dims->data[1],
               (size_t)query_proj.dims->data[3]};
           std::array<size_t, 5> k_reshape_dims = {
-              (size_t)key_proj.dims->data[0], num_query_groups, 1,
-              (size_t)key_proj.dims->data[1], (size_t)key_proj.dims->data[3]};
+              (size_t)key_proj.dims->data[0], num_query_groups, 1, 0,
+              (size_t)key_proj.dims->data[3]};
           std::array<size_t, 4> bmm_reshape_dims = {
               (size_t)query_proj.dims->data[0],
               num_query_groups * head_per_query,
-              (size_t)query_proj.dims->data[1], (size_t)key_proj.dims->data[1]};
+              (size_t)query_proj.dims->data[1], 0};
           TF_LITE_ENSURE_EQ(
               logging_context, xnn_status_success,
               xnn_define_static_reshape(subgraph, q_reshape_dims.size(),
@@ -6499,7 +6493,7 @@ class Subgraph {
         TFLITE_DCHECK(key_proj.dims->data[0] == 1);
         TFLITE_DCHECK(key_proj.dims->data[2] == 1);
         // squeezed_rhs shape: [S, H]
-        std::array<size_t, 2> reshape_dims_k = {(size_t)key_proj.dims->data[1],
+        std::array<size_t, 2> reshape_dims_k = {0,
                                                 (size_t)key_proj.dims->data[3]};
         uint32_t reshape_dims_k_out_id = XNN_INVALID_VALUE_ID;
         TF_LITE_ENSURE_EQ(
@@ -6641,12 +6635,10 @@ class Subgraph {
           size_t head_per_query = query_proj.dims->data[2] / num_query_groups;
           std::array<size_t, 5> padded_logits_reshape_dims = {
               (size_t)query_proj.dims->data[0], num_query_groups,
-              head_per_query, (size_t)query_proj.dims->data[1],
-              (size_t)value_proj.dims->data[1]};
+              head_per_query, (size_t)query_proj.dims->data[1], 0};
           std::array<size_t, 5> v_reshape_dims = {
               (size_t)value_proj.dims->data[0], num_query_groups, 1,
-              (size_t)value_proj.dims->data[3],
-              (size_t)value_proj.dims->data[1]};
+              (size_t)value_proj.dims->data[3], 0};
           std::array<size_t, 4> bmm2_reshape_dims = {
               (size_t)query_proj.dims->data[0],
               num_query_groups * head_per_query,
@@ -6684,7 +6676,7 @@ class Subgraph {
         TFLITE_DCHECK(value_proj.dims->data[2] == 1);
         // squeezed_rhs shape: [S, H]
         std::array<size_t, 2> reshape_dims_v = {
-            (size_t)value_proj.dims->data[3], (size_t)value_proj.dims->data[1]};
+            (size_t)value_proj.dims->data[3], 0};
         uint32_t reshape_dims_v_out_id = XNN_INVALID_VALUE_ID;
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,

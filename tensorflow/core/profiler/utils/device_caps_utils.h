@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_DEVICE_CAPS_UTILS_H_
 
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {

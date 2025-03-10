@@ -45,6 +45,11 @@ class CollectivesRegistry {
 
   // Returns the default collectives implementation for the given platform.
   static absl::StatusOr<Collectives*> Default(absl::string_view platform_name);
+
+  // Return a specific collectives implementation by name for the given
+  // platform.
+  static absl::StatusOr<Collectives*> Get(
+      absl::string_view platform_name, absl::string_view implementation_name);
 };
 
 }  // namespace xla

@@ -360,3 +360,28 @@ alias(
     actual = if_cuda_libs("@cuda_nccl//:nccl", ":nccl"),
     visibility = ["//visibility:public"],
 )
+
+cuda_stub(
+    name = "nvshmem",
+    srcs = ["nvshmem.symbols"],
+)
+
+cc_library(
+    name = "nvshmem_stub",
+    srcs = if_cuda_is_configured([
+        "nvshmem_stub.cc",
+        "nvshmem.tramp.S",
+    ]),
+    # TODO: standalone pip wheel rpath
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nvshmem/lib")),
+    local_defines = [
+        "IMPLIB_EXPORT_SHIMS=1",
+    ],
+    textual_hdrs = ["nvshmem.inc"],
+    visibility = ["//visibility:public"],
+    deps = if_cuda_is_configured([
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:load_library",
+    ]),
+)

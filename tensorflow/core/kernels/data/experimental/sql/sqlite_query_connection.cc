@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/sql/sqlite_query_connection.h"
 
+#include <vector>
+
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"

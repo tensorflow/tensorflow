@@ -146,8 +146,6 @@ py_strict_library(
         ":function",
         ":graph_only_ops",
         ":monitoring",
-        ":profiler",
-        ":profiler_client",
         ":tape",
         ":test",
         ":wrap_function",
@@ -375,6 +373,7 @@ cuda_py_strict_test(
     ],
 )
 
+<<<<<<< HEAD
 py_strict_library(
     name = "profiler",
     srcs = ["profiler.py"],
@@ -437,6 +436,8 @@ py_strict_test(
     ],
 )
 
+=======
+>>>>>>> upstream/master
 cuda_py_strict_test(
     name = "small_constants_optimizer_test",
     size = "medium",

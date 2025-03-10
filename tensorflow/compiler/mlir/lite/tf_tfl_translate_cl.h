@@ -74,9 +74,6 @@ extern llvm::cl::opt<bool> post_training_quantization;
 // TF to stablehlo pass flags
 extern llvm::cl::opt<bool> enable_stablehlo_conversion;
 
-// Whether serialize stablehlo ops or not
-extern llvm::cl::opt<bool> serialize_stablehlo_ops;
-
 // Whether to enable the attempt to directly lower composites into tflite ops or
 // not.
 extern llvm::cl::opt<bool> enable_composite_direct_lowering;

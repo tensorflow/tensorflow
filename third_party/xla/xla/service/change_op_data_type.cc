@@ -18,9 +18,9 @@ limitations under the License.
 #include <optional>
 
 #include "xla/service/hlo_creation_utils.h"
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
 
 namespace xla {
 namespace {
@@ -62,11 +62,11 @@ absl::StatusOr<bool> ChangeOpDataType::Run(
       if (it == to_type_map_.end()) {
         continue;
       }
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
       if (cpu::OneDnnContractionRewriter::ShouldRewriteInstr(instr, true)) {
         continue;
       }
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
       const PrimitiveType to_type = it->second;
       absl::InlinedVector<HloInstruction*, 8> new_operands;
       for (HloInstruction* operand : instr->mutable_operands()) {

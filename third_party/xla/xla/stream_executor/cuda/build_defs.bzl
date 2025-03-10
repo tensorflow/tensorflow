@@ -2,6 +2,10 @@
 This module contains custom build rules for CUDA assembly compiler tests.
 """
 
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
+
 def _stage_in_bin_subdirectory_impl(ctx):
     if len(ctx.files.data) != 1:
         fail("Expected exactly one data dependency.")

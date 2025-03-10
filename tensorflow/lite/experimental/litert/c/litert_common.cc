@@ -60,6 +60,7 @@ const char* LiteRtGetStatusString(LiteRtStatus status) {
     LITERT_STATUS_STR_CASE(kLiteRtStatusLegalizeNoMatch);
     LITERT_STATUS_STR_CASE(kLiteRtStatusErrorInvalidLegalization);
     LITERT_STATUS_STR_CASE(kLiteRtStatusErrorWrongVersion);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorUnknown);
 #undef LITERT_STATUS_STR_CASE
   }
 }

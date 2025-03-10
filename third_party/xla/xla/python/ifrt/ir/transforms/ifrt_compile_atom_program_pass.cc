@@ -231,7 +231,9 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
             CHECK(atom_executable_map_
                       ->try_emplace(compile_result->name,
                                     std::move(compile_result->executable))
-                      .second);
+                      .second)
+                << "Failed to insert atom program executable to map. "
+                << "Executable `" << compile_result->name << "` already exists";
           }
 
           // Generate CallLoadedExecutableOp.

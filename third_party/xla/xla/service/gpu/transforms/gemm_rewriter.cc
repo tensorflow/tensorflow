@@ -1780,21 +1780,22 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Replace add(gemm, broadcast) with fused new_gemm.
     operands.push_back(bias);
     config.set_epilogue(GemmBackendConfig::BIAS);
-    std::unique_ptr<HloInstruction> result =
-        gemm->CloneWithNewOperands(gemm->shape(), operands);
+    HloComputation *computation = gemm->parent();
+    HloInstruction *result = computation->AddInstruction(
+        gemm->CloneWithNewOperands(gemm->shape(), operands));
+
     TF_RETURN_IF_ERROR(result->set_backend_config(gpu_config));
-    TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
+    TF_RETURN_IF_ERROR(SetName(gemm->GetModule(), result));
     if (slice) {
-      result = slice->CloneWithNewOperands(
-          slice->shape(), {slice->parent()->AddInstruction(std::move(result))});
+      result = computation->AddInstruction(
+          slice->CloneWithNewOperands(slice->shape(), {result}));
     }
 
     if (bitcast) {
-      result = bitcast->CloneWithNewOperands(
-          bitcast->shape(),
-          {bitcast->parent()->AddInstruction(std::move(result))});
+      result = computation->AddInstruction(
+          bitcast->CloneWithNewOperands(bitcast->shape(), {result}));
     }
-    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(result)));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, result));
     return true;
   }
 
@@ -1825,17 +1826,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    std::unique_ptr<HloInstruction> result = gemm->Clone();
+    HloComputation *computation = gemm->parent();
+    HloInstruction *result = computation->AddInstruction(gemm->Clone());
     TF_RETURN_IF_ERROR(result->set_backend_config(gpu_config));
-    TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
+    TF_RETURN_IF_ERROR(SetName(gemm->GetModule(), result));
 
     if (slice_or_bitcast) {
-      result = slice_or_bitcast->CloneWithNewOperands(
-          slice_or_bitcast->shape(),
-          {slice_or_bitcast->parent()->AddInstruction(std::move(result))});
+      result =
+          computation->AddInstruction(slice_or_bitcast->CloneWithNewOperands(
+              slice_or_bitcast->shape(), {result}));
     }
 
-    return ReplaceWithNewInstruction(instr, std::move(result));
+    return ReplaceInstruction(instr, result);
   }
 
   absl::Status FuseGeluActivation(HloInstruction *multiply,

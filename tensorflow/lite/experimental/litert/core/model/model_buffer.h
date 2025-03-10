@@ -33,21 +33,25 @@ namespace litert::internal {
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     absl::string_view tfl_file,
     const absl::flat_hash_map<std::string, std::string>&
-        custom_code_to_npu_file);
+        custom_code_to_npu_file,
+    size_t bytecode_alignment = 1);
 
 // Same as above, but with a map specifying NPU byte code buffers.
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     LiteRtModelT&& model,
     const absl::flat_hash_map<std::string, OwningBufferRef<uint8_t>>&
-        custom_code_to_npu_bytecode);
+        custom_code_to_npu_bytecode,
+    size_t bytecode_alignment = 1);
 
 // Same as above, but only a single NPU byte code file is specified.
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
-    absl::string_view tfl_file, absl::string_view npu_file);
+    absl::string_view tfl_file, absl::string_view npu_file,
+    size_t bytecode_alignment = 1);
 
 // Same as above, but only a single NPU byte code buffer is specified.
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
-    LiteRtModelT&& model, BufferRef<uint8_t> npu_byte_code);
+    LiteRtModelT&& model, BufferRef<uint8_t> npu_byte_code,
+    size_t bytecode_alignment = 1);
 
 }  // namespace litert::internal
 

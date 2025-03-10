@@ -266,8 +266,7 @@ int main(int argc, char **argv) {
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       std::move(context), std::move(module.value()), converter_flags,
-      pass_config, tags,
-      /*saved_model_dir=*/"", &result, serialize_stablehlo_ops,
+      pass_config, tags, /*saved_model_dir=*/"", &result,
       /*export_to_mlir=*/output_mlir);
   if (!status.ok()) {
     llvm::errs() << status.message() << '\n';

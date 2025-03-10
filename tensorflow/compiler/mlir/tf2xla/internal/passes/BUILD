@@ -425,6 +425,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tf2xla/transforms:legalize_tf",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/ir/types:Dialect",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",

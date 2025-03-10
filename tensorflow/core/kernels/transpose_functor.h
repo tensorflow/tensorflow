@@ -153,10 +153,10 @@ void TransposeUsingEigen(const Device& d, const Tensor& in,
   Eigen::array<int, NDIMS> p;
   for (int i = 0; i < NDIMS; ++i) p[i] = perm[i];
   auto x = typename TTypes<T, NDIMS>::ConstTensor(
-      reinterpret_cast<const T*>(in.tensor_data().data()),
+      reinterpret_cast<const T*>((const char*)in.data()),
       in.shape().AsEigenDSizes<NDIMS>());
   auto y = typename TTypes<T, NDIMS>::Tensor(
-      reinterpret_cast<T*>(const_cast<char*>(out->tensor_data().data())),
+      reinterpret_cast<T*>(const_cast<char*>((char*)out->data())),
       out->shape().AsEigenDSizes<NDIMS>());
   if (conjugate) {
     y.device(d) = x.conjugate().shuffle(p);
@@ -169,6 +169,7 @@ template <typename Device>
 absl::Status DoTransposeImpl(const Device& d, const Tensor& in,
                              const absl::Span<const int32> perm, bool conjugate,
                              Tensor* out) {
+  // log a msg
   CHECK_EQ(in.dims(), out->dims());
   CHECK_EQ(in.dims(), perm.size());
   CHECK_EQ(in.dtype(), out->dtype());

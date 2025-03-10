@@ -2007,12 +2007,12 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
   size_t dma_size = 1024;
   size_t alignment = 4096;
   void* host_dma_ptr = nullptr;
-  posix_memalign(&host_dma_ptr, alignment, dma_size);
-  EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+  (void)posix_memalign(&host_dma_ptr, alignment, dma_size);
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
   EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
   EXPECT_FALSE(
       client->IsDmaMapped(reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
-  EXPECT_OK(client->DmaUnmap(host_dma_ptr));
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
   EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr, dma_size));
   free(host_dma_ptr);
 }
@@ -2044,8 +2044,8 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
   size_t dma_size = 2 * 1024 * 1024;
   size_t alignment = 1024;
   void* host_dma_ptr = nullptr;
-  posix_memalign(&host_dma_ptr, alignment, dma_size);
-  EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+  (void)posix_memalign(&host_dma_ptr, alignment, dma_size);
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
 
   auto result = first_buffer->CopyRawToHost(host_dma_ptr, 0, size);
   TF_EXPECT_OK(result.Await());
@@ -2057,13 +2057,13 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
                               {shape}, second_device->memory_spaces()[0]));
   auto second_buffer = transfer_manager->RetrieveBuffer(0);
 
-  EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(0, host_dma_ptr, 0,
-                                                         size, true, []() {}));
-  ASSERT_OK_AND_ASSIGN(auto literal, second_buffer->ToLiteralSync());
+  TF_EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
+      0, host_dma_ptr, 0, size, true, []() {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, second_buffer->ToLiteralSync());
   EXPECT_EQ(literal->element_count(), test_length);
   EXPECT_THAT(literal->data<int32_t>(), ElementsAreArray(data));
 
-  EXPECT_OK(client->DmaUnmap(host_dma_ptr));
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
   free(host_dma_ptr);
 }
 
@@ -2086,8 +2086,6 @@ class ShardedAutotuningTest
   static constexpr int kNumNodes = 2;
 };
 
-static const char* test_binary_name;
-
 TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
   ShardedAutotuningTestInfo param = GetParam();
 
@@ -2102,7 +2100,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
     for (int node_id = 0; node_id < kNumNodes; ++node_id) {
       std::vector<std::string> argv;
       argv.reserve(6);
-      argv.push_back(test_binary_name);
+      argv.push_back("sharded_autotuning_test");
       argv.push_back(absl::StrFormat("--node_id=%d", node_id));
       argv.push_back(absl::StrFormat("--use_xla_computation=%d",
                                      param.use_xla_computation));
@@ -2111,7 +2109,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
       argv.push_back(absl::StrFormat("--num_nodes_using_cache=%d",
                                      param.num_nodes_using_cache));
       argv.push_back(absl::StrFormat("--cache_dir=%s", cache_dir));
-      child[node_id].SetProgram(test_binary_name, argv);
+      child[node_id].SetProgram("/proc/self/exe", argv);
       child[node_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
       child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
       ASSERT_TRUE(child[node_id].Start()) << "node " << node_id;
@@ -2249,7 +2247,6 @@ INSTANTIATE_TEST_SUITE_P(
 
 int main(int argc, char* argv[]) {
   // Save name of binary so that it may invoke itself.
-  xla::test_binary_name = argv[0];
   int node_id = -1;
   int num_active_nodes = -1;
   int num_nodes_using_cache = -1;

@@ -22,7 +22,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "xla/backends/cpu/runtime/concurrency.h"
+#include "xla/backends/cpu/runtime/work_queue.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"  // IWYU pragma: keep
@@ -30,7 +30,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include "Eigen/Core"
-#include "Eigen/ThreadPool"
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu::internal {
@@ -384,8 +383,9 @@ void EigenGenericConv2D(
     auto num_tasks = Eigen::numext::div_ceil(feature_group_count, task_size);
 
     if (use_thunk_runtime) {
-      ScheduleAll(
-          &device, num_tasks, [=, &device](Eigen::Index task_index) mutable {
+      Worker::Parallelize(
+          &device, /*num_workers=*/num_tasks, num_tasks,
+          [=, &device](Eigen::Index task_index) mutable {
             Eigen::Index start = task_index * task_size;
             Eigen::Index end = std::min(start + task_size, feature_group_count);
             for (Eigen::Index i = start; i < end; ++i) {
@@ -395,18 +395,16 @@ void EigenGenericConv2D(
             }
           });
     } else {
-      Eigen::Barrier barrier(num_tasks);
-      ScheduleAll(
-          &device, num_tasks, [=, &device, &barrier](Eigen::Index task_index) {
+      tsl::BlockUntilReady(Worker::Parallelize(
+          &device, /*num_workers=*/num_tasks, num_tasks,
+          [=, &device](Eigen::Index task_index) {
             Eigen::Index start = task_index * task_size;
             Eigen::Index end = std::min(start + task_size, feature_group_count);
             for (Eigen::Index i = start; i < end; ++i) {
               auto [output, convolved] = convolve_group(i);
               output.device(device) = convolved;
             }
-            barrier.Notify();
-          });
-      barrier.Wait();
+          }));
     }
 
   } else {

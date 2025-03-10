@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "shardy/dialect/sdy/transforms/propagation/passes.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
@@ -33,8 +34,11 @@ namespace sdy {
 // 3. converts the StableHLO back to the HLO module.
 class ShardyXLA : public xla::HloModulePass {
  public:
-  explicit ShardyXLA(bool runSdyShardingPropagation = true)
-      : runSdyShardingPropagation(runSdyShardingPropagation) {}
+  explicit ShardyXLA(bool runSdyShardingPropagation = true,
+                     mlir::sdy::PropagationOptions defaultOptions =
+                         mlir::sdy::PropagationOptions{})
+      : runSdyShardingPropagation(runSdyShardingPropagation),
+        defaultOptions(defaultOptions) {}
 
   absl::string_view name() const override { return "shardy-xla"; }
 
@@ -49,6 +53,7 @@ class ShardyXLA : public xla::HloModulePass {
 
  private:
   bool runSdyShardingPropagation;
+  mlir::sdy::PropagationOptions defaultOptions;
   // TODO. Run other SDY passes with flags.
 };
 

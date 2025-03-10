@@ -40,7 +40,8 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm);
 //
 // The module is assumed to have `kShardingRoundTripAttr` and
 // `kMeshesRoundTripAttr`.
-void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm);
+void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
+                                   bool enableConstantImport = true);
 
 // Register the xla-sdy-round-trip-export-pipeline.
 void registerSdyRoundTripExportPipeline();

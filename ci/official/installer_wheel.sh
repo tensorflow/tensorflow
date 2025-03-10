@@ -21,7 +21,7 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
 fi
 
 # This generates a pure python wheel of the format "*-py3-none-any.whl"
-python3 tensorflow/tools/pip_package/setup.py bdist_wheel --dist-dir "$TFCI_OUTPUT_DIR"
+bazel run --HERMETIC_PYTHON_VERSION=3.13 //tensorflow/tools/pip_package:setup_py_binary -- bdist_wheel --dist-dir "$TFCI_OUTPUT_DIR"
 
 # Get the name of the pure python wheel that was built. This should
 # resolve to either

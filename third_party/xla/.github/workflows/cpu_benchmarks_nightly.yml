@@ -1,0 +1,128 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+name: Nightly CPU Benchmarks
+permissions:
+  contents: read
+on:
+  workflow_dispatch:  # Allows manual triggering
+  schedule:
+    - cron: '0 */6 * * *'  # Run every 6 hours (at minute 0 of hours 0, 6, 12, 18)
+
+jobs:
+  Tests:
+    strategy:
+      # Don't fail fast - want to see results for all builds even if one fails.
+      fail-fast: false
+      matrix:
+        job_info: [
+          {
+            os: "linux-x86-n2-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 CPU with 16 vcpu",
+          },
+          {
+            os: "linux-arm64-c4a-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            pretty_name: "XLA Linux ARM64 CPU with 16 vcpu",
+          },
+          {
+            os: "linux-arm64-c4a-64",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            pretty_name: "XLA Linux ARM64 CPU with 64 vcpu",
+          },
+          {
+            os: "linux-x86-n2-128",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 CPU with 128 vcpu",
+          }
+        ]
+    name: ${{ matrix.job_info.pretty_name }}
+    runs-on: ${{ matrix.job_info.os }}
+    container: ${{ matrix.job_info.container }}
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 540
+    steps:
+      - name: Print machine specs
+        run: |
+          lscpu
+          free -h  # Memory information
+          df -h    # Disk space information
+          uname -a # Kernel information
+
+      - name: Check Python Version in Container
+        run: python3 --version
+
+      - name: Install Python 3.10 if not present (IN CONTAINER)
+        run: |
+          if ! python3 --version > /dev/null 2>&1; then # check for python3
+            echo "Python 3 not found, installing..."
+            apt-get update
+            apt-get install -y python3.10 python3-pip
+          else
+            echo "Python 3 found."
+          fi
+
+      - name: Checkout OpenXLA
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Create results directory
+        run:
+          mkdir results
+
+      - name: Print machine specs
+        run: |
+          lscpu
+          free -h  # Memory information
+          df -h    # Disk space information
+          uname -a # Kernel information
+
+      - name: Run E2E benchmarks flax_2b
+        timeout-minutes: 60
+        run: |
+          cd xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
+          bash setup.sh
+          bash run.sh | tee -a ../../../../../../../results/flax_2b.log
+
+      - name: Configure CPU backend
+        run: |
+          ./configure.py --backend=CPU
+
+      - name: Build run_hlo_module
+        run: bazel build -c opt --dynamic_mode=off xla/tools:run_hlo_module
+
+      - name: Run xla/tests/fuzz/rand_000001.hlo and collect runtime and compile time
+        run: ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU xla/tests/fuzz/rand_000001.hlo
+
+      - name: Download and run Gemma2 2B HLO and collect runtime and compile time
+        run: |
+          mkdir -p tmp_hlo
+          cd tmp_hlo
+          wget https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo
+          cd ..
+          ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU --reference_platform="" tmp_hlo/gemma2_2b_keras_jax.hlo
+
+      - name: Compute the cost of gemma2_2b_keras_jax.hlo
+        run: |
+          PWD=$(pwd)
+          bazel run //xla/tools:compute_cost -- --input=$PWD/tmp_hlo/gemma2_2b_keras_jax.hlo --format=hlo
+
+      - name: Build hlo_runner_main
+        run: bazel build -c opt --dynamic_mode=off //xla/tools/multihost_hlo_runner:hlo_runner_main
+
+      - name: Run hlo_runner_main on gemma2_2b_keras_jax.hlo and collect profile stats
+        run: |
+          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=host --log_output=True --use_spmd_partitioning --profile_execution=True tmp_hlo/gemma2_2b_keras_jax.hlo

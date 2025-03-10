@@ -536,8 +536,7 @@ TEST(ArrayImplTest, CopyToSameDevices) {
 
 TEST(ArrayImplTest, CopyToDifferentDevice) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  tsl::RCReference<DeviceList> devices =
-      client->MakeDeviceList(client->addressable_devices());
+  DeviceListRef devices = client->MakeDeviceList(client->addressable_devices());
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});

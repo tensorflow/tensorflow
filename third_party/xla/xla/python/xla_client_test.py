@@ -1636,6 +1636,14 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       ops.Expm1(ops.Constant(c, arr))
       self._ExecuteAndCompareClose(c, expected=[np.expm1(arr)])
 
+    def testExpm1WithResultAccuracy(self):
+      c = self._NewComputation()
+      arr = NumpyArrayF32([3.3, 12.1])
+      accuracy = xla_client.ResultAccuracy()
+      accuracy.mode = xla_client.ResultAccuracyMode.DEFAULT
+      ops.Expm1(ops.Constant(c, arr), accuracy)
+      self._ExecuteAndCompareClose(c, expected=[np.expm1(arr)])
+
     def testRound(self):
       c = self._NewComputation()
       arr = NumpyArrayF32([3.3, 12.1])
@@ -1837,7 +1845,6 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       c = self._NewComputation()
       ops.Reshape(
           ops.Constant(c, NumpyArrayS32([[1, 2], [3, 4], [5, 6]])),
-          dimensions=[0, 1],
           new_sizes=[2, 3])
       self._ExecuteAndCompareExact(c, expected=[[[1, 2, 3], [4, 5, 6]]])
 

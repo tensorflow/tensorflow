@@ -4,16 +4,17 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load(
-    "@local_tsl//third_party/py:py_import.bzl",
+    "@local_xla//third_party/py:py_import.bzl",
     "py_import",
 )
 load(
-    "@local_tsl//third_party/py:py_manylinux_compliance_test.bzl",
+    "@local_xla//third_party/py:py_manylinux_compliance_test.bzl",
     "verify_manylinux_compliance_test",
 )
-load("@local_tsl//third_party/py:python_wheel.bzl", "collect_data_files", "transitive_py_deps")
+load("@local_xla//third_party/py:python_wheel.bzl", "collect_data_files", "transitive_py_deps")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
+load("//tensorflow:tf_version.bzl", "TF_SEMANTIC_VERSION_SUFFIX", "TF_VERSION")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_pywrap",
@@ -113,7 +114,6 @@ filegroup(
         "@pasta//:LICENSE",
         "@png//:LICENSE",
         "@ruy//:LICENSE",
-        "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@stablehlo//:LICENSE",
         "@tf_runtime//:LICENSE",
@@ -269,6 +269,27 @@ transitive_py_deps(
     deps = COMMON_PIP_DEPS,
 )
 
+genrule(
+    name = "setup_py",
+    srcs = ["setup.py.tpl"],
+    outs = ["setup.py"],
+    cmd = """sed -E "s/_VERSION = '0.0.0'/_VERSION = '{wheel_version}{wheel_version_suffix}'/" \
+$(location setup.py.tpl) > $@;""".format(
+        wheel_version = TF_VERSION,
+        wheel_version_suffix = TF_SEMANTIC_VERSION_SUFFIX,
+    ),
+)
+
+py_binary(
+    name = "setup_py_binary",
+    srcs = [":setup_py"],
+    data = [
+        "//:AUTHORS",
+        "//:LICENSE",
+    ],
+    main = "setup.py",
+)
+
 tf_wheel(
     name = "wheel",
     headers = [
@@ -291,7 +312,7 @@ tf_wheel(
     source_files = [
         "MANIFEST.in",
         "//tensorflow/tools/pip_package:THIRD_PARTY_NOTICES.txt",
-        "setup.py",
+        ":setup_py",
         ":cc_deps",
         ":py_deps",
         "//tensorflow:tf_python_api_gen_v2",
@@ -347,7 +368,6 @@ py_test(
     tags = [
         "cpu",
         "manual",
-        "windows_excluded",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()),
 )
@@ -366,7 +386,6 @@ py_test(
     tags = [
         "gpu",
         "manual",
-        "windows_excluded",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()),
 )
@@ -379,7 +398,6 @@ py_test(
         "cuda-only", #TODO(rocm): weekly-sync 24-12-10
         "cpu",
         "manual",
-        "windows_excluded",
     ],
     deps = [
         ":tf_py_import",
@@ -397,7 +415,6 @@ py_test(
     tags = [
         "gpu",
         "manual",
-        "windows_excluded",
     ],
     deps = [
         ":tf_py_import",

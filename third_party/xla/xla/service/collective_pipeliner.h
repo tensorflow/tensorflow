@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
@@ -65,10 +66,12 @@ class CollectivePipeliner : public HloModulePass {
     kForwardSink,
   };
 
-  // Postprocessing cloned collective instructions, such as for modifying loop
-  // iteration related frontend attributes to reflect loop pipelining.
-  using HloPostprocessor =
-      std::optional<std::function<absl::Status(HloInstruction* instr)>>;
+  // Postprocessing cloned collective instructions, such as peeled instructions
+  // before and after the loop, and rotated instructions. The new while op is
+  // only passed for the peeled trailing ops when the new while op was already
+  // created.
+  using HloPostprocessor = std::optional<std::function<absl::Status(
+      HloInstruction* instr, HloInstruction* new_while_instr)>>;
 
   struct Config {
     int64_t level_to_operate_on = 0;
@@ -100,8 +103,10 @@ class CollectivePipeliner : public HloModulePass {
     // pipelined. The control dependencies will be dropped when the operation is
     // pipelined. This is currently only used to support kBackward pipelining.
     bool should_allow_control_dependencies = false;
+    // TODO(b/399476667): Consolidate these postprocessing functions.
     HloPostprocessor postprocess_backward_peeled_op = std::nullopt;
     HloPostprocessor postprocess_backward_rotated_op = std::nullopt;
+    HloPostprocessor postprocess_backward_peeled_trailing_op = std::nullopt;
     // Determines whether a loop invariant instruction can be considered
     // in the pipelining chain.
     bool should_add_loop_invariant_op_in_chain = false;

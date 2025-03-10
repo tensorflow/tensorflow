@@ -1,5 +1,7 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,6 +19,7 @@ package_group(
 td_library(
     name = "xla_td_files",
     srcs = glob(["*.td"]),
+    compatible_with = get_compatible_with_portable(),
     includes = ["."],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -30,6 +33,7 @@ td_library(
 
 gentbl_cc_library(
     name = "xla_dialect_inc_gen",
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -48,6 +52,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "xla_ops_inc_gen",
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -66,6 +71,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "xla_attrs_inc_gen",
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (

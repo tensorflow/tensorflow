@@ -228,6 +228,11 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
                              std::unique_ptr<MlrtBatchResource>* resource) {
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = options.num_batch_threads;
+    if (options.mixed_priority_batching_policy ==
+        serving::MixedPriorityBatchingPolicy::kPriorityMerge) {
+      batcher_options.use_global_scheduler = true;
+      batcher_options.rank_queues = true;
+    }
     std::shared_ptr<BatcherT> batcher;
     TF_RETURN_IF_ERROR(BatcherT::Create(batcher_options, &batcher));
 

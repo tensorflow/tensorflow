@@ -47,11 +47,10 @@ NcclRecvThunk::NcclRecvThunk(ThunkInfo thunk_info,
                              int64_t replica_count, int64_t partition_count,
                              const Buffer& buffer)
     : NcclCollectiveThunk(Thunk::kNcclRecv, thunk_info,
-                          /*is_sync=*/false),
+                          /*is_sync=*/false, GetStreamKindForP2P(instr)),
       config_(GetNcclP2PConfigForSendRecv(instr, instr->shape().tuple_shapes(0),
                                           replica_count, partition_count)),
       buffer_(buffer),
-      stream_kind_(GetStreamKindForSendRecv(instr)),
       execution_counters_(config_.validation_kind ==
                                   NcclP2PConfig::ValidationKind::kConditional
                               ? new ExecutionCounters()
@@ -137,6 +136,8 @@ absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
       TF_RETURN_IF_ERROR(comm_handle.comm->Recv(
           dest_addr, buffer.element_type, buffer.element_count,
           RankId(*source_id), GpuCollectives::On(stream)));
+    } else {
+      VLOG(3) << "Skipping Recv";
     }
 
   } else {

@@ -344,8 +344,8 @@ message ShapeProto {
   repeated bool is_dynamic_dimension = 6;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal(),
-  // ShapeUtil::Compatible() and ShapeUtil::Hash() appropriately to account for
-  // the new field.
+  // ShapeUtil::Compatible() and Shape::Hash() appropriately to account for the
+  // new field.
 }
 // LINT.ThenChange( \
 //     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc)
@@ -1105,8 +1105,9 @@ message PrecisionConfig {
     ALG_DOT_TF32_TF32_F32_X3 = 10;
     ALG_DOT_F32_F32_F32 = 11;
     ALG_DOT_F64_F64_F64 = 12;
+    ALG_DOT_BF16_BF16_F32_X9 = 13;
 
-    // Next: 13
+    // Next: 14
   }
 
   repeated Precision operand_precision = 1;
@@ -1144,12 +1145,30 @@ message ParameterReplication {
 // whereas implementing a `while` loop requires a host-device sync on each
 // iteration.
 message WhileLoopBackendConfig {
+  message KnownInitStep {
+    int64 init = 1;
+    int64 step = 2;
+  }
+
   message KnownTripCount {
     int64 n = 1;
   }
+
+  message KnownInductionVariable {
+    int64 tuple_index = 1;
+  }
+
   // This indirection lets us distinguish between known-trip-count == 0 and
   // unknown-trip-count.
   KnownTripCount known_trip_count = 1;
+
+  // Independently from the known trip count, we may also know the start and
+  // step of the induction variable.
+  KnownInitStep known_init_step = 2;
+
+  // This lets us distinguish between an unknown induction variable (or none)
+  // and tuple index 0.
+  KnownInductionVariable known_induction_variable = 3;
 }
 
 // Specifies a pair of output/operand buffers that alias each other for

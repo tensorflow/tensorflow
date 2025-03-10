@@ -49,6 +49,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:parsing_ops",
         "//tensorflow/python/platform:client_testlib",
+        "@pypi_zstandard//:pkg",
     ],
 )
 

@@ -96,16 +96,25 @@ class ComplexUnaryOpTest : public ClientLibraryTestBase {
 };
 
 XLA_TEST_F(ComplexUnaryOpTest, Log1pTest) {
-  UnaryTestHelper<complex_unary_op_samples::Log1p<float>>(Log1p);
-  UnaryTestHelper<complex_unary_op_samples::Log1p<double>>(Log1p);
+  UnaryTestHelper<complex_unary_op_samples::Log1p<float>>(
+      [](XlaOp x) { return Log1p(x); });
+  UnaryTestHelper<complex_unary_op_samples::Log1p<double>>(
+      [](XlaOp x) { return Log1p(x); });
 }
 
 XLA_TEST_F(ComplexUnaryOpTest, TanTest) {
+<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
     GTEST_SKIP() << "Temporarily skipped for ROCm.";
 #endif
   UnaryTestHelper<complex_unary_op_samples::Tan<float>>(Tan);
   UnaryTestHelper<complex_unary_op_samples::Tan<double>>(Tan);
+=======
+  UnaryTestHelper<complex_unary_op_samples::Tan<float>>(
+      [](XlaOp x) { return Tan(x); });
+  UnaryTestHelper<complex_unary_op_samples::Tan<double>>(
+      [](XlaOp x) { return Tan(x); });
+>>>>>>> upstream/master
 }
 
 XLA_TEST_F(ComplexUnaryOpTest, AsinTest) {

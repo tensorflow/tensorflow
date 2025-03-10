@@ -1170,6 +1170,13 @@ absl::Status ProcessFunctionLibraryRuntime::Instantiate(
   return status;
 }
 
+absl::Status ProcessFunctionLibraryRuntime::Finalize() {
+  for (auto& [_, flr] : *flr_map_) {
+    TF_RETURN_IF_ERROR(flr->Finalize());
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ProcessFunctionLibraryRuntime::IsCrossProcess(
     FunctionLibraryRuntime::Handle handle, bool* is_cross_process) const {
   tf_shared_lock l(mu_);

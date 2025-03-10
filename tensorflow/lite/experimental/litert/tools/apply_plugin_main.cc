@@ -20,6 +20,7 @@
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/CommandLine.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_flags.h"
 #include "tensorflow/lite/experimental/litert/tools/apply_plugin.h"
 #include "tensorflow/lite/experimental/litert/tools/outstream.h"
 
@@ -59,7 +60,9 @@ static llvm::cl::list<std::string> libs(
     llvm::cl::list_init(llvm::ArrayRef<std::string>{
         "third_party/tensorflow/lite/experimental/litert/vendors/examples",
         "third_party/tensorflow/lite/experimental/litert/vendors/qualcomm/"
-        "compiler"}));
+        "compiler",
+        "third_party/tensorflow/lite/experimental/litert/vendors/"
+        "google_tensor/compiler"}));
 
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> outs(
@@ -75,12 +78,22 @@ static llvm::cl::opt<std::string> err(
                    "\"--\" for standard err, \"none\" for null stream."),
     llvm::cl::init("--"));
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<std::string> compiler_flags(
+    "compiler-flags",
+    llvm::cl::desc("List of comma separated (no space) compiler flags. Flags "
+                   "may be key-value pairs "
+                   "in the format of \"key=value\", or just \"key\". E.g. "
+                   "\"--compiler-flags=key1=value1,key2\""));
+
 ApplyPluginRun::Ptr ParseFlags() {
   auto res = std::make_unique<ApplyPluginRun>();
 
   if (!model.empty()) {
     res->model = model;
   }
+
+  res->compiler_flags = *litert::internal::ParseCompilerFlags(compiler_flags);
 
   res->soc_manufacturer = soc_manufacturer;
   res->soc_models.push_back(soc_model);

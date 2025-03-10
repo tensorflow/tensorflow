@@ -17,8 +17,11 @@
 #include <cstdint>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/log/absl_check.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
@@ -43,6 +46,25 @@ void CloneTo(const LiteRtTensorT& src, LiteRtTensorT& dest) {
   dest.SetQarams(src.Qparams());
   dest.SetType(src.Type());
 
+  // Manully copy per-channel quantization params,quant array is owned by
+  // tensor.
+  if (src.Qparams().first == kLiteRtQuantizationPerChannel) {
+    std::vector<float> scales(
+        src.Qparams().second.per_channel.scales,
+        src.Qparams().second.per_channel.scales +
+            src.Qparams().second.per_channel.num_channels);
+    std::vector<int64_t> zero_points(
+        src.Qparams().second.per_channel.zero_points,
+        src.Qparams().second.per_channel.zero_points +
+            src.Qparams().second.per_channel.num_channels);
+    Quantization dest_qparams = MakePerChannelQuantization(
+        scales, zero_points,
+        src.Qparams().second.per_channel.quantized_dimension,
+        [&dest](auto s) { return dest.RequestScratchBuffer(s); });
+    dest.SetQarams(std::move(dest_qparams));
+  }
+
+  // Move weight buffer from src to dest.
   const auto& src_weights = src.Weights();
   auto& dest_weights = dest.Weights();
 
@@ -194,6 +216,8 @@ bool DCE(LiteRtSubgraphT& subgraph) {
     return IsTensorDead(t) && !IsIO(subgraph, t);
   };
   const auto tensors_removed = subgraph.RemoveTensorIf(rm_tensor);
+  LITERT_LOG(LITERT_INFO, "Removed %d ops, %d tensors", ops_removed,
+             tensors_removed);
 
   return (ops_removed + tensors_removed) > 0;
 }

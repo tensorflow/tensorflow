@@ -585,6 +585,12 @@ TEST(PjrtCApiGpuAllocatorTest, ValidOptionsParsing) {
 
     PJRT_Error* destroy_error = api->PJRT_Client_Destroy(&destroy_args);
     CHECK_EQ(destroy_error, nullptr);
+
+    PJRT_Error_Destroy_Args error_destroy_args;
+    error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
+    error_destroy_args.extension_start = nullptr;
+    error_destroy_args.error = error;
+    api->PJRT_Error_Destroy(&error_destroy_args);
   }
 }
 

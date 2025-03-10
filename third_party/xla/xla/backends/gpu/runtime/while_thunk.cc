@@ -27,11 +27,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -43,31 +45,49 @@ namespace gpu {
 using ::tsl::profiler::TraceMe;
 using ::tsl::profiler::TraceMeEncode;
 
-static std::list<int64_t>& LoopCounters() {
+struct RunningLoop {
+  const HloInstruction* loop_instr;
+  int64_t counter;
+};
+
+static std::list<RunningLoop>& RunningLoops() {
   // TODO(b/343294327): Do not rely on thread-local storage.
-  static thread_local std::list<int64_t> loop_counters;
-  return loop_counters;
+  static thread_local std::list<RunningLoop> loops;
+  return loops;
 }
 
 absl::StatusOr<int64_t> WhileThunk::CurrentLoopIteration(int64_t depth) {
-  if (depth >= LoopCounters().size()) {
+  if (depth >= RunningLoops().size()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Loop depth %d is greater than the number of tracked loops %d", depth,
-        LoopCounters().size()));
+        RunningLoops().size()));
   }
 
-  auto counter = LoopCounters().begin();
-  std::advance(counter, depth);
-  return *counter;
+  auto loop = RunningLoops().begin();
+  std::advance(loop, depth);
+  return loop->counter;
+}
+
+absl::StatusOr<int64_t> WhileThunk::CurrentLoopIteration(
+    const HloInstruction* while_instr) {
+  for (const auto& loop : RunningLoops()) {
+    if (loop.loop_instr == while_instr) {
+      return loop.counter;
+    }
+  }
+
+  return absl::InvalidArgumentError(
+      absl::StrFormat("Loop %s is not currently running", while_instr->name()));
 }
 
 WhileThunk::WhileThunk(
-    ThunkInfo thunk_info,
+    ThunkInfo thunk_info, const HloInstruction* loop,
     const BufferAllocation::Slice& condition_result_buffer_index,
     std::unique_ptr<SequentialThunk> condition_thunk_sequence,
     std::unique_ptr<SequentialThunk> body_thunk_sequence,
     std::optional<int64_t> trip_count)
     : Thunk(Kind::kWhile, thunk_info),
+      loop_(loop),
       condition_result_buffer_index_(condition_result_buffer_index),
       condition_thunk_sequence_(std::move(condition_thunk_sequence)),
       body_thunk_sequence_(std::move(body_thunk_sequence)),
@@ -86,39 +106,43 @@ absl::Status WhileThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(params));
 
   absl::MutexLock lock(&mutex_);
-  if (auto it = predicates_.find(params.executor); it == predicates_.end()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> allocation,
-                        params.executor->HostMemoryAllocate(sizeof(bool)));
-    predicates_.emplace(params.executor, std::move(allocation));
+  if (!host_memory_pools_.contains(params.executor)) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HostMemoryPool> pool,
+        HostMemoryPool::Create(params.executor, PrimitiveType::PRED));
+    host_memory_pools_[params.executor] = std::move(pool);
   }
-
   return absl::OkStatus();
 }
 
 absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
 
-  int64_t& iter = LoopCounters().emplace_front();
-  absl::Cleanup cleanup = [&] { LoopCounters().pop_front(); };
-
-  se::DeviceMemoryBase condition_result_data =
-      params.buffer_allocations->GetDeviceAddress(
-          condition_result_buffer_index_);
+  RunningLoop& loop = RunningLoops().emplace_front();
+  loop.loop_instr = loop_;
+  int64_t& iter = loop.counter;
+  absl::Cleanup cleanup = [&] { RunningLoops().pop_front(); };
 
   if (trip_count_.has_value()) {
     VLOG(2) << "Executing WhileThunk for " << *trip_count_ << " iterations";
     for (iter = 0; iter < trip_count_; ++iter) {
-      VLOG(3) << "Executing iteration # " << iter;
+      VLOG(3) << "Executing iteration # " << iter
+              << " (Device: " << stream.parent()->device_ordinal() << ")";
       TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
     }
     return absl::OkStatus();
   }
 
-  // Get memory allocation for copying condition result from device.
-  bool* condition_result = [&] {
+  HostMemoryPool* pool;
+  {
     absl::MutexLock lock(&mutex_);
-    return reinterpret_cast<bool*>(predicates_.at(stream.parent())->opaque());
-  }();
+    pool = host_memory_pools_.at(stream.parent()).get();
+  }
+  TF_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
+  bool* condition_result = handle.get<bool>();
+  se::DeviceMemoryBase condition_result_data =
+      params.buffer_allocations->GetDeviceAddress(
+          condition_result_buffer_index_);
 
   while (true) {
     TraceMe trace(
@@ -142,7 +166,8 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
       break;
     }
 
-    VLOG(3) << "Executing WhileThunk body computation; iter=" << iter;
+    VLOG(3) << "Executing WhileThunk body computation; iter=" << iter
+            << " (Device: " << stream.parent()->device_ordinal() << ")";
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
     ++iter;
   }
@@ -153,6 +178,16 @@ void WhileThunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
   fn(this);
   condition_thunk_sequence_->ForAllThunks(fn);
   body_thunk_sequence_->ForAllThunks(fn);
+}
+
+std::string WhileThunk::ToString(int indent) const {
+  std::string indent_str(indent * 2, ' ');
+  std::string result;
+  absl::StrAppend(&result, indent_str, "\ncondition:\n");
+  absl::StrAppend(&result, condition_thunk_sequence_->ToString(indent + 1));
+  absl::StrAppend(&result, indent_str, "body:\n");
+  absl::StrAppend(&result, body_thunk_sequence_->ToString(indent + 1));
+  return result;
 }
 
 }  // namespace gpu

@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -34,13 +35,15 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -69,6 +72,7 @@ struct HloOptConfig {
   bool list_stages{false};
   std::string passes{""};
   bool list_passes{false};
+  bool emit_proto{false};
 };
 
 }  // namespace
@@ -171,6 +175,15 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
 
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> modules,
                       GetModules(opts, argc, argv));
+  if (opts.emit_proto) {
+    std::string proto_str_combined;
+    for (const auto& module : modules) {
+      absl::StrAppend(&proto_str_combined,
+                      xla::MakeHloProto(*module).DebugString(), "\n");
+    }
+    return proto_str_combined;
+  }
+
   // Registration can be done using HloModuleConfig, but some
   // GPU pipelines APIs expects HloModule.
   // Assumption: All input modules have same HloModuleConfig.
@@ -242,7 +255,11 @@ int main(int argc, char** argv) {
       tsl::Flag("passes", &opts.passes,
                 "Comma-separated list of passes to run."),
       tsl::Flag("list-passes", &opts.list_passes,
-                "Print all supported passes for a given platform and exit")};
+                "Print all supported passes for a given platform and exit"),
+      tsl::Flag("emit-proto", &opts.emit_proto,
+                "Emit HLO in `textproto` format, "
+                "no optimization passes are applied.")};
+
   // Modifies global DebugOptions, populates flags with every flag available
   // from xla.proto.
   xla::AppendDebugOptionsFlags(&flag_list);

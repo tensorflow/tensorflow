@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
@@ -82,11 +83,17 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
     // Assume 1 byte per second for testing.
     tpu_device_options.set_bytes_per_second(1);
     hlo_cost_analysis_ = std::make_unique<HloCostAnalysis>(tpu_device_options);
-    TF_RETURN_IF_ERROR(
-        module_->entry_computation()->Accept(hlo_cost_analysis_.get()));
-    hlo_cost_analysis_costs_ =
-        std::make_unique<memory_space_assignment::HloCostAnalysisCosts>(
-            *hlo_cost_analysis_);
+    hlo_cost_analysis_wrapper_ =
+        std::make_unique<HloCostAnalysisWithAcceptState>(*hlo_cost_analysis_);
+    op_cost_manager_ = std::make_unique<OpCostManager>(
+        OpCostManager::Options{
+            /*enable_cache=*/false,
+            /*enable_analysis_logging=*/false,
+        },
+        OpCostManager::CalculationNode::CreateLeaf(
+            "HloCostAnalysis",
+            CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper_),
+            /*enable_cache=*/false));
     CostAnalysisOptions cost_analysis_options;
     // Assume 2 byte per second for testing.
     cost_analysis_options.alternate_mem_read_bandwidth_bytes_per_second = 2;
@@ -94,7 +101,7 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
     cost_analysis_options.default_mem_bandwidth_bytes_per_second = 1.0;
 
     TF_ASSIGN_OR_RETURN(cost_analysis_,
-                        CostAnalysis::Create(*hlo_cost_analysis_costs_,
+                        CostAnalysis::Create(*op_cost_manager_,
                                              cost_analysis_options, *module_));
 
     TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module_.get()));
@@ -108,8 +115,8 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
   absl::flat_hash_map<absl::string_view, const HloInstruction*>
       instruction_map_;
   std::unique_ptr<HloCostAnalysis> hlo_cost_analysis_;
-  std::unique_ptr<memory_space_assignment::HloCostAnalysisCosts>
-      hlo_cost_analysis_costs_;
+  std::unique_ptr<HloCostAnalysisWithAcceptState> hlo_cost_analysis_wrapper_;
+  std::unique_ptr<OpCostManager> op_cost_manager_;
   std::unique_ptr<CostAnalysis> cost_analysis_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
   std::unique_ptr<HloLiveRange> hlo_live_range_;

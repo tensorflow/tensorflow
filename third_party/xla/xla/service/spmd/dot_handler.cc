@@ -2639,7 +2639,6 @@ std::pair<HloSharding, HloSharding>
 GetDotGroupPartitionContractingOutputShardings(
     const DotConvolutionDimsInfo& dims_mapping,
     const GroupedSharding& lhs_grouped, const GroupedSharding& rhs_grouped,
-    absl::Span<const int64_t> lhs_dims, absl::Span<const int64_t> rhs_dims,
     const Shape& output_base_shape, HloSharding output_sharding,
     int64_t group_count, int64_t output_lhs_non_contracting_partitions,
     int64_t output_rhs_non_contracting_partitions,
@@ -2659,28 +2658,33 @@ GetDotGroupPartitionContractingOutputShardings(
     DotDimensionIndexMapping indices_map = ComputeDimensionIndexMapping(
         dims_mapping, lhs_grouped.data_rank, rhs_grouped.data_rank,
         output_sharding.TiledDataRank());
-    absl::Span<const int64_t> dims;
+    std::vector<int64_t> contracting_dims;
+    contracting_dims.reserve(dims_mapping.contracting_dims.size());
     std::optional<HloSharding> operand_sharding;
     absl::Span<const int64_t> operand_to_output;
     absl::Span<const int64_t> output_to_operand;
     if (lhs_grouped.sharding.IsReplicated() &&
         !rhs_grouped.sharding.IsReplicated()) {
       operand_sharding = hlo_sharding_util::UngroupSharding(rhs_grouped);
-      dims = rhs_dims;
+      for (const auto& dim : dims_mapping.contracting_dims) {
+        contracting_dims.push_back(dim.rhs);
+      }
       operand_to_output = indices_map.rhs_to_output_indices;
       output_to_operand = indices_map.output_to_rhs_indices;
     }
     if (!lhs_grouped.sharding.IsReplicated() &&
         rhs_grouped.sharding.IsReplicated()) {
       operand_sharding = hlo_sharding_util::UngroupSharding(lhs_grouped);
-      dims = lhs_dims;
+      for (const auto& dim : dims_mapping.contracting_dims) {
+        contracting_dims.push_back(dim.lhs);
+      }
       operand_to_output = indices_map.lhs_to_output_indices;
       output_to_operand = indices_map.output_to_lhs_indices;
     }
-    if (!dims.empty()) {
+    if (!contracting_dims.empty()) {
       operand_sharding =
           hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-              *operand_sharding, dims);
+              *operand_sharding, contracting_dims);
       HloSharding out_operand_shard =
           *hlo_sharding_util::TransposeShardingWithCollapsedDims(
               *operand_sharding, operand_to_output, output_to_operand);
@@ -2886,9 +2890,8 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnContractingImpl(
   bool output_replicate_dim_grouped;
   std::tie(inner_output_sharding, outer_output_tmp_sharding) =
       GetDotGroupPartitionContractingOutputShardings(
-          dims_mapping, lhs_grouped, rhs_grouped, lhs_dims, rhs_dims,
-          output_base_shape, output_sharding, group_count,
-          output_lhs_non_contracting_partitions,
+          dims_mapping, lhs_grouped, rhs_grouped, output_base_shape,
+          output_sharding, group_count, output_lhs_non_contracting_partitions,
           output_rhs_non_contracting_partitions, output_batch_partitions,
           &output_slice_dims, &output_replicate_dim_grouped);
   Shape inner_output_base_shape = output_base_shape;
@@ -3317,9 +3320,8 @@ bool PrioritizeContractingDimensionsPartitioning(
   std::vector<int64_t> output_slice_dims;
   std::tie(inner_output_sharding, outer_output_tmp_sharding) =
       GetDotGroupPartitionContractingOutputShardings(
-          dims_mapping, lhs_grouped, rhs_grouped, lhs_dims, rhs_dims,
-          output_base_shape, output_sharding, group_count,
-          output_lhs_non_contracting_partitions,
+          dims_mapping, lhs_grouped, rhs_grouped, output_base_shape,
+          output_sharding, group_count, output_lhs_non_contracting_partitions,
           output_rhs_non_contracting_partitions, output_batch_partitions,
           &output_slice_dims);
   Shape inner_output_base_shape = output_base_shape;

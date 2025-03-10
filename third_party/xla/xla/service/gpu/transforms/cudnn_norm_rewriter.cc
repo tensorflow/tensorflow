@@ -159,10 +159,10 @@ class UniqueHloInstruction {
 // bound for the size of the scratch space for layer norm kernels.
 absl::StatusOr<int64_t> CConstant(
     se::CudaComputeCapability cuda_compute_capability) {
-  if (cuda_compute_capability.major == se::CudaComputeCapability::AMPERE) {
+  if (cuda_compute_capability.major == se::CudaComputeCapability::kAmpere) {
     return 32 * 128;
   } else if (cuda_compute_capability.major ==
-             se::CudaComputeCapability::HOPPER) {
+             se::CudaComputeCapability::kHopper) {
     return 32 * 144;
   }
   return xla::Internal("Norm kernels require Ampere or Hopper architecture.");
@@ -919,8 +919,10 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       }
 
       // Layer norm kernels require Ampere or Hopper architectures.
-      if (cuda_compute_capability_.major != se::CudaComputeCapability::AMPERE &&
-          cuda_compute_capability_.major != se::CudaComputeCapability::HOPPER) {
+      if (cuda_compute_capability_.major !=
+              se::CudaComputeCapability::kAmpere &&
+          cuda_compute_capability_.major !=
+              se::CudaComputeCapability::kHopper) {
         VLOG(1) << "Layer norm Custom Calls require Ampere or Hopper "
                    "architectures.";
         return absl::OkStatus();

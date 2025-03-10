@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
+
+#if defined(INTEL_MKL)
 
 class LayerNormTest : public HloTestBase {
  protected:
@@ -335,7 +335,11 @@ TEST_F(LayerNormTest, LayerNormTest1_BF16) {
   MatchOptimizedHlo(layer_norm_module_str, onednn_layer_norm_);
 }
 
+#endif  // INTEL_MKL
+
+// Ensure at least one test case is linked to avoid test failures.
+TEST(Dummy, Test) {}
+
 }  // namespace
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3

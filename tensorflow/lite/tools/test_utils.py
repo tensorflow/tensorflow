@@ -270,6 +270,22 @@ def build_mock_flatbuffer_model():
   return model
 
 
+def build_operator_with_options() -> schema_fb.Operator:
+  """Builds an operator with the given options."""
+  builder = flatbuffers.Builder(1024)
+  schema_fb.StableHLOCompositeOptionsStart(builder)
+  schema_fb.StableHLOCompositeOptionsAddDecompositionSubgraphIndex(builder, 10)
+  opts = schema_fb.StableHLOCompositeOptionsEnd(builder)
+  schema_fb.OperatorStart(builder)
+  schema_fb.OperatorAddBuiltinOptions2(builder, opts)
+  schema_fb.OperatorAddBuiltinOptions2Type(
+      builder, schema_fb.BuiltinOptions2.StableHLOCompositeOptions
+  )
+  op_offset = schema_fb.OperatorEnd(builder)
+  builder.Finish(op_offset)
+  return schema_fb.Operator.GetRootAs(builder.Output())
+
+
 def load_model_from_flatbuffer(flatbuffer_model):
   """Loads a model as a python object from a flatbuffer model."""
   model = schema_fb.Model.GetRootAsModel(flatbuffer_model, 0)

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 

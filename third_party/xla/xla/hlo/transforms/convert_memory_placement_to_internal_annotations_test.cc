@@ -521,7 +521,7 @@ TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,
     broadcast.3 = s32[8,2]{1,0} broadcast(constant.2), dimensions={}
     multiply.4 = s32[8,2]{1,0} multiply(Arg_0.1, broadcast.3), metadata={op_name="jit(f)/jit(main)/mul" source_file="third_party/py/jax/tests/memories_test.py" source_line=707}
     custom-call.5 = s32[8,2]{1,0} custom-call(multiply.4), custom_call_target="Sharding", sharding={devices=[2,1]<=[2]}, metadata={op_name="jit(f)/jit(main)/device_put" source_file="third_party/py/jax/tests/memories_test.py" source_line=708}
-    custom-call.6 = s32[8,2]{1,0} custom-call(custom-call.5), custom_call_target="annotate_device_placement", custom_call_has_side_effect=true, frontend_attributes={_xla_buffer_placement="device_sram"}, metadata={op_name="jit(f)/jit(main)/device_put" source_file="third_party/py/jax/tests/memories_test.py" source_line=708}
+    custom-call.6 = s32[8,2]{1,0} custom-call(custom-call.5), custom_call_target="annotate_device_placement", custom_call_has_side_effect=true, frontend_attributes={_xla_buffer_placement="vmem"}, metadata={op_name="jit(f)/jit(main)/device_put" source_file="third_party/py/jax/tests/memories_test.py" source_line=708}
     ROOT multiply.7 = s32[8,2]{1,0} multiply(custom-call.6, broadcast.3), metadata={op_name="jit(f)/jit(main)/mul" source_file="third_party/py/jax/tests/memories_test.py" source_line=709}
   } // main.8 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -530,14 +530,14 @@ TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,
       ConvertMemoryPlacementToInternalAnnotations().Run(module.get()).value();
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
-  int64_t pin_todevice_sramcount = 0;
+  int64_t pin_to_vmem_count = 0;
   for (auto* c : module->computations()) {
     for (auto* instr : c->instructions()) {
-      pin_todevice_sramcount += instr->IsCustomCall(
+      pin_to_vmem_count += instr->IsCustomCall(
           host_memory_offload_annotations::kPinToDeviceSramCustomCallTarget);
     }
   }
-  EXPECT_EQ(pin_todevice_sramcount, 1);
+  EXPECT_EQ(pin_to_vmem_count, 1);
 }
 
 TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,

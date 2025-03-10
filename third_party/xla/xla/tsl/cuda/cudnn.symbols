@@ -10,7 +10,9 @@ cudnnBackendExecute
 cudnnBackendFinalize
 cudnnBackendGetAttribute
 cudnnBackendInitialize
+cudnnBackendPopulateCudaGraph
 cudnnBackendSetAttribute
+cudnnBackendUpdateCudaGraph
 cudnnBatchNormalizationBackward
 cudnnBatchNormalizationBackwardEx
 cudnnBatchNormalizationForwardInference

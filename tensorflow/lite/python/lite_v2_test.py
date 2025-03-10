@@ -937,7 +937,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   ):
     root, func, calibration_gen = self._getIntegerQuantizationModelWithFlexOp()
 
-    quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func], root
     )
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
@@ -1046,7 +1046,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         self._getIntegerQuantizationModelWithUnsupportedOps()
     )
 
-    quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func], root
     )
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
@@ -1160,7 +1160,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   ):
     root, func, calib_gen = self._getIntegerQuantizationModelWithControlFlow()
 
-    quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func], root
     )
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
@@ -1360,7 +1360,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 38
     root, func, calib_gen = self._getIntegerQuantizeModel(k_num_filters)
-    quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func], root
     )
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
@@ -1428,7 +1428,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 64
     root, func, calib_gen = self._getIntegerQuantizeDenseModel(k_num_filters)
-    quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func], root
     )
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
@@ -1534,7 +1534,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func], root
     )
-    converter.target_spec.supported_ops = [tf.lite.OpsSet.SELECT_TF_OPS]
+    converter.target_spec.supported_ops = [lite.OpsSet.SELECT_TF_OPS]
     tflite_model = converter.convert()
     # Check the conversion metadata.
     metadata = util.get_conversion_metadata(tflite_model)
@@ -1823,8 +1823,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     converter._experimental_preserve_assert_op = True
     tflite_model = converter.convert()
@@ -2011,8 +2011,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     tflite_model = converter.convert()
 
@@ -2037,13 +2037,13 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     inp = tf.keras.Input([3, 3], 3, name='x')
     m = tf.keras.Model(inp, tf.reduce_sum(inp, axis=-1))
 
-    converter = tf.lite.TFLiteConverter.from_keras_model(m)
+    converter = lite.TFLiteConverterV2.from_keras_model(m)
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
     ]
     converter.inference_input_type = tf.int16
     converter.inference_output_type = tf.int16
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.optimizations = [lite.Optimize.DEFAULT]
     inputs = {
         i.name: np.random.normal(size=i.shape).astype(np.float32)
         for i in m.inputs
@@ -2183,8 +2183,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     # MODEL 1: TFLite (float) model
     # 1. Create TFLite model
-    converter = tf.lite.TFLiteConverter.from_saved_model(tf_saved_model_dir)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter = lite.TFLiteConverterV2.from_saved_model(tf_saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
     tflite_model = converter.convert()
     # 2. Initialize the Interpreter
     interp = interpreter.Interpreter(model_content=tflite_model)
@@ -2200,8 +2200,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     # MODEL 2: TFLite (full integer quantized) model
     # 1. Create TFLite model
-    converter = tf.lite.TFLiteConverter.from_saved_model(tf_saved_model_dir)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter = lite.TFLiteConverterV2.from_saved_model(tf_saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
     converter.inference_input_type = tf.int8
     converter.inference_output_type = tf.int8
     tflite_model_quant = converter.convert()
@@ -2344,9 +2344,9 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
             ),
         }
 
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.optimizations = [lite.Optimize.DEFAULT]
     converter.representative_dataset = representative_dataset_gen
-    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
     tflite_model = converter.convert()
 
     # Check signatures are valid from converted model.
@@ -2454,7 +2454,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
             },
         )
 
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.optimizations = [lite.Optimize.DEFAULT]
     converter.representative_dataset = representative_dataset_gen
     if is_int_only:
       if is_int16_quantize:
@@ -2547,7 +2547,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     # Make sure that the weight tensors are shared.
     self.assertLess(len(tflite_model), 1100000)
 
-    interp = tf.lite.Interpreter(model_content=tflite_model)
+    interp = lite.Interpreter(model_content=tflite_model)
     signature_defs = interp.get_signature_list()
     self.assertLen(signature_defs, 3)
     add_signature_runner = interp.get_signature_runner('add')
@@ -2666,10 +2666,10 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_lstm_2d')
     model.save(saved_model_dir, save_format='tf', include_optimizer=False)
 
-    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
@@ -2707,10 +2707,10 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     )
     model.save(saved_model_dir, save_format='tf', include_optimizer=False)
 
-    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
@@ -2745,7 +2745,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         self.get_temp_dir(), 'fully_connected_output_3d'
     )
     model.save(saved_model_dir, save_format='tf', include_optimizer=False)
-    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     converter.optimizations = [lite.Optimize.DEFAULT]
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
@@ -2809,8 +2809,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         self.get_temp_dir(), 'keras_conv2d_transpose'
     )
     model.save(saved_model_dir)
-    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
 
     with self.assertRaises(convert.ConverterError) as error:
       _ = converter.convert()
@@ -2838,7 +2838,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     """Test a SavedModel with an unknown input shape."""
     saved_model_dir = self._createModelWithInputShape(None)
 
-    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -2869,7 +2869,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     """Test a SavedModel with a scalar input."""
     saved_model_dir = self._createModelWithInputShape([])
 
-    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -2886,7 +2886,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     """Test a SavedModel with a matrix input."""
     saved_model_dir = self._createModelWithInputShape([2, 3])
 
-    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -2926,7 +2926,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         if enable_mlir_quantizer
         else 'sequential/conv2d/Conv2D'
     )
-    quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
+    quantized_converter = lite.TFLiteConverterV2.from_saved_model(
         saved_model_dir
     )
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
@@ -2991,7 +2991,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         if is_int16_quantize
         else 'tfl.pseudo_qconst'
     )
-    quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
+    quantized_converter = lite.TFLiteConverterV2.from_saved_model(
         saved_model_dir
     )
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
@@ -3058,7 +3058,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     saved_model_dir = self.create_tempdir()
     save.save(model, saved_model_dir.full_path)
 
-    converter = tf.lite.TFLiteConverter.from_saved_model(
+    converter = lite.TFLiteConverterV2.from_saved_model(
         saved_model_dir.full_path
     )
     converter.optimizations = [lite.Optimize.DEFAULT]
@@ -3134,7 +3134,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     model.build(input_shape=(1, 32, 32, 3))
     saved_model_dir = self.create_tempdir()
     save.save(model, saved_model_dir.full_path)
-    converter = tf.lite.TFLiteConverter.from_saved_model(
+    converter = lite.TFLiteConverterV2.from_saved_model(
         saved_model_dir.full_path
     )
     converter._experimental_qdq_conversion_mode = mode
@@ -3162,9 +3162,9 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     model, calibration_gen = self._createReadAssignModel(number_of_states)
 
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.optimizations = [lite.Optimize.DEFAULT]
     converter.representative_dataset = calibration_gen
-    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
     converter.inference_input_type = tf.int8  # or tf.uint8
     converter.inference_output_type = tf.int8  # or tf.uint8
     converter._experimental_variable_quantization = variable_quantization
@@ -3201,7 +3201,7 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
   ):
     model, _ = self._createReadAssignModel(number_of_states)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.optimizations = [lite.Optimize.DEFAULT]
     converter.target_spec.supported_types = [tf.float16]
     converter._experimental_variable_quantization = variable_quantization
 
@@ -3495,8 +3495,8 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     )
     tf_result = model(input_data)
 
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.optimizations = [lite.Optimize.DEFAULT]
     if low_bit:
       converter._experimental_low_bit_qat = True
     tflite_model = converter.convert()
@@ -3596,8 +3596,8 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     )
     tf_result = model(input_data)
 
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.optimizations = [lite.Optimize.DEFAULT]
 
     converted_model = converter.convert()
     tf.lite.experimental.Analyzer.analyze(model_content=converted_model)
@@ -3982,7 +3982,7 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func], model
     )
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.optimizations = [lite.Optimize.DEFAULT]
     converter.representative_dataset = calibration_gen
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
@@ -4119,8 +4119,8 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     )
     if not default_to_single_batch:
       converter.target_spec.supported_ops = [
-          tf.lite.OpsSet.TFLITE_BUILTINS,
-          tf.lite.OpsSet.SELECT_TF_OPS,
+          lite.OpsSet.TFLITE_BUILTINS,
+          lite.OpsSet.SELECT_TF_OPS,
       ]
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
@@ -4165,7 +4165,7 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.optimizations = [lite.Optimize.DEFAULT]
     converter.target_spec.supported_types = [tf.float16]
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
@@ -4201,8 +4201,8 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     )
     if not default_to_single_batch:
       converter.target_spec.supported_ops = [
-          tf.lite.OpsSet.TFLITE_BUILTINS,
-          tf.lite.OpsSet.SELECT_TF_OPS,
+          lite.OpsSet.TFLITE_BUILTINS,
+          lite.OpsSet.SELECT_TF_OPS,
       ]
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
@@ -4232,8 +4232,8 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     )
     if not default_to_single_batch:
       converter.target_spec.supported_ops = [
-          tf.lite.OpsSet.TFLITE_BUILTINS,
-          tf.lite.OpsSet.SELECT_TF_OPS,
+          lite.OpsSet.TFLITE_BUILTINS,
+          lite.OpsSet.SELECT_TF_OPS,
       ]
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
@@ -4548,7 +4548,7 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func], model
     )
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.optimizations = [lite.Optimize.DEFAULT]
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -4606,8 +4606,8 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
         [concrete_func], model
     )
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
@@ -4665,8 +4665,8 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
@@ -4725,8 +4725,8 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
@@ -4781,8 +4781,8 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
@@ -4844,8 +4844,8 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
@@ -4905,8 +4905,8 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
@@ -4960,8 +4960,8 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     if not lower_tensor_list_ops:
       converter.target_spec.supported_ops = [
-          tf.lite.OpsSet.TFLITE_BUILTINS,
-          tf.lite.OpsSet.SELECT_TF_OPS,
+          lite.OpsSet.TFLITE_BUILTINS,
+          lite.OpsSet.SELECT_TF_OPS,
       ]
     converter._experimental_lower_tensor_list_ops = lower_tensor_list_ops
     tflite_model = converter.convert()
@@ -5025,8 +5025,8 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
       )
 
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
@@ -5227,8 +5227,8 @@ class DatasetOpsTest(lite_v2_test_util.ModelTest):
         [concrete_func], model
     )
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
     ]
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)

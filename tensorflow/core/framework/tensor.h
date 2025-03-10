@@ -316,6 +316,9 @@ class Tensor {
   /// Returns the estimated memory usage of this tensor.
   size_t TotalBytes() const;
 
+  // Returns the size of the underlying TensorBuffer
+  size_t GetBufferSize() const;
+
   // Returns the size of allocated memory for this tensor.
   size_t AllocatedBytes() const;
 
@@ -684,6 +687,9 @@ class Tensor {
   AllocatorMemoryType GetMemoryType() const { return buf_->GetMemoryType(); }
 
  private:
+  // Returns a StringPiece mapping the current tensor's buffer.
+  absl::string_view tensor_data_internal() const;
+
   void CheckType(DataType expected_dtype) const;
   void CheckTypeAndIsAligned(DataType expected_dtype) const;
   void CheckIsAlignedAndSingleElement() const;

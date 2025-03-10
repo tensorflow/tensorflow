@@ -30,13 +30,19 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/device_compiler_client.h"
 #include "tensorflow/compiler/jit/tests/device_compiler_test_helper.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/client_library.h"
+#include "xla/client/local_client.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
@@ -514,6 +520,40 @@ TEST_F(OpsTestBase, CompileSingleOpSuccess) {
 
   EXPECT_TRUE(compilation_result != nullptr);
   EXPECT_TRUE(xla_executable != nullptr);
+}
+
+TEST_F(DeviceCompilerTest, Finalize) {
+  XlaCompiler::Options options = GetDefaultXlaOptions();
+
+  NameAttrList fn;
+  fn.set_name("foo");
+
+  const XlaCompiler::CompilationResult* compilation_result = nullptr;
+  xla::LocalExecutable* xla_executable = nullptr;
+  TF_EXPECT_OK(xla_device_compiler_->CompileIfNeeded(
+      options, fn, SampleArgsForAddXY(), XlaCompiler::CompileOptions{},
+      DeviceCompileMode::kStrict, profiler_, &compilation_result,
+      &xla_executable));
+
+  ASSERT_TRUE(compilation_result != nullptr);
+  ASSERT_TRUE(compilation_result->computation != nullptr);
+
+  const std::shared_ptr<xla::XlaComputation> computation =
+      compilation_result->computation;
+
+  // Cast to `ResourceBase` to verify that the `Finalize` implementation
+  // overrides the base class's.
+  static_cast<ResourceBase*>(xla_device_compiler_)->Finalize();
+
+  TF_EXPECT_OK(xla_device_compiler_->CompileIfNeeded(
+      options, fn, SampleArgsForAddXY(), XlaCompiler::CompileOptions{},
+      DeviceCompileMode::kStrict, profiler_, &compilation_result,
+      &xla_executable));
+
+  ASSERT_TRUE(compilation_result != nullptr);
+
+  EXPECT_TRUE(compilation_result->computation == nullptr);
+  EXPECT_EQ(computation.use_count(), 1);
 }
 
 }  // namespace

@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <variant>
 #include <vector>
-
 #include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
@@ -55,6 +54,10 @@ class AxisScaleOffsetQuantizeParamsWrapper final {
       AxisScaleOffsetQuantizeParamsWrapper&& rhs);
 
   void CloneTo(Qnn_QuantizeParams_t& dst);
+
+  std::int32_t GetAxis() const;
+
+  void SetAxis(const std::int32_t axis);
 
  private:
   Qnn_QuantizeParams_t qnn_quantize_param_ = QNN_QUANTIZE_PARAMS_INIT;

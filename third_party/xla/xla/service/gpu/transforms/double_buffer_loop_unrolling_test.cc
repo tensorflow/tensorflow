@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
@@ -617,6 +618,76 @@ ENTRY main {
       });
   // we expect that all 10 all-reduces will have different channel ids.
   EXPECT_EQ(channel_ids.size(), 10);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest, ControlDepsCopiedWhenUnrolled) {
+  // Test control dependencies are correctly copied when unrolling.
+  const char* const kModuleString = R"(
+HloModule loop_unrolling_no_deps
+condition {
+  input_tuple = (f32[], s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=1
+  trip_count = s32[] constant(10)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+
+body {
+ input_tuple = (f32[], s32[]) parameter(0)
+ param_0 = f32[] get-tuple-element(input_tuple), index=0
+ cond = s32[] get-tuple-element(input_tuple), index=1
+ c2 = f32[] constant(2)
+ multiply = f32[] multiply(c2, param_0), control-predecessors={cond}
+ one = s32[] constant(1)
+ cond_plus_1 = s32[] add(cond, one)
+ ROOT output_tuple = (f32[], s32[]) tuple(multiply, cond_plus_1)
+}
+
+ENTRY main {
+ param_0 = f32[] parameter(0)
+ param_2 = s32[] constant(0)
+ tuple = (f32[], s32[]) tuple(param_0, param_2)
+ ROOT while = (f32[], s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling double_buffer;
+  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+
+  HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile);
+  TF_ASSERT_OK_AND_ASSIGN(
+      WhileLoopBackendConfig config,
+      while_instruction->backend_config<WhileLoopBackendConfig>());
+
+  // After unrolling, there should be 2 multiplies, each with a GTE control
+  // predecessor.
+  EXPECT_EQ(CountInstructions((*while_instruction->while_body()),
+                              HloOpcode::kMultiply),
+            2);
+  for (HloInstruction* instr :
+       while_instruction->while_body()->MakeInstructionPostOrder()) {
+    if (instr->opcode() != HloOpcode::kMultiply) {
+      continue;
+    }
+    EXPECT_EQ(instr->control_predecessors().size(), 1);
+    EXPECT_EQ(instr->control_predecessors()[0]->opcode(),
+              HloOpcode::kGetTupleElement);
+    EXPECT_EQ(instr->control_predecessors()[0]->parent(), instr->parent());
+  }
+
+  // After unrolling, there should be 1 multiply in the parent computation.
+  EXPECT_EQ(
+      CountInstructions((*module->entry_computation()), HloOpcode::kMultiply),
+      1);
+  HloInstruction* multiply_instruction =
+      hlo_query::GetFirstInstructionWithOpcode(*module->entry_computation(),
+                                               HloOpcode::kMultiply);
+  EXPECT_EQ(multiply_instruction->control_predecessors().size(), 1);
+  EXPECT_EQ(multiply_instruction->control_predecessors()[0]->opcode(),
+            HloOpcode::kGetTupleElement);
+  EXPECT_EQ(multiply_instruction->control_predecessors()[0]->parent(),
+            multiply_instruction->parent());
 }
 
 // The following 2 tests also address the regression described here:

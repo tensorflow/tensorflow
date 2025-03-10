@@ -26,11 +26,11 @@ namespace tensorflow {
 
 // If op_name has '/' in it, then return everything before the first '/'.
 // Otherwise return empty string.
-absl::string_view NodeNamePrefix(const absl::string_view& op_name);
+absl::string_view NodeNamePrefix(absl::string_view op_name);
 
 // If op_name has '/' in it, then return everything before the last '/'.
 // Otherwise return empty string.
-absl::string_view NodeNameFullPrefix(const absl::string_view& op_name);
+absl::string_view NodeNameFullPrefix(absl::string_view op_name);
 
 class MovingAverage {
  public:

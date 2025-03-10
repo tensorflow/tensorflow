@@ -19,31 +19,27 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 
-#define LOAD_SYMB(S, H)                                            \
-  H = reinterpret_cast<decltype(&S)>(::dlsym(dlib_handle_, #S));   \
-  if (!H) {                                                        \
-    LITERT_LOG(LITERT_WARNING, "Failed to load symbol %s: %s", #S, \
-               ::dlerror());                                       \
+#define LOAD_SYMB(S, H)                                                   \
+  if (auto maybe_H = dlib_.LookupSymbol<void*>(#S); maybe_H.HasValue()) { \
+    H = reinterpret_cast<decltype(&S)>(std::move(maybe_H).Value());       \
+  } else {                                                                \
+    LITERT_LOG(LITERT_WARNING, "Failed to load symbol %s: %s", #S,        \
+               dlib_.DlError());                                          \
   }
 
 namespace litert {
 namespace mediatek {
 
 NeuronAdapterApi::NeuronAdapterApi() : api_(new Api) {}
-
-NeuronAdapterApi::~NeuronAdapterApi() {
-  if (dlib_handle_) {
-    litert::internal::CloseLib(dlib_handle_);
-  }
-}
 
 litert::Expected<NeuronAdapterApi::Ptr> NeuronAdapterApi::Create(
     std::optional<std::string> shared_library_dir) {
@@ -71,10 +67,16 @@ litert::Expected<void> NeuronAdapterApi::LoadSymbols(
       shared_library_dir.has_value()
           ? absl::StrCat(*shared_library_dir, "/", kLibNeuronAdapterLib)
           : kLibNeuronAdapterLib};
-  if (auto status = litert::internal::OpenLib(so_paths, &dlib_handle_,
-                                              /*log_failure=*/false);
-      status != kLiteRtStatusOk) {
-    return litert::Error(status, "Failed to load NeuronAdapter shared library");
+  for (auto& so_path : so_paths) {
+    auto maybe_dlib = SharedLibrary::Load(so_path, RtldFlags::Default());
+    if (maybe_dlib.HasValue()) {
+      dlib_ = std::move(maybe_dlib).Value();
+    }
+  }
+
+  if (!dlib_.Loaded()) {
+    return litert::Error(kLiteRtStatusErrorDynamicLoading,
+                         "Failed to load NeuronAdapter shared library");
   }
 
   LITERT_LOG(LITERT_INFO, "Loaded NeuronAdapter shared library.");

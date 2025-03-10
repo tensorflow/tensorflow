@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu::internal {
 
@@ -81,8 +80,6 @@ absl::StatusOr<int32_t> LogicalIdThunk<logical_id_kind>::GetIdForDevice(
 template <LogicalIdKind logical_id_kind>
 tsl::AsyncValueRef<typename LogicalIdThunk<logical_id_kind>::ExecuteEvent>
 LogicalIdThunk<logical_id_kind>::Execute(const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
-
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase logical_id_data,
       params.buffer_allocations->GetDeviceAddress(logical_id_buffer_));

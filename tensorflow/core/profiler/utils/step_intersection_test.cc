@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/step_intersection.h"
 
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {

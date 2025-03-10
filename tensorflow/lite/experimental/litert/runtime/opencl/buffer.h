@@ -72,7 +72,7 @@ class Buffer {
 
 Buffer CreateBufferShared(cl_mem buffer);
 
-absl::Status CreateClBuffer(cl_context context, int size_in_bytes,
+absl::Status CreateClBuffer(cl_context context, size_t size_in_bytes,
                             bool read_only, void* data, cl_mem* result);
 
 absl::Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only,

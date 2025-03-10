@@ -31,7 +31,8 @@ namespace sdy {
 
 using ::mlir::func::FuncOp;
 
-void addCommonPreImportPasses(mlir::OpPassManager& pm) {
+void addCommonPreImportPasses(mlir::OpPassManager& pm,
+                              bool enableConstantImport) {
   pm.addPass(mlir::createSymbolDCEPass());
   // TODO(b/333505182): remove when partitioning is done in SDY.
   // We call prepare-for-export pass before SDY propagation, so that all IR
@@ -45,16 +46,11 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm) {
   // Therefore, this pass needs to be applied after any StableHLO pass that
   // expects `stablehlo.constant`, and before any pass that has a greedy pattern
   // rewriter.
-  pm.addNestedPass<FuncOp>(createImportConstantsPass());
+  if (enableConstantImport) {
+    pm.addNestedPass<FuncOp>(createImportConstantsPass());
+  }
   pm.addNestedPass<FuncOp>(
-      mlir::stablehlo_ext::createStablehloFlattenTuplePass());
-  mlir::GreedyRewriteConfig config;
-  config.useTopDownTraversal = true;
-  config.enableRegionSimplification = mlir::GreedySimplifyRegionLevel::Disabled;
-  config.fold = false;
-  config.cseConstants = false;
-  pm.addNestedPass<FuncOp>(
-      mlir::stablehlo::createStablehloAggressiveSimplificationPass(config));
+      mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
 }
 
 void addCommonPostImportPasses(mlir::OpPassManager& pm) {

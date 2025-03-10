@@ -129,7 +129,7 @@ IfrtIrExecutableImplTestBase::SerDeRoundTrip(
 absl::StatusOr<tsl::RCReference<Array>>
 IfrtIrExecutableImplTestBase::CreateArray(
     absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
-    ShardingParam sharding_param, tsl::RCReference<DeviceList> device_list) {
+    ShardingParam sharding_param, DeviceListRef device_list) {
   TF_RET_CHECK(per_shard_data.size() == device_list->devices().size())
       << "Inconsistent sizes. per_shard_data " << per_shard_data.size()
       << " vs device_list " << device_list->devices().size();
@@ -158,8 +158,8 @@ IfrtIrExecutableImplTestBase::CreateArray(
       ArrayCopySemantics::kAlwaysCopy);
 }
 
-absl::StatusOr<tsl::RCReference<DeviceList>>
-IfrtIrExecutableImplTestBase::PickDevices(int count) {
+absl::StatusOr<DeviceListRef> IfrtIrExecutableImplTestBase::PickDevices(
+    int count) {
   absl::Span<Device* const> devices = client_->devices();
   TF_RET_CHECK(count <= devices.size())
       << "Requested " << count << " devices. Only have " << devices.size();

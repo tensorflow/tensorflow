@@ -37,7 +37,9 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/util/byte_swap_array.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -1206,6 +1208,13 @@ size_t Tensor::TotalBytes() const {
   return 0;  // Makes compiler happy.
 }
 
+size_t Tensor::GetBufferSize() const {
+  if (buf_) {
+    return buf_->size();
+  }
+  return 0;
+}
+
 size_t Tensor::AllocatedBytes() const {
   if (buf_) {
     size_t ret;
@@ -1430,7 +1439,7 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
     return strings::StrCat("uninitialized Tensor of ", num_elts,
                            " elements of type ", dtype());
   }
-  const char* data = limit > 0 ? tensor_data().data() : nullptr;
+  const char* data = limit > 0 ? (const char*)this->data() : nullptr;
   switch (dtype()) {
     case DT_BFLOAT16:
       return SummarizeArray<bfloat16>(limit, num_elts, shape_, data, print_v2);
@@ -1525,10 +1534,14 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
   }
 }
 
+absl::string_view Tensor::tensor_data_internal() const {
+  return absl::string_view(static_cast<char*>(buf_->data()), GetBufferSize());
+}
+
 absl::string_view Tensor::tensor_data() const {
-  if (buf_ == nullptr)
-    return absl::string_view();  // Don't die for empty tensors
-  return absl::string_view(static_cast<char*>(buf_->data()), TotalBytes());
+  if (buf_ == nullptr) return absl::string_view();
+  CHECK(DataTypeCanUseMemcpy(dtype()));  // Crash OK
+  return tensor_data_internal();
 }
 
 void* Tensor::data() const {

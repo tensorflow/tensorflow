@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -423,7 +422,7 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
         }
         // NOTE: since we are flattening args, all arguments will share the same
         // location as the tuple parameter instruction.
-        function.getArgument(i).setLoc(
+        function.getArgument(arg_index).setLoc(
             mlir::mhlo::GenerateInstructionLocation(instruction, context_));
         ++arg_index;
       }

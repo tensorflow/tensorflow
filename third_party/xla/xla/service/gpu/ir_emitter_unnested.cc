@@ -1907,7 +1907,8 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
         partition_count, buffers,
-        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
+        GetStreamKindForP2P(instr));
     GetCollectivesAsyncEvents().try_emplace(instr, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));
   }
@@ -1980,22 +1981,24 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   } else if (kind == Thunk::Kind::kNcclRaggedAllToAll) {
     // RaggedAllToAll operation has 6 operands: input, output, input_offset,
     // send_size, output_offset, recv_size.
+    // `output` operand is aliased with the instruction result. All other
+    // operands are not aliased.
     const Shape& input_shape = inst->operand(0)->shape();
-    const Shape& result_shape = inst->shape();
     TF_ASSIGN_OR_RETURN(auto input_buffer,
                         GetAllocationSliceForHlo(inst->operand(0)));
-    TF_ASSIGN_OR_RETURN(auto result_buffer, GetAllocationSliceForHlo(inst));
     add_buffer(ShapeUtil::ElementsIn(input_shape), input_buffer,
-               input_shape.layout().memory_space(), result_buffer,
-               result_shape.layout().memory_space());
+               input_shape.layout().memory_space(), input_buffer,
+               input_shape.layout().memory_space());
 
     const Shape& output_shape = inst->operand(1)->shape();
+    const Shape& result_shape = inst->shape();
     TF_ASSIGN_OR_RETURN(auto output_buffer,
                         GetAllocationSliceForHlo(inst->operand(1)));
+    TF_ASSIGN_OR_RETURN(auto result_buffer, GetAllocationSliceForHlo(inst));
 
     add_buffer(ShapeUtil::ElementsIn(result_shape), output_buffer,
-               output_shape.layout().memory_space(), output_buffer,
-               output_shape.layout().memory_space());
+               output_shape.layout().memory_space(), result_buffer,
+               result_shape.layout().memory_space());
 
     for (int64_t i = 2; i < operand_count; i++) {
       const Shape& shape = inst->operand(i)->shape();
@@ -2008,7 +2011,8 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   } else {
     // For other operations simply zip operands with results.
     for (int64_t i = 0; i < operand_count; i++) {
-      ShapeIndex idx = operand_count > 1 ? ShapeIndex({i}) : ShapeIndex({});
+      ShapeIndex idx =
+          inst->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({});
       const Shape& src_shape = inst->operand(i)->shape();
       const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
       TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
@@ -2175,8 +2179,7 @@ absl::Status IrEmitterUnnested::EmitNcclGroupStartThunk(
         !stream_kind.has_value()) {
       // We only need to modify the stream kind once, since all send/recv
       // instructions in a group should have the same stream kind.
-      stream_kind = GetStreamKindForSendRecv(
-          Cast<HloSendRecvInstruction>(nested_instruction));
+      stream_kind = GetStreamKindForP2P(nested_instruction);
     }
   }
   auto thunk = std::make_unique<NcclGroupThunk>(
@@ -2210,7 +2213,7 @@ absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
 
   AsyncStreamKind stream_kind = AsyncStreamKind::kCollective;
   if (is_send_recv) {
-    stream_kind = GetStreamKindForSendRecv(Cast<HloSendRecvInstruction>(start));
+    stream_kind = GetStreamKindForP2P(start);
   }
   AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
       kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
@@ -2328,7 +2331,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
   body_thunk_info.profile_annotation += "_body";
 
   return std::unique_ptr<Thunk>(new WhileThunk(
-      thunk_info, pred,
+      thunk_info, instr, pred,
       ir_emitter_condition->ConsumeThunkSequence(cond_thunk_info),
       ir_emitter_body->ConsumeThunkSequence(body_thunk_info), trip_count));
 }

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/shape.h"
@@ -31,8 +32,10 @@ namespace gpu {
 // E.g. AllReduceStart is broken down into Reduce + AsyncStart.
 CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo);
 
-// Returns size of the `shape` given the `pointer_size`.
-int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
+// The shape size function depending on the pointer size and
+// memory space.
+HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction(
+    int64_t pointer_size, std::optional<int64_t> memory_space = std::nullopt);
 
 // GPU overlap limit rule rule for scheduling candidate.
 // On top of the default rule, we do not allow collectives with more than 1

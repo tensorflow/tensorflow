@@ -17,16 +17,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_DEVICE_COMPILER_H_
 
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/optional.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/device_compilation_cache.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
@@ -37,9 +37,9 @@ limitations under the License.
 #include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "xla/client/local_client.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -159,6 +159,14 @@ class DeviceCompiler : public ResourceBase {
       const std::vector<XlaCompiler::Argument>& args,
       const NameAttrList& function, CompileScope scope, OpKernelContext* ctx,
       DeviceCompilationProfiler* profiler);
+
+  // Releases all references held to `std::shared_ptr<xla::XlaComputation>`
+  // held by the cache.
+  //
+  // This is to be called during session finalization, after all compilation
+  // has completed and computations no longer need to be accessed through the
+  // cache.
+  void Finalize() override;
 
   std::unique_ptr<DeviceExecutablePersistor<ExecutableType, ClientType>>
       persistor_;
@@ -393,6 +401,30 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileAsynchronous(
     }
   });
   return absl::OkStatus();
+}
+
+template <typename ExecutableType, typename ClientType>
+void DeviceCompiler<ExecutableType, ClientType>::Finalize() {
+  const mutex_lock lock(cluster_mutexes_mu_);
+  std::vector<absl::Nonnull<mutex*>> cluster_mutexes;
+  cluster_mutexes.reserve(cluster_mutexes_.size());
+  for (auto& [_, mutex] : cluster_mutexes_) {
+    if (mutex != nullptr) {
+      cluster_mutexes.push_back(mutex.get());
+    }
+  }
+
+  // Sort the mutexes before locking to ensure that this happens in a
+  // deterministic order, consistent between resizes of the `cluster_mutexes_`
+  // map.
+  absl::c_sort(cluster_mutexes);
+  std::vector<mutex_lock> cluster_mutex_locks;
+  cluster_mutex_locks.reserve(cluster_mutexes.size());
+  for (const absl::Nonnull<mutex*> mutex : cluster_mutexes) {
+    cluster_mutex_locks.emplace_back(*mutex);
+  }
+
+  cache_->Finalize();
 }
 
 template <typename ExecutableType, typename ClientType>

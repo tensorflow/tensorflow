@@ -56,9 +56,14 @@ onednn_graph_cc_library(
 
 onednn_graph_cc_library(
     name = "onednn_fusion",
+    srcs = ["onednn_fusion.cc"],
     hdrs = ["onednn_fusion.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/runtime:dot_lib",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@onednn//:mkl_dnn",
     ],
@@ -98,5 +103,25 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "constant_allocation",
+    srcs = ["constant_allocation.cc"],
+    hdrs = ["constant_allocation.h"],
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )

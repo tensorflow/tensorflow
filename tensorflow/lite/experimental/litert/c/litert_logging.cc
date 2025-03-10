@@ -47,6 +47,10 @@ class LiteRtLoggerT {
   }
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 LiteRtStatus LiteRtCreateLogger(LiteRtLogger* logger) {
   if (!logger) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -90,6 +94,10 @@ void LiteRtDestroyLogger(LiteRtLogger logger) {
     delete logger;
   }
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
 
 namespace {
 LiteRtLoggerT StaticLogger;

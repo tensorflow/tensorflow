@@ -57,10 +57,8 @@ TEST_F(CollectivePermuteUtilsTest, HasCycles) {
   EXPECT_TRUE(HasCycles(fwd4_.cycle));
   EXPECT_TRUE(HasCycles(bwd4_.cycle));
 
-  EXPECT_FALSE(HasCycles(SourceTargetPairs({{0, 1}, {1, 2}, {2, 3}, {3, 2}})))
-      << "Lasso 3->2";
-  EXPECT_FALSE(HasCycles(SourceTargetPairs({{0, 1}, {1, 2}, {2, 3}, {3, 1}})))
-      << "Lasso 3->1";
+  EXPECT_TRUE(HasCycles(SourceTargetPairs({{0, 1}, {1, 2}, {2, 3}, {3, 2}})));
+  EXPECT_TRUE(HasCycles(SourceTargetPairs({{0, 1}, {1, 2}, {2, 3}, {3, 1}})));
 
   EXPECT_FALSE(HasCycles(SourceTargetPairs({{1, 2}, {2, 3}, {3, 0}})))
       << "Forward only";
@@ -127,7 +125,7 @@ TEST_F(CollectivePermuteUtilsTest, GetCycleType) {
   EXPECT_EQ(GetCycleType(fwd4_.cycle), CycleType::kForward);
   EXPECT_EQ(GetCycleType(bwd4_.cycle), CycleType::kBackward);
 
-  EXPECT_EQ(GetCycleType(SourceTargetPairs({{}})), CycleType::kNone);
+  EXPECT_EQ(GetCycleType(SourceTargetPairs()), CycleType::kNone);
   EXPECT_EQ(GetCycleType(SourceTargetPairs({{0, 0}})), CycleType::kNone);
   EXPECT_EQ(GetCycleType(SourceTargetPairs({{0, 1}})), CycleType::kNone);
   EXPECT_EQ(GetCycleType(SourceTargetPairs({{1, 0}})), CycleType::kNone);
@@ -157,6 +155,57 @@ TEST_F(CollectivePermuteUtilsTest, GetCycleType) {
   EXPECT_EQ(GetCycleType(SourceTargetPairs({{0, 3}, {1, 0}, {2, 1}, {3, 1}})),
             CycleType::kNone)
       << "Lasso 3->1";
+}
+
+TEST_F(CollectivePermuteUtilsTest, HasCyclesTwoCycles) {
+  // Cycle: 0->1, 1->2, 2->3, 3->0
+  // Cycle: 4->5, 5->6, 6->7, 7->4
+  EXPECT_TRUE(HasCycles(SourceTargetPairs(
+      {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6}, {6, 7}, {7, 4}})));
+}
+
+TEST_F(CollectivePermuteUtilsTest, HasCyclesOneCycleAndOneAlmostCycle) {
+  // Not a cycle: 0->1, 1->2, 2->3 (missing: 3->4)
+  // Cycle:       4->5, 5->6, 6->7, 7->4
+  EXPECT_TRUE(HasCycles(SourceTargetPairs(
+      {{0, 1}, {1, 2}, {2, 3}, {4, 5}, {5, 6}, {6, 7}, {7, 4}})));
+}
+
+TEST_F(CollectivePermuteUtilsTest, HasCyclesTwoAlmostCycles) {
+  // Not a cycle: 0->1, 1->2, 3->0 (missing: 2->3)
+  // Not a cycle: 4->5, 5->6, 7->4 (missing: 6->7)
+  EXPECT_FALSE(HasCycles(
+      SourceTargetPairs({{0, 1}, {1, 2}, {3, 0}, {4, 5}, {5, 6}, {7, 4}})));
+}
+
+TEST_F(CollectivePermuteUtilsTest, HasCyclesTwoCyclesInterleaved) {
+  // Cycle: 0->2, 2->4, 4->6, 6->0
+  // Cycle: 1->3, 3->5, 5->7, 7->1
+  EXPECT_TRUE(HasCycles(SourceTargetPairs(
+      {{0, 2}, {2, 4}, {4, 6}, {6, 0}, {1, 3}, {3, 5}, {5, 7}, {7, 1}})));
+}
+
+TEST_F(CollectivePermuteUtilsTest, HasCyclesSimpleCycle) {
+  // Cycle: 0->1, 1->2, 2->3, 3->4, 4->5, 5->6, 6->7, 7->0
+  EXPECT_TRUE(HasCycles(SourceTargetPairs(
+      {{0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 6}, {6, 7}, {7, 0}})));
+}
+
+TEST_F(CollectivePermuteUtilsTest, HasCyclesSimpleAlmostCycle) {
+  // Not a cycle: 0->1, 1->2, 2->3, 4->5, 5->6, 6->7, 7->0 (missing: 3->4)
+  EXPECT_FALSE(HasCycles(SourceTargetPairs(
+      {{0, 1}, {1, 2}, {2, 3}, {4, 5}, {5, 6}, {6, 7}, {7, 0}})));
+}
+
+TEST_F(CollectivePermuteUtilsTest, HasCyclesSelfCycle) {
+  // Self cycle: 0->0
+  EXPECT_TRUE(HasCycles(SourceTargetPairs({{0, 0}})));
+}
+
+TEST_F(CollectivePermuteUtilsTest, HasCyclesSkippingFirstDeviceCycle) {
+  // Cycle: 1->2, 2->3, 3->4, 4->5, 5->6, 6->7, 7->1
+  EXPECT_TRUE(HasCycles(SourceTargetPairs(
+      {{1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 6}, {6, 7}, {7, 1}})));
 }
 
 }  // namespace

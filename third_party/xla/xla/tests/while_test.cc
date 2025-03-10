@@ -15,9 +15,12 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
@@ -29,9 +32,13 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
@@ -894,7 +901,7 @@ XLA_TEST_F(WhileTest, WhileWithPrngScalarResult) {
   auto build_condition = [this, v6s32](int count) {
     XlaBuilder builder(TestName());
     auto prev = Reshape(
-        Slice(Parameter(&builder, 0, v6s32, "prev"), {0}, {1}, {1}), {0}, {});
+        Slice(Parameter(&builder, 0, v6s32, "prev"), {0}, {1}, {1}), {});
     Gt(ConstantR0<int32_t>(&builder, count), prev);
     return builder.Build().value();
   };
@@ -1244,6 +1251,53 @@ XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileInfeedCondition)) {
   TF_ASSERT_OK(client_->TransferToInfeed(LiteralUtil::CreateR0<bool>(false)));
 
   ComputeAndCompareR0<int32_t>(&builder, 2, {});
+}
+
+XLA_TEST_F(HloTestBase, ParallelExecution) {
+  // Test while loops work when an executable is executed in parallel.
+  const char* const hlo_string = R"(
+  HloModule m
+
+  while_body {
+    ROOT add = s32[] add(s32[] parameter(0), s32[] constant(1))
+  }
+
+  while_condition {
+    five = s32[] constant(5)
+    i = s32[] parameter(0)
+    ROOT compare = pred[] compare(five, i), direction=GT
+  }
+
+  ENTRY ParallelExecution {
+    zero = s32[] constant(0)
+    ROOT while_loop = s32[] while(zero), condition=while_condition, body=while_body
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+
+  constexpr int kNumThreads = 50;
+  std::vector<Literal> results(kNumThreads);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "while_test_pool",
+                                        kNumThreads);
+    for (int i = 0; i < kNumThreads; ++i) {
+      auto lambda = [this, i, &executable, &results]() {
+        TF_ASSERT_OK_AND_ASSIGN(
+            results[i], test_runner().ExecuteWithExecutable(
+                            executable.get(), absl::Span<const Literal>{}));
+      };
+      thread_pool.Schedule(lambda);
+    }
+  }
+  // Threadpool destructor waits for all threads to finish
+  for (int i = 0; i < kNumThreads; ++i) {
+    ASSERT_EQ(results[i], LiteralUtil::CreateR0<int32_t>(5)) << "i: " << i;
+  }
 }
 
 void BM_WhileLoop(::testing::benchmark::State& state) {

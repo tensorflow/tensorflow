@@ -1,693 +1,633 @@
-diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
---- stablehlo/BUILD.bazel
-+++ stablehlo/BUILD.bazel
-@@ -994,7 +994,7 @@
-         ":linalg_passes",
-         ":reference_api",
-         ":reference_configuration",
--        ":stablehlo_dialect_capi_objects",
-+        ":stablehlo_dialect_capi",
-         ":stablehlo_ops",
-         ":stablehlo_passes",
-         ":stablehlo_portable_api",
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
+@@ -4,10 +4,10 @@
+ // CHECK-LABEL: @add
+ func.func @add(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>> {
+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>}
+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>}
++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>}
++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>}
+   // CHECK: %[[V2:.+]] = stablehlo.add %[[V0]], %[[V1]] : tensor<2x2xi32>
+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 50>}
++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 50>}
+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
+   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
+@@ -18,10 +18,10 @@
+ // CHECK-LABEL: @sub
+ func.func @sub(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>> {
+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>}
+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>}
++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>}
++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 11>}
+   // CHECK: %[[V2:.+]] = stablehlo.subtract %[[V0]], %[[V1]] : tensor<2x2xi32>
+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 50>}
++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 50>}
+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
+   %0 = "stablehlo.subtract"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
+@@ -32,10 +32,10 @@
+ // CHECK-LABEL: @mul
+ func.func @mul(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>> {
+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
+   // CHECK: %[[V2:.+]] = stablehlo.multiply %[[V0]], %[[V1]] : tensor<2x2xi32>
+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1717986918>, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 37>}
++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1717986918>, output_unsigned = false, output_zp = -1 : i32, per_channel = false, scale32 = true, shift = array<i8: 37>}
+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
+   %0 = "stablehlo.multiply"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
+@@ -46,10 +46,10 @@
+ // CHECK-LABEL: @div
+ func.func @div(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>> {
+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
+   // CHECK: %[[V2:.+]] = stablehlo.divide %[[V0]], %[[V1]] : tensor<2x2xi32>
+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1717986918>, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 37>}
++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1717986918>, output_unsigned = false, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 37>}
+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
+   %0 = "stablehlo.divide"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
+@@ -60,10 +60,10 @@
+ // CHECK-LABEL: @max
+ func.func @max(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>> {
+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
+   // CHECK: %[[V2:.+]] = stablehlo.maximum %[[V0]], %[[V1]] : tensor<2x2xi32>
+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 51>}
++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 51>}
+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
+   %0 = "stablehlo.maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
+@@ -74,10 +74,10 @@
+ // CHECK-LABEL: @min
+ func.func @min(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>> {
+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
+   // CHECK: %[[V2:.+]] = stablehlo.minimum %[[V0]], %[[V1]] : tensor<2x2xi32>
+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 51>}
++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = -3 : i32, per_channel = false, scale32 = true, shift = array<i8: 51>}
+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
+   %0 = "stablehlo.minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
+@@ -87,9 +87,9 @@
+ // -----
+ // CHECK-LABEL: @abs
+ func.func @abs(%arg0 : tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>> {
+-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 30>}
+   // CHECK: %[[V1:.+]] = stablehlo.abs %[[V0]] : tensor<20x20xi32>
+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V1]] {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1431655765>, output_zp = -128 : i32, per_channel = false, scale32 = true, shift = array<i8: 33>}
++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V1]] {double_round = false, input_unsigned = false, input_zp = 0 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = -128 : i32, per_channel = false, scale32 = true, shift = array<i8: 33>}
+   // CHECK: return %[[V3]] : tensor<20x20x!quant.uniform<i8:f32, 1.500000e-01:-128>>
+   %0 = "stablehlo.abs"(%arg0) : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
+   return %0 : tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
+@@ -99,8 +99,8 @@
+ // CHECK-LABEL: @compareGE
+ func.func @compareGE(%arg0 : tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>,
+                    %arg1 : tensor<20x20x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<20x20xi1> {
+-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
+-  // CHECK: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 12>}
++  // CHECK: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 10>}
+   // CHECK: %[[V2:.+]] = stablehlo.compare GE, %[[V0]], %[[V1]], TOTALORDER :
+   // CHECK: return %[[V2]]
+   %0 = stablehlo.compare GE, %arg0, %arg1, TOTALORDER : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>, tensor<20x20x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<20x20xi1>
+@@ -111,8 +111,8 @@
+ // CHECK-LABEL: @compareLT
+ func.func @compareLT(%arg0 : tensor<20x20x!quant.uniform<i16:f32, 0.025:-1>>,
+                    %arg1 : tensor<20x20x!quant.uniform<i16:f32, 0.075:-2>>) -> tensor<20x20xi1> {
+-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 17>}
+-  // CHECK: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 15>}
++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0 {double_round = false, input_unsigned = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 17>}
++  // CHECK: %[[V1:.+]] = tosa.rescale %arg1 {double_round = false, input_unsigned = false, input_zp = -2 : i32, multiplier = array<i32: 1073741824>, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 15>}
+   // CHECK: %[[V2:.+]] = stablehlo.compare LT, %[[V0]], %[[V1]], TOTALORDER :
+   // CHECK: return %[[V2]]
+   %0 = stablehlo.compare LT, %arg0, %arg1, TOTALORDER : (tensor<20x20x!quant.uniform<i16:f32, 0.025:-1>>, tensor<20x20x!quant.uniform<i16:f32, 0.075:-2>>) -> tensor<20x20xi1>
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
+@@ -3,7 +3,7 @@
+ // -----
+ // CHECK-LABEL: @rescale
+ func.func @rescale(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<2x2xi32> {
+-  %0 = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>} :
++  %0 = tosa.rescale %arg0 {double_round = false, input_zp = -1 : i32, multiplier = array<i32: 1431655765>, input_unsigned = false, output_unsigned = false, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i8: 13>} :
+             (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<2x2xi32>
+ 
+   // convert input quantized type to storage type
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
+@@ -52,7 +52,9 @@
+       rewriter.getDenseI32ArrayAttr({multiplier}),
+       rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(shift)}),
+       rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(doubleRound),
+-      rewriter.getBoolAttr(perChannel));
++      rewriter.getBoolAttr(perChannel),
++      /*input_unsigned=*/rewriter.getBoolAttr(false),
++      /*output_unsigned=*/rewriter.getBoolAttr(false));
+ 
+   return rescale_op.getResult();
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -680,6 +680,7 @@
+           {{bf16, bf16, f32, 1}, KnownDotAlgorithm::BF16_BF16_F32},
+           {{bf16, bf16, f32, 3}, KnownDotAlgorithm::BF16_BF16_F32_X3},
+           {{bf16, bf16, f32, 6}, KnownDotAlgorithm::BF16_BF16_F32_X6},
++          {{bf16, bf16, f32, 9}, KnownDotAlgorithm::BF16_BF16_F32_X9},
+           {{tf32, tf32, f32, 1}, KnownDotAlgorithm::TF32_TF32_F32},
+           {{tf32, tf32, f32, 3}, KnownDotAlgorithm::TF32_TF32_F32_X3},
+           {{f32, f32, f32, 1}, KnownDotAlgorithm::F32_F32_F32},
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -260,6 +260,7 @@
+   TF32_TF32_F32_X3 = 10,
+   F32_F32_F32 = 11,
+   F64_F64_F64 = 12,
++  BF16_BF16_F32_X9 = 13,
+ };
+ 
+ FailureOr<KnownDotAlgorithm> getKnownDotAlgorithm(
 diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
 --- stablehlo/stablehlo/dialect/ChloOps.cpp
 +++ stablehlo/stablehlo/dialect/ChloOps.cpp
-@@ -16,9 +16,13 @@
- 
- #include "stablehlo/dialect/ChloOps.h"
- 
-+#include <algorithm>
- #include <cassert>
- #include <cstdint>
-+#include <iostream>
-+#include <iterator>
- #include <optional>
-+#include <string>
- 
- #include "llvm/ADT/STLExtras.h"
- #include "llvm/ADT/SmallVector.h"
-@@ -426,12 +430,12 @@
- // Mode 1, where the ragged dimension is an lhs non-contracting dim (m).
- //   lhs : [b, m, k]
- //   rhs : [g, b, k, n]
--//   group_sizes : [g]
-+//   group_sizes : [b, g]
- //   result : [b, m, n]
- // Mode 2, where the ragged dimension is an lhs/rhs contracting dim (k).
- //   lhs : [b, m, k]
- //   rhs : [b, k, n]
--//   group_sizes : [g]
-+//   group_sizes : [b, g]
- //   result : [g, b, m, n]
- // Mode 3, where the ragged dimension is an lhs/rhs batch dim (b).
- //   lhs : [b, m, k]
-@@ -440,9 +444,18 @@
- //   result : [b, m, n]
- // As with dot_general, the lhs and rhs can have arbitrary batching,
- // contracting and non-contracting dimensions.
-+// The group_sizes arg has the shape [b...,x...,g], where:
-+// - b... are all the lhs batch dims before (outer-to) the lhs ragged dim,
-+// - x... are,
-+//   - in mode 1, all the lhs non-contracting dims before the lhs ragged dim,
-+//   - in mode 2, all the lhs contracting dims before the lhs ragged dim, and
-+//   - in mode 3, empty;
-+// - g is the number of groups in the lhs ragged dim.
- // Additionally:
- //   - In all modes, the lhs must have exactly one ragged dimension.
- //   - In mode 1, the rhs must have exactly one group dimension.
-+//   - If a group_sizes of shape [g] is passed, it is broadcasted according to
-+//     the rules above.
- LogicalResult checkRaggedDotConstraints(
-     std::optional<Location> location, RankedTensorType rankedLhsType,
-     RankedTensorType rankedRhsType, RankedTensorType rankedGroupSizesType,
-@@ -452,14 +465,6 @@
-     ArrayRef<int64_t> rhsContractingDimensions,
-     ArrayRef<int64_t> lhsRaggedDimensions,
-     ArrayRef<int64_t> rhsGroupDimensions) {
--  // Check that the group sizes has rank=1.
--  if (rankedGroupSizesType.getRank() != 1) {
--    return emitOptionalError(
--        location, "expected rank of group_sizes of ragged dot to be 1, got ",
--        rankedGroupSizesType.getRank());
--  }
--  auto numGroups = rankedGroupSizesType.getDimSize(0);
--
-   // Check that there is exactly one lhs ragged dimension.
-   if (lhsRaggedDimensions.size() != 1) {
-     return emitOptionalError(
-@@ -473,6 +478,81 @@
-                                    "lhs_rank"))) {
-     return failure();
-   }
-+
-+  enum Mode {
-+    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [b,g] -> [b,m,n].
-+    kNonContracting,
-+    // Ragged contracting (k):     [b,m,k], [b,k,n],   [b,g] -> [g,b,m,n].
-+    kContracting,
-+    // Ragged batch (b):           [b,m,k], [b,k,n],   [g]   -> [b,m,n].
-+    kBatch
-+  };
-+  Mode mode;
-+  if (llvm::is_contained(lhsBatchingDimensions, lhsRaggedDim)) {
-+    mode = kBatch;
-+  } else if (llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
-+    mode = kContracting;
-+  } else {
-+    mode = kNonContracting;
-+  }
-+
-+  // Validate the shape of group_sizes.
-+  {
-+    // Construct the expected shape [b...,x...,g] of group_sizes.
-+    SmallVector<int64_t> prefixDims;
-+    prefixDims.reserve(rankedLhsType.getRank() - 1);
-+    prefixDims.insert(prefixDims.end(), lhsBatchingDimensions.begin(),
-+                      lhsBatchingDimensions.end());
-+    switch (mode) {
-+      case kBatch:
-+        prefixDims.resize(
-+            std::distance(lhsBatchingDimensions.begin(),
-+                          llvm::find(lhsBatchingDimensions, lhsRaggedDim)));
-+        break;
-+      case kContracting:
-+        prefixDims.insert(prefixDims.end(), lhsContractingDimensions.begin(),
-+                          llvm::find(lhsContractingDimensions, lhsRaggedDim));
-+        break;
-+      case kNonContracting:
-+        for (int64_t i = 0; i < lhsRaggedDim; ++i) {
-+          if (!llvm::is_contained(lhsBatchingDimensions, i) &&
-+              !llvm::is_contained(lhsContractingDimensions, i)) {
-+            prefixDims.push_back(i);
-+          }
-+        }
-+        break;
-+    }
-+    SmallVector<int64_t> expectedPrefix;
-+    expectedPrefix.reserve(prefixDims.size());
-+    for (const int64_t dim : prefixDims) {
-+      expectedPrefix.push_back(rankedLhsType.getDimSize(dim));
-+    }
-+
-+    // Validate the actual shape, if it was passed as something other than [g].
-+    if (rankedGroupSizesType.getRank() != 1) {
-+      if (rankedGroupSizesType.getRank() != expectedPrefix.size() + 1) {
-+        return emitOptionalError(location, "expected group_sizes to have rank ",
-+                                 expectedPrefix.size() + 1, ", got ",
-+                                 rankedGroupSizesType.getRank());
-+      }
-+      auto groupSizesShape = rankedGroupSizesType.getShape();
-+      if (!std::equal(expectedPrefix.begin(), expectedPrefix.end(),
-+                      groupSizesShape.begin())) {
-+        auto nonEmptyShapeStr = [](ArrayRef<int64_t> shape) {
-+          std::string s = "";
-+          for (int64_t i = 0; i < shape.size() - 1; ++i) {
-+            s += std::to_string(shape[i]) + ", ";
-+          }
-+          return s + std::to_string(shape.back());
-+        };
-+        return emitOptionalError(
-+            location, "group_sizes is expected to have shape [",
-+            nonEmptyShapeStr(expectedPrefix), ", ", groupSizesShape.back(),
-+            "], got [", nonEmptyShapeStr(groupSizesShape), "]");
-+      }
-+    }
-+  }
-+  const int64_t numGroups = rankedGroupSizesType.getShape().back();
- 
-   // Validate basic properties of the rhs group dimension(s).
-   for (auto rhsGroupDim : rhsGroupDimensions) {
-@@ -491,32 +571,34 @@
-     return failure();
-   }
- 
--  if (llvm::is_contained(lhsBatchingDimensions, lhsRaggedDim) ||
--      llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
--    // Ragged batch (b):       [b,m,k], [b,k,n], [g] -> [b,m,n].
--    // Ragged contracting (k): [b,m,k], [b,k,n], [g] -> [g,b,m,n].
--    if (!rhsGroupDimensions.empty()) {
--      return emitOptionalError(
--          location,
--          "There must be zero group dimensions in the rhs when the "
--          "ragged dimension is batch or contracting.");
--    }
--  } else {
--    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [g] -> [b,m,n].
--    if (rhsGroupDimensions.size() != 1) {
--      return emitOptionalError(
--          location,
--          "There must be exactly one group dimension in the rhs when the lhs "
--          "ragged dimension is non-contracting.");
--    }
--    // Compare the group dimension size with the number of groups.
--    const int64_t rhsGroupDim = rhsGroupDimensions[0];
--    if (!hlo::verifyCompatibleDims(numGroups,
--                                   rankedRhsType.getDimSize(rhsGroupDim))) {
--      return emitOptionalError(
--          location, "group_sizes is expected to have shape=[",
--          rankedRhsType.getDimSize(rhsGroupDim), "], got [", numGroups, "]");
--    }
-+  switch (mode) {
-+    case kBatch:
-+      [[fallthrough]];
-+    case kContracting:
-+      if (!rhsGroupDimensions.empty()) {
-+        return emitOptionalError(
-+            location,
-+            "There must be zero group dimensions in the rhs when the "
-+            "ragged dimension is batch or contracting.");
-+      }
-+      break;
-+    case kNonContracting:
-+      if (rhsGroupDimensions.size() != 1) {
-+        return emitOptionalError(
-+            location,
-+            "There must be exactly one group dimension in the rhs when the lhs "
-+            "ragged dimension is non-contracting.");
-+      }
-+      // Compare the group dimension size with the number of groups.
-+      const int64_t rhsGroupDim = rhsGroupDimensions[0];
-+      if (!hlo::verifyCompatibleDims(numGroups,
-+                                     rankedRhsType.getDimSize(rhsGroupDim))) {
-+        return emitOptionalError(
-+            location,
-+            "rhs group dimension is expected to have size=", numGroups,
-+            ", got ", rankedRhsType.getDimSize(rhsGroupDim));
-+      }
-+      break;
-   }
+@@ -710,31 +710,6 @@
    return success();
  }
-@@ -530,10 +612,10 @@
-     ArrayRef<int64_t> rhsContractingDimensions,
-     ArrayRef<int64_t> lhsRaggedDimensions,
-     ArrayRef<int64_t> rhsGroupDimensions) {
--  // Must have already checked that group_sizes is 1-D.
--  const int64_t numGroups = rankedGroupSizesType.getDimSize(0);
-   // Must have already checked that there is exactly one lhs ragged dim.
-   const int64_t lhsRaggedDim = lhsRaggedDimensions[0];
-+  // Must have already checked the shape of group_sizes.
-+  const int64_t numGroups = rankedGroupSizesType.getShape().back();
  
-   SmallVector<int64_t> dimensions;
-   // Add the group dimension to the result shape in case of ragged contracting.
+-LogicalResult RaggedDotOp::inferReturnTypes(
+-    MLIRContext*, std::optional<Location>, ValueRange operands,
+-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  RaggedDotOp::Adaptor op(operands, attributes, properties, regions);
+-
+-  auto rankedLhsType = cast<RankedTensorType>(op.getLhs().getType());
+-  auto rankedRhsType = cast<RankedTensorType>(op.getRhs().getType());
+-  auto rankedGroupSizesType =
+-      cast<RankedTensorType>(op.getGroupSizes().getType());
+-  auto raggedDotDimNums = op.getRaggedDotDimensionNumbers();
+-
+-  inferredReturnTypes.push_back(RankedTensorType::get(
+-      inferRaggedDotOutputDimensions(
+-          rankedLhsType, rankedRhsType, rankedGroupSizesType,
+-          raggedDotDimNums.getLhsBatchingDimensions(),
+-          raggedDotDimNums.getRhsBatchingDimensions(),
+-          raggedDotDimNums.getLhsContractingDimensions(),
+-          raggedDotDimNums.getRhsContractingDimensions(),
+-          raggedDotDimNums.getLhsRaggedDimensions(),
+-          raggedDotDimNums.getRhsGroupDimensions()),
+-      rankedLhsType.getElementType()));
+-  return success();
+-}
+-
+ //===----------------------------------------------------------------------===//
+ // TopKOp
+ //===----------------------------------------------------------------------===//
 diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
 --- stablehlo/stablehlo/dialect/ChloOps.td
 +++ stablehlo/stablehlo/dialect/ChloOps.td
-@@ -869,12 +869,12 @@
-     most one group dimension. The op has three modes, depending on the kind of
-     the lhs ragged dimension.
- 
--    In mode 1, the shape-signature is `[b,m,k], [g,b,k,n], [g] -> [b,m,n]`.
-+    In mode 1, the shape-signature is `[b,m,k], [g,b,k,n], [b,g] -> [b,m,n]`.
-     Here the ragged dimension is an lhs non-contracting dimension (`m`). The
-     dimensions `b` and `k` represent batch and contracting dimensions
-     respectively. The rhs is required to have a group dimension (`g`).
- 
--    In mode 2, the shape-signature is `[b,m,k], [b,k,n], [g] -> [g,b,m,n]`.
-+    In mode 2, the shape-signature is `[b,m,k], [b,k,n], [b,g] -> [g,b,m,n]`.
-     Here the ragged dimension is an lhs/rhs contracting dimension (`k`).
- 
-     In mode 3, the shape-signature is `[b,m,k], [b,k,n], [g] -> [b,m,n]`. Here
-diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
---- stablehlo/stablehlo/tests/ops_chlo.mlir
-+++ stablehlo/stablehlo/tests/ops_chlo.mlir
-@@ -146,7 +146,7 @@
- // -----
- 
- func.func @ragged_dot_group_sizes_incorrect_rank(%lhs : tensor<11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<3x2xi64>) -> tensor<11x7xf32> {
--  // @expected-error@+1 {{expected rank of group_sizes of ragged dot to be 1, got 2}}
-+  // @expected-error@+1 {{expected group_sizes to have rank 1, got 2}}
-   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
-     ragged_dot_dimension_numbers = #chlo.ragged_dot<
-       lhs_batching_dimensions = [],
-@@ -163,8 +163,79 @@
- 
- // -----
- 
--func.func @ragged_dot_group_sizes_incorrect_shape(%lhs : tensor<11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<2xi64>) -> tensor<11x7xf32> {
--  // @expected-error@+1 {{group_sizes is expected to have shape=[3], got [2]}}
-+func.func @ragged_dot_mode1_group_sizes_broadcasted(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<3x19x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<19x17x11x7xf32> {
-+  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
-+    ragged_dot_dimension_numbers = #chlo.ragged_dot<
-+      lhs_batching_dimensions = [0],
-+      rhs_batching_dimensions = [1],
-+      lhs_contracting_dimensions = [3],
-+      rhs_contracting_dimensions = [2],
-+      lhs_ragged_dimensions = [2],
-+      rhs_group_dimensions = [0]
-+    >,
-+    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
-+  } : (tensor<19x17x11x5xf32>, tensor<3x19x5x7xf32>, tensor<3xi64>) -> tensor<19x17x11x7xf32>
-+  func.return %0 : tensor<19x17x11x7xf32>
-+}
-+
-+// -----
-+
-+func.func @ragged_dot_mode1_group_sizes_incorrect_shape(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<3x19x5x7xf32>, %group_sizes : tensor<19x11x3xi64>) -> tensor<19x17x11x7xf32> {
-+  // @expected-error@+1 {{group_sizes is expected to have shape [19, 17, 3], got [19, 11, 3]}}
-+  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
-+    ragged_dot_dimension_numbers = #chlo.ragged_dot<
-+      lhs_batching_dimensions = [0],
-+      rhs_batching_dimensions = [1],
-+      lhs_contracting_dimensions = [3],
-+      rhs_contracting_dimensions = [2],
-+      lhs_ragged_dimensions = [2],
-+      rhs_group_dimensions = [0]
-+    >,
-+    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
-+  } : (tensor<19x17x11x5xf32>, tensor<3x19x5x7xf32>, tensor<19x11x3xi64>) -> tensor<19x17x11x7xf32>
-+  func.return %0 : tensor<19x17x11x7xf32>
-+}
-+
-+// -----
-+
-+func.func @ragged_dot_mode2_group_sizes_incorrect_shape(%lhs : tensor<19x11x17x5xf32>, %rhs : tensor<19x17x5x7xf32>, %group_sizes : tensor<19x11x3xi64>) -> tensor<3x19x11x7xf32> {
-+  // @expected-error@+1 {{group_sizes is expected to have shape [19, 17, 3], got [19, 11, 3]}}
-+  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
-+    ragged_dot_dimension_numbers = #chlo.ragged_dot<
-+      lhs_batching_dimensions = [0],
-+      rhs_batching_dimensions = [0],
-+      lhs_contracting_dimensions = [2,3],
-+      rhs_contracting_dimensions = [1,2],
-+      lhs_ragged_dimensions = [3],
-+      rhs_group_dimensions = []
-+    >,
-+    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
-+  } : (tensor<19x11x17x5xf32>, tensor<19x17x5x7xf32>, tensor<19x11x3xi64>) -> tensor<3x19x11x7xf32>
-+  func.return %0 : tensor<3x19x11x7xf32>
-+}
-+
-+// -----
-+
-+func.func @ragged_dot_mode3_group_sizes_incorrect_shape(%lhs : tensor<17x19x11x5xf32>, %rhs : tensor<17x19x5x7xf32>, %group_sizes : tensor<19x3xi64>) -> tensor<17x19x11x7xf32> {
-+  // @expected-error@+1 {{group_sizes is expected to have shape [17, 3], got [19, 3]}}
-+  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
-+    ragged_dot_dimension_numbers = #chlo.ragged_dot<
-+      lhs_batching_dimensions = [0,1],
-+      rhs_batching_dimensions = [0,1],
-+      lhs_contracting_dimensions = [3],
-+      rhs_contracting_dimensions = [2],
-+      lhs_ragged_dimensions = [1],
-+      rhs_group_dimensions = []
-+    >,
-+    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
-+  } : (tensor<17x19x11x5xf32>, tensor<17x19x5x7xf32>, tensor<19x3xi64>) -> tensor<17x19x11x7xf32>
-+  func.return %0 : tensor<17x19x11x7xf32>
-+}
-+
-+// -----
-+
-+func.func @ragged_dot_incorrect_group_dim_size(%lhs : tensor<11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<2xi64>) -> tensor<11x7xf32> {
-+  // @expected-error@+1 {{rhs group dimension is expected to have size=2, got 3}}
-   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
-     ragged_dot_dimension_numbers = #chlo.ragged_dot<
-       lhs_batching_dimensions = [],
-diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
---- stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
-+++ stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
-@@ -2675,3 +2675,73 @@
-     -> tensor<128x26x26x128x!quant.uniform<i8:f32, 1.000000e+00:5>>
-   return %0 : tensor<128x26x26x128x!quant.uniform<i8:f32, 1.000000e+00:5>>
- }
-+
-+// -----
-+
-+// CHECK-LABEL: func.func public @conv2d_nchw
-+// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x3x224x224xi8>,
-+// CHECK-SAME: %[[VAL_1:.*]]: tensor<64x3x7x7xi8>) -> tensor<1x64x112x112xi8> {
-+func.func public @conv2d_nchw(
-+  %arg0: tensor<1x3x224x224x!quant.uniform<i8:f32, 3.158280e-02:1>>,
-+  %arg1: tensor<64x3x7x7x!quant.uniform<i8:f32, 3.101380e-03>>
-+  ) -> tensor<1x64x112x112x!quant.uniform<i8:f32, 1.438440e-02:-128>> {
-+// CHECK: stablehlo.convolution
-+// CHECK-SAME: dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
-+// CHECK-SAME: window = {
-+// CHECK-SAME: stride = [2, 2]
-+// CHECK-SAME{LITERAL}: pad = [[0, 0], [0, 0]]
-+// CHECK-SAME: rhs_dilate = [1, 1]
-+// CHECK-SAME: }
-+// CHECK-SAME: {
-+// CHECK-SAME: batch_group_count = 1 : i64
-+// CHECK-SAME: feature_group_count = 1 : i64
-+// CHECK-SAME: }
-+// CHECK-SAME : (tensor<1x3x230x230xi8>, tensor<64x3x7x7xi8>) -> tensor<1x64x112x112xi32>
-+  %0 = stablehlo.convolution(%arg0, %arg1)
-+    dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1],
-+    window = {
-+      stride = [2, 2],
-+      pad = [[3, 3], [3, 3]],
-+      rhs_dilate = [1, 1]
-+    } {
-+      batch_group_count = 1 : i64,
-+      feature_group_count = 1 : i64
-+    } : (
-+      tensor<1x3x224x224x!quant.uniform<i8:f32, 3.158280e-02:1>>,
-+      tensor<64x3x7x7x!quant.uniform<i8:f32, 3.101380e-03>>
-+  ) -> tensor<1x64x112x112x!quant.uniform<i8:f32, 1.438440e-02:-128>>
-+  return %0 : tensor<1x64x112x112x!quant.uniform<i8:f32, 1.438440e-02:-128>>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func.func @conv3d_ncdhw
-+func.func @conv3d_ncdhw(
-+    %arg0: tensor<128x1x28x28x28x!quant.uniform<i8:f32, 2.000000e+00:4>>,
-+    %arg1: tensor<128x1x3x3x3x!quant.uniform<i8:f32, 3.000000e+00:0>>) {
-+// CHECK: stablehlo.convolution
-+// CHECK-SAME: dim_numbers = [b, f, 0, 1, 2]x[o, i, 0, 1, 2]->[b, f, 0, 1, 2],
-+// CHECK-SAME: window = {
-+// CHECK-SAME{LITERAL}: stride = [1, 1, 1], pad = [[0, 0], [0, 0], [0, 0]],
-+// CHECK-SAME: lhs_dilate = [1, 1, 1],
-+// CHECK-SAME: rhs_dilate = [1, 1, 1]
-+// CHECK-SAME: }
-+// CHECK-SAME: {
-+// CHECK-SAME: batch_group_count = 1 : i64,
-+// CHECK-SAME: feature_group_count = 1 : i64
-+// CHECK-SAME: }
-+// CHECK-SAME: : (tensor<128x1x28x28x28xf32>, tensor<128x1x3x3x3xf32>) -> tensor<128x128x26x26x26xf32>
-+  %0 = stablehlo.convolution(%arg0, %arg1)
-+    dim_numbers = [b, f, 0, 1, 2]x[o, i, 0, 1, 2]->[b, f, 0, 1, 2],
-+    window = {
-+      stride = [1, 1, 1], pad = [[0, 0], [0, 0], [0, 0]],
-+      lhs_dilate = [1, 1, 1],
-+      rhs_dilate = [1, 1, 1]
-+    }
-+    {
-+      batch_group_count = 1 : i64,
-+      feature_group_count = 1 : i64
-+    } : (tensor<128x1x28x28x28x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<128x1x3x3x3x!quant.uniform<i8:f32, 3.000000e+00:0>>)
-+    -> tensor<128x128x26x26x26x!quant.uniform<i32:f32, 1.000000e+00:5>>
-+  return
-+}
-diff --ruN a/stablehlo/stablehlo/transforms/PassUtils.cpp b/stablehlo/stablehlo/transforms/PassUtils.cpp
---- stablehlo/stablehlo/transforms/PassUtils.cpp
-+++ stablehlo/stablehlo/transforms/PassUtils.cpp
-@@ -4,13 +4,15 @@
- You may obtain a copy of the License at
-     http://www.apache.org/licenses/LICENSE-2.0
- Unless required by applicable law or agreed to in writing, software
--distributed under the License is distributed on an "AS IS" BASIS,
-+distributed under the License is distributed on an "AS IS" BASIS,G
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
- ==============================================================================*/
- 
- #include "stablehlo/transforms/PassUtils.h"
-+
-+#include <cstdint>
- 
- #include "llvm/Support/ErrorHandling.h"
- #include "mlir/IR/Builders.h"
-@@ -65,5 +67,22 @@
-   });
+@@ -856,8 +856,7 @@
+   let hasCustomAssemblyFormat = 1;
  }
  
-+Type getQuantizedElementType(Location loc, Type storageType, Type expressedType,
-+                             ArrayRef<double> scales,
-+                             ArrayRef<int64_t> zeroPoints,
-+                             int32_t quantizedDimension, int64_t storageTypeMin,
-+                             int64_t storageTypeMax) {
-+  unsigned flags =
-+      !storageType.isUnsignedInteger() ? quant::QuantizationFlags::Signed : 0;
-+  if (quantizedDimension == -1) {
-+    return quant::UniformQuantizedType::getChecked(
-+        loc, flags, storageType, expressedType, scales[0], zeroPoints[0],
-+        storageTypeMin, storageTypeMax);
+-def CHLO_RaggedDotOp : CHLO_Op<"ragged_dot",
+-    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
++def CHLO_RaggedDotOp : CHLO_Op<"ragged_dot", [Pure]> {
+   string summary = "Computes a matmul over a single ragged dimension";
+ 
+   string description = [{
+diff --ruN a/stablehlo/stablehlo/integrations/c/ChloAttributes.cpp b/stablehlo/stablehlo/integrations/c/ChloAttributes.cpp
+--- stablehlo/stablehlo/integrations/c/ChloAttributes.cpp
++++ stablehlo/stablehlo/integrations/c/ChloAttributes.cpp
+@@ -66,3 +66,127 @@
+   return wrap(mlir::chlo::stringifyComparisonType(
+       llvm::cast<mlir::chlo::ComparisonTypeAttr>(unwrap(attr)).getValue()));
+ }
++
++//===----------------------------------------------------------------------===//
++// RaggedDotDimensionNumbers
++//===----------------------------------------------------------------------===//
++
++MlirAttribute chloRaggedDotDimensionNumbersGet(
++    MlirContext ctx, intptr_t nLhsBatchingDimensions,
++    const int64_t *lhsBatchingDimensions, intptr_t nRhsBatchingDimensions,
++    const int64_t *rhsBatchingDimensions, intptr_t nLhsContractingDimensions,
++    const int64_t *lhsContractingDimensions, intptr_t nRhsContractingDimensions,
++    const int64_t *rhsContractingDimensions, intptr_t nLhsRaggedDimensions,
++    const int64_t *lhsRaggedDimensions, intptr_t nRhsGroupDimensions,
++    const int64_t *rhsGroupDimensions) {
++  return wrap(mlir::chlo::RaggedDotDimensionNumbersAttr::get(
++      unwrap(ctx),
++      llvm::ArrayRef(lhsBatchingDimensions, nLhsBatchingDimensions),
++      llvm::ArrayRef(rhsBatchingDimensions, nRhsBatchingDimensions),
++      llvm::ArrayRef(lhsContractingDimensions, nLhsContractingDimensions),
++      llvm::ArrayRef(rhsContractingDimensions, nRhsContractingDimensions),
++      llvm::ArrayRef(lhsRaggedDimensions, nLhsRaggedDimensions),
++      llvm::ArrayRef(rhsGroupDimensions, nRhsGroupDimensions)));
++}
++
++bool chloAttributeIsARaggedDotDimensionNumbers(MlirAttribute attr) {
++  return llvm::isa<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr));
++}
++
++intptr_t chloRaggedDotDimensionNumbersGetLhsBatchingDimensionsSize(
++    MlirAttribute attr) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getLhsBatchingDimensions()
++      .size();
++}
++
++int64_t chloRaggedDotDimensionNumbersGetLhsBatchingDimensionsElem(
++    MlirAttribute attr, intptr_t pos) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getLhsBatchingDimensions()[pos];
++}
++
++intptr_t chloRaggedDotDimensionNumbersGetRhsBatchingDimensionsSize(
++    MlirAttribute attr) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getRhsBatchingDimensions()
++      .size();
++}
++
++int64_t chloRaggedDotDimensionNumbersGetRhsBatchingDimensionsElem(
++    MlirAttribute attr, intptr_t pos) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getRhsBatchingDimensions()[pos];
++}
++
++intptr_t chloRaggedDotDimensionNumbersGetLhsContractingDimensionsSize(
++    MlirAttribute attr) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getLhsContractingDimensions()
++      .size();
++}
++
++int64_t chloRaggedDotDimensionNumbersGetLhsContractingDimensionsElem(
++    MlirAttribute attr, intptr_t pos) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getLhsContractingDimensions()[pos];
++}
++
++intptr_t chloRaggedDotDimensionNumbersGetRhsContractingDimensionsSize(
++    MlirAttribute attr) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getRhsContractingDimensions()
++      .size();
++}
++
++int64_t chloRaggedDotDimensionNumbersGetRhsContractingDimensionsElem(
++    MlirAttribute attr, intptr_t pos) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getRhsContractingDimensions()[pos];
++}
++
++intptr_t chloRaggedDotDimensionNumbersGetLhsRaggedDimensionsSize(
++    MlirAttribute attr) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getLhsRaggedDimensions()
++      .size();
++}
++
++int64_t chloRaggedDotDimensionNumbersGetLhsRaggedDimensionsElem(
++    MlirAttribute attr, intptr_t pos) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getLhsRaggedDimensions()[pos];
++}
++
++intptr_t chloRaggedDotDimensionNumbersGetRhsGroupDimensionsSize(
++    MlirAttribute attr) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getRhsGroupDimensions()
++      .size();
++}
++
++int64_t chloRaggedDotDimensionNumbersGetRhsGroupDimensionsElem(
++    MlirAttribute attr, intptr_t pos) {
++  return llvm::cast<mlir::chlo::RaggedDotDimensionNumbersAttr>(unwrap(attr))
++      .getRhsGroupDimensions()[pos];
++}
++
++//===----------------------------------------------------------------------===//
++// PrecisionAttr
++//===----------------------------------------------------------------------===//
++
++MlirAttribute chloPrecisionAttrGet(MlirContext ctx, MlirStringRef value) {
++  std::optional<mlir::chlo::Precision> precision =
++      mlir::chlo::symbolizePrecision(unwrap(value));
++  if (!precision) llvm::report_fatal_error("Invalid value.");
++  return wrap(mlir::chlo::PrecisionAttr::get(unwrap(ctx), precision.value()));
++}
++
++bool chloAttributeIsAPrecisionAttr(MlirAttribute attr) {
++  return llvm::isa<mlir::chlo::PrecisionAttr>(unwrap(attr));
++}
++
++MlirStringRef chloPrecisionAttrGetValue(MlirAttribute attr) {
++  return wrap(mlir::chlo::stringifyPrecision(
++      llvm::cast<mlir::chlo::PrecisionAttr>(unwrap(attr)).getValue()));
++}
+diff --ruN a/stablehlo/stablehlo/integrations/c/ChloAttributes.h b/stablehlo/stablehlo/integrations/c/ChloAttributes.h
+--- stablehlo/stablehlo/integrations/c/ChloAttributes.h
++++ stablehlo/stablehlo/integrations/c/ChloAttributes.h
+@@ -47,6 +47,70 @@
+ MLIR_CAPI_EXPORTED MlirStringRef
+ chloComparisonTypeAttrGetValue(MlirAttribute attr);
+ 
++//===----------------------------------------------------------------------===//
++// RaggedDotDimensionNumbers
++//===----------------------------------------------------------------------===//
++
++MLIR_CAPI_EXPORTED MlirAttribute chloRaggedDotDimensionNumbersGet(
++    MlirContext ctx,                                                        //
++    intptr_t nLhsBatchingDimensions, const int64_t *lhsBatchingDimensions,  //
++    intptr_t nRhsBatchingDimensions, const int64_t *rhsBatchingDimensions,  //
++    intptr_t nLhsContractingDimensions,                                     //
++    const int64_t *lhsContractingDimensions,                                //
++    intptr_t nRhsContractingDimensions,                                     //
++    const int64_t *rhsContractingDimensions,                                //
++    intptr_t nLhsRaggedDimensions,                                          //
++    const int64_t *lhsRaggedDimensions,                                     //
++    intptr_t nRhsGroupDimensions,                                           //
++    const int64_t *rhsGroupDimensions);
++
++MLIR_CAPI_EXPORTED bool chloAttributeIsARaggedDotDimensionNumbers(
++    MlirAttribute attr);
++
++MLIR_CAPI_EXPORTED intptr_t
++chloRaggedDotDimensionNumbersGetLhsBatchingDimensionsSize(MlirAttribute attr);
++MLIR_CAPI_EXPORTED int64_t
++chloRaggedDotDimensionNumbersGetLhsBatchingDimensionsElem(MlirAttribute attr,
++                                                          intptr_t pos);
++MLIR_CAPI_EXPORTED intptr_t
++chloRaggedDotDimensionNumbersGetRhsBatchingDimensionsSize(MlirAttribute attr);
++MLIR_CAPI_EXPORTED int64_t
++chloRaggedDotDimensionNumbersGetRhsBatchingDimensionsElem(MlirAttribute attr,
++                                                          intptr_t pos);
++MLIR_CAPI_EXPORTED intptr_t
++chloRaggedDotDimensionNumbersGetLhsContractingDimensionsSize(
++    MlirAttribute attr);
++MLIR_CAPI_EXPORTED int64_t
++chloRaggedDotDimensionNumbersGetLhsContractingDimensionsElem(MlirAttribute attr,
++                                                             intptr_t pos);
++MLIR_CAPI_EXPORTED intptr_t
++chloRaggedDotDimensionNumbersGetRhsContractingDimensionsSize(
++    MlirAttribute attr);
++MLIR_CAPI_EXPORTED int64_t
++chloRaggedDotDimensionNumbersGetRhsContractingDimensionsElem(MlirAttribute attr,
++                                                             intptr_t pos);
++MLIR_CAPI_EXPORTED intptr_t
++chloRaggedDotDimensionNumbersGetLhsRaggedDimensionsSize(MlirAttribute attr);
++MLIR_CAPI_EXPORTED int64_t
++chloRaggedDotDimensionNumbersGetLhsRaggedDimensionsElem(MlirAttribute attr,
++                                                        intptr_t pos);
++MLIR_CAPI_EXPORTED intptr_t
++chloRaggedDotDimensionNumbersGetRhsGroupDimensionsSize(MlirAttribute attr);
++MLIR_CAPI_EXPORTED int64_t
++chloRaggedDotDimensionNumbersGetRhsGroupDimensionsElem(MlirAttribute attr,
++                                                       intptr_t pos);
++
++//===----------------------------------------------------------------------===//
++// PrecisionAttr
++//===----------------------------------------------------------------------===//
++
++MLIR_CAPI_EXPORTED MlirAttribute chloPrecisionAttrGet(MlirContext ctx,
++                                                      MlirStringRef value);
++
++MLIR_CAPI_EXPORTED bool chloAttributeIsAPrecisionAttr(MlirAttribute attr);
++
++MLIR_CAPI_EXPORTED MlirStringRef chloPrecisionAttrGetValue(MlirAttribute attr);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --ruN a/stablehlo/stablehlo/integrations/python/ChloModule.cpp b/stablehlo/stablehlo/integrations/python/ChloModule.cpp
+--- stablehlo/stablehlo/integrations/python/ChloModule.cpp
++++ stablehlo/stablehlo/integrations/python/ChloModule.cpp
+@@ -21,6 +21,20 @@
+ namespace nb = nanobind;
+ 
+ namespace {
++
++// Returns a vector containing integers extracted from an attribute using the
++// two provided callbacks.
++std::vector<int64_t> attributePropertyVector(
++    MlirAttribute attr, llvm::function_ref<intptr_t(MlirAttribute)> sizeFn,
++    llvm::function_ref<int64_t(MlirAttribute, intptr_t)> getFn) {
++  std::vector<int64_t> result;
++  intptr_t size = sizeFn(attr);
++  result.reserve(size);
++  for (intptr_t i = 0; i < size; ++i) {
++    result.push_back(getFn(attr, i));
 +  }
-+  return quant::UniformQuantizedPerAxisType::getChecked(
-+      loc, flags, storageType, expressedType, scales, zeroPoints,
-+      quantizedDimension, storageTypeMin, storageTypeMax);
++  return result;
 +}
-+
- }  // namespace stablehlo
- }  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/transforms/PassUtils.h b/stablehlo/stablehlo/transforms/PassUtils.h
---- stablehlo/stablehlo/transforms/PassUtils.h
-+++ stablehlo/stablehlo/transforms/PassUtils.h
-@@ -69,6 +69,13 @@
- // Check if any of the given types are mlir::quant::QuantizedType.
- bool isAnyQuantizedTypes(TypeRange types);
  
-+// Creates a quantized element type based on the given parameters.
-+Type getQuantizedElementType(Location loc, Type storageType, Type expressedType,
-+                             ArrayRef<double> scales,
-+                             ArrayRef<int64_t> zeroPoints,
-+                             int32_t quantizedDimension, int64_t storageTypeMin,
-+                             int64_t storageTypeMax);
+ auto toPyString(MlirStringRef mlirStringRef) {
+   return nb::str(mlirStringRef.data, mlirStringRef.length);
+@@ -79,4 +93,88 @@
+       .def_property_readonly("value", [](MlirAttribute self) {
+         return toPyString(chloComparisonTypeAttrGetValue(self));
+       });
 +
- }  // namespace stablehlo
- }  // namespace mlir
- 
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
---- stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
-+++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
-@@ -766,6 +766,7 @@
-   Value outputDimsValue = nullptr;
-   // Calculate LHS contribution when RHS zp is non-zero.
-   if (rhsZp != 0) {
-+    // Contributions from RHS_ZP * LHS.
-     SmallVector<int64_t> reductionDims = to_vector(llvm::concat<const int64_t>(
-         dims.lhsSpatialDims, dims.lhsContractingDims));
-     Value lhsZpContribution =
-@@ -778,15 +779,23 @@
-   }
-   // Calculate RHS contribution when LHS zp is non-zero.
-   if (lhsZp != 0) {
-+    // Contributions from LHS_ZP * RHS.
-     SmallVector<int64_t> reductionDims = to_vector(llvm::concat<const int64_t>(
-         dims.rhsSpatialDims, dims.rhsContractingDims));
-     Value rhsZpContribution =
-         createZeroPointPartialOffset(builder, loc, rhs, lhsZp, reductionDims);
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
++      m, "RaggedDotDimensionNumbers", chloAttributeIsARaggedDotDimensionNumbers)
++      .def_classmethod(
++          "get",
++          [](nb::object cls, const std::vector<int64_t> &lhsBatchingDims,
++             const std::vector<int64_t> &rhsBatchingDims,
++             const std::vector<int64_t> &lhsContractingDims,
++             const std::vector<int64_t> &rhsContractingDims,
++             const std::vector<int64_t> &lhsRaggedDims,
++             const std::vector<int64_t> &rhsGroupDims, MlirContext ctx) {
++            return cls(chloRaggedDotDimensionNumbersGet(
++                ctx, lhsBatchingDims.size(), lhsBatchingDims.data(),
++                rhsBatchingDims.size(), rhsBatchingDims.data(),
++                lhsContractingDims.size(), lhsContractingDims.data(),
++                rhsContractingDims.size(), rhsContractingDims.data(),
++                lhsRaggedDims.size(), lhsRaggedDims.data(), rhsGroupDims.size(),
++                rhsGroupDims.data()));
++          },
++          nb::arg("cls"), nb::arg("lhs_batching_dimensions"),
++          nb::arg("rhs_batching_dimensions"),
++          nb::arg("lhs_contracting_dimensions"),
++          nb::arg("rhs_contracting_dimensions"),
++          nb::arg("lhs_ragged_dimensions"), nb::arg("rhs_group_dimensions"),
++          nb::arg("context").none() = nb::none(),
++          "Creates a RaggedDotDimensionNumbers attribute with the given "
++          "dimension configuration.")
++      .def_property_readonly(
++          "lhs_batching_dimensions",
++          [](MlirAttribute self) {
++            return attributePropertyVector(
++                self, chloRaggedDotDimensionNumbersGetLhsBatchingDimensionsSize,
++                chloRaggedDotDimensionNumbersGetLhsBatchingDimensionsElem);
++          })
++      .def_property_readonly(
++          "rhs_batching_dimensions",
++          [](MlirAttribute self) {
++            return attributePropertyVector(
++                self, chloRaggedDotDimensionNumbersGetRhsBatchingDimensionsSize,
++                chloRaggedDotDimensionNumbersGetRhsBatchingDimensionsElem);
++          })
++      .def_property_readonly(
++          "lhs_contracting_dimensions",
++          [](MlirAttribute self) {
++            return attributePropertyVector(
++                self,
++                chloRaggedDotDimensionNumbersGetLhsContractingDimensionsSize,
++                chloRaggedDotDimensionNumbersGetLhsContractingDimensionsElem);
++          })
++      .def_property_readonly(
++          "rhs_contracting_dimensions",
++          [](MlirAttribute self) {
++            return attributePropertyVector(
++                self,
++                chloRaggedDotDimensionNumbersGetRhsContractingDimensionsSize,
++                chloRaggedDotDimensionNumbersGetRhsContractingDimensionsElem);
++          })
++      .def_property_readonly(
++          "lhs_ragged_dimensions",
++          [](MlirAttribute self) {
++            return attributePropertyVector(
++                self, chloRaggedDotDimensionNumbersGetLhsRaggedDimensionsSize,
++                chloRaggedDotDimensionNumbersGetLhsRaggedDimensionsElem);
++          })
++      .def_property_readonly("rhs_group_dimensions", [](MlirAttribute self) {
++        return attributePropertyVector(
++            self, chloRaggedDotDimensionNumbersGetRhsGroupDimensionsSize,
++            chloRaggedDotDimensionNumbersGetRhsGroupDimensionsElem);
++      });
 +
-+    int64_t nonBatchingStartingIdx =
-+        lhsShape.getRank() - dims.lhsContractingDims.size();
-+    if (!dims.lhsSpatialDims.empty() && !dims.rhsSpatialDims.empty()) {
-+      // In case of convolution, identified via absence of spatial dims, the
-+      // non-batching starting index is the lhs contracting dim.
-+      nonBatchingStartingIdx = dims.lhsContractingDims[0];
-+    }
-     // Broadcast rhs ZP contribution to result tensor shape.
-     rhsZpContribution = broadcastZpContribution(
-         builder, loc, rhsZpContribution, reductionDims, dims.rhsBatchingDims,
--        lhsShape.getRank() - dims.lhsContractingDims.size(), output,
--        outputTensorType, outputDimsValue);
-+        nonBatchingStartingIdx, output, outputTensorType, outputDimsValue);
-     if (result) {
-       result = builder.create<stablehlo::AddOp>(loc, result, rhsZpContribution);
-     } else {
-@@ -833,7 +842,8 @@
- template <typename DotLikeOp>
- Value createDotLikeKernel(OpBuilder &builder, Location loc, DotLikeOp,
-                           Type resultType, Value &lhs, Value &rhs,
--                          ArrayRef<NamedAttribute> attrs) {
-+                          ArrayRef<NamedAttribute> attrs,
-+                          const DotLikeDimensionNumbers &dims) {
-   return builder.create<stablehlo::DotGeneralOp>(
-       loc, resultType, ArrayRef<Value>{lhs, rhs}, attrs);
++  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
++      m, "PrecisionAttr", chloAttributeIsAPrecisionAttr)
++      .def_classmethod(
++          "get",
++          [](nb::object cls, const std::string &value, MlirContext ctx) {
++            return cls(chloPrecisionAttrGet(
++                ctx, mlirStringRefCreate(value.c_str(), value.size())));
++          },
++          nb::arg("cls"), nb::arg("value"),
++          nb::arg("context").none() = nb::none(),
++          "Creates a Precision attribute with the given value.")
++      .def_property_readonly("value", [](MlirAttribute self) {
++        return toPyString(chloPrecisionAttrGetValue(self));
++      });
  }
-@@ -843,7 +853,8 @@
- template <>
- Value createDotLikeKernel<stablehlo::ConvolutionOp>(
-     OpBuilder &builder, Location loc, stablehlo::ConvolutionOp op,
--    Type resultType, Value &lhs, Value &rhs, ArrayRef<NamedAttribute> attrs) {
-+    Type resultType, Value &lhs, Value &rhs, ArrayRef<NamedAttribute> attrs,
-+    const DotLikeDimensionNumbers &dims) {
-   // We only handle the case where RHS zp is zero.
-   // Explicitly pad LHS with zp and update LHS value.
-   SmallVector<NamedAttribute> newAttrs(attrs);
-@@ -865,9 +876,9 @@
-     int64_t rank = cast<TensorType>(lhs.getType()).getRank();
-     SmallVector<int64_t> paddingLow(rank, 0), paddingHigh(rank, 0),
-         paddingInterior(rank, 0);
--    for (int64_t i = 1; i < rank - 1; ++i) {
--      paddingLow[i] = originalPadding[i * 2 - 2];
--      paddingHigh[i] = originalPadding[i * 2 - 1];
-+    for (int64_t i = 0; i < dims.lhsSpatialDims.size(); ++i) {
-+      paddingLow[dims.lhsSpatialDims[i]] = originalPadding[i * 2];
-+      paddingHigh[dims.lhsSpatialDims[i]] = originalPadding[i * 2 + 1];
-     }
-     lhs = builder.create<stablehlo::PadOp>(loc, lhs, zp, paddingLow,
-                                            paddingHigh, paddingInterior);
-@@ -897,6 +908,8 @@
-   Value rhs = adaptor.getRhs();
-   auto resInt32TensorType =
-       op.getResult().getType().clone(rewriter.getI32Type());
-+  auto resFloat32TensorType =
-+      op.getResult().getType().clone(rewriter.getF32Type());
- 
-   // Dot result
-   //   = dot((lhs - zp_l) * scale_l, (rhs - zp_r) * scale_r) / scale_res
-@@ -908,7 +921,7 @@
-   //   combined_zp = res_zp - zp_offset * combined_scale
-   //   zp_offset = zp_l*rhs + zp_r*lhs - zp_l*zp_r
-   Value resI32 = createDotLikeKernel(rewriter, op->getLoc(), op,
--                                     resInt32TensorType, lhs, rhs, attrs);
-+                                     resInt32TensorType, lhs, rhs, attrs, dims);
- 
-   auto lhsElementQuantType = getPerTensorType(op.getLhs().getType());
-   auto rhsElementQuantType = dyn_cast<quant::UniformQuantizedType>(
-@@ -945,8 +958,6 @@
-     Value combinedScale = rewriter.create<stablehlo::ConstantOp>(
-         op->getLoc(), rewriter.getF32FloatAttr(combinedScaleFp));
- 
--    auto resFloat32TensorType =
--        op.getResult().getType().clone(rewriter.getF32Type());
-     Value resF32 = rewriter.create<stablehlo::ConvertOp>(
-         op->getLoc(), resFloat32TensorType, resI32);
-     resF32 = rewriter.create<chlo::BroadcastMulOp>(
-@@ -1089,6 +1100,7 @@
- };
- 
- bool isConvNhwc(const stablehlo::ConvDimensionNumbersAttr &dims) {
-+  // lhs(b, 0, 1, f) x rhs(0, 1, i, o) -> res(b, 0, 1, f)
-   return dims.getInputBatchDimension() == 0 &&
-          dims.getInputFeatureDimension() == 3 &&
-          dims.getInputSpatialDimensions().size() == 2 &&
-@@ -1106,7 +1118,27 @@
-          dims.getOutputSpatialDimensions()[1] == 2;
- }
- 
-+bool isConvNchw(const stablehlo::ConvDimensionNumbersAttr &dims) {
-+  // lhs(b, f, 0, 1) x rhs(o, i, 0, 1) -> res(b, f, 0, 1)
-+  return dims.getInputBatchDimension() == 0 &&
-+         dims.getInputFeatureDimension() == 1 &&
-+         dims.getInputSpatialDimensions().size() == 2 &&
-+         dims.getInputSpatialDimensions()[0] == 2 &&
-+         dims.getInputSpatialDimensions()[1] == 3 &&
-+         dims.getKernelInputFeatureDimension() == 1 &&
-+         dims.getKernelOutputFeatureDimension() == 0 &&
-+         dims.getKernelSpatialDimensions().size() == 2 &&
-+         dims.getKernelSpatialDimensions()[0] == 2 &&
-+         dims.getKernelSpatialDimensions()[1] == 3 &&
-+         dims.getOutputBatchDimension() == 0 &&
-+         dims.getOutputFeatureDimension() == 1 &&
-+         dims.getOutputSpatialDimensions().size() == 2 &&
-+         dims.getOutputSpatialDimensions()[0] == 2 &&
-+         dims.getOutputSpatialDimensions()[1] == 3;
-+}
+diff --ruN a/stablehlo/stablehlo/integrations/python/tests/chlo.py b/stablehlo/stablehlo/integrations/python/tests/chlo.py
+--- stablehlo/stablehlo/integrations/python/tests/chlo.py
++++ stablehlo/stablehlo/integrations/python/tests/chlo.py
+@@ -42,3 +42,30 @@
+   assert attr is not None
+   assert str(attr) == ("#chlo<comparison_type FLOAT>")
+   assert attr.value == "FLOAT"
 +
- bool isConvNDHWC(const stablehlo::ConvDimensionNumbersAttr &dims) {
-+  // lhs(b, 0, 1, 2, f) x rhs(0, 1, 2, i, o) -> res(b, 0, 1, 2, f)
-   return dims.getInputBatchDimension() == 0 &&
-          dims.getInputFeatureDimension() == 4 &&
-          dims.getInputSpatialDimensions().size() == 3 &&
-@@ -1127,6 +1159,28 @@
-          dims.getOutputSpatialDimensions()[2] == 3;
++
++@run
++def test_ragged_dot_dimension_numbers():
++  attr = chlo.RaggedDotDimensionNumbers.get(
++      lhs_batching_dimensions=[0],
++      rhs_batching_dimensions=[1],
++      lhs_contracting_dimensions=[2],
++      rhs_contracting_dimensions=[2],
++      lhs_ragged_dimensions=[1],
++      rhs_group_dimensions=[0],
++  )
++  assert attr is not None
++  assert str(attr) == (
++      "#chlo.ragged_dot<lhs_batching_dimensions = [0], "
++      "rhs_batching_dimensions = [1], "
++      "lhs_contracting_dimensions = [2], "
++      "rhs_contracting_dimensions = [2], "
++      "lhs_ragged_dimensions = [1], "
++      "rhs_group_dimensions = [0]>"
++  )
++  assert attr.lhs_batching_dimensions == [0]
++  assert attr.rhs_batching_dimensions == [1]
++  assert attr.lhs_contracting_dimensions == [2]
++  assert attr.rhs_contracting_dimensions == [2]
++  assert attr.lhs_ragged_dimensions == [1]
++  assert attr.rhs_group_dimensions == [0]
+diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stablehlo/transforms/VhloToVersion.cpp
+--- stablehlo/stablehlo/transforms/VhloToVersion.cpp
++++ stablehlo/stablehlo/transforms/VhloToVersion.cpp
+@@ -27,7 +27,6 @@
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+-#include "mlir/IR/Location.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/IR/Region.h"
+ #include "mlir/IR/Types.h"
+@@ -187,31 +186,6 @@
+   return success();
  }
  
-+bool isConvNCDHW(const stablehlo::ConvDimensionNumbersAttr &dims) {
-+  // lhs(b, f, 0, 1, 2) x rhs(o, i, 0, 1, 2) -> res(b, f, 0, 1, 2)
-+  return dims.getInputBatchDimension() == 0 &&
-+         dims.getInputFeatureDimension() == 1 &&
-+         dims.getInputSpatialDimensions().size() == 3 &&
-+         dims.getInputSpatialDimensions()[0] == 2 &&
-+         dims.getInputSpatialDimensions()[1] == 3 &&
-+         dims.getInputSpatialDimensions()[2] == 4 &&
-+         dims.getKernelInputFeatureDimension() == 0 &&
-+         dims.getKernelOutputFeatureDimension() == 1 &&
-+         dims.getKernelSpatialDimensions().size() == 3 &&
-+         dims.getKernelSpatialDimensions()[0] == 2 &&
-+         dims.getKernelSpatialDimensions()[1] == 3 &&
-+         dims.getKernelSpatialDimensions()[2] == 4 &&
-+         dims.getOutputBatchDimension() == 0 &&
-+         dims.getOutputFeatureDimension() == 1 &&
-+         dims.getOutputSpatialDimensions().size() == 3 &&
-+         dims.getOutputSpatialDimensions()[0] == 2 &&
-+         dims.getOutputSpatialDimensions()[1] == 3 &&
-+         dims.getOutputSpatialDimensions()[2] == 4;
-+}
-+
- FailureOr<DotLikeDimensionNumbers> verifyAndConstructDims(
-     stablehlo::ConvolutionOp op, ConversionPatternRewriter &rewriter) {
-   // RHS (weight) must have zero zp.
-@@ -1185,7 +1239,8 @@
-   // We only support NHWC Conv2D and NDHWC Conv3D.
-   auto dims = op.getDimensionNumbers();
-   if (isConvNhwc(dims)) {
--    // 2D Convolution.
-+    // 2D Nhwc Convolution.
-+    // lhs(b, 0, 1, f) x rhs(0, 1, i, o) -> res(b, 0, 1, f)
-     return DotLikeDimensionNumbers{/*lhs_batching_dims=*/{0},
-                                    /*lhs_spatial_dims=*/{1, 2},
-                                    /*lhs_contracting_dims=*/{3},
-@@ -1193,14 +1248,35 @@
-                                    /*rhs_spatial_dims=*/{0, 1},
-                                    /*rhs_contracting_dims=*/{2}};
-   }
-+  if (isConvNchw(dims)) {
-+    // 2D Nchw Convolution.
-+    // lhs(b, f, 0, 1) x rhs(o, i, 0, 1) -> res(b, f, 0, 1)
-+    return DotLikeDimensionNumbers{/*lhs_batching_dims=*/{0},
-+                                   /*lhs_spatial_dims=*/{2, 3},
-+                                   /*lhs_contracting_dims=*/{1},
-+                                   /*rhs_batching_dims=*/{},
-+                                   /*rhs_spatial_dims=*/{2, 3},
-+                                   /*rhs_contracting_dims=*/{1}};
-+  }
-   if (isConvNDHWC(dims)) {
--    // 3D Convolution.
-+    // 3D Ndhwc Convolution.
-+    // lhs(b, 0, 1, 2, f) x rhs(0, 1, 2, i, o) -> res(b, 0, 1, 2, f)
-     return DotLikeDimensionNumbers{/*lhs_batching_dims=*/{0},
-                                    /*lhs_spatial_dims=*/{1, 2, 3},
-                                    /*lhs_contracting_dims=*/{4},
-                                    /*rhs_batching_dims=*/{},
-                                    /*rhs_spatial_dims=*/{0, 1, 2},
-                                    /*rhs_contracting_dims=*/{3}};
-+  }
-+  if (isConvNCDHW(dims)) {
-+    // 3D Ncdhw Convolution.
-+    // lhs(b, f, 0, 1, 2) x rhs(o, i, 0, 1, 2) -> res(b, f, 0, 1, 2)
-+    return DotLikeDimensionNumbers{/*lhs_batching_dims=*/{0},
-+                                   /*lhs_spatial_dims=*/{2, 3, 4},
-+                                   /*lhs_contracting_dims=*/{1},
-+                                   /*rhs_batching_dims=*/{},
-+                                   /*rhs_spatial_dims=*/{2, 3, 4},
-+                                   /*rhs_contracting_dims=*/{1}};
-   }
-   return rewriter.notifyMatchFailure(op,
-                                      "Convolution data format must be NHWC.");
+-bool isLegalLocation(Location loc, const Version& targetVersion) {
+-  // FileLineColRange locations are a forward incompatibility in upstream MLIR
+-  // just before v1.8.4 was tagged. Conservatively use 1.9.0 since StableHLO
+-  // passes require major versions for incompats.
+-  //
+-  // Support for downgrading these locations exists in
+-  // StablehloCompatibilityExpanderPass.
+-  bool isLegal = true;
+-  loc->walk([&](Location childLoc) -> WalkResult {
+-    if (auto fileLineColLoc = dyn_cast<FileLineColRange>(childLoc)) {
+-      static const Version kFileLineColLocMinVersion = Version(1, 9, 0);
+-      if (!isStrictFileLineColLoc(childLoc) &&
+-          targetVersion < kFileLineColLocMinVersion) {
+-        LLVM_DEBUG(llvm::dbgs() << "failed to legalize location " << childLoc
+-                                << " to version " << targetVersion << '\n');
+-        isLegal = false;
+-        return WalkResult::interrupt();
+-      }
+-    }
+-    return WalkResult::advance();
+-  });
+-
+-  return isLegal;
+-}
+-
+ bool isLegalOperation(Operation* op, const Version& targetVersion) {
+   // Validate op
+   auto opInterface = dyn_cast<VersionedOpInterface>(op);
+@@ -234,7 +208,6 @@
+     return succeeded(isLegalAttribute(attr.getValue(), targetVersion));
+   };
+   if (!llvm::all_of(op->getAttrs(), isLegalAttrFn)) return false;
+-  LLVM_DEBUG(llvm::dbgs() << "Legal op attributes for target. " << op << '\n');
+ 
+   // Validate types
+   auto isLegalTypeFn = [&](Type t) {
+@@ -243,11 +216,6 @@
+   if (!llvm::all_of(op->getOperandTypes(), isLegalTypeFn) ||
+       !llvm::all_of(op->getResultTypes(), isLegalTypeFn))
+     return false;
+-  LLVM_DEBUG(llvm::dbgs() << "Legal op types for target. " << op << '\n');
+-
+-  // Validate location
+-  if (!isLegalLocation(op->getLoc(), targetVersion)) return false;
+-  LLVM_DEBUG(llvm::dbgs() << "Legal op location for target. " << op << '\n');
+ 
+   return true;
+ }
 

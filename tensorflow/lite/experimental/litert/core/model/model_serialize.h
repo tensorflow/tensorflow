@@ -16,31 +16,15 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_SERIALIZE_H_
 
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
-
-// Serializes model to bytes.
-// NOTE this destroys the model before it returns unless destroy_model is false.
-// NOTE: Caller takes ownership of `buf`. Flatbuffers are packed into their
-// arrays back to front, so the valid flatbuffer is buf[offset, size].
-LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
-                                  size_t* size, size_t* offset,
-                                  bool destroy_model = true);
-
-#ifdef __cplusplus
-}
-
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert::internal {
 
-Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model);
+Expected<OwningBufferRef<uint8_t>> SerializeModel(
+    LiteRtModelT&& model, size_t bytecode_alignment = 1);
 
 }  // namespace litert::internal
 
-#endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_SERIALIZE_H_

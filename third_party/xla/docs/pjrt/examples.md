@@ -34,5 +34,5 @@ devices:
 - Light integration plugins (PJRT+MLIR):
   + StableHLO Reference Interpreter plugin
     (MLIR-based, C++ plugin, to be linked after devlabs)
-  + [Tenstorrent-XLA plugin](https://github.com/tenstorrent/tt-xla/blob/main/src/common/api_impl.cc)
+  + [Tenstorrent-XLA plugin](https://github.com/tenstorrent/tt-xla/blob/main/src/common/pjrt_implementation/api_bindings.cc)
     (MLIR-based, C plugin)

@@ -15,6 +15,7 @@
 """A model whose intermediate tensor is also used as a model output."""
 
 import tensorflow as tf
+from tensorflow.lite.python import lite
 
 
 @tf.function(
@@ -32,10 +33,10 @@ def func(a, b):
 
 
 def main():
-  converter = tf.lite.TFLiteConverter.from_concrete_functions(
+  converter = lite.TFLiteConverter.from_concrete_functions(
       [func.get_concrete_function()]
   )
-  converter.target_spec = tf.lite.TargetSpec()
+  converter.target_spec = lite.TargetSpec()
   tflite_model = converter.convert()
   model_path = '/tmp/intermediate_tensor_output.tflite'
   with open(model_path, 'wb') as f:

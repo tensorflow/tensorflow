@@ -447,7 +447,7 @@ TEST_F(ConvertTest, ConvertMapToF32) {
 TEST_F(ConvertTest, ConvertReshape) {
   XlaBuilder builder(TestName());
   auto input = ConstantR1<int32_t>(&builder, {42});
-  auto reshape = Reshape(input, /*dimensions=*/{0}, /*new_sizes=*/{});
+  auto reshape = Reshape(input, /*dimensions=*/{});
   ConvertElementType(reshape, F32);
 
   ComputeAndCompareR0<float>(&builder, 42.0f, {}, ErrorSpec(0.0001));

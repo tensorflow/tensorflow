@@ -375,6 +375,7 @@ class ExecutableBuildOptions:
   auto_spmd_partitioning_mesh_shape: List[int]
   auto_spmd_partitioning_mesh_ids: List[int]
   use_shardy_partitioner: bool
+  def compilation_environments_from_serialized_proto(self, serialized_proto: bytes) -> None: ...
 
 class PrecisionConfig_Precision(enum.IntEnum):
   DEFAULT: int
@@ -457,6 +458,7 @@ class HloSharding:
   def is_manual(self) -> bool: ...
   def is_unknown(self) -> bool: ...
   def is_tiled(self) -> bool: ...
+  def is_maximal(self) -> bool: ...
   def tuple_elements(self) -> List[HloSharding]: ...
   def num_devices(self) -> int: ...
   def num_dimensions(self) -> int: ...
@@ -929,14 +931,12 @@ class NamedSharding(Sharding):
       spec: Any,
       *,
       memory_kind: Optional[str] = None,
-      _parsed_pspec: Any = None,
       _manual_axes: frozenset[Any] = frozenset(),
       _logical_device_ids: tuple[int, ...] | None = None,
   ): ...
   mesh: Any
   spec: Any
   _memory_kind: Optional[str]
-  _parsed_pspec: Any
   _internal_device_list: DeviceList
   _manual_axes: frozenset[Any]
   _logical_device_ids: tuple[int, ...] | None

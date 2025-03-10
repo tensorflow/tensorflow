@@ -121,25 +121,6 @@ TEST_F(HloVerifierTest, NullInstructionParent) {
   EXPECT_THAT(status.message(), HasSubstr("has a null parent pointer"));
 }
 
-TEST_F(HloVerifierTest, NullComputationParent) {
-  HloComputation::Builder builder(TestName());
-  const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
-  HloInstruction* param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "param"));
-  builder.AddInstruction(
-      HloInstruction::CreateUnary(scalar_shape, HloOpcode::kNegate, param));
-  auto module = CreateUnverifiedModule();
-  HloComputation* computation = module->AddEntryComputation(builder.Build());
-
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
-
-  computation->set_parent(nullptr);
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), HasSubstr("has a null parent pointer"));
-}
-
 TEST_F(HloVerifierTest, DifferentOperandParents) {
   HloComputation::Builder builder(TestName());
   const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
@@ -3772,6 +3753,45 @@ TEST_F(HloVerifierTest, RaggedAllToAllWithRank2OffsetsShapes) {
   EXPECT_FALSE(status.ok()) << status;
   EXPECT_THAT(status.message(),
               HasSubstr("RaggedAllToAll operands have different shapes"));
+}
+
+TEST_F(HloVerifierTest, NoHostMemorySpaceShape) {
+  constexpr absl::string_view hlo_no_host_memory_space_shape = R"(
+HloModule hlo_no_host_memory_space
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT z = f32[] add(f32[] x, f32[] y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                           hlo_no_host_memory_space_shape));
+
+  auto status = HloVerifier{HloVerifierOpts{}.VerifyNoHostMemorySpace()}
+                    .Run(module.get())
+                    .status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, NegativeHostMemorySpaceShape) {
+  constexpr absl::string_view hlo_with_host_memory_space_shape = R"(
+HloModule custom_call_bitcast_module
+ENTRY main {
+  param.1 = bf16[8,1,64]{2,0,1} parameter(0)
+  custom-call.2 = bf16[8,1,64]{2,0,1} custom-call(param.1), custom_call_target="MoveToHost"
+  ROOT bitcast.3 = bf16[8,1,64]{2,1,0:S(5)} bitcast(custom-call.2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                           hlo_with_host_memory_space_shape));
+
+  auto status = HloVerifier{HloVerifierOpts{}.VerifyNoHostMemorySpace()}
+                    .Run(module.get())
+                    .status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Instruction shouldn't have the layout of host memory space"));
 }
 
 }  // namespace

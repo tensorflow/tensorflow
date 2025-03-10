@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -848,7 +847,6 @@ static absl::Status SortInplace(
 
 tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   VLOG(3) << absl::StreamFormat(
       "Sort %d inputs along dimension %d (is_stable=%v)", inputs_.size(),

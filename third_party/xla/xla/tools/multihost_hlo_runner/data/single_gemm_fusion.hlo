@@ -1,3 +1,5 @@
+HloModule m, entry_computation_layout={(f32[70,70,70], f32[70,70,70]{2,1,0}) -> f32[70,70,70]}
+
 f {
   a = f32[70,70,70] parameter(0)
   b = f32[70,70,70] parameter(1)
@@ -8,7 +10,7 @@ f {
 
 e {
   a = f32[70,70,70] parameter(0)
-  b = f32[70,70,70] parameter(1)
+  b = f32[70,70,70]{2,1,0} parameter(1)
   f = f32[70,70,70] fusion(a, b), kind=kCustom, calls=f,
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 }

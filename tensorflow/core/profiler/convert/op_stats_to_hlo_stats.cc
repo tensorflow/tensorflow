@@ -22,13 +22,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/convert/data_table_utils.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/protobuf/hlo_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -141,7 +141,7 @@ std::unique_ptr<tensorflow::profiler::DataTable> CreateHloStatsDataTable(
   }
   for (const HloStatsRecord& record : hlo_stats_db.hlo_stats_record()) {
     TableRow* row = data_table->AddRow();
-    row->AddCell(absl::StrCat(record.rank()));
+    row->AddCell(record.rank());
     row->AddCell(absl::StrCat(record.program_id()));
     row->AddCell(record.hlo_category());
     row->AddCell(GetHloOpNameFromExpression(record.hlo_expression()));

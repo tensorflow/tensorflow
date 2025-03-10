@@ -1,5 +1,9 @@
 """Default (OSS) build versions of Python strict rules."""
 
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
+
 # Placeholder to use until bazel supports py_strict_binary.
 def py_strict_binary(name, **kwargs):
     native.py_binary(name = name, **kwargs)

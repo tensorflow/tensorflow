@@ -110,7 +110,6 @@ cc_test(
         ":environment",
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/cc:litert_any",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -122,6 +121,31 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_shared_library",
+    ],
+)
+
+cc_library(
+    name = "accelerator_model_compilation_data",
+    hdrs = ["accelerator_model_compilation_data.h"],
+    deps = [
+        ":accelerator",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "accelerator_model_compilation_data_test",
+    srcs = ["accelerator_model_compilation_data_test.cc"],
+    deps = [
+        ":accelerator_model_compilation_data",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_options",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/test:matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

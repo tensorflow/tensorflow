@@ -638,7 +638,6 @@ class SocketBulkTransportFactory : public BulkTransportFactory {
                                     const SocketTransferEstablishBulkTransport&
                                         remote_bulk_transport_info) {
       uint64_t next_id = remote_bulk_transport_info.bulk_transport_uuid(0);
-      next_id = 0;
       for (uint64_t i = 0;
            i < remote_bulk_transport_info.bulk_transport_address_size(); ++i) {
         uint64_t uuid = next_id + i;

@@ -481,6 +481,7 @@ cc_library(
 xla_test(
     name = "slicing_test",
     srcs = ["slicing_test.cc"],
+    shuffle_tests = False,
     deps = [
         ":slicing",
         "//xla:array2d",

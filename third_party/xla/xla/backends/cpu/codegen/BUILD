@@ -1,4 +1,3 @@
-load("//xla:strict.default.bzl", "py_strict_test")
 load("//xla:xla.bzl", "xla_cc_test", "xla_internal")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
@@ -167,12 +166,12 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:math_ops",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -217,6 +216,7 @@ cc_library(
     srcs = ["kernel_api_ir_builder.cc"],
     hdrs = ["kernel_api_ir_builder.h"],
     deps = [
+        ":symbol_name_util",
         "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:util",
@@ -286,45 +286,31 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "dot_kernel_emitter",
-    srcs = ["dot_kernel_emitter.cc"],
-    hdrs = ["dot_kernel_emitter.h"],
+xla_cc_test(
+    name = "aot_compiled_function_library_test",
+    srcs = ["aot_compiled_function_library_test.cc"],
     deps = [
-        ":kernel_api_ir_builder",
-        ":target_machine_features",
-        "//xla:util",
-        "//xla/codegen:kernel_definition",
-        "//xla/codegen:kernel_emitter",
-        "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_ir_kernel_source",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:buffer_assignment",
-        "//xla/service:hlo_module_config",
-        "//xla/service/cpu:dot_op_emitter",
-        "//xla/service/llvm_ir:ir_array",
-        "//xla/stream_executor:launch_dim",
-        "//xla/tsl/platform:errors",
+        ":aot_compiled_function_library",
+        "//xla/backends/cpu/runtime:function_library",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:ir_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
-py_strict_test(
-    name = "dot_kernel_emitter_test",
-    srcs = ["dot_kernel_emitter_test.py"],
-    tags = [
-        "no_oss",
-    ],
+cc_library(
+    name = "aot_compiled_function_library",
+    srcs = ["aot_compiled_function_library.cc"],
+    hdrs = ["aot_compiled_function_library.h"],
+    visibility = ["//visibility:public"],
     deps = [
-        "//third_party/py/numpy",
-        "//xla/backends/cpu/testlib",
-        "//xla/codegen/testlib",
-        "@absl_py//absl/testing:absltest",
-        "@absl_py//absl/testing:parameterized",
+        "//xla/backends/cpu/runtime:function_library",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -404,5 +390,28 @@ xla_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "symbol_name_util",
+    srcs = ["symbol_name_util.cc"],
+    hdrs = ["symbol_name_util.h"],
+    deps = [
+        "//xla:util",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "symbol_name_util_test",
+    srcs = ["symbol_name_util_test.cc"],
+    deps = [
+        ":symbol_name_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
     ],
 )

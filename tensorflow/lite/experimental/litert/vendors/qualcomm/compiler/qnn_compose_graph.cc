@@ -15,9 +15,12 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/qnn_compose_graph.h"
 
 #include <alloca.h>
+#include <stdbool.h>
 #include <stdio.h>
 
 #include <cstdint>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -34,25 +37,35 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
+#include "tensorflow/lite/experimental/litert/tools/dump.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/cast_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/concatenation_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/conv2d_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/depthwise_conv2d_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/dynamic_update_slice_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/elementwise_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/embedding_lookup_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/fully_connected_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gather_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gelu_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/hard_swish_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/leaky_relu_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/matmul_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/mean_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/pack_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/pool2d_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/quantize_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reduce_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/resize_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/rms_norm_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/select_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/slice_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/softmax_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/spatial_transform_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/split_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/tanh_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/transpose_op_builder.h"
@@ -62,6 +75,26 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 namespace litert::qnn {
+
+using ::litert::internal::Dump;
+
+LiteRtStatus ConvertPaddingType(const uint32_t litert_padding,
+                                ::qnn::PaddingType& qnn_padding) {
+  switch (litert_padding) {
+    case 0: {
+      qnn_padding = ::qnn::PaddingType::Same;
+      break;
+    }
+    case 1: {
+      qnn_padding = ::qnn::PaddingType::Valid;
+      break;
+    }
+    default: {
+      return kLiteRtStatusErrorUnsupported;
+    }
+  }
+  return kLiteRtStatusOk;
+}
 
 LiteRtStatus ConvertDataType(const litert::ElementType litert_type,
                              const bool is_quantized,
@@ -121,7 +154,8 @@ LiteRtStatus ConvertDataType(const litert::ElementType litert_type,
 
 LiteRtStatus ConvertTensor(const litert::Tensor& litert_tensor,
                            ::qnn::TensorPool& tensor_pool,
-                           ::qnn::TensorWrapper*& tensor_wrapper) {
+                           ::qnn::TensorWrapper*& tensor_wrapper,
+                           bool is_tensor_read_and_write) {
   tensor_wrapper = nullptr;
 
   if (litert_tensor.TypeId() != kLiteRtRankedTensorType) {
@@ -186,7 +220,7 @@ LiteRtStatus ConvertTensor(const litert::Tensor& litert_tensor,
     auto& res = tensor_pool.CreateInputTensor(qnn_data_type, quantize_params,
                                               dimentions);
     tensor_wrapper = &res;
-  } else if (litert_tensor.IsSubgraphOutput()) {
+  } else if (litert_tensor.IsSubgraphOutput() || is_tensor_read_and_write) {
     auto& res = tensor_pool.CreateOutpuTensor(qnn_data_type, quantize_params,
                                               dimentions);
     tensor_wrapper = &res;
@@ -410,10 +444,129 @@ LiteRtStatus ConvertOp(
           ::qnn::BuildPackOp(tensor_pool, input_tensors, output_tensors, axis);
       break;
     }
-
     case LiteRtOpCode::kLiteRtOpCodeTflDynamicUpdateSlice: {
       op_wrappers = ::qnn::BuildDynamicUpdateSliceOp(tensor_pool, input_tensors,
                                                      output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeShloComposite: {
+      // TODO(yunandrew): Support custom epsilon for RMS Norm.
+      float epsilon = 9.99999997E-7;
+      op_wrappers = ::qnn::BuildRmsNormOp(tensor_pool, input_tensors,
+                                          output_tensors, epsilon);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflConv2d: {
+      uint32_t padding;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetConv2dPaddingOption(litert_op.Get(), &padding));
+      int32_t stride_w;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetConv2dStrideWOption(litert_op.Get(), &stride_w));
+      int32_t stride_h;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetConv2dStrideHOption(litert_op.Get(), &stride_h));
+      int32_t dilation_w_factor;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetConv2dDilationWOption(litert_op.Get(), &dilation_w_factor));
+      int32_t dilation_h_factor;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetConv2dDilationWOption(litert_op.Get(), &dilation_h_factor));
+
+      ::qnn::PaddingType qnn_padding;
+      LITERT_RETURN_IF_ERROR(ConvertPaddingType(padding, qnn_padding));
+      op_wrappers = ::qnn::BuildConv2dOp(
+          tensor_pool, input_tensors, output_tensors, stride_h, stride_w,
+          dilation_h_factor, dilation_w_factor, qnn_padding);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflDepthwiseConv2d: {
+      uint32_t padding;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetDepthwiseConv2dPaddingOption(litert_op.Get(), &padding));
+      int32_t stride_w;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetDepthwiseConv2dStrideWOption(litert_op.Get(), &stride_w));
+      int32_t stride_h;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetDepthwiseConv2dStrideHOption(litert_op.Get(), &stride_h));
+      int32_t dilation_w_factor;
+      LITERT_RETURN_IF_ERROR(LiteRtGetDepthwiseConv2dDilationWOption(
+          litert_op.Get(), &dilation_w_factor));
+      int32_t dilation_h_factor;
+      LITERT_RETURN_IF_ERROR(LiteRtGetDepthwiseConv2dDilationHOptions(
+          litert_op.Get(), &dilation_h_factor));
+
+      ::qnn::PaddingType qnn_padding;
+      LITERT_RETURN_IF_ERROR(ConvertPaddingType(padding, qnn_padding));
+      op_wrappers = ::qnn::BuildDepthwiseConv2dOp(
+          tensor_pool, input_tensors, output_tensors, stride_h, stride_w,
+          dilation_h_factor, dilation_w_factor, qnn_padding);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflAveragePool2d: {
+      uint32_t padding;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetAveragePool2dPaddingOption(litert_op.Get(), &padding));
+      int32_t stride_w;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetAveragePool2dStrideWOption(litert_op.Get(), &stride_w));
+      int32_t stride_h;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetAveragePool2dStrideHOption(litert_op.Get(), &stride_h));
+      int32_t filter_width;
+      LITERT_RETURN_IF_ERROR(LiteRtGetAveragePool2dFilterWidthOption(
+          litert_op.Get(), &filter_width));
+      int32_t filter_height;
+      LITERT_RETURN_IF_ERROR(LiteRtGetAveragePool2dFilterHeightOption(
+          litert_op.Get(), &filter_height));
+
+      ::qnn::PaddingType qnn_padding;
+      LITERT_RETURN_IF_ERROR(ConvertPaddingType(padding, qnn_padding));
+      op_wrappers = ::qnn::BuildAveragePoolOp(
+          tensor_pool, input_tensors, output_tensors, stride_h, stride_w,
+          filter_height, filter_width, qnn_padding);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflDepthToSpace: {
+      int32_t block_size;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetDepthToSpaceBlockSizeOption(litert_op.Get(), &block_size));
+      op_wrappers = ::qnn::BuildDepthToSpaceOp(tensor_pool, input_tensors,
+                                               output_tensors, block_size);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflSpaceToDepth: {
+      int32_t block_size;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetSpaceToDepthBlockSizeOption(litert_op.Get(), &block_size));
+      op_wrappers = ::qnn::BuildSpaceToDepthOp(tensor_pool, input_tensors,
+                                               output_tensors, block_size);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflHardSwish: {
+      op_wrappers =
+          ::qnn::BuildHardSwishOp(tensor_pool, input_tensors, output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflLeakyRelu: {
+      float alpha;
+      LITERT_RETURN_IF_ERROR(
+          LiteRtGetLeakyReluAlphaOption(litert_op.Get(), &alpha));
+      op_wrappers = ::qnn::BuildLeakyReluOp(tensor_pool, input_tensors,
+                                            output_tensors, alpha);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflResizeBilinear: {
+      bool align_corners;
+      LITERT_RETURN_IF_ERROR(LiteRtGetResizeBilinearAlignCornersOption(
+          litert_op.Get(), &align_corners));
+      bool half_pixel_centers;
+      LITERT_RETURN_IF_ERROR(LiteRtGetResizeBilinearHalfPixelCenterOption(
+          litert_op.Get(), &half_pixel_centers));
+      op_wrappers = ::qnn::BuildResizeBilinearOp(tensor_pool, input_tensors,
+                                                 output_tensors, align_corners,
+                                                 half_pixel_centers);
       break;
     }
     default: {
@@ -459,7 +612,14 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
   // Topologically traverse graph, legalizing and updating tensors in scope
   //
 
+  std::ostringstream dump;
   for (const auto& op : graph_mapper.Graph().Ops()) {
+    // Dump op info.
+    dump.clear();
+    Dump(*op.Get(), dump);
+    std::string s = dump.str();
+    LITERT_LOG(LITERT_INFO, "%s", s.data());
+
     std::vector<::qnn::TensorWrapperRef> input_tensors;
     for (const auto& input : op.Inputs()) {
       if (const auto it = litert_tensor_to_wrapper.find(input.Get());
@@ -477,9 +637,10 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
 
     std::vector<::qnn::TensorWrapperRef> output_tensors;
     for (const auto& output : op.Outputs()) {
+      bool is_tensor_read_and_write = graph_mapper.IsTensorOutput(output.Get());
       ::qnn::TensorWrapper* tensor_wrapper{nullptr};
-      LITERT_RETURN_IF_ERROR(
-          ConvertTensor(output, tensor_pool, tensor_wrapper));
+      LITERT_RETURN_IF_ERROR(ConvertTensor(output, tensor_pool, tensor_wrapper,
+                                           is_tensor_read_and_write));
       litert_tensor_to_wrapper.emplace(output.Get(), tensor_wrapper);
       output_tensors.emplace_back(*tensor_wrapper);
     }

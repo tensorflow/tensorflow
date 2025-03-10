@@ -1,0 +1,9 @@
+// RUN: hlo-opt  %s/../hlo_opt_hlo_protobinary.pb | FileCheck %s
+
+// CHECK: ENTRY
+// CHECK-SAME: mod1
+// CHECK-NEXT: ROOT {{.*}} = s8[] constant(0)
+
+mod1 {
+  a = s8[] constant(0)
+}

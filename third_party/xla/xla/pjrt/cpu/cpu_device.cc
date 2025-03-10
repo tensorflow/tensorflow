@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_device.h"
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -24,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
+#include "xla/pjrt/cpu/tfrt_cpu_async_execution_tracker.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/cpu/cpu_xfeed.h"
@@ -34,7 +39,9 @@ TfrtCpuDevice::TfrtCpuDevice(int process_id, int local_device_id,
                              int max_inflight_computations)
     : description_(process_id, local_device_id),
       max_inflight_computations_semaphore_(
-          /*capacity=*/max_inflight_computations) {}
+          /*capacity=*/max_inflight_computations),
+      async_execution_tracker_(
+          std::make_unique<TfrtCpuAsyncExecutionTracker>()) {}
 
 absl::Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id().value(), literal);
@@ -86,6 +93,11 @@ absl::StatusOr<PjRtMemorySpace*> TfrtCpuDevice::memory_space_by_kind_id(
         absl::StrCat("No memory space found (kind_id: ", id, ")"));
   }
   return it->second;
+}
+
+absl::StatusOr<bool> TfrtCpuDevice::PoisonExecution(int32_t launch_id,
+                                                    absl::Status error) {
+  return async_execution_tracker_->SetError(launch_id, std::move(error));
 }
 
 }  // namespace xla

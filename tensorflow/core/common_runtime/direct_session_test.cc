@@ -23,10 +23,14 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
@@ -34,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -334,6 +339,137 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithRun) {
   absl::Status s = session->Run({}, {y_ + ":0"}, {}, &outputs);
   EXPECT_TRUE(errors::IsFailedPrecondition(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "Session has been finalized."));
+}
+
+TEST_F(DirectSessionMinusAXTest,
+       RunSimpleNetwork_CallablesReusableAfterFlrFinalization) {
+  Initialize({3, 2, -1, 0});
+
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_finalize_function_library_runtime(
+      true);
+  auto session = std::unique_ptr<Session>(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions({}, {y_ + ":0"}, {y_neg_}), &handle));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // The callable is usable after finalization.
+  for (int i = 0; i < 2; ++i) {
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+
+    ASSERT_EQ(1, outputs.size());
+    // The first output should be initialized and have the correct
+    // output.
+    auto mat = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+  }
+  TF_ASSERT_OK(session->ReleaseCallable(handle));
+}
+
+TEST_F(DirectSessionMinusAXTest,
+       RunSimpleNetwork_MakeCallableFailsAfterFinalize) {
+  Initialize({3, 2, -1, 0});
+
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_finalize_function_library_runtime(
+      true);
+  auto session = std::unique_ptr<Session>(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // Making a new callable fails because the session has been finalized.
+  Session::CallableHandle handle;
+  EXPECT_THAT(
+      session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle),
+      ::tsl::testing::StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          ::testing::HasSubstr("Session has been finalized.")));
+}
+
+class TestResource : public ResourceBase {
+ public:
+  std::string DebugString() const override { return "test resource"; }
+};
+
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_ResourceMgrFinalized) {
+  Initialize({3, 2, -1, 0});
+
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_finalize_resource_manager(true);
+  auto session = std::unique_ptr<Session>(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions({}, {y_ + ":0"}, {y_neg_}), &handle));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // Try to create another resource in the resource manager, which should fail
+  // because the resource manager is already finalized.
+  const DeviceMgr* mgr = nullptr;
+  TF_ASSERT_OK(session->LocalDeviceManager(&mgr));
+  ASSERT_TRUE(mgr != nullptr);
+  EXPECT_GT(mgr->ListDevices().size(), 0);
+  ResourceMgr* rm = mgr->ListDevices()[0]->resource_manager();
+  TestResource* test_resource = new TestResource();
+  EXPECT_THAT(
+      rm->Create("", "", test_resource),
+      tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                             ::testing::HasSubstr("ResourceMgr is finalized")));
+  test_resource->Unref();
+}
+
+TEST_F(DirectSessionMinusAXTest,
+       RunSimpleNetwork_CallablesUsableAfterResourceMgrFinalization) {
+  Initialize({3, 2, -1, 0});
+
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_finalize_resource_manager(true);
+  auto session = std::unique_ptr<Session>(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions({}, {y_ + ":0"}, {y_neg_}), &handle));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // The callable is usable after finalization.
+  for (int i = 0; i < 2; ++i) {
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+
+    ASSERT_EQ(1, outputs.size());
+    // The first output should be initialized and have the correct
+    // output.
+    auto mat = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+  }
+  TF_ASSERT_OK(session->ReleaseCallable(handle));
 }
 
 TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
@@ -2424,8 +2560,7 @@ versions {
 bool IsCUDATensor(const Tensor& t) {
 #ifdef GOOGLE_CUDA
   cudaPointerAttributes attributes;
-  cudaError_t err =
-      cudaPointerGetAttributes(&attributes, t.tensor_data().data());
+  cudaError_t err = cudaPointerGetAttributes(&attributes, t.data());
   if (err == cudaErrorInvalidValue) return false;
   CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
   return (attributes.type == cudaMemoryTypeDevice);

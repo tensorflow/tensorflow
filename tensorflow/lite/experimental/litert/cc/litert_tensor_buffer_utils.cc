@@ -37,6 +37,8 @@ std::string BufferTypeToString(LiteRtTensorBufferType buffer_type) {
       return "OpenCl";
     case kLiteRtTensorBufferTypeGlBuffer:
       return "GlBuffer";
+    case kLiteRtTensorBufferTypeGlTexture:
+      return "GlTexture";
   }
   LITERT_LOG(LITERT_ERROR, "Unexpected value for LiteRtTensorBufferType: %d",
              static_cast<int>(buffer_type));

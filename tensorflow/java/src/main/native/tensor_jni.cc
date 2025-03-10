@@ -18,8 +18,8 @@ limitations under the License.
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-#include <algorithm>
-#include <memory>
+
+#include <cstdint>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"

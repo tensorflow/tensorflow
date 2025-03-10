@@ -6,30 +6,16 @@ package(
     licenses = ["notice"],
 )
 
-cc_library(
-    name = "dummy_passes",
-    hdrs = ["dummy_passes.h"],
-    deps = [
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
 lit_test_suite(
     name = "hlo_opt_tests",
     srcs = enforce_glob(
         [
             # go/keep-sorted start
             "algebraic_simplifier.hlo",
-            "all_passes_smoke_test.hlo",
             "cholesky_expander.hlo",
-            "hlo_opt_expect_failure.hlo",
-            "run_multiple_passes.hlo",
-            "run_single_pass.hlo",
+            "rewrite_bf16_conv_to_onednn.hlo",
+            "rng_bit_generator_expander.hlo",
+            "rng_expander.hlo",
             # go/keep-sorted end
         ],
         include = [

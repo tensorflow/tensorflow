@@ -21,7 +21,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_format.h"
+#include "absl/strings/str_cat.h"
 
 namespace tensorflow {
 namespace profiler {

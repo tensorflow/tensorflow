@@ -46,6 +46,7 @@ using TflOpCode = ::tflite::OperatorCodeT;
 using TflQuantization = ::tflite::QuantizationParametersT;
 using TflElementType = ::tflite::TensorType;
 using TflOptions = ::tflite::BuiltinOptionsUnion;
+using TflOptions2 = ::tflite::BuiltinOptions2Union;
 using TflSignature = ::tflite::SignatureDefT;
 using TflMetadata = ::tflite::MetadataT;
 

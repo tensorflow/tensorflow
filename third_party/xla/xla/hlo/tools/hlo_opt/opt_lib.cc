@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/tools/tests/hlo_opt_test_only_passes.h"
 #include "xla/hlo/transforms/add_original_value.h"
 #include "xla/hlo/transforms/bfloat16_propagation.h"
 #include "xla/hlo/transforms/collectives/all_gather_broadcast_reorder.h"
@@ -118,7 +119,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tree_reduction_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
-#include "xla/hlo/transforms/tests/dummy_passes.h"
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 #include "xla/literal_pool.h"
 #include "xla/service/buffer_value.h"
@@ -342,9 +342,13 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   //   argument(`RematerializationSizes`). For now, we don't want to add any
   //   pass specific customization to the `RegisterPass`.
 
-  // Dummy passes for the tool unit testing.
-  RegisterPass<FooToBarModulePass>();
-  RegisterPass<BarToHelloModulePass>();
+  // Dummy passes for unit-testing the `hlo-opt` tool itself.
+  RegisterPass<test_only::FooToBarModulePass>();
+  RegisterPass<test_only::BarToHelloModulePass>();
+
+  // Test-only passes exposing behavior that isn't easily testable through
+  // standard passes, e.g. internal or config-dependent behavior.
+  RegisterPass<test_only::AlgebraicSimplifierWithOnednnEnabled>();
 }
 
 }  // namespace xla

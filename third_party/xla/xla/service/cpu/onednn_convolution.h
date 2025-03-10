@@ -15,7 +15,7 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_ONEDNN_CONVOLUTION_H_
 #define XLA_SERVICE_CPU_ONEDNN_CONVOLUTION_H_
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include "xla/service/cpu/onednn_util.h"
 
@@ -37,5 +37,5 @@ struct PrimitiveTrait<kOnednnConvConfig> {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_CONVOLUTION_H_

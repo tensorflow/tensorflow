@@ -2577,6 +2577,7 @@ absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       hlo->opcode() != HloOpcode::kTuple &&
       hlo->opcode() != HloOpcode::kParameter &&
       hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng &&
+      hlo->opcode() != HloOpcode::kInfeed &&
       hlo->opcode() != HloOpcode::kOutfeed &&
       hlo->opcode() != HloOpcode::kAllReduce &&
       hlo->opcode() != HloOpcode::kCall) {
@@ -2752,6 +2753,33 @@ absl::Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
 }
 
 absl::Status SpmdPartitioningVisitor::HandleElementwise(HloInstruction* hlo) {
+  bool multi_operand_same_sharding =
+      hlo->operand_count() > 1 &&
+      std::all_of(hlo->operands().begin() + 1, hlo->operands().end(),
+                  [&](const HloInstruction* operand) {
+                    return operand->sharding() == hlo->operand(0)->sharding();
+                  });
+  if (multi_operand_same_sharding) {
+    // Do the element-wise operation. Then reshard the result to the specified
+    // sharding.
+    std::vector<HloInstruction*> original_operands;
+    for (HloInstruction* operand : hlo->operands()) {
+      original_operands.push_back(GetPartitionedHlo(operand).hlo());
+    }
+
+    HloInstruction* result_with_operand_sharding =
+        b_.AddInstruction(hlo->CloneWithNewOperands(
+            MakePartitionedShape(hlo->shape(), hlo->operand(0)->sharding()),
+            original_operands));
+    result_with_operand_sharding->set_sharding(hlo->operand(0)->sharding());
+    SetPartitionedHlo(hlo, PartitionedHlo(result_with_operand_sharding,
+                                          hlo->shape(), MakePartitioningState())
+                               .Reshard(hlo->sharding()));
+    return absl::OkStatus();
+  }
+
+  // Reshard the operands to the result's sharding. Then do the element-wise
+  // operation.
   std::vector<HloInstruction*> new_operands;
   for (HloInstruction* operand : hlo->operands()) {
     new_operands.push_back(
@@ -2779,11 +2807,22 @@ absl::Status SpmdPartitioningVisitor::HandleElementwiseWithDimsToReplicate(
     return DefaultAction(hlo);
   }
 
-  // 1. Replicate the final sharding along `dims_to_replicate` to get
-  // temp_sharding.
-  const HloSharding temp_sharding =
-      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-          sharding, dims_to_replicate);
+  // 1. Obtain the temp_sharding by moving or replicating the sharding tiles.
+  HloSharding temp_sharding = sharding;
+  std::function<bool(int64_t)> not_in_dims_to_replicate = [&](int64_t dim) {
+    return !absl::c_linear_search(dims_to_replicate, dim);
+  };
+  for (int64_t dim : dims_to_replicate) {
+    if (std::optional<int64_t> target_dim =
+            hlo_sharding_util::GetFirstTargetDimToMoveShardingTiles(
+                hlo->shape(), temp_sharding, dim, not_in_dims_to_replicate)) {
+      temp_sharding = hlo_sharding_util::MoveAndMergeShardingTiles(
+          temp_sharding, dim, *target_dim);
+    } else {
+      temp_sharding = hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+          temp_sharding, {dim});
+    }
+  }
 
   // 2. Reshard the operands to temp_sharding.
   std::vector<HloInstruction*> new_operands;

@@ -98,7 +98,8 @@ CollectiveOpGroupMode GetGroupModeInst(HloInstType* inst) {
 NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
     Thunk::Kind kind, ThunkInfo thunk_info, NcclAllReduceConfig config,
     std::vector<Buffer> buffers, bool is_sync)
-    : NcclCollectiveThunk(kind, thunk_info, is_sync),
+    : NcclCollectiveThunk(kind, thunk_info, is_sync,
+                          AsyncStreamKind::kCollective),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());

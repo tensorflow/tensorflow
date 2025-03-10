@@ -16,8 +16,14 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -27,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/python/ifrt/dtype.h"
@@ -131,6 +138,33 @@ mlir::ModuleOp CloneModuleUsingBuilder(mlir::ModuleOp module,
     cloned_module.getBody()->push_back(op.clone(mapper));
   }
   return cloned_module;
+}
+
+absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
+    const mlir::Pass::ListOption<std::string>& platform_names) {
+  std::vector<std::string> expanded_platform_names;
+  for (const auto& platform_entry : platform_names) {
+    std::vector<absl::string_view> parts = absl::StrSplit(platform_entry, ':');
+    if (parts.size() == 1) {
+      expanded_platform_names.push_back(platform_entry);
+    } else if (parts.size() == 2) {
+      std::string platform_name(parts[0]);
+      int num_occurences;
+      if (!absl::SimpleAtoi(parts[1], &num_occurences)) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid platform name: `", platform_entry,
+                         "` in platform_names pass option"));
+      }
+      for (int i = 0; i < num_occurences; ++i) {
+        expanded_platform_names.push_back(platform_name);
+      }
+    } else {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid platform name: `", platform_entry,
+                       "` in platform_names pass option"));
+    }
+  }
+  return expanded_platform_names;
 }
 
 }  // namespace ifrt

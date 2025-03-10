@@ -96,9 +96,19 @@ int32_t GetTflOpCodeInd(const LiteRtOpT& litert_op);
 template <class Arg>
 void SetTflOptions(LiteRtOpT& litert_op, Arg&& arg);
 
+template <class Arg>
+void SetTflOptions2(LiteRtOpT& litert_op, Arg&& arg);
+
 const ::litert::internal::TflOptions& GetTflOptions(const LiteRtOpT& litert_op);
 
+const ::litert::internal::TflOptions2& GetTflOptions2(
+    const LiteRtOpT& litert_op);
+
 ::litert::internal::TflOptions&& TakeTflOptions(LiteRtOpT& litert_op);
+
+::litert::internal::TflOptions2&& TakeTflOptions2(LiteRtOpT& litert_op);
+
+void ClearTflOptions(LiteRtOpT& litert_op);
 
 // MODEL
 
@@ -482,11 +492,22 @@ class LiteRtOpT {
   template <class Arg>
   friend void detail::SetTflOptions(LiteRtOpT& litert_op, Arg&& arg);
 
+  template <class Arg>
+  friend void detail::SetTflOptions2(LiteRtOpT& litert_op, Arg&& arg);
+
   friend const ::litert::internal::TflOptions& detail::GetTflOptions(
+      const LiteRtOpT& litert_op);
+
+  friend const ::litert::internal::TflOptions2& detail::GetTflOptions2(
       const LiteRtOpT& litert_op);
 
   friend ::litert::internal::TflOptions&& detail::TakeTflOptions(
       LiteRtOpT& litert_op);
+
+  friend ::litert::internal::TflOptions2&& detail::TakeTflOptions2(
+      LiteRtOpT& litert_op);
+
+  friend void detail::ClearTflOptions(LiteRtOpT& litert_op);
 
  private:
   LiteRtOpCode litert_op_code_;
@@ -499,7 +520,16 @@ class LiteRtOpT {
   // TFLITE
   int32_t tfl_op_code_ind_ = detail::kDispatchOpCodeTflInd;
   ::litert::internal::TflOptions tfl_option_;
+  ::litert::internal::TflOptions2 tfl_option_2_;
 };
+
+// Clears any attribute data and sets the op to be a dispatch op.
+inline void MakeDispatchOp(LiteRtOpT& op) {
+  detail::ClearTflOptions(op);
+  op.ClearCustomOptions();
+  op.SetOpCode(kLiteRtOpCodeTflCustom);
+  detail::SetTflOpCodeInd(op, detail::kDispatchOpCodeTflInd);
+}
 
 //
 // Subgraph
@@ -743,15 +773,22 @@ class LiteRtModelT {
     return subgraphs_.EmplaceBack(Buffers(), std::forward<Args>(args)...);
   }
 
-  // Transfers given subgraphs into this model.
-  void TransferSubgraphs(LiteRtSubgraphT::Alloc&& subgraphs) {
+  // Transfers given subgraphs into this model. New subgraphs are appended.
+  void TransferSubgraphsFrom(LiteRtSubgraphT::Alloc&& subgraphs) {
     // TODO: Consider mergeing buffer managers here.
-    subgraphs_.Transfer(std::move(subgraphs));
+    subgraphs_.TransferFrom(std::move(subgraphs));
   }
 
   // Cut all by the first `size` subgraphs. Does nothing if given size is
   // greater or equal to current.
   void ResizeSubgraphsDown(size_t size) { subgraphs_.ResizeDown(size); }
+
+  // Transfers the subgraph at the given index to the back of the given
+  // allocator. Also updates any IR owned by the model that refers to subgraphs
+  // by index (e.g. composites). Does not update any IR in the subgraphs being
+  // transferred.
+  void TransferSubgraphTo(LiteRtSubgraphT::Alloc& dest,
+                          std::vector<size_t> indices);
 
   // SIGNATURES
 
@@ -871,8 +908,32 @@ std::optional<std::string> GetCustomOpCode(const LiteRtModelT& model,
 ::litert::Expected<LiteRtSubgraph> LookupSubgraph(
     const LiteRtModelT& model, absl::string_view signature_key);
 
+namespace detail {
+
+template <class Arg>
+void SetTflOptions(LiteRtOpT& litert_op, Arg&& arg) {
+  litert_op.tfl_option_ = std::forward<Arg>(arg);
+}
+
+template <class Arg>
+void SetTflOptions2(LiteRtOpT& litert_op, Arg&& arg) {
+  litert_op.tfl_option_2_ = std::forward<Arg>(arg);
+}
+
+inline void ClearTflOptions(LiteRtOpT& litert_op) {
+  litert_op.tfl_option_2_.Reset();
+  litert_op.tfl_option_.Reset();
+}
+
+template <class Arg>
+void SetTflOpCodes(LiteRtModelT& litert_model, Arg&& arg) {
+  litert_model.tfl_operator_codes_ = std::forward<Arg>(arg);
+}
+
+}  // namespace detail
+
 //
-// Utils
+// Misc Ir Containers
 //
 
 using LiteRtOpWithPartitionIndex = std::pair<LiteRtOp, LiteRtParamIndex>;
@@ -897,18 +958,50 @@ class LiteRtOpListT {
   std::list<LiteRtOpWithPartitionIndex> values_;
 };
 
-namespace detail {
+//
+// Traversal Utils
+//
 
-template <class Arg>
-void SetTflOptions(LiteRtOpT& litert_op, Arg&& arg) {
-  litert_op.tfl_option_ = std::forward<Arg>(arg);
+// Apply func to all the IR in the given model. Iteration behavior is determined
+// by the callback signature.
+template <class F>
+void ForEachIr(LiteRtModel model, F func) {
+  // Per subgraph callbacks.
+  using SgF1 = std::function<void(LiteRtSubgraph)>;
+  using SgF2 = std::function<void(LiteRtSubgraph, int32_t subgraph_ind)>;
+
+  // Per op callbacks.
+  using OpF1 = std::function<void(LiteRtOp)>;
+  using OpF2 = std::function<void(LiteRtSubgraph, LiteRtOp)>;
+  using OpF3 =
+      std::function<void(LiteRtSubgraph, int32_t subgraph_ind, LiteRtOp)>;
+
+  constexpr bool kIsSgOpF1 = std::is_convertible_v<F, SgF1>;
+  constexpr bool kIsSgF2 = std::is_convertible_v<F, SgF2>;
+  constexpr bool kIsOpF1 = std::is_convertible_v<F, OpF1>;
+  constexpr bool kIsOpF2 = std::is_convertible_v<F, OpF2>;
+  constexpr bool kIsOpF3 = std::is_convertible_v<F, OpF3>;
+
+  for (int i = 0; i < model->NumSubgraphs(); ++i) {
+    auto subgraph = model->Subgraphs()[i];
+
+    if constexpr (kIsSgF2) {
+      func(subgraph, i);
+    } else if constexpr (kIsSgOpF1) {
+      func(subgraph);
+    } else {
+      for (int j = 0; j < subgraph->Ops().size(); ++j) {
+        auto* op = subgraph->Ops()[j];
+        if constexpr (kIsOpF1) {
+          func(op);
+        } else if constexpr (kIsOpF2) {
+          func(subgraph, op);
+        } else if constexpr (kIsOpF3) {
+          func(subgraph, i, op);
+        }
+      }
+    }
+  }
 }
-
-template <class Arg>
-void SetTflOpCodes(LiteRtModelT& litert_model, Arg&& arg) {
-  litert_model.tfl_operator_codes_ = std::forward<Arg>(arg);
-}
-
-}  // namespace detail
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_H_

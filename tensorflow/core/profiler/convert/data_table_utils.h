@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/strings/str_replace.h"
 #include "nlohmann/json_fwd.hpp"
 #include "nlohmann/json.hpp"
 namespace tensorflow {
@@ -29,6 +30,9 @@ struct TableCell {
       nlohmann::json value,
       absl::btree_map<std::string, std::string> custom_properties)
       : value(value), custom_properties(custom_properties) {};
+  std::string value_str() const {
+    return absl::StrReplaceAll(value.dump(), {{"\"", ""}});
+  }
   nlohmann::json value;
   absl::btree_map<std::string, std::string> custom_properties;
 };

@@ -25,7 +25,7 @@ namespace litert {
 namespace google_tensor {
 
 typedef absl::Status (*Compile)(absl::string_view serialized_tfl_buffer,
-                                const char* soc_model,
+                                absl::string_view soc_model,
                                 std::string* compiled_code);
 
 // This class adapts the google tensor compiler API for dynamic loading.
@@ -44,10 +44,6 @@ class Adapter {
 
   // Returns a reference to the loaded API.
   const Api& api() const { return *api_; }
-
-  // Returns the compiled bytecode for the given model.
-  litert::Expected<std::string> CallCompileFlatbuffer(
-      absl::string_view input_tfl_buffer, const char* soc_model);
 
  private:
   // Loads the symbols from the compiler library.

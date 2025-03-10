@@ -507,6 +507,8 @@ class PriorityFusionQueue {
         is_incremental_update
             ? operands_to_new_consumers_.find(producer)->second
             : absl::MakeConstSpan(producer->users());
+    // Note that `gpu_performance_model_cache_` may contain a runtime estimate
+    // from the Triton cost model.
     GpuPerformanceModel::RunTimes run_times =
         GpuPerformanceModel::EstimateRunTimes(
             producer, *device_info_, &cost_analysis_,
@@ -566,7 +568,7 @@ class PriorityFusionQueue {
       const HloInstruction* producer, const HloInstruction* consumer) {
     FusionDeduplicationCache::FusionId fusion_id = [&]() {
       absl::MutexLock lock(&fusion_deduplication_cache_mutex_);
-      return fusion_deduplication_cache_.GetFusionId(*producer, *consumer);
+      return fusion_deduplication_cache_.GetFusionId(producer, consumer);
     }();
 
     {
@@ -635,6 +637,8 @@ class PriorityFusionQueue {
     TiledRunTimeData tiled_run_time_data =
         std::get<TiledRunTimeData>(std::move(tiled_run_time_data_or_error));
 
+    // This is our way to pass the runtime estimate to the CalculatePriorities()
+    // function.
     gpu_performance_model_cache_.Set(
         *producer, *consumer, tiled_run_time_data.runtime_data.exec_time);
 
@@ -983,7 +987,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
   FusionDeduplicationCache fusion_deduplication_cache =
       FusionDeduplicationCache::Create(*module, IsFusible);
 
-  int changed = false;
+  bool changed = false;
   for (auto* computation : fusible_computations) {
     CHECK(!computation->IsFusionComputation());
 
@@ -1016,7 +1020,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
         fusion_queue->PreFusion(producer, consumer);
         auto fusion_instruction = Fuse(producer, consumer);
         fusion_deduplication_cache.UpdateFusedInstructionId(
-            *fusion_instruction, *producer, *consumer, consumer_operand_index);
+            fusion_instruction, producer, consumer, consumer_operand_index);
         fusion_queue->OnFusingInstruction(fusion_instruction, producer,
                                           consumer);
 

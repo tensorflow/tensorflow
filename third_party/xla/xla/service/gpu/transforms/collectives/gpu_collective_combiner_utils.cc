@@ -145,7 +145,8 @@ int64_t ComputeSuggestedCombinerThreshold(
   return MaxAvailableMemory(module, device_info) - peak_memory_bytes;
 }
 
-absl::Status AppendPipelinedInstruction(HloInstruction* instr) {
+absl::Status AppendPipelinedInstruction(HloInstruction* instr,
+                                        HloInstruction* new_while_instr) {
   if (!IsCollective(instr)) {
     return absl::OkStatus();
   }

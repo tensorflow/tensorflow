@@ -16,16 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_OP_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_OP_UTILS_H_
 
+#include <cstdint>
+
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/timespan.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace profiler {
+using tsl::uint64;
 
 // Annotate the op_metrics with the metadata from the instr_wrapper.
 void EnterOpMetadata(OpMetrics* op_metrics,
@@ -86,7 +89,7 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
                absl::string_view deduplicated_name, bool is_eager,
                uint64 occurrences, uint64 time_ps, uint64 children_time_ps,
                int64_t flops, int64_t bytes_accessed,
-               const protobuf::RepeatedPtrField<OpMetrics::MemoryAccessed>&
+               const tsl::protobuf::RepeatedPtrField<OpMetrics::MemoryAccessed>&
                    memory_accessed_breakdown = {},
                int64_t model_flops = 0);
 

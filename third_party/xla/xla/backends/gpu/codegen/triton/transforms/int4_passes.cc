@@ -335,7 +335,7 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
         r.create<ma::ShLIOp>(loc, packed_type, adaptor.getIn(), shift4);
     Value lo = r.create<ma::ShRSIOp>(loc, packed_type, shifted_lo, shift4);
     Value hi = r.create<ma::ShRSIOp>(loc, packed_type, adaptor.getIn(), shift4);
-    Value hi_lo = r.create<mt::JoinOp>(loc, hi, lo);
+    Value hi_lo = r.create<mt::JoinOp>(loc, lo, hi);
     if (converter_.packed_dim_idx() != 0) {
       auto trans_attr = r.getDenseI32ArrayAttr({0, 2, 1});
       hi_lo = r.create<mt::TransOp>(loc, hi_lo, trans_attr);

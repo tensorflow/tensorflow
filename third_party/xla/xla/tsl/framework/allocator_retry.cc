@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "absl/types/optional.h"
 #include "xla/tsl/framework/metrics.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/types.h"

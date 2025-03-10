@@ -61,15 +61,14 @@ struct ConvertBatchMatMulOp2FullyConnectedOp
   using OpRewritePattern<TFL::BatchMatMulOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(TFL::BatchMatMulOp bmm_op,
                                 PatternRewriter& rewriter) const override {
-    // Check if RHS is a quantized int4 type. TFL doesn't support BatchMatMul
-    // with int4 quantized types, so we should not convert it to FC.
-    bool is_int4_quantized_rank_2_value = false;
+    bool is_int_quantized_rank_2_value = false;
     if (auto rhs_type = mlir::dyn_cast<quant::QuantizedType>(
             getElementTypeOrSelf(bmm_op.getY().getType()))) {
       int64_t rhs_type_rank = bmm_op.getY().getType().getRank();
-      if (rhs_type.getStorageTypeIntegralWidth() == 4 && rhs_type.isSigned() &&
-          rhs_type_rank == 2) {
-        is_int4_quantized_rank_2_value = true;
+      bool rhs_i4_or_i8 = rhs_type.getStorageTypeIntegralWidth() == 4 ||
+                          rhs_type.getStorageTypeIntegralWidth() == 8;
+      if (rhs_i4_or_i8 && rhs_type.isSigned() && rhs_type_rank == 2) {
+        is_int_quantized_rank_2_value = true;
       }
     }
 
@@ -93,7 +92,7 @@ struct ConvertBatchMatMulOp2FullyConnectedOp
     if (!constant || constant.getType().getRank() != 2)
       is_rank_2_constant = false;
 
-    if (!is_rank_2_constant && !is_int4_quantized_rank_2_value) {
+    if (!is_rank_2_constant && !is_int_quantized_rank_2_value) {
       return rewriter.notifyMatchFailure(
           bmm_op,
           "rhs is neither a constant with rank 2 nor int4 quantized nor a "

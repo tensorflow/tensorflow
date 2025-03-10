@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
@@ -31,7 +32,10 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -70,12 +74,13 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
   }
 
   absl::MutexLock lock(&mutex_);
-  if (auto it = predicates_.find(params.executor); it == predicates_.end()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<se::MemoryAllocation> allocation,
-        params.executor->HostMemoryAllocate(
-            config_.branch_index_is_bool ? sizeof(bool) : sizeof(int32_t)));
-    predicates_.emplace(params.executor, std::move(allocation));
+
+  if (!host_memory_pools_.contains(params.executor)) {
+    PrimitiveType type =
+        config_.branch_index_is_bool ? PrimitiveType::PRED : PrimitiveType::S32;
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HostMemoryPool> pool,
+                        HostMemoryPool::Create(params.executor, type));
+    host_memory_pools_[params.executor] = std::move(pool);
   }
 
   return absl::OkStatus();
@@ -84,14 +89,19 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
 absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
 
+  HostMemoryPool* pool;
+  {
+    absl::MutexLock lock(&mutex_);
+    pool = host_memory_pools_.at(stream.parent()).get();
+  }
+  TF_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
+
   // Copy the predicate value from device.
   auto branch_index_or_pred = [&]() -> std::variant<int32_t*, bool*> {
-    absl::MutexLock lock(&mutex_);
-    se::StreamExecutor* executor = stream.parent();
     if (config_.branch_index_is_bool) {
-      return reinterpret_cast<bool*>(predicates_.at(executor)->opaque());
+      return handle.get<bool>();
     } else {
-      return reinterpret_cast<int32_t*>(predicates_.at(executor)->opaque());
+      return handle.get<int32_t>();
     }
   }();
 

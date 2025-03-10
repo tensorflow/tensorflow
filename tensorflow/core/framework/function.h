@@ -24,6 +24,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/platform.h"
@@ -899,6 +900,10 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     auto opts = absl::make_unique<InstantiateOptions>();
     return Instantiate(function_name, attrs, *opts, handle);
   }
+
+  // Finalizes the function library runtime. The Instantiate method should be
+  // called before Finalize is called.
+  virtual absl::Status Finalize() { return absl::OkStatus(); };
 
   // Releases state associated with the handle.
   virtual absl::Status ReleaseHandle(Handle handle) = 0;

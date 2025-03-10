@@ -1,4 +1,4 @@
-// RUN: ifrt-opt %s -ifrt-verify-device-type-consistency='platform_names=tpu,tpu,cpu,tpu,cpu,cuda,cuda' -split-input-file -verify-diagnostics | FileCheck %s
+// RUN: ifrt-opt %s -ifrt-verify-device-type-consistency='platform_names=tpu:2,cpu,tpu,cpu,cuda,cuda' -split-input-file -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: @good_call_multiple
 #sharding = #ifrt.sharding_param<2 to [0] on 2>

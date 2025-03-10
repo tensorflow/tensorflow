@@ -70,6 +70,10 @@ class ArrayMemRegion {
   // the) Array.
   void* zeroth_element() const;
 
+  // Returns the number of bytes necessary for the (in-host representation of
+  // the) Array.
+  size_t nbytes() const;
+
  private:
   ArrayMemRegion(void* mem_region_start, size_t nbytes)
       : mem_region_start_(mem_region_start), nbytes_(nbytes) {}

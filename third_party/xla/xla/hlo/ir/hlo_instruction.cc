@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/sort_json.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
@@ -218,6 +219,23 @@ void HloInstruction::AppendComputation(HloComputation* computation) {
   // In .cc file since PtrVec<T*>::push_back() wants to check the alignment
   // of T and hlo_instruction.h does not include hlo_computation.h.
   mutable_rare()->called_computations.push_back(computation);
+}
+
+void HloInstruction::set_called_computation(int index,
+                                            HloComputation* computation) {
+  mutable_rare()->called_computations[index] = computation;
+  // TODO(b/399394039): Consider also enforcing that computation->parent() !=
+  // nullptr.
+  CHECK(parent() == nullptr || parent()->parent() == nullptr ||
+        parent()->parent() == computation->parent())
+      << ToString();
+}
+
+void HloInstruction::ReplaceCalledComputations(
+    absl::FunctionRef<HloComputation*(HloComputation*)> map_function) {
+  for (int64_t i = 0; i < called_computations().size(); ++i) {
+    set_called_computation(i, map_function(rare()->called_computations[i]));
+  }
 }
 
 HloInstruction* HloInstruction::AddInstruction(
@@ -2316,7 +2334,10 @@ void HloInstruction::SetupDerivedInstruction(
   }
   derived_instruction->set_metadata(*metadata_);
   if (has_rare()) {
+    derived_instruction->set_result_accuracy(result_accuracy());
     derived_instruction->set_frontend_attributes(frontend_attributes());
+    // Offload annotations should not be implicitly derived.
+    derived_instruction->erase_frontend_attribute(kXlaComputeTypeAttr);
     derived_instruction->set_statistics_viz(statistics_viz());
   } else if (derived_instruction->has_rare()) {
     derived_instruction->mutable_rare()->frontend_attributes.Clear();
@@ -2761,8 +2782,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
-  clone->set_parent(parent_);
   clone->backend_config_ = BackendConfigWrapper(backend_config_);
+  clone->set_frontend_attributes(frontend_attributes());
   // The new instruction's name will be uniquified when it's added to a
   // computation.
   clone->SetAndSanitizeName(name());
@@ -2996,6 +3017,9 @@ bool HloInstruction::IdenticalInternal(
     return false;
   }
   if (operands().size() != other.operands().size()) {
+    return false;
+  }
+  if (!equal_result_accuracy(&other)) {
     return false;
   }
 
@@ -3514,7 +3538,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
   if (has_to_apply()) {
     CHECK_EQ(called_computations().size(), 1)
         << "Expected a to_apply computation for " << opcode();
-    rare_->called_computations[0] = computation;
+    set_called_computation(0, computation);
     return;
   }
   LOG(FATAL) << "Invalid opcode for to_apply(): " << opcode();
@@ -3553,12 +3577,12 @@ HloComputation* HloInstruction::while_body() const {
 
 void HloInstruction::set_while_condition(HloComputation* computation) {
   CHECK_EQ(HloOpcode::kWhile, opcode_);
-  rare_->called_computations[kConditionComputationIndex] = computation;
+  set_called_computation(kConditionComputationIndex, computation);
 }
 
 void HloInstruction::set_while_body(HloComputation* computation) {
   CHECK_EQ(HloOpcode::kWhile, opcode_);
-  rare_->called_computations[kBodyComputationIndex] = computation;
+  set_called_computation(kBodyComputationIndex, computation);
 }
 
 HloInstruction* HloInstruction::while_init() const {
@@ -3610,7 +3634,7 @@ int32_t HloInstruction::branch_index(HloComputation* computation) const {
 void HloInstruction::set_branch_computation(int b,
                                             HloComputation* computation) {
   CHECK_EQ(HloOpcode::kConditional, opcode_);
-  rare_->called_computations[b] = computation;
+  set_called_computation(b, computation);
 }
 
 std::string HloInstruction::SignatureString() const {

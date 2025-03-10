@@ -28,6 +28,9 @@ limitations under the License.
 // provokes a compile error. We instead let png.h include what is needed.
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "png.h"  // from @png
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/byte_order.h"

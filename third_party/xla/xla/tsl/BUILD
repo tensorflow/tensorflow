@@ -576,6 +576,7 @@ bzl_library(
     srcs = ["tsl.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        ":package_groups_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//xla/tsl/mkl:build_defs_bzl",
         "//xla/tsl/platform:rules_cc_bzl",
@@ -583,7 +584,7 @@ bzl_library(
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
+        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
     ],
 )
 
@@ -592,9 +593,16 @@ bzl_library(
     srcs = if_google(["tsl.google.bzl"]),
     visibility = ["//visibility:public"],
     deps = [
+        ":package_groups_bzl",
         ":tsl_bzl",
         "//xla/tsl/platform:build_config_root_bzl",
     ] + tsl_google_bzl_deps(),
+)
+
+bzl_library(
+    name = "package_groups_bzl",
+    srcs = ["package_groups.bzl"],
+    visibility = ["//xla:__subpackages__"],
 )
 
 # copybara:comment_begin(oss-only)

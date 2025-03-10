@@ -46,7 +46,7 @@ void PopulateXlaOpGeneratorMap(XlaOpGeneratorMap* op_generator_map) {
 
 #define ADD_XLA_OP_GENERATOR(Name) \
   add_xla_op_generator(#Name,      \
-                       static_cast<xla::XlaOp (*)(xla::XlaOp)>(xla::Name));
+                       [](xla::XlaOp operand) { return xla::Name(operand); });
 
   ADD_XLA_OP_GENERATOR(Abs);
   ADD_XLA_OP_GENERATOR(Acos);
@@ -70,7 +70,8 @@ void PopulateXlaOpGeneratorMap(XlaOpGeneratorMap* op_generator_map) {
   add_xla_op_generator("Rint", xla::RoundToEven);
   ADD_XLA_OP_GENERATOR(Round);
   ADD_XLA_OP_GENERATOR(Rsqrt);
-  add_xla_op_generator("Sigmoid", xla::Logistic);
+  add_xla_op_generator("Sigmoid",
+                       [](xla::XlaOp x) { return xla::Logistic(x); });
   ADD_XLA_OP_GENERATOR(Sin);
   ADD_XLA_OP_GENERATOR(Sinh);
   ADD_XLA_OP_GENERATOR(Sqrt);

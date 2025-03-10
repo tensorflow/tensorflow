@@ -103,16 +103,16 @@ class HloInstructionPtrEq {
 }
 
 FusionDeduplicationCache::InstructionId
-FusionDeduplicationCache::GetInstructionId(const HloInstruction& instruction) {
-  return instruction_id_map_.at(&instruction);
+FusionDeduplicationCache::GetInstructionId(const HloInstruction* instruction) {
+  return instruction_id_map_.at(instruction);
 }
 
 FusionDeduplicationCache::FusionId FusionDeduplicationCache::GetFusionId(
-    const HloInstruction& producer, const HloInstruction& consumer,
-    int64_t consumer_operand_index) {
-  FusionDeduplicationCache::FusionId fusion_id{GetInstructionId(producer),
-                                               GetInstructionId(consumer),
-                                               consumer_operand_index};
+    const HloInstruction* producer, const HloInstruction* consumer,
+    int64_t consumer_operand_index, bool allow_multi_output) {
+  FusionDeduplicationCache::FusionId fusion_id{
+      GetInstructionId(producer), GetInstructionId(consumer),
+      consumer_operand_index, allow_multi_output};
 
   if (fusion_id_map_.emplace(fusion_id, next_id_).second) {
     ++next_id_;
@@ -122,16 +122,20 @@ FusionDeduplicationCache::FusionId FusionDeduplicationCache::GetFusionId(
 }
 
 FusionDeduplicationCache::FusionId FusionDeduplicationCache::GetFusionId(
-    const HloInstruction& producer, const HloInstruction& consumer) {
-  return GetFusionId(producer, consumer, consumer.operand_index(&producer));
+    const HloInstruction* producer, const HloInstruction* consumer,
+    bool allow_multi_output) {
+  return GetFusionId(producer, consumer, consumer->operand_index(producer),
+                     allow_multi_output);
 }
 
 void FusionDeduplicationCache::UpdateFusedInstructionId(
-    const HloInstruction& fusion_instruction,
-    const HloInstruction& original_producer,
-    const HloInstruction& original_consumer, int64_t consumer_operand_index) {
-  instruction_id_map_[&fusion_instruction] = fusion_id_map_.at(GetFusionId(
-      original_producer, original_consumer, consumer_operand_index));
+    const HloInstruction* fusion_instruction,
+    const HloInstruction* original_producer,
+    const HloInstruction* original_consumer, int64_t consumer_operand_index,
+    bool allow_multi_output) {
+  instruction_id_map_[fusion_instruction] = fusion_id_map_.at(
+      GetFusionId(original_producer, original_consumer, consumer_operand_index,
+                  allow_multi_output));
 }
 
 }  // namespace gpu

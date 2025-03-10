@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -42,7 +41,6 @@ CallThunk::CallThunk(Info info, ThunkExecutor called_executor)
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CallThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
   return called_executor_.Execute(params);
 }
 

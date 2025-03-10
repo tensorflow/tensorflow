@@ -47,6 +47,8 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "tsl/platform/numbers.h"
+#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
@@ -195,14 +197,42 @@ ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
   }
 }
 
+// Executes given `thunk` and adds tracing annotation to record the execution
+// start and end events for profiling.
+tsl::AsyncValueRef<Thunk::ExecuteEvent> ThunkExecutor::TracedExecute(
+    Thunk& thunk, const Thunk::ExecuteParams& params) {
+  // If profiler is not active avoid overheads of calling AndThen below.
+  if (ABSL_PREDICT_TRUE(!tsl::profiler::TraceMe::Active())) {
+    return thunk.Execute(params);
+  }
+
+  // Create a producer traceme to capture the start event.
+  tsl::profiler::TraceMeProducer producer([&] { return thunk.TraceMeEncode(); },
+                                          tsl::profiler::ContextType::kGeneric);
+
+  auto execute_event = thunk.Execute(params);
+
+  // When thunk execution completes, create a consumer traceme to capture the
+  // end event.
+  execute_event.AndThen([context_id = producer.GetContextId(), &thunk] {
+    tsl::profiler::TraceMeConsumer(
+        [&] { return absl::StrFormat("end: %s", thunk.info().op_name); },
+        tsl::profiler::ContextType::kGeneric, context_id);
+  });
+
+  return execute_event;
+}
+
 tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
     const Thunk::ExecuteParams& params) {
-  // Short-circuit execution of trivial thunk sequences.
+  // Short-circuit execution of empty thunk sequence.
   if (ABSL_PREDICT_FALSE(num_thunks_ == 0)) {
     return Thunk::OkExecuteEventSingleton();
   }
+
+  // Short-circuit execution of single thunk sequence.
   if (ABSL_PREDICT_FALSE(num_thunks_ == 1)) {
-    return thunk_sequence_[0]->Execute(params);
+    return TracedExecute(*thunk_sequence_[0], params);
   }
 
   // When we choose sequential execution strategy (we rely on heuristics and
@@ -276,7 +306,7 @@ ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
     }
 
     Thunk& thunk = **it;
-    auto execute_event = thunk.Execute(params);
+    auto execute_event = TracedExecute(thunk, params);
 
     // Log thunk execution time in blocking mode.
     if constexpr (UseBlockingThunkExecutor()) {
@@ -333,7 +363,7 @@ void ThunkExecutor::ResumeExecuteSequential(
     tsl::AsyncValueRef<ExecuteEvent> event) {
   for (; it != thunk_sequence_.end(); ++it) {
     Thunk& thunk = **it;
-    auto execute_event = thunk.Execute(params);
+    auto execute_event = TracedExecute(thunk, params);
 
     // Fast path for thunks executed inline and returned OkExecuteEvent.
     if (ABSL_PREDICT_TRUE(thunk.IsOkExecuteEvent(execute_event))) {
@@ -418,7 +448,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
     tsl::AsyncValueRef<ExecuteEvent> execute_event =
         ABSL_PREDICT_FALSE(state->abort.load(std::memory_order_relaxed))
             ? Thunk::OkExecuteEventSingleton()
-            : thunk.Execute(params);
+            : TracedExecute(thunk, params);
 
     if (ABSL_PREDICT_TRUE(execute_event.IsAvailable())) {
       // If thunk execution is completed, process out edges in the current

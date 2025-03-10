@@ -4391,7 +4391,7 @@ GetGenericCudnnOperationGraph(
   non_virtual_uids.insert(non_virtual_uids.end(), output_uids.begin(),
                           output_uids.end());
 
-  return make_pair(
+  return std::make_pair(
       std::make_unique<cudnn_frontend::OperationGraph>(std::move(opGraph)),
       non_virtual_uids);
 }
@@ -8667,7 +8667,7 @@ void initialize_cudnn() {
           });
 
   if (!status.ok()) {
-    LOG(ERROR) << "Unable to register cuDNN factory: " << status.message();
+    LOG(INFO) << "Unable to register cuDNN factory: " << status.message();
   }
 }
 

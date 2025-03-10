@@ -15,24 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_TRACEME_ENCODE_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_TRACEME_ENCODE_H_
 
-#include <string.h>
-
 #include <initializer_list>
 #include <string>
 #include <utility>
 
 #include "absl/base/macros.h"
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tsl/profiler/lib/traceme_encode.h"
-
-// TODO: b/323943471 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
 
 namespace tensorflow {
 namespace profiler {

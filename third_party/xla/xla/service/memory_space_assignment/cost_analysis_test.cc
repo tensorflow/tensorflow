@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -52,21 +53,27 @@ class MemorySpaceAssignmentCostAnalysisTest : public HloTestBase {
     options.set_transcendentals_per_second(16);
     options.set_flops_min_latency_second(1);
     hlo_cost_analysis_ = std::make_unique<HloCostAnalysis>(options);
-    TF_RETURN_IF_ERROR(
-        module->entry_computation()->Accept(hlo_cost_analysis_.get()));
-    hlo_cost_analysis_costs_ =
-        std::make_unique<memory_space_assignment::HloCostAnalysisCosts>(
-            *hlo_cost_analysis_);
+    hlo_cost_analysis_wrapper_ =
+        std::make_unique<HloCostAnalysisWithAcceptState>(*hlo_cost_analysis_);
+    op_cost_manager_ = std::make_unique<OpCostManager>(
+        OpCostManager::Options{
+            /*enable_cache=*/false,
+            /*enable_analysis_logging=*/false,
+        },
+        OpCostManager::CalculationNode::CreateLeaf(
+            "HloCostAnalysis",
+            CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper_),
+            /*enable_cache=*/false));
     TF_ASSIGN_OR_RETURN(
         cost_analysis_,
-        CostAnalysis::Create(*hlo_cost_analysis_costs_, options_, *module));
+        CostAnalysis::Create(*op_cost_manager_, options_, *module));
     return absl::OkStatus();
   }
 
   CostAnalysisOptions options_;
   std::unique_ptr<HloCostAnalysis> hlo_cost_analysis_;
-  std::unique_ptr<memory_space_assignment::HloCostAnalysisCosts>
-      hlo_cost_analysis_costs_;
+  std::unique_ptr<HloCostAnalysisWithAcceptState> hlo_cost_analysis_wrapper_;
+  std::unique_ptr<OpCostManager> op_cost_manager_;
   std::unique_ptr<CostAnalysis> cost_analysis_;
 };
 

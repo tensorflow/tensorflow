@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_STEP_INTERSECTION_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_STEP_INTERSECTION_H_
 
-#include <algorithm>
+#include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/types.h"

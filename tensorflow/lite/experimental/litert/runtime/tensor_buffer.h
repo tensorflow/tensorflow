@@ -41,6 +41,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #if LITERT_HAS_OPENGL_SUPPORT
 #include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/gl_texture.h"
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 #include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
 
@@ -92,6 +93,11 @@ class LiteRtTensorBufferT {
       const LiteRtRankedTensorType& tensor_type, GLenum target, GLuint id,
       size_t bytes_size, size_t offset,
       LiteRtGlBufferDeallocator deallocator = nullptr);
+
+  static litert::Expected<Ptr> CreateFromGlTexture(
+      const LiteRtRankedTensorType& tensor_type, GLenum target, GLuint id,
+      GLenum format, size_t size_bytes, GLint layer,
+      LiteRtGlTextureDeallocator deallocator = nullptr);
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 
   static litert::Expected<Ptr> CreateManaged(
@@ -123,6 +129,7 @@ class LiteRtTensorBufferT {
   litert::Expected<std::pair<void*, int>> GetFastRpcBuffer();
   litert::Expected<litert::internal::OpenClBuffer*> GetOpenClBuffer();
 #if LITERT_HAS_OPENGL_SUPPORT
+  litert::Expected<litert::internal::GlTexture*> GetGlTexture();
   litert::Expected<litert::internal::GlBuffer*> GetGlBuffer();
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 
@@ -217,7 +224,7 @@ class LiteRtTensorBufferT {
                litert::internal::OpenClBuffer
 #if LITERT_HAS_OPENGL_SUPPORT
                ,
-               litert::internal::GlBuffer
+               litert::internal::GlBuffer, litert::internal::GlTexture
 #endif  // LITERT_HAS_OPENGL_SUPPORT
                >
       buffer_;

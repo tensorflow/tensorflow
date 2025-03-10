@@ -16,17 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PUBLIC_RELEASE_VERSION_H_
 #define TENSORFLOW_CORE_PUBLIC_RELEASE_VERSION_H_
 
-// TensorFlow uses semantic versioning, see http://semver.org/.
-
-// Also update tensorflow/tensorflow.bzl and
-// tensorflow/tools/pip_package/setup.py
-#define TF_MAJOR_VERSION 2
-#define TF_MINOR_VERSION 20
-#define TF_PATCH_VERSION 0
-
-// TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
-// "-beta", "-rc", "-rc.1")
-#define TF_VERSION_SUFFIX ""
+// A cc_library //third_party/tensorflow/core/public:release_version provides
+// defines with the version data from //third_party/tensorflow/tf_version.bzl.
+// The version suffix can be set by passing the build parameters
+// --repo_env=ML_WHEEL_BUILD_DATE=<date> and
+// --repo_env=ML_WHEEL_VERSION_SUFFIX=<suffix>.
+// To update the project version, update tf_version.bzl.
 
 #define _TF_STR_HELPER(x) #x
 #define _TF_STR(x) _TF_STR_HELPER(x)

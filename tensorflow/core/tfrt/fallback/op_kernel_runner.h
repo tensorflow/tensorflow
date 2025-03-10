@@ -96,9 +96,6 @@ class OpKernelRunner {
   explicit operator bool() const { return op_kernel_ != nullptr; }
 
   void Run(OpKernelContext* context) const {
-    if (op_kernel_ == nullptr) {
-      LOG(ERROR) << "Op " << op_name_ << " is unvailable for execution.";
-    }
     DVLOG(1) << "KernelFallbackExecuteCompat Running Op: "
              << op_kernel_->def().DebugString()
              << ", on Device: " << context->device()->name();

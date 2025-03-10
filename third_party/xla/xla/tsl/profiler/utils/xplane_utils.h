@@ -274,7 +274,8 @@ bool IsDevicePlane(const XPlane& plane);
 
 // Return whether this is an op line name.
 inline bool IsOpLineName(absl::string_view line_name) {
-  return line_name == kXlaOpLineName || line_name == kTensorFlowOpLineName;
+  return line_name == kXlaOpLineName || line_name == kTensorFlowOpLineName ||
+         line_name == kSparseCoreOpLineName;
 }
 
 // Returns the timespan of the event from the device offset and duration stats.

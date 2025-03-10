@@ -22,6 +22,7 @@
 #include "neuron/api/NeuronAdapter.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 
 #if LITERT_HAS_AHWB_SUPPORT
 #include <android/hardware_buffer.h>
@@ -46,8 +47,6 @@ class NeuronAdapterApi {
   NeuronAdapterApi(NeuronAdapterApi&&) = delete;
   NeuronAdapterApi& operator=(const NeuronAdapterApi&) = delete;
   NeuronAdapterApi& operator=(NeuronAdapterApi&&) = delete;
-
-  ~NeuronAdapterApi();
 
   static Expected<Ptr> Create(std::optional<std::string> shared_library_dir);
 
@@ -76,7 +75,11 @@ class NeuronAdapterApi {
   litert::Expected<void> LoadSymbols(
       std::optional<std::string> shared_library_dir);
 
-  void* dlib_handle_ = nullptr;
+  // Handle to the shared library that implements the Neuron API.
+  //
+  // This will keep the shared library open until the NeuronAdapterApi object is
+  // destroyed.
+  SharedLibrary dlib_;
   std::unique_ptr<Api> api_;
 };
 

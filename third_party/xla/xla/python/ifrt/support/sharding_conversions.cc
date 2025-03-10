@@ -53,7 +53,7 @@ absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding) {
 
 absl::StatusOr<OpSharding> ToOpSharding(
     const ShardingParam& sharding_param,
-    const tsl::RCReference<xla::ifrt::DeviceList>& device_mapping) {
+    const xla::ifrt::DeviceListRef& device_mapping) {
   OpSharding op_sharding;
   {
     bool all_dim_replicated = true;

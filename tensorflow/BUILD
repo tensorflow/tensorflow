@@ -108,6 +108,7 @@ PACKAGE_STATIC_DEPS = [
     "@mkl_dnn_acl_compatible//:__subpackages__",
     "@ml_dtypes_py//ml_dtypes:__subpackages__",
     "@nccl_archive//:__subpackages__",
+    "@net_zstd//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
     "@onednn//:__subpackages__",
     "@org_sqlite//:__subpackages__",
@@ -1122,10 +1123,21 @@ filegroup(
 )
 
 bzl_library(
+    name = "tf_version_bzl",
+    srcs = [
+        "tf_version.bzl",
+        # copybara:uncomment "tf_version.google.bzl",
+    ],
+    # copybara:uncomment parse_tests = False,
+    visibility = ["//visibility:public"],
+)
+
+bzl_library(
     name = "tensorflow_bzl",
     srcs = ["tensorflow.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        ":tf_version_bzl",
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
@@ -1135,7 +1147,7 @@ bzl_library(
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
+        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
         "@local_xla//xla/tsl:tsl_bzl",
         "@local_xla//xla/tsl/mkl:build_defs_bzl",
         "@rules_java//java:rules",

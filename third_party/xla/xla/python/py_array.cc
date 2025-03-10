@@ -200,8 +200,7 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
     }
   }
   ifrt::Client* client = ifrt_arrays.front()->client();
-  tsl::RCReference<ifrt::DeviceList> device_list =
-      client->MakeDeviceList(devices);
+  ifrt::DeviceListRef device_list = client->MakeDeviceList(devices);
   if (device_set.size() != device_list->size()) {
     throw nb::value_error(
         absl::StrFormat(
@@ -446,9 +445,9 @@ nb::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
 // Defined outside of the function as required by templatized function
 // `AbslHashValue`.
 struct BatchedCopyToDeviceWithShardingKey {
-  tsl::RCReference<ifrt::DeviceList> src_devices;
+  ifrt::DeviceListRef src_devices;
   ifrt::MemoryKind src_memory_kind;
-  tsl::RCReference<ifrt::DeviceList> dst_devices;
+  ifrt::DeviceListRef dst_devices;
   ifrt::MemoryKind dst_memory_kind;
   ifrt::ArrayCopySemantics array_copy_semantics;
 
@@ -1135,7 +1134,7 @@ PyArray::Storage::~PyArray_Storage() {
 
 absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
     absl::Span<const PyArray> py_arrays,
-    absl::Span<const tsl::RCReference<ifrt::DeviceList>> dst_device_lists,
+    absl::Span<const ifrt::DeviceListRef> dst_device_lists,
     absl::Span<const nb::object> dst_shardings,
     absl::Span<const ifrt::ArrayCopySemantics> array_copy_semantics) {
   if (py_arrays.empty()) {
@@ -1162,9 +1161,9 @@ absl::StatusOr<std::vector<PyArray>> PyArray::BatchedCopyToDeviceWithSharding(
     const auto& array_cs = array_copy_semantics[i];
 
     auto* ifrt_array_ptr = py_array.ifrt_array();
-    const tsl::RCReference<ifrt::DeviceList>& src_devices =
+    const ifrt::DeviceListRef& src_devices =
         ifrt_array_ptr->sharding().devices();
-    const tsl::RCReference<ifrt::DeviceList>& dst_devices = dst_device_lists[i];
+    const ifrt::DeviceListRef& dst_devices = dst_device_lists[i];
 
     ifrt::MemoryKind src_memory_kind =
         ifrt::CanonicalizeMemoryKind(ifrt_array_ptr->sharding().memory_kind(),
@@ -1559,45 +1558,50 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
           PrimitiveType_Name(buffer.element_type()));
     }
 
-    // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
-    // Additionally we call BlockHostUntilReady() below, which may block.
-    nb::gil_scoped_release gil_release;
+    std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
+    {
+      // We call BlockHostUntilReady() below, which may block.
+      nb::gil_scoped_release gil_release;
 
-    if (buffer.IsTuple()) {
-      return InvalidArgument(
-          "Python buffer protocol is only defined for array buffers.");
-    }
-    if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
-      return InvalidArgument("XLA buffers are read-only.");
-    }
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
-        buffer.AcquireExternalReference());
-    if (buffer.IsDeleted()) {
-      return InvalidArgument("Deleted buffer used in buffer protocol.");
+      if (buffer.IsTuple()) {
+        return InvalidArgument(
+            "Python buffer protocol is only defined for array buffers.");
+      }
+      if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
+        return InvalidArgument("XLA buffers are read-only.");
+      }
+      TF_ASSIGN_OR_RETURN(external_reference_hold,
+                          buffer.AcquireExternalReference());
+      if (buffer.IsDeleted()) {
+        return InvalidArgument("Deleted buffer used in buffer protocol.");
+      }
+
+      // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
+      Layout xla_layout = buffer.layout()->xla_layout();
+
+      if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
+           (flags & PyBUF_STRIDES) == PyBUF_ND) &&
+          !LayoutUtil::IsMonotonicWithDim0Major(xla_layout)) {
+        return InvalidArgument("Buffer is not in C-contiguous layout.");
+      } else if ((flags & PyBUF_F_CONTIGUOUS) == PyBUF_F_CONTIGUOUS &&
+                 !LayoutUtil::IsMonotonicWithDim0Minor(xla_layout)) {
+        return InvalidArgument("Buffer is not in F-contiguous layout.");
+      } else if ((flags & PyBUF_ANY_CONTIGUOUS) == PyBUF_ANY_CONTIGUOUS &&
+                 !LayoutUtil::IsMonotonicWithDim0Major(xla_layout) &&
+                 !LayoutUtil::IsMonotonicWithDim0Minor(xla_layout)) {
+        return InvalidArgument("Buffer is not in contiguous layout.");
+      } else if (!HasDefaultLayout(xla_layout)) {
+        // Fail and fall back to using __array__ if the CPU buffer has a device
+        // specific layout. For instance, this happens for host buffers in
+        // pinned memories of the TPU device.
+        return InvalidArgument(
+            "Buffer is potentially a device buffer with non default layout.");
+      }
+      TF_RETURN_IF_ERROR(buffer.GetReadyFuture().Await());
     }
 
-    // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-    Layout xla_layout = buffer.layout()->xla_layout();
-
-    if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
-         (flags & PyBUF_STRIDES) == PyBUF_ND) &&
-        !LayoutUtil::IsMonotonicWithDim0Major(xla_layout)) {
-      return InvalidArgument("Buffer is not in C-contiguous layout.");
-    } else if ((flags & PyBUF_F_CONTIGUOUS) == PyBUF_F_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(xla_layout)) {
-      return InvalidArgument("Buffer is not in F-contiguous layout.");
-    } else if ((flags & PyBUF_ANY_CONTIGUOUS) == PyBUF_ANY_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Major(xla_layout) &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(xla_layout)) {
-      return InvalidArgument("Buffer is not in contiguous layout.");
-    } else if (!HasDefaultLayout(xla_layout)) {
-      // Fail and fall back to using __array__ if the CPU buffer has a device
-      // specific layout. For instance, this happens for host buffers in pinned
-      // memories of the TPU device.
-      return InvalidArgument(
-          "Buffer is potentially a device buffer with non default layout.");
-    }
+    // We must hold the GIL (or at least prevent Python GC) while writing to the
+    // view object, see https://github.com/python/cpython/issues/130409.
     std::memset(view, 0, sizeof(Py_buffer));
     const void* root_ptr =
         external_reference_hold->OpaqueDeviceMemoryDataPointer();
@@ -1618,14 +1622,14 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
         view->shape = reinterpret_cast<Py_ssize_t*>(
             const_cast<int64_t*>(buffer.dimensions().data()));
         if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
-          extra->strides = ByteStridesForShape(buffer.element_type(),
-                                               buffer.dimensions(), xla_layout);
+          extra->strides =
+              ByteStridesForShape(buffer.element_type(), buffer.dimensions(),
+                                  buffer.layout()->xla_layout());
           view->strides = reinterpret_cast<Py_ssize_t*>(
               const_cast<int64_t*>(extra->strides.data()));
         }
       }
     }
-    TF_RETURN_IF_ERROR(buffer.BlockHostUntilReady());
     view->internal = extra.release();
     return absl::OkStatus();
   }();
@@ -2037,7 +2041,7 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
           return std::vector<PyArray>();
         }
         auto* client = arrays[0].ifrt_array()->client();
-        std::vector<tsl::RCReference<ifrt::DeviceList>> device_lists;
+        std::vector<ifrt::DeviceListRef> device_lists;
         device_lists.reserve(dst_device_lists.size());
         for (const auto& dst_devices : dst_device_lists) {
           absl::InlinedVector<ifrt::Device*, 1> devices;

@@ -1620,7 +1620,7 @@ TEST_F(ShapeInferenceTest, InferReshapeDegenerateCombine) {
   // Both output dimension can be dynamic, use inferred_dimension to tie-break.
   const Shape operand = ShapeUtil::MakeShape(F32, {1, 1}, {false, true});
   const auto status =
-      ShapeInference::InferReshapeShape(operand, {1, 0}, {1},
+      ShapeInference::InferReshapeShape(operand, {1},
                                         /*inferred_dimension=*/-1);
   ASSERT_EQ(ShapeUtil::MakeShape(F32, {1}, {true}), *status);
 }
@@ -1633,7 +1633,7 @@ TEST_F(ShapeInferenceTest, InferReshapeSplit) {
   // Both output dimension can be dynamic, use inferred_dimension to tie-break.
   const Shape operand = ShapeUtil::MakeShape(F32, {10}, {true});
   const auto status =
-      ShapeInference::InferReshapeShape(operand, {0}, {1, 10},
+      ShapeInference::InferReshapeShape(operand, {1, 10},
                                         /*inferred_dimension=*/0);
   ASSERT_EQ(ShapeUtil::MakeShape(F32, {1, 10}, {true, false}), *status);
 }
@@ -1644,7 +1644,7 @@ TEST_F(ShapeInferenceTest, InferReshapeCombine) {
   // [<=60]
   const Shape operand = ShapeUtil::MakeShape(F32, {6, 10}, {false, true});
   const auto status =
-      ShapeInference::InferReshapeShape(operand, {1, 0}, {60},
+      ShapeInference::InferReshapeShape(operand, {60},
                                         /*inferred_dimension=*/-11);
   ASSERT_EQ(ShapeUtil::MakeShape(F32, {60}, {true}), *status);
 }
@@ -1655,7 +1655,7 @@ TEST_F(ShapeInferenceTest, UnchangedDimension) {
   // [2, 3, <=10]
   const Shape operand = ShapeUtil::MakeShape(F32, {6, 10}, {false, true});
   const auto status =
-      ShapeInference::InferReshapeShape(operand, {1, 0}, {2, 3, 10},
+      ShapeInference::InferReshapeShape(operand, {2, 3, 10},
                                         /*inferred_dimension=*/-11);
   ASSERT_EQ(ShapeUtil::MakeShape(F32, {2, 3, 10}, {false, false, true}),
             *status);
@@ -5559,8 +5559,7 @@ TEST_F(ShapeInferenceTest, UnboundedReshape) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[2,3]"));
   TF_ASSERT_OK_AND_ASSIGN(
       const Shape inferred,
-      ShapeInference::InferReshapeShape(operand, /*dimensions=*/{0},
-                                        /*new_sizes=*/{2, 3}, -1));
+      ShapeInference::InferReshapeShape(operand, /*dimensions=*/{2, 3}, -1));
   ASSERT_TRUE(ShapeUtil::Equal(inferred, expected))
       << "inferred: " << ShapeUtil::HumanString(inferred)
       << " expected: " << ShapeUtil::HumanString(expected);
@@ -5570,8 +5569,8 @@ TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupportedOutputShape) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[6]"));
   const absl::StatusOr<Shape> inferred_shape =
       ShapeInference::InferReshapeShape(
-          operand, /*dimensions=*/{0},
-          /*new_sizes=*/{Shape::kUnboundedSize, Shape::kUnboundedSize}, -1);
+          operand,
+          /*dimensions=*/{Shape::kUnboundedSize, Shape::kUnboundedSize}, -1);
   EXPECT_THAT(
       inferred_shape.status().message(),
       HasSubstr("Reshaping with unbounded result shape is not supported."));
@@ -5581,8 +5580,7 @@ TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupportedMixOfDynamism) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, <=3]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[<=3]"));
   const absl::StatusOr<Shape> inferred_shape =
-      ShapeInference::InferReshapeShape(operand, /*dimensions=*/{0},
-                                        /*new_sizes=*/{3}, -1);
+      ShapeInference::InferReshapeShape(operand, /*dimensions=*/{3}, -1);
   ASSERT_THAT(inferred_shape.status().message(),
               HasSubstr("Reshape operand with bounded and unbounded dynamism "
                         "not supported."));

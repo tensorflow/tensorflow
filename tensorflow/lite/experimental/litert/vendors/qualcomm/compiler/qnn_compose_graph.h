@@ -29,7 +29,8 @@ LiteRtStatus ConvertDataType(const litert::ElementType litert_type,
 
 LiteRtStatus ConvertTensor(const litert::Tensor& litert_tensor,
                            ::qnn::TensorPool& tensor_pool,
-                           ::qnn::TensorWrapper*& tensor_wrapper);
+                           ::qnn::TensorWrapper*& tensor_wrapper,
+                           bool is_tensor_read_and_write = false);
 
 LiteRtStatus ConvertOp(
     const litert::Op& litert_op, ::qnn::TensorPool& tensor_pool,

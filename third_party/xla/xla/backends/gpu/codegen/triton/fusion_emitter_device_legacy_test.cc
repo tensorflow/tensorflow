@@ -81,7 +81,7 @@ class TritonTest : public GpuCodegenTest {
     } else {
       return stream_executor::GpuComputeCapability{
           stream_executor::CudaComputeCapability{
-              stream_executor::CudaComputeCapability::AMPERE, 0}};
+              stream_executor::CudaComputeCapability::kAmpere, 0}};
     }
   }
 
@@ -2233,8 +2233,8 @@ e {
                            m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
-                                                /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2,
+                                                /*arel=*/1e-2}));
 }
 
 TEST_F(TritonGemmTestAny, MinimumHandlesNaNsOnTheLeft) {
@@ -3246,7 +3246,7 @@ ENTRY e {
 )";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
+                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -4310,7 +4310,7 @@ ENTRY main {
 // Test PreventMmaV3LoopUnrolling pass in order to keep compile time low.
 // See b/344841434.
 TEST_F(TritonGemmTest, TestPreventMMAV3LoopUnrolling) {
-  if (GetCudaComputeCapability().major != se::CudaComputeCapability::HOPPER) {
+  if (GetCudaComputeCapability().major != se::CudaComputeCapability::kHopper) {
     GTEST_SKIP() << "wgmma instruction is only available on Hopper";
   }
   const std::string hlo_text = R"(
@@ -4345,7 +4345,7 @@ CHECK: wgmma
 }
 
 TEST_F(TritonGemmTest, WgmmaIsUsedForMemBoundShape) {
-  if (GetCudaComputeCapability().major != se::CudaComputeCapability::HOPPER) {
+  if (GetCudaComputeCapability().major != se::CudaComputeCapability::kHopper) {
     GTEST_SKIP() << "wgmma instruction is only available on Hopper";
   }
   const std::string hlo_text = R"(

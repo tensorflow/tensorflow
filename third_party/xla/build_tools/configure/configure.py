@@ -412,8 +412,13 @@ class XLAConfigOptions:
     if dpav.ld_library_path:
       rc.append(f"build --action_env LD_LIBRARY_PATH={dpav.ld_library_path}")
 
+    # Needed due to error in @upb//:upb which is a dep of @com_github_grpc_grpc
+    # error: defining a type within 'offsetof' is a Clang extension
     if dpav.clang_major_version in (16, 17, 18):
       self.compiler_options.append("-Wno-gnu-offsetof-extensions")
+    # error: defining a type within 'offsetof' is a C23 extension
+    if dpav.clang_major_version and dpav.clang_major_version >= 19:
+      self.compiler_options.append("-Wno-c23-extensions")
 
     # Avoid XNNPACK using `-mavxvnniint8` (needs clang-16+/gcc-13+)
     if (

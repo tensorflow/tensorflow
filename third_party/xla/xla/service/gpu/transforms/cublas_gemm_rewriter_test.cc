@@ -66,7 +66,7 @@ ENTRY e {
   RunAndFilecheckHloRewrite(
       hlo_text,
       GemmRewriter(
-          se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0},
+          se::CudaComputeCapability{se::CudaComputeCapability::kAmpere, 0},
           /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
       R"(
 ; CHECK:  %[[P0:.+]] = f32[2048]{0} parameter(0)
@@ -90,7 +90,7 @@ ENTRY e {
   RunAndFilecheckHloRewrite(
       hlo_text,
       GemmRewriter(
-          se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0},
+          se::CudaComputeCapability{se::CudaComputeCapability::kAmpere, 0},
           /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
       R"(
 ; CHECK:  %[[P0:.+]] = f32[10,10,2048]{2,1,0} parameter(0)
@@ -111,7 +111,7 @@ ENTRY main {
       lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
 })";
   auto hlo_pass = GemmRewriter(
-      se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0},
+      se::CudaComputeCapability{se::CudaComputeCapability::kAmpere, 0},
       /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));

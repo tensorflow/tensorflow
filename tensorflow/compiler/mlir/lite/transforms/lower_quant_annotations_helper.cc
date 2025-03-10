@@ -45,7 +45,7 @@ LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
     return failure();
   }
   for (auto float_attr : scale_attr.getValues<FloatAttr>()) {
-    scales.push_back(float_attr.getValueAsDouble());
+    scales.push_back(float_attr.getValue().convertToDouble());
   }
 
   auto zero_point_attr = llvm::dyn_cast_or_null<DenseIntElementsAttr>(
@@ -54,9 +54,14 @@ LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
     for (int i = 0; i < scales.size(); ++i) {
       zero_points.push_back(0);
     }
+  } else if (zero_point_attr.isSplat()) {
+    for (int i = 0; i < scales.size(); ++i) {
+      zero_points.push_back(
+          zero_point_attr.getSplatValue<IntegerAttr>().getInt());
+    }
   } else {
-    for (int64_t zp : zero_point_attr.getValues<int64_t>()) {
-      zero_points.push_back(zp);
+    for (IntegerAttr zp : zero_point_attr.getValues<IntegerAttr>()) {
+      zero_points.push_back(zp.getInt());
     }
   }
 
@@ -83,6 +88,22 @@ LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
   is_narrow_range = narrow_range_attr.getValue();
 
   return success();
+}
+
+bool IsDrqFakeQuant(stablehlo::CompositeOp op) {
+  if (op.getName() != "quant.fake_quant") {
+    return false;
+  }
+  SmallVector<double, 4> scales;
+  SmallVector<int64_t, 4> zero_points;
+  int num_bits;
+  bool is_signed;
+  bool is_narrow_range;
+  if (failed(FillCompositeParams(op, scales, zero_points, num_bits, is_signed,
+                                 is_narrow_range))) {
+    return false;
+  }
+  return scales.empty() && zero_points.empty();
 }
 
 LogicalResult GetStorageParams(unsigned num_bits, bool narrow_range,

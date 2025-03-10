@@ -30,6 +30,30 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "litert_environment_test",
+    srcs = [
+        "litert_environment_test.cc",
+    ],
+    linkopts = select({
+        "//tensorflow:android": ["-llog"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":litert_any",
+        ":litert_compiled_model",
+        ":litert_environment",
+        ":litert_expected",
+        ":litert_model",
+        "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:matchers",
+        "//tensorflow/lite/experimental/litert/test:simple_model",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "litert_event",
     hdrs = ["litert_event.h"],
@@ -132,6 +156,7 @@ cc_library(
         ":litert_event",
         ":litert_expected",
         ":litert_handle",
+        ":litert_macros",
         ":litert_model",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/litert/c:litert_common",
@@ -154,15 +179,22 @@ cc_test(
     }),
     deps = [
         ":litert_layout",
+        ":litert_macros",
         ":litert_model",
         ":litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/runtime:tensor_buffer",
+        "//tensorflow/lite/experimental/litert/test:matchers",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -435,11 +467,12 @@ cc_test(
 #         "@com_google_absl//absl/log:absl_log",
 #         "@com_google_absl//absl/strings:string_view",
 #         "@com_google_absl//absl/types:span",
-#         "//third_party/odml/infra/ml_drift_delegate:ml_drift_cl_accelerator",  # buildcleaner: keep
+#         "//third_party/odml/infra/ml_drift_delegate/litert:ml_drift_cl_accelerator",  # buildcleaner: keep
 #         "//tensorflow/lite:framework",
 #         "//tensorflow/lite/c:c_api_opaque",
 #         "//tensorflow/lite/c:common",
 #         "//tensorflow/lite/experimental/litert/c:litert_common",
+#         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
 #         "//tensorflow/lite/experimental/litert/test:common",
 #         "//tensorflow/lite/experimental/litert/test:simple_model",
 #         "//tensorflow/lite/kernels:builtin_ops",
@@ -454,6 +487,73 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+    ],
+)
+
+cc_library(
+    name = "litert_op_options",
+    srcs = ["litert_op_options.cc"],
+    hdrs = ["litert_op_options.h"],
+    deps = [
+        ":litert_expected",
+        ":litert_macros",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/c:litert_options",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "litert_op_options_test",
+    srcs = ["litert_op_options_test.cc"],
+    deps = [
+        ":litert_op_options",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/core/model",
+        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "litert_shared_library",
+    srcs = ["litert_shared_library.cc"],
+    hdrs = ["litert_shared_library.h"],
+    deps = [
+        ":litert_expected",
+        ":litert_macros",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "test_litert_shared_library_impl",
+    srcs = ["test_shared_library.cc"],
+)
+
+cc_shared_library(
+    name = "test_litert_shared_library",
+    shared_lib_name = "test_shared_library.so",
+    deps = [":test_litert_shared_library_impl"],
+)
+
+cc_test(
+    name = "litert_shared_library_test",
+    srcs = ["litert_shared_library_test.cc"],
+    data = [":test_litert_shared_library"],
+    defines = ["LITERT_DEFINE_GTEST_STATUS_PRINTER"],
+    deps = [
+        ":litert_shared_library",
+        "//tensorflow/lite/experimental/litert/test:matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

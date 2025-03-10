@@ -10,6 +10,7 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             "attributes.hlo",
+            "auto_layout.hlo",
             "bool_compare.hlo",
             "call.hlo",
             "case_conditional.hlo",
@@ -21,6 +22,7 @@ lit_test_suite(
             "fusion.hlo",
             "if_conditional.hlo",
             "import.hlo",
+            "import_locs.hlo",
             "import_async.hlo",
             "import_bounded_dynamism.hlo",
             "import_entry_computation_layout.hlo",

@@ -74,7 +74,6 @@
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/ifrt_proxy/server/version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -212,15 +211,22 @@ class IfrtBackend::InOrderRequestsProcessor {
     while (auto entry = Pop()) {
       uint64_t op_id = entry->req->request_metadata().op_id();
       VLOG(3) << "Processing " << entry->req->ShortDebugString();
+      int request_case = entry->req->request_case();
       auto span = entry->xflow.Span<XFlowHelper::kRecvSend>();
       parent_->ProcessInternal(std::move(entry->req))
           .OnReady([p = std::move(entry->promise),
-                    xflow = std::move(entry->xflow),
+                    xflow = std::move(entry->xflow), request_case,
                     op_id](absl::StatusOr<Response> r) mutable {
             auto span = xflow.Span<XFlowHelper::kRecv>();
             if (!r.ok()) {
-              VLOG(3) << "Responding " << op_id << ": " << r.status();
-
+              absl::string_view request_type = "REQUEST_NOT_SET";
+              if (request_case != IfrtRequest::RequestCase::REQUEST_NOT_SET) {
+                request_type = IfrtRequest::descriptor()
+                                   ->FindFieldByNumber(request_case)
+                                   ->name();
+              }
+              LOG(WARNING) << "Responding " << request_type << "(" << op_id
+                           << "): " << r.status();
             } else {
               VLOG(3) << "Responding " << op_id << ": "
                       << (*r)->ShortDebugString();
@@ -879,26 +885,26 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
     return HandleCopyToStringHostBufferRequest(std::move(request));
   }
 
-  // Determine the size and allocate the host buffer.
-  // TODO(b/282757875): We may need to redo this to account for byte_strides,
-  // padding, and alignment requirements.
-  std::optional<int> element_size = (*array)->dtype().byte_size();
-  if (element_size == std::nullopt) {
-    return Future<Response>(
-        absl::InternalError("Array element size is unknown."));
-  }
-  int64_t host_buffer_size =
-      (*array)->shape().num_elements() * element_size.value();
-  // Use `std::unique_ptr<std::string>` for pointer stability.
-  auto host_buffer = std::make_unique<std::string>();
-  host_buffer->resize(host_buffer_size);
-
   const auto byte_strides = [&]() -> std::optional<std::vector<int64_t>> {
     if (!copy_to_host.has_byte_strides()) {
       return std::nullopt;
     }
     return FromByteStridesProto(copy_to_host.byte_strides());
   }();
+
+  // Use `ArrayMemRegion`'s factory functions to determine the size necessary
+  // for the host buffer.
+  const auto pseudo_mem_region = ArrayMemRegion::FromZerothElementPointer(
+      /*zeroth_element=*/nullptr, (*array)->dtype(), (*array)->shape(),
+      byte_strides);
+  if (!pseudo_mem_region.ok()) {
+    return Future<Response>(pseudo_mem_region.status());
+  }
+
+  // Use `std::unique_ptr<std::string>` for pointer stability.
+  auto host_buffer = std::make_unique<std::string>();
+  host_buffer->resize(pseudo_mem_region->nbytes());
+
   const auto mem_region = ArrayMemRegion::FromMinimalMemRegion(
       absl::string_view(*host_buffer), (*array)->dtype(), (*array)->shape(),
       byte_strides);
@@ -992,7 +998,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
   for (const auto& handle : copy_arrays_request.array_handles()) {
     TF_ASSIGN_OR_RETURN(arrays.emplace_back(), GetArray(handle));
   }
-  std::optional<tsl::RCReference<DeviceList>> devices;
+  std::optional<DeviceListRef> devices;
   if (!copy_arrays_request.device_ids().empty()) {
     BasicDeviceList::Devices ds;
     for (const auto& device_id : copy_arrays_request.device_ids()) {
@@ -1365,7 +1371,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
     execute_options.fill_status = true;
   }
 
-  std::optional<tsl::RCReference<DeviceList>> devices;
+  std::optional<DeviceListRef> devices;
   if (!execute.device_ids().empty()) {
     BasicDeviceList::Devices d;
     d.reserve(execute.device_ids_size());

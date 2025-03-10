@@ -1,5 +1,9 @@
 """Default (OSS) build versions of Python pytype rules."""
 
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
+
 # Placeholder to use until bazel supports pytype_library.
 def pytype_library(name, pytype_deps = [], pytype_srcs = [], **kwargs):
     _ = (pytype_deps, pytype_srcs)  # @unused

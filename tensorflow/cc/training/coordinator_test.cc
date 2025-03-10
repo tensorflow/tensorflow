@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/cc/training/coordinator.h"
 
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <utility>
+
 #include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"

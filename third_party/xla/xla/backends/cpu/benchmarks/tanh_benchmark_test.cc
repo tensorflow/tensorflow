@@ -51,6 +51,27 @@ static void BM_TanhF32(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
 }
 
+static void BM_TanhF16(benchmark::State& state) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule tanh_f16_$d0
+
+    ENTRY e {
+      input = f16[$d0] parameter(0)
+      ROOT output = tanh(input)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto input_shape = ShapeUtil::MakeShape(F16, {d0});
+  auto p0 =
+      *LiteralUtil::CreateRandomLiteral<F16>(input_shape, &engine, 1.0f, 0.1f);
+  std::vector<const Literal*> args = {&p0};
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+}
+
 static void BM_TanhF64(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
@@ -82,6 +103,7 @@ static void BM_TanhF64(benchmark::State& state) {
       ->Arg(4096);
 
 REGISTER_TANH_BENCHMARK(BM_TanhF32);
+REGISTER_TANH_BENCHMARK(BM_TanhF16);
 REGISTER_TANH_BENCHMARK(BM_TanhF64);
 
 }  // namespace xla::cpu

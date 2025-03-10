@@ -1372,6 +1372,16 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                        : std::nullopt;
           },
           &ExecutableBuildOptions::set_device_assignment)
+      .def("compilation_environments_from_serialized_proto",
+           [](ExecutableBuildOptions& options,
+              const nb::bytes& serialized_proto) {
+             xla::CompilationEnvironmentsProto env_proto;
+             env_proto.ParseFromArray(serialized_proto.c_str(),
+                                      serialized_proto.size());
+             auto comp_envs = xla::ValueOrThrow(
+                 xla::CompilationEnvironments::CreateFromProto(env_proto));
+             *options.mutable_comp_envs() = std::move(*comp_envs);
+           })
       .def_prop_rw("exec_time_optimization_effort",
                    &ExecutableBuildOptions::exec_time_optimization_effort,
                    &ExecutableBuildOptions::set_exec_time_optimization_effort)
@@ -1535,6 +1545,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def("is_manual", &xla::HloSharding::IsManual)
       .def("is_unknown", &xla::HloSharding::IsUnknown)
       .def("is_tiled", &xla::HloSharding::IsTiled)
+      .def("is_maximal", &xla::HloSharding::IsTileMaximal)
       .def("tile", [](const xla::HloSharding& self,
                       xla::Shape shape) { return self.TileShape(shape); })
       // tile_assignment.array() is computed using an internal cache,

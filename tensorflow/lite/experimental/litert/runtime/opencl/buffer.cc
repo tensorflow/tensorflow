@@ -28,7 +28,7 @@
 
 namespace litert {
 namespace cl {
-absl::Status CreateClBuffer(cl_context context, int size_in_bytes,
+absl::Status CreateClBuffer(cl_context context, size_t size_in_bytes,
                             bool read_only, void* data, cl_mem* result) {
   cl_mem_flags flags = read_only ? CL_MEM_READ_ONLY : CL_MEM_READ_WRITE;
   if (data) {

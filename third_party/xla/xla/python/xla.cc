@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_program.h"
+#include "xla/python/sdy.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/python/lib/core/numpy.h"  // NOLINT
 
@@ -460,7 +461,7 @@ NB_MODULE(xla_extension, m) {
             }
             ifrt_devices.push_back(py_device->device());
           }
-          tsl::RCReference<ifrt::DeviceList> device_list =
+          ifrt::DeviceListRef device_list =
               client->ifrt_client()->MakeDeviceList(ifrt_devices);
           return xla::ValueOrThrow(
               client->ifrt_client()->GetTopologyForDevices(device_list));
@@ -599,6 +600,7 @@ NB_MODULE(xla_extension, m) {
   jax::BuildPjitSubmodule(m);
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);
+  BuildSdySubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
 #if defined(__linux__)
   aux::RegisterTransferServerTypes(m);

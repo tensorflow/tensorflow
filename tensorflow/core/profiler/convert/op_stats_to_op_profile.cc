@@ -18,14 +18,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
-#include "tensorflow/core/platform/logging.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/convert/op_profile_builder.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 
 namespace tensorflow {

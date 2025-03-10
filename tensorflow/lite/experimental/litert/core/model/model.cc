@@ -15,6 +15,7 @@
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -37,6 +38,7 @@ using ::litert::internal::TflBufferPtr;
 using ::litert::internal::TflOpCode;
 using ::litert::internal::TflOpCodePtr;
 using ::litert::internal::TflOptions;
+using ::litert::internal::TflOptions2;
 
 std::optional<std::string> GetCustomOpCode(const LiteRtModelT& model,
                                            const LiteRtOpT& op) {
@@ -97,6 +99,47 @@ LiteRtSignatureT MakeDefaultSignature(LiteRtSubgraph subgraph) {
   return &sig->get().GetSubgraph();
 }
 
+void LiteRtModelT::TransferSubgraphTo(LiteRtSubgraphT::Alloc& dest,
+                                      std::vector<size_t> indices) {
+  if (indices.empty()) {
+    return;
+  }
+  std::sort(indices.begin(), indices.end());
+  std::vector<int> new_inds(subgraphs_.Size(), 0);
+  auto num_removed = 0;
+  auto i = indices.begin();
+  for (size_t j = 0; j < new_inds.size(); ++j) {
+    if (i != indices.end() && *i == j) {
+      ++num_removed;
+      // Keep track of removed sgs just for dcheck.
+      new_inds[j] = -1;
+      ++i;
+      continue;
+    }
+    new_inds[j] = j - num_removed;
+  }
+
+  ForEachIr(
+      this, [&](LiteRtSubgraph subgraph, int32_t subgraph_index, LiteRtOp op) {
+        if (op->OpCode() != kLiteRtOpCodeShloComposite) {
+          return;
+        }
+        auto opts = detail::TakeTflOptions2(*op);
+        auto& decomp_ind =
+            opts.AsStableHLOCompositeOptions()->decomposition_subgraph_index;
+        const auto new_ind = new_inds[decomp_ind];
+
+        // This op is either in a removed subgraph or refers to a subgraph that
+        // is not being removed.
+        ABSL_DCHECK((subgraph_index == -1) || (new_ind >= 0));
+
+        decomp_ind = new_ind;
+        detail::SetTflOptions2(*op, std::move(opts));
+      });
+
+  subgraphs_.TransferTo(dest, std::move(indices));
+}
+
 namespace detail {
 
 void SetTflOpCodeInd(LiteRtOpT& litert_op, int32_t tfl_op_code_ind) {
@@ -111,8 +154,16 @@ const TflOptions& GetTflOptions(const LiteRtOpT& litert_op) {
   return litert_op.tfl_option_;
 }
 
+const TflOptions2& GetTflOptions2(const LiteRtOpT& litert_op) {
+  return litert_op.tfl_option_2_;
+}
+
 TflOptions&& TakeTflOptions(LiteRtOpT& litert_op) {
   return std::move(litert_op.tfl_option_);
+}
+
+TflOptions2&& TakeTflOptions2(LiteRtOpT& litert_op) {
+  return std::move(litert_op.tfl_option_2_);
 }
 
 const std::vector<TflOpCodePtr>& GetTflOpCodes(

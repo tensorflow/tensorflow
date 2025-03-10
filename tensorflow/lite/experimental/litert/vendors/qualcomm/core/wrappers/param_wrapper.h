@@ -1,5 +1,5 @@
-// Copyright (c) Qualcomm Innovation Center, Inc.
-// All Rights Reserved.
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_WRAPPERS_PARAM_WRAPPER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_WRAPPERS_PARAM_WRAPPER_H_
@@ -7,6 +7,7 @@
 #include <type_traits>
 
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 namespace qnn {
@@ -49,7 +50,7 @@ class ScalarParamWrapper {
       qnn_param_.scalarParam.dataType = QNN_DATATYPE_FLOAT_32;
       qnn_param_.scalarParam.floatValue = data;
     } else {
-      // TODO: error log
+      QNN_LOG_ERROR("Unsupported data type for scalar param.");
     }
   }
 
