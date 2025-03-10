@@ -48,9 +48,10 @@ class NchwConvolutionToNhwcPass
 // * Src dimension numbers: [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
 // * Dst dimension numbers: [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
 class RewriteNchwConvolutionToNhwc
-    : public OpRewritePattern<mlir::stablehlo::ConvolutionOp> {
+    : public OpRewritePattern<
+          mlir::stablehlo::ConvolutionOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<mlir::stablehlo::ConvolutionOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(mlir::stablehlo::ConvolutionOp op) const override {
     // Handles 2D convolutions only.

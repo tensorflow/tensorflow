@@ -47,10 +47,10 @@ class CastBf16OpsToF32Pass
   void runOnOperation() override;
 };
 
-class CastBf16OpsToF32 : public RewritePattern {
+class CastBf16OpsToF32 : public RewritePattern::SplitMatchAndRewrite {
  public:
   explicit CastBf16OpsToF32(MLIRContext* context)
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
+      : SplitMatchAndRewrite(MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
 
  private:
   LogicalResult match(Operation* op) const override {
