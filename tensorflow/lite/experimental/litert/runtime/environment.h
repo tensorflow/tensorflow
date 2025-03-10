@@ -17,6 +17,7 @@
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_command_queue.h"
@@ -50,9 +51,10 @@ class EnvironmentSingleton {
       LiteRtEnvironmentT* environment) {
     if (instance_ == nullptr) {
       instance_ = new EnvironmentSingleton(environment);
+      LITERT_LOG(LITERT_INFO, "Created LiteRT EnvironmentSingleton.");
     } else {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                        "Environment singleton already exists");
+                        "EnvironmentSingleton already exists");
     }
     return instance_;
   }
