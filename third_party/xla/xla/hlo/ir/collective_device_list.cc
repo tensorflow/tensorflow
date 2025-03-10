@@ -81,35 +81,36 @@ IotaReplicaGroupList IotaReplicaGroupList::FromProto(
                        proto.iota_transpose_perm().end()));
 }
 
-void CollectiveDeviceList::MaybeMaterializeFullReplicaGroupList() const {
-  if (replica_groups_ != nullptr && !replica_groups_->empty()) {
-    VLOG(10) << "Replica group list already materialized.";
-    return;
-  }
-  if (!iota_replica_group_list_.has_value()) {
-    VLOG(1) << "Replica group list not materialized because iota replica group "
-               "list is not present.";
-    return;
-  }
-  VLOG(10) << "Materializing full replica group list";
+namespace {
+std::shared_ptr<std::vector<ReplicaGroup>> ExpandIota(
+    const IotaReplicaGroupList& iota) {
+  VLOG(3) << "Expanding iota replica group list: " << iota.ToString();
+  auto result = std::make_shared<std::vector<ReplicaGroup>>();
+  const int64_t num_replica_groups = iota.num_replica_groups();
+  result->reserve(num_replica_groups);
 
-  replica_groups_ = std::make_shared<std::vector<ReplicaGroup>>();
-  const int64_t num_replica_groups =
-      iota_replica_group_list_->num_replica_groups();
-  replica_groups_->reserve(num_replica_groups);
-
-  Array<int64_t> array = iota_replica_group_list_->ToArray();
+  Array<int64_t> array = iota.ToArray();
   // Iota replica group list array must only have 2 dimensions.
   DCHECK_EQ(array.num_dimensions(), 2);
-  const int64_t num_devices_per_group =
-      iota_replica_group_list_->num_devices_per_group();
+  const int64_t num_devices_per_group = iota.num_devices_per_group();
   DCHECK_EQ(array.end() - array.begin(),
             num_devices_per_group * num_replica_groups);
   for (auto it = array.begin(); it != array.end();
        it += num_devices_per_group) {
-    auto& group = replica_groups_->emplace_back();
+    auto& group = result->emplace_back();
     *group.mutable_replica_ids() = {it, it + num_devices_per_group};
   }
+  return result;
+}
+}  // namespace
+
+const std::vector<ReplicaGroup>& CollectiveDeviceList::replica_groups() const {
+  if (replica_groups_ == nullptr) {
+    CHECK(iota_replica_group_list_.has_value());
+    replica_groups_ = ExpandIota(iota_replica_group_list_.value());
+    CHECK(replica_groups_ != nullptr);
+  }
+  return *replica_groups_;
 }
 
 std::string CollectiveDeviceList::ToString(

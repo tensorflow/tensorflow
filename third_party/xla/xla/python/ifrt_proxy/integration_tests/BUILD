@@ -27,6 +27,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:test_util",
         "//xla/python/ifrt_proxy/client:grpc_client",
         "//xla/python/ifrt_proxy/client:registry",
@@ -54,6 +55,8 @@ ifrt_proxy_cc_test(
 ifrt_proxy_cc_test(
     name = "array_impl_test_tfrt_cpu",
     srcs = ["array_impl_test_tfrt_cpu.cc"],
+    # TODO(b/396205547): Remove `linkstatic = False`.
+    linkstatic = False,
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",
         "//xla/python/ifrt:array_impl_test_lib",
@@ -79,6 +82,8 @@ ifrt_proxy_cc_test(
     name = "remap_impl_test_tfrt_cpu",
     size = "small",
     srcs = ["remap_impl_test_tfrt_cpu.cc"],
+    # TODO(b/396205547): Remove `linkstatic = False`.
+    linkstatic = False,
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
         "//xla/python/ifrt:remap_impl_test_lib",
@@ -97,6 +102,7 @@ ifrt_proxy_cc_test(
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:mock",
         "//xla/python/ifrt_proxy/client",
         "//xla/python/ifrt_proxy/client:grpc_client",

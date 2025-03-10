@@ -66,7 +66,7 @@ xla_cc_test(
         "@XNNPACK",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/synchronization",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@pthreadpool",
     ],

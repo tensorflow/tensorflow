@@ -80,7 +80,7 @@ body {
   input_tuple = (f32[], s32[]) parameter(0)
   param_0 = f32[] get-tuple-element(input_tuple), index=0
   cond = s32[] get-tuple-element(input_tuple), index=1
-  all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config="{\"is_sync\":false}"
+  all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config={"collective_backend_config": {"is_sync": false}}
   one = s32[] constant(1)
   all-reduce-done = f32[] all-reduce-done(all-reduce-start)
   cond_plus_1 = s32[] add(cond, one)
@@ -503,7 +503,7 @@ body {
  input_tuple = (f32[], s32[]) parameter(0)
  param_0 = f32[] get-tuple-element(input_tuple), index=0
  cond = s32[] get-tuple-element(input_tuple), index=1
- all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config="{\"is_sync\":false}"
+ all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config={"collective_backend_config": {"is_sync": false}}
  one = s32[] constant(1)
  all-reduce-done = f32[] all-reduce-done(all-reduce-start)
  cond_plus_1 = s32[] add(cond, one)
@@ -572,7 +572,7 @@ body {
  input_tuple = (f32[], s32[]) parameter(0)
  param_0 = f32[] get-tuple-element(input_tuple), index=0
  cond = s32[] get-tuple-element(input_tuple), index=1
- all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config="{\"is_sync\":false}"
+ all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config={"collective_backend_config": {"is_sync": false}}
  one = s32[] constant(1)
  all-reduce-done = f32[] all-reduce-done(all-reduce-start)
  cond_plus_1 = s32[] add(cond, one)

@@ -767,18 +767,6 @@ class PjRtClient {
   CreateBuffersForAsyncHostToDevice(
       absl::Span<const ShapeSpec> shape_specs,
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-      PjRtDevice* device) {
-    return absl::UnimplementedError(absl::StrCat(
-        "CreateBuffersForAsyncHostToDevice with ShapeSpec and Layout is "
-        "not implemented on platform: ",
-        platform_name()));
-  }
-
-  // Variant of CreateBuffersForAsyncHostToDevice with PjRtMemorySpace.
-  virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(
-      absl::Span<const ShapeSpec> shape_specs,
-      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) {
     return absl::UnimplementedError(absl::StrCat(
         "CreateBuffersForAsyncHostToDevice with ShapeSpec and Layout is "
@@ -790,18 +778,16 @@ class PjRtClient {
   // shapes 'shapes'.
   virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) {
-    return Unimplemented(
-        "CreateBuffersForAsyncHostToDevice with on host is not implemented.");
-  }
-
-  // Variant of CreateBuffersForAsyncHostToDevice with PjRtMemorySpace.
-  virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtMemorySpace* memory_space) {
-    return Unimplemented(
-        "CreateBuffersForAsyncHostToDevice with PjRtMemorySpace is not "
-        "implemented.");
+    absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
+    shape_specs.reserve(shapes.size());
+    for (const auto& shape : shapes) {
+      shape_specs.emplace_back(ShapeSpec{
+          shape.element_type(), DimensionVector(shape.dimensions().begin(),
+                                                shape.dimensions().end())});
+    }
+    return CreateBuffersForAsyncHostToDevice(
+        shape_specs, /*device_layouts=*/std::nullopt, memory_space);
   }
 
   // Describes the semantics the caller to BufferFromHostBuffer expects from the
@@ -937,43 +923,6 @@ class PjRtClient {
     return Unimplemented("MakeCrossHostReceiveBuffers is not implemented.");
   }
 
-  // Asynchronously makes a vector of PjRtBuffers that can be used to receive
-  // cross host transfers, as in MakeCrossHostReceiveBuffers above, however
-  // each buffer expects to be "gathered" using multiple sends, one for each of
-  // a set of sub-slices of the destination buffer.
-  //
-  // For each value in shapes there is a corresponding FullGatherDetails struct
-  // that describes the sub-slices.
-  struct GatherDetails {
-    // The dimensions of the corresponding buffer that the gather slices
-    // into. These dimensions must be the major dimensions in the on-device
-    // layout of the buffer, and must all be untiled. The scatter acts as if
-    // the buffer were transposed/reshaped so that all of these dimensions were
-    // combined into a single dimension whose size is the product of the
-    // dimensions, and the slice indices correspond to indices in that single
-    // combined dimension.
-    //
-    // For example, if the shape is [3, 4, 128, 128] with [3, 4] as the major
-    // dimensions in the layout, and dimensions = {0, 1}, then the buffer is
-    // treated as if it were shape [12, 128, 128] and the indices in
-    // slice_boundaries range in [0, 12].
-    absl::InlinedVector<int, 3> dimensions;
-    // The cumulative indices in dimension of the slices. For example, if
-    // shape.dimensions(dimension)==10, setting slice_boundaries to {2, 5, 10}
-    // would correspond to 3 slices of sizes {2, 3, 5} respectively. If the last
-    // entry in slice_boundaries is less than the size of the combined gather
-    // dimension, the trailing data in the buffer is undefined after the receive
-    // completes.
-    std::vector<int64_t> slice_boundaries;
-  };
-  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffersForGather(
-      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) {
-    return Unimplemented(
-        "MakeCrossHostReceiveBuffersForGather is not implemented.");
-  }
-
   // TODO(zhangqiaorjc): Experimental API to be removed.
   // Defragment device memory.
   virtual absl::Status Defragment() {
@@ -994,7 +943,8 @@ class PjRtClient {
                          platform_name());
   }
 
-  // Experimental: Unmaps memory for fast transfers.
+  // Experimental: Unmaps memory for fast transfers. Caller is responsible to
+  // ensure that all data transfers are complete before calling DmaUnmap.
   virtual absl::Status DmaUnmap(void* data) {
     return Unimplemented("DmaUnmap not supported on platform %s",
                          platform_name());
@@ -1283,32 +1233,6 @@ class PjRtBuffer {
       std::function<void(absl::Status status, bool sends_were_enqueued)>;
   virtual void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
                                   RemoteSendCallback on_done) = 0;
-  struct ScatterDetails {
-    // The dimensions of the corresponding buffer that the scatter slices
-    // across. These dimensions must be the major dimensions in the on-device
-    // layout of the buffer, and must all be untiled. The scatter acts as if
-    // the buffer were transposed/reshaped so that all of these dimensions were
-    // combined into a single dimension whose size is the product of the
-    // dimensions, and the slice indices correspond to indices in that single
-    // combined dimension.
-    //
-    // For example, if the shape is [3, 4, 128, 128] with [3, 4] as the major
-    // dimensions in the layout, and dimensions = {0, 1}, then the buffer is
-    // treated as if it were shape [12, 128, 128] and the indices in slices
-    // range in [0, 12].
-    absl::InlinedVector<int, 3> dimensions;
-    // The start and end indices of the slices.
-    std::vector<std::pair<int64_t, int64_t>> slices;
-  };
-  // Each entry in `callbacks` will be called exactly once. As above, in error
-  // situations, this may happen before the corresponding entry in
-  // `serialaized_descriptors` is fulfilled. This method requires that both
-  // `calbacks.size()` and (if Ok) `serialized_descriptors.size()` match the
-  // product of the major dimensions specified in `scatter_details`.
-  virtual void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) = 0;
 
   // Donates 'this' and returns a new buffer that is ready only when both 'this'
   // and 'dependency' are ready.
@@ -1496,15 +1420,6 @@ class PjRtLoadedExecutable : public PjRtExecutable {
 
   // True if on-device resources associated with the executable are freed.
   virtual bool IsDeleted() = 0;
-
-  // True if the `returned_futures` output parameter is supported in the
-  // Execute*() methods.
-  //
-  // TODO(b/240696624): Although the PjRt interface require `returned_futures`
-  // to be resized correctly if it is not nullopt, some implementation does not
-  // implement this. So we have to check whether returned_futures is empty.
-  // Remove this method once the implementation is fixed.
-  virtual bool IsReturnedFutureSupported() const { return false; }
 
  protected:
   // Value returned internally from routines that enqueue an execution,

@@ -25,6 +25,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -36,6 +39,7 @@ limitations under the License.
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/tools/run_hlo_module.h"
+#include "xla/tools/run_hlo_module.pb.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"

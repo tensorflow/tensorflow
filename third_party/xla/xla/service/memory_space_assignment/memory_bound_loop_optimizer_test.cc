@@ -277,7 +277,8 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
     optimizer_options.set_allow_unsatisfied_fully_pipelined_prefetch(false);
     optimizer_options.set_min_num_iterations(3.0);
     options_.memory_bound_loop_optimizer_options = optimizer_options;
-    cost_analysis_options_.alternate_mem_bandwidth_bytes_per_second = 128;
+    cost_analysis_options_.alternate_mem_read_bandwidth_bytes_per_second = 128;
+    cost_analysis_options_.alternate_mem_write_bandwidth_bytes_per_second = 128;
     cost_analysis_options_.default_mem_bandwidth_bytes_per_second = 32;
     cost_analysis_options_.pipeline_overhead_window_size_mib = 1;
     options.set_flops_per_second(16);

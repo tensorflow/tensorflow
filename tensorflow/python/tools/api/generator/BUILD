@@ -21,7 +21,6 @@ exports_files(
 py_strict_library(
     name = "create_python_api",
     srcs = ["create_python_api.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":doc_srcs",
@@ -33,7 +32,6 @@ py_strict_library(
 py_strict_library(
     name = "doc_srcs",
     srcs = ["doc_srcs.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/util:tf_export",
@@ -43,8 +41,6 @@ py_strict_library(
 py_strict_test(
     name = "create_python_api_test",
     srcs = ["create_python_api_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":create_python_api",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -62,8 +58,6 @@ py_strict_test(
         "--api_name=tensorflow",
     ] + KERAS_API_INIT_FILES + KERAS_API_INIT_FILES_V1 + TENSORFLOW_API_INIT_FILES + TENSORFLOW_API_INIT_FILES_V1,
     main = "doc_srcs_test.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":doc_srcs",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -82,8 +76,6 @@ py_strict_test(
         "api_init_files.bzl",
         "api_init_files_v1.bzl",
     ],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_pip",
     ],

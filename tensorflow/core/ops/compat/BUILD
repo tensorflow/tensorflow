@@ -51,6 +51,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/public:release_version",
     ],
 )
 
@@ -62,5 +63,6 @@ tf_cc_binary(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/public:release_version",
     ],
 )

@@ -92,6 +92,16 @@ auto* mlir_v1_compat_graph_conversion_count = monitoring::Counter<1>::New(
     "optimization pass",
     /* metric field */ "status");
 
+auto* mlir_v1_compat_graph_conversion_failure_model_name_count =
+    monitoring::Counter<1>::New(
+        /* metric name */
+        "/tensorflow/core/"
+        "mlir_v1_compat_graph_conversion_failure_model_name_count",
+        /* metric description */
+        "Track failure model name of Graph to MLIR conversions in MLIR V1 "
+        "compat optimization pass",
+        /* metric field */ "model_name");
+
 // The status metric field is used to record success/failure of mlir
 // function/graph optimization passes.
 constexpr char kSuccess[] = "kSuccess";
@@ -438,6 +448,9 @@ absl::Status MlirV1CompatGraphOptimizationPass::Run(
   // session runtime.
   import_config.restrict_functionalization_to_compiled_nodes = true;
 
+  std::string model_name =
+      options.session_options->config.experimental().session_metadata().name();
+
   auto module_ref_status = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
       **options.graph, debug_info, *options.flib_def, import_config, &context,
       /*tf_name_to_mlir_name*/ nullptr, options.session_options->config,
@@ -445,6 +458,13 @@ absl::Status MlirV1CompatGraphOptimizationPass::Run(
   mlir_v1_compat_graph_conversion_count
       ->GetCell(absl::StatusCodeToString(module_ref_status.status().code()))
       ->IncrementBy(1);
+
+  if (!module_ref_status.ok()) {
+    mlir_v1_compat_graph_conversion_failure_model_name_count
+        ->GetCell(model_name)
+        ->IncrementBy(1);
+  }
+
   if (!module_ref_status.ok()) {
     if (pass_state == MlirOptimizationPassState::Enabled) {
       return module_ref_status.status();

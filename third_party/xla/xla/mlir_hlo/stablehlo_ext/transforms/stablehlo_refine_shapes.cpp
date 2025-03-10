@@ -30,6 +30,7 @@ limitations under the License.
 #include "stablehlo/dialect/TypeInference.h"
 #include "stablehlo/transforms/Passes.h"
 #include "stablehlo/transforms/StablehloRefineShapes.h"
+#include "stablehlo/transforms/optimization/Passes.h"
 #include "stablehlo_ext/IR/base.h"
 #include "stablehlo_ext/IR/stablehlo_ops.h"
 #include "stablehlo_ext/transforms/passes.h"  // NOLINT: Used in passes.h.inc

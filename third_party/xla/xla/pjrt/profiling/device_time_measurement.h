@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/pjrt/pjrt_compiler.h"
 
 namespace xla {
 
@@ -78,6 +79,19 @@ std::optional<uint64_t> GetDeviceTimeMeasurementKey();
 void RecordDeviceTimeMeasurement(
     uint64_t key, absl::Duration elapsed,
     xla::DeviceTimeMeasurement::DeviceType device_type);
+
+// Helper function to convert PjRtPlatformId to
+// DeviceTimeMeasurement::DeviceType.
+inline DeviceTimeMeasurement::DeviceType GetDeviceType(
+    PjRtPlatformId platform_id) {
+  if (platform_id == CudaId() || platform_id == RocmId() ||
+      platform_id == SyclId()) {
+    return DeviceTimeMeasurement::DeviceType::kGpu;
+  } else if (platform_id == TpuId()) {
+    return DeviceTimeMeasurement::DeviceType::kTpu;
+  }
+  return DeviceTimeMeasurement::DeviceType::kUnknown;
+}
 
 }  // namespace xla
 #endif  // XLA_PJRT_PROFILING_DEVICE_TIME_MEASUREMENT_H_

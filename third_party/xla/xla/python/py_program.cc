@@ -21,7 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/custom_call_program.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
@@ -73,12 +76,17 @@ absl::StatusOr<tsl::RCReference<ifrt::DeviceList>> GetDeviceList(
     return nb::cast<const jax::PyDeviceList*>(devices)->ifrt_device_list();
   } else {
     auto py_devices = nb::cast<std::vector<nb_class_ptr<PyDevice>>>(devices);
-    ifrt::BasicDeviceList::Devices ifrt_devices;
+    if (py_devices.empty()) {
+      return absl::InvalidArgumentError(
+          "Colocated Python program requires at least one device");
+    }
+    absl::InlinedVector<ifrt::Device*, 1> ifrt_devices;
     ifrt_devices.reserve(py_devices.size());
     for (const nb_class_ptr<PyDevice>& py_device : py_devices) {
       ifrt_devices.push_back(py_device->device());
     }
-    return ifrt::BasicDeviceList::Create(std::move(ifrt_devices));
+    return py_devices.front()->client()->ifrt_client()->MakeDeviceList(
+        ifrt_devices);
   }
 }
 

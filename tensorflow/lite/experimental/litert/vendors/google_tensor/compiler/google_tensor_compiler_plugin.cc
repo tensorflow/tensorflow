@@ -176,7 +176,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
       continue;
     }
 
-    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get(), 0));
   }
 
   return kLiteRtStatusOk;
@@ -185,8 +185,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
 namespace {
 
 absl::string_view convert_to_tfl(LiteRtSubgraph subgraph) {
-  // // TODO(abhirs): implement this
-  // 1. Convert the subgraph to a flatbuffer
+  // TODO(abhirs): implement this
   // LiteRtModelT model;
   // model.EmplaceSubgraph(subgraph);
   // auto serialized = litert::internal::SerializeModel(std::move(model));
@@ -194,8 +193,8 @@ absl::string_view convert_to_tfl(LiteRtSubgraph subgraph) {
   //   return "";
   // }
   // absl::string_view buffer(reinterpret_cast<const char*>(serialized->Data()),
-  //                         serialized->Size());
-  absl::string_view buffer("");
+  //                          serialized->Size());
+  absl::string_view buffer = "";
   return buffer;
 }
 
@@ -207,7 +206,7 @@ LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
   // 1. Convert the subgraph to a flatbuffer
   absl::string_view buffer = convert_to_tfl(subgraph);
   if (buffer.empty()) {
-    return kLiteRtStatusErrorIndexOOB;
+    return kLiteRtStatusErrorRuntimeFailure;
   }
   // 2. compile the flatbuffer using compiler_api_wrapper
   // 3. Get the bytecode from the compiled executable

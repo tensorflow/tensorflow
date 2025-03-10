@@ -115,7 +115,9 @@ class GpuOptProvider : public CompiledOptProvider {
     return GetRegisteredPassNamesHelper(pass_registry_);
   }
 
-  // Register only GPU specific passes here.
+  //////////////////////////////////////////////////////////////////////////////
+  // Registration of GPU-specific HLO Passes                                  //
+  //////////////////////////////////////////////////////////////////////////////
   void RegisterProviderPasses(HloModule& module) override {
     auto device_description = GetDeviceDescription(&module);
     se::GpuComputeCapability gpu_compute_capability;
@@ -186,8 +188,7 @@ class GpuOptProvider : public CompiledOptProvider {
         xla::gpu::CompileModuleResults results,
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
-            gpu_compiler->GetDataLayout(), platform->Name(), platform->id(),
-            device_description,
+            gpu_compiler->GetDataLayout(), platform, device_description,
             gpu_compiler->GetCanShareBuffer(device_description),
             gpu_compiler->BufferSizeBytesFunction()));
     return llvm_ir::DumpToString(results.llvm_module.get());

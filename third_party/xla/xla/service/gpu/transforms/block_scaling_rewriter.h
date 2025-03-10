@@ -84,6 +84,7 @@ class BlockScalingRewriter : public OpExpanderPass {
 
   // Common block size constants.
   static constexpr int kBlockSizeMXFP8 = 32;
+  static constexpr int kBlockSizeNVFP4 = 16;
 
  private:
   bool allow_cudnn_;

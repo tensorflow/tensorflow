@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -179,7 +180,8 @@ absl::Status RemapPlan::Validate() const {
   }
 
   const int num_outputs = output_specs.size();
-  std::vector<BasicDeviceList::Devices> out_assigned_devices_list(num_outputs);
+  std::vector<absl::InlinedVector<Device*, 1>> out_assigned_devices_list(
+      num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     out_assigned_devices_list[i].resize(
         /*n=*/output_specs[i].sharding->devices()->size(),
@@ -235,7 +237,7 @@ absl::Status RemapPlan::Validate() const {
     std::vector<bool>& in_used_buffers = in_used_buffers_list[mapping.in_array];
     absl::Span<Device* const> in_devices =
         input_specs[mapping.in_array].sharding->devices()->devices();
-    BasicDeviceList::Devices& out_assigned_devices =
+    absl::InlinedVector<Device*, 1>& out_assigned_devices =
         out_assigned_devices_list[mapping.out_array];
     const int64_t in_shards_count = in_used_buffers.size();
     const int64_t out_shards_count = out_assigned_devices.size();
@@ -287,29 +289,32 @@ absl::Status RemapPlan::Validate() const {
         output_specs[i].sharding->devices()->devices()) {
       return InvalidArgument(
           "Output array %d devices and sharding devices do not match: "
-          "Expected %v, but got %v",
+          "Expected %v, but got [%s]",
           i, *output_specs[i].sharding->devices(),
-          *BasicDeviceList::Create(std::move(out_assigned_devices_list[i])));
+          absl::StrJoin(out_assigned_devices_list[i], ", ",
+                        [](std::string* s, Device* d) {
+                          absl::StrAppend(s, d->ToString());
+                        }));
     }
   }
   return absl::OkStatus();
 }
 
-absl::StatusOr<RemapPlan> RemapPlan::FromProto(
-    DeviceList::LookupDeviceFunc lookup_device, const RemapPlanProto& proto) {
+absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
+                                               const RemapPlanProto& proto) {
   RemapPlan plan;
 
   plan.input_specs.reserve(proto.input_specs_size());
   for (const auto& input_spec_proto : proto.input_specs()) {
     TF_ASSIGN_OR_RETURN(ArraySpec input_spec,
-                        ArraySpec::FromProto(lookup_device, input_spec_proto));
+                        ArraySpec::FromProto(client, input_spec_proto));
     plan.input_specs.push_back(std::move(input_spec));
   }
 
   plan.output_specs.reserve(proto.output_specs_size());
   for (const auto& output_spec_proto : proto.output_specs()) {
     TF_ASSIGN_OR_RETURN(ArraySpec output_spec,
-                        ArraySpec::FromProto(lookup_device, output_spec_proto));
+                        ArraySpec::FromProto(client, output_spec_proto));
     plan.output_specs.push_back(std::move(output_spec));
   }
 

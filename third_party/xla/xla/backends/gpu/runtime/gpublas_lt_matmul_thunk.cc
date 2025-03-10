@@ -136,7 +136,7 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
     aux = allocs.GetDeviceAddress(aux_buffer_);
   }
 
-  std::optional<se::DeviceMemoryBase> workspace;
+  se::DeviceMemoryBase workspace;
   if (workspace_buffer_.has_value()) {
     workspace = allocs.GetDeviceAddress(workspace_buffer_.value());
   }
@@ -167,7 +167,7 @@ auto CublasLtMatmulThunk::GetCachedMatmulPlan(
     int64_t num_algorithms = algorithm_idx_ == se::blas::kDefaultAlgorithm ?
                           1 : 128;
     TF_ASSIGN_OR_RETURN(auto algorithms,
-       plan->GetAlgorithms(num_algorithms, max_workspace));
+       plan->GetAlgorithms(params.stream, num_algorithms, max_workspace));
 
     TF_RETURN_IF_ERROR(plan->SetAlgorithm(algorithms[algorithm_idx_]));
     return std::move(plan);

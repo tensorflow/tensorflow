@@ -59,7 +59,8 @@ struct CostAnalysisOptions {
   // the default memory, in MiB.
   float pipeline_overhead_window_size_mib = 0;
 
-  double alternate_mem_bandwidth_bytes_per_second = 0.0f;
+  double alternate_mem_read_bandwidth_bytes_per_second = 0.0f;
+  double alternate_mem_write_bandwidth_bytes_per_second = 0.0f;
 
   double default_mem_bandwidth_bytes_per_second = 0.0f;
 

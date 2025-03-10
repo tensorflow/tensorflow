@@ -252,7 +252,7 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
           for t in threads:
             mtt_captured_control_deps.update(t.captured_control_deps)
 
-          # Control is transfered from _MirroredReplicaThread (MRT) to the main
+          # Control is transferred from _MirroredReplicaThread (MRT) to the main
           # thread, i.e., here, to perform `merge_fn`, and thus we preserve the
           # name scope,  control dependencies, etc. from MRT at the time
           # `merge_call` is made.
@@ -444,7 +444,7 @@ class _MirroredReplicaContext(distribute_lib.ReplicaContext):
       fn: a function that is called in cross replica context with grouped
         arguments from each replica. `fn` should returns grouped values.
       args: positional arguments to `fn`.
-      kwargs: keyward arguments to `fn`.
+      kwargs: keyword arguments to `fn`.
 
     Returns:
       Return value of `fn` for the current replica.
@@ -453,7 +453,6 @@ class _MirroredReplicaContext(distribute_lib.ReplicaContext):
       RuntimeError: when merge_call happens in a different graph, e.g. in a
         different tf.function, which is not supported now.
       _RequestedStop: when stop is requested.
-
     """
     t = threading.current_thread()
     assert isinstance(t, _MirroredReplicaThread)

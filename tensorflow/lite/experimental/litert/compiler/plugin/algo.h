@@ -26,7 +26,7 @@ namespace litert::internal {
 // all "ops" belong to the same Subgraph. The ops in the input
 // and output will always be the same.
 std::vector<std::vector<LiteRtOp>> GroupPartitions(
-    const std::vector<LiteRtOp>& ops);
+    const std::vector<LiteRtOpWithPartitionIndex>& ops);
 
 // Outlines "partition" from "root" into the empty subgraph "slice". Assumes
 // the partition is a valid sub-DAG, and replaces it with a single

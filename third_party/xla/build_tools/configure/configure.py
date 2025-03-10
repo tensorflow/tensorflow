@@ -139,6 +139,29 @@ def _get_clang_major_version(path_to_clang: str) -> int:
   return major_version
 
 
+def _get_gcc_major_version(path_to_gcc: str) -> int:
+  """Gets the major version of the gcc at `path_to_gcc`.
+
+  Args:
+    path_to_gcc: Path to a gcc executable
+
+  Returns:
+    The major version.
+  """
+  logging.info("Running echo __GNUC__ | %s -E -P -", path_to_gcc)
+  gcc_version_proc = subprocess.run(
+      [path_to_gcc, "-E", "-P", "-"],
+      input="__GNUC__",
+      check=True,
+      capture_output=True,
+      text=True,
+  )
+  major_version = int(gcc_version_proc.stdout)
+  logging.info("%s reports major version %s.", path_to_gcc, major_version)
+
+  return major_version
+
+
 class ArgparseableEnum(enum.Enum):
   """Enum base class with helper methods for working with argparse.
 
@@ -212,6 +235,7 @@ class DiscoverablePathsAndVersions:
   clang_path: Optional[str] = None
   clang_major_version: Optional[int] = None
   gcc_path: Optional[str] = None
+  gcc_major_version: Optional[int] = None
   lld_path: Optional[str] = None
   ld_library_path: Optional[str] = None
 
@@ -246,6 +270,9 @@ class DiscoverablePathsAndVersions:
       self.lld_path = self.lld_path or shutil.which("ld.lld")
     elif config.host_compiler == HostCompiler.GCC:
       self.gcc_path = _find_executable_or_die("gcc", self.gcc_path)
+      self.gcc_major_version = self.gcc_major_version or _get_gcc_major_version(
+          self.gcc_path
+      )
 
     if config.backend == Backend.CUDA:
       if config.cuda_compiler == CudaCompiler.CLANG:
@@ -388,6 +415,18 @@ class XLAConfigOptions:
     if dpav.clang_major_version in (16, 17, 18):
       self.compiler_options.append("-Wno-gnu-offsetof-extensions")
 
+    # Avoid XNNPACK using `-mavxvnniint8` (needs clang-16+/gcc-13+)
+    if (
+        dpav.clang_major_version is not None and dpav.clang_major_version < 16
+    ) or (dpav.gcc_major_version is not None and dpav.gcc_major_version < 13):
+      rc.append("build --define=xnn_enable_avxvnniint8=false")
+
+    # Avoid XNNPACK using `-mavx512fp16` (needs clang-14+/gcc-12+).
+    if (
+        dpav.clang_major_version is not None and dpav.clang_major_version < 14
+    ) or (dpav.gcc_major_version is not None and dpav.gcc_major_version < 12):
+      rc.append("build --define=xnn_enable_avx512fp16=false")
+
     rc.append(f"build --action_env PYTHON_BIN_PATH={self.python_bin_path}")
     rc.append(f"build --python_path {self.python_bin_path}")
     rc.append("test --test_env LD_LIBRARY_PATH")
@@ -410,6 +449,7 @@ class XLAConfigOptions:
 
 def _parse_args():
   """Creates an argparse.ArgumentParser and parses arguments."""
+  # pylint: disable=C3001
   comma_separated_list = lambda l: [s.strip() for s in l.split(",")]
 
   parser = argparse.ArgumentParser(allow_abbrev=False)

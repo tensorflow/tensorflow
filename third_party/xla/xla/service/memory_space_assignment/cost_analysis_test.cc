@@ -42,7 +42,8 @@ class MemorySpaceAssignmentCostAnalysisTest : public HloTestBase {
   absl::Status Initialize(const HloModule* module,
                           float pipeline_overhead_window_size_mib = 0.0) {
     HloCostAnalysis::Options options;
-    options_.alternate_mem_bandwidth_bytes_per_second = 128;
+    options_.alternate_mem_read_bandwidth_bytes_per_second = 128;
+    options_.alternate_mem_write_bandwidth_bytes_per_second = 128;
     options_.default_mem_bandwidth_bytes_per_second = 32;
     options_.pipeline_overhead_window_size_mib =
         pipeline_overhead_window_size_mib;

@@ -349,7 +349,9 @@ enum StatType {
   kDeviceDurationPs,
   kScopeRangeId,
   kCoreDetails,
-  kLastStatType = kCoreDetails,
+  kAllReduceId,
+  kAllReduceUniqueId,
+  kLastStatType = kAllReduceUniqueId,
 };
 
 enum MegaScaleStatType : uint8_t {

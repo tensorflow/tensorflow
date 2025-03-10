@@ -52,9 +52,9 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -76,54 +76,6 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 
 namespace xla {
-
-class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
- public:
-  explicit PjRtStreamExecutorDeviceDescription(int id, std::string device_kind,
-                                               int process_index = 0)
-      : id_(id),
-        process_index_(process_index),
-        device_kind_(std::move(device_kind)) {}
-
-  int id() const override { return id_; }
-
-  int process_index() const override { return process_index_; }
-
-  absl::string_view device_kind() const override { return device_kind_; }
-
-  absl::string_view ToString() const override { return to_string_; }
-
-  absl::string_view DebugString() const override { return debug_string_; }
-
-  absl::Span<int const> coords() const { return absl::MakeSpan(coords_); }
-
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
-  void SetAttributes(
-      absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes) {
-    attributes_ = std::move(attributes);
-  }
-
-  void SetDebugString(std::string debug_string) {
-    debug_string_ = std::move(debug_string);
-  }
-
-  void SetToString(std::string to_string) { to_string_ = std::move(to_string); }
-
-  void SetCoords(std::array<int, 1> coords) { coords_ = coords; }
-
- private:
-  const int id_;
-  const int process_index_;
-  const std::string device_kind_;
-  std::string debug_string_ = "<unknown SE device>";
-  std::string to_string_ = "<unknown SE device>";
-  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
-  std::array<int, 1> coords_;
-};
 
 class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
@@ -345,18 +297,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
 
-  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) override {
-    return Unimplemented("Async transfer to buffers not implemented");
-  };
-
-  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtMemorySpace* memory_space) override {
-    return Unimplemented("Async transfer to buffers not implemented");
-  };
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
@@ -372,15 +312,18 @@ class PjRtStreamExecutorClient : public PjRtClient {
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffersForGather(
-      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override;
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
+
+  // Caller is responsible to ensure that `data` has allocated enough memory
+  // for `buffer_size` to do DMA mapping.
+  absl::Status DmaMap(void* data, size_t buffer_size) override;
+
+  absl::Status DmaUnmap(void* data) override;
+
+  bool IsDmaMapped(const void* data_start, int64_t transfer_size);
 
   // TODO(zhangqiaorjc): Experimental. Will be removed.
   absl::Status Defragment() override {
@@ -414,8 +357,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   virtual absl::Status EnqueueCrossHostReceive(
       absl::Span<const std::unique_ptr<PjRtBuffer>> buffers,
       std::shared_ptr<BufferSequencingEvent> definition_event,
-      PjRtCrossHostRecvNotifier notifier,
-      std::optional<std::vector<GatherDetails>> gather_details) const {
+      PjRtCrossHostRecvNotifier notifier) const {
     return Unimplemented("Cross host receives not implemented.");
   }
 
@@ -424,16 +366,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
       PjRtBuffer::RemoteSendCallback on_done) const {
     on_done(Unimplemented("Cross host sends not implemented."),
             /*sends_were_enqueued=*/false);
-  }
-
-  virtual void CopyToRemoteDeviceScattered(
-      PjRtBuffer* buffer, std::vector<std::string> serialized_descriptors,
-      std::vector<PjRtBuffer::RemoteSendCallback> callbacks,
-      const PjRtBuffer::ScatterDetails& scatter_details) const {
-    for (const auto& cb : callbacks) {
-      cb(Unimplemented("Scattered cross host sends not implemented."),
-         /*sends_were_enqueued=*/false);
-    }
   }
 
   virtual PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer,
@@ -505,6 +437,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   absl::Mutex transpose_mu_;
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
+
+  absl::Mutex dma_maps_mutex_;
+  // Maps dma mapped start pointers to their sizes.
+  absl::flat_hash_map<void*, size_t> dma_maps_ ABSL_GUARDED_BY(dma_maps_mutex_);
 };
 
 // Converts a 2D set of Device objects indexed by [replica][partition] into an
@@ -633,7 +569,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     // Confirms that the buffer was successfully donated to an execution.
     // Only valid for holds of type kDonation. Causes the buffer to become
     // invalid.
-    void ConfirmDonation();
+    // TODO(parkers): Only allow safe releases.
+    void ConfirmDonation(bool unsafe_release);
 
     // Adds the held device buffers in order to 'iterator'. Used to add the
     // buffers to an ExecutionInput. We require but do not verify that
@@ -767,11 +704,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override;
 
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) override;
-
   PjRtFuture<> GetReadyFuture() override;
 
   bool IsOnCpu() const override;
@@ -831,7 +763,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   // Drops a donation hold and makes *this invalid for further use. Does a
   // sanity check that buffer==device_buffer_. Called after device_buffer_ was
   // successfully donated to an execution.
-  void ConfirmDonation(TrackedDeviceBuffer* device_buffer);
+  void ConfirmDonation(TrackedDeviceBuffer* device_buffer, bool unsafe_release);
 
   // Drops a hold without taking any other action. Does a sanity check that
   // buffer==device_buffer_ or device_buffer_==nullptr.
@@ -977,8 +909,6 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return client_->SerializeExecutable(*this);
   }
-
-  bool IsReturnedFutureSupported() const override { return true; }
 
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;

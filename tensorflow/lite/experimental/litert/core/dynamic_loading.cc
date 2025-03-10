@@ -33,6 +33,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -87,46 +88,62 @@ LiteRtStatus CloseLib(void* lib_handle) {
   return kLiteRtStatusOk;
 }
 
-namespace {
-
-static constexpr absl::string_view kCompilerPluginLibPatternFmt =
-    "%sCompilerPlugin";
-
 static constexpr absl::string_view kSo = ".so";
 
 LiteRtStatus FindLiteRtSharedLibsHelper(const std::string& search_path,
+                                        const std::string& lib_pattern,
+                                        bool full_match,
                                         std::vector<std::string>& results) {
   if (!Exists(search_path)) {
     return kLiteRtStatusErrorInvalidArgument;
   }
 
-  const std::string compiler_plugin_lib_pattern =
-      absl::StrFormat(kCompilerPluginLibPatternFmt, kLiteRtSharedLibPrefix);
   // TODO implement path glob in core/filesystem.h and remove filesystem
-  // incldue from this file.
+  // include from this file.
   for (const auto& entry : std::filesystem::directory_iterator(search_path)) {
     const auto& path = entry.path();
     if (entry.is_regular_file()) {
-      const auto stem = path.stem().string();
-      const auto ext = path.extension().string();
-      if (stem.find(compiler_plugin_lib_pattern) == 0 && kSo == ext) {
-        LITERT_LOG(LITERT_VERBOSE, "Found shared library: %s", path.c_str());
-        results.push_back(path);
+      if (full_match) {
+        if (path.string().find(lib_pattern) != -1) {
+          LITERT_LOG(LITERT_VERBOSE, "Found shared library: %s", path.c_str());
+          results.push_back(path);
+        }
+      } else {
+        const auto stem = path.stem().string();
+        const auto ext = path.extension().string();
+        if (stem.find(lib_pattern) == 0 && kSo == ext) {
+          LITERT_LOG(LITERT_VERBOSE, "Found shared library: %s", path.c_str());
+          results.push_back(path);
+        }
       }
     } else if (entry.is_directory()) {
-      FindLiteRtSharedLibsHelper(path, results);
+      FindLiteRtSharedLibsHelper(path, lib_pattern, full_match, results);
     }
   }
 
   return kLiteRtStatusOk;
 }
 
-}  // namespace
+static const char kCompilerPluginLibPatternFmt[] = "CompilerPlugin";
 
-LiteRtStatus FindLiteRtSharedLibs(absl::string_view search_path,
-                                  std::vector<std::string>& results) {
+LiteRtStatus FindLiteRtCompilerPluginSharedLibs(
+    absl::string_view search_path, std::vector<std::string>& results) {
+  std::string root(search_path);
+  const std::string lib_pattern =
+      absl::StrCat(kLiteRtSharedLibPrefix, kCompilerPluginLibPatternFmt);
+  return FindLiteRtSharedLibsHelper(root, lib_pattern, /*full_match=*/false,
+                                    results);
+}
+
+static const char kDispatchLibPatternFmt[] = "Dispatch";
+
+LiteRtStatus FindLiteRtDispatchSharedLibs(absl::string_view search_path,
+                                          std::vector<std::string>& results) {
   std::string root(search_path.data());
-  return FindLiteRtSharedLibsHelper(root, results);
+  const std::string lib_pattern =
+      absl::StrCat(kLiteRtSharedLibPrefix, kDispatchLibPatternFmt);
+  return FindLiteRtSharedLibsHelper(root, lib_pattern, /*full_match=*/false,
+                                    results);
 }
 
 void DLLInfo(void* lib_handle, std::ostream& out) {

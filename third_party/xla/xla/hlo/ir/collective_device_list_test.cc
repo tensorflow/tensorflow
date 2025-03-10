@@ -38,16 +38,51 @@ CollectiveDeviceListProto CreateDeviceListProto(
 }
 
 TEST(CollectiveDeviceListTest, DefaultListToString) {
-  EXPECT_EQ(CollectiveDeviceList().ToString(), "{}");
+  EXPECT_EQ(CollectiveDeviceList().ToString(true), "{}");
+  EXPECT_EQ(CollectiveDeviceList().ToString(false), "{}");
+
+  ReplicaGroup empty_group;
+  std::vector<ReplicaGroup> empty_groups;
+  empty_groups.push_back(empty_group);
+  empty_groups.push_back(empty_group);
+  EXPECT_EQ(CollectiveDeviceList(empty_groups).ToString(), "{{},{}}");
+
+  std::vector<std::vector<int64_t>> empty_groups2;
+  EXPECT_EQ(CollectiveDeviceList(empty_groups2).ToString(), "{}");
+
+  EXPECT_EQ(CollectiveDeviceList({{1}}).ToString(), "{{1}}");
   EXPECT_EQ(CollectiveDeviceList({{1, 2}, {3, 4}}).ToString(), "{{1,2},{3,4}}");
   EXPECT_EQ(CollectiveDeviceList({{1, 2, 3, 4, 5, 6, 7}}).ToString(),
             "{{1,2,3,4,5,6,7}}");
 }
 
 TEST(CollectiveDeviceListTest, DeepCopy) {
-  CollectiveDeviceList orig({{1, 2, 3, 4, 5, 6, 7}});
+  CollectiveDeviceList orig({{1, 2, 3, 4}});
   CollectiveDeviceList copy = orig;
   EXPECT_EQ(&orig.replica_groups(), &copy.replica_groups());
+  EXPECT_EQ(orig.ToString(), copy.ToString());
+}
+
+TEST(CollectiveDeviceListTest, DeepCopyIotaBeforeExpansion) {
+  CollectiveDeviceList orig(IotaReplicaGroupList(2, 4));
+  CollectiveDeviceList copy = orig;
+
+  EXPECT_NE(&orig.iota_replica_group_list().value(),
+            &copy.iota_replica_group_list().value());
+  EXPECT_NE(&orig.replica_groups(), &copy.replica_groups());
+  EXPECT_EQ(orig.ToString(), copy.ToString());
+}
+
+TEST(CollectiveDeviceListTest, DeepCopyIotaAfterExpansion) {
+  CollectiveDeviceList orig(IotaReplicaGroupList(2, 4));
+  const std::vector<ReplicaGroup>& local_ref = orig.replica_groups();
+  CollectiveDeviceList copy = orig;
+
+  EXPECT_NE(&orig.iota_replica_group_list().value(),
+            &copy.iota_replica_group_list().value());
+  EXPECT_EQ(&orig.replica_groups(), &copy.replica_groups());
+  EXPECT_EQ(&local_ref, &copy.replica_groups());
+  EXPECT_EQ(orig.ToString(), copy.ToString());
 }
 
 TEST(CollectiveDeviceListTest, DefaultListToProto) {
@@ -95,27 +130,24 @@ TEST(CollectiveDeviceListTest, DefaultListFromProto2) {
   EXPECT_FALSE(list.iota_replica_group_list().has_value());
 }
 
-TEST(CollectiveDeviceListTest, IotaListToString) {
-  CollectiveDeviceList list(IotaReplicaGroupList(2, 10));
-  EXPECT_EQ(list.ToString(), "[2,10]<=[20]");
+TEST(CollectiveDeviceListTest, IotaToString) {
+  EXPECT_EQ(CollectiveDeviceList(IotaReplicaGroupList(0, 0)).ToString(),
+            "[0,0]<=[0]");
+  EXPECT_EQ(CollectiveDeviceList(IotaReplicaGroupList(2, 10)).ToString(),
+            "[2,10]<=[20]");
 }
 
-TEST(CollectiveDeviceListTest,
-     IotaListToStringWithPrintingFullReplicaGroupList) {
+TEST(CollectiveDeviceListTest, IotaToReplicaGroupString) {
   CollectiveDeviceList list(IotaReplicaGroupList(2, 10));
-  EXPECT_EQ(list.ToString(/*print_full_replica_group_list=*/true),
+  EXPECT_EQ(list.ToString(false), "[2,10]<=[20]");
+  EXPECT_EQ(list.ToString(true),
             "{{0,1,2,3,4,5,6,7,8,9},{10,11,12,13,14,15,16,17,18,19}}");
 }
 
 TEST(CollectiveDeviceListTest, IotaListToString2) {
   CollectiveDeviceList list(IotaReplicaGroupList(2, 10, {4, 5}, {1, 0}));
-  EXPECT_EQ(list.ToString(), "[2,10]<=[4,5]T(1,0)");
-}
-
-TEST(CollectiveDeviceListTest,
-     IotaListToStringWithPrintingFullReplicaGroupList2) {
-  CollectiveDeviceList list(IotaReplicaGroupList(2, 10, {4, 5}, {1, 0}));
-  EXPECT_EQ(list.ToString(/*print_full_replica_group_list=*/true),
+  EXPECT_EQ(list.ToString(false), "[2,10]<=[4,5]T(1,0)");
+  EXPECT_EQ(list.ToString(true),
             "{{0,5,10,15,1,6,11,16,2,7},{12,17,3,8,13,18,4,9,14,19}}");
 }
 

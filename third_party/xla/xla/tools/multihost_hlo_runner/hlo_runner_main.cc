@@ -32,14 +32,13 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -235,6 +234,7 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   QCHECK_LT(opts.gpu_client_mem_fraction, 1.0);
 
   PjRtEnvironment env;
+  std::unique_ptr<GPURunnerProfiler> gpu_runner_profiler;
   if (opts.device_type_str == "gpu") {
     xla::GpuClientOptions gpu_options;
     gpu_options.node_id = opts.task_id;
@@ -248,10 +248,10 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     // Create a GPURunnerProfiler to profile GPU executions to save xspace data
     // to disk.
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      TF_ASSIGN_OR_RETURN(auto profiler,
+      TF_ASSIGN_OR_RETURN(gpu_runner_profiler,
                           GPURunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
                                                     /*keep_xspace=*/false));
-      running_options.profiler = profiler.get();
+      running_options.profiler = gpu_runner_profiler.get();
     }
   } else if (opts.device_type_str == "host") {
     TF_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());

@@ -67,12 +67,12 @@ absl::StatusOr<bool> GpuReduceScatterCombiner::Run(
     return ReduceScatterCombiner::Run(module, execution_threads);
   }
 
-  bool changed = false;
-  int original_combiner_threshold = combine_threshold_in_bytes_;
-
+  // Combiner threshold is not specified. We use heuristics.
   // We sequentially combine synchronous collectives then pipelined collectives
   // and finally the rest. Note that collectives can be both synchronous and
   // pipelined. Hence, we combine them in two steps.
+
+  bool changed = false;
 
   // Combine as much as possible for synchronous collectives.
   absl::flat_hash_set<HloInstruction*> sync_collectives;
@@ -105,9 +105,9 @@ absl::StatusOr<bool> GpuReduceScatterCombiner::Run(
     changed |= combined;
   }
 
-  // Use previous combiner thresholds after we combine pipelined collectives.
+  // Use default combiner thresholds after we combine pipelined collectives.
   // The rest is combined by the parent pass code.
-  combine_threshold_in_bytes_ = original_combiner_threshold;
+  combine_threshold_in_bytes_ = default_combine_threshold_in_bytes_;
   TF_ASSIGN_OR_RETURN(bool combined_rest,
                       ReduceScatterCombiner::Run(module, execution_threads));
   changed |= combined_rest;

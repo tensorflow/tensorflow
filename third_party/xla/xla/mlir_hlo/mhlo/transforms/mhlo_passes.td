@@ -191,13 +191,16 @@ def CollapseElementwiseMapPass
 
 def HloLegalizeToStablehloPass : Pass<"hlo-legalize-to-stablehlo", "ModuleOp"> {
   let summary = "Legalize HLO to StableHLO.";
-  let constructor = "createHloLegalizeToStablehloPass()";
   let dependentDialects = ["stablehlo::StablehloDialect"];
   let options = [
     Option<"allow_experimental_features_", "allow-experimental-features",
            "bool", /*default=*/"false",
            "Allow legalization of experimental MHLO features via StableHLO "
-           "custom_call">
+           "custom_call">,
+    Option<"allow_xla_features_", "allow-xla-features", "bool",
+           /*default=*/"false",
+           "Allow XLA's MHLO ops not in StableHLO to remain present after "
+           "legalization (copy, add_dependency, fusion, etc.)">
   ];
 }
 

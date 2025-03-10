@@ -238,7 +238,7 @@ inline bool CanUseCustomTransposedConv(
 // Algorithm that works for all types of 2D convolutions. Even though it works
 // for transposed convolutions, the custom algorithm should be used whenever
 // applicable, because it is faster.
-template <typename EigenDevice, typename ScalarType>
+template <bool is_grouped, typename EigenDevice, typename ScalarType>
 void EigenGenericConv2D(
     const EigenDevice& device, ScalarType* out, ScalarType* lhs,
     ScalarType* rhs, Eigen::Index input_batch, Eigen::Index input_x,
@@ -252,6 +252,12 @@ void EigenGenericConv2D(
     Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
     tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
     bool use_thunk_runtime) {
+  // For non-grouped convolutions, we can optimize Eigen expressions and avoid
+  // introducing an extra dimension of size `1`.
+  if constexpr (!is_grouped) {
+    DCHECK_EQ(feature_group_count, 1) << "Expected feature group count to be 1";
+  }
+
   const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
                          Eigen::Aligned>
       input(lhs, input_batch, input_x, input_y, input_channels);
@@ -296,14 +302,22 @@ void EigenGenericConv2D(
   post_contract_dims[2] = output_y;
   post_contract_dims[3] = kernel_filters / feature_group_count;
 
-  Eigen::DSizes<Eigen::Index, 3> kernel_dims;
+  // Kernel dimensions for non-grouped convolution.
+  Eigen::DSizes<Eigen::Index, 2> kernel_dims;
   kernel_dims[0] = kernel_channels * kernel_y * kernel_x;
-  kernel_dims[1] = feature_group_count;
-  kernel_dims[2] = kernel_filters / feature_group_count;
+  kernel_dims[1] = kernel_filters;
+
+  // Kernel dimensions for grouped convolution.
+  Eigen::DSizes<Eigen::Index, 3> kernel_reshaped_dims;
+  kernel_reshaped_dims[0] = kernel_channels * kernel_y * kernel_x;
+  kernel_reshaped_dims[1] = feature_group_count;
+  kernel_reshaped_dims[2] = kernel_filters / feature_group_count;
+
+  // IMPORTANT: Below in `convolve_group` and `convolve` lambdas, the row and
+  // column dimensions must be flipped when passed to Eigen.
 
   // Constructs convolution and output expressions for a given group index.
   auto convolve_group = [=](int64_t i) {
-    // The row and column dimensions must be flipped when passed to Eigen.
     auto convolved =
         input.reshape(input_reshaped_dims)
             .chip(i, 3)
@@ -313,10 +327,26 @@ void EigenGenericConv2D(
                 padding_y_before, padding_y_after, padding_x_before,
                 padding_x_after, static_cast<ScalarType>(0.0f))
             .reshape(pre_contract_dims)
-            .contract(kernel.reshape(kernel_dims).chip(i, 1), contract_dims)
+            .contract(kernel.reshape(kernel_reshaped_dims).chip(i, 1),
+                      contract_dims)
             .reshape(post_contract_dims);
     auto output_reshaped = output.reshape(output_reshaped_dims).chip(i, 3);
     return std::make_pair(output_reshaped, convolved);
+  };
+
+  // Constructs convolution and output expressions for full input.
+  auto convolve = [=] {
+    auto convolved =
+        input
+            .extract_image_patches(
+                kernel_y, kernel_x, y_stride, x_stride, rhs_y_dilation,
+                rhs_x_dilation, lhs_y_dilation, lhs_x_dilation,
+                padding_y_before, padding_y_after, padding_x_before,
+                padding_x_after, static_cast<ScalarType>(0.0f))
+            .reshape(pre_contract_dims)
+            .contract(kernel.reshape(kernel_dims), contract_dims)
+            .reshape(post_contract_dims);
+    return std::make_pair(output, convolved);
   };
 
   // Use concurrent execution if we have a thread pool device.
@@ -330,6 +360,22 @@ void EigenGenericConv2D(
     CHECK_EQ(use_thread_pool, static_cast<bool>(count_down));  // Crash OK
   }
 
+  // For non-grouped convolutions, we need to execute only one Eigen expression.
+  if constexpr (!is_grouped) {
+    auto [output, convolved] = convolve();
+
+    if (count_down) {
+      auto on_done = [count_down]() mutable { count_down.CountDown(); };
+      output.device(device, std::move(on_done)) = convolved;
+    } else {
+      output.device(device) = convolved;
+    }
+
+    return;
+  }
+
+  // For grouped convolutions, we need to execute multiple Eigen expressions and
+  // we might use thread pool to run them concurrently.
   if constexpr (use_thread_pool) {
     // Although we schedule at most one tasks for each thread, individual
     // convolution might also schedule more tasks into the same thread pool.
@@ -338,15 +384,16 @@ void EigenGenericConv2D(
     auto num_tasks = Eigen::numext::div_ceil(feature_group_count, task_size);
 
     if (use_thunk_runtime) {
-      ScheduleAll(&device, num_tasks, [=, &device](Eigen::Index task_index) {
-        Eigen::Index start = task_index * task_size;
-        Eigen::Index end = std::min(start + task_size, feature_group_count);
-        for (Eigen::Index i = start; i < end; ++i) {
-          auto on_done = [count_down]() mutable { count_down.CountDown(); };
-          auto [output, convolved] = convolve_group(i);
-          output.device(device, std::move(on_done)) = convolved;
-        }
-      });
+      ScheduleAll(
+          &device, num_tasks, [=, &device](Eigen::Index task_index) mutable {
+            Eigen::Index start = task_index * task_size;
+            Eigen::Index end = std::min(start + task_size, feature_group_count);
+            for (Eigen::Index i = start; i < end; ++i) {
+              auto on_done = [count_down]() mutable { count_down.CountDown(); };
+              auto [output, convolved] = convolve_group(i);
+              output.device(device, std::move(on_done)) = convolved;
+            }
+          });
     } else {
       Eigen::Barrier barrier(num_tasks);
       ScheduleAll(
@@ -402,15 +449,26 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
                               lhs_y_dilation, count_down, use_thunk_runtime)) {
       return;
     }
-    // Transposed convolution failed, fallback to generic implementation.
   }
-  EigenGenericConv2D(device, out, lhs, rhs, input_batch, input_x, input_y,
-                     input_channels, kernel_x, kernel_y, kernel_channels,
-                     kernel_filters, output_x, output_y, x_stride, y_stride,
-                     padding_x_before, padding_x_after, padding_y_before,
-                     padding_y_after, lhs_x_dilation, lhs_y_dilation,
-                     rhs_x_dilation, rhs_y_dilation, feature_group_count,
-                     std::move(count_down), use_thunk_runtime);
+
+  if (feature_group_count == 1) {
+    EigenGenericConv2D</*is_grouped=*/false>(
+        device, out, lhs, rhs, input_batch, input_x, input_y, input_channels,
+        kernel_x, kernel_y, kernel_channels, kernel_filters, output_x, output_y,
+        x_stride, y_stride, padding_x_before, padding_x_after, padding_y_before,
+        padding_y_after, lhs_x_dilation, lhs_y_dilation, rhs_x_dilation,
+        rhs_y_dilation, feature_group_count, std::move(count_down),
+        use_thunk_runtime);
+
+  } else {
+    EigenGenericConv2D</*is_grouped=*/true>(
+        device, out, lhs, rhs, input_batch, input_x, input_y, input_channels,
+        kernel_x, kernel_y, kernel_channels, kernel_filters, output_x, output_y,
+        x_stride, y_stride, padding_x_before, padding_x_after, padding_y_before,
+        padding_y_after, lhs_x_dilation, lhs_y_dilation, rhs_x_dilation,
+        rhs_y_dilation, feature_group_count, std::move(count_down),
+        use_thunk_runtime);
+  }
 }
 
 template <typename EigenDevice, typename ScalarType>

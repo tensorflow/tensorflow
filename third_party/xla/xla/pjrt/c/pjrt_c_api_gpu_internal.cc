@@ -85,6 +85,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
           {"visible_devices", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List},
           {"node_id", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
           {"num_nodes", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {"should_stage_host_to_device_transfers",
+           PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
       });
@@ -141,6 +143,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   if (auto it = create_options.find("num_nodes"); it != create_options.end()) {
     num_nodes = std::get<int64_t>(it->second);
   }
+  bool should_stage_host_to_device_transfers = true;
+  if (auto it = create_options.find("should_stage_host_to_device_transfers");
+      it != create_options.end()) {
+    should_stage_host_to_device_transfers = std::get<bool>(it->second);
+  }
   bool enable_mock_nccl = false;
   if (auto it = create_options.find("enable_mock_nccl");
       it != create_options.end()) {
@@ -161,6 +168,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.kv_store = pjrt::ToCppKeyValueStore(
       args->kv_get_callback, args->kv_get_user_arg, args->kv_try_get_callback,
       args->kv_try_get_user_arg, args->kv_put_callback, args->kv_put_user_arg);
+  options.should_stage_host_to_device_transfers =
+      should_stage_host_to_device_transfers;
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,

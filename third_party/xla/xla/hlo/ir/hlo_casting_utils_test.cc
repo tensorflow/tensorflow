@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -55,28 +56,6 @@ TEST(HloCastingUtilsTest, CastDeath) {
   EXPECT_DEATH(Cast<HloCollectivePermuteInstruction>(cp.get()), ".*nullptr.*");
 }
 
-TEST(HloCastingUtilsTest, CastOrNull) {
-  std::unique_ptr<HloInstruction> cp = CreateCP();
-  HloCollectivePermuteInstruction* casted =
-      CastOrNull<HloCollectivePermuteInstruction>(cp.get());
-  EXPECT_NE(casted, nullptr);
-
-  std::unique_ptr<const HloInstruction> const_cp = CreateCP();
-  const HloCollectivePermuteInstruction* const_casted =
-      CastOrNull<const HloCollectivePermuteInstruction>(const_cp.get());
-  EXPECT_NE(const_casted, nullptr);
-
-  cp.reset();
-  HloCollectivePermuteInstruction* casted2 =
-      CastOrNull<HloCollectivePermuteInstruction>(cp.get());
-  EXPECT_EQ(casted2, nullptr);
-}
-
-TEST(HloCastingUtilsTest, CastOrNullDeath) {
-  // wrong type
-  EXPECT_DEATH(Cast<HloAllReduceInstruction>(CreateCP().get()), ".*ClassOf.*");
-}
-
 TEST(HloCastingUtilsTest, DynCast) {
   std::unique_ptr<HloInstruction> cp = CreateCP();
   HloCollectivePermuteInstruction* casted =
@@ -97,18 +76,6 @@ TEST(HloCastingUtilsTest, DynCastDeath) {
   cp.reset();
   EXPECT_DEATH(DynCast<HloCollectivePermuteInstruction>(cp.get()),
                ".*nullptr.*");
-}
-
-TEST(HloCastingUtilsTest, DynCastOrNull) {
-  std::unique_ptr<HloInstruction> cp = CreateCP();
-  HloCollectivePermuteInstruction* casted =
-      DynCastOrNull<HloCollectivePermuteInstruction>(cp.get());
-  EXPECT_NE(casted, nullptr);
-
-  EXPECT_EQ(DynCastOrNull<HloAllReduceInstruction>(CreateCP().get()), nullptr);
-
-  cp.reset();
-  EXPECT_EQ(DynCastOrNull<HloCollectivePermuteInstruction>(cp.get()), nullptr);
 }
 
 void BM_Cast(benchmark::State& state) {

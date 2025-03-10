@@ -152,11 +152,11 @@ class MergePaddingWithAddOperation : public NodeTransformation {
     ElementwiseAttributes add_attr =
         absl::any_cast<ElementwiseAttributes>(add_node->operation.attributes);
     const bool is_add_hwc =
-        absl::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(add_attr.param);
+        std::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(add_attr.param);
     const bool is_add_linear =
-        absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+        std::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
             add_attr.param);
-    const bool is_add_scalar = absl::holds_alternative<float>(add_attr.param);
+    const bool is_add_scalar = std::holds_alternative<float>(add_attr.param);
     if (is_add_hwc || is_add_linear || is_add_scalar) {
       return {TransformStatus::SKIPPED,
               "Cannot remove padding when ADD has constant argument."};

@@ -16,8 +16,9 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ACCELERATOR_REGISTRATION_H_
 
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,13 +68,16 @@ LiteRtStatus LiteRtSetAcceleratorGetHardwareSupport(
         LiteRtAccelerator accelerator,
         LiteRtHwAcceleratorSet* supported_hardware));
 
-// Set the function used to apply the accelerator to the compiled model.
-//
-// This is called by LiteRtCreateCompiledModel.
-LiteRtStatus LiteRtSetApplyToModel(
+// Set the function used to return a Delegate to apply the accelerator by the
+// compiled model and its destructor. The returned Delegate object is owned by
+// the compiled model. Used void** for the Delegate instead of
+// TfLiteOpaqueDelegate** to avoid TFLite dependency.
+LiteRtStatus LiteRtSetDelegateFunction(
     LiteRtAccelerator accelerator,
-    LiteRtStatus (*ApplyToModel)(LiteRtAccelerator accelerator,
-                                 LiteRtCompiledModel compiled_model));
+    LiteRtStatus (*CreateDelegate)(LiteRtAccelerator accelerator,
+                                   LiteRtAcceleratorCompilationOptions options,
+                                   void** delegate),
+    void (*DestroyDelegate)(void* delegate));
 
 #ifdef __cplusplus
 }  // extern "C"

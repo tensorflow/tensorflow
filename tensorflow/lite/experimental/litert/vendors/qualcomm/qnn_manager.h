@@ -87,6 +87,7 @@ class QnnManager {
 
   static absl::Span<const QnnBackend_Config_t*> DefaultBackendConfigs();
   static absl::Span<const QnnContext_Config_t*> DefaultContextConfigs();
+  static absl::Span<const QnnContext_Config_t*> WeightSharingContextConfigs();
 
   // Get resolved function pointers for qnn sdk calls. Nullptr if functions
   // have not been resolved yet.

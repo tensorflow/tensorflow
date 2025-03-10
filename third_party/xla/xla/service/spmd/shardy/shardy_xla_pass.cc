@@ -173,9 +173,6 @@ Shape getFlattenedShape(const Shape& shape) {
       shape, [&](const Shape& subShape, const ShapeIndex& index) {
         flattenedShapes.push_back(subShape);
       });
-  if (flattenedShapes.empty()) {
-    return Shape();
-  }
   return ShapeUtil::MakeMaybeTupleShape(flattenedShapes);
 }
 

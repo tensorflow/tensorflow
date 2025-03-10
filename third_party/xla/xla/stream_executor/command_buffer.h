@@ -292,6 +292,15 @@ class CommandBuffer {
     return Case(kDefaultExecutionScope, index, branches);
   }
 
+  virtual absl::Status Case(ExecutionScopeId execution_scope_id,
+                            DeviceMemory<bool> index,
+                            std::vector<Builder> branches) = 0;
+
+  // Adds a conditional Case operation to default execution scope.
+  absl::Status Case(DeviceMemory<bool> index, std::vector<Builder> branches) {
+    return Case(kDefaultExecutionScope, index, branches);
+  }
+
   // Adds a conditional operation that will execute a command buffer constructed
   // by the `body_builder` exactly `num_iteration` times. This means the
   // condition is known at compile time (`num_iteration` < `loop_counter`), and

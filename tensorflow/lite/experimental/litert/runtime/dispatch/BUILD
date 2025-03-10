@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//tensorflow/lite/experimental/litert/build_common:special_rule.bzl", "gles_linkopts")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -36,7 +38,8 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
-        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/core:dynamic_loading",
     ],
 )
 
@@ -67,12 +70,12 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_any",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
-        "//tensorflow/lite/experimental/litert/cc:litert_event",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/core:build_stamp",
         "//tensorflow/lite/experimental/litert/core:dispatch_op_schema",
+        "//tensorflow/lite/experimental/litert/core:dynamic_loading",
         "//tensorflow/lite/experimental/litert/core:environment",
         "//tensorflow/lite/experimental/litert/runtime:external_litert_buffer_context",
         "//tensorflow/lite/experimental/litert/runtime:tfl_utils",
@@ -92,7 +95,7 @@ cc_test(
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
-    }),
+    }) + gles_linkopts(),
     deps = [
         ":dispatch_delegate",
         "@com_google_googletest//:gtest_main",
@@ -108,15 +111,18 @@ cc_test(
         "//tensorflow/lite/experimental/litert/c:litert_compiled_model_options",
         "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_compiled_model",
         "//tensorflow/lite/experimental/litert/cc:litert_environment",
         "//tensorflow/lite/experimental/litert/cc:litert_event",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/core/model:model_buffer",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/runtime:external_litert_buffer_context",
         "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:matchers",
         "//tensorflow/lite/experimental/litert/test:simple_model_npu",
         "//tensorflow/lite/kernels:builtin_ops",
     ],

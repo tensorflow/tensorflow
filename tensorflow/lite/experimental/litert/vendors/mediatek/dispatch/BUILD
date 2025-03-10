@@ -37,7 +37,7 @@ litert_dynamic_lib(
     }),
     linkstatic = 1,
     shared_lib_name = "dispatch_api_so",
-    so_name = "libLiteRtDispatch.so",
+    so_name = "libLiteRtDispatch_Mediatek.so",
     tags = [
         # Remove when sdk is available to bazel.
         "nobuilder",
@@ -63,6 +63,13 @@ litert_dynamic_lib(
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
         "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
     ],
+)
+
+# This is cc_library target for `libLiteRtDispatch_Mediatek.so`.
+cc_library(
+    name = "dispatch_api_shared_lib",
+    srcs = [":dispatch_api_so"],
+    linkstatic = 1,
 )
 
 cc_test(

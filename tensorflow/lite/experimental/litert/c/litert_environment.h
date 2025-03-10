@@ -23,8 +23,8 @@ extern "C" {
 #endif  // __cplusplus
 
 typedef enum {
-  kLiteRtEnvOptionTagCompilerPluginLibraryPath = 0,
-  kLiteRtEnvOptionTagDispatchLibraryPath = 1,
+  kLiteRtEnvOptionTagCompilerPluginLibraryDir = 0,
+  kLiteRtEnvOptionTagDispatchLibraryDir = 1,
   kLiteRtEnvOptionTagOpenClDeviceId = 2,
   kLiteRtEnvOptionTagOpenClPlatformId = 3,
   kLiteRtEnvOptionTagOpenClContext = 4,

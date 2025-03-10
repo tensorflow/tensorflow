@@ -88,6 +88,29 @@ inline constexpr absl::string_view kUncompilableFusion =
 
 inline constexpr absl::string_view kTopKCustomCallTarget = "__gpu$TopK";
 
+// The name of the custom fusion config for dynamic slice fusion with static
+// slices, such that the offset can be computed at compile time.
+inline constexpr absl::string_view
+    kDynamicSliceFusionWithStaticAddressComputationConfigName =
+        "address_computation";
+// The name of the custom fusion config for dynamic slice fusion with dynamic
+// slices, such that the offset is computed at runtime.
+inline constexpr absl::string_view
+    kDynamicSliceFusionWithDynamicAddressComputationConfigName =
+        "dynamic_address_computation";
+
+// Returns the name of the custom fusion config if the given instruction is a
+// custom fusion and has a custom fusion name, otherwise returns std::nullopt.
+// The custom fusion name is basically the value of
+// instr.backend_config().fusion_backend_config().custom_fusion_config().name().
+// If any of this does not exist in the chain, then we return std::nullopt.
+std::optional<std::string> GetCustomFusionConfigName(
+    const HloInstruction* instr);
+
+// Returns true if the given instruction is a custom fusion for dynamic slice
+// fusion. This is determined by checking the name of custom fusion config.
+bool IsDynamicSliceFusion(const HloInstruction* instr);
+
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
 // This returns true if `hlo` is a CustomCall HLO with a call target equal to

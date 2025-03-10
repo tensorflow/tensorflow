@@ -275,6 +275,7 @@ class HloParserImpl : public HloParser {
   ParseConvolutionDimensionNumbersOnly();
   absl::StatusOr<PaddingConfig> ParsePaddingConfigOnly();
   absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly();
+  absl::StatusOr<CollectiveDeviceList> ParseCollectiveDeviceListOnly();
 
  private:
   // Types of attributes.
@@ -1472,18 +1473,37 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   }
   if (metadata) {
     instruction->set_metadata(*metadata);
+    if (instruction->IsAsynchronous()) {
+      instruction->async_wrapped_instruction()->set_metadata(*metadata);
+    }
   }
   if (original_value) {
     instruction->set_original_value(*original_value);
+    if (instruction->IsAsynchronous()) {
+      instruction->async_wrapped_instruction()->set_original_value(
+          *original_value);
+    }
   }
   if (backend_config) {
-    instruction->set_raw_backend_config_string(std::move(*backend_config));
+    instruction->set_raw_backend_config_string(*backend_config);
+    if (instruction->IsAsynchronous()) {
+      instruction->async_wrapped_instruction()->set_raw_backend_config_string(
+          *backend_config);
+    }
   }
   if (frontend_attributes) {
     instruction->set_frontend_attributes(*frontend_attributes);
+    if (instruction->IsAsynchronous()) {
+      instruction->async_wrapped_instruction()->set_frontend_attributes(
+          *frontend_attributes);
+    }
   }
   if (statistics_viz) {
     instruction->set_statistics_viz(*statistics_viz);
+    if (instruction->IsAsynchronous()) {
+      instruction->async_wrapped_instruction()->set_statistics_viz(
+          *statistics_viz);
+    }
   }
 
   return AddInstruction(name, instruction, name_loc);
@@ -7143,6 +7163,20 @@ HloParserImpl::ParseReplicaGroupsOnly() {
   return replica_groups;
 }
 
+absl::StatusOr<CollectiveDeviceList>
+HloParserImpl::ParseCollectiveDeviceListOnly() {
+  lexer_.Lex();
+  CollectiveDeviceList collective_device_list;
+  if (!ParseCollectiveDeviceList(&collective_device_list)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument(
+        "Syntax error:\nExtra content after collective device list");
+  }
+  return collective_device_list;
+}
+
 absl::StatusOr<Window> HloParserImpl::ParseWindowOnly() {
   lexer_.Lex();
   Window window;
@@ -7281,6 +7315,12 @@ absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
     absl::string_view str) {
   HloParserImpl parser(str);
   return parser.ParseReplicaGroupsOnly();
+}
+
+absl::StatusOr<CollectiveDeviceList> ParseCollectiveDeviceListOnly(
+    absl::string_view str) {
+  HloParserImpl parser(str);
+  return parser.ParseCollectiveDeviceListOnly();
 }
 
 absl::StatusOr<Window> ParseWindow(absl::string_view str) {

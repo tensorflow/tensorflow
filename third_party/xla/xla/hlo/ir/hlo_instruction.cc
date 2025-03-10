@@ -4308,6 +4308,10 @@ HloInstructionProto HloInstruction::ToProto() const {
     *proto.mutable_original_value() = OriginalValueToProto(*original_value_);
   }
 
+  if (has_result_accuracy()) {
+    *proto.mutable_result_accuracy() = result_accuracy();
+  }
+
   return proto;
 }
 

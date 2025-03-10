@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/core/accelerator.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 namespace {
 using testing::StrEq;
@@ -54,30 +55,28 @@ struct DummyAccleratorCompilationOptions {
 class LiteRtAcceleratorOptionsTest : public testing::Test {
  public:
   void SetUp() override {
-    ASSERT_EQ(DummyAccleratorCompilationOptions::Create(&options_),
-              kLiteRtStatusOk);
+    LITERT_ASSERT_OK(DummyAccleratorCompilationOptions::Create(&options_));
   }
 
   void TearDown() override {
-    EXPECT_EQ(LiteRtDestroyAcceleratorCompilationOptions(options_),
-              kLiteRtStatusOk);
+    LITERT_EXPECT_OK(LiteRtDestroyAcceleratorCompilationOptions(options_));
+    options_ = nullptr;
   }
 
-  LiteRtAcceleratorCompilationOptions options_;
+  LiteRtAcceleratorCompilationOptions options_ = nullptr;
 };
 
 TEST_F(LiteRtAcceleratorOptionsTest, CreateAndDestroyDoesntLeak) {}
 
 TEST_F(LiteRtAcceleratorOptionsTest, GetIdentifier) {
   const char* identifier = nullptr;
-  EXPECT_EQ(
-      LiteRtGetAcceleratorCompilationOptionsIdentifier(options_, &identifier),
-      kLiteRtStatusOk);
+  LITERT_EXPECT_OK(
+      LiteRtGetAcceleratorCompilationOptionsIdentifier(options_, &identifier));
   EXPECT_THAT(identifier,
               StrEq(DummyAccleratorCompilationOptions::kIdentifier));
-  EXPECT_EQ(
+  EXPECT_THAT(
       LiteRtGetAcceleratorCompilationOptionsIdentifier(nullptr, &identifier),
-      kLiteRtStatusErrorInvalidArgument);
+      testing::litert::IsError(kLiteRtStatusErrorInvalidArgument));
   EXPECT_EQ(LiteRtGetAcceleratorCompilationOptionsIdentifier(options_, nullptr),
             kLiteRtStatusErrorInvalidArgument);
 }
@@ -103,10 +102,10 @@ TEST_F(LiteRtAcceleratorOptionsTest, CreatingAndDestroyingAListWorks) {
             kLiteRtStatusOk);
 
   EXPECT_EQ(
-      LiteRtAppendAcceleratorCompilationOptions(options_, appended_options1),
+      LiteRtAppendAcceleratorCompilationOptions(&options_, appended_options1),
       kLiteRtStatusOk);
   EXPECT_EQ(
-      LiteRtAppendAcceleratorCompilationOptions(options_, appended_options2),
+      LiteRtAppendAcceleratorCompilationOptions(&options_, appended_options2),
       kLiteRtStatusOk);
 
   // Iterate through the list to check that the links have been correctly added.

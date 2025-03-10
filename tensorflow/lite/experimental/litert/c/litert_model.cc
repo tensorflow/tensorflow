@@ -130,11 +130,12 @@ LiteRtStatus LiteRtGetModelSignature(LiteRtModel model,
 
 void LiteRtDestroyModel(LiteRtModel model) { delete model; }
 
-LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op) {
+LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op,
+                          LiteRtParamIndex index) {
   if (!op_list || !op) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  op_list->Push(op);
+  op_list->Push(op, index);
   return kLiteRtStatusOk;
 }
 

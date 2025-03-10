@@ -98,6 +98,7 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":math_utils",
+        ":xplane_visitor",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -115,9 +116,15 @@ tf_cc_test(
     srcs = ["op_metrics_db_utils_test.cc"],
     deps = [
         ":op_metrics_db_utils",
+        ":xplane_builder",
+        ":xplane_schema",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "@local_xla//xla/tsl/profiler/utils:xplane_visitor",
     ],
 )
 
@@ -508,7 +515,9 @@ cc_library(
         "@local_xla//xla:shape_util",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_cost_analysis",
+        "@local_xla//xla/service/gpu:cublas_cudnn",
         "@local_xla//xla/service/gpu/model:gpu_hlo_cost_analysis",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 

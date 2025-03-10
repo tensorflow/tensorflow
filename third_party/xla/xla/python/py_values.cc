@@ -427,12 +427,12 @@ absl::StatusOr<DevicePutResultFn> HandlePyArray(
   } else {
     return [ifrt_array = tsl::FormRef(ifrt_array), to_device, to_memory_kind,
             owning_pybuffer = py_array.weak_type()]() mutable
-           -> absl::StatusOr<DevicePutResult> {
+               -> absl::StatusOr<DevicePutResult> {
       auto* ifrt_client = ifrt_array->client();
       TF_ASSIGN_OR_RETURN(
           auto copied_ifrt_arrays,
           ifrt_client->CopyArrays(absl::MakeSpan(&ifrt_array, 1),
-                                  ifrt::BasicDeviceList::Create({to_device}),
+                                  ifrt_client->MakeDeviceList({to_device}),
                                   to_memory_kind,
                                   ifrt::ArrayCopySemantics::kReuseInput));
       return DevicePutResult(std::move(copied_ifrt_arrays[0]),

@@ -138,7 +138,7 @@ xla_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -259,7 +259,6 @@ xla_test(
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
     ],
 )
@@ -299,6 +298,7 @@ xla_test(
     srcs = ["cutlass_gemm_custom_kernel_test.cc"],
     backends = ["gpu"],
     data = [":cutlass_gemm_kernel_f32xf32_to_f32.so"],
+    linkstatic = False,  # This test is incompatible with linkstatic in the OSS build.
     tags = ["cuda-only"],
     deps = [
         ":cutlass_gemm_custom_kernel",
@@ -314,7 +314,7 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
     ],
 )
@@ -550,6 +550,6 @@ xla_test(
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )

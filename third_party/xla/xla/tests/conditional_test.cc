@@ -735,13 +735,22 @@ XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
     main = builder.Build().value();
   }
 
-  auto test_swap = [&](float a, float b) {
+  auto test_swap = [&](float a, float b, bool use_cmd_buffer) {
     XlaBuilder builder(TestName());
     XlaOp x, y;
     auto x_arg = CreateR0Parameter<float>(a, 0, "x", &builder, &x);
     auto y_arg = CreateR0Parameter<float>(b, 1, "y", &builder, &y);
     auto tuple_operand = Tuple(&builder, {x, y});
     Call(&builder, main, {tuple_operand});
+    if (use_cmd_buffer) {
+      execution_options_.mutable_debug_options()
+          ->add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
+      execution_options_.mutable_debug_options()
+          ->set_xla_gpu_graph_min_graph_size(1);
+    } else {
+      execution_options_.mutable_debug_options()
+          ->clear_xla_gpu_enable_command_buffer();
+    }
 
     ComputeAndCompareTuple(
         &builder,
@@ -749,9 +758,10 @@ XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
             {LiteralUtil::CreateR0<float>(a), LiteralUtil::CreateR0<float>(b)}),
         {x_arg.get(), y_arg.get()}, error_spec_);
   };
-
-  test_swap(3.11f, 9.4f);
-  test_swap(11.24f, 5.55f);
+  test_swap(3.11f, 9.4f, true);
+  test_swap(11.24f, 5.55f, true);
+  test_swap(3.11f, 9.4f, false);
+  test_swap(11.24f, 5.55f, false);
 }
 
 // Test conditional that duplicates tuple elements in the then and else

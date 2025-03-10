@@ -166,6 +166,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
+        "//third_party/odml/litert/litert:__subpackages__",
     ] + core_cc_api_stable_visibility_allowlist(),
     deps = [
         ":model_builder",
@@ -323,6 +324,7 @@ cc_test(
     srcs = ["signature_runner_test.cc"],
     data = [
         "//tensorflow/lite:testdata/multi_signatures.bin",
+        "//tensorflow/lite:testdata/reverse_signature_model.bin",
     ],
     deps = [
         ":framework",
@@ -534,6 +536,29 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_types",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "subgraph_composite_inlining_test",
+    srcs = ["subgraph_composite_inlining_test.cc"],
+    deps = [
+        ":model_building",
+        ":subgraph",
+        "//tensorflow/lite:array",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:subgraph_test_util",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],

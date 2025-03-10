@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-name: Benchmarks
-
+name: CPU Benchmarks
+permissions:
+  contents: read
 on:
   workflow_dispatch:  # Allows manual triggering
   schedule:
@@ -29,12 +30,17 @@ jobs:
           {
             os: "linux-x86-n2-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            pretty_name: "XLA Linux x86 CPU",
+            pretty_name: "XLA Linux x86 CPU with 16 vcpu",
           },
           {
             os: "linux-arm64-c4a-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
             pretty_name: "XLA Linux ARM64 CPU",
+          },
+          {
+            os: "linux-x86-n2-128",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 CPU with 128 vcpu",
           }
         ]
     name: ${{ matrix.job_info.pretty_name }}
@@ -43,7 +49,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 30
+    timeout-minutes: 360
     steps:
       - name: Print machine specs
         run: |
@@ -66,72 +72,73 @@ jobs:
           fi
 
       - name: Checkout OpenXLA
-        uses: actions/checkout@v3
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
-          repository: openxla/xla
+          path: "openxla/xla"
 
       - name: Create results directory
-        working-directory: xla
         run:
           mkdir results
 
-      - name: Run setup.sh for E2E benchmarks flax_2b
-        working-directory: xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
+      - name: Print machine specs
+        run: |
+          lscpu
+          free -h  # Memory information
+          df -h    # Disk space information
+          uname -a # Kernel information
+
+      - name: Run E2E benchmarks flax_2b
         timeout-minutes: 60
         run: |
+          cd xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
           bash setup.sh
+          bash run.sh | tee -a ../../../../../../../results/flax_2b.log
 
-      - name: Run run.sh for E2E benchmarks flax_2b
-        working-directory: xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
-        timeout-minutes: 30
+      - name: Configure CPU backend
         run: |
-          bash run.sh | tee -a ../../../../../../results/flax_2b.log
+          ./configure.py --backend=CPU
 
-      # TODO(juliagmt): Re-enable once the build is fixed.
-      # - name: Build run_hlo_module
-      #   working-directory: xla
-      #   run: bazel build -c opt --dynamic_mode=off //xla/tools:run_hlo_module
+      - name: Build run_hlo_module
+        run: bazel build -c opt --dynamic_mode=off xla/tools:run_hlo_module
 
-      # - name: Run HLO Module Benchmarks
-      #   working-directory: xla
-      #   continue-on-error: true
-      #   run: |
-      #     for file in tests/fuzz/*.hlo; do
-      #       filename=$(basename "$file")
-      #       # Skip expected failed hlo files.
-      #       if [[ "$filename" == "rand_000060.hlo" || "$filename" == "rand_000067.hlo" || "$filename" == "rand_000072.hlo" ]]; then
-      #         echo "Skipping benchmark on $file"
-      #         continue
-      #       fi
-      #       echo "Running benchmark on $file"
-      #       ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU "$file"
-      #     done
+      - name: Run HLO Module Benchmarks
+        continue-on-error: true
+        run: |
+          for file in xla/tests/fuzz/*.hlo; do
+            filename=$(basename "$file")
+            # Skip expected failed hlo files.
+            if [[ "$filename" == "rand_000060.hlo" || "$filename" == "rand_000067.hlo" || "$filename" == "rand_000072.hlo" ]]; then
+              echo "Skipping benchmark on $file"
+              continue
+            fi
+            echo "Running benchmark on $file"
+            ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU "$file"
+          done
 
-      # - name: Build CPU Benchmarks
-      #   working-directory: xla
-      #   run: bazel build -c opt --dynamic_mode=off //xla/backends/cpu/benchmarks:*
+      - name: Build CPU Benchmarks
+        run: bazel build -c opt --dynamic_mode=off //xla/backends/cpu/benchmarks:*
 
-      # - name: Run CPU benchmarks
-      #   working-directory: xla
-      #   continue-on-error: true
-      #   run: |
-      #     find ./bazel-bin/xla/backends/cpu/benchmarks/ -maxdepth 1 -type f -executable -name "*_test" -print0 | while IFS= read -r -d $'\0' benchmark; do
-      #       benchmark_name=$(basename "$benchmark" | sed 's/_test$//') 
-      #       echo "Running benchmark: $benchmark_name"
+      - name: Run CPU benchmarks
+        continue-on-error: true
+        run: |
+          find ./bazel-bin/xla/backends/cpu/benchmarks/ -maxdepth 1 -type f -executable -name "*_test" -print0 | while IFS= read -r -d $'\0' benchmark; do
+            benchmark_name=$(basename "$benchmark" | sed 's/_test$//') 
+            echo "Running benchmark: $benchmark_name"
 
-      #       # Run the benchmark with default parameters.
-      #       $benchmark --benchmark_filter=".*"
-      #       $benchmark --benchmark_filter=".*" > "results/$benchmark_name.log" 2>&1
+            # Run the benchmark with default parameters.
+            $benchmark --benchmark_filter=".*"
+            $benchmark --benchmark_filter=".*" > "results/$benchmark_name.log" 2>&1
 
-      #       # Check the exit code of the benchmark
-      #       if [ $? -ne 0 ]; then
-      #         echo "Error: Benchmark '$benchmark_name' failed. Check the log file: results/$benchmark_name.log"
-      #       else
-      #         echo "Benchmark '$benchmark_name' completed successfully."
-      #       fi
-      #     done
+            # Check the exit code of the benchmark
+            if [ $? -ne 0 ]; then
+              echo "Error: Benchmark '$benchmark_name' failed. Check the log file: results/$benchmark_name.log"
+            else
+              echo "Benchmark '$benchmark_name' completed successfully."
+            fi
+          done
+
       - name: Upload Results ${{ matrix.build_target }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           name: cpu-xla-benchmarks-${{ matrix.job_info.os }}
           path: xla/results

@@ -340,7 +340,8 @@ void LiteRtDestroyModel(LiteRtModel model);
 //
 
 // An append only list of ops.
-LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op);
+LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op,
+                          LiteRtParamIndex partition_index);
 
 #ifdef __cplusplus
 }

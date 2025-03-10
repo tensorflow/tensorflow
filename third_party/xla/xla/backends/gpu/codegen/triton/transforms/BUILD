@@ -1,0 +1,71 @@
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
+    licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//xla:friends",
+    ],
+)
+
+gentbl_cc_library(
+    name = "passes_inc_gen",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TritonXlaTransforms",
+                "-attrdefs-dialect=triton_xla",
+            ],
+            "passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes.td",
+    visibility = ["//visibility:private"],
+    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
+cc_library(
+    name = "passes",
+    srcs = [
+        "generalize_kernel_signature.cc",
+        "int4_passes.cc",
+        "prevent_mmav3_loop_unrolling_pass.cc",
+        "sparse_passes.cc",
+    ],
+    hdrs = ["passes.h"],
+    deps = [
+        ":passes_inc_gen",
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:GPUToNVVMTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:NVVMDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@triton//:TritonDialects",
+        "@triton//:TritonGPUToLLVM",
+        "@triton//:TritonGPUTransforms",
+        "@triton//:TritonToTritonGPU",
+        "@triton//third_party/nvidia:NVGPUDialect",
+        "@triton//third_party/nvidia:NVGPUToLLVM",
+        "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
+    ],
+)

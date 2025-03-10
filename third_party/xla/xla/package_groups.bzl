@@ -37,14 +37,14 @@ def xla_package_groups(name = "xla_package_groups"):
         packages = ["//..."],
     )
 
-def xla_tests_package_groups(name = "xla_tests_package_groups"):
-    """Defines visibility groups for XLA tests.
+def xla_test_friend_package_group(name):
+    """Defines visibility group for XLA tests.
 
     Args:
-     name: package groups name
+     name: package group name
     """
 
     native.package_group(
-        name = "friends",
+        name = name,
         packages = ["//..."],
     )

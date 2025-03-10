@@ -212,6 +212,29 @@ ENTRY main {
   EXPECT_FALSE(GemmFusionSwapOperands().Run(module->get()).value());
 }
 
+TEST_F(SwapOperandsTest, MultipleParameterIsFine) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule MultipleParameterIsFine
+
+fcomp {
+  p0 = bf16[8,1536]{1,0} parameter(0)
+  p1 = s8[1536,1536]{1,0} parameter(1)
+  p2 = s8[1536,1536]{1,0} parameter(2)
+  c1 = s8[1536,3072]{1,0} concatenate(s8[1536,1536]{1,0} p1, s8[1536,1536]{1,0} p2), dimensions={1}
+  c2 = bf16[1536,3072]{1,0} convert(s8[1536,3072]{1,0} c1)
+  ROOT %dot.2515 = bf16[8,3072]{1,0} dot(bf16[8,1536]{1,0} p0, bf16[1536,3072]{1,0} c2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  p0 = bf16[8,1536]{1,0} parameter(0)
+  p1 = s8[1536,1536]{1,0} parameter(1)
+  p2 = s8[1536,1536]{1,0} parameter(2)
+  ROOT %micro_kernel = bf16[8,3072]{1,0} fusion(p0, p1, p2), kind=kCustom, calls=fcomp,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+})");
+  EXPECT_TRUE(GemmFusionSwapOperands().Run(module->get()).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

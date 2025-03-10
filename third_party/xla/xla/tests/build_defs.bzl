@@ -191,6 +191,7 @@ def xla_test(
         backend_tags = {},
         backend_args = {},
         backend_kwargs = {},
+        linkstatic = True,
         **kwargs):
     """Generates cc_test targets for the given XLA backends.
 
@@ -210,6 +211,10 @@ def xla_test(
     Each generated cc_test target has a tag indicating which backend the test is
     for. This tag is of the form "xla_${BACKEND}" (eg, "xla_cpu"). These
     tags can be used to gather tests for a particular backend into a test_suite.
+
+    Use xla_test instead of cc_test or xla_cc_test in all tests that need to run
+    on specific XLA backends. Do not use xla_test in .../tsl/... directories,
+    where tsl_cc_test should be used instead.
 
     Examples:
 
@@ -256,6 +261,7 @@ def xla_test(
       backend_kwargs: A dict mapping backend name to list of additional keyword
         arguments to pass to native.cc_test. Only use for kwargs that don't have a
         dedicated argument, like setting per-backend flaky or timeout attributes.
+      linkstatic: Whether to link the test statically.
       **kwargs: Additional keyword arguments to pass to native.cc_test.
     """
 
@@ -335,6 +341,7 @@ def xla_test(
             args = args + this_backend_args,
             deps = deps + backend_deps,
             data = data + this_backend_data,
+            linkstatic = linkstatic,
             **this_backend_kwargs
         )
 
@@ -364,7 +371,7 @@ def xla_test(
     if test_names:
         native.test_suite(name = name, tags = tags + ["manual"], tests = test_names)
     else:
-        native.cc_test(name = name, deps = ["@com_google_googletest//:gtest_main"])
+        native.cc_test(name = name, deps = ["@com_google_googletest//:gtest_main"], linkstatic = linkstatic)
 
 def xla_test_library(
         name,

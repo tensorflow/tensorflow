@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_VERSION_H_
 #define TENSORFLOW_LITE_VERSION_H_
 
-#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/public/release_version.h"
 
 // The version number of the Schema. Ideally all changes will be backward
 // compatible. If that ever changes, we must ensure that version is the first

@@ -119,6 +119,12 @@ inline bool IsInfeedOrOutfeed(absl::string_view category) {
          absl::StrContains(category, kHloOutfeed);
 }
 
+inline bool IsAllReduceOrAllToAll(absl::string_view category) {
+  return category == tsl::profiler::kHloAllReduce ||
+         category == tsl::profiler::kHloAllReduceFusion ||
+         category == tsl::profiler::kHloAllToAll;
+}
+
 inline bool IsHostOrSparseCoreV0Infeed(absl::string_view category) {
   return category == tsl::profiler::kHloInfeed ||
          category == tsl::profiler::kHloSparseCoreV0Infeed;

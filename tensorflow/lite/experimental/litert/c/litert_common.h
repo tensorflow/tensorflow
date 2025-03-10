@@ -40,6 +40,7 @@ extern "C" {
 #define LITERT_HAS_ION_SUPPORT 1
 #define LITERT_HAS_DMABUF_SUPPORT 1
 #define LITERT_HAS_FASTRPC_SUPPORT 1
+#define LITERT_HAS_OPENGL_SUPPORT 1
 // copybara:comment_begin(google-only)
 #elif defined(GOOGLE_UNSUPPORTED_OS_LOONIX)
 #define LITERT_HAS_ION_SUPPORT 0
@@ -52,6 +53,7 @@ extern "C" {
 #define LITERT_HAS_DMABUF_SUPPORT 0
 #define LITERT_HAS_FASTRPC_SUPPORT 0
 #define LITERT_HAS_OPENCL_SUPPORT 1
+#define LITERT_HAS_OPENGL_SUPPORT 0
 #endif
 
 #define LITERT_API_VERSION_MAJOR 0
@@ -99,7 +101,7 @@ typedef enum {
   // Tool related errors.
   kLiteRtStatusErrorInvalidToolConfig = 1500,
 
-  // Lealization related errors.
+  // Legalization related errors.
   kLiteRtStatusLegalizeNoMatch = 2000,
   kLiteRtStatusErrorInvalidLegalization = 2001,
 } LiteRtStatus;

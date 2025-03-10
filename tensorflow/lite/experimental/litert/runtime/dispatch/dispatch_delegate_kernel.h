@@ -71,7 +71,6 @@ class DispatchDelegateKernel
 
   // Creates a new tensor buffer for the given tensor. After that the created
   // tensor buffer is registered with RegisterLiteRtTensorBuffer().
-  // The tensor is marked as non-CPU allocated.
   TfLiteStatus CreateAndSetBuffer(const TfLiteOpaqueTensor* tfl_opaque_tensor,
                                   int buffer_index, bool is_input);
 

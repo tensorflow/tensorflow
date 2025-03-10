@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 

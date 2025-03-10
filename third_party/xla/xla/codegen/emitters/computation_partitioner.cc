@@ -66,6 +66,29 @@ const Shape& TupleShape(const Shape& shape, int index) {
   return shape.IsTuple() ? shape.tuple_shapes(index) : shape;
 }
 
+std::vector<IndexingMapSet> ComputeOperandIndexingMaps(
+    const HloInstruction* instr, mlir::MLIRContext* mlir_context) {
+  std::vector<IndexingMapSet> indexing_maps_per_operand;
+  // For some ops, there is no indexing map implemented for the operands (e.g.
+  // scatter) or there are multiple results and the common iteration space is
+  // not known. In these cases, we return identity indexing for the operands.
+  if (HloPredicateIsOp<HloOpcode::kTuple, HloOpcode::kScatter,
+                       HloOpcode::kParameter>(instr)) {
+    int64_t num_operands = instr->operand_count();
+    indexing_maps_per_operand.reserve(num_operands);
+    for (int64_t i = 0; i < num_operands; ++i) {
+      indexing_maps_per_operand.push_back(
+          {CreateIdentityMap(instr->operand(i)->shape(), mlir_context)});
+    }
+  } else {
+    auto operands_indexing =
+        ComputeOutputToInputIndexing(instr, /*output_id=*/0, mlir_context);
+    operands_indexing.Simplify();
+    indexing_maps_per_operand = std::move(operands_indexing.indexing_maps);
+  }
+  return indexing_maps_per_operand;
+}
+
 }  // namespace
 
 EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
@@ -143,79 +166,93 @@ bool IsEvaluatedMoreThanOnce(const HloInstruction* instr) {
   });
 }
 
+using SubgraphId = int;
+
+// HloSubgraphData is associated with a single HLO instruction and contains
+// the necessary information to partition the computation into subgraphs.
+struct HloSubgraphData {
+  // Indexing map from the root of the function to the input of the instruction.
+  IndexingMapSet indexings;
+  // Subgraph IDs of the users of the instruction.
+  absl::flat_hash_set<SubgraphId> user_subgraph_ids;
+  // ID of the subgraph that this instruction belongs to.
+  SubgraphId subgraph_id = -1;
+  // Whether the instruction is a root of the subgraph.
+  bool is_root = false;
+};
+
 PartitionedComputation::PartitionedComputation(
     const HloComputation* computation, mlir::MLIRContext* mlir_context,
     std::function<bool(const HloInstruction*)> is_subgraph_root)
     : computation_(computation) {
   CHECK_NE(computation, nullptr);
 
-  int next_function_id = 0;
-  int next_indexing_id = 0;
-
   auto pre_order = computation->MakeInstructionPostOrder();
   absl::c_reverse(pre_order);
-  absl::flat_hash_map<const HloInstruction*, int> instr_indices;
+  absl::flat_hash_map<const HloInstruction*, int> instr_to_id;
   for (auto [i, instr] : llvm::enumerate(pre_order)) {
-    instr_indices[instr] = i;
+    instr_to_id[instr] = i;
   }
 
-  std::vector<std::pair<int, int>> ids(pre_order.size());
-  auto allocate_new_function = [&](const HloInstruction* instr) {
-    ids[instr_indices[instr]] = {next_function_id++, next_indexing_id++};
-  };
-
+  SubgraphId subgraph_count = 0;
+  std::vector<HloSubgraphData> id_to_subgraph_data(pre_order.size());
+  // Iterate over the use-def chains and check if the instruction should be
+  // placed in a separate function.
   for (auto [instr_index, instr] : llvm::enumerate(pre_order)) {
-    bool is_root = instr->user_count() == 0 || is_subgraph_root(instr);
-    bool users_have_consistent_indexing = AllIdentical(
-        instr->users(),
-        [&](const HloInstruction* user) { return ids[instr_indices[user]]; });
-    bool all_users_elementwise =
-        absl::c_all_of(instr->users(), [&](const HloInstruction* user) {
-          return HloInstruction::IsOpElementwise(user->opcode());
-        });
-
-    if (!is_root && users_have_consistent_indexing && all_users_elementwise) {
-      // All users are elementwise and have the same indexing, therefore we can
-      // merge these functions.
-      ids[instr_index] = ids[instr_indices[instr->users().front()]];
-    } else if (is_root || instr->user_count() > 1 ||
-               IsEvaluatedMoreThanOnce(instr)) {
-      // This is a root, or this instruction will be evaluated with more than
-      // one indexing. Either because there's more than one user, or because
-      // the single user requires values at more than one indexing.
-      allocate_new_function(instr);
+    // If the instruction is a subgraph root, or if it has users with different
+    // function IDs users, or if it has multiple non-trivial indexings, we need
+    // to create a new function.
+    auto& instr_subgraph_data = id_to_subgraph_data[instr_index];
+    instr_subgraph_data.is_root =
+        is_subgraph_root(instr) ||
+        instr_subgraph_data.user_subgraph_ids.size() != 1 ||
+        instr_subgraph_data.indexings.size() > 1;
+    if (instr_subgraph_data.is_root) {
+      instr_subgraph_data.subgraph_id = subgraph_count++;
+      instr_subgraph_data.indexings.clear();
     } else {
-      // This is a single-user instruction that is evaluated with a single
-      // indexing, but it is different from the user's indexing. For example,
-      // consider this graph:
-      //
-      //   add -> x -> transpose -> sub
-      //     `-----------------------^
-      //
-      // If `x` had the same indexing as `transpose` and `sub`, we would later
-      // merge `add` as well, which is invalid. It's still OK for `x`,
-      // `tranpose` and `sub` to be in the same function.
-      ids[instr_index] = ids[instr_indices[instr->users().front()]];
-      ids[instr_index].second = next_indexing_id++;
+      instr_subgraph_data.subgraph_id =
+          *instr_subgraph_data.user_subgraph_ids.begin();
+    }
+    auto operands_indexing = ComputeOperandIndexingMaps(instr, mlir_context);
+    // Iterate over the operands and add the func_ids of the current instruction
+    // to their HloSubgraphIndexing and compute the indexing maps.
+    for (auto [operand_instr, operand_maps] :
+         llvm::zip(instr->operands(), operands_indexing)) {
+      auto& operand_subgraph_data =
+          id_to_subgraph_data[instr_to_id[operand_instr]];
+      IndexingMap instr_indexing = instr_subgraph_data.indexings.empty()
+                                       ? IndexingMap::GetUndefined()
+                                       : *instr_subgraph_data.indexings.begin();
+      IndexingMap composed_indexing =
+          instr_subgraph_data.is_root
+              ? *operand_maps.begin()
+              : ComposeIndexingMaps(instr_indexing, *operand_maps.begin());
+      composed_indexing.Simplify();
+
+      operand_subgraph_data.user_subgraph_ids.insert(
+          instr_subgraph_data.subgraph_id);
+      if (!composed_indexing.IsUndefined() &&
+          !composed_indexing.IsKnownEmpty()) {
+        operand_subgraph_data.indexings.insert(std::move(composed_indexing));
+      }
     }
   }
-  std::vector<std::vector<const HloInstruction*>> functions(next_function_id);
-  for (auto [id, instr] : llvm::reverse(llvm::zip(ids, pre_order))) {
-    functions[id.first].push_back(instr);
+
+  std::vector<std::vector<const HloInstruction*>> functions(subgraph_count);
+  for (const auto& [subgraph_data, instr] :
+       llvm::reverse(llvm::zip(id_to_subgraph_data, pre_order))) {
+    CHECK_NE(subgraph_data.subgraph_id, -1) << "Uninitialized subgraph ID";
+    functions[subgraph_data.subgraph_id].push_back(instr);
   }
 
   subgraphs_.reserve(functions.size());
   for (auto&& [function_id, instructions] : llvm::enumerate(functions)) {
-    auto is_different_function = [&, function_id = function_id](auto* user) {
-      return ids[instr_indices[user]].first != function_id;
-    };
-
     std::vector<const HloInstruction*> roots;
     std::vector<IndexingMap> root_indexing;
     const xla::Shape* first_root_shape = nullptr;
     for (auto* instruction : instructions) {
-      if (instruction->user_count() == 0 ||
-          absl::c_any_of(instruction->users(), is_different_function)) {
+      if (id_to_subgraph_data[instr_to_id[instruction]].is_root) {
         roots.push_back(instruction);
         if (first_root_shape) {
           CHECK(!instruction->shape().IsTuple())
@@ -239,6 +276,7 @@ PartitionedComputation::PartitionedComputation(
       }
     }
 
+    CHECK(first_root_shape);
     std::vector<int64_t> ranges{first_root_shape->dimensions().begin(),
                                 first_root_shape->dimensions().end()};
 

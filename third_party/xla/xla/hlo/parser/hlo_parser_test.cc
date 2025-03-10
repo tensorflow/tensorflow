@@ -5915,13 +5915,84 @@ HloModule bitcast_to_smaller
 
 ENTRY main {
   p = s32[10] parameter(0)
-  ROOT out = s8[10,4] bitcast-convert(p), result_accuracy={tolerance={rtol=0.5, atol=1.0, ulps=2}
+  ROOT out = s8[10,4] bitcast-convert(p), result_accuracy={tolerance={rtol=0.5, atol=1.0, ulps=2}}
 }
 )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
   EXPECT_NE(absl::OkStatus(), result.status());
   ExpectHasSubstr(result.status().message(),
                   "error: unexpected attribute \"result_accuracy\"");
+}
+
+TEST_F(HloParserTest,
+       AsyncInstructionWithAttributesShouldPropagateToWrappedInstruction) {
+  const char* hlo = R"(
+  HloModule test
+  ENTRY main {
+    a = s32[] parameter(0), origin={{"v1"}}
+    b = s32[] parameter(1), origin={{"v2"}}
+    add-start = ((s32[], s32[]), s32[], s32[]) add-start(a, b),
+                metadata={op_type="add" op_name="sample name" source_file="path/to/test.cc" source_line=68},
+                backend_config="foo\" bar",
+                frontend_attributes={attr_a="test_a",attr_b="b"},
+                statistics={visualizing_index=1,stat-1=33,stat-2=44}
+    ROOT add-done = s32[] add-done(add-start), origin={{"v3"}}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  // Check the wrapped instruction.
+  HloInstruction* wrapped_instr =
+      m->entry_computation()->root_instruction()->async_wrapped_instruction();
+  EXPECT_EQ(wrapped_instr->metadata().op_name(), "sample name");
+  EXPECT_EQ(wrapped_instr->metadata().op_type(), "add");
+  EXPECT_EQ(wrapped_instr->metadata().source_file(), "path/to/test.cc");
+  EXPECT_EQ(wrapped_instr->metadata().source_line(), 68);
+  EXPECT_EQ(wrapped_instr->raw_backend_config_string(), "foo\" bar");
+  EXPECT_EQ(wrapped_instr->frontend_attributes().map().size(), 2);
+  EXPECT_EQ(wrapped_instr->frontend_attributes().map().at("attr_a"), "test_a");
+  EXPECT_EQ(wrapped_instr->frontend_attributes().map().at("attr_b"), "b");
+  EXPECT_EQ(wrapped_instr->statistics_viz().stat_index_to_visualize(), 1);
+  EXPECT_EQ(wrapped_instr->statistics_viz().statistics_size(), 2);
+  EXPECT_EQ(wrapped_instr->statistics_viz().statistics(0).stat_name(),
+            "stat-1");
+  EXPECT_EQ(wrapped_instr->statistics_viz().statistics(0).stat_val(), 33);
+  EXPECT_EQ(wrapped_instr->statistics_viz().statistics(1).stat_name(),
+            "stat-2");
+  EXPECT_EQ(wrapped_instr->statistics_viz().statistics(1).stat_val(), 44);
+  EXPECT_EQ(OriginalValueToString(*wrapped_instr->original_value()),
+            "{\"v3\"}");
+  // Check the async-start and async-done instructions.
+  HloInstruction* async_done = m->entry_computation()->root_instruction();
+  HloInstruction* async_start = async_done->async_chain_start();
+  EXPECT_EQ(async_start->metadata().DebugString(),
+            wrapped_instr->metadata().DebugString());
+  EXPECT_EQ(async_start->raw_backend_config_string(),
+            wrapped_instr->raw_backend_config_string());
+  EXPECT_EQ(async_start->frontend_attributes().DebugString(),
+            wrapped_instr->frontend_attributes().DebugString());
+  EXPECT_EQ(async_start->statistics_viz().DebugString(),
+            wrapped_instr->statistics_viz().DebugString());
+  EXPECT_EQ(OriginalValueToString(*async_done->original_value()),
+            OriginalValueToString(*wrapped_instr->original_value()));
+}
+
+TEST_F(HloParserTest, ResultAccuracyToProto) {
+  const char* const hlo_string = R"(
+  HloModule exponential_hw
+
+  ENTRY exponential_hw {
+    %exponent = f32[] parameter(0)
+    ROOT %exponential = f32[] exponential(f32[] %exponent), result_accuracy={tolerance={rtol=0.5, atol=1.0, ulps=2}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* exp_hlo_instruction =
+      module->entry_computation()->root_instruction();
+  HloInstructionProto exp_hlo_inst_proto = exp_hlo_instruction->ToProto();
+  EXPECT_TRUE(exp_hlo_inst_proto.has_result_accuracy());
+  EXPECT_EQ(exp_hlo_inst_proto.result_accuracy().tolerance().rtol(), 0.5);
+  EXPECT_EQ(exp_hlo_inst_proto.result_accuracy().tolerance().atol(), 1.0);
 }
 
 }  // namespace

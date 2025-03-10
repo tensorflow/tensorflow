@@ -12799,7 +12799,7 @@ TEST_F(AlgebraicSimplifierTest, PathologicalComplexity) {
               GmockMatch(m::Broadcast(m::Constant())));
 }
 
-TEST_F(AlgebraicSimplifierTest, TestNew123) {
+TEST_F(AlgebraicSimplifierTest, RespectHostOffloadingcopies) {
   const char* hlo_string = R"(
     HloModule m
     ENTRY test {
@@ -12881,6 +12881,28 @@ TEST_F(AlgebraicSimplifierTest, TestWithControlDependencies) {
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, CopyReshapeToReshapeCopyWithHostCopies) {
+  const char* hlo = R"(
+  HloModule module
+
+  ENTRY main {
+    param.251 = f32[128,8]{0,1:T(8,128)S(5)} parameter(0), sharding={devices=[1,16,16]<=[256] last_tile_dim_replicate}
+    copy.11654 = f32[128,8]{0,1:T(8,128)} copy(param.251)
+    reshape.37527 = f32[16,8,8]{1,0,2:T(8,128)} reshape(copy.11654)
+    ROOT copy.10970 = f32[16,8,8]{1,2,0:T(8,128)} copy(reshape.37527)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo));
+  auto reshape_is_bitcast = [](const Shape& from_shape, const Shape& to_shape) {
+    return false;
+  };
+  AlgebraicSimplifierOptions options(reshape_is_bitcast);
+  options.set_enable_floats_are_real(true);
+  options.set_is_layout_sensitive(true);
+  options.set_enable_conv_simplification(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
 }
 
 }  // namespace

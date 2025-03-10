@@ -501,12 +501,13 @@ absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   DEBUG_DATA_DUMPER()->DumpOpCreationStackTraces(
       function_name, kDebugGroupOpStacktrace, "before_opt", graph.get());
 
-  GraphDef graph_def;
-  graph->ToGraphDef(&graph_def);
   FunctionLibraryDefinition reachable_lib_def =
-      lib_def->ReachableDefinitions(graph_def);
-  *graph_def.mutable_library() = reachable_lib_def.ToProto();
+      lib_def->ReachableDefinitions(*graph);
+
   if (options.graph_collector != nullptr) {
+    GraphDef graph_def;
+    graph->ToGraphDef(&graph_def);
+    *graph_def.mutable_library() = reachable_lib_def.ToProto();
     options.graph_collector->CollectRawGraph(graph_def);
   }
 

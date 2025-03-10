@@ -1002,12 +1002,22 @@ void GenerateDotResultDimensions(
 
 // Ragged dot allows exactly one lhs ragged dimension. At a high level it has
 // three modes, based on the kind of the ragged dimension:
-// 1. [b,m,k], [g,b,k,n], [g] -> [b,m,n]. Here the ragged dimension is the
+// 1. [b,m,k], [g,b,k,n], [b,g] -> [b,m,n]. Here the ragged dimension is the
 //    non-contracting dimension (m) of the lhs.
-// 2. [b,m,k], [b,k,n], [g] -> [g,b,m,n]. Here the ragged dimension is the
+// 2. [b,m,k], [b,k,n], [b,g] -> [g,b,m,n]. Here the ragged dimension is the
 //    contracting dimension (k) of the lhs and rhs.
 // 3. [b,m,k], [b,k,n], [g] -> [b,m,n]. Here the ragged dimension is the
 //    batch dimension (b) of the lhs and rhs.
+
+// The group_sizes arg has the shape [b...,x...,g], where:
+// - b... are all the lhs batch dims before (outer-to) the lhs ragged dim,
+// - x... are,
+//   - in mode 1, all the lhs non-contracting dims before the lhs ragged dim,
+//   - in mode 2, all the lhs contracting dims before the lhs ragged dim, and
+//   - in mode 3, empty;
+// - g is the number of groups in the lhs ragged dim.
+// If a group_sizes of shape [g] is passed, it is broadcasted according to the
+// rules above.
 /* static */ absl::StatusOr<Shape> ShapeInference::InferRaggedDotOpShape(
     const Shape& lhs, const Shape& rhs, const Shape& group_sizes,
     const RaggedDotDimensionNumbers& ragged_dot_dim_nums,
@@ -1026,14 +1036,6 @@ void GenerateDotResultDimensions(
     return InvalidArgument("%s", message);
   };
 
-  // Check that the group sizes has rank=1.
-  if (group_sizes.rank() != 1) {
-    return fail(StrFormat("group_sizes is expected to have rank=1, got %d",
-                          group_sizes.rank()));
-  }
-  const int64_t num_groups = group_sizes.dimensions(0);
-  const bool is_dynamic_group_sizes = group_sizes.is_dynamic_dimension(0);
-
   DotDimensionNumbers dimension_numbers =
       ragged_dot_dim_nums.dot_dimension_numbers();
 
@@ -1048,6 +1050,96 @@ void GenerateDotResultDimensions(
   }
   const int64_t lhs_ragged_dimension =
       ragged_dot_dim_nums.lhs_ragged_dimensions(0);
+  // Check that the lhs ragged dimension is within bounds.
+  if (lhs_ragged_dimension < 0 ||
+      lhs_ragged_dimension >= lhs.dimensions_size()) {
+    return fail(StrFormat("lhs ragged dimension %d is out of range [0, %d)",
+                          lhs_ragged_dimension, lhs.dimensions_size()));
+  }
+
+  enum Mode {
+    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [b,g] -> [b,m,n].
+    kNonContracting,
+    // Ragged contracting (k):     [b,m,k], [b,k,n],   [b,g] -> [g,b,m,n].
+    kContracting,
+    // Ragged batch (b):           [b,m,k], [b,k,n],   [g]   -> [b,m,n].
+    kBatch
+  };
+  Mode mode;
+  if (absl::c_linear_search(dimension_numbers.lhs_batch_dimensions(),
+                            lhs_ragged_dimension)) {
+    mode = kBatch;
+  } else if (absl::c_linear_search(
+                 dimension_numbers.lhs_contracting_dimensions(),
+                 lhs_ragged_dimension)) {
+    mode = kContracting;
+  } else {
+    mode = kNonContracting;
+  }
+
+  // Validate the shape of group_sizes.
+  {
+    std::vector<int64_t> lhs_batch_dims = {
+        dimension_numbers.lhs_batch_dimensions().begin(),
+        dimension_numbers.lhs_batch_dimensions().end()};
+    std::vector<int64_t> lhs_contracting_dims = {
+        dimension_numbers.lhs_contracting_dimensions().begin(),
+        dimension_numbers.lhs_contracting_dimensions().end()};
+    std::vector<int64_t> lhs_non_contracting_dims;
+    for (int64_t i = 0; i < lhs.rank(); ++i) {
+      if (!absl::c_linear_search(dimension_numbers.lhs_contracting_dimensions(),
+                                 i) &&
+          !absl::c_linear_search(dimension_numbers.lhs_batch_dimensions(), i)) {
+        lhs_non_contracting_dims.push_back(i);
+      }
+    }
+
+    // Construct the expected shape [b...,x...,g] of group_sizes.
+    std::vector<int64_t> prefix_dims;
+    prefix_dims.reserve(lhs.rank() - 1);
+    prefix_dims.insert(prefix_dims.end(), lhs_batch_dims.begin(),
+                       lhs_batch_dims.end());
+    switch (mode) {
+      case kBatch:
+        prefix_dims.resize(
+            std::distance(lhs_batch_dims.begin(),
+                          absl::c_find(lhs_batch_dims, lhs_ragged_dimension)));
+        break;
+      case kContracting:
+        prefix_dims.insert(
+            prefix_dims.end(), lhs_contracting_dims.begin(),
+            absl::c_find(lhs_contracting_dims, lhs_ragged_dimension));
+        break;
+      case kNonContracting:
+        prefix_dims.insert(
+            prefix_dims.end(), lhs_non_contracting_dims.begin(),
+            absl::c_find(lhs_non_contracting_dims, lhs_ragged_dimension));
+        break;
+    }
+    std::vector<int64_t> expected_prefix;
+    expected_prefix.reserve(prefix_dims.size());
+    for (const int64_t dim : prefix_dims) {
+      expected_prefix.push_back(lhs.dimensions(dim));
+    }
+
+    // Validate the actual shape, if it was passed as something other than [g].
+    if (group_sizes.rank() != 1) {
+      if (group_sizes.rank() != expected_prefix.size() + 1) {
+        return fail(StrFormat("expected group_sizes to have rank %d, got %d",
+                              expected_prefix.size() + 1, group_sizes.rank()));
+      }
+      if (!absl::c_equal(expected_prefix, group_sizes.dimensions().first(
+                                              group_sizes.rank() - 1))) {
+        return fail(StrFormat(
+            "group_sizes is expected to have shape [%s, %d], got [%s]",
+            absl::StrJoin(expected_prefix, ", "),
+            group_sizes.dimensions().back(),
+            absl::StrJoin(group_sizes.dimensions(), ", ")));
+      }
+    }
+  }
+  const int64_t num_groups = group_sizes.dimensions().back();
+  const bool is_dynamic_group_sizes = group_sizes.dynamic_dimensions().back();
 
   // Validate basic properties of the rhs group dimension(s).
   for (auto rhs_group_dim : ragged_dot_dim_nums.rhs_group_dimensions()) {
@@ -1067,31 +1159,31 @@ void GenerateDotResultDimensions(
       ragged_dot_dim_nums.rhs_group_dimensions().begin(),
       ragged_dot_dim_nums.rhs_group_dimensions().end()};
 
-  if (absl::c_linear_search(dimension_numbers.lhs_batch_dimensions(),
-                            lhs_ragged_dimension) ||
-      absl::c_linear_search(dimension_numbers.lhs_contracting_dimensions(),
-                            lhs_ragged_dimension)) {
-    // Ragged batch (b):       [b,m,k], [b,k,n], [g] -> [b,m,n].
-    // Ragged contracting (k): [b,m,k], [b,k,n], [g] -> [g,b,m,n].
-    if (!rhs_group_dimensions.empty()) {
-      return fail(
-          "There must be zero group dimensions in the rhs when the "
-          "ragged dimension is batch or contracting.");
-    }
-  } else {
-    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [g] -> [b,m,n].
-    if (rhs_group_dimensions.size() != 1) {
-      return fail(
-          "There must be exactly one group dimension in the rhs when the lhs "
-          "ragged dimension is non-contracting.");
-    }
-    // Compare the group dimension size with the number of groups.
-    const int64_t rhs_group_dim = rhs_group_dimensions[0];
-    if (!CompatibleDimensionSizes(num_groups, rhs.dimensions(rhs_group_dim))) {
-      return fail(
-          StrFormat("group_sizes is expected to have shape=[%d], got [%d]",
-                    rhs.dimensions(rhs_group_dim), num_groups));
-    }
+  switch (mode) {
+    case kBatch:
+      [[fallthrough]];
+    case kContracting:
+      if (!rhs_group_dimensions.empty()) {
+        return fail(
+            "There must be zero group dimensions in the rhs when the "
+            "ragged dimension is batch or contracting.");
+      }
+      break;
+    case kNonContracting:
+      if (rhs_group_dimensions.size() != 1) {
+        return fail(
+            "There must be exactly one group dimension in the rhs when the lhs "
+            "ragged dimension is non-contracting.");
+      }
+      // Compare the group dimension size with the number of groups.
+      const int64_t rhs_group_dim = rhs_group_dimensions[0];
+      if (!CompatibleDimensionSizes(num_groups,
+                                    rhs.dimensions(rhs_group_dim))) {
+        return fail(
+            StrFormat("rhs group dimension is expected to have size=%d, got %d",
+                      num_groups, rhs.dimensions(rhs_group_dim)));
+      }
+      break;
   }
 
   PrimitiveType type = preferred_element_type.value_or(
@@ -1099,8 +1191,7 @@ void GenerateDotResultDimensions(
   std::vector<int64_t> dimensions;
   std::vector<bool> is_dynamic;
   // Add the group dimension to the result shape in case of ragged contracting.
-  if (absl::c_linear_search(dimension_numbers.lhs_contracting_dimensions(),
-                            lhs_ragged_dimension)) {
+  if (mode == kContracting) {
     dimensions.push_back(num_groups);
     is_dynamic.push_back(is_dynamic_group_sizes);
   }

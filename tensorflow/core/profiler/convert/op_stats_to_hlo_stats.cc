@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_hlo_stats.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
+#include "tensorflow/core/profiler/convert/data_table_utils.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/protobuf/hlo_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -78,6 +85,93 @@ HloStatsDatabase ConvertOpStatsToHloStats(const OpStats& op_stats) {
     prev_record = record;
   }
   return hlo_stats_db;
+}
+
+// The parse logic based on the assumption that the hlo op text is in format of
+// '%op_name = <long name>'
+std::string GetHloOpNameFromExpression(std::string expression) {
+  std::vector<::std::string> parts = absl::StrSplit(expression, " = ");
+  std::string hlo_op_name = parts[0];
+  if (hlo_op_name[0] == '%') {
+    hlo_op_name = hlo_op_name.substr(1);
+  }
+  return hlo_op_name;
+}
+
+std::vector<std::vector<std::string>> HloStatsDataTableColumns() {
+  const std::vector<std::vector<std::string>> kColumns = {
+      {"rank", "number", "Rank"},
+      {"program_id", "string", "Program id"},
+      {"category", "string", "HLO op category"},
+      {"hlo_op_name", "string", "HLO op name"},
+      {"hlo_op_expression", "string", "HLO op text"},
+      {"tf_op_name", "string", "Framework op name"},
+      {"occurrences", "number", "#Occurrences"},
+      {"total_time", "number", "Total time (us)"},
+      {"avg_time", "number", "Avg. time (us)"},
+      {"total_self_time", "number", "Total self time (us)"},
+      {"avg_self_time", "number", "Avg. self time (us)"},
+      {"total_self_time_percent", "number", "Total self time (%)"},
+      {
+          "cumulative_total_self_time_percent",
+          "number",
+          "Cumulative total self time (%)",
+      },
+      {"dma_stall_percent", "number", "%time stalled by DMA"},
+      {"model_flop_rate", "number", "Model GFLOP/s"},
+      {"normalized_flop_rate", "number", "Normalized GFLOP/s"},
+      {"measured_memory_bw", "number", "Measured memory BW (GiB/s)"},
+      {"hbm_bw", "number", "HBM BW (GiB/s)"},
+      {"cmem_read_bw", "number", "CMEM Read BW (GiB/s)"},
+      {"cmem_write_bw", "number", "CMEM Write BW (GiB/s)"},
+      {"operational_intensity", "number", "Operational intensity (FLOPS/Byte)"},
+      {"bound_by", "string", "Bound by"},
+      {"hlo_rematerialization", "string", "Rematerialization"},
+      {"outside_compilation", "string", "Outside Compilation"},
+      {"autotuned", "string", "Autotuned"},
+  };
+  return kColumns;
+}
+
+std::unique_ptr<tensorflow::profiler::DataTable> CreateHloStatsDataTable(
+    const HloStatsDatabase& hlo_stats_db) {
+  auto data_table = std::make_unique<tensorflow::profiler::DataTable>();
+  for (const std::vector<std::string>& col : HloStatsDataTableColumns()) {
+    data_table->AddColumn(TableColumn(col[0], col[1], col[2]));
+  }
+  for (const HloStatsRecord& record : hlo_stats_db.hlo_stats_record()) {
+    TableRow* row = data_table->AddRow();
+    row->AddCell(absl::StrCat(record.rank()));
+    row->AddCell(absl::StrCat(record.program_id()));
+    row->AddCell(record.hlo_category());
+    row->AddCell(GetHloOpNameFromExpression(record.hlo_expression()));
+    row->AddCell(record.hlo_expression());
+    row->AddCell(record.tf_op_name());
+    row->AddCell(record.occurrences());
+    row->AddCell(record.total_time_in_us());
+    row->AddCell(record.avg_time_in_us());
+    row->AddCell(record.total_self_time_in_us());
+    row->AddCell(record.avg_self_time_in_us());
+    row->AddCell(record.total_self_time_as_fraction());
+    row->AddCell(record.cumulative_total_self_time_as_fraction());
+    row->AddCell(record.dma_stall_fraction());
+    row->AddCell(record.model_flop_rate());
+    row->AddCell(record.measured_flop_rate());
+    row->AddCell(record.measured_memory_bw());
+    row->AddCell(record.hbm_bw());
+    row->AddCell(record.cmem_read_bw());
+    row->AddCell(record.cmem_write_bw());
+    row->AddCell(record.operational_intensity());
+    row->AddCell(absl::StrCat(record.bound_by()));
+    row->AddCell(record.rematerialization() ? "Yes" : "No");
+    row->AddCell(record.outside_compilation() ? "Yes" : "No");
+    row->AddCell(record.autotuned() ? "Yes" : "No");
+  }
+  return data_table;
+}
+
+std::string HloStatsToDataTableJson(const HloStatsDatabase& hlo_stats_db) {
+  return CreateHloStatsDataTable(hlo_stats_db)->ToJson();
 }
 
 }  // namespace profiler

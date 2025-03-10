@@ -4,3 +4,5 @@ twine ~= 5.1.1
 
 # For JAX
 build ~= 1.2.2
+# uv is faster than pip for installing Python packages.
+uv ~= 0.5.30

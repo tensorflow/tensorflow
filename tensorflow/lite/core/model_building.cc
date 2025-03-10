@@ -84,7 +84,7 @@ struct OpInfo {
 
 struct GraphInfo {
   GraphInfo() = default;
-  // This object holds information that is part of a graph. A inadvertant copy
+  // This object holds information that is part of a graph. A inadvertent copy
   // made by not returning a reference to the object stored in an
   // InterpreterInfo will lead to issues (namely no modification done to the
   // graph).
@@ -378,16 +378,16 @@ Tensor Abs(Tensor tensor) {
                  tensor, Helper::GetTensorType(tensor));
 }
 
-Tensor Add(Tensor lhs, Tensor brhs) {
+Tensor Add(Tensor lhs, Tensor rhs) {
   return BinaryOp(BuiltinOperator_ADD, *ops::builtin::Register_ADD(),
-                  AllocateParam(TfLiteAddParams()), lhs, brhs,
+                  AllocateParam(TfLiteAddParams()), lhs, rhs,
                   Helper::GetTensorType(lhs));
 }
 
-Tensor Mul(Tensor alhs, Tensor rhs) {
+Tensor Mul(Tensor lhs, Tensor rhs) {
   return BinaryOp(BuiltinOperator_MUL, *ops::builtin::Register_MUL(),
-                  AllocateParam(TfLiteMulParams()), alhs, rhs,
-                  Helper::GetTensorType(alhs));
+                  AllocateParam(TfLiteMulParams()), lhs, rhs,
+                  Helper::GetTensorType(lhs));
 }
 
 Tensor Transpose(Tensor tensor, Tensor permutation) {

@@ -117,7 +117,10 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
   static CostAnalysisOptions DefaultCostAnalysisOptions() {
     CostAnalysisOptions options;
     options.default_mem_bandwidth_bytes_per_second = kDefaultMemBandwidth;
-    options.alternate_mem_bandwidth_bytes_per_second = kAlternateMemBandwidth;
+    options.alternate_mem_read_bandwidth_bytes_per_second =
+        kAlternateMemBandwidth;
+    options.alternate_mem_write_bandwidth_bytes_per_second =
+        kAlternateMemBandwidth;
     return options;
   }
 

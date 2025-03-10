@@ -225,7 +225,7 @@ TEST(TfrtCpuClientTest, AsyncTransferRawData) {
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->addressable_devices()[0]));
+                              {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
@@ -245,8 +245,8 @@ TEST(TfrtCpuClientTest, AsyncTransferWithSpecs) {
   PjRtClient::ShapeSpec shape_spec{U32, {3, 2}};
   TF_ASSERT_OK_AND_ASSIGN(
       auto transfer_manager,
-      client->CreateBuffersForAsyncHostToDevice(
-          {shape_spec}, std::nullopt, client->addressable_devices()[0]));
+      client->CreateBuffersForAsyncHostToDevice({shape_spec}, std::nullopt,
+                                                client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
@@ -266,7 +266,7 @@ TEST(TfrtCpuClientTest, AsyncTransferLiteral) {
   xla::Shape shape = xla::ShapeUtil::MakeShape(F32, {128, 256});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->addressable_devices()[0]));
+                              {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
@@ -282,7 +282,7 @@ TEST(TfrtCpuClientTest, AsyncTransferLiteralInt4) {
   xla::Shape shape = xla::ShapeUtil::MakeShape(S4, {128, 256});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->addressable_devices()[0]));
+                              {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
@@ -310,7 +310,7 @@ TEST(TfrtCpuClientTest, AsyncTransferCallsOnDone) {
   xla::Shape shape = ShapeUtil::MakeShape(F32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->addressable_devices()[0]));
+                              {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
@@ -328,7 +328,7 @@ TEST(TfrtCpuClientTest, AsyncTransferNeverTransferred) {
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->addressable_devices()[0]));
+                              {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   transfer_manager.reset();
   EXPECT_THAT(
@@ -343,11 +343,11 @@ TEST(TfrtCpuClientTest, AsyncTransferBufferCount) {
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->addressable_devices()[0]));
+                              {shape}, client->memory_spaces()[0]));
   EXPECT_EQ(transfer_manager->buffer_count(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(
-      transfer_manager, client->CreateBuffersForAsyncHostToDevice(
-                            {shape, shape}, client->addressable_devices()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(transfer_manager,
+                          client->CreateBuffersForAsyncHostToDevice(
+                              {shape, shape}, client->memory_spaces()[0]));
   EXPECT_EQ(transfer_manager->buffer_count(), 2);
 }
 
@@ -356,7 +356,7 @@ TEST(TfrtCpuClientTest, AsyncTransferBufferSize) {
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->addressable_devices()[0]));
+                              {shape}, client->memory_spaces()[0]));
   EXPECT_EQ(transfer_manager->buffer_size(0), 3 * 2 * 4);
 }
 
@@ -364,9 +364,9 @@ TEST(TfrtCpuClientTest, AsyncTransferDevice) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   auto* device = client->addressable_devices()[0];
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto transfer_manager,
-      client->CreateBuffersForAsyncHostToDevice({shape}, device));
+  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                          client->CreateBuffersForAsyncHostToDevice(
+                              {shape}, *device->default_memory_space()));
   EXPECT_EQ(transfer_manager->device(), device);
 }
 
@@ -375,7 +375,7 @@ TEST(TfrtCpuClientTest, AsyncTransferSetBufferError) {
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->addressable_devices()[0]));
+                              {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   transfer_manager->SetBufferError(0, Internal("foobar"));
   EXPECT_THAT(
@@ -399,7 +399,7 @@ TEST(TfrtCpuClientTest, AsyncTransferRawDataToSubBuffer) {
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->addressable_devices()[0]));
+                              {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
@@ -477,12 +477,9 @@ ENTRY Identity() -> f32[2, 2] {
   ASSERT_TRUE(!fingerprint.empty());
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto* memory_space,
-      client->addressable_devices()[0]->default_memory_space());
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto transfer_manager,
-      client->CreateBuffersForAsyncHostToDevice({shape}, memory_space));
+  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                          client->CreateBuffersForAsyncHostToDevice(
+                              {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   transfer_manager->SetBufferError(0, Internal("foobar"));
 
@@ -666,7 +663,7 @@ TEST(TfrtCpuClientTest, CopyRawToHost) {
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->addressable_devices()[0]));
+                              {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());

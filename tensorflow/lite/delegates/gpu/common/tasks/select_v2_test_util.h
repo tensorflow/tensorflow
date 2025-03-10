@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SELECT_V2_TEST_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SELECT_V2_TEST_UTIL_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 
 namespace tflite {

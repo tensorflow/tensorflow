@@ -14,7 +14,6 @@
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/embedding_lookup_op_legalization.h"
 
-#include <cstdint>
 #include <string>
 
 #include "absl/strings/str_format.h"

@@ -734,8 +734,7 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
     devices.push_back(device);
   }
   tsl::RCReference<xla::ifrt::DeviceList> device_list(
-      xla::ifrt::BasicDeviceList::Create(
-          xla::ifrt::BasicDeviceList::Devices(devices.begin(), devices.end())));
+      ifrt_client.MakeDeviceList(devices));
 
   return MakeArrayFromTensor(ifrt_client, input_tensor, device_list,
                              hlo_sharding, thread_pool);

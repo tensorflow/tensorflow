@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/pair.h"  // IWYU pragma: keep
 #include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
@@ -153,7 +155,7 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
   }
   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
   ifrt_arrays.reserve(py_arrays.size());
-  ifrt::BasicDeviceList::Devices devices;
+  absl::InlinedVector<ifrt::Device*, 1> devices;
   devices.reserve(py_arrays.size());
   absl::flat_hash_set<ifrt::Device*> device_set;
   device_set.reserve(py_arrays.size());
@@ -197,8 +199,9 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
               .c_str());
     }
   }
+  ifrt::Client* client = ifrt_arrays.front()->client();
   tsl::RCReference<ifrt::DeviceList> device_list =
-      ifrt::BasicDeviceList::Create(std::move(devices));
+      client->MakeDeviceList(devices);
   if (device_set.size() != device_list->size()) {
     throw nb::value_error(
         absl::StrFormat(
@@ -207,7 +210,6 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
             *device_list)
             .c_str());
   }
-  ifrt::Client* client = ifrt_arrays.front()->client();
 
   auto ifrt_dtype = DtypeToIfRtDType(dtype);
   if (!ifrt_dtype.ok()) {
@@ -223,10 +225,20 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
     // TODO(hyeontaek): Return a absl::Status.
     throw nb::value_error(ifrt_sharding.status().ToString().c_str());
   }
-  auto ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
-      ifrt::Shape(shape), *std::move(ifrt_sharding),
-      absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput,
-      ifrt::SingleDeviceShardSemantics::kAddressableShards);
+  absl::StatusOr<tsl::RCReference<ifrt::Array>> ifrt_array;
+  // TODO(emilyaf): Always call the version that takes `dtype` once tokens are
+  // handled correctly.
+  if (ifrt_arrays.empty()) {
+    ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
+        ifrt_dtype.value(), ifrt::Shape(shape), *std::move(ifrt_sharding),
+        absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput,
+        ifrt::SingleDeviceShardSemantics::kAddressableShards);
+  } else {
+    ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
+        ifrt::Shape(shape), *std::move(ifrt_sharding),
+        absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput,
+        ifrt::SingleDeviceShardSemantics::kAddressableShards);
+  }
   if (!ifrt_array.ok()) {
     // TODO(hyeontaek): Return a absl::Status.
     throw nb::value_error(ifrt_array.status().ToString().c_str());
@@ -696,7 +708,7 @@ absl::Status PyArray::set_arrays(nb::object obj) {
   py_arrays().clear();
   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
   ifrt_arrays.reserve(list.size());
-  ifrt::BasicDeviceList::Devices devices;
+  absl::InlinedVector<ifrt::Device*, 1> devices;
   devices.reserve(list.size());
   std::vector<ifrt::Shape> shapes;
   shapes.reserve(list.size());
@@ -811,12 +823,18 @@ absl::Status PyArray::BlockUntilResultStatusIsReady() {
   return result_status.Await();
 }
 
-absl::StatusOr<nb::object> PyArray::SingleDeviceArrayToNumpyArray() {
+absl::StatusOr<std::pair<nb::object, bool>>
+PyArray::SingleDeviceArrayToNumpyArrayDidCopy() {
   TF_ASSIGN_OR_RETURN(auto arr, FullyReplicatedShard());
   auto result = arr.GetStorage().host_value.AsNumPyArray(
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
   TF_RETURN_IF_ERROR(arr.BlockUntilResultStatusIsReady());
   return result;
+}
+
+absl::StatusOr<nb::object> PyArray::SingleDeviceArrayToNumpyArray() {
+  TF_ASSIGN_OR_RETURN(auto result, SingleDeviceArrayToNumpyArrayDidCopy());
+  return result.first;
 }
 
 absl::Status PyArray::CopySingleDeviceArrayToHostAsync() {
@@ -1248,7 +1266,7 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
   nb::list owning_pylist;
   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
 
-  xla::ifrt::BasicDeviceList::Devices devices;
+  absl::InlinedVector<ifrt::Device*, 1> devices;
   devices.reserve(n_devices);
   std::vector<xla::ifrt::Shape> shapes;
   shapes.reserve(n_devices);
@@ -1668,7 +1686,7 @@ bool IsZeroCopyableCpuBuffer(const PjRtBuffer* buf) {
 PyHostValue::PyHostValue() = default;
 PyHostValue::~PyHostValue() = default;
 
-absl::StatusOr<nb::object> PyHostValue::AsNumPyArray(
+absl::StatusOr<std::pair<nb::object, bool>> PyHostValue::AsNumPyArray(
     std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array) {
   if (ifrt_array->IsDeleted()) {
     return InvalidArgument("DeviceArray has been deleted.");
@@ -1713,7 +1731,7 @@ absl::StatusOr<nb::object> PyHostValue::AsNumPyArray(
       nb_numpy_ndarray array(dtype, shape->dimensions(),
                              ByteStridesForShape(*shape), data, hold_capsule);
       array.attr("flags").attr("writeable") = nb::bool_(false);
-      return array;
+      return std::make_pair(array, false);
     }
   }
 
@@ -1727,7 +1745,7 @@ absl::StatusOr<nb::object> PyHostValue::AsNumPyArray(
   if (string_array_contents_ != nullptr) {
     TF_RETURN_IF_ERROR(ConvertStringArrayContentsToNumpyArray(ifrt_array));
   }
-  return value_;
+  return std::make_pair(value_, true);
 }
 
 absl::Status PyHostValue::ConvertStringArrayContentsToNumpyArray(
@@ -1977,8 +1995,8 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
   type.attr("on_device_size_in_bytes") = nb::cpp_function(
       xla::ValueOrThrowWrapper(&PyArray::GetOnDeviceSizeInBytes),
       nb::is_method());
-  type.attr("_single_device_array_to_np_array") = nb::cpp_function(
-      xla::ValueOrThrowWrapper(&PyArray::SingleDeviceArrayToNumpyArray),
+  type.attr("_single_device_array_to_np_array_did_copy") = nb::cpp_function(
+      xla::ValueOrThrowWrapper(&PyArray::SingleDeviceArrayToNumpyArrayDidCopy),
       nb::is_method());
   type.attr("_copy_single_device_array_to_host_async") = nb::cpp_function(
       [](PyArray& self) {
@@ -2015,16 +2033,19 @@ absl::Status PyArray::RegisterTypes(nb::module_& m) {
          absl::Span<const std::vector<const PyDevice*>> dst_device_lists,
          absl::Span<const nb::object> shardings,
          absl::Span<const ifrt::ArrayCopySemantics> array_copy_semantics) {
+        if (arrays.empty()) {
+          return std::vector<PyArray>();
+        }
+        auto* client = arrays[0].ifrt_array()->client();
         std::vector<tsl::RCReference<ifrt::DeviceList>> device_lists;
         device_lists.reserve(dst_device_lists.size());
         for (const auto& dst_devices : dst_device_lists) {
-          ifrt::BasicDeviceList::Devices devices;
+          absl::InlinedVector<ifrt::Device*, 1> devices;
           devices.reserve(dst_devices.size());
           for (auto& d : dst_devices) {
             devices.push_back(d->device());
           }
-          device_lists.push_back(
-              ifrt::BasicDeviceList::Create(std::move(devices)));
+          device_lists.push_back(client->MakeDeviceList(devices));
         }
         return xla::ValueOrThrow(PyArray::BatchedCopyToDeviceWithSharding(
             arrays, device_lists, shardings, array_copy_semantics));

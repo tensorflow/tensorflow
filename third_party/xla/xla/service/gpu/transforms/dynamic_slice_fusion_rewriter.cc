@@ -211,11 +211,14 @@ bool IsValueFunctionOfLoopInductionVariable(const HloInstruction& value,
   }
   const HloInstruction* update = while_body->root_instruction()->operand(
       *loop_induction_variable_tuple_idx);
+  const HloInstruction* indvar_init =
+      while_op->operand(0)->operand(*loop_induction_variable_tuple_idx);
 
   // The `update` instruction and `value` should only depend on the induction
   // variable.
   return IsOnlyDependentOn(/*consumer=*/update, /*producer=*/indvar) &&
-         IsOnlyDependentOn(/*consumer=*/&value, /*producer=*/indvar);
+         IsOnlyDependentOn(/*consumer=*/&value, /*producer=*/indvar) &&
+         IsOnlyDependentOn(indvar_init, nullptr);
 }
 
 // This returns true for the constants that are handled in the dynamic slice
@@ -506,8 +509,9 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
       *gpu_config.mutable_fusion_backend_config();
   backend_config.set_kind("__custom_fusion");
   CustomFusionConfig config;
-  config.set_name(dynamic ? "dynamic_address_computation"
-                          : "address_computation");
+  config.set_name(std::string(
+      dynamic ? kDynamicSliceFusionWithDynamicAddressComputationConfigName
+              : kDynamicSliceFusionWithStaticAddressComputationConfigName));
   *backend_config.mutable_custom_fusion_config() = config;
   TF_RETURN_IF_ERROR(fusion->set_backend_config(std::move(gpu_config)));
 

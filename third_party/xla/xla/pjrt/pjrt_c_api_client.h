@@ -331,25 +331,11 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
 
-  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(
-      absl::Span<const ShapeSpec> shape_specs,
-      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-      PjRtDevice* device) override;
-
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
       absl::Span<const ShapeSpec> shape_specs,
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -378,16 +364,6 @@ class PjRtCApiClient : public PjRtClient {
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) override {
-    return Unimplemented(
-        "PJRT C API does not support MakeCrossHostReceiveBuffers. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
-        "this feature.");
-  }
-
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffersForGather(
-      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
     return Unimplemented(
         "PJRT C API does not support MakeCrossHostReceiveBuffers. Please "
         "report an issue at https://github.com/google/jax/issues if you need "
@@ -518,16 +494,6 @@ class PjRtCApiBuffer : public PjRtBuffer {
     LOG(ERROR) << "PJRT C API does not support CopyToRemoteDevice. Please "
                   "report an issue at https://github.com/google/jax/issues if "
                   "you need this feature.";
-  }
-
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) override {
-    LOG(ERROR)
-        << "PJRT C API does not support CopyToRemoteDeviceScattered. Please "
-           "report an issue at https://github.com/google/jax/issues if you "
-           "need this feature.";
   }
 
   PjRtFuture<> GetReadyFuture() override;
@@ -721,10 +687,6 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   PJRT_LoadedExecutable* c_loaded_executable() const {
     return loaded_executable_.get();
   }
-
-  // True if the `returned_futures` output parameter is supported in the
-  // Execute*() methods.
-  bool IsReturnedFutureSupported() const override { return true; }
 
   // std::function version of PJRT_SendCallback
   using SendCallbackFunction = std::function<PJRT_Error*(

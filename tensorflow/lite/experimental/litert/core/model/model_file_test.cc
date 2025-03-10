@@ -22,11 +22,17 @@
 #include <utility>
 #include <vector>
 
+// schema/mutable/schema_generated.h and schema/schema_generated.h (included
+// through flatbuffer_tools.h via model.h) have the same #ifdef, thus this line
+// need to be put at the top to ensure we get the "mutable" version.
+#if 1
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#endif
+
 #include <gmock/gmock.h>  // IWYU pragma: keep
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
@@ -48,7 +54,6 @@
 #include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/test/test_models.h"
 #include "tensorflow/lite/schema/mutable/schema_generated.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
 namespace {
@@ -122,7 +127,7 @@ class TestWithModelFactory : public ::testing::TestWithParam<ModelFactory> {
 TEST(ModelLoadTest, BadFilepath) {
   LiteRtModel model = nullptr;
   EXPECT_THAT(LiteRtCreateModelFromFile("bad_path", &model),
-              IsError(kLiteRtStatusErrorFileIO));
+              IsError(kLiteRtStatusErrorNotFound));
 }
 
 TEST(ModelLoadTest, BadFileData) {
@@ -144,6 +149,16 @@ TEST(ModelLoadTest, BadFileData) {
   EXPECT_THAT(LiteRtCreateModelFromFile(test_file_path.c_str(), &model),
               IsError(kLiteRtStatusErrorInvalidFlatbuffer));
   // NOLINTEND
+}
+
+TEST(ModelLoadTest, GetCustomOpCode) {
+  auto model = litert::testing::LoadTestFileModel("simple_model_npu.tflite");
+  ASSERT_TRUE(model);
+  const auto& litert_model = *model.Get();
+  const auto& op = *litert_model.MainSubgraph()->Ops().front();
+  auto custom_op_code = GetCustomOpCode(litert_model, op);
+  ASSERT_TRUE(custom_op_code.has_value());
+  EXPECT_EQ(*custom_op_code, "DISPATCH_OP");
 }
 
 TEST(ModelLoadTest, WithMetadata) {
@@ -195,6 +210,21 @@ TEST(ModelLoadTest, WithSignature) {
   EXPECT_EQ(&signature->get().GetSubgraph(), litert_model.MainSubgraph());
 }
 
+TEST(ModelLoadTest, NoSignature) {
+  auto model = *Model::CreateFromFile(testing::GetTfliteFilePath(
+      "java/demo/app/src/main/assets/mobilenet_v1_1.0_224.tflite"));
+  if (!model) {
+    GTEST_SKIP() << "Model file is not available.";
+  }
+  auto& litert_model = *model.Get();
+  auto signature =
+      litert_model.FindSignature(LiteRtSignatureT::kDefaultSignatureKey);
+  ASSERT_TRUE(signature);
+  EXPECT_EQ(signature->get().InputNames().size(), 1);
+  EXPECT_EQ(signature->get().OutputNames().size(), 1);
+  EXPECT_EQ(&signature->get().GetSubgraph(), litert_model.MainSubgraph());
+}
+
 TEST(ModelSerializeTest, WithSignature) {
   auto model = litert::testing::LoadTestFileModel(kAddSimple);
   auto& litert_model = *model.Get();
@@ -220,6 +250,42 @@ TEST(ModelSerializeTest, WithSignature) {
   EXPECT_THAT(inputs, ElementsAreArray({kInput}));
   EXPECT_THAT(outputs, ElementsAreArray({kOutput}));
   EXPECT_EQ(&sig.GetSubgraph(), re_loaded->get()->MainSubgraph());
+}
+
+TEST(ModelLoadTest, ReverseSignature) {
+  auto model =
+      litert::testing::LoadTestFileModel("reverse_signature_model.tflite");
+  ASSERT_TRUE(model);
+  auto& litert_model = *model.Get();
+
+  auto signature = litert_model.FindSignature("serving_default");
+  ASSERT_TRUE(signature);
+
+  // Check if the input and output names are in the order of the subgraph
+  // inputs and outputs instead of the signature appearance order.
+  const auto& sig = signature->get();
+  ASSERT_EQ(sig.InputNames().size(), 2);
+  EXPECT_STREQ(sig.InputNames()[0].c_str(), "y");
+  EXPECT_STREQ(sig.InputNames()[1].c_str(), "x");
+  ASSERT_EQ(sig.OutputNames().size(), 2);
+  EXPECT_STREQ(sig.OutputNames()[0].c_str(), "sum");
+  EXPECT_STREQ(sig.OutputNames()[1].c_str(), "prod");
+
+  auto serialized = SerializeModel(std::move(*model.Get()));
+  EXPECT_TRUE(VerifyFlatbuffer(serialized->Span()));
+
+  auto re_loaded = LoadModelFromBuffer(*serialized);
+  auto re_loaded_signature = re_loaded->get()->FindSignature("serving_default");
+  ASSERT_TRUE(re_loaded_signature);
+
+  // Check again with the serialized model.
+  const auto& re_sig = re_loaded_signature->get();
+  ASSERT_EQ(re_sig.InputNames().size(), 2);
+  EXPECT_STREQ(re_sig.InputNames()[0].c_str(), "y");
+  EXPECT_STREQ(re_sig.InputNames()[1].c_str(), "x");
+  ASSERT_EQ(re_sig.OutputNames().size(), 2);
+  EXPECT_STREQ(re_sig.OutputNames()[0].c_str(), "sum");
+  EXPECT_STREQ(re_sig.OutputNames()[1].c_str(), "prod");
 }
 
 TEST(ModelLoadTest, WithOffsetTensorBuffer) {
@@ -786,6 +852,9 @@ TEST_P(MultiSubgraphDupeConstTest, CheckGraph) {
     Tensor t(&cst);
     EXPECT_THAT(*t.WeightsData<float>(), ElementsAreArray(kWeights));
   }
+  auto buf_id_0 = model.Subgraph(0).Op(0).Input(1).Weights().GetBufferId();
+  auto buf_id_1 = model.Subgraph(1).Op(0).Input(1).Weights().GetBufferId();
+  ASSERT_EQ(buf_id_0, buf_id_1);
 }
 
 INSTANTIATE_TEST_SUITE_P(ModelLoadTests, MultiSubgraphDupeConstTest,
@@ -794,7 +863,7 @@ INSTANTIATE_TEST_SUITE_P(ModelLoadTests, MultiSubgraphDupeConstTest,
 INSTANTIATE_TEST_SUITE_P(ModelSerializeTests, MultiSubgraphDupeConstTest,
                          Values(MakeRoundTripFactory(kCstMultiSubgraph)));
 
-// Tests that programatically check litert against tflite models.
+// Tests that programmatically check litert against tflite models.
 //===---------------------------------------------------------------------------
 
 using ModelLoadOpCheckTest = TestWithModelPath;

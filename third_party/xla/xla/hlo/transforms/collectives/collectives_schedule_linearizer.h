@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVES_SCHEDULE_LINEARIZER_H_
 #define XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVES_SCHEDULE_LINEARIZER_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"

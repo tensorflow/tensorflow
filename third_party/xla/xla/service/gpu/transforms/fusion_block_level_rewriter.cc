@@ -102,7 +102,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
       << absl::StrCat(
              "sizes=[",
              absl::StrJoin(
-                 tiled_runtime_data.block_level_parameters.output_tile_sizes,
+                 tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
                  ", "),
              "], num_warps=",
              tiled_runtime_data.block_level_parameters.num_warps)

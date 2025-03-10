@@ -57,13 +57,13 @@ TEST(NanoIfrtClientTest, BigResult) {
   // A program that is likely to need some temporary buffers to be allocated.
   absl::string_view kBigResult =
       R"(module {
-        func.func @main(%arg: tensor<f32>) -> tensor<1024x1024xf32> {
-          %0 = "mhlo.broadcast"(%arg) {broadcast_sizes = dense<[1024, 1024]> : tensor<2xi64>} : (tensor<f32>) -> tensor<1024x1024xf32>
-          %1 = "mhlo.add"(%0, %0) : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
-          %2 = "mhlo.dot"(%1, %1) : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
-          return %2 : tensor<1024x1024xf32>
-        }
-      })";
+      func.func @main(%arg0: tensor<f32>) -> tensor<1024x1024xf32> {
+        %0 = stablehlo.broadcast %arg0, sizes = [1024, 1024] : (tensor<f32>) -> tensor<1024x1024xf32>
+        %1 = stablehlo.add %0, %0 : tensor<1024x1024xf32>
+        %2 = stablehlo.dot %1, %1 : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
+        return %2 : tensor<1024x1024xf32>
+      }
+    })";
   auto client = NanoIfrtClient::Create();
   auto compiler = client->GetDefaultCompiler();
 
@@ -142,7 +142,7 @@ static void BM_IfRtAddScalars(benchmark::State& state) {
   constexpr absl::string_view program =
       R"(module {
         func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
-          %0 = mhlo.add %arg0, %arg1 : tensor<f32>
+          %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
           return %0 : tensor<f32>
         }
       })";
@@ -185,16 +185,16 @@ static void BM_IfRtAddManyScalars(benchmark::State& state) {
            -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>,
                tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>)
         {
-          %0 = mhlo.add %arg0, %arg1 : tensor<f32>
-          %1 = mhlo.add %arg0, %0 : tensor<f32>
-          %2 = mhlo.add %arg0, %1 : tensor<f32>
-          %3 = mhlo.add %arg0, %2 : tensor<f32>
-          %4 = mhlo.add %arg0, %3 : tensor<f32>
-          %5 = mhlo.add %arg0, %4 : tensor<f32>
-          %6 = mhlo.add %arg0, %5 : tensor<f32>
-          %7 = mhlo.add %arg0, %6 : tensor<f32>
-          %8 = mhlo.add %arg0, %7 : tensor<f32>
-          %9 = mhlo.add %arg0, %8 : tensor<f32>
+          %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
+          %1 = stablehlo.add %arg0, %0 : tensor<f32>
+          %2 = stablehlo.add %arg0, %1 : tensor<f32>
+          %3 = stablehlo.add %arg0, %2 : tensor<f32>
+          %4 = stablehlo.add %arg0, %3 : tensor<f32>
+          %5 = stablehlo.add %arg0, %4 : tensor<f32>
+          %6 = stablehlo.add %arg0, %5 : tensor<f32>
+          %7 = stablehlo.add %arg0, %6 : tensor<f32>
+          %8 = stablehlo.add %arg0, %7 : tensor<f32>
+          %9 = stablehlo.add %arg0, %8 : tensor<f32>
           return %0, %1, %2, %3, %4, %5, %6, %7, %8, %9
             : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>,
               tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>

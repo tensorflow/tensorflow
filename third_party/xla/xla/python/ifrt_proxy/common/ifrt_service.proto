@@ -276,6 +276,7 @@ message AssembleArrayFromSingleDeviceArraysRequest {
   proto.ArrayCopySemantics copy_semantics = 4;
   optional proto.SingleDeviceShardSemantics single_device_shard_semantics = 5;
   fixed64 result_handle = 6;
+  optional DTypeProto dtype = 7;
 }
 message AssembleArrayFromSingleDeviceArraysResponse {
   fixed64 array_handle = 1;

@@ -76,6 +76,8 @@ class CpuCallback {
 
   absl::StatusOr<nanobind::tuple> Call(nanobind::tuple args);
 
+  absl::StatusOr<nanobind::tuple> FfiCall(nanobind::tuple args);
+
  private:
   nanobind::callable callable_;
   std::vector<Arg> args_;

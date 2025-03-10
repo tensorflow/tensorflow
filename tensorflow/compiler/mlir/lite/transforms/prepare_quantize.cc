@@ -402,7 +402,8 @@ void PrepareQuantizePass::runOnOperation() {
   }
   if (is_qdq_conversion_ ||
       quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone) {
-    patterns_1.add<PropagateTransposedPerAxisQuantDim>(ctx);
+    patterns_1.add<PropagateReshapedPerAxisQuantDim,
+                   PropagateTransposedPerAxisQuantDim>(ctx);
   }
   (void)applyPatternsGreedily(func, std::move(patterns_1));
 

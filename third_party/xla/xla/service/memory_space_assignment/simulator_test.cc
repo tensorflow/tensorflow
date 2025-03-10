@@ -89,7 +89,8 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
             *hlo_cost_analysis_);
     CostAnalysisOptions cost_analysis_options;
     // Assume 2 byte per second for testing.
-    cost_analysis_options.alternate_mem_bandwidth_bytes_per_second = 2;
+    cost_analysis_options.alternate_mem_read_bandwidth_bytes_per_second = 2;
+    cost_analysis_options.alternate_mem_write_bandwidth_bytes_per_second = 2;
     cost_analysis_options.default_mem_bandwidth_bytes_per_second = 1.0;
 
     TF_ASSIGN_OR_RETURN(cost_analysis_,

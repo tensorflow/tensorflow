@@ -164,6 +164,8 @@ static constexpr char kEmbeddingPipeliningInlineAttr[] =
     "_embedding_pipelining_inline";
 static constexpr char kEmbeddingForward[] = "forward";
 static constexpr char kEmbeddingBackward[] = "backward";
+static constexpr char kEmbeddingForwardSequential[] = "forward_sequential";
+static constexpr char kEmbeddingBackwardSequential[] = "backward_sequential";
 static constexpr char kDevice[] = "device";
 static constexpr char kLower[] = "_lower_using_switch_merge";
 static constexpr llvm::StringRef kTpuCompilationStatus =
@@ -1701,24 +1703,35 @@ void EmbeddingPipeliningPass::runOnOperation() {
   // Find all ops that we know compose the embedding forward and backward pass.
   // These ops are only tagged if one enables the
   // `pipeline_execution_with_tensor_core` flag in the mid-level API.
+  bool sequencing_requested = false;
   WalkResult walk_result = module.walk([&](Operation* op) -> WalkResult {
     if (op->hasAttr(kEmbeddingPipelining)) {
       const std::string region =
           op->getAttrOfType<StringAttr>(kEmbeddingPipelining).getValue().str();
       if (region == kEmbeddingForward) {
         forward_pass_ops.insert(op);
+        op->removeAttr(kEmbeddingPipelining);
       } else if (region == kEmbeddingBackward) {
         backward_pass_ops.insert(op);
+        op->removeAttr(kEmbeddingPipelining);
+      } else if (region == kEmbeddingForwardSequential ||
+                 region == kEmbeddingBackwardSequential) {
+        sequencing_requested = true;
       } else {
         return op->emitOpError()
                << "embedding op has unknown " << kEmbeddingPipelining
                << " attribute value " << region << ".";
       }
-      op->removeAttr(kEmbeddingPipelining);
     }
     return WalkResult::advance();
   });
   if (walk_result.wasInterrupted()) return signalPassFailure();
+
+  if (sequencing_requested) {
+    LOG(INFO) << "EmbeddingSequencingPass requested, skipping "
+                 "EmbeddingPipeliningPass";
+    return;
+  }
 
   // If there are no forward pass ops, there is no SC, so we end early.
   if (forward_pass_ops.empty()) {

@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <memory>
+#include <optional>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
@@ -34,7 +35,9 @@ namespace xla::cpu {
 template <typename T, typename... Args>
 class ObjectPool {
   struct Entry {
-    T object;
+    // Keep `object` as optional to allow using object pool for objects that
+    // cannot be default-constructed.
+    std::optional<T> object;
     std::atomic<Entry*> next;
   };
 
@@ -46,8 +49,8 @@ class ObjectPool {
    public:
     ~BorrowedObject();
 
-    T& operator*() { return entry_->object; }
-    T* operator->() { return &entry_->object; }
+    T& operator*() { return *entry_->object; }
+    T* operator->() { return &*entry_->object; }
 
     BorrowedObject(BorrowedObject&&) = default;
     BorrowedObject& operator=(BorrowedObject&&) = default;

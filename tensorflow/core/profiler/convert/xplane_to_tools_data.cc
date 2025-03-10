@@ -276,7 +276,9 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToHloStats(
   OpStats combined_op_stats;
   TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
       session_snapshot, options, &combined_op_stats));
-  return ConvertOpStatsToHloStats(combined_op_stats).SerializeAsString();
+  hlo_stats::HloStatsDatabase hlo_stats_db =
+      ConvertOpStatsToHloStats(combined_op_stats);
+  return HloStatsToDataTableJson(hlo_stats_db);
 }
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToRooflineModel(

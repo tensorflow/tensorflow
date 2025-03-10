@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/convolution_thunk.h"
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"

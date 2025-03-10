@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
@@ -111,9 +111,8 @@ ENTRY %TokenInWhileLoop () -> s32[] {
   DebugOptions debug_options = GetDebugOptionsForTest();
   // Module DCE pass removes the generate token instructions.
   debug_options.add_xla_disable_hlo_passes("hlo-module-dce");
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
-      HloRunner::CreateModuleFromString(module_string, debug_options));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          CreateModuleFromString(module_string, debug_options));
 
   EXPECT_TRUE(RunAndCompare(std::move(module), error_spec_));
 }
@@ -151,7 +150,7 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
     // True case.
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<HloModule> module,
-        HloRunner::CreateModuleFromString(module_string, debug_options));
+        CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(true);
     TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
     EXPECT_EQ(42, result.Get<int32_t>({}));
@@ -161,7 +160,7 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
     // False case.
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<HloModule> module,
-        HloRunner::CreateModuleFromString(module_string, debug_options));
+        CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(false);
     TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
     EXPECT_EQ(7, result.Get<int32_t>({}));

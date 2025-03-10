@@ -74,6 +74,11 @@ void StepEventsToPerCoreStepInfo(uint32_t step_num, StepDetails& step_details,
     (*per_core_step_info.mutable_step_info_per_core())[core_id] =
         std::move(step_info);
   }
+  auto& all_reduce_db_per_core_map =
+      *per_core_step_info.mutable_all_reduce_db_per_core();
+  for (const auto& [core_id, all_reduce_db] : step_details.Collectives()) {
+    all_reduce_db_per_core_map[core_id].CopyFrom(all_reduce_db);
+  }
 }
 
 // Converts from StepDetails to StepInfoResult.

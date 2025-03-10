@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -93,6 +94,12 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/traceme.h"
+
+#if XLA_ONEDNN_USE_GRAPH_API
+#include "xla/backends/cpu/onednn_emitter.h"
+#include "xla/backends/cpu/onednn_fusion.h"
+#include "xla/backends/cpu/runtime/onednn/onednn_fusion_thunk.h"
+#endif  // XLA_ONEDNN_USE_GRAPH_API
 
 namespace xla::cpu {
 
@@ -297,7 +304,26 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     case HloOpcode::kFusion:
       if (instruction->fusion_kind() == HloInstruction::FusionKind::kCustom) {
-        return EmitXnnFusionThunk(instruction);
+        // Fusion must have backend config with custom fusion config.
+        TF_RET_CHECK(instruction->has_backend_config())
+            << "Fusion must have backend config";
+        TF_ASSIGN_OR_RETURN(auto backend_config,
+                            instruction->backend_config<BackendConfig>());
+        TF_RET_CHECK(backend_config.has_fusion_config())
+            << "Backend config must have fusion config";
+
+#if XLA_ONEDNN_USE_GRAPH_API
+        if (backend_config.fusion_config().kind() == kOneDnnFusionKind) {
+          return EmitOneDnnFusionThunk(instruction);
+        }
+#endif  // XLA_ONEDNN_USE_GRAPH_API
+
+        if (backend_config.fusion_config().kind() == kXnnFusionKind) {
+          return EmitXnnFusionThunk(instruction);
+        }
+
+        return Internal("Unsupported custom fusion kind: %s",
+                        backend_config.DebugString());
       }
       return EmitFusionKernelThunk(instruction);
 
@@ -1163,21 +1189,47 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
   return thunks;
 }
 
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOneDnnFusionThunk(
+    const HloInstruction* instruction) {
+#if XLA_ONEDNN_USE_GRAPH_API
+  auto* fusion = Cast<HloFusionInstruction>(instruction);
+
+  // Collect oneDNN fusion arguments.
+  std::vector<OneDnnFusionThunk::Argument> arguments;
+  for (HloInstruction* operand : instruction->operands()) {
+    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
+      TF_ASSIGN_OR_RETURN(
+          BufferAllocation::Slice slice,
+          buffer_assignment_.GetUniqueSlice(operand, indexed.index));
+      arguments.push_back(OneDnnFusionThunk::Argument{slice, indexed.shape});
+    }
+  }
+
+  // Collect oneDNN fusion results.
+  std::vector<OneDnnFusionThunk::Result> results;
+  for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice slice,
+        buffer_assignment_.GetUniqueSlice(instruction, indexed.index));
+    results.push_back(OneDnnFusionThunk::Result{slice, indexed.shape});
+  }
+
+  const HloComputation* computation = fusion->fused_instructions_computation();
+
+  // Construct oneDNN fusion builder from the fusion computation.
+  TF_ASSIGN_OR_RETURN(auto builder, EmitOneDnnFusionBuilder(computation));
+
+  return ThunkSequence::Of<OneDnnFusionThunk>(
+      ThunkInfo(instruction), std::move(arguments), std::move(results),
+      [b = std::move(builder)](auto, auto) mutable { return b(); });
+#else
+  return Unimplemented("oneDNN fusion is not supported");
+#endif  // XLA_ONEDNN_USE_GRAPH_API
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitXnnFusionThunk(
     const HloInstruction* instruction) {
   auto* fusion = Cast<HloFusionInstruction>(instruction);
-
-  // Fusion must have backend config with __xnn_fusion kind.
-  TF_RET_CHECK(fusion->has_backend_config())
-      << "Fusion must have backend config";
-  TF_ASSIGN_OR_RETURN(auto backend_config,
-                      fusion->backend_config<BackendConfig>());
-  TF_RET_CHECK(backend_config.has_fusion_config())
-      << "Backend config must have fusion config";
-
-  const FusionBackendConfig& fusion_config = backend_config.fusion_config();
-  TF_RET_CHECK(fusion_config.kind() == "__xnn_fusion")
-      << "Backend config must have __xnn_fusion kind";
 
   // Collect XNNPACK fusion arguments.
   std::vector<XnnFusionThunk::Argument> arguments;

@@ -12,8 +12,6 @@ package(
 #     name = "label_image",
 #     srcs = ["label_image.py"],
 #     main = "label_image.py",
-#     python_version = "PY3",
-#     srcs_version = "PY3",
 #     deps = [
 #         "//third_party/py/PIL:pil",
 #         "//third_party/py/numpy",

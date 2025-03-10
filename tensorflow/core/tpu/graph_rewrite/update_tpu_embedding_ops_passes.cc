@@ -290,6 +290,20 @@ absl::Status UpdateTPUEmbeddingModePass::UpdateFunctionDefEnqueueOp(
   return absl::OkStatus();
 }
 
+namespace {
+
+bool HasTPUEmbeddingLayerOps(const FunctionDef& function) {
+  std::string layer_call_index;
+  for (const auto& node : function.node_def()) {
+    if (TryGetNodeAttr(node, "_tpu_embedding_layer", &layer_call_index)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 absl::Status UpdateTPUEmbeddingModePass::Run(
     const GraphOptimizationPassOptions& options) {
   // Updates the Enqueue ops when using a layer to set the mode override
@@ -321,7 +335,11 @@ absl::Status UpdateTPUEmbeddingModePass::Run(
   }
 
   for (const auto& fname : options.flib_def->ListFunctionNames()) {
-    FunctionDef fdef_copy(*options.flib_def->Find(fname));
+    const FunctionDef* fdef = options.flib_def->Find(fname);
+    if (!HasTPUEmbeddingLayerOps(*fdef)) {
+      continue;
+    }
+    FunctionDef fdef_copy(*fdef);
     std::map<int, bool> enqueue_nodes;
     TF_RETURN_IF_ERROR(
         GetEnqueueOpsFromFunctionDef(&fdef_copy, &enqueue_nodes));

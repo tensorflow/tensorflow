@@ -9,6 +9,7 @@ package(
 py_strict_library(
     name = "losses",
     srcs = ["losses.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":losses_impl",
         ":util",

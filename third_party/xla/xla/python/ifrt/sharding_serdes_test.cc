@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/functional/bind_front.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
@@ -47,8 +46,7 @@ TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<SingleDeviceSharding>(
-          serialized, std::make_unique<DeserializeShardingOptions>(
-                          absl::bind_front(&Client::LookupDevice, client()))));
+          serialized, std::make_unique<DeserializeShardingOptions>(client())));
 
   EXPECT_THAT(out_sharding->devices()->devices(),
               ElementsAreArray(sharding->devices()->devices()));
@@ -63,8 +61,7 @@ TEST_P(ShardingSerDesTest, OpaqueShardingRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<OpaqueSharding>(
-          serialized, std::make_unique<DeserializeShardingOptions>(
-                          absl::bind_front(&Client::LookupDevice, client()))));
+          serialized, std::make_unique<DeserializeShardingOptions>(client())));
 
   EXPECT_THAT(out_sharding->devices()->devices(),
               ElementsAreArray(sharding->devices()->devices()));
@@ -82,8 +79,7 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<ConcreteSharding>(
-          serialized, std::make_unique<DeserializeShardingOptions>(
-                          absl::bind_front(&Client::LookupDevice, client()))));
+          serialized, std::make_unique<DeserializeShardingOptions>(client())));
 
   EXPECT_THAT(out_sharding->devices()->devices(),
               ElementsAreArray(sharding->devices()->devices()));
@@ -116,8 +112,7 @@ TEST_P(ShardingSerDesTest, ConcreteShardingWithDynamicShapeRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<ConcreteSharding>(
-          serialized, std::make_unique<DeserializeShardingOptions>(
-                          absl::bind_front(&Client::LookupDevice, client()))));
+          serialized, std::make_unique<DeserializeShardingOptions>(client())));
 
   EXPECT_THAT(out_sharding->devices()->devices(),
               ElementsAreArray(sharding->devices()->devices()));
@@ -138,8 +133,7 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<ConcreteEvenSharding>(
-          serialized, std::make_unique<DeserializeShardingOptions>(
-                          absl::bind_front(&Client::LookupDevice, client()))));
+          serialized, std::make_unique<DeserializeShardingOptions>(client())));
 
   EXPECT_THAT(out_sharding->devices()->devices(),
               ElementsAreArray(sharding->devices()->devices()));
@@ -158,8 +152,7 @@ TEST_P(ShardingSerDesTest, ShardingParamShardingRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<ShardingParamSharding>(
-          serialized, std::make_unique<DeserializeShardingOptions>(
-                          absl::bind_front(&Client::LookupDevice, client()))));
+          serialized, std::make_unique<DeserializeShardingOptions>(client())));
   EXPECT_THAT(out_sharding->devices()->devices(),
               ElementsAreArray(sharding->devices()->devices()));
   EXPECT_THAT(out_sharding->sharding_param(), sharding->sharding_param());

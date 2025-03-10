@@ -387,7 +387,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
 
   When a partitioned variable is saved to a `SavedModel`, it will be saved as if
   it is one single variable. This improves serving efficiency by eliminating
-  a number of Ops that handle the partiton aspects.
+  a number of Ops that handle the partition aspects.
 
   Known limitations of variable partitioning:
 

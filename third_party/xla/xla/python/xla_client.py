@@ -50,10 +50,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 313
+_version = 316
 
 # Version number for MLIR:Python components.
-mlir_api_version = 57
+mlir_api_version = 58
 
 xla_platform_names = {
     'cpu': 'Host',

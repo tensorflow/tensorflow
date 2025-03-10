@@ -667,17 +667,9 @@ JNIEXPORT jintArray JNICALL Java_org_tensorflow_lite_TensorImpl_shapeSignature(
   TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
   if (tensor == nullptr) return nullptr;
 
-  int num_dims = 0;
-  int const* data = nullptr;
-  if (tensor->dims_signature != nullptr && tensor->dims_signature->size != 0) {
-    num_dims = tensor->dims_signature->size;
-    data = tensor->dims_signature->data;
-  } else {
-    num_dims = tensor->dims->size;
-    data = tensor->dims->data;
-  }
-  jintArray result = env->NewIntArray(num_dims);
-  env->SetIntArrayRegion(result, 0, num_dims, data);
+  const TfLiteIntArray* dims_signature = TfLiteTensorGetDimsSignature(tensor);
+  jintArray result = env->NewIntArray(dims_signature->size);
+  env->SetIntArrayRegion(result, 0, dims_signature->size, dims_signature->data);
   return result;
 }
 

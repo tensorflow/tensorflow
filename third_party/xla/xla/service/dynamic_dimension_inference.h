@@ -71,7 +71,7 @@ class DynamicDimensionInference {
     kIgnore,
   };
   using CustomCallInferenceHandler =
-      std::function<absl::Status(HloInstruction*, DynamicDimensionInference*)>;
+      std::function<bool(HloInstruction*, DynamicDimensionInference*)>;
 
   // Generate an assertion which fails the execution if the instruction value is
   // false.

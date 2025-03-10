@@ -9,8 +9,6 @@ package(
 py_strict_binary(
     name = "generate_v2_renames_map",
     srcs = ["generate_v2_renames_map.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:modules_with_exports",
@@ -28,8 +26,6 @@ py_strict_binary(
 py_strict_binary(
     name = "generate_v2_reorders_map",
     srcs = ["generate_v2_reorders_map.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:no_contrib",

@@ -18,23 +18,8 @@ limitations under the License.
 
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
-// Also update tensorflow/tensorflow.bzl and
-// tensorflow/tools/pip_package/setup.py
-#define TF_MAJOR_VERSION 2
-#define TF_MINOR_VERSION 20
-#define TF_PATCH_VERSION 0
-
-// TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
-// "-beta", "-rc", "-rc.1")
-#define TF_VERSION_SUFFIX ".620-dev20241212"
-
 #define TF_STR_HELPER(x) #x
 #define TF_STR(x) TF_STR_HELPER(x)
-
-// e.g. "0.5.0" or "0.6.0-alpha".
-#define TF_VERSION_STRING                                            \
-  (TF_STR(TF_MAJOR_VERSION) "." TF_STR(TF_MINOR_VERSION) "." TF_STR( \
-      TF_PATCH_VERSION) TF_VERSION_SUFFIX)
 
 // GraphDef compatibility versions (the versions field in graph.proto).
 //
@@ -108,7 +93,7 @@ limitations under the License.
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 2135  // Updated: 2025/2/11
+#define TF_GRAPH_DEF_VERSION 2145  // Updated: 2025/2/21
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

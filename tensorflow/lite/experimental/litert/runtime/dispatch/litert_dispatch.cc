@@ -16,17 +16,18 @@
 
 #include <dlfcn.h>
 
-#include <cstddef>
 #include <cstring>
 #include <string>
+#include <vector>
 
-#include "absl/strings/str_format.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch_api.h"
 
 #define INVOKE_FUNC(function, ...)                                \
@@ -64,8 +65,6 @@
 
 namespace {
 
-constexpr const char* kSharedLibName = "libLiteRtDispatch.so";
-
 bool IsTheApiInitialized = false;
 LiteRtDispatchApi TheApi = {
     /*.version=*/{/*.major=*/0, /*.minor=*/0, /*.patch=*/0},
@@ -78,17 +77,25 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
   INVOKE_FUNC(initialize, options, num_options);
 }
 
-std::string GetSharedLibraryPath(const LiteRtDispatchOption* options,
-                                 int num_options) {
+litert::Expected<std::string> GetSharedLibraryPath(
+    const LiteRtDispatchOption* options, int num_options) {
+  std::vector<std::string> dispatch_lib_paths;
   for (auto i = 0; i < num_options; ++i) {
     auto& option = options[i];
     if (!strcmp(option.name, kDispatchOptionSharedLibraryDir)) {
-      return absl::StrFormat("%s/%s", option.value.str_value, kSharedLibName);
+      litert::internal::FindLiteRtDispatchSharedLibs(option.value.str_value,
+                                                     dispatch_lib_paths);
     }
   }
-  return kSharedLibName;
+  if (dispatch_lib_paths.empty()) {
+    LITERT_LOG(LITERT_ERROR, "No dispatch library found");
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure);
+  }
+  if (dispatch_lib_paths.size() > 1) {
+    LITERT_LOG(LITERT_WARNING, "Multiple dispatch libraries found");
+  }
+  return dispatch_lib_paths[0];
 }
-
 }  // namespace
 
 // /////////////////////////////////////////////////////////////////////////////
@@ -101,11 +108,19 @@ LiteRtStatus LiteRtDispatchInitialize(const LiteRtDispatchOption* options,
     return kLiteRtStatusOk;
   }
 
+  // TODO(piyu): support Android systems where libraries are not unpacked in the
+  // system directory.
   auto shared_lib_path = GetSharedLibraryPath(options, num_options);
-  void* lib_handle = ::dlopen(shared_lib_path.data(), RTLD_NOW | RTLD_LOCAL);
+  if (!shared_lib_path) {
+    return kLiteRtStatusErrorNotFound;
+  }
+  LITERT_LOG(LITERT_INFO, "Loading shared library: %s",
+             shared_lib_path.Value().c_str());
+  void* lib_handle =
+      ::dlopen(shared_lib_path.Value().c_str(), RTLD_NOW | RTLD_LOCAL);
   if (!lib_handle) {
-    LITERT_LOG(LITERT_ERROR, "Failed to load dispatch library: %s",
-               ::dlerror());
+    LITERT_LOG(LITERT_ERROR, "Failed to load dispatch library: %s %s",
+               ::dlerror(), shared_lib_path.Value().data());
     return kLiteRtStatusErrorRuntimeFailure;
   }
 
@@ -321,6 +336,54 @@ LiteRtStatus LiteRtDispatchInvoke(
     return kLiteRtStatusErrorInvalidArgument;
   }
   INVOKE_FUNC(invoke, invocation_context);
+}
+
+LiteRtStatus LiteRtDispatchStartMetricsCollection(
+    LiteRtDispatchInvocationContext invocation_context, int detail_level) {
+  if (!invocation_context) {
+    LITERT_LOG(LITERT_ERROR, "Null input");
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (detail_level < 0) {
+    LITERT_LOG(LITERT_ERROR, "Invalid detail level");
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  INVOKE_FUNC(start_metrics_collection, invocation_context, detail_level);
+}
+
+LiteRtStatus LiteRtDispatchStopMetricsCollection(
+    LiteRtDispatchInvocationContext invocation_context,
+    LiteRtDispatchMetrics* metrics) {
+  if (!invocation_context || !metrics) {
+    LITERT_LOG(LITERT_ERROR, "Null input");
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  INVOKE_FUNC(stop_metrics_collection, invocation_context, metrics);
+}
+
+LiteRtStatus LiteRtDispatchGetNumMetrics(LiteRtDispatchMetrics metrics,
+                                         int* num_metrics) {
+  if (!metrics || !num_metrics) {
+    LITERT_LOG(LITERT_ERROR, "Null input");
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  INVOKE_FUNC(get_num_metrics, metrics, num_metrics);
+}
+
+LiteRtStatus LiteRtDispatchGetMetric(LiteRtDispatchMetrics metrics,
+                                     int metric_index, LiteRtMetric* metric) {
+  if (!metrics || !metric) {
+    LITERT_LOG(LITERT_ERROR, "Null input");
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  INVOKE_FUNC(get_metric, metrics, metric_index, metric);
+}
+
+LiteRtStatus LiteRtDispatchDestroyMetrics(LiteRtDispatchMetrics metrics) {
+  if (!metrics) {
+    LITERT_LOG(LITERT_ERROR, "Null input");
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  INVOKE_FUNC(destroy_metrics, metrics);
 }
 
 // /////////////////////////////////////////////////////////////////////////////

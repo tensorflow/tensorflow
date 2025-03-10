@@ -289,3 +289,11 @@ def copy_file(name, src, target, visibility = None):
         visibility = visibility,
         cmd = "cp %s %s" % (input_path, output_path),
     )
+
+def gtest_main_no_heapcheck_deps():
+    # copybara:uncomment_begin(google-only)
+    # return ["//testing/base/public:gunit_main_no_heapcheck"]
+    # copybara:uncomment_end
+    # copybara:comment_begin(oss-only)
+    return ["@com_google_googletest//:gtest_main"]
+    # copybara:comment_end

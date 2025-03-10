@@ -174,20 +174,13 @@ TEST_F(ComputationPartitionerTest, TupleRoot) {
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
   PartitionedComputation computation(fusion, &mlir_context_);
-  // We don't analyze the actual indexes of the tuple, so we assume %add and
-  // %sub have different indexing. That's why the parameters end up in separate
-  // functions.
   constexpr auto kExpected = R"(PartitionedComputation fused_computation:
       SUBGRAPH fused_computation_root {
+        %p0 = f32[6]{0} parameter(0)
+        %p1 = f32[6]{0} parameter(1)
         %add = f32[6]{0} add(f32[6]{0} %p0, f32[6]{0} %p1)
         %sub = f32[6]{0} subtract(f32[6]{0} %p0, f32[6]{0} %p1)
         ROOT %root = (f32[6]{0}, f32[6]{0}) tuple(f32[6]{0} %add, f32[6]{0} %sub)
-      }
-      SUBGRAPH fused_computation_p1 {
-        ROOT %p1 = f32[6]{0} parameter(1)
-      }
-      SUBGRAPH fused_computation_p0 {
-        ROOT %p0 = f32[6]{0} parameter(0)
       })";
   EXPECT_EQ(computation.ToString(6), kExpected);
 }
@@ -329,6 +322,96 @@ TEST_F(ComputationPartitionerTest, SubgraphSignatures) {
   EXPECT_EQ(
       PrintAndErase(CreateSubgraphMlirFunction(add.GetRootSubgraph(), builder)),
       "func.func private @add_add(f32, f32) -> f32");
+}
+
+TEST_F(ComputationPartitionerTest, ConcatWithTuple) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    fusion {
+      %p0 = s64[] parameter(0)
+      %copy = s64[] copy(s64[] %p0)
+      %reshape1 = s64[1]{0} reshape(s64[] %copy)
+      %c0 = s64[] constant(0)
+      %bcast = s64[4,4]{1,0} broadcast(s64[] %c0), dimensions={}
+      %reshape2 = s64[16]{0} reshape(s64[4,4]{1,0} %bcast)
+      %concat = s64[17]{0} concatenate(
+        s64[1]{0} %reshape1, s64[16]{0} %reshape2), dimensions={0}
+      %slice1 = s64[1]{0} slice(s64[17]{0} %concat), slice={[0:1]}
+      %slice2 = s64[16]{0} slice(s64[17]{0} %concat), slice={[1:17]}
+      ROOT %tuple = (s64[1]{0}, s64[16]{0}) tuple(s64[1]{0} %slice1,
+                                                  s64[16]{0} %slice2)
+    })")
+                    .value();
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect>();
+  mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context), &context);
+
+  PartitionedComputation fusion(module->GetComputationWithName("fusion"),
+                                &mlir_context_);
+  EXPECT_THAT(fusion.subgraphs(), SizeIs(2));
+  PrintAndErase(CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder));
+}
+
+TEST_F(ComputationPartitionerTest, DUS) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    fusion {
+      in = c64[2,3] parameter(0)
+      updates = c64[2,2] parameter(1)
+      i0 = s32[] parameter(2)
+      i1 = s32[] parameter(3)
+      updated = c64[2,3] dynamic-update-slice(in, updates, i0, i1)
+      ROOT negated = c64[2,3] negate(updated)
+    })")
+                    .value();
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect>();
+  mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context), &context);
+
+  PartitionedComputation fusion(module->GetComputationWithName("fusion"),
+                                &mlir_context_);
+  EXPECT_THAT(fusion.subgraphs(), SizeIs(1));
+  PrintAndErase(CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder));
+}
+
+TEST_F(ComputationPartitionerTest, ScatterFusion) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    overwrite {
+      %p0 = f16[] parameter(0)
+      ROOT %p1 = f16[] parameter(1)
+    }
+    fusion {
+      %param_0 = f16[5,10]{1,0} parameter(0)
+      %iota.3.1 = s64[5,3,1] iota(), iota_dimension=0
+      %param_2.4 = s64[5,3,1] parameter(2)
+      %concatenate.3.1 = s64[5,3,2] concatenate(s64[5,3,1] %iota.3.1,
+      s64[5,3,1] %param_2.4), dimensions={2}
+      %bitcast.55.1 = s64[15,2]{1,0} bitcast(s64[5,3,2] %concatenate.3.1)
+      %param_1.1 = f16[5,3,2] parameter(1)
+      %bitcast.59.1 = f16[15,1,2] bitcast(f16[5,3,2] %param_1.1)
+      ROOT %scatter.5.1 = f16[5,10]{1,0} scatter(
+        f16[5,10]{1,0} %param_0,
+        s64[15,2]{1,0} %bitcast.55.1,
+        f16[15,1,2]{2,1,0} %bitcast.59.1),
+        update_window_dims={1,2},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0,1},
+        index_vector_dim=1,
+        to_apply=%overwrite
+    })")
+                    .value();
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect>();
+  mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context), &context);
+
+  PartitionedComputation fusion(module->GetComputationWithName("fusion"),
+                                &mlir_context_);
+  EXPECT_THAT(fusion.subgraphs(), SizeIs(1));
+  PrintAndErase(CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder));
 }
 
 }  // namespace

@@ -10,7 +10,6 @@ py_strict_library(
     srcs = [
         "authoring.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
@@ -23,8 +22,6 @@ py_strict_library(
 py_strict_test(
     name = "authoring_test",
     srcs = ["authoring_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
     deps = [
         ":authoring",
         #internal proto upb dep

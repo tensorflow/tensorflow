@@ -1,9 +1,15 @@
-//  Copyright (c) Qualcomm Innovation Center, Inc.
-//  All Rights Reserved.
+// Copyright (c) Qualcomm Innovation Center, Inc.
+// All Rights Reserved.
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+
+#include "absl/types/span.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
 namespace qnn {
 
@@ -39,8 +45,8 @@ void ScaleOffsetQuantizeParamsWrapper::CloneTo(Qnn_QuantizeParams_t& dst) {
 }
 
 AxisScaleOffsetQuantizeParamsWrapper::AxisScaleOffsetQuantizeParamsWrapper(
-    const std::int32_t axis, const std::span<const float> scales,
-    const std::span<const std::int32_t> zero_points)
+    const std::int32_t axis, const absl::Span<const float> scales,
+    const absl::Span<const std::int32_t> zero_points)
     : scale_offsets_(scales.size()) {
   assert(scales.size() == zero_points.size());
   for (size_t i = 0; i < scale_offsets_.size(); ++i) {

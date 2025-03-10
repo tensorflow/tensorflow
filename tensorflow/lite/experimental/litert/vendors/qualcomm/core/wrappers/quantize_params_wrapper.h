@@ -1,16 +1,14 @@
-//  Copyright (c) Qualcomm Innovation Center, Inc.
-//  All Rights Reserved.
+// Copyright (c) Qualcomm Innovation Center, Inc.
+// All Rights Reserved.
 
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_WRAPPERS_QUANTIZE_PARAMS_WRAPPER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_WRAPPERS_QUANTIZE_PARAMS_WRAPPER_H_
 
 #include <cstdint>
-#include <span>  // NOLINT
 #include <variant>
 #include <vector>
 
-// TODO(qnn) replace std::span with absl::Span.
-
+#include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
 namespace qnn {
@@ -47,8 +45,8 @@ class ScaleOffsetQuantizeParamsWrapper final {
 class AxisScaleOffsetQuantizeParamsWrapper final {
  public:
   explicit AxisScaleOffsetQuantizeParamsWrapper(
-      const std::int32_t axis, const std::span<const float> scales,
-      const std::span<const std::int32_t> zero_points);
+      const std::int32_t axis, const absl::Span<const float> scales,
+      const absl::Span<const std::int32_t> zero_points);
 
   AxisScaleOffsetQuantizeParamsWrapper(
       const AxisScaleOffsetQuantizeParamsWrapper& rhs);

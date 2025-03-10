@@ -105,14 +105,6 @@ class TfPjRtBuffer : public PjRtBuffer {
     wrapped_->CopyToRemoteDevice(std::move(serialized_descriptor),
                                  std::move(on_done));
   }
-  void CopyToRemoteDeviceScattered(
-      PjRtFuture<std::vector<std::string>> serialized_descriptors,
-      std::vector<RemoteSendCallback> callbacks,
-      const ScatterDetails& scatter_details) override {
-    return wrapped_->CopyToRemoteDeviceScattered(
-        std::move(serialized_descriptors), std::move(callbacks),
-        scatter_details);
-  }
   PjRtFuture<> GetReadyFuture() override { return wrapped_->GetReadyFuture(); }
   bool IsOnCpu() const override { return wrapped_->IsOnCpu(); }
 
@@ -179,9 +171,6 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
 
   void Delete() override { return wrapped_->Delete(); }
   bool IsDeleted() override { return wrapped_->IsDeleted(); }
-  bool IsReturnedFutureSupported() const override {
-    return wrapped_->IsReturnedFutureSupported();
-  }
 
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return wrapped_->SerializeExecutable();
@@ -277,12 +266,6 @@ class TfPjRtClient : public PjRtClient {
   }
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) override {
-    return Unimplemented(
-        "AsyncHostToDeviceTransferManager not supported for Tf.");
-  }
-  absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "AsyncHostToDeviceTransferManager not supported for Tf.");
@@ -320,13 +303,6 @@ class TfPjRtClient : public PjRtClient {
                               PjRtCrossHostRecvNotifier notifier) override {
     return wrapped_->MakeCrossHostReceiveBuffers(shapes, device,
                                                  std::move(notifier));
-  }
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffersForGather(
-      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
-    return wrapped_->MakeCrossHostReceiveBuffersForGather(
-        shapes, std::move(gather_details), device, std::move(notifier));
   }
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override {

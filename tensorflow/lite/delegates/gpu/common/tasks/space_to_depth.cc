@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
 
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"

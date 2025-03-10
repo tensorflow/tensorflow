@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -132,6 +133,14 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
               AssembleArrayFromSingleDeviceArrays,
               (Shape shape,
+               absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+               absl::Span<tsl::RCReference<Array>> arrays,
+               ArrayCopySemantics array_copy_semantics,
+               SingleDeviceShardSemantics single_device_shard_semantics),
+              (final));
+  MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
+              AssembleArrayFromSingleDeviceArrays,
+              (DType dtype, Shape shape,
                absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
                absl::Span<tsl::RCReference<Array>> arrays,
                ArrayCopySemantics array_copy_semantics,

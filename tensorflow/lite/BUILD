@@ -195,10 +195,12 @@ exports_files(
 
 cc_library(
     name = "version",
-    srcs = ["//tensorflow/core/public:version.h"],
     hdrs = ["version.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
+    deps = [
+        "//tensorflow/core/public:release_version",
+    ],
 )
 
 alias(

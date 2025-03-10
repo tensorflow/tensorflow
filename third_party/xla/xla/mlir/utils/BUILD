@@ -34,6 +34,7 @@ cc_library(
 cc_test(
     name = "error_util_test",
     srcs = ["error_util_test.cc"],
+    linkstatic = 1,
     deps = [
         ":error_util",
         "//xla/tsl/lib/core:status_test_util",
@@ -41,7 +42,7 @@ cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -74,7 +75,6 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],

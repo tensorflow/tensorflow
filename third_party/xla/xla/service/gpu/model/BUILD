@@ -437,6 +437,8 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -447,8 +449,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -511,9 +511,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "symbolic_tile",
-    srcs = ["symbolic_tile.cc"],
-    hdrs = ["symbolic_tile.h"],
+    name = "constraint_expression",
+    srcs = ["constraint_expression.cc"],
+    hdrs = ["constraint_expression.h"],
     deps = [
         ":affine_map_evaluator",
         "//xla/hlo/analysis:indexing_analysis",
@@ -522,6 +522,55 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "constraint_expression_test",
+    srcs = ["constraint_expression_test.cc"],
+    deps = [
+        ":constraint_expression",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:indexing_test_utils",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "size_and_stride_expression",
+    srcs = ["size_and_stride_expression.cc"],
+    hdrs = ["size_and_stride_expression.h"],
+    deps = [
+        ":constraint_expression",
+        "//xla/hlo/analysis:indexing_analysis",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "symbolic_tile",
+    srcs = ["symbolic_tile.cc"],
+    hdrs = ["symbolic_tile.h"],
+    deps = [
+        ":affine_map_evaluator",
+        ":constraint_expression",
+        ":size_and_stride_expression",
+        "//xla/hlo/analysis:indexing_analysis",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -549,13 +598,10 @@ cc_library(
     srcs = ["symbolic_tiled_hlo_instruction.cc"],
     hdrs = ["symbolic_tiled_hlo_instruction.h"],
     deps = [
-        ":affine_map_evaluator",
         ":symbolic_tile",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -638,6 +684,7 @@ cc_library(
     srcs = ["symbolic_tile_analysis.cc"],
     hdrs = ["symbolic_tile_analysis.h"],
     deps = [
+        ":constraint_expression",
         ":symbolic_tile",
         ":symbolic_tiled_hlo_instruction",
         ":tiled_hlo_instruction_or_computation",
@@ -649,6 +696,7 @@ cc_library(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:instruction_fusion",
         "//xla/service:name_uniquer",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -663,6 +711,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 

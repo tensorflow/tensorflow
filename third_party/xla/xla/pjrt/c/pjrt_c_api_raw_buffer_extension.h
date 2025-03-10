@@ -92,7 +92,7 @@ struct PJRT_RawBuffer_CopyRawHostToDevice_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
   PJRT_RawBuffer* buffer;
-  void* dst;
+  const void* src;
   int64_t offset;
   int64_t transfer_size;
   PJRT_Event* event;  // out

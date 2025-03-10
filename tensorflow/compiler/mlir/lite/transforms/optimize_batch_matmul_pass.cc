@@ -22,11 +22,13 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -59,20 +61,44 @@ struct ConvertBatchMatMulOp2FullyConnectedOp
   using OpRewritePattern<TFL::BatchMatMulOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(TFL::BatchMatMulOp bmm_op,
                                 PatternRewriter& rewriter) const override {
+    // Check if RHS is a quantized int4 type. TFL doesn't support BatchMatMul
+    // with int4 quantized types, so we should not convert it to FC.
+    bool is_int4_quantized_rank_2_value = false;
+    if (auto rhs_type = mlir::dyn_cast<quant::QuantizedType>(
+            getElementTypeOrSelf(bmm_op.getY().getType()))) {
+      int64_t rhs_type_rank = bmm_op.getY().getType().getRank();
+      if (rhs_type.getStorageTypeIntegralWidth() == 4 && rhs_type.isSigned() &&
+          rhs_type_rank == 2) {
+        is_int4_quantized_rank_2_value = true;
+      }
+    }
+
+    bool is_rank_2_constant = true;
     DenseElementsAttr constant;
     if (auto rhs = bmm_op.getY(); !matchPattern(rhs, m_Constant(&constant))) {
       // The constant may be preceded by QDQs in models with QDQ format, so we
       // should set it to the real constant.
       auto dq = dyn_cast_or_null<DequantizeOp>(rhs.getDefiningOp());
-      if (!dq) return failure();
-      auto q = dyn_cast_or_null<QuantizeOp>(dq.getInput().getDefiningOp());
-      if (!q || !matchPattern(q.getInput(), m_Constant(&constant))) {
-        return failure();
+      if (!dq) {
+        is_rank_2_constant = false;
+      } else {
+        auto q = dyn_cast_or_null<QuantizeOp>(dq.getInput().getDefiningOp());
+        if (!q || !matchPattern(q.getInput(), m_Constant(&constant))) {
+          is_rank_2_constant = false;
+        }
       }
     }
 
     // Input rhs must be a constant with rank 2.
-    if (constant.getType().getRank() != 2) return failure();
+    if (!constant || constant.getType().getRank() != 2)
+      is_rank_2_constant = false;
+
+    if (!is_rank_2_constant && !is_int4_quantized_rank_2_value) {
+      return rewriter.notifyMatchFailure(
+          bmm_op,
+          "rhs is neither a constant with rank 2 nor int4 quantized nor a "
+          "dequantized value.");
+    }
 
     // Create a tfl.transpose op that performs ZX transpose on `input`.
     auto create_z_x_transpose_op = [&](Value input) -> Value {
@@ -103,10 +129,45 @@ struct ConvertBatchMatMulOp2FullyConnectedOp
       // Swaps z dimension and x dimension to get permuted shape.
       std::iter_swap(permuted_shape.begin() + input_rank - 1,
                      permuted_shape.begin() + input_rank - 2);
+
+      // If the input is a per-axis quantized type, we should make sure the
+      // quantization dimension is correctly set/propagated to the transpose op.
+      RankedTensorType output_type;
+      if (auto input_qtype = mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
+              getElementTypeOrSelf(input.getType()))) {
+        // If the input is a per-axis quantized type, we should make sure the
+        // quantization dimension is correctly set/propagated to the transpose
+        // op.
+        int new_quant_dim = -1;
+        // We should be checking if getQuantizedDimension either (rank - 1)-th
+        // or (rank - 2)-th dimension because we transpose only the last two
+        // dimensions here. If the previous dimension is (rank - 1), we should
+        // swap the quantization dimension to (rank - 2) and vice versa.
+        // If the quantization dimension is anything else, we should not change
+        // it and create the TransposeOp with the original qtype.
+        if (input_qtype.getQuantizedDimension() == (input_rank - 1)) {
+          new_quant_dim = input_rank - 2;
+        } else if (input_qtype.getQuantizedDimension() == (input_rank - 2)) {
+          new_quant_dim = input_rank - 1;
+        }
+
+        if (new_quant_dim != -1) {
+          input_qtype = quant::UniformQuantizedPerAxisType::get(
+              input_qtype.getFlags(), input_qtype.getStorageType(),
+              input_qtype.getExpressedType(), input_qtype.getScales(),
+              input_qtype.getZeroPoints(), new_quant_dim,
+              input_qtype.getStorageTypeMin(), input_qtype.getStorageTypeMax());
+        }
+        output_type = RankedTensorType::getChecked(bmm_op->getLoc(),
+                                                   permuted_shape, input_qtype);
+      } else {
+        output_type =
+            RankedTensorType::get(permuted_shape, input_type.getElementType());
+      }
+
       return rewriter.create<TFL::TransposeOp>(
-          bmm_op->getLoc(),
-          RankedTensorType::get(permuted_shape, input_type.getElementType()),
-          input, permutation_tensor_op.getResult());
+          bmm_op->getLoc(), output_type, input,
+          permutation_tensor_op.getResult());
     };
 
     Value input_lhs = bmm_op.getX();

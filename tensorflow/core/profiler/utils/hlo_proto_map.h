@@ -40,8 +40,6 @@ class HloProtoMap {
 
   void AddHloProto(uint64_t program_id,
                    std::unique_ptr<const xla::HloProto> hlo_proto);
-  // Returns whether <hlo_proto> is new to HloProtoMap.
-  bool AddHloProto(uint64_t program_id, const xla::HloProto* hlo_proto);
 
   size_t size() const { return hlo_protos_by_program_id_.size(); }
 
@@ -76,6 +74,10 @@ class HloProtoMap {
   absl::flat_hash_map<uint64_t, const xla::HloProto*> hlo_protos_by_program_id_;
   absl::flat_hash_map<std::string, const xla::HloProto*> hlo_protos_by_name_;
   std::vector<std::unique_ptr<const xla::HloProto>> owned_hlo_protos_;
+
+  // Try to add proto to the map and returns true if the addition is successful
+  // (i.e., the proto is new to the map).
+  bool AddHloProto(uint64_t program_id, const xla::HloProto* hlo_proto);
 };
 
 }  // namespace profiler

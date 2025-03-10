@@ -58,6 +58,7 @@ cc_library(
         ":gpu_metrics",
         ":gpu_topology",
         ":gpu_topology_proto_cc",
+        ":se_gpu_topology_description",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -190,6 +191,8 @@ xla_cc_test(
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/profiling:device_time_measurement",
+        "//xla/pjrt/profiling/test_util:mock_device_time_measurement",
         "//xla/service:gpu_plugin",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_memory",
@@ -450,5 +453,24 @@ xla_test(
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "se_gpu_topology_description",
+    srcs = ["se_gpu_topology_description.cc"],
+    hdrs = ["se_gpu_topology_description.h"],
+    deps = [
+        ":gpu_topology",
+        "//xla:shape_util",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_stream_executor_device_description",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )

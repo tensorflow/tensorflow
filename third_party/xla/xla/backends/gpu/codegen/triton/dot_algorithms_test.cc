@@ -71,7 +71,7 @@ class AlgorithmTest : public GpuCodegenTest {
     debug_options.set_xla_gpu_dump_autotuned_gemm_fusions(true);
 
     // Enable triton fusion for all supported GEMMs.
-    debug_options.set_xla_gpu_triton_gemm_any(true);
+    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
 
     return debug_options;
   }
@@ -156,7 +156,7 @@ class TritonAlgorithmTest : public AlgorithmTest {
     // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
     // Enable gemm for any hlo including pure matmuls.
-    debug_options.set_xla_gpu_triton_gemm_any(true);
+    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
     // Do not autotune split-k by default, since this prevents deterministically
     // matching the optimized HLO.
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
@@ -564,7 +564,7 @@ class Triton3xBF16GemmTest : public AlgorithmTest {
     // to be on the safe side against future flakiness.
     //
     // Enable triton fusion for all supported GEMMs.
-    debug_options.set_xla_gpu_triton_gemm_any(true);
+    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
     // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
 
@@ -1327,7 +1327,7 @@ class TritonAndBlasSupportForDifferentTensorSizes
     debug_options_ = GetDebugOptionsForTest();
 
     triton_options_ = debug_options_;
-    triton_options_.set_xla_gpu_triton_gemm_any(true);
+    triton_options_.set_xla_gpu_unsupported_force_triton_gemm(true);
     triton_options_.set_xla_gpu_cublas_fallback(false);
 
     blas_options_ = debug_options_;

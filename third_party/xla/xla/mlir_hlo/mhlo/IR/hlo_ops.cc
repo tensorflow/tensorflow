@@ -978,12 +978,12 @@ namespace {
 // Mode 1, where the ragged dimension is an lhs non-contracting dim (m).
 //   lhs : [b, m, k]
 //   rhs : [g, b, k, n]
-//   group_sizes : [g]
+//   group_sizes : [b, g]
 //   result : [b, m, n]
 // Mode 2, where the ragged dimension is an lhs/rhs contracting dim (k).
 //   lhs : [b, m, k]
 //   rhs : [b, k, n]
-//   group_sizes : [g]
+//   group_sizes : [b, g]
 //   result : [g, b, m, n]
 // Mode 3, where the ragged dimension is an lhs/rhs batch dim (b).
 //   lhs : [b, m, k]
@@ -992,9 +992,18 @@ namespace {
 //   result : [b, m, n]
 // As with dot_general, the lhs and rhs can have arbitrary batching,
 // contracting and non-contracting dimensions.
+// The group_sizes arg has the shape [b...,x...,g], where:
+// - b... are all the lhs batch dims before (outer-to) the lhs ragged dim,
+// - x... are,
+//   - in mode 1, all the lhs non-contracting dims before the lhs ragged dim,
+//   - in mode 2, all the lhs contracting dims before the lhs ragged dim, and
+//   - in mode 3, empty;
+// - g is the number of groups in the lhs ragged dim.
 // Additionally:
 //   - In all modes, the lhs must have exactly one ragged dimension.
 //   - In mode 1, the rhs must have exactly one group dimension.
+//   - If a group_sizes of shape [g] is passed, it is broadcasted according to
+//     the rules above.
 LogicalResult checkRaggedDotConstraints(
     std::optional<Location> location, RankedTensorType rankedLhsType,
     RankedTensorType rankedRhsType, RankedTensorType rankedGroupSizesType,
@@ -1004,14 +1013,6 @@ LogicalResult checkRaggedDotConstraints(
     ArrayRef<int64_t> rhsContractingDimensions,
     ArrayRef<int64_t> lhsRaggedDimensions,
     ArrayRef<int64_t> rhsGroupDimensions) {
-  // Check that the group sizes has rank=1.
-  if (rankedGroupSizesType.getRank() != 1) {
-    return emitOptionalError(
-        location, "expected rank of group_sizes of ragged dot to be 1, got ",
-        rankedGroupSizesType.getRank());
-  }
-  auto numGroups = rankedGroupSizesType.getDimSize(0);
-
   // Check that there is exactly one lhs ragged dimension.
   if (lhsRaggedDimensions.size() != 1) {
     return emitOptionalError(
@@ -1025,6 +1026,81 @@ LogicalResult checkRaggedDotConstraints(
                                    "lhs_rank"))) {
     return failure();
   }
+
+  enum Mode {
+    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [b,g] -> [b,m,n].
+    kNonContracting,
+    // Ragged contracting (k):     [b,m,k], [b,k,n],   [b,g] -> [g,b,m,n].
+    kContracting,
+    // Ragged batch (b):           [b,m,k], [b,k,n],   [g]   -> [b,m,n].
+    kBatch
+  };
+  Mode mode;
+  if (llvm::is_contained(lhsBatchingDimensions, lhsRaggedDim)) {
+    mode = kBatch;
+  } else if (llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
+    mode = kContracting;
+  } else {
+    mode = kNonContracting;
+  }
+
+  // Validate the shape of group_sizes.
+  {
+    // Construct the expected shape [b...,x...,g] of group_sizes.
+    SmallVector<int64_t> prefixDims;
+    prefixDims.reserve(rankedLhsType.getRank() - 1);
+    prefixDims.insert(prefixDims.end(), lhsBatchingDimensions.begin(),
+                      lhsBatchingDimensions.end());
+    switch (mode) {
+      case kBatch:
+        prefixDims.resize(
+            std::distance(lhsBatchingDimensions.begin(),
+                          llvm::find(lhsBatchingDimensions, lhsRaggedDim)));
+        break;
+      case kContracting:
+        prefixDims.insert(prefixDims.end(), lhsContractingDimensions.begin(),
+                          llvm::find(lhsContractingDimensions, lhsRaggedDim));
+        break;
+      case kNonContracting:
+        for (int64_t i = 0; i < lhsRaggedDim; ++i) {
+          if (!llvm::is_contained(lhsBatchingDimensions, i) &&
+              !llvm::is_contained(lhsContractingDimensions, i)) {
+            prefixDims.push_back(i);
+          }
+        }
+        break;
+    }
+    SmallVector<int64_t> expectedPrefix;
+    expectedPrefix.reserve(prefixDims.size());
+    for (const int64_t dim : prefixDims) {
+      expectedPrefix.push_back(rankedLhsType.getDimSize(dim));
+    }
+
+    // Validate the actual shape, if it was passed as something other than [g].
+    if (rankedGroupSizesType.getRank() != 1) {
+      if (rankedGroupSizesType.getRank() != expectedPrefix.size() + 1) {
+        return emitOptionalError(location, "expected group_sizes to have rank ",
+                                 expectedPrefix.size() + 1, ", got ",
+                                 rankedGroupSizesType.getRank());
+      }
+      auto groupSizesShape = rankedGroupSizesType.getShape();
+      if (!std::equal(expectedPrefix.begin(), expectedPrefix.end(),
+                      rankedGroupSizesType.getShape().begin())) {
+        auto nonEmptyShapeStr = [](ArrayRef<int64_t> shape) {
+          std::string s = "";
+          for (int64_t i = 0; i < shape.size() - 1; ++i) {
+            s += std::to_string(shape[i]) + ", ";
+          }
+          return s + std::to_string(shape.back());
+        };
+        return emitOptionalError(
+            location, "group_sizes is expected to have shape [",
+            nonEmptyShapeStr(expectedPrefix), ", ", groupSizesShape.back(),
+            "], got [", nonEmptyShapeStr(groupSizesShape), "]");
+      }
+    }
+  }
+  const int64_t numGroups = rankedGroupSizesType.getShape().back();
 
   // Validate basic properties of the rhs group dimension(s).
   for (auto rhsGroupDim : rhsGroupDimensions) {
@@ -1042,33 +1118,34 @@ LogicalResult checkRaggedDotConstraints(
           "rhs_group_dimensions", "rhs_contracting_dimensions"))) {
     return failure();
   }
-
-  if (llvm::is_contained(lhsBatchingDimensions, lhsRaggedDim) ||
-      llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
-    // Ragged batch (b):       [b,m,k], [b,k,n], [g] -> [b,m,n].
-    // Ragged contracting (k): [b,m,k], [b,k,n], [g] -> [g,b,m,n].
-    if (!rhsGroupDimensions.empty()) {
-      return emitOptionalError(
-          location,
-          "There must be zero group dimensions in the rhs when the "
-          "ragged dimension is batch or contracting.");
-    }
-  } else {
-    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [g] -> [b,m,n].
-    if (rhsGroupDimensions.size() != 1) {
-      return emitOptionalError(
-          location,
-          "There must be exactly one group dimension in the rhs when the lhs "
-          "ragged dimension is non-contracting.");
-    }
-    // Compare the group dimension size with the number of groups.
-    const int64_t rhsGroupDim = rhsGroupDimensions[0];
-    if (!hlo::verifyCompatibleDims(numGroups,
-                                   rankedRhsType.getDimSize(rhsGroupDim))) {
-      return emitOptionalError(
-          location, "group_sizes is expected to have shape=[",
-          rankedRhsType.getDimSize(rhsGroupDim), "], got [", numGroups, "]");
-    }
+  switch (mode) {
+    case kBatch:
+      [[fallthrough]];
+    case kContracting:
+      if (!rhsGroupDimensions.empty()) {
+        return emitOptionalError(
+            location,
+            "There must be zero group dimensions in the rhs when the "
+            "ragged dimension is batch or contracting.");
+      }
+      break;
+    case kNonContracting:
+      if (rhsGroupDimensions.size() != 1) {
+        return emitOptionalError(location,
+                                 "There must be exactly one group dimension "
+                                 "in the rhs when the lhs "
+                                 "ragged dimension is non-contracting.");
+      }
+      // Compare the group dimension size with the number of groups.
+      const int64_t rhsGroupDim = rhsGroupDimensions[0];
+      if (!hlo::verifyCompatibleDims(numGroups,
+                                     rankedRhsType.getDimSize(rhsGroupDim))) {
+        return emitOptionalError(
+            location,
+            "rhs group dimension is expected to have size=", numGroups,
+            ", got ", rankedRhsType.getDimSize(rhsGroupDim));
+      }
+      break;
   }
   return success();
 }
@@ -1105,10 +1182,10 @@ LogicalResult inferRaggedDotOp(
           lhsRaggedDimensions, rhsGroupDimensions))) {
     return failure();
   }
-  // Already checked that group_sizes is 1-D.
-  const int64_t numGroups = rankedGroupSizesType.getDimSize(0);
   // Already checked that there is exactly one lhs ragged dim.
   const int64_t lhsRaggedDim = lhsRaggedDimensions[0];
+  // Already checked the shape of group_sizes.
+  const int64_t numGroups = rankedGroupSizesType.getShape().back();
 
   // Infer the output dimensions of the ragged dot operation.
   SmallVector<int64_t> dimensions;
