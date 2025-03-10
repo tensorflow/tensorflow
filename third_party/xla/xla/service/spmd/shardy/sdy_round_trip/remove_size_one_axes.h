@@ -23,9 +23,9 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-// Creates the pass that removes axes of size one from all meshes, shardings,
-// and manual computation ops, to avoid conflict during propagation that are due
-// to such axes.
+// Creates the pass that removes axes of size one from all shardings and manual
+// computation ops, to avoid conflict during propagation that are due to such
+// axes. Note that the axes in the meshes are not removed.
 std::unique_ptr<mlir::Pass> createSdyRoundTripRemoveSizeOneAxesPass();
 
 // Registers the xla-sdy-round-trip-remove-size-one-axes pass.
