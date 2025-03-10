@@ -18,8 +18,6 @@
 #include <memory>
 
 #include "absl/strings/string_view.h"
-#include "third_party/qairt/latest/include/QNN/QnnInterface.h"
-#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -27,6 +25,8 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/context_binary_info.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/registry.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
+#include "third_party/qairt/latest/include/QNN/QnnInterface.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
 class LiteRtDispatchDeviceContextT;
 
@@ -59,7 +59,7 @@ class LiteRtDispatchInvocationContextT {
  private:
   LiteRtDispatchInvocationContextT(
       litert::qnn::QnnManager& qnn_manager,
-      const litert::qnn::ContextBinaryInfo& context_binary_info,
+      litert::qnn::ContextBinaryInfo&& context_binary_info,
       LiteRtDispatchDeviceContextT& device_context,
       litert::qnn::QnnManager::ContextHandle&& context_handle,
       Qnn_ProfileHandle_t profile_handle, int graph_index,
@@ -74,8 +74,9 @@ class LiteRtDispatchInvocationContextT {
   Qnn_ProfileHandle_t profile_handle_;
   int graph_index_;
   Qnn_GraphHandle_t graph_handle_;
-  std::vector<litert::qnn::QnnTensor> inputs_;
-  std::vector<litert::qnn::QnnTensor> outputs_;
+  std::vector<::qnn::TensorWrapper> inputs_;
+  std::vector<::qnn::TensorWrapper> outputs_;
+  litert::qnn::ContextBinaryInfo context_binary_info_;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_
