@@ -1681,11 +1681,23 @@ void FixAllocationSequenceAfterPostAllocationTransformation(
 
   // (2)
   for (auto& allocation : *allocations) {
+    std::vector<HloUse> uses_to_update;
     for (const HloUse& use : allocation->uses()) {
-      auto new_use_it = transformation_info.update_use_map.find(use);
-      if (new_use_it != transformation_info.update_use_map.end()) {
-        allocation->RemoveUse(use);
-        allocation->AddUse(new_use_it->second);
+      for (const auto& [old_use, new_use] :
+           transformation_info.update_use_map) {
+        if (use == old_use) {
+          uses_to_update.push_back(old_use);
+          break;  // found the use, no need to keep searching update_use_map
+        }
+      }
+    }
+
+    // Perform update uses
+    if (!uses_to_update.empty()) {
+      for (const HloUse& old_use : uses_to_update) {
+        const HloUse& new_use = transformation_info.update_use_map.at(old_use);
+        allocation->RemoveUse(old_use);
+        allocation->AddUse(new_use);
       }
     }
   }
