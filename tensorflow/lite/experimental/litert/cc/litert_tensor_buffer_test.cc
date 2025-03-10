@@ -322,7 +322,7 @@ TEST(TensorBuffer, NotOwned) {
   LiteRtDestroyTensorBuffer(litert_tensor_buffer);
 }
 
-TEST(TensorBuffer, ExternalHostMemory) {
+TEST(TensorBuffer, CreateFromExternalHostMemory) {
   // Allocate a tensor buffer with host memory.
   const int kTensorBufferSize =
       std::max<int>(sizeof(kTensorData), LITERT_HOST_MEMORY_BUFFER_ALIGNMENT);
@@ -351,7 +351,7 @@ TEST(TensorBuffer, ExternalHostMemory) {
 }
 
 #if LITERT_HAS_AHWB_SUPPORT
-TEST(TensorBuffer, FromAhwb) {
+TEST(TensorBuffer, CreateFromAhwb) {
   AHardwareBuffer* ahw_buffer = nullptr;
   if (__builtin_available(android 26, *)) {
     int error = 0;
@@ -495,7 +495,7 @@ TEST(TensorBuffer, ReadWriteBufferSizeMismatch) {
 }
 
 #if LITERT_HAS_OPENGL_SUPPORT
-TEST(TensorBuffer, FromGlTexture) {
+TEST(TensorBuffer, CreateFromGlTexture) {
   std::unique_ptr<tflite::gpu::gl::EglEnvironment> env;
   ASSERT_TRUE(tflite::gpu::gl::EglEnvironment::NewEglEnvironment(&env).ok());
 
@@ -511,6 +511,28 @@ TEST(TensorBuffer, FromGlTexture) {
       TensorBuffer::CreateFromGlTexture(
           RankedTensorType(kTensorType), gl_texture.target(), gl_texture.id(),
           gl_texture.format(), gl_texture.bytes_size(), gl_texture.layer()));
+}
+
+tflite::gpu::gl::GlBuffer CreateTestGlBuffer(size_t size_bytes) {
+  tflite::gpu::gl::GlBuffer gl_buffer;
+  CHECK_OK(tflite::gpu::gl::CreateReadWriteShaderStorageBuffer<std::byte>(
+      size_bytes, &gl_buffer));
+  return gl_buffer;
+}
+
+TEST(TensorBuffer, CreateFromGlBuffer) {
+  std::unique_ptr<tflite::gpu::gl::EglEnvironment> env;
+  ASSERT_TRUE(tflite::gpu::gl::EglEnvironment::NewEglEnvironment(&env).ok());
+
+  // Create GL buffer.
+  tflite::gpu::gl::GlBuffer gl_buffer = CreateTestGlBuffer(sizeof(kTensorData));
+
+  // Create tensor buffer from existing GL buffer.
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer tensor_buffer,
+      TensorBuffer::CreateFromGlBuffer(
+          RankedTensorType(kTensorType), gl_buffer.target(), gl_buffer.id(),
+          gl_buffer.bytes_size(), gl_buffer.offset()));
 }
 
 #if LITERT_HAS_AHWB_SUPPORT
