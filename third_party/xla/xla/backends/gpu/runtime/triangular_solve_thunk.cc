@@ -18,6 +18,7 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/runtime/thunk.h"
