@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
+#include <Python.h>
+
 namespace tensorflow {
 
 Safe_PyObjectPtr make_safe(PyObject* object) {
