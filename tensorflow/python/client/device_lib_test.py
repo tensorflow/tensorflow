@@ -19,6 +19,7 @@ from tensorflow.python.client import device_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
+from unittest import mock
 
 
 class DeviceLibTest(test_util.TensorFlowTestCase):
@@ -37,6 +38,21 @@ class DeviceLibTest(test_util.TensorFlowTestCase):
       self.assertGreater(len(devices), 1)
       self.assertIn("GPU", [d.device_type for d in devices])
 
+    @mock.patch('tensorflow.python.client._pywrap_device_lib.list_local_devices')
+    def testListLocalDevicesException(self, mock_list_local_devices):
+      mock_list_local_devices.side_effect = RuntimeError('Device list failure')
+      with self.assertRaisesRegex(RuntimeError) as e:
+        device_lib.list_local_devices()
+      self.assertIn('Device list failure', str(e.exception))
+
+    @mock.patch('tensorflow.python.client.device_lib.device_attributes_pb2.DeviceAttributes.ParseFromString')
+    @mock.patch('tensorflow.python.client._pywrap_device_lib.list_local_devices')
+    def testDeviceAttributesParsingException(self, mock_list_local_devices, mock_parse):
+      mock_list_local_devices.return_value = [b"invalid_proto_string"]
+      mock_parse.side_effect = ValueError("parsing failure")
+      with self.assertRaises(ValueError) as e:
+        device_lib.list_local_devices()
+      self.assertIn('Failed to parse devices', str(e.exception))
 
 if __name__ == "__main__":
   googletest.main()

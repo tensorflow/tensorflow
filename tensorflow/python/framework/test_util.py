@@ -183,9 +183,13 @@ def gpu_device_name() -> str:
   ...       self.assertEqual(tf.math.add(1.0, 2.0), 3.0)
 
   """
-  for x in device_lib.list_local_devices():
-    if x.device_type == "GPU":
-      return compat.as_str(x.name)
+  try:
+    devices = device_lib.list_local_devices()
+    for x in devices:
+      if x.device_type == "GPU":
+        return compat.as_str(x.name) or ""
+  except Exception as e:
+    logging.error("Failed to get GPU device name: %s", e)
   return ""
 
 
