@@ -39,60 +39,6 @@
 
 namespace litert {
 
-using Dimensions = absl::InlinedVector<int32_t, kExpectedMaxTensorRank>;
-using Strides = absl::InlinedVector<uint32_t, kExpectedMaxTensorRank>;
-
-// Tensor layout. C++ equivalent to LiteRtLayout.
-class Layout {
- public:
-  explicit Layout(litert::Dimensions&& dimensions,
-                  litert::Strides&& strides = litert::Strides())
-      : dimensions_(std::move(dimensions)), strides_(std::move(strides)) {}
-
-  explicit Layout(const LiteRtLayout& layout)
-      : dimensions_(layout.dimensions, layout.dimensions + layout.rank) {
-    if (layout.strides) {
-      strides_.reserve(layout.rank);
-      std::copy(layout.strides, layout.strides + layout.rank,
-                std::back_inserter(strides_));
-    }
-  }
-
-  explicit operator LiteRtLayout() const {
-    auto res = BuildLayout(dimensions_);
-    res.strides = HasStrides() ? strides_.data() : nullptr;
-    return res;
-  }
-
-  bool operator==(const Layout& other) const {
-    return dimensions_ == other.dimensions_ && strides_ == other.strides_;
-  }
-
-  uint32_t Rank() const { return dimensions_.size(); }
-
-  absl::Span<const int32_t> Dimensions() const {
-    return absl::MakeSpan(dimensions_.data(), dimensions_.size());
-  }
-
-  bool HasStrides() const { return !strides_.empty(); }
-
-  absl::Span<const uint32_t> Strides() const {
-    const uint32_t* data = HasStrides() ? strides_.data() : nullptr;
-    auto size = HasStrides() ? Rank() : 0;
-    return absl::MakeSpan(data, size);
-  }
-
-  // Get the number of scalar elements in this tensor type. std::nullopt if
-  // not fully static.
-  std::optional<size_t> NumElements() const {
-    return ::litert::NumElements(dimensions_.cbegin(), dimensions_.cend());
-  }
-
- private:
-  litert::Dimensions dimensions_;
-  litert::Strides strides_;
-};
-
 // Type for tensors with known dimensions. C++ equivalent to
 // LiteRtRankedTensorType.
 class RankedTensorType {
