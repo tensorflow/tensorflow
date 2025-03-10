@@ -17,7 +17,6 @@
 from xla.backends.cpu.testlib import _extension
 
 # go/keep-sorted start
-CallKernelEmitter = _extension.CallKernelEmitter
 ConcatenateKernelEmitter = _extension.ConcatenateKernelEmitter
 DotKernelEmitter = _extension.DotKernelEmitter
 ElementalKernelEmitter = _extension.ElementalKernelEmitter

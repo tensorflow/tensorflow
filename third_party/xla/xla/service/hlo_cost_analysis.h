@@ -551,9 +551,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Enable efficient updates if a known small set of instructions within an
   // HLO graph was modified.
   // Updates the cost analysis by removing one instruction.
-  absl::Status RemoveInstruction(const HloInstruction* instruction);
+  absl::Status RemoveInstruction(HloInstruction* instruction);
   // Updates the cost analysis by re-doing the analysis of one instruction.
-  absl::Status RevisitInstruction(const HloInstruction* instruction);
+  absl::Status RevisitInstruction(HloInstruction* instruction);
 
   // Decorates shape_size_ by returning 0 immediately if the shape does not have
   // a layout.

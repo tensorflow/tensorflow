@@ -159,10 +159,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   IrEmitter::IRBuilderGuard builder_guard = nested_ir_emitter_->WithBuilder(b);
 
   HloComputation* nested_computation = fusion->fused_instructions_computation();
-  TF_RETURN_IF_ERROR(nested_ir_emitter_
-                         ->EmitNestedComputation(*nested_computation,
-                                                 llvm_ir::IrName(fusion), false)
-                         .status());
+  TF_RETURN_IF_ERROR(nested_ir_emitter_->EmitNestedComputation(
+      *nested_computation, llvm_ir::IrName(fusion), false));
 
   CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory(&b);
 
