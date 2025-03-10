@@ -170,6 +170,7 @@ limitations under the License.
 #include "xla/service/cpu/metrics.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
 #include "xla/service/cpu/runtime_symbol_generator.h"
+#include "xla/service/cpu/small_while_loop_hoisting_pass.h"
 #include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/dump.h"
@@ -858,6 +859,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   } else {
     pipeline.AddPass<CopyInsertion>();
   }
+
+  pipeline.AddPass<SmallWhileLoopHoistingPass>(256);
 
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(module).status();
