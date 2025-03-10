@@ -2040,7 +2040,6 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Run post allocation transformation and fix the allocation sequence if
   // needed.
   if (options_.post_allocation_transformation_fn) {
-    PostAllocationTransformationUpdate all_changes;
     VLOG(3) << "Running post allocation transformation on module";
     for (HloComputation* comp : alias_analysis_.dataflow_analysis()
                                     .module()
@@ -2068,24 +2067,19 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
           }
           for (HloInstruction* user : operand->users()) {
             if (HloDataflowAnalysis::IsInPlaceOperation(user->opcode())) {
-              continue;
+              break;
             }
           }
         }
 
         TF_ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,
                             options_.post_allocation_transformation_fn(instr));
-        all_changes.to_be_removed.insert(all_changes.to_be_removed.end(),
-                                         changes.to_be_removed.begin(),
-                                         changes.to_be_removed.end());
-        all_changes.update_use_map.insert(changes.update_use_map.begin(),
-                                          changes.update_use_map.end());
+        VLOG(3) << "Post allocation transformation info: \n"
+                << changes.ToString();
+        FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
+                                                               changes);
       }
     }
-    VLOG(3) << "Post allocation transformation info: \n"
-            << all_changes.ToString();
-    FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
-                                                           all_changes);
   }
 
   HeapSimulator::Result<HloValue> result;
