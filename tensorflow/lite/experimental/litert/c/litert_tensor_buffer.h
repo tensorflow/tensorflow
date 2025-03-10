@@ -191,12 +191,12 @@ LiteRtStatus LiteRtGetTensorBufferGlTexture(LiteRtTensorBuffer tensor_buffer,
 
 LiteRtStatus LiteRtCreateTensorBufferFromGlBuffer(
     const LiteRtRankedTensorType* tensor_type, GLenum target, GLuint id,
-    size_t bytes_size, size_t offset, LiteRtGlBufferDeallocator deallocator,
+    size_t size_bytes, size_t offset, LiteRtGlBufferDeallocator deallocator,
     LiteRtTensorBuffer* buffer);
 
 LiteRtStatus LiteRtGetTensorBufferGlBuffer(LiteRtTensorBuffer tensor_buffer,
                                            GLenum* target, GLuint* id,
-                                           size_t* bytes_size, size_t* offset);
+                                           size_t* size_bytes, size_t* offset);
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 
 // Create a buffer backed by managed memory for a given size.
