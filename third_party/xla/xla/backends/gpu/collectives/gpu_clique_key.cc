@@ -47,13 +47,14 @@ GpuCliqueKey::GpuCliqueKey(
     std::vector<GlobalDeviceId> devices, int64_t num_local_participants,
     CollectiveStreamId stream_id, AsyncStreamKind stream_kind,
     std::vector<std::vector<GlobalDeviceId>> participant_groups,
-    GlobalDeviceId root_device)
+    GlobalDeviceId root_device, std::vector<uint64_t> incarnations)
     : CliqueKey(std::move(devices)),
       num_local_participants_(num_local_participants),
       stream_id_(stream_id),
       stream_kind_(stream_kind),
       participant_groups_(std::move(participant_groups)),
-      root_device_(root_device) {
+      root_device_(root_device),
+      incarnations_(std::move(incarnations)) {
   for (std::vector<GlobalDeviceId>& group : participant_groups_) {
     absl::c_sort(group);
   }
@@ -115,27 +116,29 @@ std::string GpuCliqueKey::ToString() const {
   }
   return absl::StrFormat(
       "devices=[%s]; stream=%d%s; root_device=%lld; "
-      "num_local_participants=%lld",
+      "num_local_participants=%lld; incarnations=[%s]",
       GlobalDeviceIdsToString(devices()), stream_id_.value(), group_string,
-      root_device_.value(), num_local_participants_);
+      root_device_.value(), num_local_participants_,
+      absl::StrJoin(incarnations_, ", "));
 }
 
 void GpuCliqueKey::HashValue(absl::HashState state) const {
   absl::HashState::combine(std::move(state), devices(), stream_id_,
-                           participant_groups_, root_device_);
+                           participant_groups_, root_device_, incarnations_);
 }
 
 bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b) {
   return a.devices() == b.devices() && a.stream_id_ == b.stream_id_ &&
          a.participant_groups_ == b.participant_groups_ &&
          a.num_local_participants_ == b.num_local_participants_ &&
-         a.root_device_ == b.root_device_;
+         a.root_device_ == b.root_device_ && a.incarnations_ == b.incarnations_;
 }
 
 // Constructs a tuple from the clique key for comparison purposes.
 static auto CmpKey(const GpuCliqueKey& key) {
   return std::make_tuple(key.devices().size(), key.devices(), key.root_device(),
-                         key.num_local_participants(), key.stream_id().value());
+                         key.num_local_participants(), key.stream_id().value(),
+                         key.incarnations());
 }
 
 bool operator<(const GpuCliqueKey& a, const GpuCliqueKey& b) {

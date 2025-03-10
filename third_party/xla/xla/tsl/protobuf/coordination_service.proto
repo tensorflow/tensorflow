@@ -255,7 +255,8 @@ message GetAliveTasksResponse {
   // provided in the GetAliveTasksRequest.
   repeated CoordinatedTask alive_tasks = 1;
 
-  // The incarnation ids of the alive tasks.
+  // The incarnation ids of the alive tasks. incarnations[i] is the incarnation
+  // id of alive_tasks[i].
   repeated fixed64 incarnations = 2;
 }
 

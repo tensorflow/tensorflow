@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -265,8 +266,17 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
   TF_ASSIGN_OR_RETURN(int64_t num_local_participants,
                       GetNumLocalParticipants(params, participants));
 
-  return GpuCliqueKey(std::move(participants), num_local_participants,
-                      kNoStreamId, stream_kind, std::move(participant_groups));
+  absl::flat_hash_set<uint64_t> incarnations;
+  if (params.incarnations) {
+    for (GlobalDeviceId id : participants) {
+      incarnations.insert(params.incarnations->at(id));
+    }
+  }
+
+  return GpuCliqueKey(
+      std::move(participants), num_local_participants, kNoStreamId, stream_kind,
+      std::move(participant_groups), GlobalDeviceId(-1),
+      std::vector<uint64_t>(incarnations.begin(), incarnations.end()));
 }
 
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
