@@ -144,6 +144,21 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "fusion_wrapper_base",
+    srcs = ["fusion_wrapper_base.cc"],
+    hdrs = ["fusion_wrapper_base.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "type_util",
     srcs = ["type_util.cc"],
     hdrs = ["type_util.h"],
