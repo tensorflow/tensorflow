@@ -288,13 +288,15 @@ cc_library(
     ],
 )
 
-cuda_library(
+gpu_kernel_library(
     name = "ragged_all_to_all_kernel_gpu",
     srcs = ["ragged_all_to_all_kernel.cu.cc"],
     hdrs = ["ragged_all_to_all_kernel_common.h"],
-    deps = [
+    deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",  # build_cleaner: keep
-    ],
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 xla_test(
