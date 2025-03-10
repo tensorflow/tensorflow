@@ -33,6 +33,7 @@ load(
 )
 load(
     ":compiler_common_tools.bzl",
+    "get_cxx_inc_directories",
     "to_list_of_strings",
 )
 load(
@@ -108,80 +109,6 @@ def find_cc(repository_ctx, use_rocm_clang):
         fail(("Cannot find {}, either correct your path or set the {}" +
               " environment variable").format(target_cc_name, cc_path_envvar))
     return cc
-
-_INC_DIR_MARKER_BEGIN = "#include <...>"
-
-def _cxx_inc_convert(path):
-    """Convert path returned by cc -E xc++ in a complete path."""
-    path = path.strip()
-    return path
-
-def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
-    """Compute the list of default C or C++ include directories."""
-    if lang_is_cpp:
-        lang = "c++"
-    else:
-        lang = "c"
-    sysroot = []
-    if tf_sysroot:
-        sysroot += ["--sysroot", tf_sysroot]
-
-    # TODO: We pass -no-canonical-prefixes here to match the compiler flags,
-    #       but in rocm_clang CROSSTOOL file that is a `feature` and we should
-    #       handle the case when it's disabled and no flag is passed
-    result = raw_exec(repository_ctx, [
-        cc,
-        "-E",
-        "-x" + lang,
-        "-",
-        "-v",
-    ] + sysroot)
-    stderr = err_out(result)
-    index1 = stderr.find(_INC_DIR_MARKER_BEGIN)
-    if index1 == -1:
-        return []
-    index1 = stderr.find("\n", index1)
-    if index1 == -1:
-        return []
-    index2 = stderr.rfind("\n ")
-    if index2 == -1 or index2 < index1:
-        return []
-    index2 = stderr.find("\n", index2 + 1)
-    if index2 == -1:
-        inc_dirs = stderr[index1 + 1:]
-    else:
-        inc_dirs = stderr[index1 + 1:index2].strip()
-
-    return [
-        str(repository_ctx.path(_cxx_inc_convert(p)))
-        for p in inc_dirs.split("\n")
-    ]
-
-def get_cxx_inc_directories(repository_ctx, cc, tf_sysroot):
-    """Compute the list of default C and C++ include directories."""
-
-    # For some reason `clang -xc` sometimes returns include paths that are
-    # different from the ones from `clang -xc++`. (Symlink and a dir)
-    # So we run the compiler with both `-xc` and `-xc++` and merge resulting lists
-    includes_cpp = _get_cxx_inc_directories_impl(
-        repository_ctx,
-        cc,
-        True,
-        tf_sysroot,
-    )
-    includes_c = _get_cxx_inc_directories_impl(
-        repository_ctx,
-        cc,
-        False,
-        tf_sysroot,
-    )
-
-    includes_cpp_set = depset(includes_cpp)
-    return includes_cpp + [
-        inc
-        for inc in includes_c
-        if inc not in includes_cpp_set.to_list()
-    ]
 
 def auto_configure_fail(msg):
     """Output failure message when rocm configuration fails."""
