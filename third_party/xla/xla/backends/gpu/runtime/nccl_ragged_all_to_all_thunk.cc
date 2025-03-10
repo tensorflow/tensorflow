@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/kernels/ragged_all_to_all_kernel.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
@@ -70,7 +72,8 @@ NcclRaggedAllToAllConfig GetNcclRaggedAllToAllConfig(
 
   const Shape& input_size_shape = instr->operand(2)->shape();
   config.num_total_updates = input_size_shape.dimensions(0);
-  config.ragged_row_element_size =
+  config.num_input_rows = instr->operand(0)->shape().dimensions(0);
+  config.num_row_elements =
       ShapeUtil::ElementsIn(instr->shape()) / instr->shape().dimensions(0);
   return config;
 }
@@ -350,6 +353,47 @@ absl::Status RunMemCpyRaggedAllToAll(
   return absl::OkStatus();
 }
 
+absl::Status RunOneShotRaggedAllToAll(
+    GpuCollectives* collectives, const GpuCliqueKey& clique_key,
+    int64_t num_input_rows, int64_t num_row_elements, int64_t num_total_updates,
+    const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+    RankId rank, Communicator* comm, se::Event* start_event,
+    se::Event* end_event) {
+  int device_ordinal = stream.parent()->device_ordinal();
+  VLOG(3) << "Performing one-shot ragged-all-to-all from device ordinal: "
+          << device_ordinal << ", rank: " << rank.value();
+
+  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
+
+  PrimitiveType element_type = buffers[0].element_type;
+
+  se::DeviceMemoryBase input_buffer = buffers[0].source_buffer;
+  se::DeviceMemoryBase output_buffer = buffers[1].destination_buffer;
+
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
+      RendezvousBeforeKernelStart(
+          /*name=*/"one-shot", clique_key, rank, num_ranks, output_buffer,
+          stream, start_event, end_event));
+
+  int64_t num_updates_per_replica = num_total_updates / num_ranks;
+
+  absl::InlinedVector<se::DeviceMemoryBase, 4> output_ptrs;
+  for (auto& value : *rendezvous_values) {
+    output_ptrs.push_back(value.output_buffer);
+  }
+
+  TF_RETURN_IF_ERROR(RunRaggedAllToAllKernel(
+      &stream, element_type, input_buffer, output_ptrs,
+      buffers[2].source_buffer, buffers[3].source_buffer,
+      buffers[4].source_buffer, num_ranks, num_updates_per_replica,
+      num_input_rows, num_row_elements));
+
+  return RendezvousAfterKernelFinish(
+      /*name=*/"one-shot", clique_key, rank, num_ranks, stream, end_event,
+      rendezvous_values);
+}
+
 }  // namespace
 
 NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
@@ -360,7 +404,12 @@ NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
                           AsyncStreamKind::kCollective),
       config_(GetNcclRaggedAllToAllConfig(instr)),
       buffers_(std::move(buffers)),
-      p2p_memcpy_enabled_(p2p_memcpy_enabled) {
+      p2p_memcpy_enabled_(p2p_memcpy_enabled),
+      one_shot_kernel_enabled_(
+          instr->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel()) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
@@ -429,7 +478,7 @@ absl::Status NcclRaggedAllToAllStartThunk::Initialize(
                                   std::move(output_offsets_device_buffer));
   }
 
-  if (should_use_memcpy()) {
+  if (should_use_memcpy() || should_use_one_shot_kernel()) {
     se::StreamExecutor* executor = params.executor;
     {
       absl::MutexLock lock(&events_mutex_);
@@ -492,7 +541,7 @@ absl::Status NcclRaggedAllToAllStartThunk::RunNcclCollective(
     output_offsets_device_buffer = jt->second.memory();
   }
 
-  if (should_use_memcpy()) {
+  if (should_use_memcpy() || should_use_one_shot_kernel()) {
     se::Event* start_event = nullptr;
     se::Event* end_event = nullptr;
     {
@@ -509,13 +558,24 @@ absl::Status NcclRaggedAllToAllStartThunk::RunNcclCollective(
     std::optional<RankId> rank =
         clique_key.rank(params.collective_params->global_device_id);
 
+    TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
+
+    if (should_use_one_shot_kernel() &&
+        IsRaggedAllToAllKernelSupported(num_ranks,
+                                        device_buffers[0].element_type)) {
+      return RunOneShotRaggedAllToAll(
+          collectives, clique_key, config_.num_input_rows,
+          config_.num_row_elements, config_.num_total_updates, device_buffers,
+          stream, *rank, comm_handle.comm, start_event, end_event);
+    }
+
     return RunMemCpyRaggedAllToAll(
-        collectives, clique_key, *rank, config_.ragged_row_element_size,
+        collectives, clique_key, *rank, config_.num_row_elements,
         config_.num_total_updates, device_buffers, stream, comm_handle.comm,
         ragged_metadata_allocs, start_event, end_event);
   }
 
-  return RunRaggedAllToAll(collectives, config_.ragged_row_element_size,
+  return RunRaggedAllToAll(collectives, config_.num_row_elements,
                            config_.num_total_updates, device_buffers, stream,
                            comm_handle.comm, ragged_metadata_allocs,
                            output_offsets_device_buffer);

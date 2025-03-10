@@ -27,6 +27,11 @@ limitations under the License.
 
 namespace xla::gpu {
 
+// Returns true if the kernel is supported for the given number of outputs and
+// element type.
+bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
+                                     PrimitiveType element_type);
+
 // Input:
 //  - input_buffer: dtype[num_input_rows, num_row_elements]
 //  - input_offsets_buffer: s64[num_ranks * num_updates_per_rank]

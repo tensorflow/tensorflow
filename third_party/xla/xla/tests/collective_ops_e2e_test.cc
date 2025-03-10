@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -1987,6 +1988,7 @@ enum class RaggedAllToAllImplType {
   kNccl,
   kMemcpy,
   kDecomposer,
+  kOneShot,
 };
 
 class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
@@ -2154,7 +2156,36 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
     opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(
         std::get<1>(GetParam()) == RaggedAllToAllImplType::kDecomposer);
+    opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(
+        std::get<1>(GetParam()) == RaggedAllToAllImplType::kOneShot);
     return opts;
+  }
+
+  // Enable peer access if needed. Returns false if peer access is required but
+  // can not be enabled. Otherwise returns true.
+  bool MaybeEnablePeerAccess() {
+    if (std::get<1>(GetParam()) != RaggedAllToAllImplType::kOneShot) {
+      // Peer access is only needed for the one-shot kernel.
+      return true;
+    }
+
+    auto& stream_executors = backend().stream_executors();
+    if (!stream_executors[0]->CanEnablePeerAccessTo(stream_executors[1])) {
+      // Peer access can not be enabled. Likely because of the hardware
+      // limitations.
+      return false;
+    }
+
+    EnablePeerAccess(stream_executors);
+    return true;
+  }
+
+  void SetUp() override {
+    if (std::get<1>(GetParam()) == RaggedAllToAllImplType::kOneShot &&
+        !MaybeEnablePeerAccess()) {
+      GTEST_SKIP() << "Test requires direct peer access between GPUs.";
+    }
+    CollectiveOpsWithFlagsBase::SetUp();
   }
 
   // Computes ragged tensor offsets based on the sizes of the ragged rows.
@@ -2494,9 +2525,9 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_Degenerate) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  TF_ASSERT_OK(
-      CreateRandomTestData(module.get(), /*input_sizes=*/{/*replica_0=*/{1},
-                                                          /*replica_1=*/{3}}));
+  TF_ASSERT_OK(CreateRandomTestData(module.get(),
+                                    /*input_sizes=*/{/*replica_0=*/{1},
+                                                     /*replica_1=*/{3}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -2765,6 +2796,8 @@ std::string RaggedAllToAllImplTypeName(
       return "memcpy";
     case RaggedAllToAllImplType::kDecomposer:
       return "decomposer";
+    case RaggedAllToAllImplType::kOneShot:
+      return "one_shot";
     default:
       LOG(FATAL) << "Unknown ragged all-to-all implementation type.";
   }
@@ -2775,7 +2808,8 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Bool(),
                        ::testing::Values(RaggedAllToAllImplType::kNccl,
                                          RaggedAllToAllImplType::kMemcpy,
-                                         RaggedAllToAllImplType::kDecomposer)),
+                                         RaggedAllToAllImplType::kDecomposer,
+                                         RaggedAllToAllImplType::kOneShot)),
     [](const ::testing::TestParamInfo<std::tuple<bool, RaggedAllToAllImplType>>&
            info) {
       return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",

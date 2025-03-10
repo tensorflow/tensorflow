@@ -50,12 +50,17 @@ void* GetKernel(PrimitiveType element_type) {
     case 64:
       return GetRaggedAllToAllKernel<uint64_t>();
     default:
-      LOG(FATAL) << "Unsupported primitive type: " << element_type;
       return nullptr;
   }
 }
 
 }  // namespace
+
+bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
+                                     PrimitiveType element_type) {
+  return num_outputs <= kMaxNumRaggedAllToAllOutputPtrs &&
+         GetKernel(element_type) != nullptr;
+}
 
 absl::Status RunRaggedAllToAllKernel(
     se::Stream* stream, PrimitiveType element_type,
