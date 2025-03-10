@@ -255,7 +255,6 @@ cc_library(
     ],
     deps = [
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:context",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],
@@ -287,16 +286,12 @@ xla_test(
         "cuda-only",
     ],
     deps = [
-        ":cuda_context",
         ":cuda_diagnostics",
         ":cuda_status",
-        "//xla/stream_executor/gpu:gpu_types_header",
-        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -623,7 +618,6 @@ cc_library(
         "gpu",
     ],
     deps = [
-        "//xla/stream_executor/gpu:gpu_helpers_header",
         "@com_google_absl//absl/log:check",
         "@local_config_cuda//cuda:cuda_headers",
     ],
@@ -863,7 +857,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:nvjitlink",  # buildcleaner: keep
@@ -1307,12 +1300,10 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:typed_kernel_factory",
-        "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/gpu:gpu_test_kernels_cuda",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -1423,14 +1414,7 @@ cc_binary(
     name = "dummy_cuda_binary",
     testonly = True,
     srcs = ["dummy_cuda_binary.cc"],
-    deps = [
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-    ],
+    deps = ["@com_google_absl//absl/strings"],
 )
 
 stage_in_bin_subdirectory(
@@ -1507,7 +1491,6 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -1548,7 +1531,6 @@ cc_library(
         ":subprocess_compilation",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_asm_opts",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -1571,7 +1553,6 @@ cc_library(
         ":compilation_options",
         ":compilation_provider",
         ":cuda_platform",  # buildcleaner: keep
-        ":cuda_platform_id",
         ":driver_compilation_provider",
         ":nvjitlink_compilation_provider",
         ":nvjitlink_support",
@@ -1580,9 +1561,6 @@ cc_library(
         ":subprocess_compilation",
         ":subprocess_compilation_provider",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -1787,7 +1765,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",

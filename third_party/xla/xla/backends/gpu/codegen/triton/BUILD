@@ -511,7 +511,6 @@ xla_test(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
@@ -608,7 +607,6 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
-        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -626,7 +624,6 @@ cc_library(
         "//xla/backends/profiler/gpu:cupti_collector",
         "//xla/backends/profiler/gpu:cupti_tracer",
         "//xla/tsl/profiler/utils:time_utils",
-        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
@@ -846,7 +843,6 @@ xla_test(
     tags = ["no_mac"],
     deps = [
         ":fusion_emitter",
-        ":kernel_name_tracer",
         ":support",
         ":test_utils",
         "//xla:error_spec",
@@ -875,8 +871,6 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla/codegen:emitter_loc_op_builder",
-        "//xla/service:hlo_module_config",
-        "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",

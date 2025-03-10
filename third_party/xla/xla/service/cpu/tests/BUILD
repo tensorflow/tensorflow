@@ -36,7 +36,6 @@ cc_library(
         "//xla/service:cpu_plugin",
         "//xla/tests:llvm_irgen_test_base",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -97,7 +96,6 @@ xla_cc_test(
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -110,7 +108,6 @@ xla_cc_test(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -149,7 +146,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
@@ -216,7 +212,6 @@ xla_cc_test(
         ":cpu_codegen_test_main",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tsl/platform:test",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -241,7 +236,6 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -295,7 +289,6 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest",
     ],
 )
 

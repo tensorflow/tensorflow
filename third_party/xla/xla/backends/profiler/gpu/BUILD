@@ -392,8 +392,6 @@ xla_test(
     ],
     deps = [
         ":cupti_buffer_events",
-        ":cupti_collector",
-        ":cupti_tracer",
         ":cupti_utils",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
@@ -435,6 +433,7 @@ cuda_library(
     local_defines = if_oss(["NVTX_VERSION_3_1=1"]),
     tags = ["cuda-only"],
     visibility = ["//visibility:public"],
+    deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
 xla_test(

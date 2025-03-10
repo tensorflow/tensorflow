@@ -105,8 +105,6 @@ xla_cc_test(
     deps = [
         ":sol_gpu_cost_model",
         "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
     ],
@@ -195,9 +193,7 @@ xla_cc_test(
     deps = [
         ":gpu_cost_model_stats_collection",
         ":gpu_hlo_cost_analysis",
-        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:hlo_cost_analysis",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
@@ -291,7 +287,6 @@ xla_cc_test(
     deps = [
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model_base",
-        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service/gpu:backend_configs_cc",
@@ -613,7 +608,6 @@ xla_cc_test(
         ":symbolic_tiled_hlo_instruction",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest_main",
@@ -821,7 +815,6 @@ xla_cc_test(
     srcs = ["coalescing_analysis_test.cc"],
     deps = [
         ":coalescing_analysis",
-        ":symbolic_tile",
         ":symbolic_tile_analysis",
         ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
