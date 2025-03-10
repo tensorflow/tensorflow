@@ -129,6 +129,14 @@ class KernelApiIrBuilder {
   static std::unique_ptr<llvm::Module> CreateModule(absl::string_view name,
                                                     llvm::LLVMContext& context);
 
+  static absl::StatusOr<std::vector<KernelParameter>>
+  GetKernelArgumentsParameters(const HloInstruction* instruction,
+                               const BufferAssignment* buffer_assignment);
+
+  static absl::StatusOr<std::vector<KernelParameter>>
+  GetKernelResultsParameters(const HloInstruction* instruction,
+                             const BufferAssignment* buffer_assignment);
+
  private:
   ThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& builder,
                                   llvm::Value* call_frame);

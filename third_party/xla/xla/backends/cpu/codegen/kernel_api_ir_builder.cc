@@ -247,38 +247,38 @@ absl::StatusOr<BufferAllocation::Slice> GetUniqueSlice(
   return buffer_assignment->GetUniqueSlice(instruction, index);
 }
 
+}  // namespace
+
 absl::StatusOr<std::vector<KernelApiIrBuilder::KernelParameter>>
-GetKernelArgumentsParameters(const HloInstruction* instruction,
-                             const BufferAssignment* buffer_assignment) {
-  std::vector<KernelApiIrBuilder::KernelParameter> arguments;
+KernelApiIrBuilder::GetKernelArgumentsParameters(
+    const HloInstruction* instruction,
+    const BufferAssignment* buffer_assignment) {
+  std::vector<KernelParameter> arguments;
 
   for (HloInstruction* operand : instruction->operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
       TF_ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           GetUniqueSlice(buffer_assignment, operand, indexed.index));
-      arguments.push_back(
-          KernelApiIrBuilder::KernelParameter{indexed.shape, slice});
+      arguments.push_back(KernelParameter{indexed.shape, slice});
     }
   }
   return arguments;
 }
 
 absl::StatusOr<std::vector<KernelApiIrBuilder::KernelParameter>>
-GetKernelResultsParameters(const HloInstruction* instruction,
-                           const BufferAssignment* buffer_assignment) {
-  std::vector<KernelApiIrBuilder::KernelParameter> results;
+KernelApiIrBuilder::GetKernelResultsParameters(
+    const HloInstruction* instruction,
+    const BufferAssignment* buffer_assignment) {
+  std::vector<KernelParameter> results;
   for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
     TF_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         GetUniqueSlice(buffer_assignment, instruction, indexed.index));
-    results.push_back(
-        KernelApiIrBuilder::KernelParameter{indexed.shape, slice});
+    results.push_back(KernelParameter{indexed.shape, slice});
   }
   return results;
 }
-
-}  // namespace
 
 auto KernelApiIrBuilder::Options::FromHloModuleConfig(
     const HloModuleConfig& config) -> Options {

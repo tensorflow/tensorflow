@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -431,6 +432,33 @@ TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
     CHECK:      {{.+}} = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES:.+]],
     CHECK: ![[DEREF_BYTES]] = !{i64 32}
   )"));
+}
+
+TEST_F(KernelApiIrBuilderTest, GetKernelParams) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+  constexpr absl::string_view hlo_text = R"(
+    HloModule m
+    ENTRY main {
+      p0 = f32[2,2] parameter(0)
+      p1 = f32[2,2] parameter(1)
+      ROOT add.0 = f32[2,2] add(p0, p1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
+  const auto* root = hlo->entry_computation()->root_instruction();
+  TF_ASSERT_OK_AND_ASSIGN(auto args,
+                          KernelApiIrBuilder::GetKernelArgumentsParameters(
+                              root, buffer_assignment.get()));
+  EXPECT_EQ(args.size(), 2);
+  EXPECT_THAT(args[0].shape.dimensions(), ::testing::ElementsAre(2, 2));
+  EXPECT_THAT(args[1].shape.dimensions(), ::testing::ElementsAre(2, 2));
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          KernelApiIrBuilder::GetKernelResultsParameters(
+                              root, buffer_assignment.get()));
+  EXPECT_EQ(results.size(), 1);
+  EXPECT_THAT(results[0].shape.dimensions(), ::testing::ElementsAre(2, 2));
 }
 
 }  // namespace
