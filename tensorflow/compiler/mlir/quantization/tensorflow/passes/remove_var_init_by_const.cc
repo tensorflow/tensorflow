@@ -62,9 +62,9 @@ class RemoveVariableInitializationByConstPass
 // pattern. `tf.VarHandleOp` and `tf.Const` are removed unless they are used by
 // other ops.
 struct RemoveVariableAssignmentByConst
-    : public OpRewritePattern<TF::AssignVariableOp> {
+    : public OpRewritePattern<TF::AssignVariableOp>::SplitMatchAndRewrite {
   // Inherit the constructors.
-  using OpRewritePattern<TF::AssignVariableOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(TF::AssignVariableOp assign_op) const override {
     Value resource_operand = assign_op.getOperand(0);
