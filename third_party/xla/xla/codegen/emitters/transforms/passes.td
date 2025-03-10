@@ -283,4 +283,28 @@ def UnswitchLoopsPass :
   let constructor = "CreateUnswitchLoopsPass()";
 }
 
+def VectorizeLoadsAndStoresPass :
+   Pass<"xla-vectorize-loads-stores", "mlir::func::FuncOp"> {
+  let summary = "Vectorizes loads and stores.";
+
+  let description = [{
+    Rewrites tensor.extract and tensor.insert ops inside loops to their vector
+    equivalents (vector.transfer_read and vector.transfer_write + vector.extract
+    and vector.insert).
+  }];
+
+  let dependentDialects = [
+    "mlir::vector::VectorDialect",
+  ];
+
+  let options = [
+    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
+           "Serialized stream_executor::GPUDeviceInfo proto.">,
+    Option<"target_type_", "target_type", "std::string", /*default=*/"\"gpu\"",
+           "Whether the pass targets a 'cpu' or 'gpu'. If 'cpu', gpu_device_info_ must be empty.">,
+  ];
+
+  let constructor = "CreateVectorizeLoadsAndStoresPass()";
+}
+
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_TD_
