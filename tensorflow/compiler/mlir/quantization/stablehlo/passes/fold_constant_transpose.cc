@@ -116,9 +116,10 @@ class DenseElementsTransposer {
 };
 
 class FoldTransposedConstantOp
-    : public OpRewritePattern<mlir::stablehlo::TransposeOp> {
+    : public OpRewritePattern<
+          mlir::stablehlo::TransposeOp>::SplitMatchAndRewrite {
  public:
-  using OpRewritePattern<mlir::stablehlo::TransposeOp>::OpRewritePattern;
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(mlir::stablehlo::TransposeOp op) const override {
     Value operand = op.getOperand();

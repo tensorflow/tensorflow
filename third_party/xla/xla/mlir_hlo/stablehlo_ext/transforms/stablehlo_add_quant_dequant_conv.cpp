@@ -56,8 +56,8 @@ Type getQuantizedType(Location loc, PatternRewriter& rewriter,
 }
 
 struct AddQuantDeQuantAfterConvolutionOp final
-    : OpRewritePattern<mlir::stablehlo::ConvolutionOp> {
-  using OpRewritePattern<stablehlo::ConvolutionOp>::OpRewritePattern;
+    : OpRewritePattern<mlir::stablehlo::ConvolutionOp>::SplitMatchAndRewrite {
+  using SplitMatchAndRewrite::SplitMatchAndRewrite;
 
   LogicalResult match(stablehlo::ConvolutionOp op) const override {
     // Match a stablehlo.convolution op if
