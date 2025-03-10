@@ -21,6 +21,7 @@ cc_library(
     defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
     visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_client_users"]),
     deps = [
+        ":stream_pool",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
@@ -121,5 +122,42 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "stream_pool",
+    srcs = ["stream_pool.cc"],
+    hdrs = ["stream_pool.h"],
+    deps = [
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "stream_pool_test",
+    srcs = ["stream_pool_test.cc"],
+    tags = [
+        "gpu",
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "requires-gpu-nvidia:2",
+    ],
+    deps = [
+        ":stream_pool",
+        "//xla/service:backend",
+        "//xla/service:gpu_plugin",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

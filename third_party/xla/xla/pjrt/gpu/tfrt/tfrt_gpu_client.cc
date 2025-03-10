@@ -117,6 +117,8 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
     : id_(options.id),
       local_device_id_(options.local_device_id),
       local_hardware_id_(options.local_hardware_id),
+      stream_pool_(options.executor, options.stream_capacity),
+      compute_stream_pool_(options.executor, options.max_inflight_computations),
       description_(options.id, options.platform_version) {
   description_.SetDebugString(absl::StrCat("TFRT_GPU_", id_));
   description_.SetToString(absl::StrCat("GpuDevice(id=", id_, ")"));

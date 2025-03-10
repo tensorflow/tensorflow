@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/gpu/tfrt/stream_pool.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -169,6 +170,10 @@ class TfrtGpuDevice final : public PjRtDevice {
     return nullptr;
   }
 
+  BoundedStreamPool& stream_pool() { return stream_pool_; }
+
+  BoundedStreamPool& compute_stream_pool() { return compute_stream_pool_; }
+
  private:
   friend class TfrtGpuClient;
 
@@ -176,7 +181,11 @@ class TfrtGpuDevice final : public PjRtDevice {
   PjRtClient* client_ = nullptr;
   PjRtLocalDeviceId local_device_id_;
   PjRtLocalHardwareId local_hardware_id_;
-
+  BoundedStreamPool stream_pool_;
+  // TODO(b/400541410): Support H2D transfers on compute streams.
+  //   Have a dedicated compute stream pool to avoid blocking the stream pool
+  //   for H2D transfers.
+  BoundedStreamPool compute_stream_pool_;
   absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
   absl::flat_hash_map<int, PjRtMemorySpace*> memory_spaces_by_kind_id_;
 
