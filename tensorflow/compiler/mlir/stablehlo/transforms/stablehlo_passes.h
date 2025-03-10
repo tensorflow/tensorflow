@@ -23,6 +23,9 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 
+// Unfuses MHLO batch norm inference op into arithmetic ops.
+std::unique_ptr<Pass> createUnfuseBatchNormPass();
+
 // Constant folds broadcast_in_dim op conditionally.
 std::unique_ptr<Pass> createFoldBroadcastPass();
 
