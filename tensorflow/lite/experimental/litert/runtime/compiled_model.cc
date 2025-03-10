@@ -93,6 +93,20 @@ Expected<void> LiteRtCompiledModelT::Initialize() {
   return {};
 }
 
+namespace {
+
+int GetAllocationFd(const tflite::Allocation* allocation) {
+  if (allocation != nullptr &&
+      allocation->type() == tflite::Allocation::Type::kMMap) {
+    auto& mmap_allocation =
+        static_cast<const tflite::MMAPAllocation&>(*allocation);
+    return mmap_allocation.fd();
+  }
+  return -1;
+}
+
+}  // namespace
+
 Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
     LiteRtEnvironmentT* env, LiteRtModel model,
     OptionsPtr compilation_options) {
@@ -172,8 +186,6 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
                       "Failed to inizialize compiled model");
   }
 
-  // TODO: b/397399776 - Auto register accelerators
-
   // If no compilation options were passed, we create a default object. This
   // allows us to add (for instance) accelerator compilation options.
   if (!compilation_options) {
@@ -187,6 +199,8 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   LITERT_ASSIGN_OR_RETURN(auto model_compilation_data,
                           litert::ModelCompilationData::Create());
   model_compilation_data->allocation_base = model_buffer;
+  model_compilation_data->allocation_fd =
+      GetAllocationFd(compiled_model->fb_model_->allocation());
   LITERT_RETURN_IF_ERROR(LiteRtAddAcceleratorCompilationOptions(
       compilation_options.get(), model_compilation_data.release()));
 
@@ -219,35 +233,6 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
       compiled_model->RegisterDelegate(std::move(delegate));
     }
   }
-
-  // Apply the dispatch delegate, unconditionally, since the loaded model may
-  // have been compiled for NPU at AOT.
-  // TODO: b/394958439 - Get the DispatchDelegate from the AcceleratorRegistry.
-  auto dispatch_delegate_options =
-      litert::CreateDispatchDelegateOptionsPtr(*env);
-  LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
-                                           model_buffer);
-
-  auto* allocation = compiled_model->fb_model_->allocation();
-  if (allocation != nullptr &&
-      allocation->type() == tflite::Allocation::Type::kMMap) {
-    auto& mmap_allocation =
-        static_cast<const tflite::MMAPAllocation&>(*allocation);
-    int flatbuffer_fd = mmap_allocation.fd();
-    LiteRtDispatchDelegateAddAllocFdOption(dispatch_delegate_options.get(),
-                                           flatbuffer_fd);
-  }
-
-  auto dispatch_delegate = litert::CreateDispatchDelegatePtr(
-      *env, std::move(dispatch_delegate_options));
-  if (auto status = compiled_model->interp_->ModifyGraphWithDelegate(
-          dispatch_delegate.get());
-      status != kTfLiteOk) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Failed to modify graph with delegate");
-  }
-
-  compiled_model->RegisterDelegate(std::move(dispatch_delegate));
 
   compiled_model->CheckCpuTensors();
   return compiled_model;

@@ -15,13 +15,14 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_ACCELERATORS_AUTO_REGISTRATION_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_ACCELERATORS_AUTO_REGISTRATION_H_
 
-#include <dlfcn.h>
-
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 
 namespace litert {
+
+Expected<void> TriggerAcceleratorAutomaticRegistration(
+    LiteRtEnvironmentT& environment);
 
 Expected<void> RegisterSharedObjectAccelerator(
     LiteRtEnvironmentT& environment, absl::string_view plugin_path,

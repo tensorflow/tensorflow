@@ -37,8 +37,9 @@ cc_library(
     deps = [
         ":litert_any",
         ":litert_common",
-        ":litert_logging",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core:environment",
+        "//tensorflow/lite/experimental/litert/runtime/accelerators:auto_registration",
         "@com_google_absl//absl/types:span",
     ],
 )
