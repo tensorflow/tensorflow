@@ -15,6 +15,8 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//tensorflow/compiler/mlir/lite/stablehlo/...",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/...",
         "//tensorflow/compiler/tests/...",
     ],
 )
@@ -83,6 +85,33 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "unfuse_batch_norm_pass",
+    srcs = [
+        "transforms/mhlo_passes/unfuse_batch_norm_pass.cc",
+    ],
+    hdrs = [
+        "transforms/stablehlo_passes.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@local_xla//xla/mlir_hlo",
     ],
     alwayslink = 1,
