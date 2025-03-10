@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
@@ -77,6 +79,10 @@ class KernelApiIrBuilderTestBase : public HloTestBase {
         &hlo, std::make_unique<DependencyHloOrdering>(&hlo),
         backend().compiler()->BufferSizeBytesFunction(),
         [](LogicalBuffer::Color) { return /*alignment=*/1; });
+  }
+
+  void SetKernelFunctionAttributes(llvm::Function* function) {
+    kernel_api_ir_builder_.SetKernelFunctionAttributes(function);
   }
 
   llvm::LLVMContext& context() { return context_; }
@@ -459,6 +465,20 @@ TEST_F(KernelApiIrBuilderTest, GetKernelParams) {
                               root, buffer_assignment.get()));
   EXPECT_EQ(results.size(), 1);
   EXPECT_THAT(results[0].shape.dimensions(), ::testing::ElementsAre(2, 2));
+}
+
+TEST_F(KernelApiIrBuilderTest, SetKernelFunctionAttributes) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+  llvm::FunctionType* function_ty =
+      llvm::FunctionType::get(llvm::PointerType::getUnqual(context),
+                              llvm::PointerType::getUnqual(context),
+                              /*isVarArg=*/false);
+  llvm::Function* function = llvm::Function::Create(
+      function_ty, llvm::GlobalValue::ExternalLinkage, "foo", *module);
+  EXPECT_FALSE(function->hasFnAttribute("prefer-vector-width"));
+  SetKernelFunctionAttributes(function);
+  EXPECT_TRUE(function->hasFnAttribute("prefer-vector-width"));
 }
 
 }  // namespace

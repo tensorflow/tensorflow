@@ -521,6 +521,11 @@ llvm::Function* KernelApiIrBuilder::EmitKernelFunction(llvm::Module& module,
   llvm::Function* function = llvm::Function::Create(
       kernel_function_ty_, llvm::GlobalValue::ExternalLinkage, name, module);
 
+  SetKernelFunctionAttributes(function);
+  return function;
+}
+
+void KernelApiIrBuilder::SetKernelFunctionAttributes(llvm::Function* function) {
   // We use external linkage because we'll be resolving this function from the
   // XLA runtime.
   function->setCallingConv(llvm::CallingConv::C);
@@ -537,8 +542,6 @@ llvm::Function* KernelApiIrBuilder::EmitKernelFunction(llvm::Module& module,
   // Always keep a frame pointer for the host kernel so we can see them in all
   // performance profiling tools.
   function->addFnAttr("frame-pointer", "all");
-
-  return function;
 }
 
 }  // namespace xla::cpu

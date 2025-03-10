@@ -137,6 +137,8 @@ class KernelApiIrBuilder {
   GetKernelResultsParameters(const HloInstruction* instruction,
                              const BufferAssignment* buffer_assignment);
 
+  void SetKernelFunctionAttributes(llvm::Function* function);
+
  private:
   ThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& builder,
                                   llvm::Value* call_frame);
