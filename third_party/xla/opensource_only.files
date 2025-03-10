@@ -7,12 +7,10 @@ compiler/xla/pjrt/cpu/package_groups.bzl:
 compiler/xla/pjrt/gpu/package_groups.bzl:
 compiler/xla/stream_executor/build_defs.bzl:
 compiler/xla/tsl/cuda/stub.bzl:
-compiler/xla/tsl/mkl/BUILD:
 compiler/xla/tsl/mkl/LICENSE:
 compiler/xla/tsl/mkl/MKL_LICENSE:
 compiler/xla/tsl/mkl/build_defs.bzl:
 compiler/xla/tsl/package_groups.bzl:
-compiler/xla/tsl/profiler/BUILD:
 third_party/absl/com_google_absl.BUILD:
 third_party/clang_toolchain/cc_configure_clang.bzl:
 third_party/clang_toolchain/download_clang.bzl:
