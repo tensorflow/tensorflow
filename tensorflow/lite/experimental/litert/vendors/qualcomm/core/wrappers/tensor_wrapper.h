@@ -70,6 +70,8 @@ class TensorWrapper final {
                          const std::vector<std::uint32_t>& dimentions,
                          std::uint32_t bytes, const void* data);
 
+  TensorWrapper(const Qnn_Tensor_t& qnn_tensor);
+
   TensorWrapper(const TensorWrapper& other);
 
   TensorWrapper(TensorWrapper&& other);

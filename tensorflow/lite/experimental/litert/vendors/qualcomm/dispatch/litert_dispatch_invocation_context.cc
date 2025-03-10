@@ -19,8 +19,6 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "third_party/qairt/latest/include/QNN/QnnCommon.h"
-#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
@@ -30,6 +28,8 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/context_binary_info.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/litert_dispatch_device_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
+#include "third_party/qairt/latest/include/QNN/QnnCommon.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
 using litert::Expected;
 using litert::Unexpected;
@@ -37,12 +37,13 @@ using litert::qnn::QnnManager;
 
 LiteRtDispatchInvocationContextT::LiteRtDispatchInvocationContextT(
     litert::qnn::QnnManager& qnn_manager,
-    const litert::qnn::ContextBinaryInfo& context_binary_info,
+    litert::qnn::ContextBinaryInfo&& context_binary_info,
     LiteRtDispatchDeviceContextT& device_context,
     QnnManager::ContextHandle&& context_handle,
     Qnn_ProfileHandle_t profile_handle, int graph_index,
     Qnn_GraphHandle_t graph_handle)
     : qnn_manager_(qnn_manager),
+      context_binary_info_(std::move(context_binary_info)),
       device_context_(device_context),
       context_handle_(std::move(context_handle)),
       profile_handle_(profile_handle),
@@ -169,7 +170,7 @@ Expected<void> LiteRtDispatchInvocationContextT::AttachInput(
   }
 
   auto& tensor = inputs_[graph_input_index];
-  return AttachBuffer(tensor.Tensor(), tensor_buffer_handle);
+  return AttachBuffer(tensor.get().GetQnnTensor(), tensor_buffer_handle);
 }
 
 Expected<void> LiteRtDispatchInvocationContextT::AttachOutput(
@@ -180,7 +181,7 @@ Expected<void> LiteRtDispatchInvocationContextT::AttachOutput(
   }
 
   auto& tensor = outputs_[graph_output_index];
-  return AttachBuffer(tensor.Tensor(), tensor_buffer_handle);
+  return AttachBuffer(tensor.get().GetQnnTensor(), tensor_buffer_handle);
 }
 
 Expected<void> LiteRtDispatchInvocationContextT::AttachBuffer(
@@ -219,13 +220,13 @@ Expected<void> LiteRtDispatchInvocationContextT::Execute() {
   const size_t num_ins = inputs_.size();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, inputs, num_ins, QNN_TENSOR_INIT);
   for (size_t i = 0; i < num_ins; ++i) {
-    *(inputs + i) = inputs_.at(i).Tensor();
+    *(inputs + i) = inputs_.at(i).get().GetQnnTensor();
   }
 
   const size_t num_outs = outputs_.size();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, outputs, num_outs, QNN_TENSOR_INIT);
   for (size_t i = 0; i < num_outs; ++i) {
-    *(outputs + i) = outputs_.at(i).Tensor();
+    *(outputs + i) = outputs_.at(i).get().GetQnnTensor();
   }
 
   if (auto status = qnn_manager_.Api()->graphExecute(

@@ -59,7 +59,7 @@ class LiteRtDispatchInvocationContextT {
  private:
   LiteRtDispatchInvocationContextT(
       litert::qnn::QnnManager& qnn_manager,
-      const litert::qnn::ContextBinaryInfo& context_binary_info,
+      litert::qnn::ContextBinaryInfo&& context_binary_info,
       LiteRtDispatchDeviceContextT& device_context,
       litert::qnn::QnnManager::ContextHandle&& context_handle,
       Qnn_ProfileHandle_t profile_handle, int graph_index,
@@ -74,8 +74,9 @@ class LiteRtDispatchInvocationContextT {
   Qnn_ProfileHandle_t profile_handle_;
   int graph_index_;
   Qnn_GraphHandle_t graph_handle_;
-  std::vector<litert::qnn::QnnTensor> inputs_;
-  std::vector<litert::qnn::QnnTensor> outputs_;
+  const std::vector<::qnn::TensorWrapperRef>& inputs_;
+  const std::vector<::qnn::TensorWrapperRef>& outputs_;
+  litert::qnn::ContextBinaryInfo context_binary_info_;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_
