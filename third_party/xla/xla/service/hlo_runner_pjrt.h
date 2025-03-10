@@ -152,6 +152,13 @@ class HloRunnerPjRt : public HloRunnerInterface {
   absl::StatusOr<absl::Nonnull<const HloModule*>> HloModuleFromWrapped(
       const OpaqueExecutable* wrapped) const override;
 
+  // Returns true if the two given OpaqueExecutables originate from the same
+  // runner and are equivalent according to some notion specific to that runner.
+  // Executables that were created by different runners can never be equivalent.
+  bool ExecutablesAreEquivalent(
+      absl::Nonnull<const OpaqueExecutable*> lhs,
+      absl::Nonnull<const OpaqueExecutable*> rhs) const override;
+
  private:
   absl::StatusOr<CompileOptions> GenerateDefaultCompileOptions(
       HloModule* module, bool run_hlo_passes);
