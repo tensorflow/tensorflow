@@ -35,13 +35,13 @@
 
 // When using an address sanitizer, `RTLD_DEEPBIND` is not supported. When using
 // one, we discard the flag and log an error.
-#ifdef __SANITIZE_ADDRESS__
-#define LITERT_ADDRESS_SANITIZER 1
-#elif defined(__has_feature) && __has_feature(address_sanitizer)
-#define LITERT_ADDRESS_SANITIZER 1
+#if defined(__SANITIZE_ADDRESS__) || \
+    defined(__has_feature) &&        \
+        (__has_feature(address_sanitizer) || __has_feature(memory_sanitizer))
+#define LITERT_SANITIZER_BUILD 1
 #endif
 
-#if LITERT_ADDRESS_SANITIZER
+#if LITERT_SANITIZER_BUILD
 namespace litert {
 namespace {
 RtldFlags SanitizeFlagsInCaseOfAsan(RtldFlags flags) {
