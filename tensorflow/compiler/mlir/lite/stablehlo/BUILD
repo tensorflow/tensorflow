@@ -281,7 +281,6 @@ cc_library(
     ],
     deps = [
         ":drop_savedmodel_semantics",
-        ":fuse_convolution_pass",
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
@@ -293,6 +292,7 @@ cc_library(
         ":unfold_splat_constant_pass",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/stablehlo:fold_broadcast_pass",
+        "//tensorflow/compiler/mlir/stablehlo:fuse_convolution_pass",
         "//tensorflow/compiler/mlir/stablehlo:unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
@@ -411,35 +411,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "fuse_convolution_pass",
-    srcs = [
-        "transforms/mhlo_passes/fuse_convolution_pass.cc",
-    ],
-    hdrs = [
-        "transforms/stablehlo_passes.h",
-    ],
-    copts = [
-        "-Ithird_party",
-    ],
-    deps = [
-        ":passes_inc_gen",
-        "//tensorflow/compiler/mlir/lite:validators",
-        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo",
     ],
     alwayslink = 1,
 )
@@ -1087,7 +1058,6 @@ tf_cc_binary(
     tags = ["hostonly"],
     deps = [
         ":compose_uniform_quantized_type_pass",
-        ":fuse_convolution_pass",
         ":legalize_stablehlo_composite_to_tfl_custom",
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_stablehlo_to_vhlo_pass",
@@ -1106,6 +1076,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",
         "//tensorflow/compiler/mlir/stablehlo:fold_broadcast_pass",
+        "//tensorflow/compiler/mlir/stablehlo:fuse_convolution_pass",
         "//tensorflow/compiler/mlir/stablehlo:unfuse_batch_norm_pass",
     ],
 )
