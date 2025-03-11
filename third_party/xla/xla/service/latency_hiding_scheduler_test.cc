@@ -2114,11 +2114,13 @@ while_body {
   gte0 = bf16[8]{0} get-tuple-element(param), index=0
   gte1 = pred[] get-tuple-element(param), index=2
   bitcast = bf16[8]{0} bitcast(gte0)
-  collective-permute.1 = bf16[8]{0} collective-permute(gte0), source_target_pairs={{0,1},{1,2},{2,3}}
-  add0 = bf16[8]{0} add(collective-permute.1, bitcast)
+  cps.1 = (bf16[8]{0}, bf16[8]{0}, u32[], u32[]) collective-permute-start(gte0), source_target_pairs={{0,1},{1,2},{2,3}}
+  cpd.1 = bf16[8]{0} collective-permute-done(cps.1)
+  add0 = bf16[8]{0} add(cpd.1, bitcast)
   negate = bf16[8]{0} negate(add0)
-  collective-permute.2 = bf16[8]{0} collective-permute(collective-permute.1), source_target_pairs={{1,0},{0,3},{3,2}}
-  ROOT tuple = (bf16[8]{0}, bf16[8]{0}, pred[]) tuple(collective-permute.2, negate, gte1)
+  cps.2 = (bf16[8]{0}, bf16[8]{0}, u32[], u32[]) collective-permute-start(gte0), source_target_pairs={{1,0},{0,3},{3,2}}
+  cpd.2 = bf16[8]{0} collective-permute-done(cps.2)
+  ROOT tuple = (bf16[8]{0}, bf16[8]{0}, pred[]) tuple(cpd.2, negate, gte1)
 }
 
 ENTRY entry {
@@ -2127,22 +2129,21 @@ ENTRY entry {
   p2 = pred[] parameter(2)
   tuple = (bf16[8]{0}, bf16[8]{0}, pred[]) tuple(p0, p1, p2)
   while = (bf16[8]{0}, bf16[8]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
-  collective-permute.3 = bf16[8]{0} collective-permute(p1), source_target_pairs={{0,1},{1,2},{2,3}}
-  gte0 = bf16[8]{0} get-tuple-element(while), index=0
-  gte1 = bf16[8]{0} get-tuple-element(while), index=1
-  add = bf16[8]{0} add(gte0, gte1)
-  ROOT add2 = bf16[8]{0} add(add, collective-permute.3)
+  cps.3 = (bf16[8]{0}, bf16[8]{0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{0,1},{1,2},{2,3}}
+  cpd.3 = bf16[8]{0} collective-permute-done(cps.3)
+  gte = bf16[8]{0} get-tuple-element(while), index=0
+  ROOT add = bf16[8]{0} add(gte, cpd.3)
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
-  EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
-  sched_config.collective_permute_overlap_limit = 2;
-  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
-  EXPECT_TRUE(hlo_module->has_entry_computation());
 
+  // With collective-permute overlap limit of 1, (cps.3, cpd.3) cannot overlap
+  // the while, due to the two collective-permutes in the while body.
+  sched_config.collective_permute_overlap_limit = 1;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(hlo_module->entry_computation()).instructions();
   if (VLOG_IS_ON(1)) {
@@ -2150,11 +2151,27 @@ ENTRY entry {
       VLOG(1) << new_i->ToString();
     }
   }
+  EXPECT_TRUE(GetIndex(new_instruction_sequence, "cpd.3") <
+                  GetIndex(new_instruction_sequence, "while") ||
+              GetIndex(new_instruction_sequence, "while") <
+                  GetIndex(new_instruction_sequence, "cps.3"));
 
-  // Do not overlap if the sum of collectives inside the loop + the collective
-  // we are trying to overlap would go beyond the overlap limit.
-  EXPECT_GT(GetIndex(new_instruction_sequence, "collective-permute-start.2"),
-            GetIndex(new_instruction_sequence, "while"));
+  // With collective-permute overlap limit of 2, (cps.3, cpd.3) can overlap the
+  // while as the two collective-permutes in the while body can be scheduled
+  // sequentially.
+  sched_config.collective_permute_overlap_limit = 2;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
+  new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  EXPECT_TRUE(GetIndex(new_instruction_sequence, "cps.3") <
+                  GetIndex(new_instruction_sequence, "while") &&
+              GetIndex(new_instruction_sequence, "while") <
+                  GetIndex(new_instruction_sequence, "cpd.3"));
 }
 
 TEST_F(LatencyHidingSchedulerTest, WhileNestedOverlapLimit) {
@@ -2211,7 +2228,7 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
-  sched_config.collective_permute_overlap_limit = 2;
+  sched_config.collective_permute_overlap_limit = 1;
   TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
@@ -2223,8 +2240,8 @@ ENTRY entry {
     }
   }
 
-  // Do not overlap if the sum of collectives inside the loop + the collective
-  // we are trying to overlap would go beyond the overlap limit.
+  // Since there is at least one collective permute in the while op, overlapping
+  // it with the outer collective permute is not possible for the limit of 1.
   EXPECT_GT(GetIndex(new_instruction_sequence, "collective-permute-start.2"),
             GetIndex(new_instruction_sequence, "while"));
 }
@@ -2399,6 +2416,77 @@ ENTRY entry {
   // we are trying to overlap would go beyond the overlap limit.
   EXPECT_LT(GetIndex(new_instruction_sequence, "all-gather-start.1"),
             GetIndex(new_instruction_sequence, "while"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, ConditionalOverlapLimit) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test, is_scheduled=true
+
+  region_true {
+    p0 = (s8[], s8[64,128]) parameter(0)
+    gte = s8[64,128] get-tuple-element(p0), index=1
+    ags = (s8[64,128], s8[128,128]) all-gather-start(gte), replica_groups={{0,1}}, dimensions={0}
+    ROOT agd = s8[128,128] all-gather-done(ags)
+  }
+
+  region_false {
+    p0 = (s8[], s8[64,128]) parameter(0)
+    gte = s8[64,128] get-tuple-element(p0), index=1
+    ags.1 = (s8[64,128], s8[128,128]) all-gather-start(gte), replica_groups={{0,1}}, dimensions={0}
+    ROOT agd.1 = s8[128,128] all-gather-done(ags.1)
+  }
+
+  ENTRY test {
+    param = s8[64,128] parameter(0)
+    ags.2 = (s8[64,128], s8[128,128]) all-gather-start(param), replica_groups={{0,1}}, dimensions={0}
+    agd.2 = s8[128,128] all-gather-done(ags.2)
+    constant = s8[] parameter(1)
+    cond_p0 = (s8[], s8[64,128]) tuple(constant, param)
+    cond_p1 = (s8[], s8[64,128]) tuple(constant, param)
+    or = pred[] parameter(2)
+    cond = s8[128,128] conditional(or, cond_p0, cond_p1), true_computation=region_true, false_computation=region_false
+    ROOT add = s8[128,128] add(cond, agd.2)
+  }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+
+  // With all-gather overlap limit of 1, (ags.2, agd.2) cannot overlap cond.
+  sched_config.all_gather_overlap_limit = 1;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<TestLatencyEstimator>())
+                  .ok());
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  EXPECT_TRUE(GetIndex(new_instruction_sequence, "agd.2") <
+                  GetIndex(new_instruction_sequence, "cond") ||
+              GetIndex(new_instruction_sequence, "cond") <
+                  GetIndex(new_instruction_sequence, "ags.2"));
+
+  // With all-gather overlap limit of 2, (ags.2, agd.2) can overlap cond.
+  sched_config.all_gather_overlap_limit = 2;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<TestLatencyEstimator>())
+                  .ok());
+
+  new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  EXPECT_TRUE(GetIndex(new_instruction_sequence, "ags.2") <
+                  GetIndex(new_instruction_sequence, "cond") &&
+              GetIndex(new_instruction_sequence, "cond") <
+                  GetIndex(new_instruction_sequence, "agd.2"));
 }
 
 TEST_F(LatencyHidingSchedulerTest, AllToAllAsyncBalance) {
