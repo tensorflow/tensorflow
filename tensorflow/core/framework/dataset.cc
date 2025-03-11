@@ -1301,7 +1301,7 @@ bool DatasetOpKernel::IsDatasetOp(const OpDef& op_def) {
   if (absl::StartsWith(op_name, "__wrapped__")) {
     v1 = absl::StrSplit(op_name, "__wrapped__", absl::SkipEmpty());
     if (v1.empty()) return false;
-    v2 = absl::StrSplit(v1[0], "_", absl::SkipEmpty());
+    v2 = absl::StrSplit(v1[0], '_', absl::SkipEmpty());
     op_name = v2.empty() ? v1[0] : v2[0];
   }
 
