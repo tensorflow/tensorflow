@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
+#include "tsl/lib/random/philox_random.h"
+#include "tsl/lib/random/simple_philox.h"
 
 namespace {
 
