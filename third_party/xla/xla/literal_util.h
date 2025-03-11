@@ -114,6 +114,8 @@ class LiteralUtil {
   static Literal Zero(PrimitiveType primitive_type);
   // Creates a scalar literal value one of the given primitive type.
   static Literal One(PrimitiveType primitive_type);
+  // Creates a scalar literal value minus one of the given primitive type.
+  static Literal MinusOne(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the minimum value of the given
   // primitive type. For floating-point types supporting inf, returns -inf.
   static Literal MinValue(PrimitiveType primitive_type);
