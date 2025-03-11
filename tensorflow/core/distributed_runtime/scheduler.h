@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SCHEDULER_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SCHEDULER_H_
 
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <map>
