@@ -476,7 +476,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   TF_RET_CHECK(operand_shape.dimensions(last_dim) >= k)
       << "k=" << k << " is larger than the last dimension of size="
       << operand_shape.dimensions(last_dim);
-  for (int64_t i = 0; i < operand_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
     is_dynamic[i] =
         i == last_dim ? false : operand_shape.is_dynamic_dimension(i);
     dimensions[i] = i == last_dim ? k : operand_shape.dimensions(i);
@@ -635,8 +635,8 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   if (input_bitwidth > output_bitwidth) {
     ShapeUtil::AppendMinorDimension(ratio, &new_shape);
   } else if (input_bitwidth < output_bitwidth) {
-    int last_dimension_idx = operand_shape.dimensions_size() - 1;
-    if (operand_shape.dimensions_size() < 1 ||
+    int last_dimension_idx = operand_shape.rank() - 1;
+    if (operand_shape.rank() < 1 ||
         operand_shape.dimensions(last_dimension_idx) != ratio) {
       return InvalidArgument(
           "Last dimension of input shape=%d is not equal to ratio of "
@@ -756,7 +756,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
   std::vector<int64_t> dimensions(operand_shape.rank());
   std::vector<bool> is_dynamic(operand_shape.rank());
-  for (int64_t i = 0; i < operand_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
     const auto& p = padding_config.dimensions(i);
     if (operand_shape.is_unbounded_dynamic_dimension(i)) {
       dimensions[i] = Shape::kUnboundedSize;
@@ -1051,10 +1051,9 @@ void GenerateDotResultDimensions(
   const int64_t lhs_ragged_dimension =
       ragged_dot_dim_nums.lhs_ragged_dimensions(0);
   // Check that the lhs ragged dimension is within bounds.
-  if (lhs_ragged_dimension < 0 ||
-      lhs_ragged_dimension >= lhs.dimensions_size()) {
+  if (lhs_ragged_dimension < 0 || lhs_ragged_dimension >= lhs.rank()) {
     return fail(StrFormat("lhs ragged dimension %d is out of range [0, %d)",
-                          lhs_ragged_dimension, lhs.dimensions_size()));
+                          lhs_ragged_dimension, lhs.rank()));
   }
 
   enum Mode {
@@ -1143,9 +1142,9 @@ void GenerateDotResultDimensions(
 
   // Validate basic properties of the rhs group dimension(s).
   for (auto rhs_group_dim : ragged_dot_dim_nums.rhs_group_dimensions()) {
-    if (rhs_group_dim < 0 || rhs_group_dim >= rhs.dimensions_size()) {
+    if (rhs_group_dim < 0 || rhs_group_dim >= rhs.rank()) {
       return fail(StrFormat("rhs group dimension %d is out of range [0, %d)",
-                            rhs_group_dim, rhs.dimensions_size()));
+                            rhs_group_dim, rhs.rank()));
     }
     if (absl::c_linear_search(dimension_numbers.rhs_batch_dimensions(),
                               rhs_group_dim) ||
@@ -1380,18 +1379,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   output_shape.set_element_type(
       ShapeUtil::HigherPrecisionElementType(larger_shape, smaller_shape));
 
-  for (int i = 0; i < smaller_shape.dimensions_size(); ++i) {
+  for (int i = 0; i < smaller_shape.rank(); ++i) {
     int64_t dimension_to_match = broadcast_dimensions.at(i);
     if (dimension_to_match < 0) {
       return InvalidArgumentError(
           StrFormat("Broadcast dimension number (%d) cannot be negative.",
                     dimension_to_match));
     }
-    if (dimension_to_match >= larger_shape.dimensions_size()) {
+    if (dimension_to_match >= larger_shape.rank()) {
       return InvalidArgumentError(
           StrFormat("Broadcast dimension number (%d) too large; higher-rank "
                     "operand has rank %d.",
-                    dimension_to_match, larger_shape.dimensions_size()));
+                    dimension_to_match, larger_shape.rank()));
     }
     int64_t small_dimension_size = smaller_shape.dimensions(i);
     int64_t large_dimension_size = larger_shape.dimensions(dimension_to_match);
@@ -1716,13 +1715,13 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
                       }));
   }
 
-  // Check that dimensions.size == arg_shape.dimensions_size() (we currently
+  // Check that dimensions.size == arg_shape.rank() (we currently
   // only support mapping across all dimensions: i.e. scalar map functions).
-  if (dimensions.size() != arg_shape->dimensions_size()) {
+  if (dimensions.size() != arg_shape->rank()) {
     return InvalidArgument(
         "Map applied to a subset of dimensions currently not supported: "
         "arg_dimension_size: %d, requested_map_dimensions_size: %u.",
-        arg_shape->dimensions_size(), dimensions.size());
+        arg_shape->rank(), dimensions.size());
   }
 
   // Check that requested map dimensions numbers are monotonically increasing.
@@ -2463,11 +2462,11 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     return InvalidArgument("FFT only supports ranks 1-3; got %d.", fft_rank);
   }
 #define RET_CHECK_RANK(x)                            \
-  if (x.dimensions_size() < fft_rank) {              \
+  if (x.rank() < fft_rank) {                         \
     return InvalidArgument(                          \
         "FFT of rank %d requires input of at least " \
         "same rank; got input of rank %d",           \
-        fft_rank, x.dimensions_size());              \
+        fft_rank, x.rank());                         \
   }
   switch (fft_type) {
     case FFT:
@@ -2486,15 +2485,12 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       }
       RET_CHECK_RANK(in);
       for (int i = 0; i < fft_rank; i++) {
-        if (!IsUnboundedDynamicSize(
-                in.dimensions(in.dimensions_size() - fft_rank + i)) &&
-            in.dimensions(in.dimensions_size() - fft_rank + i) !=
-                fft_length[i]) {
+        if (!IsUnboundedDynamicSize(in.dimensions(in.rank() - fft_rank + i)) &&
+            in.dimensions(in.rank() - fft_rank + i) != fft_length[i]) {
           return InvalidArgument(
               "RFFT requires innermost dimensions match fft_length but "
               "dimension %d is %d and should be %d.",
-              in.dimensions_size() - fft_rank + i,
-              in.dimensions(in.dimensions_size() - fft_rank + i),
+              in.rank() - fft_rank + i, in.dimensions(in.rank() - fft_rank + i),
               fft_length[i]);
         }
       }
@@ -2502,10 +2498,10 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
           in, in.element_type() == F32 ? C64 : C128);
       // Preserve the size of zero-sized dimensions.
       if (fft_length[fft_rank - 1] != 0) {
-        result.set_dimensions(result.dimensions_size() - 1,
+        result.set_dimensions(result.rank() - 1,
                               fft_length[fft_rank - 1] / 2 + 1);
-        if (in.is_unbounded_dynamic_dimension(result.dimensions_size() - 1)) {
-          result.set_dynamic_dimension(result.dimensions_size() - 1, false);
+        if (in.is_unbounded_dynamic_dimension(result.rank() - 1)) {
+          result.set_dynamic_dimension(result.rank() - 1, false);
         }
       }
       return result;
@@ -2518,31 +2514,28 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       RET_CHECK_RANK(in);
       Shape result = ShapeUtil::ComplexComponentShape(in);
       for (int i = 0; i < fft_rank - 1; i++) {
-        if (in.dimensions(in.dimensions_size() - fft_rank + i) !=
-            fft_length[i]) {
+        if (in.dimensions(in.rank() - fft_rank + i) != fft_length[i]) {
           return InvalidArgument(
               "IRFFT requires all but one innermost dimensions match "
               "fft_length, but dimension %d is %d and should be %d.",
-              in.dimensions_size() - fft_rank + i,
-              in.dimensions(in.dimensions_size() - fft_rank + i),
+              in.rank() - fft_rank + i, in.dimensions(in.rank() - fft_rank + i),
               fft_length[i]);
         }
       }
       // The size of zero-sized dimensions is preserved.
-      int64_t last_in_dimension_size = in.dimensions(in.dimensions_size() - 1);
+      int64_t last_in_dimension_size = in.dimensions(in.rank() - 1);
       if ((last_in_dimension_size != 0 || fft_length[fft_rank - 1] != 0) &&
           !IsUnboundedDynamicSize(last_in_dimension_size) &&
           last_in_dimension_size != fft_length[fft_rank - 1] / 2 + 1) {
         return InvalidArgument(
             "IRFFT requires innermost dimension matches fft_length/2+1, but "
             "dimension %d is %d and should be %d.",
-            in.dimensions_size() - 1, last_in_dimension_size,
+            in.rank() - 1, last_in_dimension_size,
             fft_length[fft_rank - 1] / 2 + 1);
       }
-      result.set_dimensions(result.dimensions_size() - 1,
-                            fft_length[fft_rank - 1]);
-      if (in.is_unbounded_dynamic_dimension(result.dimensions_size() - 1)) {
-        result.set_dynamic_dimension(result.dimensions_size() - 1, false);
+      result.set_dimensions(result.rank() - 1, fft_length[fft_rank - 1]);
+      if (in.is_unbounded_dynamic_dimension(result.rank() - 1)) {
+        result.set_dynamic_dimension(result.rank() - 1, false);
       }
       return result;
     }
@@ -3225,7 +3218,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   }
 
   std::vector<bool> is_dynamic(arg.rank());
-  for (int64_t i = 0; i < arg.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < arg.rank(); ++i) {
     // Slicing 1 out of a dynamic dimension eliminates the dynamic dimension.
     if (sizes[i] == 1) {
       continue;
@@ -3648,15 +3641,14 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     }
   }
 
-  std::vector<int64_t> dimensions(operand.dimensions_size() +
-                                  broadcast_sizes.size());
+  std::vector<int64_t> dimensions(operand.rank() + broadcast_sizes.size());
   std::copy(broadcast_sizes.begin(), broadcast_sizes.end(), dimensions.begin());
   std::copy(operand.dimensions().begin(), operand.dimensions().end(),
             dimensions.begin() + broadcast_sizes.size());
 
   TF_ASSIGN_OR_RETURN(Shape result, ShapeUtil::MakeValidatedShape(
                                         operand.element_type(), dimensions));
-  for (int64_t i = 0; i < operand.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < operand.rank(); ++i) {
     result.set_dynamic_dimension(broadcast_sizes.size() + i,
                                  operand.is_dynamic_dimension(i));
   }
@@ -4091,10 +4083,10 @@ static absl::Status ValidateGatherDimensionNumbers(
   for (int i = 0; i < dim_numbers.start_index_map_size(); i++) {
     int64_t operand_dim_for_start_index_i = dim_numbers.start_index_map(i);
     if (operand_dim_for_start_index_i < 0 ||
-        operand_dim_for_start_index_i >= input_shape.dimensions_size()) {
+        operand_dim_for_start_index_i >= input_shape.rank()) {
       return InvalidArgument(
           "Invalid start_index_map; domain is [0, %d), got: %d->%d.",
-          input_shape.dimensions_size(), i, operand_dim_for_start_index_i);
+          input_shape.rank(), i, operand_dim_for_start_index_i);
     }
   }
 
@@ -4114,11 +4106,11 @@ static absl::Status ValidateGatherDimensionNumbers(
 
   // Validate collapsed_slice_dims in GatherDimensionNumbers.
   for (int64_t collapsed_dim : dim_numbers.collapsed_slice_dims()) {
-    if (collapsed_dim < 0 || collapsed_dim >= input_shape.dimensions_size()) {
+    if (collapsed_dim < 0 || collapsed_dim >= input_shape.rank()) {
       return InvalidArgument(
           "Invalid collapsed_slice_dims set in gather op; valid range is [0, "
           "%d), got: %d.",
-          input_shape.dimensions_size(), collapsed_dim);
+          input_shape.rank(), collapsed_dim);
     }
   }
 
@@ -4150,11 +4142,11 @@ static absl::Status ValidateGatherDimensionNumbers(
   // Validate operand_batching_dims in GatherDimensionNumbers.
   for (int64_t operand_batching_dim : dim_numbers.operand_batching_dims()) {
     if (operand_batching_dim < 0 ||
-        operand_batching_dim >= input_shape.dimensions_size()) {
+        operand_batching_dim >= input_shape.rank()) {
       return InvalidArgument(
           "Invalid operand_batching_dims set in gather op; valid range is [0, "
           "%d), got: %d.",
-          input_shape.dimensions_size(), operand_batching_dim);
+          input_shape.rank(), operand_batching_dim);
     }
   }
 
@@ -4221,23 +4213,21 @@ static absl::Status ValidateGatherDimensionNumbers(
   // index_vector_dim is rank(P).  The bounds of this expanded shape is
   // stored in expanded_start_indices_shape.
 
-  if (start_indices_shape.dimensions_size() <
-          gather_dim_numbers.index_vector_dim() ||
+  if (start_indices_shape.rank() < gather_dim_numbers.index_vector_dim() ||
       gather_dim_numbers.index_vector_dim() < 0) {
     return InvalidArgument(
         "Gather index leaf dimension must be within [0, rank(start_indices) + "
         "1). rank(start_indices) is %d and gather index leaf dimension is "
         "%d.",
-        start_indices_shape.dimensions_size(),
-        gather_dim_numbers.index_vector_dim());
+        start_indices_shape.rank(), gather_dim_numbers.index_vector_dim());
   }
 
   std::vector<int64_t> expanded_start_indices_shape;
   // Also tracks if an output dimension is dynamic.
   std::vector<bool> expanded_start_indices_shape_dynamic_dimensions;
-  expanded_start_indices_shape.reserve(start_indices_shape.dimensions_size());
+  expanded_start_indices_shape.reserve(start_indices_shape.rank());
   expanded_start_indices_shape_dynamic_dimensions.reserve(
-      start_indices_shape.dimensions_size());
+      start_indices_shape.rank());
   absl::c_copy(start_indices_shape.dimensions(),
                std::back_inserter(expanded_start_indices_shape));
   absl::c_copy(
@@ -4252,11 +4242,11 @@ static absl::Status ValidateGatherDimensionNumbers(
   TF_RETURN_IF_ERROR(ValidateGatherDimensionNumbers(
       input_shape, expanded_start_indices_shape, gather_dim_numbers));
 
-  if (slice_sizes.size() != input_shape.dimensions_size()) {
+  if (slice_sizes.size() != input_shape.rank()) {
     return InvalidArgument(
         "Gather op must have one slice size for every input dimension; got: "
         "len(slice_sizes)=%lu, input_shape.rank=%d.",
-        slice_sizes.size(), input_shape.dimensions_size());
+        slice_sizes.size(), input_shape.rank());
   }
 
   if (slice_sizes.size() !=
@@ -4398,11 +4388,11 @@ absl::Status ValidateScatterDimensionNumbers(
         StrJoin(dim_numbers.inserted_window_dims(), ", "));
   }
   for (int64_t inserted_dim : dim_numbers.inserted_window_dims()) {
-    if (inserted_dim < 0 || inserted_dim >= operand_shape.dimensions_size()) {
+    if (inserted_dim < 0 || inserted_dim >= operand_shape.rank()) {
       return InvalidArgument(
           "Invalid inserted_window_dims set in scatter op; valid range is [0, "
           "%d), got: %d.",
-          operand_shape.dimensions_size(), inserted_dim);
+          operand_shape.rank(), inserted_dim);
     }
   }
 
@@ -4432,11 +4422,11 @@ absl::Status ValidateScatterDimensionNumbers(
     int64_t scatter_dim_to_operand_dim =
         dim_numbers.scatter_dims_to_operand_dims(i);
     if (scatter_dim_to_operand_dim < 0 ||
-        scatter_dim_to_operand_dim >= operand_shape.dimensions_size()) {
+        scatter_dim_to_operand_dim >= operand_shape.rank()) {
       return InvalidArgument(
           "Invalid scatter_dims_to_operand_dims mapping; domain is [0, %d), "
           "got: %d->%d.",
-          operand_shape.dimensions_size(), i, scatter_dim_to_operand_dim);
+          operand_shape.rank(), i, scatter_dim_to_operand_dim);
     }
   }
   std::vector<int64_t> sorted_scatter_dims_to_operand_dims(
@@ -4475,12 +4465,11 @@ absl::Status ValidateScatterDimensionNumbers(
         StrJoin(dim_numbers.input_batching_dims(), ", "));
   }
   for (int64_t input_batching_dim : dim_numbers.input_batching_dims()) {
-    if (input_batching_dim < 0 ||
-        input_batching_dim >= operand_shape.dimensions_size()) {
+    if (input_batching_dim < 0 || input_batching_dim >= operand_shape.rank()) {
       return InvalidArgument(
           "Invalid input_batching_dims set in scatter op; valid range is [0, "
           "%d), got: %d.",
-          operand_shape.dimensions_size(), input_batching_dim);
+          operand_shape.rank(), input_batching_dim);
     }
   }
 
@@ -4530,15 +4519,13 @@ absl::Status ValidateScatterDimensionNumbers(
         "Scatter indices parameter must be an integral tensor; got %s.",
         ShapeUtil::HumanString(scatter_indices_shape));
   }
-  if (scatter_indices_shape.dimensions_size() <
-          scatter_dim_numbers.index_vector_dim() ||
+  if (scatter_indices_shape.rank() < scatter_dim_numbers.index_vector_dim() ||
       scatter_dim_numbers.index_vector_dim() < 0) {
     return InvalidArgument(
         "Scatter index leaf dimension must be within [0, rank(scatter_indices)"
         " + 1). rank(scatter_indices) is %d and scatter index leaf dimension "
         "is %d.",
-        scatter_indices_shape.dimensions_size(),
-        scatter_dim_numbers.index_vector_dim());
+        scatter_indices_shape.rank(), scatter_dim_numbers.index_vector_dim());
   }
 
   std::vector<int64_t> expanded_scatter_indices_shape =
@@ -4560,7 +4547,7 @@ absl::Status ValidateScatterDimensionNumbers(
 
     int64_t inserted_dims_seen = 0, input_batching_dims_seen = 0;
     std::vector<int64_t> max_update_slice_sizes;
-    const auto dimensions_size = operand_shape.dimensions_size();
+    const auto dimensions_size = operand_shape.rank();
     max_update_slice_sizes.reserve(dimensions_size);
     for (int i = 0; i < dimensions_size; ++i) {
       if (inserted_dims_seen <

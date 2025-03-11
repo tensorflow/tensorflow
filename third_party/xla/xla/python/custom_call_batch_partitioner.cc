@@ -159,7 +159,7 @@ std::pair<Shape, HloSharding> ComputeResultShapeAndSharding(
     const Shape& shape, const HloSharding& batch_sharding,
     int64_t num_batch_dims) {
   if (!shape.IsTuple()) {
-    const int64_t num_replicate_dims = shape.dimensions_size() - num_batch_dims;
+    const int64_t num_replicate_dims = shape.rank() - num_batch_dims;
     auto result_sharding =
         InsertNonBatchSharding(batch_sharding, num_replicate_dims);
     auto result_shape = spmd::MakePartitionedShape(shape, result_sharding);
@@ -243,7 +243,7 @@ absl::Status CustomCallBatchPartitioner::Partition(
   partitioned_shapes_with_layout_constraints.reserve(num_operands);
   for (size_t i = 0; i < num_operands; ++i) {
     const int64_t num_replicate_dims =
-        hlo->operand(i)->shape().dimensions_size() - num_batch_dims;
+        hlo->operand(i)->shape().rank() - num_batch_dims;
     HloSharding operand_sharding =
         InsertNonBatchSharding(batch_sharding, num_replicate_dims);
     spmd::PartitionedHlo partitioned_operand =

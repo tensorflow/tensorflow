@@ -415,7 +415,7 @@ class LiteralBase {
           ShapeUtil::ByteSizeOfPrimitiveType(subshape.element_type());
       absl::Span<const int64_t> minor_to_major =
           subshape.layout().minor_to_major();
-      DimensionVector elem_index(subshape.dimensions_size());
+      DimensionVector elem_index(subshape.rank());
       absl::Span<int64_t> elem_index_span(elem_index.data(), elem_index.size());
       int64_t bytes_hashed = 0;
       while (bytes_hashed < bytes_to_hash) {
@@ -884,7 +884,7 @@ class LiteralBase {
 
     int64_t dynamic_size_buffer_bytes() const {
       DCHECK(LayoutUtil::IsDenseArray(*subshape_));
-      return subshape().dimensions_size() * sizeof(DynamicSizeType);
+      return subshape().rank() * sizeof(DynamicSizeType);
     }
 
     // Gets or sets the subshape of this piece. This reference points to a
@@ -2222,7 +2222,7 @@ Literal LiteralBase::Replicate(int64_t times) const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   DimensionVector bounds = {times};
-  bounds.reserve(shape().dimensions_size() + 1);
+  bounds.reserve(shape().rank() + 1);
   for (int64_t bound : shape().dimensions()) {
     bounds.push_back(bound);
   }

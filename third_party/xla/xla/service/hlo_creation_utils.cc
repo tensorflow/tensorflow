@@ -649,7 +649,7 @@ absl::StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand,
   CHECK_GT(n, 0);
 
   const Shape& operand_shape = operand->shape();
-  CHECK_GE(operand_shape.dimensions_size(), n);
+  CHECK_GE(operand_shape.rank(), n);
   int64_t new_shape_leading_bound = 1;
   bool new_shape_leading_is_dynamic = false;
   for (int64_t i = 0; i < n; i++) {
@@ -658,7 +658,7 @@ absl::StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand,
   }
 
   std::vector<int64_t> new_shape_dims;
-  new_shape_dims.reserve(operand_shape.dimensions_size() - n + 1);
+  new_shape_dims.reserve(operand_shape.rank() - n + 1);
   new_shape_dims.push_back(new_shape_leading_bound);
 
   std::copy(operand_shape.dimensions().begin() + n,
@@ -666,7 +666,7 @@ absl::StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand,
             std::back_inserter(new_shape_dims));
 
   std::vector<bool> new_shape_dynamic_dims;
-  new_shape_dynamic_dims.reserve(operand_shape.dimensions_size() - n + 1);
+  new_shape_dynamic_dims.reserve(operand_shape.rank() - n + 1);
   new_shape_dynamic_dims.push_back(new_shape_leading_is_dynamic);
   std::copy(operand_shape.dynamic_dimensions().begin() + n,
             operand_shape.dynamic_dimensions().end(),
@@ -683,7 +683,7 @@ absl::StatusOr<HloInstruction*> PrependDegenerateDims(HloInstruction* operand,
   CHECK_GT(n, 0);
   std::vector<int64_t> new_shape_dims;
   const Shape& operand_shape = operand->shape();
-  new_shape_dims.reserve(n + operand_shape.dimensions_size());
+  new_shape_dims.reserve(n + operand_shape.rank());
   new_shape_dims.insert(new_shape_dims.begin(), n, 1);
   absl::c_copy(operand_shape.dimensions(), std::back_inserter(new_shape_dims));
   return MakeReshapeHlo(new_shape_dims, operand);
@@ -691,12 +691,12 @@ absl::StatusOr<HloInstruction*> PrependDegenerateDims(HloInstruction* operand,
 
 absl::StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
     HloInstruction* operand, absl::Span<const int64_t> expanded_dims) {
-  CHECK_GT(operand->shape().dimensions_size(), 0);
+  CHECK_GT(operand->shape().rank(), 0);
   CHECK_EQ(operand->shape().dimensions(0), Product(expanded_dims));
 
   std::vector<int64_t> expanded_shape_dim_bounds;
   expanded_shape_dim_bounds.reserve(expanded_dims.size() +
-                                    operand->shape().dimensions_size() - 1);
+                                    operand->shape().rank() - 1);
   absl::c_copy(expanded_dims, std::back_inserter(expanded_shape_dim_bounds));
   std::copy(operand->shape().dimensions().begin() + 1,
             operand->shape().dimensions().end(),
@@ -721,8 +721,7 @@ absl::StatusOr<HloInstruction*> InsertDegenerateDims(
   CHECK(absl::c_is_sorted(dims_to_insert));
 
   const Shape& operand_shape = operand->shape();
-  int64_t output_shape_rank =
-      operand_shape.dimensions_size() + dims_to_insert.size();
+  int64_t output_shape_rank = operand_shape.rank() + dims_to_insert.size();
   for (auto dim_to_insert : dims_to_insert) {
     CHECK_LT(dim_to_insert, output_shape_rank);
   }
@@ -752,7 +751,7 @@ absl::StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
                                                    int64_t zeros_to_prepend,
                                                    int64_t zeros_to_append) {
   HloComputation* computation = operand->parent();
-  CHECK_EQ(operand->shape().dimensions_size(), 1);
+  CHECK_EQ(operand->shape().rank(), 1);
   PaddingConfig padding_config;
   PaddingConfig::PaddingConfigDimension padding_config_dim;
   padding_config_dim.set_edge_padding_low(zeros_to_prepend);

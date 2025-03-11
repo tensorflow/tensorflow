@@ -95,7 +95,7 @@ Range RecursivelyIdentifyRange(
     const HloAliasAnalysis* alias_analysis) {
   // Non scalar or non-integer HLO. Abort.
   if ((!instr->shape().IsInteger() && instr->shape().element_type() != PRED) ||
-      instr->shape().dimensions_size() != 0) {
+      instr->shape().rank() != 0) {
     return Range{};
   }
   VLOG(5) << "Computing Range for " << instr->ToString();
@@ -165,8 +165,7 @@ Range RecursivelyIdentifyRange(
       return Range{};
     }
     case HloOpcode::kConstant: {
-      if (instr->shape().element_type() == PRED &&
-          instr->shape().dimensions_size() == 0) {
+      if (instr->shape().element_type() == PRED && instr->shape().rank() == 0) {
         if (instr->literal().IsAll(true)) {
           return RecordAndReturnRange(
               Range{ConstantValue::GetOne(/*bitwidth=*/1, /*is_signed=*/false),

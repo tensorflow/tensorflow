@@ -1029,7 +1029,7 @@ absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(CholeskyOptions options,
                       instr->backend_config<CholeskyOptions>());
   const Shape& shape = instr->operand(0)->shape();
-  int ndim = shape.dimensions_size();
+  int ndim = shape.rank();
   CHECK_GE(ndim, 2);
   int64_t n = shape.dimensions(ndim - 1);
 

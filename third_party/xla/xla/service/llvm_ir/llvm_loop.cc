@@ -253,7 +253,7 @@ IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
 std::vector<llvm::Value*> ForLoopNest::AddLoopsForShapeOnDimensions(
     const Shape& shape, absl::Span<const int64_t> dimensions,
     absl::string_view suffix) {
-  std::vector<llvm::Value*> multi_index(shape.dimensions_size());
+  std::vector<llvm::Value*> multi_index(shape.rank());
   for (int64_t dimension : dimensions) {
     std::unique_ptr<llvm_ir::ForLoop> loop = AddLoop(
         /*start_index=*/0,

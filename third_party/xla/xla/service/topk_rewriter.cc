@@ -496,7 +496,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     HloInstruction* input = call->mutable_operand(0);
     Shape iota_shape = input->shape();
     iota_shape.set_element_type(S32);
-    size_t sort_dimension = input->shape().dimensions_size() - 1;
+    size_t sort_dimension = input->shape().rank() - 1;
     std::vector<int64_t> zeroes(iota_shape.rank(), 0);
     std::vector<int64_t> ones(iota_shape.rank(), 1);
     CHECK_NE(variadic_comparator, nullptr);

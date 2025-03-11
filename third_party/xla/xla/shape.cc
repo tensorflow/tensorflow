@@ -64,7 +64,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
       LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty";
     }
   }
-  int64_t num_dynamic_dimension_fields = std::min(
+  const int64_t num_dynamic_dimension_fields = std::min(
       shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
   for (int i = 0; i < num_dynamic_dimension_fields; i++) {
     dynamic_dimensions_[i] = shape_proto.is_dynamic_dimension(i);
@@ -87,7 +87,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
 void Shape::SetProto(ShapeProto& proto) const {
   proto.Clear();
   proto.set_element_type(element_type_);
-  proto.mutable_dimensions()->Reserve(dimensions_size());
+  proto.mutable_dimensions()->Reserve(rank());
   for (const int64_t dimension : dimensions()) {
     proto.add_dimensions(dimension);
   }

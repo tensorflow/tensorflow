@@ -114,10 +114,10 @@ class ShapeUtil {
   template <bool kBoundedDynamicOk>
   static inline std::pair<int64_t, bool> ExtentProduct(const Shape& shape) {
     DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
-    DCHECK_EQ(shape.dimensions_size(), shape.rank());
+    DCHECK_EQ(shape.rank(), shape.rank());
     int64_t product = 1;
     bool any_overflows = false;
-    for (int dim = 0; dim < shape.dimensions_size(); ++dim) {
+    for (int dim = 0; dim < shape.rank(); ++dim) {
       if constexpr (kBoundedDynamicOk) {
         if (shape.is_unbounded_dynamic_dimension(dim)) {
           continue;
@@ -961,8 +961,8 @@ class ShapeUtil {
 
   static absl::Status ForEachIndexWithStatus(
       const Shape& shape, const ForEachVisitorFunction& visitor_function) {
-    std::vector<int64_t> base(shape.dimensions_size());
-    std::vector<int64_t> incr(shape.dimensions_size(), 1);
+    std::vector<int64_t> base(shape.rank());
+    std::vector<int64_t> incr(shape.rank(), 1);
     return ForEachIndexWithStatus(shape, base,
                                   /*count=*/shape.dimensions(), incr,
                                   visitor_function);
@@ -971,8 +971,8 @@ class ShapeUtil {
   static void ForEachIndexNoStatus(
       const Shape& shape,
       const ForEachVisitorFunctionNoStatus& visitor_function) {
-    std::vector<int64_t> base(shape.dimensions_size());
-    std::vector<int64_t> incr(shape.dimensions_size(), 1);
+    std::vector<int64_t> base(shape.rank());
+    std::vector<int64_t> incr(shape.rank(), 1);
     ForEachIndexNoStatus(shape, base,
                          /*count=*/shape.dimensions(), incr, visitor_function);
   }

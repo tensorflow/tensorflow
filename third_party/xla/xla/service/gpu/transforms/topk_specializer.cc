@@ -55,11 +55,11 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
         primitive_util::LowercasePrimitiveTypeName(data_shape.element_type()));
   }
   // We only support topk of the shape [x] or [batch, x].
-  if (data_shape.dimensions_size() > 2) {
+  if (data_shape.rank() > 2) {
     return InvalidArgument("Invalid input dimensions: %s",
                            data_shape.ToString());
   }
-  bool has_batch = data_shape.dimensions_size() == 2;
+  bool has_batch = data_shape.rank() == 2;
   constexpr size_t max_k = 16;
   constexpr size_t min_n = 1024;
   size_t n = data_shape.dimensions(has_batch ? 1 : 0);

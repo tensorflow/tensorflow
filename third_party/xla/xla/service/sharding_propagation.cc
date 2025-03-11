@@ -1770,7 +1770,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
               [&](const Shape& sub_shape, const ShapeIndex& index) {
                 if (ShapeUtil::IsLeafIndex(instruction.shape(), index)) {
                   shardings.push_back(hlo_sharding_util::ReplicateAllDataDims(
-                      user_sharding, sub_shape.dimensions_size()));
+                      user_sharding, sub_shape.rank()));
                 }
               });
           return HloSharding::Tuple(instruction.shape(), shardings);
@@ -3539,7 +3539,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
         }
       }
     }
-    for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+    for (int64_t i = 0; i < shape.rank(); ++i) {
       if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
         return false;
       }

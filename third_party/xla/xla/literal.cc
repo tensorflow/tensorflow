@@ -138,7 +138,7 @@ const Shape* TryInternShape(const Shape& shape) {
   if (shape.IsTuple() && shape.tuple_shapes_size() == 0) {
     return &NilShape();
   }
-  if (shape.IsArray() && shape.dimensions_size() == 0 && shape.is_static() &&
+  if (shape.IsArray() && shape.rank() == 0 && shape.is_static() &&
       shape.has_layout() && shape.layout().tiles_size() == 0 &&
       shape.layout().memory_space() == 0 &&
       shape.layout().element_size_in_bits() == 0) {
@@ -1568,9 +1568,9 @@ void DenseArrayPrintHelper(const LiteralBase& literal,
     PrintShape(print_layout, subshape, printer);
     if (subshape.is_dynamic()) {
       printer->Append("(");
-      for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
+      for (int64_t i = 0; i < subshape.rank(); ++i) {
         printer->Append(literal.GetDynamicSize(i, shape_index));
-        if (i < subshape.dimensions_size() - 1) {
+        if (i < subshape.rank() - 1) {
           printer->Append(",");
         }
       }

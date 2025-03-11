@@ -334,16 +334,15 @@ FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
                           const Shape& input, const Shape& filter,
                           const Shape& output) {
   return {
-      FindVectorizedDim(input.dimensions_size(), dnums.input_batch_dimension(),
+      FindVectorizedDim(input.rank(), dnums.input_batch_dimension(),
                         dnums.input_feature_dimension(),
                         dnums.input_spatial_dimensions()),
-      FindVectorizedDim(filter.dimensions_size(),
-                        dnums.kernel_input_feature_dimension(),
+      FindVectorizedDim(filter.rank(), dnums.kernel_input_feature_dimension(),
                         dnums.kernel_output_feature_dimension(),
                         dnums.kernel_spatial_dimensions()),
-      FindVectorizedDim(
-          output.dimensions_size(), dnums.output_batch_dimension(),
-          dnums.output_feature_dimension(), dnums.output_spatial_dimensions()),
+      FindVectorizedDim(output.rank(), dnums.output_batch_dimension(),
+                        dnums.output_feature_dimension(),
+                        dnums.output_spatial_dimensions()),
   };
 }
 

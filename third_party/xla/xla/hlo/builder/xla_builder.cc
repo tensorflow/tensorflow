@@ -764,7 +764,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
           remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
         }
       }
-      for (int64_t i = 0; i < shape->dimensions_size(); ++i) {
+      for (int64_t i = 0; i < shape->rank(); ++i) {
         shape->set_dynamic_dimension(i, false);
       }
     };
@@ -1956,7 +1956,7 @@ XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
 
     DotDimensionNumbers dimension_numbers;
     dimension_numbers.add_lhs_contracting_dimensions(
-        lhs_shape->dimensions_size() == 1 ? 0 : 1);
+        lhs_shape->rank() == 1 ? 0 : 1);
     dimension_numbers.add_rhs_contracting_dimensions(0);
     return DotGeneral(lhs, rhs, dimension_numbers, precision_config,
                       preferred_element_type);

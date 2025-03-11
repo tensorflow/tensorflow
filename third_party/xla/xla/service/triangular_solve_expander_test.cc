@@ -87,7 +87,7 @@ TEST_P(TriangularExpanderTest, TestBlockSize) {
   TF_ASSERT_OK_AND_ASSIGN(Literal lx, Execute(std::move(module), {&la, &lb}));
 
   auto x_shape = lx.shape();
-  EXPECT_EQ(x_shape.dimensions_size(), 2);
+  EXPECT_EQ(x_shape.rank(), 2);
   EXPECT_EQ(x_shape.dimensions(0), b.dim(0));
   EXPECT_EQ(x_shape.dimensions(1), b.dim(1));
 

@@ -860,10 +860,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                   .IsArray()) {
             slice_sizes.resize(input->shape().tuple_shapes_size());
             for (int i = 0; i < input->shape().tuple_shapes_size(); ++i) {
-              slice_sizes[i].resize(
-                  input->shape().tuple_shapes(i).dimensions_size());
-              for (int j = 0;
-                   j < input->shape().tuple_shapes(i).dimensions_size(); ++j) {
+              slice_sizes[i].resize(input->shape().tuple_shapes(i).rank());
+              for (int j = 0; j < input->shape().tuple_shapes(i).rank(); ++j) {
                 CHECK_GE(proto.dynamic_slice_sizes_size(), proto_index);
                 slice_sizes[i][j] = proto.dynamic_slice_sizes(proto_index);
                 proto_index += 1;
@@ -900,16 +898,16 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             for (int i = 0;
                  i < ShapeUtil::TupleElementCount(input_start_indices->shape());
                  ++i) {
-              slice_sizes[i].resize(input->shape().dimensions_size());
-              for (int j = 0; j < input->shape().dimensions_size(); ++j) {
+              slice_sizes[i].resize(input->shape().rank());
+              for (int j = 0; j < input->shape().rank(); ++j) {
                 slice_sizes[i][j] = proto.dynamic_slice_sizes(proto_index);
                 proto_index += 1;
               }
             }
           } else {
             slice_sizes.resize(1);
-            slice_sizes[0].resize(input->shape().dimensions_size());
-            for (int j = 0; j < input->shape().dimensions_size(); ++j) {
+            slice_sizes[0].resize(input->shape().rank());
+            for (int j = 0; j < input->shape().rank(); ++j) {
               slice_sizes[0][j] = proto.dynamic_slice_sizes(proto_index);
               proto_index += 1;
             }
@@ -4946,7 +4944,7 @@ static UseKind OperandElementUse(const HloInstruction& instr,
                                                 *instr.fused_expression_root());
     case HloOpcode::kDot:
       // Matrix-vector dots do not reuse the matrix operand.
-      if (instr.shape().dimensions_size() <= 1) {
+      if (instr.shape().rank() <= 1) {
         if ((operand_num == 0 && instr.operand(1)->shape().rank() <= 1) ||
             (operand_num == 1 && instr.operand(0)->shape().rank() <= 1)) {
           return UseKind::kUse;

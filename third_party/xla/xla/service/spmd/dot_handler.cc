@@ -289,7 +289,7 @@ ConvolutionDimensionNumbers GenNewConvDNums(
   }
   if (rhs_concat_dim != -1 && !windowed_at_contracting_dims &&
       !windowed_at_batch_dims) {
-    input_spatial_dimensions.push_back(dot_lhs->shape().dimensions_size() - 1);
+    input_spatial_dimensions.push_back(dot_lhs->shape().rank() - 1);
   }
   // Handle the RHS dimension numbers.
   int64_t kernel_input_feature_dimension =
@@ -315,7 +315,7 @@ ConvolutionDimensionNumbers GenNewConvDNums(
   }
   if (lhs_concat_dim != -1 && !windowed_at_contracting_dims &&
       !windowed_at_batch_dims) {
-    kernel_spatial_dimensions.push_back(dot_rhs->shape().dimensions_size() - 1);
+    kernel_spatial_dimensions.push_back(dot_rhs->shape().rank() - 1);
   }
   // Handle the Output dimension numbers.
   int64_t output_batch_dimension = dnums.output_batch_dimension();
@@ -340,7 +340,7 @@ ConvolutionDimensionNumbers GenNewConvDNums(
     }
     output_spatial_dimensions.push_back(output_slice_dim);
   } else {
-    output_spatial_dimensions.push_back(new_dot_shape.dimensions_size() - 1);
+    output_spatial_dimensions.push_back(new_dot_shape.rank() - 1);
   }
   // Construct the new dot dimension numbers.
   ConvolutionDimensionNumbers new_dnums;
@@ -1080,8 +1080,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
       auto gen_slice = [&](HloInstruction* data_partition_id,
                            bool ccw) -> HloInstruction* {
         std::vector<int64_t> new_dims;
-        const int64_t dimensions_size =
-            slice_operand->shape().dimensions_size();
+        const int64_t dimensions_size = slice_operand->shape().rank();
         new_dims.reserve(dimensions_size + 1);
         for (int64_t i = 0; i < dimensions_size; ++i) {
           if (i == slice_sharding_dim) {
@@ -1156,7 +1155,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
       // Reshape. The reshaped slice will not be used to produce the final
       // result, but used as a hint for the shape inference.
       std::vector<int64_t> reshaped_slice_dims;
-      const int64_t dim_size = slice->shape().dimensions_size();
+      const int64_t dim_size = slice->shape().rank();
       reshaped_slice_dims.reserve(dim_size);
       for (int64_t i = 0; i < dim_size; ++i) {
         auto dim_size = slice->shape().dimensions(i);

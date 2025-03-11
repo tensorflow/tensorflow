@@ -2381,7 +2381,7 @@ absl::Status HloEvaluator::HandleFft(const HloInstruction* fft) {
 // dimensions while keeping the rest of the output dimensions clamped to 0.
 ShapeUtil::IndexIterationSpace IterationSpaceForOutputBatchIndices(
     const Shape& output_shape, const GatherDimensionNumbers& dim_numbers) {
-  int64_t output_rank = output_shape.dimensions_size();
+  int64_t output_rank = output_shape.rank();
   std::vector<int64_t> index_base(output_rank, 0);
   std::vector<int64_t> index_count;
   index_count.reserve(output_rank);
@@ -2432,12 +2432,12 @@ class OutputBatchIndexToInputIndex {
       const GatherDimensionNumbers* dim_numbers, const Shape& input_shape,
       const Shape& output_shape, const Literal* start_indices)
       : dim_numbers_(*dim_numbers), start_indices_(*start_indices) {
-    for (int64_t i = 0; i < output_shape.dimensions_size(); i++) {
+    for (int64_t i = 0; i < output_shape.rank(); i++) {
       output_dim_is_batch_dims_.push_back(
           !absl::c_binary_search(dim_numbers_.offset_dims(), i));
     }
 
-    for (int64_t i = 0; i < input_shape.dimensions_size(); i++) {
+    for (int64_t i = 0; i < input_shape.rank(); i++) {
       int64_t index_of_input_dim_in_index_vector =
           std::distance(dim_numbers_.start_index_map().begin(),
                         absl::c_find(dim_numbers_.start_index_map(), i));
@@ -2450,8 +2450,8 @@ class OutputBatchIndexToInputIndex {
       }
     }
 
-    index_vector_index_.resize(start_indices_.shape().dimensions_size());
-    input_index_.resize(input_shape.dimensions_size());
+    index_vector_index_.resize(start_indices_.shape().rank());
+    input_index_.resize(input_shape.rank());
     int64_t index_vector_size =
         start_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
     index_vector_.resize(index_vector_size);
@@ -2584,7 +2584,7 @@ class OutputOffsetIndexToInputIndex {
       const GatherDimensionNumbers& dim_numbers, const Shape& input_shape) {
     CHECK(absl::c_is_sorted(dim_numbers.offset_dims()));
     int64_t window_dim_count = 0;
-    for (int64_t i = 0; i < input_shape.dimensions_size(); i++) {
+    for (int64_t i = 0; i < input_shape.rank(); i++) {
       if (IsCollapsedOrBatchingDim(dim_numbers.collapsed_slice_dims(),
                                    dim_numbers.operand_batching_dims(), i)) {
         input_dim_value_to_output_index_.push_back(-1);
@@ -2594,7 +2594,7 @@ class OutputOffsetIndexToInputIndex {
       }
     }
 
-    input_index_.resize(input_shape.dimensions_size());
+    input_index_.resize(input_shape.rank());
   }
 
   // Returns the contribution of the window indices to the input index
@@ -2649,7 +2649,7 @@ class OutputOffsetIndexToInputIndex {
 static absl::StatusOr<std::reference_wrapper<const Literal>>
 ReshapedGatherIndices(int64_t index_vector_dim, const Literal& start_indices,
                       Literal* reshaped_start_indices) {
-  if (start_indices.shape().dimensions_size() != index_vector_dim) {
+  if (start_indices.shape().rank() != index_vector_dim) {
     return std::cref(start_indices);
   }
 
@@ -2689,13 +2689,13 @@ absl::Status HloEvaluator::HandleGather(const HloInstruction* gather) {
       IterationSpaceForOutputBatchIndices(shape, dim_numbers);
   ShapeUtil::IndexIterationSpace offset_indices_iteration_space =
       IterationSpaceForOutputOffsetIndices(
-          shape.dimensions_size(), gather->gather_slice_sizes(), dim_numbers);
+          shape.rank(), gather->gather_slice_sizes(), dim_numbers);
 
   // Scratch buffers that hold an index in the output shape and the
   // corresponding index in the input shape.
-  std::vector<int64_t> input_index(operand.shape().dimensions_size());
-  std::vector<int64_t> output_index(gather->shape().dimensions_size());
-  std::vector<int64_t> input_index_clamped(operand.shape().dimensions_size());
+  std::vector<int64_t> input_index(operand.shape().rank());
+  std::vector<int64_t> output_index(gather->shape().rank());
+  std::vector<int64_t> input_index_clamped(operand.shape().rank());
 
   OutputBatchIndexToInputIndex output_batch_index_to_input_index(
       &gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
@@ -2771,7 +2771,7 @@ namespace {
 absl::StatusOr<std::reference_wrapper<const Literal>> ReshapedScatterIndices(
     int64_t index_vector_dim, const Literal& indices,
     Literal* reshaped_indices) {
-  if (indices.shape().dimensions_size() != index_vector_dim) {
+  if (indices.shape().rank() != index_vector_dim) {
     return std::cref(indices);
   }
 
@@ -2869,7 +2869,7 @@ class UpdateScatterIndexToInputIndex {
       }
     }
 
-    index_vector_index_.resize(scatter_indices_.shape().dimensions_size());
+    index_vector_index_.resize(scatter_indices_.shape().rank());
     input_index_.resize(input_rank);
     int64_t index_vector_size =
         scatter_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
@@ -3594,8 +3594,8 @@ absl::Status HloEvaluator::HandleDynamicUpdateSlice(const HloInstruction* dus) {
     return true;
   };
 
-  std::vector<int64_t> base(update_literal.shape().dimensions_size(), 0);
-  std::vector<int64_t> step(update_literal.shape().dimensions_size(), 1);
+  std::vector<int64_t> base(update_literal.shape().rank(), 0);
+  std::vector<int64_t> step(update_literal.shape().rank(), 1);
   ShapeUtil::ForEachIndexNoStatus(update_literal.shape(), base,
                                   update_literal.shape().dimensions(), step,
                                   func);

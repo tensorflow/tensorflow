@@ -92,7 +92,7 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
                                  llvm::Value* linear, const Shape& shape,
                                  absl::Span<llvm::Value*> dynamic_dims,
                                  llvm::IRBuilderBase* b) const {
-  CHECK_EQ(shape.dimensions_size(), dynamic_dims.size());
+  CHECK_EQ(shape.rank(), dynamic_dims.size());
   CHECK_EQ(multidim_.size(), shape.rank());
   llvm::Value* divisor = GetConstantWithIndexType(1);
   const Layout& layout = shape.layout();
@@ -186,7 +186,7 @@ IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
       dims_(shape.dimensions().begin(), shape.dimensions().end()),
       index_type_(index_type) {
   CHECK_NE(index_type_, nullptr);
-  CHECK_EQ(shape.dimensions_size(), multidim.size());
+  CHECK_EQ(shape.rank(), multidim.size());
   for (const auto* dim : multidim) {
     CHECK_NE(dim, nullptr);
   }

@@ -107,7 +107,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   int num_spatial_dimensions = dnums.input_spatial_dimensions_size();
   if (primitive_util::IsIntegralType(input_ty)) {
     if (input_ty == S8 && num_spatial_dimensions == 2 &&
-        input_shape.dimensions_size() == 5) {
+        input_shape.rank() == 5) {
       VLOG(2) << "Using NCHW_VECT_C for int8_t conv " << instr->ToString();
       return kAllNCHW_VECT_C;
     }
@@ -173,8 +173,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     bool is_volta =
         cuda_compute_capability &&
         cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::kVolta);
-    if (!isFloat16 || !is_volta ||
-        instr->shape().tuple_shapes(0).dimensions_size() != 4) {
+    if (!isFloat16 || !is_volta || instr->shape().tuple_shapes(0).rank() != 4) {
       return kAllNCHW;
     }
 
@@ -202,7 +201,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     auto rocm_compute_capability =
         std::get<se::RocmComputeCapability>(gpu_version);
     if (!isFloat16 || (!rocm_compute_capability.has_nhwc_layout_support()) ||
-        instr->shape().tuple_shapes(0).dimensions_size() != 4 || !is_enabled) {
+        instr->shape().tuple_shapes(0).rank() != 4 || !is_enabled) {
       return kAllNCHW;
     }
   }

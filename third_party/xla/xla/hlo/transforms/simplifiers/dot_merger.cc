@@ -257,12 +257,12 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   }
 
   // Slice the outputs.
-  DimensionVector start_indices(new_dot_shape.dimensions_size(), 0);
+  DimensionVector start_indices(new_dot_shape.rank(), 0);
   DimensionVector limit_indices(new_dot_shape.dimensions().begin(),
                                 new_dot_shape.dimensions().end());
-  DimensionVector strides(new_dot_shape.dimensions_size(), 1);
+  DimensionVector strides(new_dot_shape.rank(), 1);
 
-  int64_t slice_dim = new_dot_shape.dimensions_size() -
+  int64_t slice_dim = new_dot_shape.rank() -
                       (lhs_same ? 1 : 1 + shared_op_num_non_contracting_dims);
   limit_indices[slice_dim] = a->shape().dimensions(slice_dim);
   // Important: We do RAUW, not ReplaceInstruction, because the old instruction

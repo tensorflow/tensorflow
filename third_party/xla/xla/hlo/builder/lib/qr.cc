@@ -125,7 +125,7 @@ void QrExplicit(XlaOp a, bool full_matrices, XlaOp& q, XlaOp& r) {
       t = SliceInMinorDims(qr.q_and_r, {0, 0}, {m, m});
     } else {
       t = PadInDim(qr.q_and_r, Zero(a.builder(), a_shape.element_type()),
-                   a_shape.dimensions_size() - 1, /*pad_lo=*/0,
+                   a_shape.rank() - 1, /*pad_lo=*/0,
                    /*pad_hi=*/m - n);
     }
     q = ProductOfElementaryHouseholderReflectors(t, qr.taus);

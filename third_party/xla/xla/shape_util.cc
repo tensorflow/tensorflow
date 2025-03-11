@@ -415,8 +415,8 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
 /* static */ Shape
 ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     const Shape& shape) {
-  std::vector<int64_t> dims(shape.dimensions_size());
-  for (int i = 0; i < shape.dimensions_size(); ++i) {
+  std::vector<int64_t> dims(shape.rank());
+  for (int i = 0; i < shape.rank(); ++i) {
     int dim = i;
     if (shape.has_layout()) {
       dim = LayoutUtil::Major(shape.layout(), dim);
@@ -434,7 +434,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     new_shape.mutable_layout()->set_tail_padding_alignment_in_elements(
         shape.layout().tail_padding_alignment_in_elements());
   }
-  for (int i = 0; i < shape.dimensions_size(); ++i) {
+  for (int i = 0; i < shape.rank(); ++i) {
     int dim = i;
     if (shape.has_layout()) {
       dim = LayoutUtil::Major(shape.layout(), dim);
@@ -581,7 +581,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   // If not, and the most major dimension's size is 1, then we can repeat the
   // same check for next most major dimension as returned by
   // LayoutUtil::Major(1) and so on.
-  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < shape.rank(); ++i) {
     int64_t major_dimension = LayoutUtil::Major(shape.layout(), i);
     if (major_dimension == dimension) {
       return true;
@@ -729,7 +729,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     }
   };
   print_one(0);
-  for (int i = 1, n = shape.dimensions_size(); i < n; ++i) {
+  for (int i = 1, n = shape.rank(); i < n; ++i) {
     printer->Append(",");
     print_one(i);
   }
@@ -848,8 +848,8 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 /* static */ DimensionVector ShapeUtil::CreateDimensionVectorFromShape(
     const Shape& shape) {
   DimensionVector dimensions;
-  dimensions.reserve(shape.dimensions_size());
-  for (int i = 0; i < shape.dimensions_size(); ++i) {
+  dimensions.reserve(shape.rank());
+  for (int i = 0; i < shape.rank(); ++i) {
     dimensions.push_back(shape.dimensions(i));
   }
   return dimensions;
@@ -1010,7 +1010,7 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
     return ShapeError(shape, "Invalid element type.");
   }
   if (shape.element_type() == TUPLE) {
-    if (shape.dimensions_size() != 0) {
+    if (shape.rank() != 0) {
       return ShapeError(shape, "This type cannot have dimensions.");
     }
     for (auto& element_shape : shape.tuple_shapes()) {
@@ -1026,7 +1026,7 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
 
   // Tokens and opaques should not have layout or dimensions.
   if (shape.element_type() == TOKEN || shape.element_type() == OPAQUE_TYPE) {
-    if (shape.dimensions_size() != 0) {
+    if (shape.rank() != 0) {
       return ShapeError(shape, "This type cannot have dimensions.");
     }
     if (shape.has_layout()) {
@@ -1877,8 +1877,8 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
 /* static */ absl::Status ShapeUtil::ForEachIndexParallelWithStatus(
     const Shape& shape,
     const ForEachParallelVisitorFunction& visitor_function) {
-  std::vector<int64_t> base(shape.dimensions_size());
-  std::vector<int64_t> incr(shape.dimensions_size(), 1);
+  std::vector<int64_t> base(shape.rank());
+  std::vector<int64_t> incr(shape.rank(), 1);
   return ForEachIndexParallelWithStatus(shape, base,
                                         /*count=*/shape.dimensions(), incr,
                                         visitor_function);
@@ -1977,7 +1977,7 @@ struct ParallelState {
 
   // Compute the dimensions of the "work" which are defined by the count of
   // elements in each dimension and the increment.
-  std::vector<int64_t> work_dims(shape.dimensions_size());
+  std::vector<int64_t> work_dims(shape.rank());
   for (size_t d = 0; d < shape.rank(); ++d) {
     work_dims[d] = tsl::MathUtil::CeilOfRatio(count[d], incr[d]);
   }
@@ -2101,7 +2101,7 @@ absl::Status ShapeUtil::ByteStrides(const Shape& shape,
                                     absl::Span<int64_t> strides) {
   TF_RET_CHECK(shape.IsArray());
   TF_RET_CHECK(shape.has_layout());
-  TF_RET_CHECK(shape.dimensions_size() == strides.size());
+  TF_RET_CHECK(shape.rank() == strides.size());
 
   int64_t stride = ByteSizeOfPrimitiveType(shape.element_type());
   for (int i : shape.layout().minor_to_major()) {
@@ -2114,7 +2114,7 @@ absl::Status ShapeUtil::ByteStrides(const Shape& shape,
 /*static*/
 std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
     const Shape& shape) {
-  absl::InlinedVector<int64_t, 4> strides(shape.dimensions_size());
+  absl::InlinedVector<int64_t, 4> strides(shape.rank());
   if (!ByteStrides(shape, absl::MakeSpan(strides)).ok()) {
     return std::nullopt;
   }

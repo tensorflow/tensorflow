@@ -1058,8 +1058,7 @@ DynamicDimensionInferenceVisitor::HandleDynamicConvolutionInputGrad(
   HloComputation* comp = hlo->parent();
   TF_RET_CHECK(input_sizes->shape().rank() == 1) << hlo->ToString();
   TF_RET_CHECK(input_sizes->shape().element_type() == S32) << hlo->ToString();
-  TF_RET_CHECK(input_sizes->shape().dimensions(0) ==
-               hlo->shape().dimensions_size())
+  TF_RET_CHECK(input_sizes->shape().dimensions(0) == hlo->shape().rank())
       << hlo->ToString();
   // Slice to get corresponding input size.
   HloInstruction* slice = comp->AddInstruction(
@@ -2808,7 +2807,7 @@ bool DynamicDimensionInference::HasDynamicDimension(
     if (ShapeIndexView(subindex).subspan(0, index.size()) != index) {
       return;
     }
-    for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
+    for (int64_t i = 0; i < subshape.rank(); ++i) {
       HloInstruction* operand_dynamic_size = GetDynamicSize(inst, subindex, i);
       if (operand_dynamic_size != nullptr) {
         has_dynamic_dim = true;

@@ -1184,7 +1184,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
     for (int start_idx = 0;
          start_idx < dnums.scatter_dims_to_operand_dims_size(); ++start_idx) {
       HloInstruction* index_offset =
-          indices.base_shape().dimensions_size() > index_dim
+          indices.base_shape().rank() > index_dim
               ? b->AddInstruction(HloInstruction::CreateReshape(
                     ShapeUtil::MakeShape(S32, {1}),
                     operand_offsets[dnums.scatter_dims_to_operand_dims(
@@ -1193,7 +1193,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
       index_offsets.push_back(index_offset);
     }
     HloInstruction* adjusted_indices = nullptr;
-    if (indices.base_shape().dimensions_size() > index_dim) {
+    if (indices.base_shape().rank() > index_dim) {
       // Concatenate the offsets for the parallel dimensions to subtract.
       adjusted_indices = b->AddInstruction(HloInstruction::CreateConcatenate(
           ShapeUtil::MakeShape(S32,

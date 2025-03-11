@@ -51,7 +51,7 @@ std::vector<HloInstruction*> GenerateExplicitBatchDimIndices(
     return {};
   }
 
-  int64_t rank = start_indices_shape.dimensions_size();
+  int64_t rank = start_indices_shape.rank();
   int64_t num_batch_dims = (rank == index_vector_dim) ? rank : rank - 1;
   HloComputation* computation = induction_var->parent();
   HloInstruction* divident = induction_var;
@@ -60,7 +60,7 @@ std::vector<HloInstruction*> GenerateExplicitBatchDimIndices(
   std::vector<HloInstruction*> explicit_batch_dim_indices(
       start_indices_batching_dims.size());
 
-  for (int64_t i = start_indices_shape.dimensions_size() - 1; i >= 0; i--) {
+  for (int64_t i = start_indices_shape.rank() - 1; i >= 0; i--) {
     if (i == index_vector_dim) {
       continue;
     }

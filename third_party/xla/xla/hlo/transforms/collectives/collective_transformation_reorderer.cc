@@ -83,8 +83,7 @@ GetAllGatherTransformations(HloInstruction* all_gather) {
     // the number of strides.
     int64_t reshaped_all_gather_dimension = 0;
     int64_t reshaped_num_strides = 1;
-    while (reshaped_all_gather_dimension <
-               transformation_hlo->shape().dimensions_size() &&
+    while (reshaped_all_gather_dimension < transformation_hlo->shape().rank() &&
            reshaped_num_strides < all_gather_num_strides) {
       reshaped_num_strides *=
           transformation_hlo->shape().dimensions(reshaped_all_gather_dimension);
