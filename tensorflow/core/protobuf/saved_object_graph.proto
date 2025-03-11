@@ -10,7 +10,6 @@ import "tensorflow/core/framework/versions.proto";
 import "tensorflow/core/protobuf/struct.proto";
 import "tensorflow/core/protobuf/trackable_object_graph.proto";
 
-option cc_enable_arenas = true;
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // A SavedObjectGraph is part of object-based SavedModels in TF 2.0. It
@@ -50,6 +49,7 @@ message SavedObject {
 
   // Removed when forking SavedObject from TrackableObjectGraph.
   reserved "attributes";
+
   reserved 2;
 
   // Slot variables owned by this object. This describes the three-way
@@ -94,6 +94,7 @@ message SavedObject {
   // The name of the registered class of the form "{package}.{class_name}".
   // This field is used to search for the registered class at loading time.
   string registered_name = 13;
+
   // The user-generated proto storing metadata for this object, to be passed to
   // the registered classes's _deserialize_from_proto method when this object is
   // loaded from the SavedModel.
@@ -113,8 +114,10 @@ message SavedObject {
 message SavedUserObject {
   // Corresponds to a registration of the type to use in the loading program.
   string identifier = 1;
+
   // Version information from the producer of this SavedUserObject.
   VersionDef version = 2;
+
   // Metadata for deserializing this object.
   //
   // Deprecated! At the time of deprecation, Keras was the only user of this
@@ -158,6 +161,7 @@ message SavedConcreteFunction {
   // Input in canonicalized form that was received to create this concrete
   // function.
   StructuredValue canonicalized_input_signature = 3;
+
   // Output that was the return value of this function after replacing all
   // Tensors with TensorSpecs. This can be an arbitrary nested function and will
   // be used to reconstruct the full structure from pure tensors.
@@ -170,8 +174,10 @@ message SavedBareConcreteFunction {
 
   // A sequence of unique strings, one per Tensor argument.
   repeated string argument_keywords = 2;
+
   // The prefix of `argument_keywords` which may be identified by position.
   int64 allowed_positional_arguments = 3;
+
   // The spec of the function that this ConcreteFunction is traced from. This
   // allows the ConcreteFunction to be called with nest structure inputs. This
   // field may not be populated. If this field is absent, the concrete function
@@ -196,6 +202,7 @@ message SavedVariable {
   VariableAggregation aggregation = 5;
   string name = 6;
   string device = 7;
+
   // List of component variables for a distributed variable.
   //
   // When this field is non-empty, the SavedVariable will be assumed
@@ -210,8 +217,10 @@ message SavedVariable {
 message FunctionSpec {
   // Full arg spec from inspect.getfullargspec().
   StructuredValue fullargspec = 1;
+
   // Whether this represents a class method.
   bool is_method = 2;
+
   // The input signature, if specified.
   StructuredValue input_signature = 5;
 
@@ -228,6 +237,7 @@ message FunctionSpec {
     ON = 1;
     OFF = 2;
   }
+
   JitCompile jit_compile = 6;
 
   reserved 3, 4;
