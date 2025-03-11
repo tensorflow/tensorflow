@@ -318,6 +318,14 @@ TEST(ModelLoadTest, WithOffsetTensorBuffer) {
       litert_model->get()->Subgraph(0).Tensor(0).Weights();
   EXPECT_EQ(weights_buffer.Buffer().StrView(), kTensorData);
 
+  // The loaded buffer should indicate that it should be also serialized as
+  // external.
+  const auto will_append = weights_buffer.GetBufferManager()
+                               ->GetContext(weights_buffer.GetBufferId())
+                               ->get()
+                               .should_append;
+  EXPECT_TRUE(will_append);
+
   // All tensors in the first subgraph should have the same buffer manager as
   // the model.
   for (auto* tensor : litert_model->get()->Subgraph(0).Tensors()) {

@@ -142,8 +142,14 @@ LiteRtStatus UnpackOp(FlatbufferContext& context, LiteRtSubgraphT& parent,
   return kLiteRtStatusOk;
 }
 
-Expected<BufferRef<uint8_t>> ReadBuffer(FlatbufferContext& context,
-                                        uint32_t buffer_ind) {
+struct TflBufferContext {
+  BufferRef<uint8_t> buffer;
+  // Is buffer appended to the flatbuffer?
+  bool is_external;
+};
+
+Expected<TflBufferContext> ReadBuffer(FlatbufferContext& context,
+                                      uint32_t buffer_ind) {
   auto buffer = context.GetTflBuffer(buffer_ind);
   if (!buffer) {
     return buffer.Error();
@@ -158,16 +164,17 @@ Expected<BufferRef<uint8_t>> ReadBuffer(FlatbufferContext& context,
     const auto offset = tfl_buffer.offset();
     const auto size = tfl_buffer.size();
 
-    return BufferRef<uint8_t>(alloc_base + offset, size);
+    return TflBufferContext{BufferRef<uint8_t>(alloc_base + offset, size),
+                            true};
   } else if (tfl_buffer.data()) {
     // Data is in the flatbuffer.
 
     const auto* start = tfl_buffer.data()->data();
     const auto size = tfl_buffer.data()->size();
 
-    return BufferRef<uint8_t>(start, size);
+    return TflBufferContext{BufferRef<uint8_t>(start, size), false};
   } else {
-    return BufferRef<uint8_t>();
+    return TflBufferContext{};
   }
 }
 
@@ -185,7 +192,10 @@ LiteRtStatus UnpackTensor(FlatbufferContext& context,
     if (it != context.RegisteredTflBufferIds().end()) {
       litert_tensor.Weights().SetBufferId(it->second);
     } else {
-      SetWeightsFromUnownedBuffer(litert_tensor.Weights(), *buffer);
+      BufferContext lrt_buf_ctx;
+      lrt_buf_ctx.should_append = buffer->is_external;
+      SetWeightsFromUnownedBuffer(litert_tensor.Weights(), buffer->buffer,
+                                  lrt_buf_ctx);
       context.RegisteredTflBufferIds()[buffer_ind] =
           litert_tensor.Weights().GetBufferId();
     }
@@ -381,7 +391,7 @@ Expected<LiteRtModelT::Ptr> UnpackModel(FlatbufferWrapper&& flatbuffer) {
         return buf.Error();
       }
 
-      litert_model->PushMetadata(name, buf->Data(), buf->Size());
+      litert_model->PushMetadata(name, buf->buffer.Data(), buf->buffer.Size());
     }
   }
 

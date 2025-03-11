@@ -540,13 +540,19 @@ Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model,
   }
 
   auto serialized_tfl = SerializeFlatbuffer(**tfl_model);
-  if (!VerifyFlatbuffer(serialized_tfl.Span())) {
+  auto serialized_with_buffers =
+      SerializeWithAppendedBuffers(builder, std::move(serialized_tfl), model);
+  if (!serialized_with_buffers) {
+    LITERT_LOG(LITERT_ERROR, "Failed to serialize with appended buffers");
+    return serialized_with_buffers.Error();
+  }
+
+  if (!VerifyFlatbuffer(serialized_with_buffers->Span())) {
     LITERT_LOG(LITERT_ERROR, "Failed to verify flatbuffer");
     return Error(kLiteRtStatusErrorInvalidFlatbuffer);
   }
 
-  return SerializeWithAppendedBuffers(builder, std::move(serialized_tfl),
-                                      model);
+  return serialized_with_buffers;
 }
 
 }  // namespace litert::internal
