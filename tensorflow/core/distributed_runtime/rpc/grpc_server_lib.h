@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/platform/env.h"
+#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
@@ -225,6 +226,7 @@ class GrpcServer : public ServerInterface {
   std::shared_ptr<WorkerSession> worker_session_;
 
   // Experimental coordination service implementation, and RPC polling thread.
+  std::unique_ptr<tsl::thread::ThreadPool> coordination_compute_pool_ = nullptr;
   tsl::AsyncServiceInterface* coordination_service_ = nullptr;
   std::unique_ptr<Thread> coordination_thread_ TF_GUARDED_BY(mu_);
 
