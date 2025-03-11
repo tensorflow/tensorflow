@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
 #include "xla/tsl/platform/status_matchers.h"
 
 namespace stream_executor {
