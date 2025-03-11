@@ -592,7 +592,6 @@ class LiteRtSubgraphT {
   template <class... Args>
   LiteRtTensorT& EmplaceTensor(Args&&... args) {
     if (buffer_manager_ == nullptr) {
-      std::cerr << "Emplacing tensor without buffer manager \n";
       return tensors_.EmplaceBack(std::forward<Args>(args)...);
     } else {
       // std::cerr << "Emplacing tensor with buffer manager \n";
