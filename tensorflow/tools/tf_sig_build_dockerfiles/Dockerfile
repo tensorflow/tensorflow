@@ -2,6 +2,8 @@
 FROM ubuntu:22.04@sha256:ed1544e454989078f5dec1bfdabd8c5cc9c48e0705d07b678ab6ae3fb61952d2 as builder
 ################################################################################
 
+RUN echo "for testing"
+
 # Install devtoolset build dependencies
 COPY setup.packages.sh setup.packages.sh
 COPY builder.packages.txt builder.packages.txt
