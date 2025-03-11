@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
@@ -141,7 +142,7 @@ class GpuKernelToBlobPass
         "false";
 
     llvmModule->setDataLayout(xla::gpu::nvptx::DataLayout());
-    llvmModule->setTargetTriple(xla::gpu::nvptx::TargetTriple());
+    llvmModule->setTargetTriple(llvm::Triple(xla::gpu::nvptx::TargetTriple()));
 
     // Compile and collect requested cubin and PTX images.
     std::vector<tensorflow::se::CubinOrPTXImage> images;
