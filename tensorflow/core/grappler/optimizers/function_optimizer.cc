@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -1461,7 +1462,7 @@ absl::Status FunctionOptimizer::RunFunctionOptimizerPass(
   // Specialize function calls that we could not inline.
   FunctionOptimizerContext ctx(item, opt_level_, graph_after_inlining);
 
-  for (const NodeDef& node : graph_after_inlining.node()) {
+  for (NodeDef& node : *graph_after_inlining.mutable_node()) {
     // Function specialization can modify optimized graph only by adding new
     // nodes, we can check node size to make sure that graph was not modified.
     const int num_nodes_before = optimized_graph->node_size();
@@ -1471,13 +1472,15 @@ absl::Status FunctionOptimizer::RunFunctionOptimizerPass(
       return num_nodes > num_nodes_before;
     };
 
-    // Copy node from the `graph_after_inlining` to the `optimized_graph`.
-    const auto copy_node = [&]() { *optimized_graph->add_node() = node; };
+    // Adds a node to the `optimized_graph`.
+    const auto add_node = [optimized_graph](NodeDef&& node) {
+      *optimized_graph->add_node() = std::move(node);
+    };
 
     // Find if a node is a function call (direct or indirect).
     const FunctionDef* func = FindFunctionCall(ctx, node);
     if (func == nullptr) {
-      copy_node();
+      add_node(std::move(node));
       continue;
     }
 
@@ -1504,12 +1507,12 @@ absl::Status FunctionOptimizer::RunFunctionOptimizerPass(
         return status;
       } else if (!status.ok() && !is_graph_modified()) {
         VLOG(3) << "Skip specialization error: " << status.message();
-        copy_node();
+        add_node(std::move(node));
       }
       continue;
     } else {
       VLOG(2) << "Skip function specialization: " << func->signature().name();
-      copy_node();
+      add_node(std::move(node));
     }
   }
 
