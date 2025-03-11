@@ -19,12 +19,15 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/iterator_range.h"
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/RegionKindInterface.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/ops.h"
 
 namespace mlir {
 namespace tfg {
