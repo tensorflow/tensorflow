@@ -1768,11 +1768,10 @@ ENTRY entry_computation {
 
 TEST_F(TritonEmitterTest, SingleTileDotWithNestedFusionsIsEmittedCorrectly) {
   // Simplest case when everything fits into one tile that is useful for
-  // debugging.
+  // debugging. This also tests support for empty nested fusions.
   const std::string kHloText = R"(
 flhs {
-  flhs.p0 = f32[16,16] parameter(0)
-  ROOT lhs.root = f32[16,16] negate(flhs.p0)
+  ROOT flhs.p0 = f32[16,16] parameter(0)
 }
 
 frhs {

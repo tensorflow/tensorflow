@@ -219,9 +219,10 @@ int64_t HloCostAnalysis::FusionParameterReadBytes(
           const auto& fusion_users = user->users();
           const HloInstruction* root_instruction =
               user->fused_instructions_computation()->root_instruction();
-          // We define the nested fusion as simple if the parameter directly
-          // feeds the root.
+          // We define the nested fusion as simple if the parameter is the root
+          // or feeds directly into the root.
           const bool fusion_is_simple =
+              root_instruction->operand_count() == 0 ||
               user->fused_parameter(idx) == root_instruction->operand(0);
           // TODO(b/332998529): deal with nested fusions more generally.
           for (const HloInstruction* fusion_user : fusion_users) {

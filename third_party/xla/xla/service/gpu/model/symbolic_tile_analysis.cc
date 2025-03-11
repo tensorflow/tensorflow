@@ -498,9 +498,18 @@ absl::StatusOr<int64_t> GetRealRootIndex(
         absl::c_iota(range_var_indices, 0);
         auto nested_root_map = ConvertRangeVariablesToDimensions(
             operand_indexing_map, range_var_indices);
+        auto nested_roots = ToInstructions(nested_fusion_adaptor->GetRoots());
+        // Nested fusions can be empty. Walk up to the parent parameter. This
+        // avoids touching the delicate HloFusionAdaptor logic.
+        for (auto& root : nested_roots) {
+          if (root->opcode() == HloOpcode::kParameter) {
+            root = root->parent()->FusionInstruction()->operand(
+                root->parameter_number());
+          }
+        }
         RootIndexing nested_root_indexing{
             /*real_root_index=*/0,
-            /*roots=*/ToInstructions(nested_fusion_adaptor->GetRoots()),
+            /*roots=*/nested_roots,
             /*real_root_indexing=*/nested_root_map};
 
         auto analysis_or = SymbolicTileAnalysis::AnalyzeFusionImpl(
