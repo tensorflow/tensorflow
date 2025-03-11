@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_RESOURCE_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_RESOURCE_H_
 
+#include <cstdint>
+#include <map>
 #include <memory>
+#include <set>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "xla/hlo/builder/xla_builder.h"
