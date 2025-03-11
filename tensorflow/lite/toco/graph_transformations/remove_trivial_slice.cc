@@ -50,8 +50,8 @@ bool IsSliceTrivial(const Model& model, const Operator& op,
 
 }  // namespace
 
-::tensorflow::Status RemoveTrivialSlice::Run(Model* model, std::size_t op_index,
-                                             bool* modified) {
+absl::Status RemoveTrivialSlice::Run(Model* model, std::size_t op_index,
+                                     bool* modified) {
   *modified = false;
   const auto reshape_it = model->operators.begin() + op_index;
   auto* slice_op = reshape_it->get();
