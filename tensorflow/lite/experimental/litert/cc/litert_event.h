@@ -17,10 +17,10 @@
 
 #include <cstdint>
 
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 
 namespace litert {
 
@@ -34,29 +34,20 @@ class Event : public internal::Handle<LiteRtEvent, LiteRtDestroyEvent> {
   static Expected<Event> CreateFromSyncFenceFd(int sync_fence_fd,
                                                bool owns_fd) {
     LiteRtEvent event;
-    if (auto status =
-            LiteRtCreateEventFromSyncFenceFd(sync_fence_fd, owns_fd, &event);
-        status != kLiteRtStatusOk) {
-      return Error(status, "Failed to create event from sync fence fd");
-    }
+    LITERT_RETURN_IF_ERROR(
+        LiteRtCreateEventFromSyncFenceFd(sync_fence_fd, owns_fd, &event));
     return Event(event);
   }
 
-  Expected<int> GetSyncFenceFd(LiteRtEvent event) {
+  Expected<int> GetSyncFenceFd() {
     int fd;
-    if (auto status = LiteRtGetEventSyncFenceFd(Get(), &fd);
-        status != kLiteRtStatusOk) {
-      return Error(status, "Failed to get sync fence fd from event");
-    }
+    LITERT_RETURN_IF_ERROR(LiteRtGetEventSyncFenceFd(Get(), &fd));
     return fd;
   }
 
   // Pass -1 for timeout_in_ms for indefinite wait.
   Expected<void> Wait(int64_t timeout_in_ms) {
-    if (auto status = LiteRtEventWait(Get(), timeout_in_ms);
-        status != kLiteRtStatusOk) {
-      return Error(status, "Failed to wait on event");
-    }
+    LITERT_RETURN_IF_ERROR(LiteRtEventWait(Get(), timeout_in_ms));
     return {};
   }
 };

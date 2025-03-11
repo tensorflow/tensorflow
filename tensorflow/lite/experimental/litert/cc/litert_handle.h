@@ -31,7 +31,6 @@ inline void DummyDeleter(H) {}
 template <typename H, void (*deleter)(H)>
 class Handle {
  public:
-  Handle() = default;
   explicit Handle(H handle, bool owned) noexcept
       : ptr_(handle, owned ? deleter : DummyDeleter<H>) {}
 
@@ -42,10 +41,10 @@ class Handle {
     return *this;
   }
 
-  // Return true if the underlying LiteRtTensorBuffer handle is valid.
+  // Return true if the underlying handle is valid.
   explicit operator bool() const noexcept { return static_cast<bool>(ptr_); }
 
-  // Return the underlying LiteRtTensorBuffer handle.
+  // Return the underlying handle.
   H Get() const noexcept { return ptr_.get(); }
 
   H Release() noexcept { return ptr_.release(); }
