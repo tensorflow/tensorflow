@@ -12,7 +12,7 @@ cuda_py_strict_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     tags = [
-        # "multi_and_single_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
+        "multi_and_single_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
         "no_windows_gpu",  # b/216367668
         "no_windows",  # b/326464742
     ],

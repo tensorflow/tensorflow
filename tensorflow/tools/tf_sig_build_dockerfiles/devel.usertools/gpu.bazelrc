@@ -62,6 +62,13 @@ test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
 //tensorflow/python/distribute:vars_test_2gpu \
 //tensorflow/python/distribute:warm_starting_util_test_2gpu \
 //tensorflow/python/training:saver_test_2gpu \
+//tensorflow/python/distribute/v1:cross_device_ops_test_2gpu \
+//tensorflow/python/distribute:cross_device_ops_test_2gpu \
+//tensorflow/python/distribute:mirrored_strategy_test_2gpu \
+//tensorflow/python/kernel_tests:collective_ops_test_2gpu \
+//tensorflow/python/ops:collective_ops_gpu_test_2gpu \
+# //tensorflow/python/ops:nccl_ops_test_2gpu \
+
 
 # For building libtensorflow archives
 test:libtensorflow_test -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test
