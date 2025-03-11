@@ -27,9 +27,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolveTensorFlowMerge::Run(Model* model,
-                                                 std::size_t op_index,
-                                                 bool* modified) {
+absl::Status ResolveTensorFlowMerge::Run(Model* model, std::size_t op_index,
+                                         bool* modified) {
   *modified = false;
   const auto merge_it = model->operators.begin() + op_index;
   const auto* merge_op = merge_it->get();
