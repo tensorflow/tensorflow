@@ -16,8 +16,8 @@ limitations under the License.
 
 #include <sys/mman.h>
 
-#include <algorithm>
 #include <initializer_list>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
