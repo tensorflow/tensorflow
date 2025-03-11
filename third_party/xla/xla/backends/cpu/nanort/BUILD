@@ -46,6 +46,9 @@ xla_cc_test(
     deps = [
         ":nanort_client",
         ":nanort_executable",
+        "//xla:array2d",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:alignment",
@@ -65,6 +68,8 @@ xla_cc_test(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -80,6 +85,7 @@ cc_library(
         "//xla:util",
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu/runtime:buffer_allocations",
+        "//xla/backends/cpu/runtime:function_library",
         "//xla/backends/cpu/runtime:thread_pool_task_runner",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
