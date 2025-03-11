@@ -60,9 +60,9 @@ cc_library(
     deps = [
         ":litert_expected",
         ":litert_handle",
+        ":litert_macros",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_event",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -185,6 +185,7 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
+        ":litert_element_type",
         ":litert_layout",
         ":litert_macros",
         ":litert_model",
