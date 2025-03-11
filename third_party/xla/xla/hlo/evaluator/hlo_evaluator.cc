@@ -1036,12 +1036,18 @@ absl::StatusOr<Literal> HloEvaluator::EvaluateWithSubstitutions(
 
   std::unique_ptr<HloInstruction> cloned_instruction =
       instruction->CloneWithNewOperands(instruction->shape(), operands);
-  // TODO(phawkins): it's unfortunate that we need to call set_parent() here.
+  // TODO(phawkins): it's unfortunate that we need to call set_parent() here,
+  // since it violates the invariant that an instruction has a parent iff it is
+  // in a computation.
   // It's probably better to avoid constructing new instructions here in the
   // first place.
   cloned_instruction->set_parent(
       const_cast<HloComputation*>(instruction->parent()));
   auto result = Evaluate(cloned_instruction.get());
+
+  // Undo the parent change, since it will confuse code that expects the
+  // instruction to be in a computation.
+  cloned_instruction->set_parent(nullptr);
 
   return result;
 }

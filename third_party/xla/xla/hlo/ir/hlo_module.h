@@ -88,7 +88,7 @@ class HloModule {
   HloModule(const std::string& name,
             std::shared_ptr<const HloModuleConfig> config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
-  virtual ~HloModule() = default;
+  virtual ~HloModule();
 
   // Adds an entry computation to the module. A module can only have one entry
   // computation. Returns a pointer to the newly added computation.

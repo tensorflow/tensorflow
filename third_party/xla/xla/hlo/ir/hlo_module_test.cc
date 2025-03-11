@@ -18,8 +18,10 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
@@ -32,11 +34,15 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
 
 TEST(HloModuleTest, AbslHashValue) {
   HloModule module1("temp_module", HloModuleConfig());
@@ -468,6 +474,44 @@ TEST(HloModuleTest, CheckToStringHonorsDebugOptions) {
     // CHECK-NOT: subtract-done
   )"));
   EXPECT_TRUE(filecheck_matched);
+}
+
+TEST(HloModuleTest, TestCallersAndCallees) {
+  // Check that the debug options xla_dump_large_constants,
+  // xla_syntax_sugar_async_ops are honored.
+  const char* hlo = R"(
+    HloModule jit_h
+
+    f {
+      Arg_0.3 = f32[] parameter(0)
+      ROOT sine.4 = f32[] sine(Arg_0.3)
+    }
+
+    g {
+      Arg_0.13 = f32[] parameter(0)
+      call.14 = f32[] call(Arg_0.13), to_apply=f
+      ROOT call.15 = f32[] call(call.14), to_apply=f
+    }
+
+    ENTRY main {
+      Arg_0.1 = f32[] parameter(0)
+      call.5 = f32[] call(Arg_0.1), to_apply=f
+      call.16 = f32[] call(call.5), to_apply=g
+      ROOT call.27 = f32[] call(call.16), to_apply=g
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_EQ(module->computation_count(), 3);
+  HloComputation* main = module->GetComputationWithName("main");
+  HloComputation* f = module->GetComputationWithName("f");
+  HloComputation* g = module->GetComputationWithName("g");
+  EXPECT_THAT(main->callee_computations(),
+              ElementsAre(std::make_pair(f, 1), std::make_pair(g, 2)));
+  EXPECT_THAT(f->callee_computations(), ElementsAre());
+  EXPECT_THAT(g->callee_computations(), ElementsAre(std::make_pair(f, 2)));
+  EXPECT_THAT(f->caller_computations(),
+              ElementsAre(std::make_pair(g, 2), std::make_pair(main, 1)));
+  EXPECT_THAT(g->caller_computations(), ElementsAre(std::make_pair(main, 2)));
 }
 
 }  // namespace

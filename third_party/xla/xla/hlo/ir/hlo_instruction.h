@@ -1742,11 +1742,7 @@ class HloInstruction {
   // clearing out the computations, we reflect the fact that all side-effecting
   // properties have been reflected in the caller, and make the call HLO
   // removable.
-  virtual void ClearCalledComputations() {
-    if (has_rare()) {
-      mutable_rare()->called_computations.clear();
-    }
-  }
+  virtual void ClearCalledComputations();
 
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,

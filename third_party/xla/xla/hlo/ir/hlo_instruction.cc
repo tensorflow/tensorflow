@@ -219,22 +219,47 @@ void HloInstruction::AppendComputation(HloComputation* computation) {
   // In .cc file since PtrVec<T*>::push_back() wants to check the alignment
   // of T and hlo_instruction.h does not include hlo_computation.h.
   mutable_rare()->called_computations.push_back(computation);
+  if (parent()) {
+    parent()->AddCallee(computation);
+  }
 }
 
 void HloInstruction::set_called_computation(int index,
                                             HloComputation* computation) {
-  mutable_rare()->called_computations[index] = computation;
   // TODO(b/399394039): Consider also enforcing that computation->parent() !=
   // nullptr.
   CHECK(parent() == nullptr || parent()->parent() == nullptr ||
-        parent()->parent() == computation->parent())
+        computation == nullptr || parent()->parent() == computation->parent())
       << ToString();
+  HloComputation* old_computation = computation;
+  std::swap(old_computation, mutable_rare()->called_computations[index]);
+  if (parent()) {
+    if (old_computation) {
+      parent()->RemoveCallee(old_computation);
+    }
+    if (computation) {
+      parent()->AddCallee(computation);
+    }
+  }
 }
 
 void HloInstruction::ReplaceCalledComputations(
     absl::FunctionRef<HloComputation*(HloComputation*)> map_function) {
   for (int64_t i = 0; i < called_computations().size(); ++i) {
     set_called_computation(i, map_function(rare()->called_computations[i]));
+  }
+}
+
+void HloInstruction::ClearCalledComputations() {
+  if (has_rare()) {
+    if (parent()) {
+      for (HloComputation* computation : called_computations()) {
+        if (computation) {
+          parent()->RemoveCallee(computation);
+        }
+      }
+    }
+    mutable_rare()->called_computations.clear();
   }
 }
 

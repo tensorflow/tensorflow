@@ -90,6 +90,14 @@ HloModule::HloModule(const std::string& name,
   metadata_.set_canonical_module_id(unique_id_);
 }
 
+HloModule::~HloModule() {
+  // To avoid dangling references between computations, we first clear all the
+  // inter-computation references before deleting any of the computations.
+  for (const auto& computation : computations_) {
+    computation->ClearCalledComputations();
+  }
+}
+
 absl::Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
