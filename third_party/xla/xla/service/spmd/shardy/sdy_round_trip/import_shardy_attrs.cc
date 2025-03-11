@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -54,12 +57,14 @@ namespace sdy {
 
 namespace {
 
+using ::mlir::ArrayRef;
 using ::mlir::Attribute;
 using ::mlir::DictionaryAttr;
 using ::mlir::IRRewriter;
 using ::mlir::ModuleOp;
 using ::mlir::NamedAttribute;
 using ::mlir::Operation;
+using ::mlir::SmallVector;
 using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
@@ -68,6 +73,7 @@ using ::mlir::func::FuncOp;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::kShardingRuleAttr;
 using ::mlir::sdy::MeshAttr;
+using ::mlir::sdy::MeshAxisAttr;
 using ::mlir::sdy::OpShardingRuleAttr;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
@@ -161,6 +167,26 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
   });
 }
 
+mlir::LogicalResult hasDifferentMeshShapes(
+    SmallVector<int64_t>& meshesWithAxisSizes, MeshAttr meshAttr,
+    ModuleOp moduleOp) {
+  ArrayRef<MeshAxisAttr> axes = meshAttr.getAxes();
+  SmallVector<int64_t> sizes;
+  if (!axes.empty()) {
+    sizes.reserve(axes.size());
+    llvm::transform(axes, std::back_inserter(sizes),
+                    [](MeshAxisAttr axis) { return axis.getSize(); });
+    if (meshesWithAxisSizes.empty()) {
+      meshesWithAxisSizes = sizes;
+    } else if (meshesWithAxisSizes != sizes) {
+      return moduleOp.emitError(
+          "JAX does not support multiple meshes with different "
+          "axis sizes.");
+    }
+  }
+  return mlir::success();
+}
+
 class SdyRoundTripImportShardyAttrsPass
     : public mlir::PassWrapper<SdyRoundTripImportShardyAttrsPass,
                                mlir::OperationPass<ModuleOp>> {
@@ -177,16 +203,25 @@ class SdyRoundTripImportShardyAttrsPass
     // the original Shardy model.
     std::optional<DictionaryAttr> meshesAttr =
         tryGetFrontendAttr<DictionaryAttr>(moduleOp, kMeshesRoundTripAttr);
-    mlir::ArrayRef<NamedAttribute> sdyMeshes =
-        meshesAttr.has_value() ? meshesAttr.value().getValue()
-                               : mlir::ArrayRef<NamedAttribute>();
+    ArrayRef<NamedAttribute> sdyMeshes = meshesAttr.has_value()
+                                             ? meshesAttr.value().getValue()
+                                             : ArrayRef<NamedAttribute>();
 
     IRRewriter rewriter(moduleOp);
     // Insert the meshes before any functions.
     rewriter.setInsertionPointToStart(moduleOp.getBody());
     SymbolTable symbolTable(moduleOp);
+    // TODO(b/402371282): allow different meshes with different axis sizes
+    // during import. Either support propagation through different mesh shapes
+    // or  error during propagation.
+    SmallVector<int64_t> meshesWithAxisSizes;
     for (NamedAttribute mesh : sdyMeshes) {
       auto meshAttr = mlir::cast<MeshAttr>(mesh.getValue());
+      if (hasDifferentMeshShapes(meshesWithAxisSizes, meshAttr, moduleOp)
+              .failed()) {
+        signalPassFailure();
+        return;
+      }
       symbolTable.insert(rewriter.create<mlir::sdy::MeshOp>(
           moduleOp.getLoc(), mesh.getName(), meshAttr));
     }
