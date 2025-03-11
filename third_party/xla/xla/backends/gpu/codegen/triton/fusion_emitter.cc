@@ -116,6 +116,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
@@ -636,15 +637,78 @@ absl::StatusOr<int64_t> GetDotLoopIterationCount(
   auto fusion_tile_sizes =
       tiled_hlo_fusion->called_computation()->GetRoots()[0]->tile_sizes();
   int64_t tile_k = fusion_tile_sizes[contracting_dim_idx];
-  int64_t loop_iteration_count = CeilOfRatio(k, tile_k);
-  if (loop_iteration_count * tile_k != k) {
-    // TODO(b/393299275): Padding might work already, but we need to test it.
-    return absl::UnimplementedError(
-        absl::StrCat("Unexact tiling of contracting dimension is not "
-                     "supported. Dimension size ",
-                     k, ", tile size ", tile_k));
-  }
+
   return CeilOfRatio(k, tile_k);
+}
+
+// TODO(b/393299275): unify with the logic in `EmitReduce`.
+// Computes and applies a mask to the reduction dimension of the dot operand
+// passed as a parameter.
+//
+// Note: we currently assume that contracting_dimension_tile_index is an i32
+// scalar.
+absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder& b,
+                                     const TiledHloInstruction& dot_operand,
+                                     Value dot_operand_value,
+                                     Value contracting_dimension_tile_index,
+                                     int contraction_dimension_index) {
+  if (contracting_dimension_tile_index.getType() != b.getI32Type()) {
+    return absl::FailedPreconditionError(
+        "contracting_dimension_tile_index must be an i32 scalar");
+  }
+
+  llvm::ArrayRef<int64_t> tile_shape =
+      mlir::cast<ShapedType>(dot_operand_value.getType()).getShape();
+
+  int64_t rank = dot_operand.hlo()->shape().rank();
+  int64_t contracting_dimension_size =
+      dot_operand.hlo()->shape().dimensions(contraction_dimension_index);
+  int64_t tile_size = tile_shape[contraction_dimension_index];
+
+  if (contracting_dimension_size % tile_size != 0) {
+    // When the contracting dimension is not divisible by the tile size, we
+    // need to mask out the last tile. We do this with the following logic:
+    //
+    // indices =
+    //   contracting_dimension_tile_index * tile_size + range(0, tile_size)
+    // mask = indices < contracting_dimension_size
+    // operand = select(broadcast(mask, operand.shape), operand, 0)
+    Value range = Range(b, tile_size).UnwrapTensor();
+    Value tile_size_value =
+        CreateConst(b, b.getI32Type(), tile_size, {}).UnwrapScalar();
+    Value tile_offset = b.create<arith::MulIOp>(
+        contracting_dimension_tile_index, tile_size_value);
+    Value broadcasted_tile_offset =
+        Splat(b, ScalarOrTensor(tile_offset), {tile_size}).UnwrapTensor();
+    Value indices = b.create<arith::AddIOp>(range, broadcasted_tile_offset);
+
+    Value boundary =
+        CreateConst(b, b.getI32Type(), contracting_dimension_size, {tile_size})
+            .UnwrapTensor();
+
+    Value mask =
+        b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, indices, boundary);
+
+    // Triton's broadcast requires that the rank of the source and broadcasted
+    // result are equal.
+    for (int i = 0; i < rank - 1; i++) {
+      int axis = (i < contraction_dimension_index) ? 0 : i + 1;
+      mask = b.create<ttir::ExpandDimsOp>(mask, axis);
+    }
+    mask =
+        Broadcast(b, mlir::cast<TensorValue>(mask), tile_shape).UnwrapTensor();
+
+    TF_ASSIGN_OR_RETURN(
+        auto element_type,
+        TritonType(b, dot_operand.hlo()->shape().element_type()));
+
+    ScalarOrTensor zero = CreateConst(b, element_type, 0.0f, tile_shape);
+
+    return b.create<arith::SelectOp>(mask, dot_operand_value,
+                                     zero.UnwrapTensor());
+  }
+
+  return dot_operand_value;
 }
 
 absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
@@ -748,8 +812,29 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
           absl::StrCat("Unsupported precision config: ",
                        precision_config.ShortDebugString()));
     }
+
+    auto lhs_contracting_dim_idx =
+        tiled_hlo_dot.hlo()->dot_dimension_numbers().lhs_contracting_dimensions(
+            0);
+
+    auto rhs_contracting_dim_idx =
+        tiled_hlo_dot.hlo()->dot_dimension_numbers().rhs_contracting_dimensions(
+            0);
+
+    // TODO(b/393299275): masking is only necessary during the last iteration of
+    // the loop. We should evaluate whether adding a conditional mask helps or
+    // hinders performance for Triton.
+    Value ki_i32 = b.create<arith::TruncIOp>(b.getI32Type(), ki);
+    TF_ASSIGN_OR_RETURN(
+        Value lhs, MaskDotOperand(b, *tiled_hlo_dot.operand(0), dot_args[0],
+                                  ki_i32, lhs_contracting_dim_idx));
+
+    TF_ASSIGN_OR_RETURN(
+        Value rhs, MaskDotOperand(b, *tiled_hlo_dot.operand(1), dot_args[1],
+                                  ki_i32, rhs_contracting_dim_idx));
+
     Value dot_result =
-        b.create<ttir::DotOp>(dot_args[0], dot_args[1], acc,
+        b.create<ttir::DotOp>(lhs, rhs, acc,
                               /*inputPrecision=*/ttir::InputPrecision::IEEE,
                               /*maxNumImpreciseAcc=*/0);
     b.create<mlir::scf::YieldOp>(dot_result);
