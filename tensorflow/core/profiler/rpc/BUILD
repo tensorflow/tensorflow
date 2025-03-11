@@ -43,7 +43,6 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:xplane_utils",

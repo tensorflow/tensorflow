@@ -44,12 +44,15 @@ struct XlaCompileOptions
   XlaCompileOptions() = default;
   explicit XlaCompileOptions(xla::CompileOptions compile_options,
                              std::vector<tsl::RCReference<LoadedHostCallback>>
-                                 loaded_host_callbacks = {})
+                                 loaded_host_callbacks = {},
+                             std::vector<void*> opaque_host_callbacks = {})
       : compile_options(std::move(compile_options)),
-        loaded_host_callbacks(std::move(loaded_host_callbacks)) {}
+        loaded_host_callbacks(std::move(loaded_host_callbacks)),
+        opaque_host_callbacks(std::move(opaque_host_callbacks)) {}
 
   xla::CompileOptions compile_options;
   std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks;
+  std::vector<void*> opaque_host_callbacks;
 
   // CompileOptions implementation.
 
@@ -71,14 +74,17 @@ struct XlaDeserializeExecutableOptions
   explicit XlaDeserializeExecutableOptions(
       std::optional<xla::CompileOptions> compile_options,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks =
-          {})
+          {},
+      std::vector<void*> opaque_host_callbacks = {})
       : compile_options(std::move(compile_options)),
-        loaded_host_callbacks(std::move(loaded_host_callbacks)) {}
+        loaded_host_callbacks(std::move(loaded_host_callbacks)),
+        opaque_host_callbacks(std::move(opaque_host_callbacks)) {}
 
   // `compile_options` may be unspecified if deserialization does not override
   // it.
   std::optional<xla::CompileOptions> compile_options;
   std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks;
+  std::vector<void*> opaque_host_callbacks;
 
   // DeserializeExecutableOptions implementation.
 

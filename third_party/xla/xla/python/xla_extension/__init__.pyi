@@ -581,6 +581,10 @@ class Client:
       operand_shapes: Sequence[Shape],
       results_shapes: Sequence[Shape],
   ) -> Tuple[Any, Any]: ...
+  def get_emit_python_callback(
+      self,
+      callable: Callable,
+  ) -> Any: ...
   def make_python_callback_from_host_send_and_recv(
       self,
       callable: Callable,

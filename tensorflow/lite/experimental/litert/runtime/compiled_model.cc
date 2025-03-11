@@ -540,6 +540,9 @@ Expected<void> LiteRtCompiledModelT::Run(
                       "Failed to allocate tensors");
   }
 
+  // Relay the intended async execution mode to DelegateKernel of Accelerator.
+  buffer_context_->SetAsyncExecutionMode(async);
+
   if (auto res = runner->Invoke(); res != kTfLiteOk) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure, "Failed to invoke");
   }

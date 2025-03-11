@@ -109,6 +109,15 @@ class ExternalLiteRtBufferContext : public TfLiteExternalContext {
         reinterpret_cast<const TfLiteOpaqueTensor*>(tensor));
   }
 
+  // Sets the async execution mode. It's set by CompiledModel and used by
+  // DelegateKernel to decide whether to use async execution mode.
+  inline void SetAsyncExecutionMode(bool async_execution_mode) {
+    async_execution_mode_ = async_execution_mode;
+  }
+
+  // Returns true if the async execution mode is set.
+  inline bool IsAsyncExecutionMode() const { return async_execution_mode_; }
+
  private:
   absl::flat_hash_map<const TfLiteOpaqueTensor*, TensorBufferRequirements>
       buffer_requirements_;
@@ -117,6 +126,8 @@ class ExternalLiteRtBufferContext : public TfLiteExternalContext {
   ExternalLiteRtBufferContext(const ExternalLiteRtBufferContext&) = delete;
   ExternalLiteRtBufferContext& operator=(const ExternalLiteRtBufferContext&) =
       delete;
+
+  bool async_execution_mode_ = false;
 };
 
 }  // namespace internal
