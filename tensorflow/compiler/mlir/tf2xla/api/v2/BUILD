@@ -5,9 +5,6 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 # Please reach out to tf-bridge-team@ before using the TF2XLA bridge.
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        ":__subpackages__",
-    ],
 )
 
 cc_library(
