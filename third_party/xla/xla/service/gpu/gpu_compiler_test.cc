@@ -1042,7 +1042,8 @@ ENTRY e {
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
-        aot_result->LoadExecutable(compiler, aot_options.executor()));
+        std::move(*aot_result)
+            .LoadExecutable(compiler, aot_options.executor()));
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
         test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 

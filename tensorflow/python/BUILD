@@ -969,6 +969,7 @@ pywrap_aware_filegroup(
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "@local_xla//xla:status_macros",  # tfcompile
         "@local_xla//xla/hlo/ir:hlo",  # tfcompile
+        "@local_xla//xla/tsl/concurrency:async_value",  # tfcompile
     ]),
     visibility = ["//visibility:private"],
 )
