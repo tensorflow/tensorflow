@@ -529,7 +529,9 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
     string value for var_name
   """
   var = environ_cp.get(var_name)
-  if not var:
+  # an intentionally empty value in the
+  # environment is not the same as no value
+  if var is None:
     var = get_input(ask_for_var)
     print('\n')
   if not var:
