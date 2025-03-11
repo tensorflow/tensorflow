@@ -27,7 +27,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -41,6 +40,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
+#include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 
 using ::litert::qnn::QnnManager;
 using LiteRtBufferId = uint32_t;
@@ -305,7 +305,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
         op, tensor_pool, input_tensors, output_tensors, op_wrappers));
     if (std::all_of(
             op_wrappers.begin(), op_wrappers.end(),
-            [&qnn_manager](const ::qnn::OpWrapper& op_wrapper) -> bool {
+            [&qnn_manager](::qnn::OpWrapper& op_wrapper) -> bool {
               return kLiteRtStatusOk ==
                      (*qnn_manager)->ValidateOp(op_wrapper.GetOpConfig());
             })) {
