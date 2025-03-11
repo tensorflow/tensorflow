@@ -413,4 +413,37 @@ diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stable
  
    return true;
  }
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+@@ -23,6 +23,7 @@
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/StringRef.h"
++#include "llvm/Support/Debug.h"
+ #include "llvm/Support/ErrorHandling.h"
+ #include "mlir/Dialect/CommonFolders.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+@@ -47,6 +48,8 @@
+ #include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/transforms/optimization/Passes.h"
++
++#define DEBUG_TYPE "stablehlo-optimization"
+ 
+ namespace mlir {
+ namespace stablehlo {
+@@ -779,7 +782,12 @@
+   using OpRewritePattern::OpRewritePattern;
+   LogicalResult matchAndRewrite(IotaOp op,
+                                 PatternRewriter& rewriter) const override {
++    LLVM_DEBUG(llvm::dbgs() << "EvalIotaOpPattern folding: " << op << '\n');
+     auto resultType = cast<RankedTensorType>(op.getType());
++    size_t numElems = resultType.getNumElements();
++    if (numElems > kFoldOpEltLimit)
++      return rewriter.notifyMatchFailure(op, "too many elements to fold");
++
+     auto elementType = resultType.getElementType();
+ 
+     if (!elementType.isInteger())
 
