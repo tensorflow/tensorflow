@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -58,7 +58,7 @@ NcclAllToAllConfig GetNcclAllToAllConfig(const HloAllToAllInstruction* instr) {
   NcclAllToAllConfig config;
   // FIXME(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
   // attribute and it should be removed.
-  config.config = GetNcclCollectiveConfig(instr, std::nullopt);
+  config.config = GetCollectiveConfig(instr, std::nullopt);
   config.has_split_dimension = instr->split_dimension().has_value();
   return config;
 }
@@ -67,10 +67,10 @@ NcclAllToAllConfig GetNcclAllToAllConfig(const HloAllToAllInstruction* instr) {
 
 NcclAllToAllStartThunk::NcclAllToAllStartThunk(
     ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
-    std::vector<NcclCollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
-    : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
-                          IsGPUSyncCollective(*instr),
-                          AsyncStreamKind::kCollective),
+    std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
+    : CollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
+                      IsGPUSyncCollective(*instr),
+                      AsyncStreamKind::kCollective),
       config_(GetNcclAllToAllConfig(instr)),
       buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {
@@ -105,7 +105,7 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
 
 absl::Status NcclAllToAllStartThunk::Initialize(
     const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
+  TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   device_count_ = params.local_device_count;
   CHECK_GT(device_count_, 0);
   VLOG(5) << "Local device count: " << device_count_;
@@ -117,9 +117,9 @@ absl::Status NcclAllToAllStartThunk::Initialize(
     AsyncStreamKind stream_kind = GetAsyncStreamKind();
     TF_ASSIGN_OR_RETURN(
         CommunicatorHandle comm_handle,
-        GetNcclComm(collectives, *params.collective_params,
-                    *params.collective_cliques, config().replica_groups,
-                    config().group_mode, stream_id, stream_kind));
+        GetComm(collectives, *params.collective_params,
+                *params.collective_cliques, config().replica_groups,
+                config().group_mode, stream_id, stream_kind));
     TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
     se::StreamExecutor* executor = params.executor;
     {
@@ -142,7 +142,7 @@ absl::Status NcclAllToAllStartThunk::Initialize(
   return absl::OkStatus();
 }
 
-absl::Status NcclAllToAllStartThunk::RunNcclCollective(
+absl::Status NcclAllToAllStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
@@ -174,7 +174,7 @@ AsyncStreamKind NcclAllToAllStartThunk::GetAsyncStreamKind() const {
   if (is_local() && p2p_memcpy_enabled_) {
     return AsyncStreamKind::kMemCpyP2P;
   }
-  return NcclCollectiveThunk::GetAsyncStreamKind();
+  return CollectiveThunk::GetAsyncStreamKind();
 }
 
 bool NcclAllToAllStartThunk::is_local() const {

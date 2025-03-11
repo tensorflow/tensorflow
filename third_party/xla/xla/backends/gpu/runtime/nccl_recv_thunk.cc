@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/rank_id.h"
@@ -46,8 +46,8 @@ NcclRecvThunk::NcclRecvThunk(ThunkInfo thunk_info,
                              const HloRecvInstruction* instr,
                              int64_t replica_count, int64_t partition_count,
                              const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kNcclRecv, thunk_info,
-                          /*is_sync=*/false, GetStreamKindForP2P(instr)),
+    : CollectiveThunk(Thunk::kNcclRecv, thunk_info,
+                      /*is_sync=*/false, GetStreamKindForP2P(instr)),
       config_(GetNcclP2PConfigForSendRecv(instr, instr->shape().tuple_shapes(0),
                                           replica_count, partition_count)),
       buffer_(buffer),
@@ -58,7 +58,7 @@ NcclRecvThunk::NcclRecvThunk(ThunkInfo thunk_info,
       hlo_name_(instr->name()) {}
 
 absl::Status NcclRecvThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
+  TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   if (execution_counters_) {
     TF_RETURN_IF_ERROR(execution_counters_->Initialize(
         params.executor, params.collective_params->run_id));
@@ -66,9 +66,9 @@ absl::Status NcclRecvThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
-                                              se::Stream& stream,
-                                              CommunicatorHandle comm_handle) {
+absl::Status NcclRecvThunk::RunCollective(const ExecuteParams& params,
+                                          se::Stream& stream,
+                                          CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -129,7 +129,7 @@ absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
       if (*counter < it->second.first || *counter > it->second.second) {
         should_run = false;
       }
-      VLOG(3) << "RunNcclCollective counter " << *counter << " " << should_run;
+      VLOG(3) << "RunCollective counter " << *counter << " " << should_run;
       ++(*counter);
     }
     if (should_run) {

@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -33,7 +33,7 @@ namespace xla {
 namespace gpu {
 
 // Thunk that performs a NCCL-recv.
-class NcclRecvThunk : public NcclCollectiveThunk {
+class NcclRecvThunk : public CollectiveThunk {
  public:
   NcclRecvThunk(ThunkInfo thunk_info, const HloRecvInstruction* instr,
                 int64_t replica_count, int64_t partition_count,
@@ -41,10 +41,9 @@ class NcclRecvThunk : public NcclCollectiveThunk {
   absl::Status Initialize(const InitializeParams& params) override;
 
  protected:
-  const NcclCollectiveConfig& config() const override { return config_.config; }
-  absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream,
-                                 CommunicatorHandle comm_handle) override;
+  const CollectiveConfig& config() const override { return config_.config; }
+  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
+                             CommunicatorHandle comm_handle) override;
   bool NeedFirstCallRendzevous() const override { return false; }
 
  private:

@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/stream_executor/event.h"
@@ -40,7 +40,7 @@ NcclGroupThunk::NcclGroupThunk(const HloInstruction* instruction,
                                AsyncStreamKind stream_kind)
     : Thunk(kind, ThunkInfo::WithProfileAnnotation(instruction)),
       stream_kind_(stream_kind),
-      async_events_(new NcclCollectiveThunk::AsyncEvents()) {
+      async_events_(new CollectiveThunk::AsyncEvents()) {
   for (auto& thunk : thunks) {
     thunks_.emplace_back(std::move(thunk));
   }

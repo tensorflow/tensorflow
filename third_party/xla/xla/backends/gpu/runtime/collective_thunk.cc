@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -53,19 +54,17 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
 static constexpr int64_t kCollectiveMemorySpaceColor = 1;
 static constexpr CollectiveStreamId kNoStreamId = CollectiveStreamId(0);
 
-bool IsTypeSupportedByNccl(PrimitiveType element_type,
-                           Thunk::Kind reduction_op) {
+bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
   switch (element_type) {
     case S8:
     case PRED:
@@ -130,8 +129,8 @@ bool IsTypeSupportedByNccl(PrimitiveType element_type,
 //         degenerate if replica_groups are singleton or group emty and
 //         num_partitions == 1 (since replica groups contain partition ids).
 //
-bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
-                                        int64_t partition_count) const {
+bool CollectiveConfig::IsDegenerate(int64_t replica_count,
+                                    int64_t partition_count) const {
   bool groups_empty = replica_groups.empty();
 
   // check if all replica_groups are singleton. If not, then the operation is
@@ -160,7 +159,7 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
   }
 }
 
-void NcclCollectiveConfig::SetCollectiveOpKindAndID(
+void CollectiveConfig::SetCollectiveOpKindAndID(
     const HloCollectivePermuteInstruction* instr) {
   if (instr->channel_id().has_value()) {
     collective_op_kind = RendezvousKey::kCrossModule;
@@ -171,7 +170,7 @@ void NcclCollectiveConfig::SetCollectiveOpKindAndID(
   }
 }
 
-void NcclCollectiveConfig::SetCollectiveOpKindAndID(
+void CollectiveConfig::SetCollectiveOpKindAndID(
     const HloSendRecvInstruction* instr) {
   int64_t channel_id = instr->channel_id().value_or(0);
   if (channel_id > 0) {
@@ -183,9 +182,9 @@ void NcclCollectiveConfig::SetCollectiveOpKindAndID(
   }
 }
 
-NcclCollectiveConfig GetNcclCollectiveConfig(
+CollectiveConfig GetCollectiveConfig(
     const HloInstruction* hlo, std::optional<bool> use_global_device_ids) {
-  NcclCollectiveConfig config;
+  CollectiveConfig config;
   config.operand_count = hlo->operands().size();
   config.operand_element_type.reserve(config.operand_count);
   for (int i = 0; i < config.operand_count; i++) {
@@ -209,9 +208,8 @@ NcclCollectiveConfig GetNcclCollectiveConfig(
   return config;
 }
 
-NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
-                                         bool is_sync,
-                                         AsyncStreamKind stream_kind)
+CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
+                                 AsyncStreamKind stream_kind)
     : Thunk(kind, thunk_info),
       stream_kind_(stream_kind),
       async_events_(is_sync ? nullptr : new AsyncEvents()) {}
@@ -254,7 +252,7 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
                       stream_kind, std::move(participant_groups));
 }
 
-absl::StatusOr<CommunicatorHandle> GetNcclComm(
+absl::StatusOr<CommunicatorHandle> GetComm(
     GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
@@ -275,7 +273,7 @@ absl::StatusOr<CommunicatorHandle> GetNcclComm(
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const Thunk::ExecuteParams& params,
-    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
+    const std::vector<CollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types) {
   return ConvertToDeviceBuffers(params.buffer_allocations, buffers,
                                 element_types);
@@ -283,7 +281,7 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
-    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
+    const std::vector<CollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types) {
   if (buffers.size() != element_types.size())
     return FailedPrecondition("Mismatch in operand buffer counts.");
@@ -353,7 +351,7 @@ absl::Status MaybeRegisterBuffers(GpuCollectives* collectives,
   return absl::OkStatus();
 }
 
-absl::Status NcclCollectiveThunk::AsyncEvents::Initialize(
+absl::Status CollectiveThunk::AsyncEvents::Initialize(
     se::StreamExecutor* executor) {
   absl::MutexLock lock(&mu_);
   if (events_.contains(executor)) return absl::OkStatus();
@@ -364,7 +362,7 @@ absl::Status NcclCollectiveThunk::AsyncEvents::Initialize(
   return absl::OkStatus();
 }
 
-absl::StatusOr<se::Event*> NcclCollectiveThunk::AsyncEvents::GetEvent(
+absl::StatusOr<se::Event*> CollectiveThunk::AsyncEvents::GetEvent(
     se::StreamExecutor* executor) {
   absl::MutexLock lock(&mu_);
 
@@ -377,7 +375,7 @@ absl::StatusOr<se::Event*> NcclCollectiveThunk::AsyncEvents::GetEvent(
   return event->second.get();
 }
 
-absl::Status NcclCollectiveThunk::Prepare(
+absl::Status CollectiveThunk::Prepare(
     const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
@@ -392,7 +390,7 @@ absl::Status NcclCollectiveThunk::Prepare(
   return resource_requests.AddClique(clique_key, num_local_participants);
 }
 
-absl::Status NcclCollectiveThunk::Initialize(const InitializeParams& params) {
+absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
   if (async_events_) {
     TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
   }
@@ -417,7 +415,7 @@ bool operator==(const FirstCallRendezvousKey& a,
 }
 }  // namespace
 
-absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
   const CollectiveStreamId stream_id = nccl_stream_id();
@@ -425,9 +423,9 @@ absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetNcclComm(collectives, *params.collective_params,
-                  *params.collective_cliques, config().replica_groups,
-                  config().group_mode, stream_id, stream_kind));
+      GetComm(collectives, *params.collective_params,
+              *params.collective_cliques, config().replica_groups,
+              config().group_mode, stream_id, stream_kind));
   se::StreamExecutor* executor = params.stream->parent();
   int64_t async_stream_idx = static_cast<int64_t>(stream_kind);
 
@@ -439,7 +437,7 @@ absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Wait for main compute stream to make sure all buffers are ready.
     TF_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
 
-    TF_RETURN_IF_ERROR(RunNcclCollective(params, async_stream, comm_handle));
+    TF_RETURN_IF_ERROR(RunCollective(params, async_stream, comm_handle));
 
     // Record collective operation completion.
     TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
@@ -447,7 +445,7 @@ absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   } else {
     // Launch collective operation on a main stream.
-    TF_RETURN_IF_ERROR(RunNcclCollective(params, *params.stream, comm_handle));
+    TF_RETURN_IF_ERROR(RunCollective(params, *params.stream, comm_handle));
   }
 
   // After a first execution of this instance of collective operation do a
@@ -491,7 +489,7 @@ absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
-std::string NcclCollectiveThunk::GetDeviceString(
+std::string CollectiveThunk::GetDeviceString(
     const Thunk::CollectiveExecuteParams& collective_params) {
   GlobalDeviceId global_device_id = collective_params.global_device_id;
   DeviceAssignment::LogicalID logical_id =
@@ -503,16 +501,15 @@ std::string NcclCollectiveThunk::GetDeviceString(
                          collective_params.local_device_ordinal);
 }
 
-NcclCollectiveDoneThunk::NcclCollectiveDoneThunk(
+CollectiveDoneThunk::CollectiveDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
-    std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events,
+    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
     AsyncStreamKind async_stream_kind)
     : Thunk(kind, std::move(thunk_info)),
       async_events_(async_events),
       async_stream_kind_(async_stream_kind) {}
 
-absl::Status NcclCollectiveDoneThunk::ExecuteOnStream(
-    const ExecuteParams& params) {
+absl::Status CollectiveDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
   TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
   return params.stream->WaitFor(event);
@@ -524,7 +521,7 @@ absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op) {
         absl::StrFormat("input is not a dense array: %s",
                         shape.ToString(/*print_layout=*/true)));
   }
-  if (!IsTypeSupportedByNccl(shape.element_type(), reduction_op)) {
+  if (!IsTypeSupportedBy(shape.element_type(), reduction_op)) {
     return absl::AbortedError(absl::StrFormat(
         "element type %s not suppored by NCCL",
         primitive_util::LowercasePrimitiveTypeName(shape.element_type())));
@@ -555,5 +552,4 @@ absl::StatusOr<size_t> GetNumLocalParticipants(
   });
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

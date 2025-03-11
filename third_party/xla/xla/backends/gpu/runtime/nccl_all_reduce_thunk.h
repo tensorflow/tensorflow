@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -32,20 +32,20 @@ namespace xla {
 namespace gpu {
 
 struct NcclAllReduceConfig {
-  NcclCollectiveConfig config;
+  CollectiveConfig config;
   ReductionKind reduction_kind;
 };
 
 // Thunk that performs a NCCL-based All-Reduce or Reduce-Scatter among CUDA
 // GPU-based replicas.
-class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
+class NcclAllReduceReduceScatterThunkBase : public CollectiveThunk {
  public:
   NcclAllReduceReduceScatterThunkBase(Kind kind, ThunkInfo thunk_info,
                                       NcclAllReduceConfig config,
                                       std::vector<Buffer> buffers,
                                       bool is_sync);
 
-  const NcclCollectiveConfig& config() const override { return config_.config; }
+  const CollectiveConfig& config() const override { return config_.config; }
   ReductionKind reduction_kind() const { return config_.reduction_kind; }
 
   absl::Span<const Buffer> buffers() const { return buffers_; }
@@ -76,9 +76,8 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
       const HloAllReduceInstruction* inst);
 
  protected:
-  absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream,
-                                 CommunicatorHandle comm_handle) override;
+  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
+                             CommunicatorHandle comm_handle) override;
 };
 
 // -----------------------------------------------------------------------------
@@ -101,9 +100,8 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
       const HloReduceScatterInstruction* inst);
 
  protected:
-  absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream,
-                                 CommunicatorHandle comm_handle) override;
+  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
+                             CommunicatorHandle comm_handle) override;
 };
 
 // -----------------------------------------------------------------------------

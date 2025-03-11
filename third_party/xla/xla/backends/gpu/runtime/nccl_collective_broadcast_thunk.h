@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace xla::gpu {
 // Thunk that performs a NCCL-based collective broadcast.
-class NcclCollectiveBroadcastStartThunk : public NcclCollectiveThunk {
+class NcclCollectiveBroadcastStartThunk : public CollectiveThunk {
  public:
   static absl::Status CheckImplementable(const HloInstruction* instr,
                                          int64_t replica_count,
@@ -39,7 +39,7 @@ class NcclCollectiveBroadcastStartThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloCollectiveBroadcastInstruction* inst);
 
-  const NcclCollectiveConfig& config() const override { return config_; }
+  const CollectiveConfig& config() const override { return config_; }
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
   static const char* GetHloOpName() { return "collective-broadcast-start"; }
@@ -49,12 +49,11 @@ class NcclCollectiveBroadcastStartThunk : public NcclCollectiveThunk {
       std::vector<Buffer> buffers, bool p2p_memcpy_enabled = false);
 
  protected:
-  absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream,
-                                 CommunicatorHandle comm_handle) override;
+  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
+                             CommunicatorHandle comm_handle) override;
 
  private:
-  const NcclCollectiveConfig config_;
+  const CollectiveConfig config_;
   const std::vector<Buffer> buffers_;
 };
 

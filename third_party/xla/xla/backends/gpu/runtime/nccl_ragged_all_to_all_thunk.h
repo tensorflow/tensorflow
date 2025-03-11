@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory_handle.h"
@@ -37,7 +37,7 @@ namespace xla {
 namespace gpu {
 
 struct NcclRaggedAllToAllConfig {
-  NcclCollectiveConfig config;
+  CollectiveConfig config;
   int64_t num_total_updates = 1;
   int64_t num_input_rows = 1;
   int64_t num_row_elements = 1;
@@ -45,7 +45,7 @@ struct NcclRaggedAllToAllConfig {
 
 // Thunk that performs a NCCL-based Ragged-All-to-All among CUDA GPU-based
 // replicas.
-class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
+class NcclRaggedAllToAllStartThunk : public CollectiveThunk {
  public:
   NcclRaggedAllToAllStartThunk(ThunkInfo thunk_info,
                                const HloRaggedAllToAllInstruction* instr,
@@ -65,13 +65,12 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloRaggedAllToAllInstruction* instr);
 
-  const NcclCollectiveConfig& config() const override { return config_.config; }
+  const CollectiveConfig& config() const override { return config_.config; }
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
  protected:
-  absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream,
-                                 CommunicatorHandle comm_handle) override;
+  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
+                             CommunicatorHandle comm_handle) override;
 
  private:
   bool is_local() const;

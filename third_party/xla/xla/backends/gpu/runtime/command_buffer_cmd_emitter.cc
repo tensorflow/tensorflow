@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -197,7 +197,7 @@ static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
                                         thunk.config(), thunk.buffers());
 }
 
-static absl::StatusOr<Command> Convert(const NcclCollectiveDoneThunk& thunk) {
+static absl::StatusOr<Command> Convert(const CollectiveDoneThunk& thunk) {
   return std::make_unique<BarrierCmd>(thunk.execution_stream_id(),
                                       thunk.nccl_execution_stream_id());
 }
@@ -337,7 +337,7 @@ static absl::Status AppendCommands(
     case Thunk::Kind::kNcclAllReduceDone:
     case Thunk::Kind::kNcclReduceScatterDone:
     case Thunk::Kind::kNcclAllToAllDone:
-      return append(Convert<NcclCollectiveDoneThunk>(thunk));
+      return append(Convert<CollectiveDoneThunk>(thunk));
 
     case Thunk::Kind::kDynamicSlice:
       return append(Convert<DynamicSliceThunk>(thunk));

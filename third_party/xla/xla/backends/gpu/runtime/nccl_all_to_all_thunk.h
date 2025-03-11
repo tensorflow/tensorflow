@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -38,12 +38,12 @@ namespace xla {
 namespace gpu {
 
 struct NcclAllToAllConfig {
-  NcclCollectiveConfig config;
+  CollectiveConfig config;
   bool has_split_dimension;
 };
 
 // Thunk that performs a NCCL-based All-to-All among CUDA GPU-based replicas.
-class NcclAllToAllStartThunk : public NcclCollectiveThunk {
+class NcclAllToAllStartThunk : public CollectiveThunk {
  public:
   NcclAllToAllStartThunk(ThunkInfo thunk_info,
                          const HloAllToAllInstruction* instr,
@@ -62,14 +62,13 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllToAllInstruction* instr);
 
-  const NcclCollectiveConfig& config() const override { return config_.config; }
+  const CollectiveConfig& config() const override { return config_.config; }
   bool has_split_dimension() const { return config_.has_split_dimension; }
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
  protected:
-  absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream,
-                                 CommunicatorHandle comm_handle) override;
+  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
+                             CommunicatorHandle comm_handle) override;
 
   AsyncStreamKind GetAsyncStreamKind() const override;
 
@@ -82,9 +81,9 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
   bool p2p_memcpy_enabled_ = false;
   absl::Mutex pointer_maps_mutex_;
   // Maps from a device to a uint64_t array of size num_devices. The array is
-  // written to and used in each call to RunNcclCollective(), but is
+  // written to and used in each call to RunCollective(), but is
   // preallocated as CUDA host memory in the first call to Initialize(), since
-  // allocating CUDA host memory every call to RunNcclCollective() is expensive.
+  // allocating CUDA host memory every call to RunCollective() is expensive.
   absl::flat_hash_map<se::StreamExecutor*,
                       std::unique_ptr<se::MemoryAllocation>>
       send_pointer_maps_ ABSL_GUARDED_BY(pointer_maps_mutex_);

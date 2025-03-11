@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -44,7 +44,7 @@ namespace impl {
 NcclAllGatherConfig GetNcclAllGatherConfig(
     const HloAllGatherInstruction* inst) {
   NcclAllGatherConfig config;
-  config.config = GetNcclCollectiveConfig(inst, inst->use_global_device_ids());
+  config.config = GetCollectiveConfig(inst, inst->use_global_device_ids());
   return config;
 }
 
@@ -69,9 +69,8 @@ absl::Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
 NcclAllGatherStartThunk::NcclAllGatherStartThunk(
     ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
-    : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info,
-                          IsGPUSyncCollective(*inst),
-                          AsyncStreamKind::kCollective),
+    : CollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info,
+                      IsGPUSyncCollective(*inst), AsyncStreamKind::kCollective),
       config_(impl::GetNcclAllGatherConfig(inst)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
@@ -89,7 +88,7 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
   return impl::GetNcclAllGatherConfig(inst).config.group_mode;
 }
 
-absl::Status NcclAllGatherStartThunk::RunNcclCollective(
+absl::Status NcclAllGatherStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(

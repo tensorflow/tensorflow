@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -95,8 +95,8 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     int64_t replica_count, int64_t partition_count,
     const std::vector<Buffer>& buffers, bool p2p_memcpy_enabled,
     AsyncStreamKind stream_kind)
-    : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
-                          IsGPUSyncCollective(*instr), stream_kind),
+    : CollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
+                      IsGPUSyncCollective(*instr), stream_kind),
       config_(GetNcclP2PConfig(instr, replica_count, partition_count)),
       buffers_(buffers),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {}
@@ -170,7 +170,7 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
 
 absl::Status NcclCollectivePermuteStartThunk::Initialize(
     const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
+  TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   device_count_ = params.local_device_count;
   CHECK_GT(device_count_, 0);
   VLOG(5) << "Local device count: " << device_count_;
@@ -229,13 +229,13 @@ bool operator==(const CallRendezvousKey& a, const CallRendezvousKey& b) {
   return a.run_id == b.run_id;
 }
 
-absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
+absl::Status NcclCollectivePermuteStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params,
-                             std::vector<NcclCollectiveThunk::Buffer>(buffers_),
+                             std::vector<CollectiveThunk::Buffer>(buffers_),
                              config_.config.operand_element_type));
   TF_ASSIGN_OR_RETURN(const int64_t current_id,
                       GetCurrentId(params.collective_params, config_));

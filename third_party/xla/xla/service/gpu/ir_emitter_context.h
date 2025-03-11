@@ -29,7 +29,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -52,7 +52,7 @@ namespace gpu {
 using CollectivesAsyncEvents =
     absl::flat_hash_map<std::variant<mlir::Operation*, const HloInstruction*,
                                      std::pair<bool, uint64_t>>,
-                        std::shared_ptr<NcclCollectiveThunk::AsyncEvents>>;
+                        std::shared_ptr<CollectiveThunk::AsyncEvents>>;
 
 // IrEmitterContext encapsulates common (mutable and immutable) data structures
 // used by both IrEmitterNested and IrEmitterUnnested, such as the buffer

@@ -43,12 +43,12 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/annotation.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_collective_broadcast_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
@@ -1582,7 +1582,7 @@ BarrierCmd::BufferUseVector BarrierCmd::buffers() { return {}; }
 CollectiveCmd::CollectiveCmd(CommandBufferCmdType cmd_type,
                              ExecutionStreamId execution_stream_id,
                              ExecutionStreamId async_from_stream_id,
-                             NcclCollectiveConfig config)
+                             CollectiveConfig config)
     : CommandBufferCmd(cmd_type, execution_stream_id),
       async_from_stream_id_(async_from_stream_id),
       config_(std::move(config)) {}
@@ -1638,11 +1638,11 @@ absl::Status CollectiveCmd::AddTracedCommandBuffer(
 // AllReduceCmd
 //===----------------------------------------------------------------------===//
 
-AllReduceCmd::AllReduceCmd(
-    ExecutionStreamId execution_stream_id,
-    ExecutionStreamId async_from_stream_id, NcclCollectiveConfig config,
-    ReductionKind reduction_kind,
-    absl::Span<const NcclCollectiveThunk::Buffer> buffers)
+AllReduceCmd::AllReduceCmd(ExecutionStreamId execution_stream_id,
+                           ExecutionStreamId async_from_stream_id,
+                           CollectiveConfig config,
+                           ReductionKind reduction_kind,
+                           absl::Span<const CollectiveThunk::Buffer> buffers)
     : CollectiveCmd(CommandBufferCmdType::kAllReduceCmd, execution_stream_id,
                     async_from_stream_id, std::move(config)),
       reduction_kind_(reduction_kind),
@@ -1680,9 +1680,9 @@ absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& execute_params,
 
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetNcclComm(collectives, *execute_params.collective_params,
-                  *execute_params.collective_cliques, config().replica_groups,
-                  config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
+      GetComm(collectives, *execute_params.collective_params,
+              *execute_params.collective_cliques, config().replica_groups,
+              config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
@@ -1706,9 +1706,9 @@ CommandBufferCmd::BufferUseVector AllReduceCmd::buffers() {
 
 ReduceScatterCmd::ReduceScatterCmd(
     ExecutionStreamId execution_stream_id,
-    ExecutionStreamId async_from_stream_id, NcclCollectiveConfig config,
+    ExecutionStreamId async_from_stream_id, CollectiveConfig config,
     ReductionKind reduction_kind,
-    absl::Span<const NcclCollectiveThunk::Buffer> buffers)
+    absl::Span<const CollectiveThunk::Buffer> buffers)
     : CollectiveCmd(CommandBufferCmdType::kReduceScatter, execution_stream_id,
                     async_from_stream_id, std::move(config)),
       reduction_kind_(reduction_kind),
@@ -1747,9 +1747,9 @@ absl::Status ReduceScatterCmd::Record(
 
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetNcclComm(collectives, *execute_params.collective_params,
-                  *execute_params.collective_cliques, config().replica_groups,
-                  config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
+      GetComm(collectives, *execute_params.collective_params,
+              *execute_params.collective_cliques, config().replica_groups,
+              config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
@@ -1773,8 +1773,8 @@ CommandBufferCmd::BufferUseVector ReduceScatterCmd::buffers() {
 
 AllToAllCmd::AllToAllCmd(ExecutionStreamId execution_stream_id,
                          ExecutionStreamId async_from_stream_id,
-                         NcclCollectiveConfig config, bool has_split_dimension,
-                         absl::Span<const NcclCollectiveThunk::Buffer> buffers)
+                         CollectiveConfig config, bool has_split_dimension,
+                         absl::Span<const CollectiveThunk::Buffer> buffers)
     : CollectiveCmd(CommandBufferCmdType::kAllToAll, execution_stream_id,
                     async_from_stream_id, std::move(config)),
       has_split_dimension_(has_split_dimension),
@@ -1811,9 +1811,9 @@ absl::Status AllToAllCmd::Record(const Thunk::ExecuteParams& execute_params,
                       Thunk::GetGpuCollectives(execute_params));
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetNcclComm(collectives, *execute_params.collective_params,
-                  *execute_params.collective_cliques, config().replica_groups,
-                  config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
+      GetComm(collectives, *execute_params.collective_params,
+              *execute_params.collective_cliques, config().replica_groups,
+              config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
@@ -1835,10 +1835,10 @@ CommandBufferCmd::BufferUseVector AllToAllCmd::buffers() {
 // AllGatherCmd
 //===----------------------------------------------------------------------===//
 
-AllGatherCmd::AllGatherCmd(
-    ExecutionStreamId execution_stream_id,
-    ExecutionStreamId async_from_stream_id, NcclCollectiveConfig config,
-    absl::Span<const NcclCollectiveThunk::Buffer> buffers)
+AllGatherCmd::AllGatherCmd(ExecutionStreamId execution_stream_id,
+                           ExecutionStreamId async_from_stream_id,
+                           CollectiveConfig config,
+                           absl::Span<const CollectiveThunk::Buffer> buffers)
     : CollectiveCmd(CommandBufferCmdType::kAllGatherCmd, execution_stream_id,
                     async_from_stream_id, std::move(config)),
       buffers_(buffers.begin(), buffers.end()) {}
@@ -1874,9 +1874,9 @@ absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& execute_params,
 
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetNcclComm(collectives, *execute_params.collective_params,
-                  *execute_params.collective_cliques, config().replica_groups,
-                  config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
+      GetComm(collectives, *execute_params.collective_params,
+              *execute_params.collective_cliques, config().replica_groups,
+              config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
@@ -1900,8 +1900,8 @@ CommandBufferCmd::BufferUseVector AllGatherCmd::buffers() {
 
 CollectiveBroadcastCmd::CollectiveBroadcastCmd(
     ExecutionStreamId execution_stream_id,
-    ExecutionStreamId async_from_stream_id, NcclCollectiveConfig config,
-    absl::Span<const NcclCollectiveThunk::Buffer> buffers)
+    ExecutionStreamId async_from_stream_id, CollectiveConfig config,
+    absl::Span<const CollectiveThunk::Buffer> buffers)
     : CollectiveCmd(CommandBufferCmdType::kCollectiveBroadcastCmd,
                     execution_stream_id, async_from_stream_id,
                     std::move(config)),
@@ -1939,9 +1939,9 @@ absl::Status CollectiveBroadcastCmd::Record(
 
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetNcclComm(collectives, *execute_params.collective_params,
-                  *execute_params.collective_cliques, config().replica_groups,
-                  config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
+      GetComm(collectives, *execute_params.collective_params,
+              *execute_params.collective_cliques, config().replica_groups,
+              config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {

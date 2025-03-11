@@ -36,7 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -68,7 +68,7 @@ constexpr int64_t kNumRaggedMetadataOperands = 4;
 NcclRaggedAllToAllConfig GetNcclRaggedAllToAllConfig(
     const HloRaggedAllToAllInstruction* instr) {
   NcclRaggedAllToAllConfig config;
-  config.config = GetNcclCollectiveConfig(instr, std::nullopt);
+  config.config = GetCollectiveConfig(instr, std::nullopt);
 
   const Shape& input_size_shape = instr->operand(2)->shape();
   config.num_total_updates = input_size_shape.dimensions(0);
@@ -398,10 +398,10 @@ absl::Status RunOneShotRaggedAllToAll(
 
 NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
     ThunkInfo thunk_info, const HloRaggedAllToAllInstruction* instr,
-    std::vector<NcclCollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
-    : NcclCollectiveThunk(Thunk::kNcclRaggedAllToAllStart, thunk_info,
-                          IsGPUSyncCollective(*instr),
-                          AsyncStreamKind::kCollective),
+    std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
+    : CollectiveThunk(Thunk::kNcclRaggedAllToAllStart, thunk_info,
+                      IsGPUSyncCollective(*instr),
+                      AsyncStreamKind::kCollective),
       config_(GetNcclRaggedAllToAllConfig(instr)),
       buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled),
@@ -448,7 +448,7 @@ NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
 
 absl::Status NcclRaggedAllToAllStartThunk::Initialize(
     const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
+  TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   device_count_ = params.local_device_count;
 
   // Allocate temp buffers in the host memory to load the sizes and offsets of
@@ -512,7 +512,7 @@ bool NcclRaggedAllToAllStartThunk::is_local() const {
   return true;
 }
 
-absl::Status NcclRaggedAllToAllStartThunk::RunNcclCollective(
+absl::Status NcclRaggedAllToAllStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(

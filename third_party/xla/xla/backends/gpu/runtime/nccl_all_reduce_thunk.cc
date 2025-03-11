@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -83,7 +83,7 @@ NcclAllReduceConfig GetNcclAllReduceConfigInst(HloInstType* inst) {
   CHECK(reduction_kind.has_value());
 
   NcclAllReduceConfig config;
-  config.config = GetNcclCollectiveConfig(inst, inst->use_global_device_ids());
+  config.config = GetCollectiveConfig(inst, inst->use_global_device_ids());
   config.reduction_kind = *reduction_kind;
   return config;
 }
@@ -98,8 +98,7 @@ CollectiveOpGroupMode GetGroupModeInst(HloInstType* inst) {
 NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
     Thunk::Kind kind, ThunkInfo thunk_info, NcclAllReduceConfig config,
     std::vector<Buffer> buffers, bool is_sync)
-    : NcclCollectiveThunk(kind, thunk_info, is_sync,
-                          AsyncStreamKind::kCollective),
+    : CollectiveThunk(kind, thunk_info, is_sync, AsyncStreamKind::kCollective),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
@@ -126,7 +125,7 @@ CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
   return impl::GetGroupModeInst(inst);
 }
 
-absl::Status NcclAllReduceStartThunk::RunNcclCollective(
+absl::Status NcclAllReduceStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
@@ -159,7 +158,7 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
   return impl::GetGroupModeInst(inst);
 }
 
-absl::Status NcclReduceScatterStartThunk::RunNcclCollective(
+absl::Status NcclReduceScatterStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(

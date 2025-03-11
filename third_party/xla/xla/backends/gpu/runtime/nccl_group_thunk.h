@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
@@ -41,14 +41,14 @@ class NcclGroupThunk : public Thunk {
                        ResourceRequestsInterface& resource_requests) override;
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
-  std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events() const {
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
     return async_events_;
   }
 
  private:
   ThunkSequence thunks_;
   AsyncStreamKind stream_kind_;
-  std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events_;
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
 };
 
 }  // namespace gpu

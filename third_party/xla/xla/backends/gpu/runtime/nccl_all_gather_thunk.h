@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -31,11 +31,11 @@ namespace xla {
 namespace gpu {
 
 struct NcclAllGatherConfig {
-  NcclCollectiveConfig config;
+  CollectiveConfig config;
 };
 
 // Thunk that performs a NCCL-based All-Gather among CUDA GPU-based replicas.
-class NcclAllGatherStartThunk : public NcclCollectiveThunk {
+class NcclAllGatherStartThunk : public CollectiveThunk {
  public:
   NcclAllGatherStartThunk(ThunkInfo thunk_info,
                           const HloAllGatherInstruction* inst,
@@ -51,13 +51,12 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllGatherInstruction* inst);
 
-  const NcclCollectiveConfig& config() const override { return config_.config; }
+  const CollectiveConfig& config() const override { return config_.config; }
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
  protected:
-  absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream,
-                                 CommunicatorHandle comm_handle) override;
+  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
+                             CommunicatorHandle comm_handle) override;
 
  private:
   const NcclAllGatherConfig config_;

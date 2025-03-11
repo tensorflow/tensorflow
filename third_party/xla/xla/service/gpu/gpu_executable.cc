@@ -234,7 +234,7 @@ absl::Status ExecuteThunksImpl(
     stream_priority = stream_executor::StreamPriority::Highest;
   }
 
-  // Borrow streams required for NcclCollectiveThunk.
+  // Borrow streams required for CollectiveThunk.
   absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams(
       kAsyncStreamTotal, nullptr);
   se::Stream* command_buffer_trace_stream = nullptr;

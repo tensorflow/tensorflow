@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
 
@@ -78,7 +78,7 @@ struct NcclP2PConfig {
     return SourceTargetMapEntry{};
   }
 
-  NcclCollectiveConfig config;
+  CollectiveConfig config;
   IdToSourceTargetMap id_to_source_target;
   ValidationKind validation_kind = ValidationKind::kValid;
   // When a Send or Recv has validation_kind = ValidationKind::kConditional,

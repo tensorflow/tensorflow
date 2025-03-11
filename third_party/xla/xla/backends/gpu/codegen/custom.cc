@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_target.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_reduce_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi_api.h"
@@ -1191,7 +1191,7 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
   int64_t partition_count = instr->GetModule()->config().num_partitions();
   absl::Status implementable_status =
       NcclThunkType::CheckImplementable(instr, replica_count, partition_count);
-  bool is_degenerate = GetNcclCollectiveConfig(instr, use_global_device_ids)
+  bool is_degenerate = GetCollectiveConfig(instr, use_global_device_ids)
                            .IsDegenerate(replica_count, partition_count);
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(instr);
 
@@ -1223,7 +1223,7 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
           /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
     }
   } else if (implementable_status.ok()) {
-    std::vector<NcclCollectiveThunk::Buffer> buffers;
+    std::vector<CollectiveThunk::Buffer> buffers;
     for (int idx = 0; idx < instr->operand_count(); ++idx) {
       const Shape& src_shape = instr->operand(idx)->shape();
       const Shape& dst_shape = instr->shape().IsTuple()
@@ -1235,7 +1235,7 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
       TF_RET_CHECK(src.has_value() && dst.has_value())
           << "Expected source and destination to be present for non-degenerate "
              "collective";
-      buffers.push_back(NcclCollectiveThunk::Buffer{
+      buffers.push_back(CollectiveThunk::Buffer{
           /*element_count=*/ShapeUtil::ElementsIn(src_shape),
           /*source_buffer=*/src.value(),
           /*destination_buffer=*/dst.value(),
@@ -1246,7 +1246,7 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
     }
     auto collective_start_thunk =
         std::make_unique<NcclThunkType>(thunk_info, instr, buffers);
-    std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events =
+    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events =
         collective_start_thunk->async_events();
     seq.emplace_back(std::move(collective_start_thunk));
     // If the fusion is async, we do not emit the done thunk at the end.
@@ -1254,7 +1254,7 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
       ir_emitter_context.collectives_async_events().insert(
           {fusion_instr.parent()->AsyncStart(), async_events});
     } else {
-      auto collective_done_thunk = std::make_unique<NcclCollectiveDoneThunk>(
+      auto collective_done_thunk = std::make_unique<CollectiveDoneThunk>(
           /*kind=*/collective_done_thunk_kind,
           /*thunk_info=*/Thunk::ThunkInfo::WithProfileAnnotation(instr),
           /*async_events=*/async_events,

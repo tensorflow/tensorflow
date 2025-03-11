@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -40,10 +40,10 @@ namespace xla::gpu {
 NcclCollectiveBroadcastStartThunk::NcclCollectiveBroadcastStartThunk(
     ThunkInfo thunk_info, const HloCollectiveBroadcastInstruction* instr,
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
-    : NcclCollectiveThunk(Thunk::kNcclCollectiveBroadcastStart, thunk_info,
-                          IsGPUSyncCollective(*instr),
-                          AsyncStreamKind::kCollective),
-      config_(GetNcclCollectiveConfig(instr, std::nullopt)),
+    : CollectiveThunk(Thunk::kNcclCollectiveBroadcastStart, thunk_info,
+                      IsGPUSyncCollective(*instr),
+                      AsyncStreamKind::kCollective),
+      config_(GetCollectiveConfig(instr, std::nullopt)),
       buffers_(std::move(buffers)) {}
 
 /*static*/ absl::Status NcclCollectiveBroadcastStartThunk::CheckImplementable(
@@ -55,10 +55,10 @@ NcclCollectiveBroadcastStartThunk::NcclCollectiveBroadcastStartThunk(
 /*static*/ CollectiveOpGroupMode
 NcclCollectiveBroadcastStartThunk::GetGroupMode(
     const HloCollectiveBroadcastInstruction* inst) {
-  return GetNcclCollectiveConfig(inst, std::nullopt).group_mode;
+  return GetCollectiveConfig(inst, std::nullopt).group_mode;
 }
 
-absl::Status NcclCollectiveBroadcastStartThunk::RunNcclCollective(
+absl::Status NcclCollectiveBroadcastStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(

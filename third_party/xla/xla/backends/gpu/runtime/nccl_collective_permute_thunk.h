@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -44,7 +44,7 @@ namespace gpu {
 using tsl::AsyncValueRef;
 
 // Thunk that performs a NCCL-based collective permute.
-class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
+class NcclCollectivePermuteStartThunk : public CollectiveThunk {
  public:
   class RecvPtrMap {
    public:
@@ -112,10 +112,9 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
   static const char* GetHloOpName() { return "collective-permute-start"; }
 
  protected:
-  const NcclCollectiveConfig& config() const override { return config_.config; }
-  absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream,
-                                 CommunicatorHandle comm_handle) override;
+  const CollectiveConfig& config() const override { return config_.config; }
+  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
+                             CommunicatorHandle comm_handle) override;
 
  private:
   const NcclP2PConfig config_;
