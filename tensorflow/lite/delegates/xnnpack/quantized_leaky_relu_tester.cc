@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/quantized_leaky_relu_tester.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <random>
