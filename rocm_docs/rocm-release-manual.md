@@ -20,8 +20,11 @@ git locations of repositories used in the merge process are:
 --------------------------
 
 ## Get TensorFlow ROCm port prior to the release branching on upstream
-
-If upstream branched out r2.19 on 2025-02-20, get verified weekly-sync prior to this date
+Check the upstream when the new release was updated by checking the verison bump history in
+[Release.md](https://github.com/tensorflow/tensorflow/blob/master/RELEASE.md)
+For r2.19 it is this PR https://github.com/tensorflow/tensorflow/pull/86867 merged on 2025-02-10.
+Checkout verified weekly-sync prior to this date.
+(for r2.19 it is https://github.com/ROCm/tensorflow-upstream/tree/develop-upstream-sync-20250204)
 
 ```
 git clone git@github.com:ROCm/tensorflow-upstream.git
@@ -35,7 +38,9 @@ git remote add upstream https://github.com/tensorflow/tensorflow.git
 git fetch upstream
 ```
 
-## Merge release branch
+## Merge release branch upstream/rX.xx
+
+While creating this document it is r2.19
 
 ```
 git merge upstream/rX.xx --no-edit
@@ -53,7 +58,7 @@ git merge upstream/rX.xx --no-edit
 
 # Build merged TensorFlow
 
-- Build with either `build` or `build_python3` script. Make sure everything
+- Build with either `bazel build` rule or `build_rocm_python3` script. Make sure everything
   builds fine and Python PIP whl package can be built.
 
 ## Push the release branch
