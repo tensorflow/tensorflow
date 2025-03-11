@@ -193,6 +193,54 @@ TEST(StreamExecutorGpuClientTest, MemorySpacesUniqueIds) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, DonateExternalMem) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
+
+  std::vector<float> data = {1.0f};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer_a,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr,
+          client->addressable_devices()[0]->memory_spaces()[0],
+          /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_ref,
+                          buffer_a->AcquireExternalReference());
+
+  auto device_ptr = buffer_ref->OpaqueDeviceMemoryDataPointer();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer, client->CreateViewOfDeviceBuffer(
+                       device_ptr, shape, buffer_a->memory_space(),
+                       [buf = std::shared_ptr<PjRtBuffer::ExternalReference>(
+                            std::move(buffer_ref))]() {}));
+
+  static constexpr char const* kAddProgram =
+      R"(
+HloModule jit_add_one, input_output_alias={ {}: (0, {}, may-alias) }, entry_computation_layout={(f32[])->f32[]}
+
+ENTRY main.5 {
+  x = f32[] parameter(0), sharding={replicated}
+  constant = f32[] constant(1)
+  ROOT result = f32[] add(x, constant)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kAddProgram, *client));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, executable->Execute({{buffer.get()}}, /*options=*/{}));
+
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+  EXPECT_OK(result[0][0]->GetReadyFuture().Await());
+}
+
 TEST(StreamExecutorGpuClientTest, PropagateError) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));

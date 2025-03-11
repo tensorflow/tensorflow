@@ -92,9 +92,9 @@ absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
                 /*device_ordinal=*/0,
                 client->backend().transfer_manager()->GetByteSizeRequirement(
                     subshape)));
-        device_buffers.push_back(
-            RawSEDeviceMemory::Create(device_memory.Release(), device,
-                                      client->backend().memory_allocator()));
+        device_buffers.push_back(RawSEDeviceMemory::Create(
+            device_memory.Release(), device->local_device_id(),
+            client->backend().memory_allocator()));
         return absl::OkStatus();
       }));
   return std::make_shared<TrackedDeviceBuffer>(

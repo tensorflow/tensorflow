@@ -77,6 +77,22 @@ limitations under the License.
 
 namespace xla {
 
+struct PjRtStreamExecutorExecutionInput {
+  // Donation is not complete until ReleaseDeviceMemory() is called on the
+  // TrackedDeviceBuffer that provides buf.
+  bool is_donated;
+  tsl::RCReference<RawSEDeviceMemory> buf;
+};
+
+struct PjRtStreamExecutorExecutionOutput {
+  ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result;
+  // Donated inputs which must be freed.
+  std::vector<tsl::RCReference<RawSEDeviceMemory>> to_be_released;
+  // For PjRtStreamExecutorClient implementations that
+  // use OwningDeviceMemory for donated inputs.
+  std::vector<se::OwningDeviceMemory> se_to_be_released;
+};
+
 class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
   explicit PjRtStreamExecutorDevice(
@@ -351,6 +367,11 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   tsl::thread::ThreadPool* thread_pool() { return &thread_pool_; }
 
+  virtual absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
+      LocalExecutable& exec, PjRtDevice* device,
+      std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> arguments,
+      ExecutableRunOptions run_options);
+
  protected:
   friend class PjRtStreamExecutorBuffer;
 
@@ -569,8 +590,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     // Confirms that the buffer was successfully donated to an execution.
     // Only valid for holds of type kDonation. Causes the buffer to become
     // invalid.
-    // TODO(parkers): Only allow safe releases.
-    void ConfirmDonation(bool unsafe_release);
+    void ConfirmDonation();
 
     // Adds the held device buffers in order to 'iterator'. Used to add the
     // buffers to an ExecutionInput. We require but do not verify that
@@ -763,7 +783,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   // Drops a donation hold and makes *this invalid for further use. Does a
   // sanity check that buffer==device_buffer_. Called after device_buffer_ was
   // successfully donated to an execution.
-  void ConfirmDonation(TrackedDeviceBuffer* device_buffer, bool unsafe_release);
+  void ConfirmDonation(TrackedDeviceBuffer* device_buffer);
 
   // Drops a hold without taking any other action. Does a sanity check that
   // buffer==device_buffer_ or device_buffer_==nullptr.
@@ -948,7 +968,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   virtual absl::Span<int const> ParametersThatMustBeDonated(
       int executable_idx) const;
 
-  virtual absl::StatusOr<std::vector<ExecutionInput>>
+  virtual absl::StatusOr<
+      std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>>>
   MakeExecutionInputsAndWaitForEvents(
       int device_ordinal, const ExecuteOptions& options,
       absl::Span<const Shape> executable_parameter_shapes,
@@ -956,22 +977,24 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       absl::Span<const PjRtStreamExecutorBuffer::ScopedHold> device_buffers,
       absl::flat_hash_set<BufferSequencingEvent*>& events) const;
 
-  absl::StatusOr<ScopedShapedBuffer> EnqueueExecution(
+  absl::StatusOr<ShapeTree<tsl::RCReference<RawSEDeviceMemory>>>
+  EnqueueExecution(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, PjRtDevice* device,
       std::vector<PjRtStreamExecutorBuffer::ScopedHold>* device_buffers,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      std::vector<std::function<void()>>& compute_callbacks) const;
+      std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const;
 
   virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeOutputBuffers(int device_ordinal, const ExecuteOptions& options,
-                    ScopedShapedBuffer result_buffer,
-                    std::shared_ptr<BufferSequencingEvent> definition_event,
-                    PjRtDevice* device,
-                    std::vector<std::function<void()>>& compute_callbacks,
-                    std::vector<std::shared_ptr<TrackedDeviceBuffer>>&
-                        buffers_to_release) const;
+  MakeOutputBuffers(
+      int device_ordinal, const ExecuteOptions& options,
+      ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result_buffer,
+      std::shared_ptr<BufferSequencingEvent> definition_event,
+      PjRtDevice* device,
+      std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks,
+      std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release)
+      const;
 
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,

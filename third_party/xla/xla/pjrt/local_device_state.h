@@ -182,7 +182,7 @@ class LocalDeviceState {
   //    execute in a separate thread.
   // b) ThenDoHostCallback waits for the callback to complete.
   absl::Status ThenExecuteCallback(se::Stream* stream,
-                                   std::function<void()> callback);
+                                   absl::AnyInvocable<void() &&> callback);
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
