@@ -1556,7 +1556,7 @@ func.func @test_pad_v2(%arg0: tensor<1x256x8x25xf32>) -> (tensor<*xf32>) {
 // CHECK-LABEL: test_pad_v2_quant
 // CHECK-DAG: %[[VAL0:.*]] = "tosa.const"() <{value = dense<-128> : tensor<1xi8>}> : () -> tensor<1x!quant.uniform<i8:f32, 0.023529145866632462:42>>
 // CHECK-DAG: %[[VAL1:.*]] = tosa.const_shape  {value = dense<[0, 1, 0, 1, 0, 1, 0, 1]> : tensor<8xindex>} : () -> !tosa.shape<8>
-// CHECK: %[[VAL2:.*]] = tosa.pad %arg0, %[[VAL1]], %[[VAL0]] {input_zp = 42 : i32}
+// CHECK: %[[VAL2:.*]] = tosa.pad %arg0, %[[VAL1]], %[[VAL0]]
 // CHECK: return %[[VAL2]]
 func.func @test_pad_v2_quant(%arg0: tensor<1x7x7x9x!quant.uniform<i8:f32, 0.023529145866632462:42>>) -> (tensor<2x8x8x10x!quant.uniform<i8:f32, 0.023529145866632462:42>>) {
   %0 = "tfl.pseudo_const"() <{value = dense<[[0, 1], [0, 1], [0, 1], [0, 1]]> : tensor<4x2xi32>}> : () -> tensor<4x2xi32>

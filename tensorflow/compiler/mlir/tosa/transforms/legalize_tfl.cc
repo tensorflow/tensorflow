@@ -4635,11 +4635,11 @@ LogicalResult ConvertTFLWhileOp::matchAndRewrite(
   auto while_op = rewriter.create<mlir::tosa::WhileOp>(
       op->getLoc(), op->getResultTypes(), op->getOperands());
 
-  rewriter.createBlock(&while_op.getCond());
-  rewriter.createBlock(&while_op.getBody());
+  rewriter.createBlock(&while_op.getCondGraph());
+  rewriter.createBlock(&while_op.getBodyGraph());
 
-  inlineWhileCase(tfl_while_op.getCond(), while_op.getCond(), rewriter);
-  inlineWhileCase(tfl_while_op.getBody(), while_op.getBody(), rewriter);
+  inlineWhileCase(tfl_while_op.getCond(), while_op.getCondGraph(), rewriter);
+  inlineWhileCase(tfl_while_op.getBody(), while_op.getBodyGraph(), rewriter);
 
   rewriter.replaceOp(tfl_while_op, while_op.getResults());
 
