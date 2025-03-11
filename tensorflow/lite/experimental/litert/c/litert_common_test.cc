@@ -24,23 +24,6 @@ using testing::Gt;
 using testing::Lt;
 using testing::StrEq;
 
-TEST(CompareLiteRtApiVersionTest, Works) {
-  // Equality case.
-  EXPECT_THAT(LiteRtCompareApiVersion({1, 2, 3}, {1, 2, 3}), Eq(0));
-  // First is greater than second at patch level.
-  EXPECT_THAT(LiteRtCompareApiVersion({1, 1, 2}, {1, 1, 1}), Gt(0));
-  // First is greater than second at minor level.
-  EXPECT_THAT(LiteRtCompareApiVersion({1, 2, 0}, {1, 1, 2}), Gt(0));
-  // First is greater than second at major level.
-  EXPECT_THAT(LiteRtCompareApiVersion({2, 0, 0}, {1, 1, 2}), Gt(0));
-  // First is smaller than second at patch level.
-  EXPECT_THAT(LiteRtCompareApiVersion({1, 1, 1}, {1, 1, 2}), Lt(0));
-  // First is smaller than second at minor level.
-  EXPECT_THAT(LiteRtCompareApiVersion({1, 1, 2}, {1, 2, 0}), Lt(0));
-  // First is smaller than second at major level.
-  EXPECT_THAT(LiteRtCompareApiVersion({1, 1, 2}, {2, 0, 0}), Lt(0));
-}
-
 TEST(GetStatusString, Works) {
   EXPECT_THAT(LiteRtGetStatusString(kLiteRtStatusOk), StrEq("kLiteRtStatusOk"));
   EXPECT_THAT(LiteRtGetStatusString(kLiteRtStatusErrorInvalidArgument),

@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
+#include "tensorflow/lite/experimental/litert/core/accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 namespace {
@@ -25,7 +25,6 @@ using testing::StrEq;
 
 struct DummyAccleratorCompilationOptions {
   static constexpr const char* const kIdentifier = "dummy-accelerator";
-  static constexpr const LiteRtApiVersion kVersion = {0, 1, 0};
 
   // This NEEDS to be the first non-static field of the structure.
   LiteRtAcceleratorCompilationOptionsHeader link;
@@ -41,7 +40,6 @@ struct DummyAccleratorCompilationOptions {
         new DummyAccleratorCompilationOptions());
     LiteRtSetAcceleratorCompilationOptionsDestructor(*options, Destroy);
     LiteRtSetAcceleratorCompilationOptionsIdentifier(*options, kIdentifier);
-    LiteRtSetAcceleratorCompilationOptionsVersion(*options, kVersion);
     return kLiteRtStatusOk;
   }
 
@@ -82,12 +80,10 @@ TEST_F(LiteRtAcceleratorOptionsTest, GetIdentifier) {
 }
 
 TEST_F(LiteRtAcceleratorOptionsTest, GetVersion) {
-  LiteRtApiVersion version;
+  int version;
   EXPECT_EQ(LiteRtGetAcceleratorCompilationOptionsVersion(options_, &version),
             kLiteRtStatusOk);
-  EXPECT_EQ(version.major, DummyAccleratorCompilationOptions::kVersion.major);
-  EXPECT_EQ(version.minor, DummyAccleratorCompilationOptions::kVersion.minor);
-  EXPECT_EQ(version.patch, DummyAccleratorCompilationOptions::kVersion.patch);
+  EXPECT_EQ(version, LiteRtAcceleratorCompilationOptionsHeader::kVersion);
   EXPECT_EQ(LiteRtGetAcceleratorCompilationOptionsVersion(nullptr, &version),
             kLiteRtStatusErrorInvalidArgument);
   EXPECT_EQ(LiteRtGetAcceleratorCompilationOptionsVersion(options_, nullptr),

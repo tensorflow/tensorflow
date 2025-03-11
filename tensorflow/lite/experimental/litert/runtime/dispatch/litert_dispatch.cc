@@ -28,6 +28,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
+#include "tensorflow/lite/experimental/litert/core/version.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch_api.h"
 
 #define INVOKE_FUNC(function, ...)                                \
@@ -138,16 +139,10 @@ LiteRtStatus LiteRtDispatchInitialize(const LiteRtDispatchOption* options,
     return status;
   }
 
-  if (TheApi.version.major != LITERT_API_VERSION_MAJOR) {
+  if (!litert::internal::CheckVersionComatibility(TheApi.version,
+                                                  "Dispatch Runtime")) {
     ::dlclose(lib_handle);
-    LITERT_LOG(
-        LITERT_ERROR,
-        "Unsupported Dispatch API runtime version, found version %d.%d.%d and "
-        "expected version %d.%d.%d",
-        TheApi.version.major, TheApi.version.minor, TheApi.version.patch,
-        LITERT_API_VERSION_MAJOR, LITERT_API_VERSION_MINOR,
-        LITERT_API_VERSION_PATCH);
-    return kLiteRtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorWrongVersion;
   }
 
   auto status = Initialize(options, num_options);

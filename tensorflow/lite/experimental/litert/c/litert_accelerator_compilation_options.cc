@@ -12,12 +12,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
+#include "tensorflow/lite/experimental/litert/core/accelerator_compilation_options.h"
 
-extern "C" {
+LiteRtStatus LiteRtGetAcceleratorCompilationOptionsVersion(
+    LiteRtAcceleratorCompilationOptionsHeader* options, int* version) {
+  if (!options || !version) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *version = options->version;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtSetAcceleratorCompilationOptionsDestructor(
+    LiteRtAcceleratorCompilationOptionsHeader* options,
+    void (*destructor)(LiteRtAcceleratorCompilationOptionsHeader*)) {
+  if (!options || !destructor) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  options->destructor = destructor;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtSetAcceleratorCompilationOptionsIdentifier(
+    LiteRtAcceleratorCompilationOptionsHeader* options,
+    const char* identifier) {
+  if (!options || !identifier) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  options->identifier = identifier;
+  return kLiteRtStatusOk;
+}
 
 LiteRtStatus LiteRtGetNextAcceleratorCompilationOptions(
     LiteRtAcceleratorCompilationOptions* options) {
@@ -34,7 +61,7 @@ LiteRtStatus LiteRtAppendAcceleratorCompilationOptions(
   if (!options) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  if (appended_options && !appended_options->ReleaseData) {
+  if (appended_options && !appended_options->destructor) {
     return kLiteRtStatusErrorInvalidArgument;
   }
   while (*options) {
@@ -49,30 +76,19 @@ LiteRtStatus LiteRtGetAcceleratorCompilationOptionsIdentifier(
   if (!options || !identifier) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *identifier = options->identifier;
+  *identifier = options->identifier.c_str();
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus LiteRtDestroyAcceleratorCompilationOptions(
     LiteRtAcceleratorCompilationOptions options) {
   while (options) {
-    if (!options->ReleaseData) {
+    if (!options->destructor) {
       return kLiteRtStatusErrorInvalidArgument;
     }
     LiteRtAcceleratorCompilationOptions next = options->next;
-    options->ReleaseData(options);
+    options->destructor(options);
     options = next;
   }
   return kLiteRtStatusOk;
 }
-
-LiteRtStatus LiteRtGetAcceleratorCompilationOptionsVersion(
-    LiteRtAcceleratorCompilationOptions options, LiteRtApiVersion* version) {
-  if (!options || !version) {
-    return kLiteRtStatusErrorInvalidArgument;
-  }
-  *version = options->version;
-  return kLiteRtStatusOk;
-}
-
-}  // extern "C"

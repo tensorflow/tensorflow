@@ -14,7 +14,7 @@
 
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 
@@ -24,28 +24,9 @@
     return kLiteRtStatusErrorInvalidArgument;               \
   }
 
-#define LRT_REQUIRE_VERSION(MAJOR, MINOR, PATCH)                               \
-  if (LiteRtCompareApiVersion(options->version, {(MAJOR), (MINOR), (PATCH)}) < \
-      0) {                                                                     \
-    LITERT_LOG(LITERT_ERROR,                                                   \
-               "The version of this option object is too old. Expected at "    \
-               "least %d.%d.%d, got %d.%d.%d",                                 \
-               (MAJOR), (MINOR), (PATCH), options->version.major,              \
-               options->version.minor, options->version.patch);                \
-    return kLiteRtStatusErrorWrongVersion;                                     \
-  }
-
 extern "C" {
 
 struct LiteRtCompilationOptionsT {
-  // This should be updated every time a field is added/edited.
-  //
-  // - Renaming a field: increment patch;
-  // - Adding or deprecating a field: set patch to 0, increment minor.
-  // - Breaking layout compatibility: set patch and minor to 0, increment major.
-  //
-  // Note: Changing a default value does not impact the version.
-  LiteRtApiVersion version = {.major = 0, .minor = 0, .patch = 1};
   LiteRtHwAcceleratorSet hardware_accelerators = kLiteRtHwAcceleratorNone;
   LiteRtAcceleratorCompilationOptions accelerator_compilation_options = nullptr;
 };
@@ -84,7 +65,6 @@ LiteRtStatus LiteRtGetCompilationOptionsHardwareAccelerators(
     LiteRtHwAcceleratorSet* hardware_accelerators) {
   LRT_CHECK_NON_NULL(options);
   LRT_CHECK_NON_NULL(hardware_accelerators);
-  LRT_REQUIRE_VERSION(0, 0, 0);
   *hardware_accelerators = options->hardware_accelerators;
   return kLiteRtStatusOk;
 }

@@ -26,7 +26,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/litert/c:litert_accelerator",
-        "//tensorflow/lite/experimental/litert/c:litert_accelerator_options",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_accelerator_registration",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",

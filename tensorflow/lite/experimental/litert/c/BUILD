@@ -256,9 +256,10 @@ cc_library(
         "litert_compiled_model_options.h",
     ],
     deps = [
-        ":litert_accelerator_options",
+        ":litert_accelerator_compilation_options",
         ":litert_common",
         ":litert_logging",
+        "//tensorflow/lite/experimental/litert/core:version",
     ],
 )
 
@@ -266,10 +267,10 @@ cc_test(
     name = "litert_compiled_model_options_test",
     srcs = ["litert_compiled_model_options_test.cc"],
     deps = [
-        ":litert_accelerator_options",
+        ":litert_accelerator_compilation_options",
         ":litert_common",
         ":litert_compiled_model_options",
-        "//tensorflow/lite/experimental/litert/core:accelerator",
+        "//tensorflow/lite/experimental/litert/core:accelerator_compilation_options",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -337,28 +338,6 @@ cc_test(
 )
 
 cc_library(
-    name = "litert_accelerator_options",
-    srcs = ["litert_accelerator_options.cc"],
-    hdrs = ["litert_accelerator_options.h"],
-    deps = [
-        ":litert_common",
-        "//tensorflow/lite/experimental/litert/core:accelerator",
-    ],
-)
-
-cc_test(
-    name = "litert_accelerator_options_test",
-    srcs = ["litert_accelerator_options_test.cc"],
-    deps = [
-        ":litert_accelerator_options",
-        ":litert_common",
-        "//tensorflow/lite/experimental/litert/core:accelerator",
-        "//tensorflow/lite/experimental/litert/test:matchers",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "litert_accelerator",
     srcs = ["litert_accelerator.cc"],
     hdrs = ["litert_accelerator.h"],
@@ -384,12 +363,34 @@ cc_test(
 )
 
 cc_library(
+    name = "litert_accelerator_compilation_options",
+    srcs = ["litert_accelerator_compilation_options.cc"],
+    hdrs = ["litert_accelerator_compilation_options.h"],
+    deps = [
+        ":litert_common",
+        "//tensorflow/lite/experimental/litert/core:accelerator_compilation_options",
+    ],
+)
+
+cc_test(
+    name = "litert_accelerator_compilation_options_test",
+    srcs = ["litert_accelerator_compilation_options_test.cc"],
+    deps = [
+        ":litert_accelerator_compilation_options",
+        ":litert_common",
+        "//tensorflow/lite/experimental/litert/core:accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/test:matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "litert_accelerator_registration",
     srcs = ["litert_accelerator_registration.cc"],
     hdrs = ["litert_accelerator_registration.h"],
     deps = [
         ":litert_accelerator",
-        ":litert_accelerator_options",
+        ":litert_accelerator_compilation_options",
         ":litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/core:accelerator",
@@ -402,7 +403,7 @@ cc_test(
     srcs = ["litert_accelerator_registration_test.cc"],
     deps = [
         ":litert_accelerator",
-        ":litert_accelerator_options",
+        ":litert_accelerator_compilation_options",
         ":litert_accelerator_registration",
         ":litert_common",
         ":litert_environment",
@@ -468,7 +469,7 @@ cc_library(
     hdrs = [
         ":litert_environment.h",
         ":litert_accelerator.h",
-        ":litert_accelerator_options.h",
+        ":litert_accelerator_compilation_options.h",
         ":litert_any.h",
         ":litert_common.h",
         ":litert_compiled_model.h",

@@ -21,7 +21,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
+#include "tensorflow/lite/experimental/litert/core/accelerator_compilation_options.h"
 
 namespace litert {
 
@@ -33,8 +33,6 @@ namespace litert {
 struct ModelCompilationData : public LiteRtAcceleratorCompilationOptionsHeader {
   static constexpr absl::string_view kIdentifier =
       "environment-compilation-options";
-  static constexpr LiteRtApiVersion kVersion = {1, 0, 0};
-
   struct Deleter {
     void operator()(ModelCompilationData* options) { delete options; }
   };
@@ -45,8 +43,6 @@ struct ModelCompilationData : public LiteRtAcceleratorCompilationOptionsHeader {
     Ptr data(new ModelCompilationData());
     LITERT_RETURN_IF_ERROR(LiteRtSetAcceleratorCompilationOptionsIdentifier(
         data.get(), kIdentifier.data()));
-    LITERT_RETURN_IF_ERROR(
-        LiteRtSetAcceleratorCompilationOptionsVersion(data.get(), kVersion));
     LITERT_RETURN_IF_ERROR(LiteRtSetAcceleratorCompilationOptionsDestructor(
         data.get(), [](LiteRtAcceleratorCompilationOptionsHeader* options) {
           Deleter()(reinterpret_cast<ModelCompilationData*>(options));

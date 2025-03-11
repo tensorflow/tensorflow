@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ACCELERATOR_OPTIONS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ACCELERATOR_OPTIONS_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ACCELERATOR_COMPILATION_OPTIONS_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ACCELERATOR_COMPILATION_OPTIONS_H_
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #ifdef __cplusplus
@@ -21,14 +21,42 @@ extern "C" {
 #endif
 
 struct LiteRtAcceleratorCompilationOptionsHeader;
+
 typedef struct LiteRtAcceleratorCompilationOptionsHeader*
     LiteRtAcceleratorCompilationOptions;
 
+// Gets the version of the accelerator option structure.
+LiteRtStatus LiteRtGetAcceleratorCompilationOptionsVersion(
+    LiteRtAcceleratorCompilationOptions options, int* version);
+
+// Gets the accelerator option structure identifier.
+LiteRtStatus LiteRtGetAcceleratorCompilationOptionsIdentifier(
+    LiteRtAcceleratorCompilationOptions options, const char** identifier);
+
+// Sets the identifier for an acceleration compilation option object.
+//
+// NOTE: The identifier's lifetime is managed by the caller.
+LiteRtStatus LiteRtSetAcceleratorCompilationOptionsIdentifier(
+    struct LiteRtAcceleratorCompilationOptionsHeader* options,
+    const char* identifier);
+
 // Gets the next link in the option list.
 //
-// Sets `accelerator_options` to NULL if none are left.
+// Sets `accelerator_compilation_options` to NULL if none are left.
 LiteRtStatus LiteRtGetNextAcceleratorCompilationOptions(
-    LiteRtAcceleratorCompilationOptions* accelerator_options);
+    LiteRtAcceleratorCompilationOptions* accelerator_compilation_options);
+
+// Sets the options' destructor.
+//
+// We need this for option objects that may own some of their data. The most
+// common use case here being helper functions that build a path from other
+// program inputs. If the options structure doesn't own the data, then the user
+// must ensure that the string outlives the compiled model, which may be tricky.
+// This lets the user define a function that will be called to clean up the
+// data.
+LiteRtStatus LiteRtSetAcceleratorCompilationOptionsDestructor(
+    struct LiteRtAcceleratorCompilationOptionsHeader* options,
+    void (*destructor)(struct LiteRtAcceleratorCompilationOptionsHeader*));
 
 // Appends a new compilation option object to the list.
 //
@@ -39,14 +67,6 @@ LiteRtStatus LiteRtGetNextAcceleratorCompilationOptions(
 LiteRtStatus LiteRtAppendAcceleratorCompilationOptions(
     LiteRtAcceleratorCompilationOptions* options,
     LiteRtAcceleratorCompilationOptions appended_options);
-
-// Gets the accelerator option structure identifier.
-LiteRtStatus LiteRtGetAcceleratorCompilationOptionsIdentifier(
-    LiteRtAcceleratorCompilationOptions options, const char** identifier);
-
-// Gets the accelerator option structure identifier.
-LiteRtStatus LiteRtGetAcceleratorCompilationOptionsVersion(
-    LiteRtAcceleratorCompilationOptions options, LiteRtApiVersion* version);
 
 // Releases an accelerator option structure list.
 //
@@ -61,4 +81,4 @@ LiteRtStatus LiteRtDestroyAcceleratorCompilationOptions(
 }  // extern "C"
 #endif
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ACCELERATOR_OPTIONS_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ACCELERATOR_COMPILATION_OPTIONS_H_

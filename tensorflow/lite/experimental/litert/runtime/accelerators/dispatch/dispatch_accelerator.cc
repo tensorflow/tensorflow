@@ -21,7 +21,7 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator.h"
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator_registration.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"

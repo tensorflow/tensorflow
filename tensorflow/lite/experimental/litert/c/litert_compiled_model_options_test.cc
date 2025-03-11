@@ -15,9 +15,9 @@
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
+#include "tensorflow/lite/experimental/litert/core/accelerator_compilation_options.h"
 
 namespace {
 
@@ -108,34 +108,36 @@ TEST(LiteRtCompiledModelOptionsTest, AddAcceleratorCompilationOptionsWorks) {
   LiteRtCompilationOptions options;
   ASSERT_EQ(LiteRtCreateCompilationOptions(&options), kLiteRtStatusOk);
 
-  LiteRtAcceleratorCompilationOptions accelerator_options1,
-      accelerator_options2;
-  ASSERT_EQ(DummyAccleratorCompilationOptions::Create(&accelerator_options1),
+  LiteRtAcceleratorCompilationOptions accelerator_compilation_options1,
+      accelerator_compilation_options2;
+  ASSERT_EQ(DummyAccleratorCompilationOptions::Create(
+                &accelerator_compilation_options1),
             kLiteRtStatusOk);
-  ASSERT_EQ(DummyAccleratorCompilationOptions::Create(&accelerator_options2),
+  ASSERT_EQ(DummyAccleratorCompilationOptions::Create(
+                &accelerator_compilation_options2),
             kLiteRtStatusOk);
 
-  EXPECT_EQ(
-      LiteRtAddAcceleratorCompilationOptions(nullptr, accelerator_options1),
-      kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(LiteRtAddAcceleratorCompilationOptions(
+                nullptr, accelerator_compilation_options1),
+            kLiteRtStatusErrorInvalidArgument);
   EXPECT_EQ(LiteRtAddAcceleratorCompilationOptions(options, nullptr),
             kLiteRtStatusErrorInvalidArgument);
 
-  EXPECT_EQ(
-      LiteRtAddAcceleratorCompilationOptions(options, accelerator_options1),
-      kLiteRtStatusOk);
-  EXPECT_EQ(
-      LiteRtAddAcceleratorCompilationOptions(options, accelerator_options2),
-      kLiteRtStatusOk);
+  EXPECT_EQ(LiteRtAddAcceleratorCompilationOptions(
+                options, accelerator_compilation_options1),
+            kLiteRtStatusOk);
+  EXPECT_EQ(LiteRtAddAcceleratorCompilationOptions(
+                options, accelerator_compilation_options2),
+            kLiteRtStatusOk);
 
   LiteRtAcceleratorCompilationOptions options_it = nullptr;
   EXPECT_EQ(LiteRtGetAcceleratorCompilationOptions(options, &options_it),
             kLiteRtStatusOk);
-  EXPECT_EQ(options_it, accelerator_options1);
+  EXPECT_EQ(options_it, accelerator_compilation_options1);
 
   EXPECT_EQ(LiteRtGetNextAcceleratorCompilationOptions(&options_it),
             kLiteRtStatusOk);
-  EXPECT_EQ(options_it, accelerator_options2);
+  EXPECT_EQ(options_it, accelerator_compilation_options2);
 
   EXPECT_EQ(LiteRtDestroyCompilationOptions(options), kLiteRtStatusOk);
 }

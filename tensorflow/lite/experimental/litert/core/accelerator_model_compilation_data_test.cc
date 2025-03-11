@@ -16,7 +16,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/test/matchers.h"
 
@@ -33,11 +33,10 @@ TEST(ModelCompilationDataTest, CreateSetsUpAllNecessaryFields) {
       LiteRtGetAcceleratorCompilationOptionsIdentifier(ptr.get(), &identifier));
   EXPECT_THAT(identifier, StrEq(ModelCompilationData::kIdentifier));
 
-  LiteRtApiVersion version;
+  int version;
   LITERT_EXPECT_OK(
       LiteRtGetAcceleratorCompilationOptionsVersion(ptr.get(), &version));
-  EXPECT_THAT(LiteRtCompareApiVersion(version, ModelCompilationData::kVersion),
-              Eq(0));
+  EXPECT_EQ(version, LiteRtAcceleratorCompilationOptionsHeader::kVersion);
 }
 
 }  // namespace

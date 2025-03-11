@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
-#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
@@ -191,9 +191,9 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
       compilation_options.get(), model_compilation_data.release()));
 
   // Retrieve the accelerator options list.
-  LiteRtAcceleratorCompilationOptions accelerator_options = nullptr;
+  LiteRtAcceleratorCompilationOptions accelerator_compilation_options = nullptr;
   LITERT_RETURN_IF_ERROR(LiteRtGetAcceleratorCompilationOptions(
-      compilation_options.get(), &accelerator_options));
+      compilation_options.get(), &accelerator_compilation_options));
 
   // Apply accelerators matching the requested hardware support to the
   // model in the order they were registered.
@@ -203,9 +203,9 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
         accelerator.get(), &accelerator_supported_hardware));
     if (hardware_accelerators & accelerator_supported_hardware) {
       TfLiteOpaqueDelegate* delegate_ptr = nullptr;
-      LITERT_RETURN_IF_ERROR(
-          accelerator->CreateDelegate(accelerator.get(), accelerator_options,
-                                      reinterpret_cast<void**>(&delegate_ptr)));
+      LITERT_RETURN_IF_ERROR(accelerator->CreateDelegate(
+          accelerator.get(), accelerator_compilation_options,
+          reinterpret_cast<void**>(&delegate_ptr)));
 
       auto delegate = tflite::TfLiteOpaqueDelegateUniquePtr(
           delegate_ptr, reinterpret_cast<void (*)(TfLiteOpaqueDelegate*)>(

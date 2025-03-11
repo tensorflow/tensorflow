@@ -93,7 +93,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_environment.h",
     ],
     deps = [
-        ":accelerator",
+        ":accelerator_registry",
         "//tensorflow/lite:shared_library",
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
@@ -116,9 +116,31 @@ cc_test(
 
 cc_library(
     name = "accelerator",
-    srcs = ["accelerator.cc"],
     hdrs = ["accelerator.h"],
     deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+    ],
+)
+
+cc_library(
+    name = "accelerator_compilation_options",
+    hdrs = [
+        "accelerator_compilation_options.h",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options.h",
+        "//tensorflow/lite/experimental/litert/c:litert_common.h",
+    ],
+    deps = [
+        ":accelerator",
+    ],
+)
+
+cc_library(
+    name = "accelerator_registry",
+    srcs = ["accelerator_registry.cc"],
+    hdrs = ["accelerator_registry.h"],
+    deps = [
+        ":accelerator",
+        ":accelerator_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_shared_library",
@@ -129,7 +151,8 @@ cc_library(
     name = "accelerator_model_compilation_data",
     hdrs = ["accelerator_model_compilation_data.h"],
     deps = [
-        ":accelerator",
+        ":accelerator_compilation_options",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
@@ -142,7 +165,7 @@ cc_test(
     srcs = ["accelerator_model_compilation_data_test.cc"],
     deps = [
         ":accelerator_model_compilation_data",
-        "//tensorflow/lite/experimental/litert/c:litert_accelerator_options",
+        "//tensorflow/lite/experimental/litert/c:litert_accelerator_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/test:matchers",
         "@com_google_googletest//:gtest_main",
@@ -214,5 +237,14 @@ cc_test(
     deps = [
         ":dispatch_op_schema",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "version",
+    hdrs = ["version.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
     ],
 )

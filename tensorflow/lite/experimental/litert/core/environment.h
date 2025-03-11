@@ -25,7 +25,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/core/accelerator.h"
+#include "tensorflow/lite/experimental/litert/core/accelerator_registry.h"
 
 // A singleton class that contains global LiteRT environment options.
 class LiteRtEnvironmentT {
