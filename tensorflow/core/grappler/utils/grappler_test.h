@@ -16,17 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPPLER_TEST_H_
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPPLER_TEST_H_
 
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
