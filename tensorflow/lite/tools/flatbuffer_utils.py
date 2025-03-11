@@ -21,7 +21,6 @@ tensorflow/lite/schema/schema.fbs
 """
 
 import copy
-import functools
 import random
 import re
 import struct
@@ -490,12 +489,7 @@ def get_options_as(
   ):
     raise err
 
-  @functools.singledispatch
-  def _get_opts(unused_op):
-    return None
-
-  @_get_opts.register
-  def _(op: schema_fb.Operator):
+  if isinstance(op, schema_fb.Operator):
     if not is_opt_1_type:
       enum_val = getattr(schema_fb.BuiltinOptions2, base_type_name)
       opts_creator = schema_fb.BuiltinOptions2Creator
@@ -510,8 +504,7 @@ def get_options_as(
       return None
     return opts_creator(enum_val, raw_ops)
 
-  @_get_opts.register
-  def _(op: schema_fb.OperatorT):
+  elif isinstance(op, schema_fb.OperatorT):
     if is_opt_1_type:
       raw_ops_t = op.builtinOptions
     else:
@@ -520,4 +513,5 @@ def get_options_as(
       return None
     return raw_ops_t
 
-  return _get_opts(op)
+  else:
+    return None
