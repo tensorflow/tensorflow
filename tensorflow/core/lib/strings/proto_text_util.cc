@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_text_util.h"
 
 #include "absl/strings/escaping.h"
+#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 namespace strings {

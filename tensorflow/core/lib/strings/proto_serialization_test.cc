@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 
+#include <cstddef>
 #include <string>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
