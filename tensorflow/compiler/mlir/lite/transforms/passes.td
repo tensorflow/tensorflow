@@ -287,7 +287,7 @@ def PrepareTFPass : Pass<"tfl-prepare-tf", "mlir::func::FuncOp"> {
   ];
   let options = [
       Option<"unfold_batch_matmul_", "unfold_batchmatmul",
-             "bool", "true",
+             "bool", "false",
              "Unfold BatchMatMul into individual MatMul ops.">,
       Option<"allow_bf16_and_f16_type_legalization_", "allow-bf16-and-f16-type-legalization",
              "bool", "false",
