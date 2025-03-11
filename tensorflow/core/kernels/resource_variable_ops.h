@@ -47,6 +47,7 @@ class ReadVariableOp : public OpKernel {
 
  private:
   DataType dtype_;
+  string var_name_;
 };
 
 class ReadVariablesOp : public OpKernel {
