@@ -23,6 +23,7 @@ package_group(
         "//tensorflow/python/eager/...",
         "//tensorflow/python/profiler/...",
         "//tensorflow/python/tpu/profiler/...",
+        "@local_xla//xla/tools/...",
     ],
 )
 
