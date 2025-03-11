@@ -46,6 +46,7 @@ tf_cc_binary(
             "//tensorflow/core:tensorflow",
         ],
     }) + [
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "//tensorflow/cc:ops",
