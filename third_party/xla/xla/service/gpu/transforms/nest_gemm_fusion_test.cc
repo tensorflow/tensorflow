@@ -26,10 +26,9 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 using ::testing::ElementsAre;
-using ::testing::Values;
 using ::tsl::testing::IsOkAndHolds;
 
 namespace xla {
@@ -85,8 +84,7 @@ ENTRY entry {
         }
       }
     }
-}
-)";
+})";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
@@ -103,6 +101,11 @@ ENTRY entry {
               GmockMatch(match::Dot(match::Fusion(&lhs), match::Fusion(&rhs))));
   EXPECT_THAT(*lhs, OutputTileSizesIs(ElementsAre(64, 32)));
   EXPECT_THAT(*rhs, OutputTileSizesIs(ElementsAre(32, 256)));
+
+  // The old GEMM config should have been deleted.
+  EXPECT_FALSE(fusion->backend_config<GpuBackendConfig>()
+                   ->fusion_backend_config()
+                   .has_triton_gemm_config());
 }
 
 // Tests hoisting of bitcasts which would otherwise trigger unsatisfiable
