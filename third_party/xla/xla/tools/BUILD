@@ -802,6 +802,20 @@ xla_cc_binary(
     ],
 )
 
+xla_cc_binary(
+    name = "compute_gpu_device_stats_main_gpu",
+    srcs = ["compute_gpu_device_stats_main.cc"],
+    tags = ["gpu"],
+    deps = [
+        ":compute_gpu_device_stats",
+        "//xla:debug_options_flags",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
 tsl_pybind_extension(
     name = "collective_perf_table_gen_bindings",
     srcs = ["collective_perf_table_gen_bindings.cc"],

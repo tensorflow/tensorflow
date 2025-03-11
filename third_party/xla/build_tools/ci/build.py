@@ -57,6 +57,7 @@ _XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
 )
 _XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools/multihost_hlo_runner:hlo_runner_main_gpu",
+    "//xla/tools:compute_gpu_device_stats_main_gpu",
 )
 _KOKORO_ARTIFACTS_DIR = os.environ.get(
     "KOKORO_ARTIFACTS_DIR", "$KOKORO_ARTIFACTS_DIR"

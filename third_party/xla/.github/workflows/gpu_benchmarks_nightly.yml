@@ -18,7 +18,8 @@ permissions:
 on:
   workflow_dispatch:  # Allows manual triggering
   schedule:
-    - cron: '0 */6 * * *'  # Run every 6 hours (at minute 0 of hours 0, 6, 12, 18)
+    - cron: "0 0 * * *"  # Run at midnight every day
+
 
 jobs:
   Tests:
