@@ -89,10 +89,6 @@ class GpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
   LoadAotCompilationResult(const std::string& serialized_aot_result) override;
 
-  // Stateless version of the same function.
-  static absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  LoadAotCompilationResultStatic(const std::string& serialized_aot_result);
-
   absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;
 
