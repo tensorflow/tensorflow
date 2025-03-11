@@ -16,8 +16,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/framework/types.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace {
