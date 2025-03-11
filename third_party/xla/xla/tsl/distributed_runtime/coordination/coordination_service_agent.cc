@@ -108,6 +108,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   absl::StatusOr<CoordinatedTask> GetOwnTask() override;
   absl::StatusOr<std::vector<CoordinatedTaskStateInfo>> GetTaskState(
       const std::vector<CoordinatedTask>& task) override;
+  absl::StatusOr<std::vector<CoordinatedTaskStateInfo>> GetJobState(
+      absl::string_view job_name) override;
   absl::Status ReportError(const absl::Status& error) override;
   absl::Status Shutdown() override;
   absl::Status Reset() override;
@@ -550,6 +552,30 @@ CoordinationServiceAgentImpl::GetTaskState(
           result = std::vector<CoordinatedTaskStateInfo>(
               std::make_move_iterator(response.task_state().begin()),
               std::make_move_iterator(response.task_state().end()));
+        } else {
+          result = s;
+        }
+        n.Notify();
+      });
+  n.WaitForNotification();
+  return result;
+}
+
+absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>
+CoordinationServiceAgentImpl::GetJobState(absl::string_view job_name) {
+  GetJobStateRequest request;
+  request.set_job_name(std::string(job_name));
+  GetJobStateResponse response;
+  absl::Notification n;
+  absl::StatusOr<std::vector<CoordinatedTaskStateInfo>> result;
+  leader_client_->GetJobStateAsync(
+      &request, &response, [&](const absl::Status& s) {
+        if (s.ok()) {
+          result.emplace();
+          result->reserve(response.task_state_size());
+          for (auto& state : *response.mutable_task_state()) {
+            result->push_back(std::move(state));
+          }
         } else {
           result = s;
         }

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
@@ -87,6 +88,8 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
   MOCK_METHOD(absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>,
               GetTaskState, (const std::vector<CoordinatedTask>& task),
               (override));
+  MOCK_METHOD(absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>,
+              GetJobState, (absl::string_view job_nam), (override));
   MOCK_METHOD(absl::Status, ReportError, (const absl::Status& error),
               (override));
   MOCK_METHOD(absl::Status, Shutdown, (), (override));

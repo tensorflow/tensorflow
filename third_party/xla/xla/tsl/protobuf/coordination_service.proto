@@ -162,6 +162,15 @@ message GetTaskStateResponse {
   repeated CoordinatedTaskStateInfo task_state = 1;
 }
 
+// Request and response messages for getting state of a remote job.
+message GetJobStateRequest {
+  string job_name = 1;
+}
+
+message GetJobStateResponse {
+  repeated CoordinatedTaskStateInfo task_state = 1;
+}
+
 // Message for configuration key value.
 // Key is structured like Unix file system, with multiple levels of directory
 // names separated by the slash ('/') characters.
@@ -313,6 +322,9 @@ service CoordinationService {
   // CoordinatedTaskState, and if the task is in an error status, returns a
   // non-OK error code, non-empty error message and error payload.
   rpc GetTaskState(GetTaskStateRequest) returns (GetTaskStateResponse);
+
+  // Get the state of every task in a remote job.
+  rpc GetJobState(GetJobStateRequest) returns (GetJobStateResponse);
 
   // Insert configuration key-value that will be accessible to all cluster
   // tasks. The key can be formatted as Unix file path with hierarchy. The

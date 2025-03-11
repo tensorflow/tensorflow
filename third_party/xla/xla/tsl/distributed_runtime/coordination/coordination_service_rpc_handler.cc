@@ -189,6 +189,22 @@ void CoordinationServiceRpcHandler::GetTaskStateAsync(
   done(absl::OkStatus());
 }
 
+void CoordinationServiceRpcHandler::GetJobStateAsync(
+    const tensorflow::GetJobStateRequest* request,
+    tensorflow::GetJobStateResponse* response, StatusCallback done) {
+  absl::ReaderMutexLock l(&mu_);
+  if (service_ == nullptr) {
+    done(MakeCoordinationError(
+        absl::InternalError("Coordination service is not enabled.")));
+    return;
+  }
+  std::vector<tensorflow::CoordinatedTaskStateInfo> result =
+      service_->GetJobState(request->job_name());
+  absl::c_move(result, tsl::protobuf::RepeatedFieldBackInserter(
+                           response->mutable_task_state()));
+  done(absl::OkStatus());
+}
+
 void CoordinationServiceRpcHandler::InsertKeyValueAsync(
     const tensorflow::InsertKeyValueRequest* request,
     tensorflow::InsertKeyValueResponse* response, StatusCallback done) {
