@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_SCHEMA_SCHEMA_CONVERSION_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_SCHEMA_SCHEMA_CONVERSION_UTILS_H_
 
+#include <cstdint>
+
 #include "flatbuffers/flatbuffers.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 
