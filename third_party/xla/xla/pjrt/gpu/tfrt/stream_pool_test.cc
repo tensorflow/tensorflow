@@ -50,10 +50,13 @@ class StreamPoolTest : public ::testing::Test {
 TEST_F(StreamPoolTest, Borrow) {
   BoundedStreamPool pool(executor_, 1);
   EXPECT_EQ(pool.GetAvailableStreamNum(), 1);
-  ASSERT_OK_AND_ASSIGN(BoundedStreamPool::Handle handle, pool.Borrow());
-  EXPECT_NE(handle.get(), nullptr);
-  EXPECT_EQ(handle.get(), &*handle);
-  EXPECT_EQ(pool.GetAvailableStreamNum(), 0);
+  {
+    ASSERT_OK_AND_ASSIGN(BoundedStreamPool::Handle handle, pool.Borrow());
+    EXPECT_NE(handle.get(), nullptr);
+    EXPECT_EQ(handle.get(), &*handle);
+    EXPECT_EQ(pool.GetAvailableStreamNum(), 0);
+  }
+  EXPECT_EQ(pool.GetAvailableStreamNum(), 1);
 }
 
 }  // namespace
