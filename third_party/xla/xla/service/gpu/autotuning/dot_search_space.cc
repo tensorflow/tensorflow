@@ -97,10 +97,9 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
       // Figure out some basic limitations on tiling based on the above.
       desired_total_warps_(GetDesiredTotalWarps()),
       max_out_tile_(GetMaxOutputTile()),
-      // TODO: b/404470821 - Compute these from the problem properties instead
-      // of hardcoding.
-      min_out_tile_{16, 16},
-      min_warps_per_cta_(4),
+      should_optimize_for_occupancy_(ShouldOptimizeForOccupancy()),
+      min_out_tile_(GetMinOutputTile()),
+      min_warps_per_cta_(GetMinWarpsPerCta()),
       min_contracting_tile_size_(GetMinContractingTileSize()),
       max_contracting_split_(GetMaxContractingSplit(max_out_tile_)) {
   // Make sure that the range of output tile sizes is not empty
@@ -155,12 +154,13 @@ std::string TritonDotFusionSearchSpace::ToString() const {
   return absl::StrFormat(
       "problem_size_BxMxNxKxE: %dx%dx%dx%dx(%d->%d) "
       "tile_range_SxMxNxK: [1-%d]x[%d-%d]x[%d-%d]x[%d-?] "
-      "desired_total_warps: %d warps_per_cta: [%d-?]",
+      "desired_total_warps: %d occupancy_optimization: %d "
+      "warps_per_cta: [%d-?]",
       batch_size_, lhs_parallel_size_, rhs_parallel_size_, contracting_size_,
       operand_bitwidth_, compute_bitwidth_, max_contracting_split_,
       min_out_tile_.lhs_dim, max_out_tile_.lhs_dim, min_out_tile_.rhs_dim,
       max_out_tile_.rhs_dim, min_contracting_tile_size_, desired_total_warps_,
-      min_warps_per_cta_);
+      should_optimize_for_occupancy_, min_warps_per_cta_);
 }
 
 int TritonDotFusionSearchSpace::GetDesiredTotalWarps() const {
@@ -208,6 +208,53 @@ TritonDotFusionSearchSpace::GetMaxOutputTile() const {
             << max_tile.lhs_dim << "x" << max_tile.rhs_dim;
   }
   return max_tile;
+}
+
+bool TritonDotFusionSearchSpace::ShouldOptimizeForOccupancy() const {
+  const int64_t desired_num_ctas =
+      desired_total_warps_ / kMinWarpsPerCtaForWgmma;
+  const int64_t min_result_tiles = GetNumResultTiles(max_out_tile_);
+  if (desired_num_ctas > min_result_tiles) {
+    VLOG(5) << "Occupancy optimization: Might have as few as "
+            << min_result_tiles << " tiles, but want at least "
+            << desired_num_ctas
+            << " CTAs. Will consider trading off compute performance for "
+               "occupancy.";
+    return true;
+  }
+  return false;
+}
+
+TritonDotFusionSearchSpace::OutputTile
+TritonDotFusionSearchSpace::GetMinOutputTile() const {
+  // Triton currently doesn't support tiles smaller than 16x16.
+  // TODO: b/395572776 - Lift this restriction, and calculate a smaller tile
+  // based on the requested algorithm (e.g., if we want to use wgmma vs mma
+  // vs fma, the minimal reasonable tile size is different).
+  constexpr OutputTile kMinSupportedTile = {16, 16};
+  constexpr OutputTile kMinWgmmaTile = {64, 16};
+  if (device_description_.cuda_compute_capability().IsAtLeastHopper() &&
+      !should_optimize_for_occupancy_) {
+    VLOG(5) << "Computing output_tile: Want to use wgmma, so output_tile >= "
+            << kMinWgmmaTile.lhs_dim << "x" << kMinWgmmaTile.rhs_dim;
+    return kMinWgmmaTile;
+  }
+  VLOG(5)
+      << "Computing output_tile: Might want to target mma, so output_tile >= "
+      << kMinSupportedTile.lhs_dim << "x" << kMinSupportedTile.rhs_dim;
+  return kMinSupportedTile;
+}
+
+int TritonDotFusionSearchSpace::GetMinWarpsPerCta() const {
+  if (device_description_.cuda_compute_capability().IsAtLeastHopper() &&
+      !should_optimize_for_occupancy_) {
+    VLOG(5) << "Computing num_warps: Want to use wgmma, so num_warps >= "
+            << kMinWarpsPerCtaForWgmma;
+    return kMinWarpsPerCtaForWgmma;
+  }
+  VLOG(5) << "Computing num_warps: Considering occupancy, so num_warps >= "
+          << kMinWarpsPerCtaForOccupancy;
+  return kMinWarpsPerCtaForOccupancy;
 }
 
 int64_t TritonDotFusionSearchSpace::GetNumResultTiles(
