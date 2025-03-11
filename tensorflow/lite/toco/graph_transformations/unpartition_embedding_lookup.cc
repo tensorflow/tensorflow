@@ -26,9 +26,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status UnpartitionEmbeddingLookup::Run(Model* model,
-                                                     std::size_t op_index,
-                                                     bool* modified) {
+absl::Status UnpartitionEmbeddingLookup::Run(Model* model, std::size_t op_index,
+                                             bool* modified) {
   *modified = false;
   // Collapses a partitioned tf.nn.embedding_lookup back into a single Gather.
   // https://www.tensorflow.org/api_docs/python/tf/nn/embedding_lookup
