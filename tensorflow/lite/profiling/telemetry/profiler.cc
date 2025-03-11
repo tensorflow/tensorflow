@@ -18,6 +18,9 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
 namespace tflite::telemetry {
 
