@@ -295,6 +295,9 @@ static void DecrementCount(
 void HloComputation::AddCallee(HloComputation* callee) {
   IncrementCount(callee_computations_, callee);
   IncrementCount(callee->caller_computations_, this);
+  if (parent() != nullptr && callee->parent() == parent()) {
+    parent()->topological_sort_.AddEdge(this, callee);
+  }
 }
 
 void HloComputation::RemoveCallee(HloComputation* callee) {

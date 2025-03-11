@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/iterator_util.h"
+#include "xla/online_topsort.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/name_uniquer.h"
@@ -1112,6 +1113,76 @@ class HloComputation {
       callee_computations_;
   absl::btree_map<HloComputation*, int, UniqueIdComparator>
       caller_computations_;
+
+  // Adapters for the use of the topological sort.
+  class NeighborIterator {
+   public:
+    using Iterator = absl::btree_map<HloComputation*, int,
+                                     UniqueIdComparator>::const_iterator;
+    NeighborIterator(const HloModule* parent, Iterator it, Iterator end)
+        : parent_(parent), it_(it), end_(end) {
+      SkipComputationsFromOtherModules();
+    }
+
+    HloComputation* operator*() const { return it_->first; }
+    HloComputation* operator->() const { return it_->first; }
+    NeighborIterator& operator++() {
+      ++it_;
+      SkipComputationsFromOtherModules();
+      return *this;
+    }
+    bool operator==(const NeighborIterator& other) const {
+      return it_ == other.it_;
+    }
+    bool operator!=(const NeighborIterator& other) const {
+      return it_ != other.it_;
+    }
+
+   private:
+    void SkipComputationsFromOtherModules() {
+      if (!parent_) {
+        it_ = end_;
+        return;
+      }
+      while (it_ != end_ && it_->first->parent() != parent_) {
+        ++it_;
+      }
+    }
+
+    const HloModule* parent_;
+    Iterator it_;
+    Iterator end_;
+  };
+  NeighborIterator callers_begin() const {
+    return NeighborIterator(parent(), caller_computations_.begin(),
+                            caller_computations_.end());
+  }
+  NeighborIterator callers_end() const {
+    return NeighborIterator(parent(), caller_computations_.end(),
+                            caller_computations_.end());
+  }
+  NeighborIterator callees_begin() const {
+    return NeighborIterator(parent(), callee_computations_.begin(),
+                            callee_computations_.end());
+  }
+  NeighborIterator callees_end() const {
+    return NeighborIterator(parent(), callee_computations_.end(),
+                            callee_computations_.end());
+  }
+
+  template <typename S, typename Index, TopologicalSortNode<S> S::* Link,
+            Index S::* IndexInParent, typename PredecessorIterator,
+            PredecessorIterator (S::*PredecessorsBegin)() const,
+            PredecessorIterator (S::*PredecessorsEnd)() const,
+            typename SuccessorIterator,
+            SuccessorIterator (S::*SuccessorsBegin)() const,
+            SuccessorIterator (S::*SuccessorsEnd)() const>
+  friend class TopologicalSort;
+
+  template <typename S, TopologicalSortNode<S> S::* Link>
+  friend class TopologicalSortIterator;
+
+  TopologicalSortNode<HloComputation> topological_sort_node_;
 
   HloComputation(const HloComputation&) = delete;
   HloComputation& operator=(const HloComputation&) = delete;
