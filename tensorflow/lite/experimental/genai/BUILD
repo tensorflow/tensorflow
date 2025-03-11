@@ -1,5 +1,5 @@
 # Custom Ops useful for GenAI models.
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
@@ -16,6 +16,7 @@ cc_library(
     hdrs = [
         "genai_ops.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite:framework",
@@ -33,7 +34,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
