@@ -900,7 +900,7 @@ config_setting(
 )
 
 # This flag disables generating tensorflow.lite.python under LiteRT repo.
-# Avoid using flag for creating tflite wheels as tensorflow/lite is not yet fully splitted from tf.
+# Avoid using flag for creating tflite wheels as tensorflow/lite is not yet fully split from tf.
 config_setting(
     name = "disable_tf_lite_py",
     define_values = {"disable_tf_lite_py": "true"},
