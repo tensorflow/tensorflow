@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/literal.h"
 #include "xla/service/backend.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -107,6 +108,7 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
 HloRunner::~HloRunner() {}
 
 se::DeviceMemoryAllocator* HloRunner::GetAllocator() {
+  absl::MutexLock lock(&mu_);
   if (allocator_ == nullptr) {
     allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
         backend().default_stream_executor());
@@ -115,15 +117,18 @@ se::DeviceMemoryAllocator* HloRunner::GetAllocator() {
 }
 
 absl::StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
-    const Literal& literal, int64_t param_no) {
-  auto shape_representation_fn = [this, param_no](const Shape& shape) {
+    const Literal& literal,
+    absl::Nullable<const ComputationLayout*> entry_computation_layout,
+    int64_t param_no) {
+  auto shape_representation_fn = [this, entry_computation_layout,
+                                  param_no](const Shape& shape) {
     Shape new_shape = device_shape_representation_fn_(shape);
-    if (entry_computation_layout_ == nullptr) {
+    if (entry_computation_layout == nullptr) {
       return new_shape;
     }
 
     Shape entry_computation_shape =
-        entry_computation_layout_->parameter_shape(param_no);
+        entry_computation_layout->parameter_shape(param_no);
     // Favor entry computation shape with some adjustment.
     ShapeUtil::ForEachMutableSubshape(
         &new_shape,
@@ -155,14 +160,17 @@ absl::StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
 }
 
 absl::StatusOr<std::vector<ScopedShapedBuffer>>
-HloRunner::TransferLiteralsToDevice(absl::Span<const Literal* const> literals) {
+HloRunner::TransferLiteralsToDevice(
+    absl::Span<const Literal* const> literals,
+    absl::Nullable<const ComputationLayout*> entry_computation_layout) {
   std::vector<ScopedShapedBuffer> buffers;
   buffers.reserve(literals.size());
   for (auto i = 0; i < literals.size(); i++) {
     const Literal* literal = literals[i];
     CHECK(literal != nullptr);
-    TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
-                        TransferLiteralToDevice(*literal, i));
+    TF_ASSIGN_OR_RETURN(
+        ScopedShapedBuffer buffer,
+        TransferLiteralToDevice(*literal, entry_computation_layout, i));
     buffers.push_back(std::move(buffer));
   }
   return std::move(buffers);
@@ -175,7 +183,7 @@ HloRunner::TransferLiteralsToDevice(absl::Span<const Literal> literals) {
   for (const auto& literal : literals) {
     literal_pointers.push_back(&literal);
   }
-  return TransferLiteralsToDevice(literal_pointers);
+  return TransferLiteralsToDevice(literal_pointers, nullptr);
 }
 
 absl::StatusOr<Literal> HloRunner::TransferLiteralFromDevice(
@@ -207,11 +215,10 @@ absl::StatusOr<Literal> HloRunner::Execute(
     std::unique_ptr<HloModule> module,
     absl::Span<const Literal* const> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
-  xla::UpdateEntryComputationLayout(module.get(),
-                                    device_shape_representation_fn_);
-  entry_computation_layout_ = &(module->entry_computation_layout());
-  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
-                      TransferLiteralsToDevice(arguments));
+  MaybeUpdateEntryComputationLayout(module.get());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<ScopedShapedBuffer> argument_buffers,
+      TransferLiteralsToDevice(arguments, &module->entry_computation_layout()));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
                       ExecuteWithMovedDeviceBuffersAndBufferAssignment(
                           /*module=*/std::move(module),
@@ -227,11 +234,10 @@ absl::StatusOr<Literal> HloRunner::ExecuteWithBufferAssignment(
     const BufferAssignmentProto* buffer_assignment_proto,
     absl::Span<const Literal* const> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
-  xla::UpdateEntryComputationLayout(module.get(),
-                                    device_shape_representation_fn_);
-  entry_computation_layout_ = &(module->entry_computation_layout());
-  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
-                      TransferLiteralsToDevice(arguments));
+  MaybeUpdateEntryComputationLayout(module.get());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<ScopedShapedBuffer> argument_buffers,
+      TransferLiteralsToDevice(arguments, &module->entry_computation_layout()));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
                       ExecuteWithMovedDeviceBuffersAndBufferAssignment(
                           /*module=*/std::move(module), buffer_assignment_proto,
@@ -246,10 +252,11 @@ absl::StatusOr<Literal> HloRunner::ExecuteWithExecutable(
     ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, executable));
-  entry_computation_layout_ = &(
-      hlo_runner_executable->executable()->module().entry_computation_layout());
-  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
-                      TransferLiteralsToDevice(arguments));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<ScopedShapedBuffer> argument_buffers,
+      TransferLiteralsToDevice(arguments, &hlo_runner_executable->executable()
+                                               ->module()
+                                               .entry_computation_layout()));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
                       ExecuteWithDeviceBuffers(
                           /*executable=*/hlo_runner_executable,
@@ -419,8 +426,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
 absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithExecutionInputs(
     Executable* executable, std::vector<ExecutionInput> arguments,
     ExecutionProfile* profile) {
-  xla::UpdateEntryComputationLayout(&executable->module(),
-                                    device_shape_representation_fn_);
+  MaybeUpdateEntryComputationLayout(&executable->module());
 
   // Get service run options.
   TF_ASSIGN_OR_RETURN(auto stream,
@@ -724,8 +730,7 @@ absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
 HloRunner::CreateExecutableWithBufferAssignment(
     std::unique_ptr<HloModule> module,
     const BufferAssignmentProto* buffer_assignment_proto, bool run_hlo_passes) {
-  xla::UpdateEntryComputationLayout(module.get(),
-                                    device_shape_representation_fn_);
+  MaybeUpdateEntryComputationLayout(module.get());
   if (run_hlo_passes) {
     if (buffer_assignment_proto != nullptr) {
       LOG(WARNING) << "Ignoring buffer assignment provided because hlo passes "
@@ -781,13 +786,7 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
                                      backend().StreamBorrowerWithPriority());
 }
 
-Backend& HloRunner::backend() {
-  if (!backend_) {
-    backend_ = Backend::CreateDefaultBackend().value();
-    VLOG(1) << "Executing on platform " << backend().platform()->Name();
-  }
-  return *backend_;
-}
+Backend& HloRunner::backend() { return *backend_; }
 
 const Backend& HloRunner::backend() const {
   return const_cast<HloRunner*>(this)->backend();
@@ -846,4 +845,10 @@ absl::StatusOr<absl::Nonnull<const HloProto*>> HloRunner::HloProtoFromWrapped(
   return hlo_runner_executable->executable()->hlo_proto();
 }
 
+void HloRunner::MaybeUpdateEntryComputationLayout(HloModule* module) {
+  absl::MutexLock lock(&mu_);
+  if (module_ids_with_updated_layouts_.insert(module->unique_id()).second) {
+    xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
+  }
+}
 }  // namespace xla
