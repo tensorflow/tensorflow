@@ -51,7 +51,7 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
 
   explicit GpuHloCostAnalysis(const Options& options)
       : GpuHloCostAnalysis(options,
-                           HloOpProfiles::Singleton().GetDefaultProfile()) {}
+                           HloOpProfiles::Singleton().GetLatestProfile()) {}
 
   GpuHloCostAnalysis(const Options& options,
                      const se::DeviceDescription& device_info)
