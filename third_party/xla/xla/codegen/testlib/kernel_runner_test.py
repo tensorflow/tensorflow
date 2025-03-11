@@ -41,7 +41,7 @@ class HloModuleParse(absltest.TestCase):
         "HloModule sine_module,",
         "{",
         "%input = s32[4]{0} parameter(0)",
-        "ROOT %sine = s32[4]{0} sine(s32[4]{0} %input)",
+        "ROOT %sine = s32[4]{0} sine(%input)",
         "}",
     ]
     self.assertContainsInOrder(

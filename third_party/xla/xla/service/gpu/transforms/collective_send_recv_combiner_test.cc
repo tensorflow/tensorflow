@@ -57,24 +57,24 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithSourceTargetPairs) {
     CHECK-SAME: ((f32[], u32[], token[]), (f32[], u32[], token[]))
     CHECK-NEXT: %[[PARAM0:.*]] = f32[] parameter(0)
     CHECK: %[[PARAM1:.*]] = token[] parameter(1)
-    CHECK: %[[SEND1:.*]] = ({{.*}}) send(f32[] %[[PARAM0]], token[] %[[PARAM1]]), channel_id=1,
+    CHECK: %[[SEND1:.*]] = ({{.*}}) send(%[[PARAM0]], %[[PARAM1]]), channel_id=1,
     CHECK-SAME: frontend_attributes{{.*}}_xla_send_recv_source_target_pairs{{.*}}0,1{{.*}}1,2{{.*}}2,3{{.*}}
     CHECK-NEXT: %[[PARAM2:.*]] = {{.*}} parameter(2)
-    CHECK: %[[RECV1:.*]] = ({{.*}}) recv({{.*}} %[[PARAM2]]), channel_id=1,
+    CHECK: %[[RECV1:.*]] = ({{.*}}) recv(%[[PARAM2]]), channel_id=1,
     CHECK-SAME: frontend_attributes{{.*}}_xla_send_recv_source_target_pairs{{.*}}0,1{{.*}}1,2{{.*}}2,3{{.*}}
-    CHECK-NEXT: ROOT %[[OUT:.*]] = {{.*}} tuple(({{.*}}) %[[SEND1]], ({{.*}}) %[[RECV1]])
+    CHECK-NEXT: ROOT %[[OUT:.*]] = {{.*}} tuple(%[[SEND1]], %[[RECV1]])
     CHECK: ENTRY %[[MAIN:.*]] () -> f32[]
     CHECK: %[[DATA:.*]] = {{.*}} constant(5)
     CHECK: %[[RECV_START:.*]] = {{.*}} after-all()
-    CHECK: %[[TUPLE_START:.*]] = {{.*}} async-start({{.*}} %[[DATA]], {{.*}} %[[RECV_START]], {{.*}} %[[RECV_START]]), calls=%[[WRAPPED_SEND_RECV]]
-    CHECK-NEXT: %[[TUPLE_DONE:.*]] = {{.*}} async-done({{.*}}%[[TUPLE_START]])
-    CHECK %[[GTE2:.*]] = {{.*}} get-tuple-element({{.*}} %[[TUPLE_DONE]]), index=1
-    CHECK %[[GTE3:.*]] = {{.*}} get-tuple-element({{.*}} %[[GTE2]]), index=0
-    CHECK %[[GTE4:.*]] = {{.*}} get-tuple-element({{.*}} %[[GTE2]]), index=2
-    CHECK %[[TUPLE1:.*]] = {{.*}} tuple({{.*}} %[[GTE3:.*]], {{.*}} %[[GTE4]])
-    CHECK ROOT %[[OUT:.*]] = {{.*}} get-tuple-element({{.*}} %[[TUPLE1]]), index=0
-    CHECK %[[GTE:.*]] = {{.*}} get-tuple-element({{.*}} %[[TUPLE_DONE]]), index=0
-    CHECK %[[GTE1:.*]] = {{.*}} get-tuple-element({{.*}} %[[GTE]]), index=2
+    CHECK: %[[TUPLE_START:.*]] = {{.*}} async-start(%[[DATA]], %[[RECV_START]], %[[RECV_START]]), calls=%[[WRAPPED_SEND_RECV]]
+    CHECK-NEXT: %[[TUPLE_DONE:.*]] = {{.*}} async-done(%[[TUPLE_START]])
+    CHECK %[[GTE2:.*]] = {{.*}} get-tuple-element(%[[TUPLE_DONE]]), index=1
+    CHECK %[[GTE3:.*]] = {{.*}} get-tuple-element(%[[GTE2]]), index=0
+    CHECK %[[GTE4:.*]] = {{.*}} get-tuple-element(%[[GTE2]]), index=2
+    CHECK %[[TUPLE1:.*]] = {{.*}} tuple(%[[GTE3]], %[[GTE4]])
+    CHECK ROOT %[[OUT:.*]] = {{.*}} get-tuple-element(%[[TUPLE1]]), index=0
+    CHECK %[[GTE:.*]] = {{.*}} get-tuple-element(%[[TUPLE_DONE]]), index=0
+    CHECK %[[GTE1:.*]] = {{.*}} get-tuple-element(%[[GTE]]), index=2
   )"));
 }
 
@@ -153,42 +153,27 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithControlDependency) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-    CHECK: %[[WRAPPED_SEND_RECV:.*]]
-      (param0: f32[], param1: token[], param2: token[]) ->
-      ((f32[], u32[], token[]), (f32[], u32[], token[])) {
+    CHECK: %[[WRAPPED_SEND_RECV:.*]] (param0: f32[], param1: token[], param2: token[]) -> ((f32[], u32[], token[]), (f32[], u32[], token[])) {
 
     CHECK: %[[PARAM0:.*]] = f32[] parameter(0)
     CHECK: %[[PARAM1:.*]] = token[] parameter(1)
-    CHECK: %[[SEND1:.*]] = (f32[], u32[], token[]) send(f32[] %[[PARAM0:.*]],
-      token[] %[[PARAM1:.*]]), channel_id=1
+    CHECK: %[[SEND1:.*]] = (f32[], u32[], token[]) send(%[[PARAM0]], %[[PARAM1]]), channel_id=1
     CHECK: %[[PARAM2:.*]] = token[] parameter(2)
-    CHECK: %[[RECV1:.*]] = (f32[], u32[], token[])
-      recv(token[] %[[PARAM2:.*]]), channel_id=1
-    CHECK: ROOT %[[OUT:.*]] = ((f32[], u32[], token[]),
-      (f32[], u32[], token[])) tuple((f32[], u32[], token[])
-      %[[SEND1:.*]], (f32[], u32[], token[]) %[[RECV1:.*]])
+    CHECK: %[[RECV1:.*]] = (f32[], u32[], token[]) recv(%[[PARAM2]]), channel_id=1
+    CHECK: ROOT %[[OUT:.*]] = ((f32[], u32[], token[]), (f32[], u32[], token[])) tuple(%[[SEND1]], %[[RECV1]])
 
     CHECK: ENTRY %[[MAIN:.*]] () -> f32[] {
     CHECK: %[[DATA:.*]] = f32[] constant(5)
     CHECK: %[[RECV_START:.*]] = token[] after-all()
-    CHECK: %[[TUPLE_START:.*]] = ((f32[], token[], token[]),
-      ((f32[], u32[], token[]), (f32[], u32[], token[])), s32[])
-      async-start(f32[] %[[DATA:.*]], token[] %[[RECV_START:.*]],
-      token[] %[[RECV_START:.*]]), calls=%[[WRAPPED_SEND_RECV:.*]]
-    CHECK: %[[TUPLE_DONE:.*]] = ((f32[], u32[], token[]),
-      (f32[], u32[], token[])) async-done(((f32[], token[], token[]),
-      ((f32[], u32[], token[]), (f32[], u32[], token[])), s32[]) %[[TUPLE_START:.*]])
-    CHECK %[[GTE2:.*]] = (f32[], u32[], token[])
-      get-tuple-element(((f32[], u32[], token[]),
-      (f32[], u32[], token[])) %[[TUPLE_DONE:.*]]), index=1
-    CHECK %[[GTE3:.*]] = f32[] get-tuple-element((f32[], u32[], token[]) %[[GTE2:.*]]), index=0
-    CHECK %[[GTE4:.*]] = token[] get-tuple-element((f32[], u32[], token[]) %[[GTE2:.*]]), index=2
-    CHECK %[[TUPLE1:.*]] = (f32[], token[]) tuple(f32[] %[[GTE3:.*]], token[] %[[GTE4:.*]]),
-      control-predecessors={%[[TUPLE_START:.*]]}
-    CHECK ROOT %[[OUT:.*]] = f32[] get-tuple-element((f32[], token[]) %[[TUPLE1:.*]]), index=0
-    CHECK %[[GTE:.*]] = (f32[], u32[], token[])
-      get-tuple-element(((f32[], u32[], token[]), (f32[], u32[], token[])) %[[TUPLE_DONE:.*]]), index=0
-    CHECK %[[GTE1:.*]] = token[] get-tuple-element((f32[], u32[], token[]) %[[GTE:.*]]), index=2
+    CHECK: %[[TUPLE_START:.*]] = ((f32[], token[], token[]), ((f32[], u32[], token[]), (f32[], u32[], token[])), s32[]) async-start(%[[DATA]], %[[RECV_START]], %[[RECV_START]]), calls=%[[WRAPPED_SEND_RECV]] 
+    CHECK: %[[TUPLE_DONE:.*]] = ((f32[], u32[], token[]), (f32[], u32[], token[])) async-done(%[[TUPLE_START]])
+    CHECK %[[GTE2:.*]] = (f32[], u32[], token[]) get-tuple-element(%[[TUPLE_DONE]], index=1)
+    CHECK %[[GTE3:.*]] = f32[] get-tuple-element(%[[GTE2]], index=0)
+    CHECK %[[GTE4:.*]] = token[] get-tuple-element(%[[GTE2]], index=2)
+    CHECK %[[TUPLE1:.*]] = (f32[], token[]) tuple(%[[GTE3]], %[[GTE4]]), control-predecessors={%[[TUPLE_START]]}
+    CHECK ROOT %[[OUT:.*]] = f32[] get-tuple-element(%[[TUPLE1]], index=0)
+    CHECK %[[GTE:.*]] = (f32[], u32[], token[]) get-tuple-element(%[[TUPLE_DONE]], index=0)
+    CHECK %[[GTE1:.*]] = token[] get-tuple-element(%[[GTE]], index=2)
   )"));
 }
 
@@ -226,15 +211,15 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithMultipleSendRecv) {
     CHECK-SAME: (f32[], u32[], token[]))
     CHECK-NEXT: %[[PARAM0:.*]] = {{.*}} parameter(0)
     CHECK: %[[PARAM1:.*]] = {{.*}} parameter(1)
-    CHECK: %[[SEND1:.*]] = {{.*}} send({{.*}} %[[PARAM0]], {{.*}} %[[PARAM1]]), channel_id=1
+    CHECK: %[[SEND1:.*]] = {{.*}} send(%[[PARAM0]], %[[PARAM1]]), channel_id=1
     CHECK: %[[PARAM2:.*]] = f32[] parameter(2)
     CHECK: %[[PARAM3:.*]] = {{.*}} parameter(3)
-    CHECK: %[[SEND2:.*]] = {{.*}} send({{.*}} %[[PARAM2]], {{.*}} %[[PARAM3]]), channel_id=2
+    CHECK: %[[SEND2:.*]] = {{.*}} send(%[[PARAM2]], %[[PARAM3]]), channel_id=2
     CHECK: %[[PARAM4:.*]] = {{.*}} parameter(4)
-    CHECK: %[[RECV1:.*]] = {{.*}} recv({{.*}} %[[PARAM4]]), channel_id=1
+    CHECK: %[[RECV1:.*]] = {{.*}} recv(%[[PARAM4]]), channel_id=1
     CHECK: %[[PARAM5:.*]] = {{.*}} parameter(5)
-    CHECK: %[[RECV2:.*]] = {{.*}} recv({{.*}} %[[PARAM5]]), channel_id=2
-    CHECK: ROOT %[[OUT:.*]] = {{.*}} tuple({{.*}} %[[SEND1]], {{.*}} %[[SEND2]], {{.*}} %[[RECV1]], {{.*}} %[[RECV2]])
+    CHECK: %[[RECV2:.*]] = {{.*}} recv(%[[PARAM5]]), channel_id=2
+    CHECK: ROOT %[[OUT:.*]] = {{.*}} tuple(%[[SEND1]], %[[SEND2]], %[[RECV1]], %[[RECV2]])
 
     CHECK: ENTRY %[[MAIN:.*]] () -> (f32[], f32[])
     CHECK: %[[DATA1:.*]] = {{.*}} constant(1)
@@ -242,23 +227,23 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithMultipleSendRecv) {
     CHECK: %[[DATA2:.*]] = {{.*}} constant(2)
     CHECK: %[[AFTER_ALL2:.*]] = {{.*}} after-all()
     CHECK: %[[TUPLE_START:.*]] = {{.*}} async-start{{.*}}calls=%[[WRAPPED_SEND_RECV]]
-    CHECK: %[[TUPLE_DONE:.*]] = {{.*}} async-done({{.*}} %[[TUPLE_START]])
-    CHECK %[[GTE4:.*]] = {{.*}} get-tuple-element({{.*}} %[[TUPLE_DONE]]), index=2
-    CHECK %[[GTE5:.*]] = {{.*}} get-tuple-element({{.*}} %[[GTE4]]), index=0
-    CHECK %[[GTE6:.*]] = {{.*}} get-tuple-element({{.*}} %[[GTE4]]), index=2
-    CHECK %[[[TUPLE1:.*]]]] = {{.*}} tuple({{.*}} %[[GTE5]], {{.*}} %[[GTE6]]), control-predecessors={%[[TUPLE_START]]]}
-    CHECK %[[DATA_OUT1:.*]]] = {{.*}} get-tuple-element({{.*}} %[[TUPLE1]]), index=0
+    CHECK: %[[TUPLE_DONE:.*]] = {{.*}} async-done(%[[TUPLE_START]])
+    CHECK %[[GTE4:.*]] = {{.*}} get-tuple-element(%[[TUPLE_DONE]]), index=2
+    CHECK %[[GTE5:.*]] = {{.*}} get-tuple-element(%[[GTE4]]), index=0
+    CHECK %[[GTE6:.*]] = {{.*}} get-tuple-element(%[[GTE4]]), index=2
+    CHECK %[[[TUPLE1:.*]]]] = {{.*}} tuple(%[[GTE5]], %[[GTE6]]), control-predecessors={%[[TUPLE_START]]]}
+    CHECK %[[DATA_OUT1:.*]]] = {{.*}} get-tuple-element(%[[TUPLE1]]), index=0
 
-    CHECK %[[GTE7:.*]]] = {{.*}} get-tuple-element({{.*}} %[[TUPLE_DONE]]), index=3
-    CHECK %[[GTE8:.*]] = {{.*}} get-tuple-element({{.*}} %[[GTE7]]), index=0
-    CHECK %[[GTE9:.*]]] = {{.*}} get-tuple-element({{.*}} %[[GTE7]]), index=2
-    CHECK %[[TUPLE2:.*]] = {{.*}} tuple({{.*}} %[[GTE8]], {{.*}} %[[GTE9]]), control-predecessors={%[[TUPLE_START]]}
-    CHECK %[[DATA_OUT2:.*]] = {{.*}} get-tuple-element({{.*}} %[[TUPLE2]]), index=0
-    CHECK ROOT %[[OUT:.*]] = {{.*}} tuple({{.*}} %[[DATA_OUT1]], {{.*}} %[[DATA_OUT2]])
-    CHECK %[[GTE:.*]] = {{.*}} get-tuple-element({{.*}} %[[TUPLE_DONE]]]), index=0
-    CHECK %[[GTE1:.*]] = {{.*}} get-tuple-element({{.*}} %[[GTE]]]), index=2
-    CHECK %[[GTE2:.*]] = {{.*}} get-tuple-element({{.*}} %[[TUPLE_DONE]]), index=1
-    CHECK %[[GTE3:.*]] = {{.*}} get-tuple-element({{.*}} %[[GTE2]]), index=2
+    CHECK %[[GTE7:.*]]] = {{.*}} get-tuple-element(%[[TUPLE_DONE]]), index=3
+    CHECK %[[GTE8:.*]] = {{.*}} get-tuple-element(%[[GTE7]]), index=0
+    CHECK %[[GTE9:.*]]] = {{.*}} get-tuple-element(%[[GTE7]]), index=2
+    CHECK %[[TUPLE2:.*]] = {{.*}} tuple(%[[GTE8]], %[[GTE9]]), control-predecessors={%[[TUPLE_START]]}
+    CHECK %[[DATA_OUT2:.*]] = {{.*}} get-tuple-element(%[[TUPLE2]]), index=0
+    CHECK ROOT %[[OUT:.*]] = {{.*}} tuple(%[[DATA_OUT1]], %[[DATA_OUT2]])
+    CHECK %[[GTE:.*]] = {{.*}} get-tuple-element(%[[TUPLE_DONE]]), index=0
+    CHECK %[[GTE1:.*]] = {{.*}} get-tuple-element(%[[GTE]]), index=2
+    CHECK %[[GTE2:.*]] = {{.*}} get-tuple-element(%[[TUPLE_DONE]]), index=1
+    CHECK %[[GTE3:.*]] = {{.*}} get-tuple-element(%[[GTE2]]), index=2
   )"));
 }
 }  // namespace

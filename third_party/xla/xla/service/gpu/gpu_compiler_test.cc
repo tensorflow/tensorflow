@@ -712,6 +712,9 @@ ENTRY main {
   const std::string fallback_convert_to_f16 =
       R"(CHECK: dot(f16{{[^)]*}}, f16{{[^)]*}}))";
 
+  HloPrintOptions print_options =
+      HloPrintOptions().set_print_operand_shape(true);
+
   {
     // Triton enabled, no fallback.
     TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_no_fallback,
@@ -726,7 +729,7 @@ ENTRY main {
             : cublas_convert_to_f16;
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matched,
-        RunFileCheck(optimized_module_no_fallback->ToString(),
+        RunFileCheck(optimized_module_no_fallback->ToString(print_options),
                      triton_expected_check));
     EXPECT_TRUE(filecheck_matched);
   }
@@ -744,9 +747,10 @@ ENTRY main {
             ? cublaslt_keep_types
             : cublas_convert_to_f16;
 
-    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                            RunFileCheck(optimized_module_no_triton->ToString(),
-                                         blas_expected_check));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool filecheck_matched,
+        RunFileCheck(optimized_module_no_triton->ToString(print_options),
+                     blas_expected_check));
     EXPECT_TRUE(filecheck_matched);
   }
 
@@ -756,9 +760,10 @@ ENTRY main {
                             optimize_module(/*enable_triton=*/false,
                                             /*enable_blas=*/false,
                                             /*enable_blas_fallback=*/false));
-    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                            RunFileCheck(optimized_module_nothing->ToString(),
-                                         fallback_convert_to_f16));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool filecheck_matched,
+        RunFileCheck(optimized_module_nothing->ToString(print_options),
+                     fallback_convert_to_f16));
     EXPECT_TRUE(filecheck_matched);
   }
 }
@@ -1894,7 +1899,7 @@ TEST_F(GpuCompilerTest, DynamicSliceFusionReduceScatterMultipleBuffers) {
     // CHECK: dynamic-slice-fusion{{.*}} {
     // CHECK-DAG: %[[slice1:.+]] = {{.+}} slice({{.+}}), slice={[4:8], [0:32]}
     // CHECK-DAG: %[[slice2:.+]] = {{.+}} slice({{.+}}), slice={[0:4], [0:32]}
-    // CHECK-DAG: ROOT %[[rs:.+]] = {{.+}} reduce-scatter({{.*}} %[[slice1]], {{.*}} %[[slice2]]),
+    // CHECK-DAG: ROOT %[[rs:.+]] = {{.+}} reduce-scatter(%[[slice1]], %[[slice2]]),
     // CHECK-SAME{LITERAL}:                                      replica_groups={{0,1}}, dimensions={0}, to_apply=%add
     // CHECK: ENTRY
   )";

@@ -7,13 +7,13 @@
 // CHECK: ENTRY
 // CHECK:   %[[PARAM0:.*]] = f32[] parameter(0)
 // CHECK:   %[[PARAM1:.*]] = f32[] parameter(1)
-// CHECK:   %[[FUSION0:.*]] = f32[] fusion(f32[] %[[PARAM0]], f32[] %[[PARAM1]]), kind=kLoop, calls=%[[REGION0]]
-// CHECK:   %[[FUSION1:.*]] = (f32[], f32[]) fusion(f32[] %[[PARAM0]], f32[] %[[PARAM1]]), kind=kLoop, calls=%[[REGION1]]
-// CHECK:   f32[] get-tuple-element((f32[], f32[]) %[[FUSION1]]), index=0
-// CHECK:   f32[] get-tuple-element((f32[], f32[]) %[[FUSION1]]), index=1
-// CHECK:   %[[FUSION2:.*]] = (f32[], f32[]) fusion(f32[] %[[PARAM0]]), kind=kLoop, calls=%[[REGION2]]
-// CHECK:   f32[] get-tuple-element((f32[], f32[]) %[[FUSION2]]), index=0
-// CHECK:   f32[] get-tuple-element((f32[], f32[]) %[[FUSION2]]), index=1
+// CHECK:   %[[FUSION0:.*]] = f32[] fusion(%[[PARAM0]], %[[PARAM1]]), kind=kLoop, calls=%[[REGION0]]
+// CHECK:   %[[FUSION1:.*]] = (f32[], f32[]) fusion(%[[PARAM0]], %[[PARAM1]]), kind=kLoop, calls=%[[REGION1]]
+// CHECK:   f32[] get-tuple-element(%[[FUSION1]]), index=0
+// CHECK:   f32[] get-tuple-element(%[[FUSION1]]), index=1
+// CHECK:   %[[FUSION2:.*]] = (f32[], f32[]) fusion(%[[PARAM0]]), kind=kLoop, calls=%[[REGION2]]
+// CHECK:   f32[] get-tuple-element(%[[FUSION2]]), index=0
+// CHECK:   f32[] get-tuple-element(%[[FUSION2]]), index=1
 // CHECK: }
 func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) {
   %result = "mhlo.fusion"(%arg0, %arg1) ({

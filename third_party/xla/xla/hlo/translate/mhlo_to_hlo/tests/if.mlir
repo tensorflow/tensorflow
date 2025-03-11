@@ -13,10 +13,10 @@ func.func @main(%arg0: tensor<f32>) -> tuple<tensor<f32>> {
   // CHECK:   %[[VAL0:.+]] = f32[] constant(10)
   %cst = arith.constant  dense<1.000000e+01> : tensor<f32>
 
-  // CHECK:   %[[VAL1:.+]] = pred[] compare(f32[] %[[A0]], f32[] %[[VAL0]]), direction=LT
+  // CHECK:   %[[VAL1:.+]] = pred[] compare(%[[A0]], %[[VAL0]]), direction=LT
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
-  // CHECK:   %[[VAL2:.+]] = f32[] conditional(pred[] %[[VAL1]], f32[] %[[A0]], f32[] %[[A0]]), true_computation=[[R0]], false_computation=[[R1]]
+  // CHECK:   %[[VAL2:.+]] = f32[] conditional(%[[VAL1]], %[[A0]], %[[A0]]), true_computation=[[R0]], false_computation=[[R1]]
   %2 = "mhlo.if"(%0) ({
     %6 = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%6) : (tensor<f32>) -> ()
@@ -25,7 +25,7 @@ func.func @main(%arg0: tensor<f32>) -> tuple<tensor<f32>> {
     "mhlo.return"(%6) : (tensor<f32>) -> ()
   }) : (tensor<i1>) -> tensor<f32>
 
-  // CHECK:   ROOT %[[VAL3:.+]] = (f32[]) tuple(f32[] %[[VAL2]])
+  // CHECK:   ROOT %[[VAL3:.+]] = (f32[]) tuple(%[[VAL2]])
   %3 = "mhlo.tuple"(%2) : (tensor<f32>) -> tuple<tensor<f32>>
   func.return %3 : tuple<tensor<f32>>
 }
@@ -65,9 +65,9 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK: ENTRY
 // CHECK-DAG: %[[A0:.+]] = f32[] parameter(0)
 // CHECK-DAG: %[[A1:.+]] = f32[] parameter(1)
-// CHECK-DAG: %[[TUPLE1:.+]] = (f32[], f32[]) tuple(f32[] %[[A0]], f32[] %[[A1]])
-// CHECK-DAG: %[[TUPLE2:.+]] = (f32[], f32[]) tuple(f32[] %[[A0]], f32[] %[[A1]])
-// CHECK-DAG: %[[COND:.+]] = (f32[], f32[]) conditional(pred[] %[[PRED:.+]], (f32[], f32[]) %[[TUPLE1]], (f32[], f32[]) %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
+// CHECK-DAG: %[[TUPLE1:.+]] = (f32[], f32[]) tuple(%[[A0]], %[[A1]])
+// CHECK-DAG: %[[TUPLE2:.+]] = (f32[], f32[]) tuple(%[[A0]], %[[A1]])
+// CHECK-DAG: %[[COND:.+]] = (f32[], f32[]) conditional(%[[PRED:.+]], %[[TUPLE1]], %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
 
 // -----
 // Test export mhlo::IfOp with multiple args, but different numbers of args for
@@ -105,9 +105,9 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK-DAG: %[[A0:.+]] = f32[] parameter(0)
 // CHECK-DAG: %[[CST:.+]] = f32[] constant(10)
 // CHECK-DAG: %[[A1:.+]] = f32[] parameter(1)
-// CHECK-DAG: %[[TUPLE1:.+]] = (f32[], f32[], f32[]) tuple(f32[] %[[CST]], f32[] %[[A1]], f32[] %[[A0]])
-// CHECK-DAG: %[[TUPLE2:.+]] = (f32[], f32[]) tuple(f32[] %[[A0]], f32[] %[[A1]])
-// CHECK: %[[COND:.+]] = (f32[], f32[]) conditional(pred[] %[[PRED:.+]], (f32[], f32[], f32[]) %[[TUPLE1]], (f32[], f32[]) %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
+// CHECK-DAG: %[[TUPLE1:.+]] = (f32[], f32[], f32[]) tuple(%[[CST]], %[[A1]], %[[A0]])
+// CHECK-DAG: %[[TUPLE2:.+]] = (f32[], f32[]) tuple(%[[A0]], %[[A1]])
+// CHECK: %[[COND:.+]] = (f32[], f32[]) conditional(%[[PRED:.+]], %[[TUPLE1]], %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
 
 // -----
 // Test export mhlo::IfOp with false branch having no implict captures.
@@ -145,9 +145,9 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK-DAG: %[[A0:.+]] = f32[] parameter(0)
 // CHECK-DAG: %[[CST:.+]] = f32[] constant(10)
 // CHECK-DAG: %[[A1:.+]] = f32[] parameter(1)
-// CHECK-DAG: %[[TUPLE1:.+]] = (f32[], f32[], f32[]) tuple(f32[] %[[CST]], f32[] %[[A1]], f32[] %[[A0]])
+// CHECK-DAG: %[[TUPLE1:.+]] = (f32[], f32[], f32[]) tuple(%[[CST]], %[[A1]], %[[A0]])
 // CHECK-DAG: %[[TUPLE2:.+]] = () tuple()
-// CHECK: %[[COND:.+]] = (f32[], f32[]) conditional(pred[] %[[PRED:.+]], (f32[], f32[], f32[]) %[[TUPLE1]], () %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
+// CHECK: %[[COND:.+]] = (f32[], f32[]) conditional(%[[PRED:.+]], %[[TUPLE1]], %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
 
 // -----
 // Test export mhlo::IfOp with true branch having no implict captures.
@@ -186,8 +186,8 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK-DAG: %[[CST:.+]] = f32[] constant(10)
 // CHECK-DAG: %[[A1:.+]] = f32[] parameter(1)
 // CHECK-DAG: %[[TUPLE1:.+]] = () tuple()
-// CHECK-DAG: %[[TUPLE2:.+]] = (f32[], f32[], f32[]) tuple(f32[] %[[CST]], f32[] %[[A1]], f32[] %[[A0]])
-// CHECK: %[[COND:.+]] = (f32[], f32[]) conditional(pred[] %[[PRED:.+]], () %[[TUPLE1]], (f32[], f32[], f32[]) %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
+// CHECK-DAG: %[[TUPLE2:.+]] = (f32[], f32[], f32[]) tuple(%[[CST]], %[[A1]], %[[A0]])
+// CHECK: %[[COND:.+]] = (f32[], f32[]) conditional(%[[PRED:.+]], %[[TUPLE1]], %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
 
 // -----
 // Test export mhlo::IfOp with both branches having no implict captures.
@@ -223,7 +223,7 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK: ENTRY
 // CHECK: %[[TUPLE1:.+]] = () tuple()
 // CHECK: %[[TUPLE2:.+]] = () tuple()
-// CHECK: %[[COND:.+]] = (f32[], f32[]) conditional(pred[] %[[PRED:.+]], () %[[TUPLE1]], () %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
+// CHECK: %[[COND:.+]] = (f32[], f32[]) conditional(%[[PRED:.+]], %[[TUPLE1]], %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
 
 // -----
 // Test export nested mhlo::IfOp.
@@ -278,7 +278,7 @@ func.func @main(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> te
 // CHECK-NEXT:   %[[A2_EMPTY_TUPLE]] = () parameter(0)
 // CHECK-DAG:   %[[CST2:.+]] = f32[] constant(10)
 // CHECK-DAG: %[[TUPLE2:.+]] = () tuple()
-// CHECK:  %[[COND2:.+]] = f32[] conditional(pred[] %{{.+}}, f32[] %[[CST2]], () %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
+// CHECK:  %[[COND2:.+]] = f32[] conditional(%{{.+}}, %[[CST2]], %[[TUPLE2]]), true_computation=[[R0]], false_computation=[[R1]]
 // CHECK:  ROOT %tuple.{{[0-9]+}} = (f32[], f32[]) tuple
 // CHECK-NEXT: }
 
@@ -293,5 +293,5 @@ func.func @main(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> te
 // CHECK-DAG: %[[A1:.+]] = f32[] parameter(1)
 // CHECK-DAG: %[[A2:.+]] = f32[] parameter(2)
 // CHECK-DAG: %[[TUPLE1:.+]]  = () tuple()
-// CHECK-DAG: %[[TUPLE2:.+]]  = (f32[], f32[]) tuple(f32[] %[[A1]], f32[] %[[A2]])
-// CHECK: (f32[], f32[]) conditional(pred[] %[[A0]], () %[[TUPLE1]], (f32[], f32[]) %[[TUPLE2]]), true_computation=[[R2]], false_computation=[[R3]]
+// CHECK-DAG: %[[TUPLE2:.+]]  = (f32[], f32[]) tuple(%[[A1]], %[[A2]])
+// CHECK: (f32[], f32[]) conditional(%[[A0]], %[[TUPLE1]], %[[TUPLE2]]), true_computation=[[R2]], false_computation=[[R3]]

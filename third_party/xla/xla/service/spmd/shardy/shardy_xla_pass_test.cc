@@ -688,7 +688,7 @@ ENTRY %main.0 (Arg_0.0: s64[2]) -> s64[2] {
   const char* const expected = R"(
   // CHECK:               ENTRY %main.3 (Arg_0.1: s64[2]) -> s64[2] {
   // CHECK-NEXT:            ROOT %Arg_0.1 = s64[2] parameter(0)
-  // CHECK-NEXT{LITERAL}:   %custom-call.2 = () custom-call(s64[2] %Arg_0.1), custom_call_target="xla_ffi_python_cpu_callback",
+  // CHECK-NEXT{LITERAL}:   %custom-call.2 = () custom-call(%Arg_0.1), custom_call_target="xla_ffi_python_cpu_callback",
   // CHECK-SAME{LITERAL}:   operand_layout_constraints={s64[2]{0}}, custom_call_has_side_effect=true, api_version=API_VERSION_TYPED_FFI,
   // CHECK-SAME{LITERAL}:   sharding={{maximal device=0}}
 )";

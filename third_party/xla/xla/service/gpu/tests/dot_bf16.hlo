@@ -3,8 +3,13 @@
 // RUN: %if IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/mi200.txtpb --split-input-file --xla_gpu_autotune_level=0 --xla_gpu_enable_triton_gemm=false | FileCheck %s --check-prefixes=CHECK-SM80 %}
 
 
-// CHECK-SM70: custom-call(f32
-// CHECK-SM80: custom-call(bf16
+// CHECK-SM70: %[[convert1:.+]] = f32[1536,6144]{1,0} convert(%{{.+}})
+// CHECK-SM70: %[[convert2:.+]] = f32[32,1536]{1,0} convert(%{{.+}})
+// CHECK-SM70: custom-call(%[[convert1]], %[[convert2]]), custom_call_target="__cublas$gemm"
+
+// CHECK-SM80: %[[convert:.+]] = bf16[1536,6144]{1,0} convert(%{{.+}})
+// CHECK-SM80: %[[b:.+]] = bf16[32,1536]{1,0} parameter(1)
+// CHECK-SM80: custom-call(%[[convert]], %[[b]]), custom_call_target="__cublas$gemm"
 
 HloModule module
 
@@ -17,8 +22,13 @@ ENTRY %computation1 {
 
 // -----
 
-// CHECK-SM70: (f32[6144,32]{1,0}, s8[4194304]{0}) custom-call(f32[1536,6144]{1,0} {{.*}}, f32[32,1536]{1,0} {{.*}}), custom_call_target="__cublas$gemm"
-// CHECK-SM80: (f32[6144,32]{1,0}, s8[4194304]{0}) custom-call(bf16[1536,6144]{1,0} %convert.2.0, bf16[32,1536]{1,0} %b.1), custom_call_target="__cublas$gemm"
+// CHECK-SM70: %[[convert1:.+]] = f32[1536,6144]{1,0} convert(%{{.+}})
+// CHECK-SM70: %[[convert2:.+]] = f32[32,1536]{1,0} convert(%{{.+}})
+// CHECK-SM70: (f32[6144,32]{1,0}, s8[4194304]{0}) custom-call(%[[convert1]], %[[convert2]]), custom_call_target="__cublas$gemm"
+
+// CHECK-SM80: %[[convert:.+]] = bf16[1536,6144]{1,0} convert(%{{.+}})
+// CHECK-SM80: %[[b:.+]] = bf16[32,1536]{1,0} parameter(1)
+// CHECK-SM80: (f32[6144,32]{1,0}, s8[4194304]{0}) custom-call(%[[convert]], %[[b]]), custom_call_target="__cublas$gemm"
 
 HloModule module2
 
