@@ -87,6 +87,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #ifdef XLA_CPU_USE_ACL
   opts.set_xla_cpu_use_acl(true);
 #endif
+  opts.set_xla_cpu_use_fusion_emitters(false);
   opts.set_xla_cpu_use_thunk_runtime(true);
   opts.set_xla_cpu_use_xnnpack(false);
   opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
@@ -956,6 +957,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_cpu_use_acl", bool_setter_for(&DebugOptions::set_xla_cpu_use_acl),
       debug_options->xla_cpu_use_acl(),
       "Generate calls to ACL (Arm Compute Library) in the CPU backend."));
+  flag_list->push_back(
+      tsl::Flag("xla_cpu_use_fusion_emitters",
+                bool_setter_for(&DebugOptions::set_xla_cpu_use_fusion_emitters),
+                debug_options->xla_cpu_use_fusion_emitters(),
+                "Use fusion emitters for code generation in the CPU backend. "
+                "Note: only works with --xla_cpu_use_thunk_runtime=true."));
   flag_list->push_back(
       tsl::Flag("xla_cpu_use_thunk_runtime",
                 bool_setter_for(&DebugOptions::set_xla_cpu_use_thunk_runtime),
