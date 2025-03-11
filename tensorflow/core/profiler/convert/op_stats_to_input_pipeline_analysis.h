@@ -53,6 +53,13 @@ using PerCoreAllReduceBreakdown =
 PerCoreAllReduceBreakdown ComputePerStepAllReduceBreakdownAcrossCores(
     const PerCoreStepInfo& coreid_stepinfo_map);
 
+// Computes the fields in PerStepData by considering the different StepInfos
+// of the same step across cores.
+PerTpuStepDetails ComputeTpuPerStepDataAcrossCores(
+    const PerCoreStepInfo& coreid_stepinfo_map,
+    const tsl::protobuf::Map<uint32_t, tensorflow::profiler::CoreDetails>&
+        core_details_map);
+
 StepSummary GetStepSummaryForSampleStats(const tsl::Stat<double>& sample_stats);
 
 // If the percent of input-time spent on host-to-device transfer is greater than

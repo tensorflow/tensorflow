@@ -536,201 +536,6 @@ void ConvertGenericStepBreakdownToTpuStepBreakdown(
   tpu_step_breakdown.set_tc_idle_ps(time_breakdown.IdleTimePs());
   tpu_step_breakdown.set_tc_busy_ps(time_breakdown.TensorCoreBusyTimePs());
 }
-// Computes the fields in PerStepData by considering the different StepInfos
-// of the same step across cores.
-PerTpuStepDetails ComputeTpuPerStepDataAcrossCores(
-    const PerCoreStepInfo& coreid_stepinfo_map,
-    const tsl::protobuf::Map<uint32_t, tensorflow::profiler::CoreDetails>&
-        core_details_map) {
-  PerTpuStepDetails per_step_data;
-
-  PerCoreAllReduceBreakdown all_reduce_breakdown =
-      ComputePerStepAllReduceBreakdownAcrossCores(coreid_stepinfo_map);
-
-  tsl::Stat<double> infeed_percent_stats;
-  tsl::Stat<uint64_t> step_stats_in_ps;
-  tsl::Stat<uint64_t> optimal_step_time_ps;
-  // Take the average TC outfeed time in result.
-  tsl::Stat<uint64_t> tc_outfeed_time_in_ps;
-  tsl::Stat<uint64_t> sc_optimal_step_time_ps;
-  tsl::Stat<uint64_t> sc_step_stats_in_ps;
-  tsl::Stat<uint64_t> sc_outfeed_time_in_ps;
-  tsl::Stat<uint64_t> sc_infeed_time_in_ps;
-  tsl::Stat<uint64_t> sc_idle_time_in_ps;
-
-  tsl::Stat<uint64_t> host_send_recv_time_ps;
-
-  // For the core with the max wait-for-scv0 duration, breakdown to compute and
-  // infeed time.
-  WaitForScV0Breakdown max_wait_for_scv0;
-
-  TcInfeed max_infeed;
-
-  // For the core with the max all reduce duration, breakdown to compute and
-  // synchronization time.
-  AllReduceBreakdown max_all_reduce;
-
-  per_step_data.set_step_number(-1);
-  auto process_step_for_sc =
-      [&](const tensorflow::profiler::StepInfoResult& step_info,
-          const SparseCoreStepBreakdown& sc_step) {
-        if (per_step_data.step_number() < 0) {
-          per_step_data.set_step_number(step_info.step_num());
-        } else {
-          if (per_step_data.step_number() != step_info.step_num()) {
-            VLOG(1) << "Inconsistent step numbers across cores ("
-                    << per_step_data.step_number() << " vs. "
-                    << step_info.step_num() << ").";
-          }
-        }
-        sc_step_stats_in_ps.UpdateStat(step_info.duration_ps());
-        sc_outfeed_time_in_ps.UpdateStat(sc_step.sc_outfeed_ps());
-        sc_infeed_time_in_ps.UpdateStat(sc_step.sc_infeed_ps());
-        sc_optimal_step_time_ps.UpdateStat(step_info.duration_ps() -
-                                           sc_step.sc_infeed_ps() -
-                                           sc_step.sc_outfeed_ps());
-        sc_idle_time_in_ps.UpdateStat(sc_step.sc_idle_ps());
-      };
-  for (const auto& [core_id, step_info] :
-       coreid_stepinfo_map.step_info_per_core()) {
-    // iterates over each core.
-    TpuStepBreakdown tpu;
-    if (!step_info.step_breakdown().UnpackTo(&tpu)) {
-      VLOG(1) << "Unable to unpack step_breakdown from tpu, try unpacking from "
-                 "generic";
-      tensorflow::profiler::GenericStepBreakdown generic_step_breakdown;
-      if (!step_info.step_breakdown().UnpackTo(&generic_step_breakdown)) {
-        SparseCoreStepBreakdown sc_step;
-        if (step_info.step_breakdown().UnpackTo(&sc_step)) {
-          process_step_for_sc(step_info, sc_step);
-          continue;
-        } else {
-          LOG(ERROR) << "Unable to unpack step_breakdown from "
-                        "GenericStepBreakdown or SparseCoreStepBreakdown";
-          // TODO(b/302086111): Switch back to DFATAL once absl is updated.
-          DCHECK(false);
-          return per_step_data;
-        }
-      }
-      if (core_id >= kSparseCoreIndexStart) {
-        // Sparse core step breakdown from xspace.
-        uint64_t total_time_ps = step_info.duration_ps();
-        uint64_t idle_time_ps =
-            generic_step_breakdown.category_ps().find("IDLE")->second;
-        sc_step_stats_in_ps.UpdateStat(total_time_ps);
-        sc_idle_time_in_ps.UpdateStat(idle_time_ps);
-        continue;
-      } else {
-        // Tensor core step breakdown from xspace.
-        ConvertGenericStepBreakdownToTpuStepBreakdown(
-            generic_step_breakdown, step_info.duration_ps(), tpu);
-      }
-    }
-    step_stats_in_ps.UpdateStat(step_info.duration_ps());
-    if (tpu.wait_for_scv0_duration_ps() > max_wait_for_scv0.DurationPs()) {
-      max_wait_for_scv0.scv0_infeed_duration_ps = ScV0InfeedDurationPs(tpu);
-      max_wait_for_scv0.scv0_compute_duration_ps = ScV0ComputeDurationPs(tpu);
-    }
-
-    tc_outfeed_time_in_ps.UpdateStat(tpu.host_outfeed_ps());
-
-    const AllReduceBreakdown& breakdown = all_reduce_breakdown[core_id];
-    if (breakdown.DurationPs() > max_all_reduce.DurationPs()) {
-      max_all_reduce = breakdown;
-    }
-
-    infeed_percent_stats.UpdateStat(100.0 * TcPlusScV0InfeedDurationPs(tpu) /
-                                    step_info.duration_ps());
-    // The optimal step time is the actual step time minus the time tensor
-    // core spends waiting for host or sparsecorev0 (but not other tensor
-    // cores).
-    optimal_step_time_ps.UpdateStat(step_info.duration_ps() -
-                                    WaitForHostOrScV0DurationPs(tpu));
-    host_send_recv_time_ps.UpdateStat(HostSendRecvDurationPs(tpu));
-
-    if (per_step_data.step_number() < 0) {
-      // Sets the step number of the current step from the first core.
-      per_step_data.set_step_number(step_info.step_num());
-    } else {
-      // The step number of the current step is already set. Checks if it is
-      // the same across cores. In case of multi-host tracing, we may have
-      // some inconsistent steps as tracing is not exactly guaranteed to be
-      // synchronized across all hosts.
-      if (per_step_data.step_number() != step_info.step_num()) {
-        VLOG(1) << "Inconsistent step numbers across cores ("
-                << per_step_data.step_number() << " vs. "
-                << step_info.step_num() << ").";
-      }
-    }
-    if (tpu.infeed_duration_ps() > max_infeed.duration_ps) {
-      max_infeed.core_id = core_id;
-      max_infeed.duration_ps = tpu.infeed_duration_ps();
-    }
-  }
-
-  per_step_data.set_tc_outfeed_time_ms(
-      tsl::profiler::PicoToMilli(tc_outfeed_time_in_ps.avg()));
-  // The TC compute time is the minimum of the optimal step time across cores.
-  per_step_data.set_tc_compute_time_ms(
-      tsl::profiler::PicoToMilli(optimal_step_time_ps.min()));
-  per_step_data.set_host_transfer_ms(
-      tsl::profiler::PicoToMilli(host_send_recv_time_ps.max()));
-  // TODO(b/153730997): Use the maximum step time.
-  // The infeed time is the step time across cores minus all other times.
-  // Previously, we used the maximum step time but changed to use the minimum
-  // step time to work around b/153730997.
-  // Uses the max TC infeed duration across cores as the step's TC infeed
-  // duration.
-  per_step_data.set_tc_infeed_time_ms(
-      tsl::profiler::PicoToMilli(max_infeed.duration_ps));
-  if (max_infeed.core_id.has_value()) {
-    per_step_data.set_coreid_max_infeed_time(max_infeed.core_id.value());
-    if (core_details_map.contains(max_infeed.core_id.value())) {
-      const CoreDetails& core_details =
-          core_details_map.at(max_infeed.core_id.value());
-      per_step_data.set_max_infeed_time_core_name(absl::StrCat(
-          core_details.hostname(), ":", core_details.device_ordinal()));
-    }
-  }
-
-  per_step_data.set_scv0_compute_time_ms(
-      tsl::profiler::PicoToMilli(max_wait_for_scv0.scv0_compute_duration_ps));
-  per_step_data.set_scv0_infeed_time_ms(
-      tsl::profiler::PicoToMilli(max_wait_for_scv0.scv0_infeed_duration_ps));
-
-  // The TC idle time is the time TC spends waiting for the host but not
-  // waiting for input.
-  per_step_data.set_tc_idle_time_ms(
-      tsl::profiler::PicoToMilli(step_stats_in_ps.min()) -
-      NonIdleTimeMs(per_step_data));
-  if (per_step_data.tc_idle_time_ms() < 0) {
-    per_step_data.set_tc_idle_time_ms(0);
-  }
-
-  per_step_data.set_all_reduce_compute_time_ms(
-      tsl::profiler::PicoToMilli(max_all_reduce.compute_duration_ps));
-  per_step_data.set_all_reduce_sync_time_ms(
-      tsl::profiler::PicoToMilli(max_all_reduce.sync_duration_ps));
-
-  per_step_data.set_infeed_percent_average(infeed_percent_stats.avg());
-  per_step_data.set_infeed_percent_minimum(infeed_percent_stats.min());
-  per_step_data.set_infeed_percent_maximum(infeed_percent_stats.max());
-
-  per_step_data.set_sc_infeed_time_ms(
-      tsl::profiler::PicoToMilli(sc_infeed_time_in_ps.avg()));
-  per_step_data.set_sc_outfeed_time_ms(
-      tsl::profiler::PicoToMilli(sc_outfeed_time_in_ps.avg()));
-  per_step_data.set_sc_compute_time_ms(
-      tsl::profiler::PicoToMilli(sc_optimal_step_time_ps.min()));
-  per_step_data.set_sc_idle_time_ms(
-      tsl::profiler::PicoToMilli(sc_idle_time_in_ps.avg()));
-  per_step_data.set_sc_step_time_ms(
-      tsl::profiler::PicoToMilli(sc_step_stats_in_ps.avg()));
-  if (per_step_data.sc_idle_time_ms() < 0) {
-    per_step_data.set_sc_idle_time_ms(0);
-  }
-  return per_step_data;
-}
 
 TpuStepTimeBreakdown ComputeTpuStepTimeBreakdownInMs(
     const InputPipelineAnalysisResult& analysis, bool has_sparse_core) {
@@ -1042,6 +847,208 @@ class MinMap {
 };
 
 }  // namespace
+
+PerTpuStepDetails ComputeTpuPerStepDataAcrossCores(
+    const PerCoreStepInfo& coreid_stepinfo_map,
+    const tsl::protobuf::Map<uint32_t, tensorflow::profiler::CoreDetails>&
+        core_details_map) {
+  PerTpuStepDetails per_step_data;
+
+  PerCoreAllReduceBreakdown all_reduce_breakdown =
+      ComputePerStepAllReduceBreakdownAcrossCores(coreid_stepinfo_map);
+
+  tsl::Stat<double> infeed_percent_stats;
+  tsl::Stat<uint64_t> step_stats_in_ps;
+  tsl::Stat<uint64_t> optimal_step_time_ps;
+  // Take the average TC outfeed time in result.
+  tsl::Stat<uint64_t> tc_outfeed_time_in_ps;
+  tsl::Stat<uint64_t> sc_compute_time_ps;
+  tsl::Stat<uint64_t> sc_step_stats_in_ps;
+  tsl::Stat<uint64_t> sc_outfeed_time_in_ps;
+  tsl::Stat<uint64_t> sc_infeed_time_in_ps;
+  tsl::Stat<uint64_t> sc_idle_time_in_ps;
+
+  tsl::Stat<uint64_t> host_send_recv_time_ps;
+
+  // For the core with the max wait-for-scv0 duration, breakdown to compute and
+  // infeed time.
+  WaitForScV0Breakdown max_wait_for_scv0;
+
+  TcInfeed max_infeed;
+
+  // For the core with the max all reduce duration, breakdown to compute and
+  // synchronization time.
+  AllReduceBreakdown max_all_reduce;
+
+  per_step_data.set_step_number(-1);
+  auto process_step_for_sc =
+      [&](const tensorflow::profiler::StepInfoResult& step_info,
+          const SparseCoreStepBreakdown& sc_step) {
+        if (per_step_data.step_number() < 0) {
+          per_step_data.set_step_number(step_info.step_num());
+        } else {
+          if (per_step_data.step_number() != step_info.step_num()) {
+            VLOG(1) << "Inconsistent step numbers across cores ("
+                    << per_step_data.step_number() << " vs. "
+                    << step_info.step_num() << ").";
+          }
+        }
+        sc_step_stats_in_ps.UpdateStat(step_info.duration_ps());
+        sc_outfeed_time_in_ps.UpdateStat(sc_step.sc_outfeed_ps());
+        sc_infeed_time_in_ps.UpdateStat(sc_step.sc_infeed_ps());
+        sc_compute_time_ps.UpdateStat(step_info.duration_ps() -
+                                      sc_step.sc_infeed_ps() -
+                                      sc_step.sc_outfeed_ps());
+        sc_idle_time_in_ps.UpdateStat(sc_step.sc_idle_ps());
+      };
+  for (const auto& [core_id, step_info] :
+       coreid_stepinfo_map.step_info_per_core()) {
+    // iterates over each core.
+    TpuStepBreakdown tpu;
+    if (!step_info.step_breakdown().UnpackTo(&tpu)) {
+      VLOG(1) << "Unable to unpack step_breakdown from tpu, try unpacking from "
+                 "generic";
+      tensorflow::profiler::GenericStepBreakdown generic_step_breakdown;
+      if (!step_info.step_breakdown().UnpackTo(&generic_step_breakdown)) {
+        SparseCoreStepBreakdown sc_step;
+        if (step_info.step_breakdown().UnpackTo(&sc_step)) {
+          process_step_for_sc(step_info, sc_step);
+          continue;
+        } else {
+          LOG(ERROR) << "Unable to unpack step_breakdown from "
+                        "GenericStepBreakdown or SparseCoreStepBreakdown";
+          // TODO(b/302086111): Switch back to DFATAL once absl is updated.
+          DCHECK(false);
+          return per_step_data;
+        }
+      }
+      if (core_id >= kSparseCoreIndexStart) {
+        // Sparse core step breakdown from xspace.
+        uint64_t idle_time_ps = 0;
+        uint64_t busy_time_ps = 0;
+        for (const auto& [category, time_ps] :
+             generic_step_breakdown.category_ps()) {
+          if (category == kIdle) {
+            idle_time_ps = time_ps;
+          } else if (category == "sparse_core_busy_ops") {
+            busy_time_ps = time_ps;
+          }
+        }
+        sc_step_stats_in_ps.UpdateStat(step_info.duration_ps());
+        sc_compute_time_ps.UpdateStat(busy_time_ps);
+        sc_idle_time_in_ps.UpdateStat(idle_time_ps);
+        continue;
+      } else {
+        // Tensor core step breakdown from xspace.
+        ConvertGenericStepBreakdownToTpuStepBreakdown(
+            generic_step_breakdown, step_info.duration_ps(), tpu);
+      }
+    }
+    step_stats_in_ps.UpdateStat(step_info.duration_ps());
+    if (tpu.wait_for_scv0_duration_ps() > max_wait_for_scv0.DurationPs()) {
+      max_wait_for_scv0.scv0_infeed_duration_ps = ScV0InfeedDurationPs(tpu);
+      max_wait_for_scv0.scv0_compute_duration_ps = ScV0ComputeDurationPs(tpu);
+    }
+
+    tc_outfeed_time_in_ps.UpdateStat(tpu.host_outfeed_ps());
+
+    const AllReduceBreakdown& breakdown = all_reduce_breakdown[core_id];
+    if (breakdown.DurationPs() > max_all_reduce.DurationPs()) {
+      max_all_reduce = breakdown;
+    }
+
+    infeed_percent_stats.UpdateStat(100.0 * TcPlusScV0InfeedDurationPs(tpu) /
+                                    step_info.duration_ps());
+    // The optimal step time is the actual step time minus the time tensor
+    // core spends waiting for host or sparsecorev0 (but not other tensor
+    // cores).
+    optimal_step_time_ps.UpdateStat(step_info.duration_ps() -
+                                    WaitForHostOrScV0DurationPs(tpu));
+    host_send_recv_time_ps.UpdateStat(HostSendRecvDurationPs(tpu));
+
+    if (per_step_data.step_number() < 0) {
+      // Sets the step number of the current step from the first core.
+      per_step_data.set_step_number(step_info.step_num());
+    } else {
+      // The step number of the current step is already set. Checks if it is
+      // the same across cores. In case of multi-host tracing, we may have
+      // some inconsistent steps as tracing is not exactly guaranteed to be
+      // synchronized across all hosts.
+      if (per_step_data.step_number() != step_info.step_num()) {
+        VLOG(1) << "Inconsistent step numbers across cores ("
+                << per_step_data.step_number() << " vs. "
+                << step_info.step_num() << ").";
+      }
+    }
+    if (tpu.infeed_duration_ps() > max_infeed.duration_ps) {
+      max_infeed.core_id = core_id;
+      max_infeed.duration_ps = tpu.infeed_duration_ps();
+    }
+  }
+
+  per_step_data.set_tc_outfeed_time_ms(
+      tsl::profiler::PicoToMilli(tc_outfeed_time_in_ps.avg()));
+  // The TC compute time is the minimum of the optimal step time across cores.
+  per_step_data.set_tc_compute_time_ms(
+      tsl::profiler::PicoToMilli(optimal_step_time_ps.min()));
+  per_step_data.set_host_transfer_ms(
+      tsl::profiler::PicoToMilli(host_send_recv_time_ps.max()));
+  // TODO(b/153730997): Use the maximum step time.
+  // The infeed time is the step time across cores minus all other times.
+  // Previously, we used the maximum step time but changed to use the minimum
+  // step time to work around b/153730997.
+  // Uses the max TC infeed duration across cores as the step's TC infeed
+  // duration.
+  per_step_data.set_tc_infeed_time_ms(
+      tsl::profiler::PicoToMilli(max_infeed.duration_ps));
+  if (max_infeed.core_id.has_value()) {
+    per_step_data.set_coreid_max_infeed_time(max_infeed.core_id.value());
+    if (core_details_map.contains(max_infeed.core_id.value())) {
+      const CoreDetails& core_details =
+          core_details_map.at(max_infeed.core_id.value());
+      per_step_data.set_max_infeed_time_core_name(absl::StrCat(
+          core_details.hostname(), ":", core_details.device_ordinal()));
+    }
+  }
+
+  per_step_data.set_scv0_compute_time_ms(
+      tsl::profiler::PicoToMilli(max_wait_for_scv0.scv0_compute_duration_ps));
+  per_step_data.set_scv0_infeed_time_ms(
+      tsl::profiler::PicoToMilli(max_wait_for_scv0.scv0_infeed_duration_ps));
+
+  // The TC idle time is the time TC spends waiting for the host but not
+  // waiting for input.
+  per_step_data.set_tc_idle_time_ms(
+      tsl::profiler::PicoToMilli(step_stats_in_ps.min()) -
+      NonIdleTimeMs(per_step_data));
+  if (per_step_data.tc_idle_time_ms() < 0) {
+    per_step_data.set_tc_idle_time_ms(0);
+  }
+
+  per_step_data.set_all_reduce_compute_time_ms(
+      tsl::profiler::PicoToMilli(max_all_reduce.compute_duration_ps));
+  per_step_data.set_all_reduce_sync_time_ms(
+      tsl::profiler::PicoToMilli(max_all_reduce.sync_duration_ps));
+
+  per_step_data.set_infeed_percent_average(infeed_percent_stats.avg());
+  per_step_data.set_infeed_percent_minimum(infeed_percent_stats.min());
+  per_step_data.set_infeed_percent_maximum(infeed_percent_stats.max());
+
+  per_step_data.set_sc_infeed_time_ms(
+      tsl::profiler::PicoToMilli(sc_infeed_time_in_ps.avg()));
+  per_step_data.set_sc_outfeed_time_ms(
+      tsl::profiler::PicoToMilli(sc_outfeed_time_in_ps.avg()));
+  per_step_data.set_sc_compute_time_ms(
+      tsl::profiler::PicoToMilli(sc_compute_time_ps.min()));
+  per_step_data.set_sc_idle_time_ms(
+      tsl::profiler::PicoToMilli(sc_idle_time_in_ps.avg()));
+  per_step_data.set_sc_step_time_ms(
+      tsl::profiler::PicoToMilli(sc_step_stats_in_ps.avg()));
+  if (per_step_data.sc_idle_time_ms() < 0) {
+    per_step_data.set_sc_idle_time_ms(0);
+  }
+  return per_step_data;
+}
 
 StepSummary GetStepSummaryForSampleStats(
     const tsl::Stat<double>& sample_stats) {
