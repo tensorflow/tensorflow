@@ -1763,6 +1763,32 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
   return result;
 }
 
+// Reshard the LHS and RHS to match the output sharding.
+absl::StatusOr<HloInstruction*> ReshardLHSRHSToMatchOutputSharding(
+    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const HloSharding& output_sharding,
+    const DotConvolutionDimsInfo& dims_mapping,
+    absl::FunctionRef<absl::StatusOr<HloInstruction*>(
+        HloInstruction*, HloInstruction*, SpmdBuilder*,
+        const Window& conv_window)>
+        create_sharded_dot,
+    const Window& conv_window, SpmdBuilder* b) {
+  const bool consider_other_operand = false;
+  const bool may_combine_partial_sharding = false;
+  const HloSharding infered_lhs_sharding =
+      hlo_sharding_util::InferDotOperandSharding(
+          &output_sharding, &lhs.sharding(), 0, dims_mapping,
+          consider_other_operand, may_combine_partial_sharding);
+  const HloSharding infered_rhs_sharding =
+      hlo_sharding_util::InferDotOperandSharding(
+          &output_sharding, &rhs.sharding(), 1, dims_mapping,
+          consider_other_operand, may_combine_partial_sharding);
+
+  return create_sharded_dot(lhs.Reshard(infered_lhs_sharding).hlo(),
+                            rhs.Reshard(infered_rhs_sharding).hlo(), b,
+                            conv_window);
+}
+
 // We use a recursive approach where sets of matching dimensions are recognized
 // one at a time. The base shapes and shardings can be changed during the
 // recursion as we group devices together. So refer to the passed in shapes and
@@ -1779,8 +1805,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
     const SpmdPartitionerOptions& options, SpmdBuilder* b,
     std::vector<SpmdPartitioningVisitor::WindowedDotGeneralLoop>*
         windowed_dot_general_loops,
-    bool may_reshard_without_detecting_match,
-    SpmdPartitioningVisitor* visitor) {
+    bool may_reshard_if_mismatch, SpmdPartitioningVisitor* visitor) {
   const HloSharding& lhs_sharding = lhs.sharding();
   const HloSharding& rhs_sharding = rhs.sharding();
   const int64_t lhs_batch_partitions = GetPartitionsForDims(
@@ -1979,8 +2004,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
   // LHS and RHS have the same partitioned contracting dimensions.
   if (lhs_contracting_partitions == rhs_contracting_partitions &&
       lhs_contracting_partitions == num_partitions) {
-    if (!may_reshard_without_detecting_match &&
-        !output_sharding.IsReplicated() &&
+    if (!may_reshard_if_mismatch && !output_sharding.IsReplicated() &&
         output_sharding.NumTiles() != num_partitions) {
       // The output is not fully sliced; the recursive handling has better
       // pattern matching for reduce scatters in subgroups.
@@ -2027,82 +2051,82 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
     return create_sharded_dot(lhs.Replicate().hlo(), rhs.hlo(), b, conv_window);
   }
 
-  if (may_reshard_without_detecting_match) {
-    // Output is batch partitioned.
-    if (output_batch_partitions == num_partitions) {
-      auto resharded_lhs =
-          lhs.Reshard(*output_sharding_transposed_to_match_lhs);
-      auto resharded_rhs =
-          rhs.Reshard(*output_sharding_transposed_to_match_rhs);
-      return create_sharded_dot(resharded_lhs.hlo(), resharded_rhs.hlo(), b,
-                                conv_window);
-    }
-    // Output is partitioned along LHS non-contracting dimensions.
-    if (output_lhs_non_contracting_partitions == num_partitions) {
-      auto resharded_lhs =
-          lhs.Reshard(*output_sharding_transposed_to_match_lhs);
-      auto replicated_rhs = rhs.Replicate();
-      return create_sharded_dot(resharded_lhs.hlo(), replicated_rhs.hlo(), b,
-                                conv_window);
-    }
-    // Output is partitioned along RHS non-contracting dimensions.
-    if (output_rhs_non_contracting_partitions == num_partitions) {
-      auto replicated_lhs = lhs.Replicate();
-      auto resharded_rhs =
-          rhs.Reshard(*output_sharding_transposed_to_match_rhs);
-      return create_sharded_dot(replicated_lhs.hlo(), resharded_rhs.hlo(), b,
-                                conv_window);
-    }
+  if (may_reshard_if_mismatch && output_sharding.NumTiles() == num_partitions) {
+    return ReshardLHSRHSToMatchOutputSharding(lhs, rhs, output_sharding,
+                                              dims_mapping, create_sharded_dot,
+                                              conv_window, b);
   }
 
-  // Returns true if it is beneficial to reshard the operand at `operand_idx`
-  // across the contracting dimension.
-  const auto should_partition_contracting_dim = [&](int64_t operand_idx) {
-    if (!output_sharding.IsReplicated()) {
-      return false;
-    }
+  if (!output_sharding.IsReplicated()) {
+    return nullptr;
+  }
 
-    if (operand_idx == 0) {
-      // If LHS and output are replicated, we compare the cost of all-gather
-      // on RHS vs all-reduce on the output.
-      return (rhs_contracting_partitions == num_partitions) &&
-             lhs.sharding().IsReplicated() &&
-             ShapeUtil::ElementsIn(rhs.base_shape()) >
-                 ShapeUtil::ElementsIn(output_base_shape);
-    } else {
-      return (lhs_contracting_partitions == num_partitions) &&
-             rhs.sharding().IsReplicated() &&
-             ShapeUtil::ElementsIn(lhs.base_shape()) >
-                 ShapeUtil::ElementsIn(output_base_shape);
-    }
-  };
-
-  // When the output is replicated and one of the operands is partitioned along
-  // contracting dimension, align the other operand to be partitioned along
-  // the contracting dimensions.
-  if (output_sharding.IsReplicated() && (should_partition_contracting_dim(0) ||
-                                         should_partition_contracting_dim(1))) {
-    if (should_partition_contracting_dim(0)) {
-      lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithZero();
-      rhs = rhs.PadWithZero();
-    } else {
-      lhs = lhs.PadWithZero();
-      rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithZero();
-    }
+  // RHS and output is replicated, while the LHS is fully partitioned along the
+  // non-contracting dimensions. Apply dot at first and replicate the output.
+  if (may_reshard_if_mismatch &&
+      lhs_non_contracting_partitions == num_partitions &&
+      rhs.sharding().IsReplicated() &&
+      ShapeUtil::ElementsIn(lhs.base_shape()) >=
+          ShapeUtil::ElementsIn(output_base_shape)) {
     TF_ASSIGN_OR_RETURN(
         auto dot, create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
-
-    std::vector<int64_t> lhs_contracting_dims;
-    lhs_contracting_dims.reserve(lhs.base_shape().rank());
-    for (const auto& cd : dims_mapping.contracting_dims) {
-      lhs_contracting_dims.push_back(cd.lhs);
-    }
-    return lhs.state().partitioner->AllReduceAlongShardingDims(
-        b, dot, lhs.sharding(), lhs.state().next_channel_id,
-        lhs_contracting_dims, lhs.state().collective_ops_creator,
-        MakeBinaryAdd(output_base_shape.element_type(), module));
+    dot->set_sharding(*lhs_sharding_transposed_to_match_output);
+    return PartitionedHlo(dot, output_base_shape, lhs.state())
+        .Reshard(output_sharding)
+        .hlo();
   }
-  return nullptr;
+  if (may_reshard_if_mismatch &&
+      rhs_non_contracting_partitions == num_partitions &&
+      lhs.sharding().IsReplicated() &&
+      ShapeUtil::ElementsIn(rhs.base_shape()) >=
+          ShapeUtil::ElementsIn(output_base_shape)) {
+    TF_ASSIGN_OR_RETURN(
+        auto dot, create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
+    dot->set_sharding(*rhs_sharding_transposed_to_match_output);
+    return PartitionedHlo(dot, output_base_shape, lhs.state())
+        .Reshard(output_sharding)
+        .hlo();
+  }
+
+  // When the output is replicated and one of the operands is fully partitioned
+  // along contracting dimensions, align the other operand to be partitioned
+  // along the contracting dimensions.
+
+  // If LHS and output are replicated, we compare the cost of all-gather on RHS
+  // vs all-reduce on the output.
+  const bool rhs_constracting_fully_partitioned =
+      (rhs_contracting_partitions == num_partitions) &&
+      lhs.sharding().IsReplicated() &&
+      ShapeUtil::ElementsIn(rhs.base_shape()) >
+          ShapeUtil::ElementsIn(output_base_shape);
+  const bool lhs_contracting_fully_partitioned =
+      (lhs_contracting_partitions == num_partitions) &&
+      rhs.sharding().IsReplicated() &&
+      ShapeUtil::ElementsIn(lhs.base_shape()) >
+          ShapeUtil::ElementsIn(output_base_shape);
+
+  if (rhs_constracting_fully_partitioned) {
+    lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithZero();
+    rhs = rhs.PadWithZero();
+  } else if (lhs_contracting_fully_partitioned) {
+    lhs = lhs.PadWithZero();
+    rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithZero();
+  } else {
+    return nullptr;
+  }
+
+  TF_ASSIGN_OR_RETURN(auto dot,
+                      create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
+
+  std::vector<int64_t> lhs_contracting_dims;
+  lhs_contracting_dims.reserve(lhs.base_shape().rank());
+  for (const auto& cd : dims_mapping.contracting_dims) {
+    lhs_contracting_dims.push_back(cd.lhs);
+  }
+  return lhs.state().partitioner->AllReduceAlongShardingDims(
+      b, dot, lhs.sharding(), lhs.state().next_channel_id, lhs_contracting_dims,
+      lhs.state().collective_ops_creator,
+      MakeBinaryAdd(output_base_shape.element_type(), module));
 }
 
 absl::StatusOr<HloInstruction*> PartitionDot(
@@ -4145,15 +4169,15 @@ absl::StatusOr<HloInstruction*> PartitionDot(
   }
 
   HloInstruction* partitioned_dot;
-  // Before we find partial matches along the dimensions, invoke base case
-  // again without may_reshard_without_detecting_match.
+  // Before we find partial matches along the dimensions, invoke base case with
+  // may_reshard_if_mismatch as false.
   TF_ASSIGN_OR_RETURN(
       partitioned_dot,
-      PartitionBaseCase(
-          lhs, rhs, output_base_shape, output_sharding, dims_mapping,
-          num_partitions, create_sharded_dot, conv_window, module, original_hlo,
-          options, b, windowed_dot_general_loops,
-          /*may_reshard_without_detecting_match=*/false, visitor));
+      PartitionBaseCase(lhs, rhs, output_base_shape, output_sharding,
+                        dims_mapping, num_partitions, create_sharded_dot,
+                        conv_window, module, original_hlo, options, b,
+                        windowed_dot_general_loops,
+                        /*may_reshard_if_mismatch=*/false, visitor));
   if (partitioned_dot) {
     return partitioned_dot;
   }
@@ -4208,44 +4232,18 @@ absl::StatusOr<HloInstruction*> PartitionDot(
   }
 
   // We failed to find partial matches, invoke base case again with
-  // may_reshard_without_detecting_match.
+  // may_reshard_if_mismatch as true.
   TF_ASSIGN_OR_RETURN(
       partitioned_dot,
       PartitionBaseCase(lhs, rhs, output_base_shape, output_sharding,
                         dims_mapping, num_partitions, create_sharded_dot,
                         conv_window, module, original_hlo, options, b,
                         windowed_dot_general_loops,
-                        /*may_reshard_without_detecting_match=*/true, visitor));
+                        /*may_reshard_if_mismatch=*/true, visitor));
   if (partitioned_dot) {
     return partitioned_dot;
   }
   return nullptr;
-}
-
-// Reshard the LHS and RHS to match the output sharding.
-absl::StatusOr<HloInstruction*> ReshardLHSRHSToMatchOutputSharding(
-    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
-    const HloSharding& output_sharding,
-    const DotConvolutionDimsInfo& dims_mapping,
-    absl::FunctionRef<absl::StatusOr<HloInstruction*>(
-        HloInstruction*, HloInstruction*, SpmdBuilder*,
-        const Window& conv_window)>
-        create_sharded_dot,
-    const Window& conv_window, SpmdBuilder* b) {
-  const bool consider_other_operand = false;
-  const bool may_combine_partial_sharding = false;
-  const HloSharding infered_lhs_sharding =
-      hlo_sharding_util::InferDotOperandSharding(
-          &output_sharding, &lhs.sharding(), 0, dims_mapping,
-          consider_other_operand, may_combine_partial_sharding);
-  const HloSharding infered_rhs_sharding =
-      hlo_sharding_util::InferDotOperandSharding(
-          &output_sharding, &rhs.sharding(), 1, dims_mapping,
-          consider_other_operand, may_combine_partial_sharding);
-
-  return create_sharded_dot(lhs.Reshard(infered_lhs_sharding).hlo(),
-                            rhs.Reshard(infered_rhs_sharding).hlo(), b,
-                            conv_window);
 }
 
 absl::StatusOr<HloInstruction*> PartitionDot(

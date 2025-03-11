@@ -4936,6 +4936,143 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->root_instruction(), dot_reshard);
 }
 
+TEST_P(SpmdPartitioningTest,
+       LHSShardedOnNonContractingDimLHSSmallerThanOutput) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = bf16[16,32] parameter(0), sharding={devices=[2,1]<=[2]}
+  %rhs = bf16[32,64] parameter(1), sharding={replicated}
+  ROOT %dot = bf16[16,64] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+
+  const auto lhs = AllOf(op::Parameter(0), op::Shape("bf16[8,32]"));
+  const auto lhs_reshard =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, lhs, _, _)),
+            op::Shape("bf16[16,32]"));
+  const auto rhs = AllOf(op::Parameter(1), op::Shape("bf16[32,64]"));
+  const auto dot = AllOf(op::Dot(lhs_reshard, rhs), op::Shape("bf16[16,64]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), dot);
+}
+
+TEST_P(SpmdPartitioningTest, LHSShardedOnNonContractingDimLHSLargerThanOutput) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = bf16[64,32] parameter(0), sharding={devices=[2,1]<=[2]}
+  %rhs = bf16[32,16] parameter(1), sharding={replicated}
+  ROOT %dot = bf16[64,16] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+
+  const auto lhs = AllOf(op::Parameter(0), op::Shape("bf16[32,32]"));
+  const auto rhs = AllOf(op::Parameter(1), op::Shape("bf16[32,16]"));
+  const auto dot = AllOf(op::Dot(lhs, rhs), op::Shape("bf16[32,16]"));
+  const auto dot_reshard =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, dot, _, _)),
+            op::Shape("bf16[64,16]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), dot_reshard);
+}
+
+TEST_P(SpmdPartitioningTest, LHSShardedOnNonContractingDimLHSOutputSameSize) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = bf16[32,32] parameter(0), sharding={devices=[2,1]<=[2]}
+  %rhs = bf16[32,32] parameter(1), sharding={replicated}
+  ROOT %dot = bf16[32,32] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+
+  const auto lhs = AllOf(op::Parameter(0), op::Shape("bf16[16,32]"));
+  const auto rhs = AllOf(op::Parameter(1), op::Shape("bf16[32,32]"));
+  const auto dot = AllOf(op::Dot(lhs, rhs), op::Shape("bf16[16,32]"));
+  const auto dot_reshard =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, dot, _, _)),
+            op::Shape("bf16[32,32]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), dot_reshard);
+}
+
+TEST_P(SpmdPartitioningTest,
+       RHSShardedOnNonContractingDimRHSSmallerThanOutput) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = bf16[64,32] parameter(0), sharding={replicated}
+  %rhs = bf16[32,16] parameter(1), sharding={devices=[1,2]<=[2]}
+  ROOT %dot = bf16[64,16] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  const auto lhs = AllOf(op::Parameter(0), op::Shape("bf16[64,32]"));
+  const auto rhs = AllOf(op::Parameter(1), op::Shape("bf16[32,8]"));
+  const auto rhs_reshard =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, rhs, _, _)),
+            op::Shape("bf16[32,16]"));
+  const auto dot = AllOf(op::Dot(lhs, rhs_reshard), op::Shape("bf16[64,16]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), dot);
+}
+
+TEST_P(SpmdPartitioningTest, RHSShardedOnNonContractingDimRHSLargerThanOutput) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = bf16[16,1024] parameter(0), sharding={replicated}
+  %rhs = bf16[1024,16] parameter(1), sharding={devices=[1,2]<=[2]}
+  ROOT %dot = bf16[16,16] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  const auto lhs = AllOf(op::Parameter(0), op::Shape("bf16[16,1024]"));
+  const auto rhs = AllOf(op::Parameter(1), op::Shape("bf16[1024,8]"));
+  const auto dot = AllOf(op::Dot(lhs, rhs), op::Shape("bf16[16,8]"));
+  const auto dot_reshard =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, dot, _, _)),
+            op::Shape("bf16[16,16]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), dot_reshard);
+}
+
+TEST_P(SpmdPartitioningTest, DotBuganizer402155950) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = bf16[16,1024] parameter(0), sharding={devices=[1,4,2]<=[8] last_tile_dim_replicate}
+  %rhs = bf16[1024,32] parameter(1), sharding={devices=[4,2]<=[8]}
+  ROOT %dot = bf16[16,32] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[1,4,2]<=[8] last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  LOG(ERROR) << module->ToString();
+  const auto lhs = AllOf(op::Parameter(0), op::Shape("bf16[16,256]"));
+  const auto rhs = AllOf(op::Parameter(1), op::Shape("bf16[256,16]"));
+  const auto dot = AllOf(op::Dot(lhs, rhs), op::Shape("bf16[16,16]"));
+  const auto all_reduce = AllOf(op::AllReduce(dot), op::Shape("bf16[16,16]"));
+
+  // Reshard from {devices=[1,2,4]<=[4,2]T(1,0) last_tile_dim_replicate} to
+  // {devices=[1,4,2]<=[8] last_tile_dim_replicate}
+  const auto dot_reshard =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(
+                _, op::DynamicSlice(all_reduce, _, _), _, _)),
+            op::Shape("bf16[16,8]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), dot_reshard);
+}
+
 TEST_P(SpmdPartitioningTest, WindowedEinsumTwoContractingDimsLhsReshard) {
   absl::string_view hlo_string = R"(
 HloModule module
