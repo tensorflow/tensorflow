@@ -1958,7 +1958,7 @@ CpuCompiler::CompileAheadOfTimeLegacy(
   auto llvm_module =
       std::make_unique<llvm::Module>(kXlaModuleIdentifier, *llvm_context);
   llvm_module->setDataLayout(target_machine->createDataLayout());
-  llvm_module->setTargetTriple(triple.getTriple());
+  llvm_module->setTargetTriple(llvm::Triple(triple.getTriple()));
   if (pic_level != llvm::PICLevel::NotPIC) {
     llvm_module->setPICLevel(pic_level);
   }
@@ -2106,7 +2106,7 @@ CpuCompiler::CompileAheadOfTimeThunks(
       std::make_unique<llvm::Module>(kXlaModuleIdentifier, *llvm_context);
 
   llvm_module->setDataLayout(target_machine->createDataLayout());
-  llvm_module->setTargetTriple(triple.getTriple());
+  llvm_module->setTargetTriple(llvm::Triple(triple.getTriple()));
   if (pic_level != llvm::PICLevel::NotPIC) {
     llvm_module->setPICLevel(pic_level);
   }
