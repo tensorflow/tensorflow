@@ -86,7 +86,7 @@ HloInstruction* LookThroughForAllReduce(HloInstruction* instr,
                                         const Literal& reduction_identity) {
   // Match reduce-scatter pattern. Support only the non-formatted case at the
   // moment.
-  if (instr->opcode() == HloOpcode::kDynamicSlice) {
+  if (HloPredicateIsOp<HloOpcode::kDynamicSlice>(instr)) {
     // Dynamic-slice to be matched needs to be immediately using an AllReduce.
     if (instr->operand(0)->opcode() != HloOpcode::kAllReduce ||
         instr->operand(0)->user_count() != 1 || instr->user_count() != 1) {
@@ -94,17 +94,15 @@ HloInstruction* LookThroughForAllReduce(HloInstruction* instr,
     }
     return instr;
   }
-  while (instr->opcode() != HloOpcode::kAllReduce) {
+  while (HloPredicateIsNotOp<HloOpcode::kAllReduce>(instr)) {
     if (instr->user_count() != 1) {
       return nullptr;
     }
-    if (instr->opcode() != HloOpcode::kReshape &&
-        instr->opcode() != HloOpcode::kPad &&
-        instr->opcode() != HloOpcode::kSlice &&
-        instr->opcode() != HloOpcode::kConvert) {
+    if (HloPredicateIsNotOp<HloOpcode::kReshape, HloOpcode::kPad,
+                            HloOpcode::kSlice, HloOpcode::kConvert>(instr)) {
       return nullptr;
     }
-    if (instr->opcode() == HloOpcode::kPad) {
+    if (HloPredicateIsOp<HloOpcode::kPad>(instr)) {
       if (!instr->operand(1)->IsConstant()) {
         return nullptr;
       }
@@ -223,7 +221,7 @@ absl::StatusOr<bool> AllReduceReassociate::Run(
         continue;
       }
       if (lhs->opcode() != rhs->opcode() ||
-          (lhs->opcode() == HloOpcode::kDynamicSlice &&
+          (HloPredicateIsOp<HloOpcode::kDynamicSlice>(lhs) &&
            !ShapeUtil::Compatible(lhs->operand(0)->shape(),
                                   rhs->operand(0)->shape()))) {
         continue;
@@ -232,7 +230,7 @@ absl::StatusOr<bool> AllReduceReassociate::Run(
       HloAllReduceInstruction* ar1 = nullptr;
       bool reduce_scatter_pattern_match = false;
       // Check Dynamic-slice pattern is identical
-      if (lhs->opcode() == HloOpcode::kDynamicSlice) {
+      if (HloPredicateIsOp<HloOpcode::kDynamicSlice>(lhs)) {
         HloInstruction* original_rhs_operand = rhs->mutable_operand(0);
         TF_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, lhs->mutable_operand(0)));
         if (!lhs->Identical(*rhs)) {

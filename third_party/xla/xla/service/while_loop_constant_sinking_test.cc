@@ -295,7 +295,7 @@ ENTRY entry {
               op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
                         op::GetTupleElement()));
   for (const HloInstruction* inst : while_body->instructions()) {
-    if (inst->opcode() == HloOpcode::kConstant) {
+    if (HloPredicateIsOp<HloOpcode::kConstant>(inst)) {
       EXPECT_GT(inst->user_count(), 0);
     }
   }
@@ -422,7 +422,7 @@ ENTRY entry {
   auto* while_condition = module->GetComputationWithName("condition.sunk");
   EXPECT_THAT(while_condition->root_instruction(), op::Lt(_, op::Constant()));
   for (const HloInstruction* inst : while_condition->instructions()) {
-    if (inst->opcode() == HloOpcode::kConstant) {
+    if (HloPredicateIsOp<HloOpcode::kConstant>(inst)) {
       EXPECT_GT(inst->user_count(), 0);
     }
   }
