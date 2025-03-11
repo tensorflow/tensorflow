@@ -362,38 +362,64 @@ namespace {
 // Makes IFRT `CompileOptions` from XLA `CompileOptions` and optional host
 // callbacks.
 std::unique_ptr<ifrt::CompileOptions> MakeIfrtCompileOptions(
-    CompileOptions options, std::vector<nb::capsule> host_callbacks) {
+    CompileOptions options, std::vector<nb::capsule> host_callbacks,
+    ifrt::PlatformId platform_id) {
   std::vector<tsl::RCReference<ifrt::LoadedHostCallback>>
       ifrt_loaded_host_callbacks;
-  ifrt_loaded_host_callbacks.reserve(host_callbacks.size());
+  if (platform_id != CpuId() && platform_id != CudaId() &&
+      platform_id != RocmId() && platform_id != SyclId()) {
+    ifrt_loaded_host_callbacks.reserve(host_callbacks.size());
+    // Extract `ifrt::LoadedHostCallback`s from host callback capsules that were
+    // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()`.
+    for (auto& host_callback : host_callbacks) {
+      ifrt_loaded_host_callbacks.push_back(tsl::FormRef(
+          static_cast<ifrt::LoadedHostCallback*>(host_callback.data())));
+    }
+    return std::make_unique<ifrt::XlaCompileOptions>(
+        std::move(options), std::move(ifrt_loaded_host_callbacks));
+  }
+  std::vector<void*> opaque_host_callbacks;
+  opaque_host_callbacks.reserve(host_callbacks.size());
   // Extract `ifrt::LoadedHostCallback`s from host callback capsules that were
-  // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()` or
-  // `PyClient::GetEmitPythonCallbackDescriptor()`.
+  // created by `PyClient::GetEmitPythonCallback()`.
   for (auto& host_callback : host_callbacks) {
-    ifrt_loaded_host_callbacks.push_back(tsl::FormRef(
-        static_cast<ifrt::LoadedHostCallback*>(host_callback.data())));
+    opaque_host_callbacks.push_back(host_callback.data());
   }
   return std::make_unique<ifrt::XlaCompileOptions>(
-      std::move(options), std::move(ifrt_loaded_host_callbacks));
+      std::move(options), std::move(ifrt_loaded_host_callbacks),
+      std::move(opaque_host_callbacks));
 }
 
 // Makes IFRT `DeserializeExecutableOptions` from XLA `CompileOptions` and
 // optional host callbacks.
 std::unique_ptr<ifrt::DeserializeExecutableOptions>
 MakeIfrtDeserializeExecutableOptions(std::optional<CompileOptions> options,
-                                     std::vector<nb::capsule> host_callbacks) {
+                                     std::vector<nb::capsule> host_callbacks,
+                                     ifrt::PlatformId platform_id) {
   std::vector<tsl::RCReference<ifrt::LoadedHostCallback>>
       ifrt_loaded_host_callbacks;
-  ifrt_loaded_host_callbacks.reserve(host_callbacks.size());
+  if (platform_id != CpuId() && platform_id != CudaId() &&
+      platform_id != RocmId() && platform_id != SyclId()) {
+    ifrt_loaded_host_callbacks.reserve(host_callbacks.size());
+    // Extract `ifrt::LoadedHostCallback`s from host callback capsules that were
+    // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()`.
+    for (auto& host_callback : host_callbacks) {
+      ifrt_loaded_host_callbacks.push_back(tsl::FormRef(
+          static_cast<ifrt::LoadedHostCallback*>(host_callback.data())));
+    }
+    return std::make_unique<ifrt::XlaDeserializeExecutableOptions>(
+        std::move(options), std::move(ifrt_loaded_host_callbacks));
+  }
+  std::vector<void*> opaque_host_callbacks;
+  opaque_host_callbacks.reserve(host_callbacks.size());
   // Extract `ifrt::LoadedHostCallback`s from host callback capsules that were
-  // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()` or
-  // `PyClient::GetEmitPythonCallbackDescriptor()`.
+  // created by `PyClient::GetEmitPythonCpuCallback()`.
   for (auto& host_callback : host_callbacks) {
-    ifrt_loaded_host_callbacks.push_back(tsl::FormRef(
-        static_cast<ifrt::LoadedHostCallback*>(host_callback.data())));
+    opaque_host_callbacks.push_back(host_callback.data());
   }
   return std::make_unique<ifrt::XlaDeserializeExecutableOptions>(
-      std::move(options), std::move(ifrt_loaded_host_callbacks));
+      std::move(options), std::move(ifrt_loaded_host_callbacks),
+      std::move(opaque_host_callbacks));
 }
 
 }  // namespace
@@ -461,7 +487,8 @@ PyClient::CompileIfrtProgram(
   }
   return CompileIfrtProgram(
       client, std::make_unique<xla::ifrt::HloProgram>(module.get()),
-      MakeIfrtCompileOptions(std::move(options), std::move(host_callbacks)));
+      MakeIfrtCompileOptions(std::move(options), std::move(host_callbacks),
+                             client->ifrt_client_->platform_id()));
 }
 
 absl::StatusOr<nb::bytes> PyClient::SerializeExecutable(
@@ -479,7 +506,8 @@ PyClient::DeserializeExecutable(nb_class_ptr<PyClient> client,
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
   auto ifrt_deserialize_options = MakeIfrtDeserializeExecutableOptions(
-      std::move(options), std::move(host_callbacks));
+      std::move(options), std::move(host_callbacks),
+      client->ifrt_client_->platform_id());
   {
     nb::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(
@@ -649,18 +677,17 @@ PyClient::GetEmitPythonCallbackDescriptor(
   return std::make_pair(descriptor, nb::object(std::move(callback_capsule)));
 }
 
-// TODO(b/394595987): Deprecate / clean up this API method to remove the need
-// for `operand_shapes` and `result_shapes` once we can remove
-// xla::PyClient::GetEmitPythonCallbackDescriptor (called by mlir.py's
-// get_emit_python_callback for CPU/GPU devices).
 absl::StatusOr<nb::object> PyClient::GetEmitPythonCallback(
     nb::callable callable) {
-  absl::Span<const Shape> operand_shapes;
-  absl::Span<const Shape> result_shapes;
-  TF_ASSIGN_OR_RETURN(auto descriptor_and_callback,
-                      GetEmitPythonCallbackDescriptor(
-                          std::move(callable), operand_shapes, result_shapes));
-  return nb::object(std::move(descriptor_and_callback.second));
+  // auto cpu_callback = std::make_unique<CpuCallback>(std::move(callable));
+  // auto callback = tsl::RCReference<RefCountedCpuCallback>(
+  //     tsl::MakeRef<RefCountedCpuCallback>(std::move(cpu_callback)));
+  return nb::object(
+      std::move(nb::capsule(new CpuCallback(std::move(callable)))));
+  // [](void* ptr) noexcept { delete static_cast<CpuCallback*>(ptr); })));
+  // std::move(nb::capsule(callback.release(), [](void* ptr) noexcept {
+  //   static_cast<RefCountedCpuCallback*>(ptr)->DropRef();
+  // })));
 }
 
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",

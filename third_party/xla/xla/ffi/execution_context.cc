@@ -50,6 +50,8 @@ absl::Status ExecutionContext::InsertUserData(TypeId type_id,
         "User data with type id %d already exists in execution context",
         type_id.value());
   }
+  LOG(INFO) << "Inserted user data with type id " << type_id.value()
+            << " and size " << user_data_.size();
   return absl::OkStatus();
 }
 
