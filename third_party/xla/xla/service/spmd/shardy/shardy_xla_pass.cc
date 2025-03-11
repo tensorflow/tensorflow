@@ -44,6 +44,7 @@ limitations under the License.
 #include "shardy/common/file_utils.h"
 #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
 #include "shardy/dialect/sdy/transforms/propagation/passes.h"
+#include "re2/re2.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -309,7 +310,14 @@ absl::StatusOr<bool> ShardyXLA::Run(
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlirModule,
       xla::ConvertHloToStablehlo(*mlirContext.get(), hloModule));
-  std::string shardyDir = hloModule->config().debug_options().xla_dump_to();
+
+  const DebugOptions& debug_options = hloModule->config().debug_options();
+  std::string shardyDir = debug_options.xla_dump_to();
+
+  if (!shardyDir.empty() &&
+      !RE2::PartialMatch(name(), debug_options.xla_dump_hlo_pass_re())) {
+    shardyDir.clear();
+  }
 
   if (shardyDir == "sponge") {
     shardyDir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
