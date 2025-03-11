@@ -24,6 +24,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -35,6 +36,7 @@ cc_library(
     deps = [
         ":utils",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
@@ -59,6 +61,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
@@ -72,6 +75,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
