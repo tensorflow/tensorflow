@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/tsl/c/tsl_status.h"
 #include "xla/tsl/c/tsl_status_helper.h"
+#include "xla/tsl/platform/status.h"
 
 class TslStatusHelper {
  public:

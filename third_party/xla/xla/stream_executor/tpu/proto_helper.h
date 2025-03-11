@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 
 extern "C" {
 
