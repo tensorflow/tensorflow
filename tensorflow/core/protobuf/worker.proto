@@ -1,16 +1,17 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/*
+    Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+       http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
 ==============================================================================*/
 
 syntax = "proto3";
@@ -31,7 +32,6 @@ import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
 
-option cc_enable_arenas = true;
 option java_outer_classname = "WorkerProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
@@ -262,6 +262,7 @@ message RunGraphRequest {
 
   // True if the RunGraphRequest is a partial run request.
   bool is_partial = 6;
+
   // True if this is the last partial run request in a sequence of requests.
   bool is_last_partial_run = 7;
 
@@ -446,16 +447,21 @@ message LoggingResponse {
 message TraceOpts {
   // Length of the trace to be taken, in seconds.
   double duration = 1;
+
   // If true, capture step profile locally in each worker. Currently
   // unimplemented.
   bool use_step_profiler = 2;
+
   // If true, capture kernel events from each worker.
   bool use_kernel_profiler = 3;
+
   // If true, capture extended profiling events from TensorFlow process.
   bool use_extended_profiler = 4;
+
   // If true, capture GPU profiling events locally on each
   // machine. Currently unimplemented.
   bool use_gpu_profiler = 5;
+
   // If true, collect sampled profile events. Currently unimplemented.
   bool use_sample_profiler = 6;
 }
@@ -503,8 +509,10 @@ message RecvBufRequest {
 
   // Optional, implementation-specific data.
   google.protobuf.Any transport_options = 7;
+
   // For annotating timeline and device incarnation check.
   string src_device = 8;
+
   // Optional, for annotating the timeline.
   string dst_device = 9;
 
@@ -524,8 +532,10 @@ message RecvBufResponse {
   fixed64 buf_ptr = 1;  // Address of source field on server.
   int64 num_bytes = 2;  // Byte length of buf_ptr field, if set.
   bool is_dead = 3;     // True if value is 'dead' like a tensor.
+
   // Optional, implementation-specific data.
   google.protobuf.Any transport_options = 4;
+
   // Optional, for timeline.
   int64 send_start_micros = 5;
 
@@ -589,6 +599,7 @@ message CompleteInstanceRequest {
 message CompleteInstanceResponse {
   int32 instance_key = 1;
   int32 source_rank = 2;
+
   reserved 3;
 }
 
