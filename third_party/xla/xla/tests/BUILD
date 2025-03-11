@@ -1615,43 +1615,6 @@ xla_test(
 )
 
 xla_test(
-    name = "convolution_test_cudnn_frontend_disabled",
-    timeout = "long",
-    srcs = ["convolution_test.cc"],
-    backend_args = {"gpu": ["--xla_gpu_enable_cudnn_frontend=false"]},
-    backends = ["gpu"],
-    shard_count = 50,
-    tags = [
-        "nozapfhahn",
-        "optonly",
-        "test_migrated_to_hlo_runner_pjrt",
-    ],
-    deps = [
-        ":client_library_test_runner_mixin",
-        ":hlo_pjrt_interpreter_reference_mixin",
-        ":hlo_pjrt_test_base",
-        ":test_macros_header",
-        ":xla_internal_test_main",
-        "//xla:array2d",
-        "//xla:array4d",
-        "//xla:error_spec",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:window_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/builder:padding",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/service:hlo_runner_interface",
-        "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-xla_test(
     name = "convolution_variants_test",
     timeout = "long",
     srcs = ["convolution_variants_test.cc"],

@@ -227,8 +227,10 @@ message DebugOptions {
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
   // clang-format off
-  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["AutotuneCacheMode","bool","float","int32","int64","LibNvJitLinkMode","map<string, string>","PGLEStrictnessLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","ShapeChecks","string","WhileLoopUnrolling"] // NOLINT
+  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["AutotuneCacheMode","bool","float","int32","int64","LibNvJitLinkMode","map<string, string>","PGLEStrictnessLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","ShapeChecks","string","WhileLoopUnrolling","reserved"] // NOLINT
   // clang-format on
+
+  reserved 160;  // Was xla_gpu_enable_cudnn_frontend
 
   PipelineParallelismOptLevel
       xla_gpu_experimental_pipeline_parallelism_opt_level = 351;
@@ -396,9 +398,6 @@ message DebugOptions {
 
   // Whether to use cuBLASLt for GEMMs on GPUs.
   bool xla_gpu_enable_cublaslt = 166;
-
-  // Whether to use the cuDNN frontend API for convolutions when possible.
-  bool xla_gpu_enable_cudnn_frontend = 160;
 
   bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
 
