@@ -298,6 +298,12 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
       continue;
     }
 
+    // Skip instructions that cannot be safely removed.
+    if (!computation->IsSafelyRemovable(instruction,
+                                        ignore_control_dependencies_)) {
+      continue;
+    }
+
     if (only_scalars_ && !ShapeUtil::IsScalar(instruction->shape())) {
       continue;
     }
