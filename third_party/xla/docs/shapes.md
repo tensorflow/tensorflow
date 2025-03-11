@@ -1,6 +1,6 @@
 # Shapes and layout
 
-The XLA `Shape` proto
+The XLA `ShapeProto` proto
 ([xla_data.proto](https://github.com/openxla/xla/tree/main/xla/xla_data.proto))
 describes the rank, size, and data type of an N-dimensional array (*array* in
 short).
@@ -13,7 +13,8 @@ short).
 *   Dimensions are numbered from `0` up to `N-1` for an `N` dimensional array.
     The dimension numbers are arbitrary labels for convenience. The order of
     these dimension numbers does not imply a particular minor/major ordering in
-    the layout of the shape. The layout is determined by the `Layout` proto.
+    the layout of the shape. The layout is determined by the `LayoutProto`
+    proto.
 
 *   By convention, dimensions are listed in increasing order of dimension
     number. For example, for a 3-dimensional array of size `[A x B x C]`,
@@ -55,14 +56,14 @@ short).
 
 ## Layout
 
-The `Layout` proto describes how an array is represented in memory. The `Layout`
-proto includes the following fields:
+The `LayoutProto` proto describes how an array is represented in memory. It
+includes the following fields:
 
 ```
-message Layout {
-  repeated int64 minor_to_major = 1;
-  repeated int64 padded_dimensions = 2;
-  optional PaddingValue padding_value = 3;
+message LayoutProto {
+  repeated int64 minor_to_major;
+  int64 tail_padding_alignment_in_elements;
+  ...
 }
 ```
 
@@ -111,32 +112,14 @@ is major".
 #### Default minor-to-major ordering
 
 The default layout for newly created Shapes is "dimension order is
-major-to-minor" (akin to row-major at rank 2).
+major-to-minor" (i.e. `[N-1, ..., 0]`).
 
 ### Padding
 
-Padding is defined in the optional `padded_dimensions` and `padding_value`
-fields. The field `padded_dimensions` describes the sizes (widths) to which each
-dimension is padded. If present, the number of elements in `padded_dimensions`
-must equal the rank of the shape.
-
-For example, given the `[2 x 3]` array defined above, if `padded_dimensions` is
-`[3, 5]` then dimension 0 is padded to a width of 3 and dimension 1 is padded to
-a width of 5. The layout in linear memory (assuming a padding value of 0 and
-column-major layout) is:
-
-```
-a d 0 b e 0 c f 0 0 0 0 0 0 0
-```
-
-This is equivalent to the layout of the following array with the same
-minor-to-major dimension order:
-
-```
-a b c 0 0
-d e f 0 0
-0 0 0 0 0
-```
+The `tail_padding_alignment_in_elements` field defines the alignment of the
+[tiled](tiled_layout.md) array in terms of the number of elements. After
+applying tiling, padded elements will be added at the end of the layout until
+the total number of elements is a multiple of this value.
 
 ### Indexing into arrays
 

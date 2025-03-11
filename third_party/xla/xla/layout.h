@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/printer.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
@@ -383,6 +384,7 @@ class Layout {
     return tail_padding_alignment_in_elements_;
   }
   Layout& set_tail_padding_alignment_in_elements(int64_t value) {
+    CHECK_GE(value, 1) << "tail_padding_alignment_in_elements must be >= 1";
     tail_padding_alignment_in_elements_ = value;
     return *this;
   }
@@ -503,13 +505,15 @@ class Layout {
   // the tensor is split between different physical memories.
   absl::InlinedVector<SplitConfig, 1> split_configs_;
 
-  // The shape is padded at the end to multiple of, in terms of number of
-  // elements. This is useful when tiling does not bring the shape to certain
-  // desired granules. Tiling effectively pads/reshapes/transposes the shape
-  // to another shape. This field pads the total number of elements of that
-  // new shape to a multiple of certain number of elements. This is useful such
-  // as we want a layout which does not tile the data but still requires it to
-  // be padded to certain number of elements.
+  // The shape is padded at the end to a multiple of, in terms of number of
+  // elements, this value. This is useful when tiling does not bring the shape
+  // to certain desired granules. Tiling effectively pads/reshapes/transposes
+  // the shape to another shape. This field pads the total number of elements of
+  // that new shape to a multiple of certain number of elements. This is useful
+  // such as we want a layout which does not tile the data but still requires it
+  // to be padded to certain number of elements.
+  //
+  // Invariant: this must be >= 1.
   int64_t tail_padding_alignment_in_elements_ = 1;
 
   // The physical on-device shape used to represent a sparse array.

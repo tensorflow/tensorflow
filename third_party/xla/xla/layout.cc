@@ -218,12 +218,12 @@ Layout& Layout::operator=(Layout&& other) = default;
   for (const TileProto& tile_proto : proto.tiles()) {
     *layout.add_tiles() = Tile::CreateFromProto(tile_proto);
   }
-  if (proto.tail_padding_alignment_in_elements() != 0) {
-    layout.set_tail_padding_alignment_in_elements(
-        proto.tail_padding_alignment_in_elements());
-  } else {
-    layout.set_tail_padding_alignment_in_elements(1);
-  }
+  // If the proto does not have tail_padding_alignment_in_elements set, or have
+  // it set to 0, we treat it as 1.
+  const auto alignment = proto.tail_padding_alignment_in_elements() != 0
+                             ? proto.tail_padding_alignment_in_elements()
+                             : 1;
+  layout.set_tail_padding_alignment_in_elements(alignment);
   layout.set_index_primitive_type(proto.index_primitive_type());
   layout.set_pointer_primitive_type(proto.pointer_primitive_type());
   layout.set_element_size_in_bits(proto.element_size_in_bits());

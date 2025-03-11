@@ -220,26 +220,28 @@ message SplitConfigProto {
 // computation. Layouts specified in interior operations which take Shapes (for
 // example, Convert) are ignored.
 //
-// See the XLA documentation for more information on shapes and layouts.
+// See https://openxla.org/xla/shapes for more information on shapes and
+// layouts.
 //
 // LINT.IfChange
 message LayoutProto {
+  // Sequence of dimension indices, from minor (fastest varying index) to major
+  // (slowest varying index). The size of this field must equal the table's
+  // rank.
+  repeated int64 minor_to_major = 1;
+
   // The dimension level type list for this array, specifying the way in which
   // each array dimension is represented in memory. If this list is empty, the
   // array is assumed to be dense.
   repeated DimLevelType dim_level_types = 9;
 
   // Whether each dimension is unique or ordered.  Each of the following lists
-  // must be empty, or have one entry for each entry of dim_level_types.  If
-  // either list is empty, all dimensions are assumed to be unique and ordered,
-  // respectively.  Entries in this list may not be false for some DimLevelType
-  // values (such as DIM_DENSE in particular).
+  // must either be empty or have one entry for each entry of dim_level_types.
+  // If either list is empty, all dimensions are assumed to be unique or
+  // ordered, respectively.  Entries in this list may not be false for some
+  // DimLevelType values (such as DIM_DENSE in particular).
   repeated bool dim_unique = 13;
   repeated bool dim_ordered = 14;
-
-  // Sequence of dimension numbers, from minor (fastest varying index) to major
-  // (slowest varying index). This field is required.
-  repeated int64 minor_to_major = 1;
 
   // A sequence of tiles, starting from the tile that's applied first to the
   // Shape.
@@ -248,13 +250,15 @@ message LayoutProto {
   // error.
   repeated TileProto tiles = 6;
 
-  // The shape is padded at the end to multiple of, in terms of number of
-  // elements. This is useful when tiling does not bring the shape to certain
-  // desired granules. Tiling effectively pads/reshapes/transposes the shape
-  // to another shape. This field pads the total number of elements of that
-  // new shape to a multiple of certain number of elements. This is useful such
-  // as we want a layout which does not tile the data but still requires it to
-  // be padded to certain number of elements.
+  // The shape is padded at the end to the smallest multiple of, in terms of
+  // number of elements, this value. This is useful when tiling does not bring
+  // the shape to certain desired granules. Tiling effectively
+  // pads/reshapes/transposes the shape to another shape. This field pads the
+  // total number of elements of that new shape to a multiple of certain number
+  // of elements. This is useful such as we want a layout which does not tile
+  // the data but still requires it to be padded to certain number of elements.
+  //
+  // If omitted or set to 0, it's treated as 1.
   int64 tail_padding_alignment_in_elements = 16;
 
   // (Optional) Bit size of each element. When unspecified or being 0, default
@@ -311,7 +315,8 @@ message LayoutProto {
 // Tuples are a special case in that they have rank zero and have tuple_shapes
 // defined.
 //
-// See the XLA documentation for more information on shapes and layouts.
+// See https://openxla.org/xla/shapes for more information on shapes and
+// layouts.
 //
 // LINT.IfChange
 message ShapeProto {
