@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/sparse_core_xla_ops.h"
 
+#include <climits>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -600,12 +601,12 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     std::vector<XlaCompiler::Argument> arguments(num_arguments);
 
     // For all the arguments, we use the float type and the shape is
-    // {1, feature_width}.
+    // {INT_MAX, feature_width}.
     for (int32_t i = 0; i < num_arguments; ++i) {
       arguments[i].kind = XlaCompiler::Argument::kParameter;
       arguments[i].type = DT_FLOAT;
       arguments[i].shape =
-          xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+          xla::ShapeUtil::MakeShape(xla::F32, {INT_MAX, feature_width});
     }
 
     CHECK_OK(compiler->CompileFunction(options, custom_computation_, arguments,
@@ -707,17 +708,20 @@ class XlaSparseDenseMatmulGradWithSgdAndCsrInputOp
       auto sgd_optimizer_builder =
           std::make_unique<xla::XlaBuilder>("sgd_optimizer_builder");
 
-      xla::Shape per_row_shape =
-          xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
+      xla::Shape optimizer_placeholder_shape =
+          xla::ShapeUtil::MakeShapeWithType<float>({INT_MAX, feature_width});
 
-      xla::XlaOp gradient = xla::Parameter(sgd_optimizer_builder.get(), 0,
-                                           per_row_shape, "gradient");
+      xla::XlaOp gradient =
+          xla::Parameter(sgd_optimizer_builder.get(), 0,
+                         optimizer_placeholder_shape, "gradient");
 
-      xla::XlaOp embedding_table = xla::Parameter(
-          sgd_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
+      xla::XlaOp embedding_table =
+          xla::Parameter(sgd_optimizer_builder.get(), 1,
+                         optimizer_placeholder_shape, "embedding_table");
 
-      xla::XlaOp learning_rate = xla::Parameter(sgd_optimizer_builder.get(), 2,
-                                                per_row_shape, "learning_rate");
+      xla::XlaOp learning_rate =
+          xla::Parameter(sgd_optimizer_builder.get(), 2,
+                         optimizer_placeholder_shape, "learning_rate");
 
       xla::XlaOp updated_embedding_table =
           embedding_table - learning_rate * gradient;
@@ -776,20 +780,24 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
       auto adagrad_optimizer_builder =
           std::make_unique<xla::XlaBuilder>("adagrad_optimizer_builder");
 
-      xla::Shape per_row_shape =
-          xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
+      xla::Shape optimizer_placeholder_shape =
+          xla::ShapeUtil::MakeShapeWithType<float>({INT_MAX, feature_width});
 
-      xla::XlaOp gradient = xla::Parameter(adagrad_optimizer_builder.get(), 0,
-                                           per_row_shape, "gradient");
+      xla::XlaOp gradient =
+          xla::Parameter(adagrad_optimizer_builder.get(), 0,
+                         optimizer_placeholder_shape, "gradient");
 
-      xla::XlaOp embedding_table = xla::Parameter(
-          adagrad_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
+      xla::XlaOp embedding_table =
+          xla::Parameter(adagrad_optimizer_builder.get(), 1,
+                         optimizer_placeholder_shape, "embedding_table");
 
-      xla::XlaOp accumulator = xla::Parameter(adagrad_optimizer_builder.get(),
-                                              2, per_row_shape, "accumulator");
+      xla::XlaOp accumulator =
+          xla::Parameter(adagrad_optimizer_builder.get(), 2,
+                         optimizer_placeholder_shape, "accumulator");
 
-      xla::XlaOp learning_rate = xla::Parameter(
-          adagrad_optimizer_builder.get(), 3, per_row_shape, "learning_rate");
+      xla::XlaOp learning_rate =
+          xla::Parameter(adagrad_optimizer_builder.get(), 3,
+                         optimizer_placeholder_shape, "learning_rate");
 
       xla::XlaOp new_accumulator = accumulator + gradient * gradient;
 
@@ -862,24 +870,24 @@ class XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp
           std::make_unique<xla::XlaBuilder>(
               "adagrad_momentum_optimizer_builder");
 
-      xla::Shape per_row_shape =
-          xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
+      xla::Shape optimizer_placeholder_shape =
+          xla::ShapeUtil::MakeShapeWithType<float>({INT_MAX, feature_width});
 
       xla::XlaOp gradient =
           xla::Parameter(adagrad_momentum_optimizer_builder.get(), 0,
-                         per_row_shape, "gradient");
+                         optimizer_placeholder_shape, "gradient");
       xla::XlaOp embedding_table =
           xla::Parameter(adagrad_momentum_optimizer_builder.get(), 1,
-                         per_row_shape, "embedding_table");
+                         optimizer_placeholder_shape, "embedding_table");
       xla::XlaOp accumulator =
           xla::Parameter(adagrad_momentum_optimizer_builder.get(), 2,
-                         per_row_shape, "accumulator");
+                         optimizer_placeholder_shape, "accumulator");
       xla::XlaOp momenta =
           xla::Parameter(adagrad_momentum_optimizer_builder.get(), 3,
-                         per_row_shape, "momenta");
+                         optimizer_placeholder_shape, "momenta");
       xla::XlaOp learning_rate =
           xla::Parameter(adagrad_momentum_optimizer_builder.get(), 4,
-                         per_row_shape, "learning_rate");
+                         optimizer_placeholder_shape, "learning_rate");
 
       xla::XlaOp beta1 =
           xla::ConstantR0(adagrad_momentum_optimizer_builder.get(), beta1_);
@@ -990,19 +998,24 @@ class XlaSparseDenseMatmulGradWithAdamAndCsrInputOp
       auto adam_optimizer_builder =
           std::make_unique<xla::XlaBuilder>("adam_optimizer_builder");
 
-      xla::Shape per_row_shape =
-          xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
+      xla::Shape optimizer_placeholder_shape =
+          xla::ShapeUtil::MakeShapeWithType<float>({INT_MAX, feature_width});
 
-      xla::XlaOp gradient = xla::Parameter(adam_optimizer_builder.get(), 0,
-                                           per_row_shape, "gradient");
-      xla::XlaOp embedding_table = xla::Parameter(
-          adam_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
-      xla::XlaOp momenta = xla::Parameter(adam_optimizer_builder.get(), 2,
-                                          per_row_shape, "momenta");
-      xla::XlaOp velocity = xla::Parameter(adam_optimizer_builder.get(), 3,
-                                           per_row_shape, "velocity");
-      xla::XlaOp learning_rate = xla::Parameter(adam_optimizer_builder.get(), 4,
-                                                per_row_shape, "learning_rate");
+      xla::XlaOp gradient =
+          xla::Parameter(adam_optimizer_builder.get(), 0,
+                         optimizer_placeholder_shape, "gradient");
+      xla::XlaOp embedding_table =
+          xla::Parameter(adam_optimizer_builder.get(), 1,
+                         optimizer_placeholder_shape, "embedding_table");
+      xla::XlaOp momenta =
+          xla::Parameter(adam_optimizer_builder.get(), 2,
+                         optimizer_placeholder_shape, "momenta");
+      xla::XlaOp velocity =
+          xla::Parameter(adam_optimizer_builder.get(), 3,
+                         optimizer_placeholder_shape, "velocity");
+      xla::XlaOp learning_rate =
+          xla::Parameter(adam_optimizer_builder.get(), 4,
+                         optimizer_placeholder_shape, "learning_rate");
 
       xla::XlaOp beta1 = xla::ConstantR0(adam_optimizer_builder.get(), beta1_);
       xla::XlaOp beta2 = xla::ConstantR0(adam_optimizer_builder.get(), beta2_);
@@ -1105,20 +1118,24 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
       auto ftrl_optimizer_builder =
           std::make_unique<xla::XlaBuilder>("ftrl_optimizer_builder");
 
-      xla::Shape per_row_shape =
-          xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
+      xla::Shape optimizer_placeholder_shape =
+          xla::ShapeUtil::MakeShapeWithType<float>({INT_MAX, feature_width});
 
-      xla::XlaOp gradient = xla::Parameter(ftrl_optimizer_builder.get(), 0,
-                                           per_row_shape, "gradient");
+      xla::XlaOp gradient =
+          xla::Parameter(ftrl_optimizer_builder.get(), 0,
+                         optimizer_placeholder_shape, "gradient");
 
-      xla::XlaOp embedding_table = xla::Parameter(
-          ftrl_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
-      xla::XlaOp accumulator = xla::Parameter(ftrl_optimizer_builder.get(), 2,
-                                              per_row_shape, "accumulator");
+      xla::XlaOp embedding_table =
+          xla::Parameter(ftrl_optimizer_builder.get(), 1,
+                         optimizer_placeholder_shape, "embedding_table");
+      xla::XlaOp accumulator =
+          xla::Parameter(ftrl_optimizer_builder.get(), 2,
+                         optimizer_placeholder_shape, "accumulator");
       xla::XlaOp linear = xla::Parameter(ftrl_optimizer_builder.get(), 3,
-                                         per_row_shape, "linear");
-      xla::XlaOp learning_rate = xla::Parameter(ftrl_optimizer_builder.get(), 4,
-                                                per_row_shape, "learning_rate");
+                                         optimizer_placeholder_shape, "linear");
+      xla::XlaOp learning_rate =
+          xla::Parameter(ftrl_optimizer_builder.get(), 4,
+                         optimizer_placeholder_shape, "learning_rate");
 
       // accumulator(t) = accumulator(t-1) + gradient(t) ^ 2
       xla::XlaOp new_accumulator = accumulator + gradient * gradient;
@@ -1248,7 +1265,7 @@ class XlaSparseCoreOptimizerOpBase : public XlaOpKernel {
     gather_dimension_numbers.add_collapsed_slice_dims(0);
     gather_dimension_numbers.add_start_index_map(0);
     gather_dimension_numbers.set_index_vector_dim(1);
-    const std::vector<int64_t> slice_sizes = {1, feature_width_};
+    const std::vector<int64_t> slice_sizes = {INT_MAX, feature_width_};
     return xla::Gather(table, indices, gather_dimension_numbers, slice_sizes);
   }
 
