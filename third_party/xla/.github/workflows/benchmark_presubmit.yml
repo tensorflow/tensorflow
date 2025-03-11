@@ -15,6 +15,7 @@
 name: Presubmit Benchmarks
 permissions:
   contents: read
+  id-token: 'write'
 on:
   workflow_dispatch:
     inputs:
@@ -96,21 +97,49 @@ jobs:
       # Run the corresponding HLO tests based on platform
       - name: Run HLO tests
         run: |
+          set -x
           bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"  # Get directory from matrix
           binary_path=""
           test_hlo_file=""
+          output_file="hlo_test_output.txt"
 
           if [[ ${{ matrix.job_info.platform }} == "CPU" ]]; then
             binary_path="./bazel-out/${bazel_arch_dir}/bin/xla/tools/run_hlo_module"
             test_hlo_file="xla/tools/hlo_opt/tests/cpu_hlo.hlo"
             echo "Running CPU test with binary: $binary_path"
-            $binary_path --input_format=hlo --reference_platform="" --platform="${{ matrix.job_info.platform }}" $test_hlo_file
+            $binary_path --input_format=hlo --reference_platform="" --platform="${{ matrix.job_info.platform }}" $test_hlo_file > "$output_file" 2>&1
           elif [[ ${{ matrix.job_info.platform }} == "GPU" ]]; then
             binary_path="./bazel-out/${bazel_arch_dir}/bin/xla/tools/multihost_hlo_runner/hlo_runner_main_gpu"
             test_hlo_file="xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo"
             echo "Running GPU test with binary: $binary_path"
-            $binary_path --device_type=gpu --log_output=True --use_spmd_partitioning --profile_execution=True  $test_hlo_file
+            $binary_path --device_type=gpu --log_output=True --use_spmd_partitioning --profile_execution=True  $test_hlo_file > "$output_file" 2>&1
           else
             echo "Unsupported platform: ${{ matrix.job_info.platform }}"
             exit 1
           fi
+      # - id: 'auth'
+      # uses: 'google-github-actions/auth@v2'
+      # with:
+      #   workload_identity_provider: 'projects/ml-velocity-actions-production/locations/global/workloadIdentityPools/openxla-presubmit/providers/openxla-presubmit'
+      #   service_account: 'workload-xla-sa@ml-velocity-actions-production.iam.gserviceaccount.com'
+
+      - name: AssignGcpCreds
+        id: AssignGcpCreds
+        run: |
+          echo 'GCP_SERVICE_ACCOUNT=${{ secrets.GCP_SERVICE_ACCOUNT }}' >> $GITHUB_OUTPUT
+          echo 'GCP_WORKLOAD_IDENTITY_PROVIDER=${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}' >> $GITHUB_OUTPUT
+
+      - name: AuthGcp
+        uses: google-github-actions/auth@v2
+        if: steps.AssignGcpCreds.outputs.GCP_SERVICE_ACCOUNT && steps.AssignGcpCreds.outputs.GCP_WORKLOAD_IDENTITY_PROVIDER
+        with:
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      - name: Upload HLO test output to GCS
+        uses: google-github-actions/upload-cloud-storage@v1
+        if: steps.AssignGcpCreds.outputs.GCP_SERVICE_ACCOUNT && steps.AssignGcpCreds.outputs.GCP_WORKLOAD_IDENTITY_PROVIDER
+        with:
+          bucket: openxla-presubmit-transient
+          blob: ${{ matrix.job_info.platform }}/pr_${{ github.pr_number }}/${{ github.sha }}/hlo_test_output.txt
+          file: hlo_test_output.txt
+
