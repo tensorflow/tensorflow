@@ -16,9 +16,12 @@ cc_library(
     name = "android_sync",
     srcs = ["android_sync.cc"],
     hdrs = ["android_sync.h"],
+    # features = ["-layering_check"],
     linkopts = gpu_delegate_linkopts(),
     deps = [
         ":portable",
+        # "//third_party/GL:EGL_headers",
+        # "//third_party/GL:GLES2_headers",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
 )
