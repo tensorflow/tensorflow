@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc.
 
+#include <cstdint>
 #define EIGEN_USE_THREADS
 
 #include <vector>
