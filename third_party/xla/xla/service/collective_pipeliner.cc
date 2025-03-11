@@ -839,7 +839,7 @@ class WhileLoopAnalysis {
       std::vector<HloDynamicUpdateSliceInstruction*> dyn_updates,
       int64_t sliced_idx, std::vector<int64_t> output_indices,
       std::vector<int64_t> indices_to_merge,
-      absl::flat_hash_map<const HloInstruction*, int64_t>
+      absl::flat_hash_map<const HloInstruction*, int64_t>&
           index_per_dyn_update_slice,
       absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order);
   void MergeIntoExistingCollectives(
@@ -847,7 +847,7 @@ class WhileLoopAnalysis {
       std::vector<HloDynamicUpdateSliceInstruction*> dyn_updates,
       int64_t sliced_idx, std::vector<int64_t> output_indices,
       std::vector<int64_t> indices_to_merge,
-      absl::flat_hash_map<const HloInstruction*, int64_t>
+      absl::flat_hash_map<const HloInstruction*, int64_t>&
           index_per_dyn_update_slice,
       absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order,
       CollectivePipeliner::PipeliningDirection direction);
@@ -1151,7 +1151,7 @@ void WhileLoopAnalysis::MergeIntoExistingCollectivesForwardSink(
     std::vector<HloDynamicUpdateSliceInstruction*> dyn_updates,
     int64_t sliced_idx, std::vector<int64_t> output_indices,
     std::vector<int64_t> indices_to_merge,
-    absl::flat_hash_map<const HloInstruction*, int64_t>
+    absl::flat_hash_map<const HloInstruction*, int64_t>&
         index_per_dyn_update_slice,
     absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order) {
   CHECK(!indices_to_merge.empty());
@@ -1224,7 +1224,7 @@ void WhileLoopAnalysis::MergeIntoExistingCollectives(
     std::vector<HloDynamicUpdateSliceInstruction*> dyn_updates,
     int64_t sliced_idx, std::vector<int64_t> output_indices,
     std::vector<int64_t> indices_to_merge,
-    absl::flat_hash_map<const HloInstruction*, int64_t>
+    absl::flat_hash_map<const HloInstruction*, int64_t>&
         index_per_dyn_update_slice,
     absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order,
     CollectivePipeliner::PipeliningDirection direction) {
