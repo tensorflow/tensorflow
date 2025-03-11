@@ -1094,6 +1094,7 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
   // analysis.
   const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
   switch (analysis.GetEmitterFusionKind()) {
+    case HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy:
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
       return HloInstruction::FusionKind::kLoop;
     case HloFusionAnalysis::EmitterFusionKind::kTriton:

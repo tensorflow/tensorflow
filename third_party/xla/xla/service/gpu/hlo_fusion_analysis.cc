@@ -237,6 +237,10 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kTriton;
   }
 
+  if (fusion_backend_config_.kind() == kDynamicMemcpyFusionKind) {
+    return EmitterFusionKind::kDynamicMemcpy;
+  }
+
   if (fusion_backend_config_.kind() == kCuDnnFusionKind) {
     return EmitterFusionKind::kCuDnn;
   }

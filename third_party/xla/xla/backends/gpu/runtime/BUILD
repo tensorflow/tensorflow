@@ -454,6 +454,9 @@ cc_library(
     hdrs = ["copy_thunk.h"],
     deps = [
         ":thunk",
+        ":while_thunk",
+        "//xla:literal_util",
+        "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",

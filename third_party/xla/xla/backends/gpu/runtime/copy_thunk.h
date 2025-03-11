@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -166,6 +167,50 @@ class CopyDoneThunk : public Thunk {
  private:
   std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
   const HloInstruction* copy_start_instr_;
+};
+
+//===----------------------------------------------------------------------===//
+// DynamicMemcpyThunk
+//===----------------------------------------------------------------------===//
+
+class DynamicMemcpyThunk : public Thunk {
+ public:
+  struct MemcpyDescriptor {
+    struct DynamicOffset {
+      // The while loop whose induction variable defines the offset.
+      const HloInstruction* while_loop;
+      const HloInstruction* induction_variable;
+
+      // All dependencies of `offset` must end in `induction_variable` or
+      // constants only.
+      const HloInstruction* offset;
+
+      // The size of the dimension that this offset corresponds to. As per HLO
+      // semantics, values of `offset` will be clamped to one less than this.
+      int64_t dimension_size;
+
+      // The stride with which to multiply the induction variable's value.
+      int64_t byte_stride;
+    };
+
+    std::vector<DynamicOffset> src_dynamic_offsets;
+    int64_t src_byte_static_offset = 0;
+  };
+
+  DynamicMemcpyThunk(ThunkInfo thunk_info,
+                     const BufferAllocation::Slice& source_buffer,
+                     const BufferAllocation::Slice& destination_buffer,
+                     uint64_t mem_size, MemcpyDescriptor descriptor);
+  DynamicMemcpyThunk(const DynamicMemcpyThunk&) = delete;
+  DynamicMemcpyThunk& operator=(const DynamicMemcpyThunk&) = delete;
+
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ private:
+  const BufferAllocation::Slice source_buffer_;
+  const BufferAllocation::Slice destination_buffer_;
+  const uint64_t mem_size_;
+  MemcpyDescriptor descriptor_;
 };
 
 }  // namespace gpu
