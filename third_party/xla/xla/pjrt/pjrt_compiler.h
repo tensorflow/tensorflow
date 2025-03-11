@@ -79,8 +79,6 @@ inline PjRtPlatformId TpuId() {
 class PjRtCompiler;
 class PjRtClient;
 
-// TODO(b/240299401): Move CompileOptions to this file.
-
 // Abstract interface to represent device topology that is used by the compiler.
 class PjRtTopologyDescription {
  public:
