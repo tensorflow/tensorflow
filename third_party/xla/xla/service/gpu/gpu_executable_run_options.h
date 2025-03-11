@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <optional>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
@@ -59,6 +64,12 @@ class GpuExecutableRunOptions {
   GpuExecutableRunOptions& set_collectives(GpuCollectives* collectives);
   GpuCollectives* collectives() const;
 
+  // The incarnation of every device.
+  GpuExecutableRunOptions& set_incarnations(
+      absl::flat_hash_map<GlobalDeviceId, uint64_t> incarnations);
+  const std::optional<absl::flat_hash_map<GlobalDeviceId, uint64_t>>&
+  incarnations() const;
+
   // Whether the run requires an exclusive lock on the GPU.
   bool requires_exclusive_lock_on_gpu() const {
     return requires_exclusive_lock_on_gpu_;
@@ -84,6 +95,7 @@ class GpuExecutableRunOptions {
   std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
   CliqueIdCallback clique_id_callback_;
   GpuCollectives* collectives_;
+  std::optional<absl::flat_hash_map<GlobalDeviceId, uint64_t>> incarnations_;
 };
 
 }  // namespace xla::gpu

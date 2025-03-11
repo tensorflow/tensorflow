@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstring>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -98,6 +99,7 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -553,7 +555,7 @@ absl::Status AbortOnFailure(
         update.previous_state.size(), update.current_state.size());
   }
 
-  bool task_failed = false;
+  std::vector<uint64_t> failed_incarnations;
   for (int i = 0; i < update.previous_state.size(); ++i) {
     const tensorflow::CoordinatedTaskStateInfo& previous =
         update.previous_state[i];
@@ -573,13 +575,14 @@ absl::Status AbortOnFailure(
             tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED ||
         previous.incarnation() != current.incarnation()) {
       // The task is either failed, or restarted with a different incarnation.
-      VLOG(1) << "Task " << previous.task().task_id() << " failed";
-      task_failed = true;
+      VLOG(1) << "Task " << previous.task().task_id() << " (incarnation "
+              << previous.incarnation() << ") failed";
+      failed_incarnations.push_back(previous.incarnation());
     }
   }
 
-  if (task_failed) {
-    return xla::gpu::AbortAllCliques();
+  if (!failed_incarnations.empty()) {
+    return xla::gpu::AbortCliquesWithIncarnations(failed_incarnations);
   }
   return absl::OkStatus();
 }
@@ -675,6 +678,43 @@ StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
   return xla::GpuAsyncHostToDeviceTransferManager::Create(
       shape_specs, std::move(device_layouts), stream_executor_device, this,
       memory_space);
+}
+
+absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, uint64_t>>
+StreamExecutorGpuClient::GetLatestIncarnations() {
+  // Get the coordination service agent.
+  if (!distributed_client_) {
+    return FailedPrecondition("No distributed client");
+  }
+  TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
+                      distributed_client_->GetCoordinationServiceAgent());
+
+  // Get the latest incarnation for every task.
+  TF_ASSIGN_OR_RETURN(int num_tasks, topology_.ProcessCount());
+  std::vector<int> tasks(num_tasks);
+  std::iota(tasks.begin(), tasks.end(), 0);
+  TF_ASSIGN_OR_RETURN(std::vector<uint64_t> task_incarnations,
+                      agent->Incarnations(tasks));
+
+  // Map every device to its incarnation.
+  absl::flat_hash_map<GlobalDeviceId, uint64_t> device_incarnations;
+  for (const PjRtDevice* device : devices()) {
+    device_incarnations[GlobalDeviceId(device->global_device_id().value())] =
+        task_incarnations[device->process_index()];
+  }
+  return device_incarnations;
+}
+
+gpu::GpuExecutableRunOptions* StreamExecutorGpuClient::gpu_run_options() {
+  absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, uint64_t>> incarnations =
+      GetLatestIncarnations();
+  if (!incarnations.ok()) {
+    LOG(WARNING) << "Unable to set incarnations in GpuExecutableRunOptions: "
+                 << incarnations.status();
+  } else {
+    gpu_run_options_->set_incarnations(*std::move(incarnations));
+  }
+  return gpu_run_options_.get();
 }
 
 absl::StatusOr<xla::DeviceAssignment>
@@ -1189,6 +1229,7 @@ void NameDeviceAndLauncherThread(const LocalTopologyProto& node,
     tsl::profiler::NameCurrentThread(name);
   });
 }
+
 }  // namespace
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(

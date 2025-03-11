@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
@@ -591,8 +590,9 @@ class CoordinationService {
   CoordinatedTaskSet AliveTasks(const CoordinatedTaskSet& tasks) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
-  // Returns the incarnation ids of the provided tasks in sorted order.
-  std::vector<uint64_t> CoordinationIds(const CoordinatedTaskSet& tasks) const
+  // Returns the incarnation ids of the provided tasks, in the same order.
+  std::vector<uint64_t> IncarnationIds(
+      absl::Span<const tensorflow::CoordinatedTask> tasks) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   // Refreshes the AlivenessStates of all pending GetAliveTasks call,
