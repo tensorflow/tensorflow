@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -26,9 +27,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "nanobind/nanobind.h"
+#include "xla/ffi/api/ffi.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/service/custom_call_status.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -61,6 +64,11 @@ class CpuCallback {
         args_(std::move(args)),
         results_(std::move(results)),
         transpose_cache_(/*capacity=*/16) {}
+  explicit CpuCallback(nanobind::callable callable)
+      : callable_(std::move(callable)),
+        args_(),
+        results_(),
+        transpose_cache_(/*capacity=*/16) {}
 
   ~CpuCallback();
 
@@ -83,6 +91,25 @@ class CpuCallback {
   std::vector<Arg> args_;
   std::vector<Result> results_;
   xla::TransposePlanCache transpose_cache_;
+};
+
+class RefCountedCpuCallback
+    : public tsl::ReferenceCounted<RefCountedCpuCallback> {
+ public:
+  explicit RefCountedCpuCallback(std::unique_ptr<CpuCallback> cpu_callback)
+      : cpu_callback_(std::move(cpu_callback)) {}
+  CpuCallback* cpu_callback() { return cpu_callback_.get(); }
+
+ private:
+  std::unique_ptr<CpuCallback> cpu_callback_;
+};
+
+struct FfiLoadedHostCallbacks {
+  static xla::ffi::TypeId id;
+  explicit FfiLoadedHostCallbacks(
+      std::vector<tsl::RCReference<RefCountedCpuCallback>> callbacks)
+      : callbacks(callbacks) {}
+  std::vector<tsl::RCReference<RefCountedCpuCallback>> callbacks;
 };
 
 void XlaPythonCpuCallback(void* output, void** inputs,

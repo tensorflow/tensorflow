@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_CLIENT_CPU_H_
 #define XLA_PYTHON_PY_CLIENT_CPU_H_
 
-#include "xla/ffi/ffi.h"
+#include "xla/ffi/api/ffi.h"
 
 namespace xla {
 
