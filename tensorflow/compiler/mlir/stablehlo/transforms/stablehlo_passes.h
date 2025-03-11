@@ -29,6 +29,9 @@ std::unique_ptr<Pass> createUnfuseBatchNormPass();
 // Constant folds broadcast_in_dim op conditionally.
 std::unique_ptr<Pass> createFoldBroadcastPass();
 
+// Fuses MHLO binary element-wise ops and convolution op.
+std::unique_ptr<Pass> createFuseConvolutionPass();
+
 }  // namespace odml
 }  // namespace mlir
 
