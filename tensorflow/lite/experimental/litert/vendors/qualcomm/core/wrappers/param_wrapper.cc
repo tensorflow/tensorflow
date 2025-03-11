@@ -5,15 +5,20 @@
 
 namespace qnn {
 
-void ScalarParamWrapper::CloneTo(Qnn_Param_t& dst) const { dst = qnn_param_; }
-
-TensorParamWrapper::TensorParamWrapper(const char* name,
-                                       const TensorWrapper& tensor) {
-  qnn_param_.name = name;
-  qnn_param_.paramType = QNN_PARAMTYPE_TENSOR;
-  tensor.CloneTo(qnn_param_.tensorParam);
+void ScalarParamWrapper::CloneTo(Qnn_Param_t& dst) const {
+  dst.name = name_;
+  dst.paramType = QNN_PARAMTYPE_SCALAR;
+  dst.scalarParam = qnn_scalar_;
 }
 
-void TensorParamWrapper::CloneTo(Qnn_Param_t& dst) const { dst = qnn_param_; }
+TensorParamWrapper::TensorParamWrapper(const char* name,
+                                       const TensorWrapper& tensor)
+    : name_{name}, tensor_{tensor} {}
+
+void TensorParamWrapper::CloneTo(Qnn_Param_t& dst) const {
+  dst.name = name_;
+  dst.paramType = QNN_PARAMTYPE_TENSOR;
+  tensor_.CloneTo(dst.tensorParam);
+}
 
 }  // namespace qnn

@@ -16,8 +16,6 @@ class TensorPool {
  public:
   TensorPool();
 
-  TensorPool(std::function<void(TensorWrapper&)> tensor_callback);
-
   TensorWrapper& CreateInputTensor(
       Qnn_DataType_t data_type,
       const QuantizeParamsWrapperVariant& quant_params,
@@ -50,8 +48,14 @@ class TensorPool {
   TensorWrapper& CloneStaticTensorFrom(
       const TensorWrapper& src, const std::vector<std::uint32_t>& dimentions);
 
+  template <typename UnaryFunc>
+  void ForEach(UnaryFunc f) {
+    for (auto& tensor_wrapper : tensor_wrappers_) {
+      f(tensor_wrapper);
+    }
+  }
+
  private:
-  std::function<void(TensorWrapper&)> tensor_callback_{};
   std::list<TensorWrapper> tensor_wrappers_{};
 };
 

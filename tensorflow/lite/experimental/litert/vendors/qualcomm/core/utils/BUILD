@@ -26,6 +26,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "utils",
+    hdrs = ["utils.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    deps = [
+    ],
+)
+
 cc_test(
     name = "utils_test",
     srcs = [

@@ -305,7 +305,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
         op, tensor_pool, input_tensors, output_tensors, op_wrappers));
     if (std::all_of(
             op_wrappers.begin(), op_wrappers.end(),
-            [&qnn_manager](const ::qnn::OpWrapper& op_wrapper) -> bool {
+            [&qnn_manager](::qnn::OpWrapper& op_wrapper) -> bool {
               return kLiteRtStatusOk ==
                      (*qnn_manager)->ValidateOp(op_wrapper.GetOpConfig());
             })) {
