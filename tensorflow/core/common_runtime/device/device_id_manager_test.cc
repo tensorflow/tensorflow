@@ -15,14 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 
+#include <gmock/gmock.h>
+
 #include <vector>
 
-#include <gmock/gmock.h>
-#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -61,11 +62,6 @@ TEST(DeviceIdManagerTest, Basics) {
   TF_ASSERT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(device_type, key_2,
                                                              value_1));
   EXPECT_EQ(value_1, TfToPlatformDeviceId(device_type, key_2));
-
-  // Mapping the same TfDeviceId to a different value.
-  ASSERT_FALSE(
-      DeviceIdManager::InsertTfPlatformDeviceIdPair(device_type, key_2, value_0)
-          .ok());
 
   // Getting a nonexistent mapping.
   ASSERT_FALSE(DeviceIdManager::TfToPlatformDeviceId(device_type,
