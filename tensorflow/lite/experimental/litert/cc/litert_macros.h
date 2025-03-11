@@ -92,6 +92,9 @@
 // Converts implicitly to either `LiteRtStatus` or `litert::Expected` holding an
 // error. This allows returning a status in functions using either of these as a
 // return type in `LITERT_RETURN_IF_ERROR`.
+//
+// When a C++ error with a message is converted to a `LiteRtStatus`, the message
+// is logged as an error.
 class ErrorStatusReturnHelper {
  public:
   explicit ErrorStatusReturnHelper(bool expr_result)
@@ -109,8 +112,15 @@ class ErrorStatusReturnHelper {
       : error_(std::move(unexpected.Error())) {}
 
   // NOLINTBEGIN(*-explicit-constructor): This class transparently converts to
-  // `LiteRtStatus` and `litert::Exepected`.
-  operator LiteRtStatus() const noexcept { return error_.Status(); }
+  // `LiteRtStatus` and `litert::Expected`.
+
+  // Note: this conversion logs the error message if there is one.
+  operator LiteRtStatus() const noexcept {
+    if (!error_.Message().empty()) {
+      LITERT_LOG(LITERT_ERROR, "%s", error_.Message().data());
+    }
+    return error_.Status();
+  }
 
   template <class T>
   operator litert::Expected<T>() const noexcept {
