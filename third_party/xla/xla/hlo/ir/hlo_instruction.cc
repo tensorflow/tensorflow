@@ -3755,7 +3755,9 @@ std::string HloInstruction::ToString(const HloPrintOptions& options) const {
 }
 
 std::string HloInstruction::ToString() const {
-  return ToString(HloPrintOptions::Default());
+  HloPrintOptions options = HloPrintOptions::Default();
+  options.set_print_large_constants(false);
+  return ToString(options);
 }
 
 bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
