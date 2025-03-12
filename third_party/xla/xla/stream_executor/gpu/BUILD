@@ -588,10 +588,10 @@ cc_library(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "gpu_test_kernels_fatbin_test",
     srcs = ["gpu_test_kernels_fatbin_test.cc"],
-    backends = ["gpu"],
+    tags = ["gpu"],
     deps = [
         ":gpu_test_kernels_fatbin",
         "@com_google_googletest//:gtest_main",

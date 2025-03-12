@@ -2895,7 +2895,7 @@ xla_test(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "value_inference_test",
     srcs = ["value_inference_test.cc"],
     tags = ["test_xla_cpu_no_thunks"],
