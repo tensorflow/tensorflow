@@ -1060,7 +1060,7 @@ cuda_py_strict_test(
     main = "collective_ops_gpu_test.py",
     tags = [
         "guitar",
-        # "multi_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
+        "multi_gpu",
         "no_windows",
     ],
     deps = [
