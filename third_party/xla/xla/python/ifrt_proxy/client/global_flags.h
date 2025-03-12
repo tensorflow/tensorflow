@@ -34,7 +34,7 @@ struct GlobalClientFlags {
   // codepath works well.
   bool synchronous_host_buffer_store;
 
-  // TODO(b/375021159): Implement faster is_delete without needing a hack.
+  // TODO(b/393445969): Implement faster is_delete without needing a hack.
   bool array_is_deleted_hack;
 };
 
