@@ -88,9 +88,9 @@ LiteRtDispatchDeviceContextT::RegisterTensorBuffer(
 #else
       return Error(kLiteRtStatusErrorRuntimeFailure,
                    "AHardwareBuffer is not supported on this platform");
-#endif
+#endif  // LITERT_HAS_AHWB_SUPPORT
       NeuronMemory* neuron_memory;
-#ifdef __ANDROID__
+#if LITERT_HAS_AHWB_SUPPORT
       if (neuron_adapter_api_.api().memory_create_from_ahwb(
               ahwb, &neuron_memory) != NEURON_NO_ERROR) {
         return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
@@ -103,7 +103,7 @@ LiteRtDispatchDeviceContextT::RegisterTensorBuffer(
       return litert::Unexpected(
           kLiteRtStatusErrorRuntimeFailure,
           "AHardwareBuffer is not supported on this platform");
-#endif
+#endif  // LITERT_HAS_AHWB_SUPPORT
       break;
 
     case kLiteRtTensorBufferTypeDmaBuf:
@@ -111,14 +111,15 @@ LiteRtDispatchDeviceContextT::RegisterTensorBuffer(
       int fd;
 #if LITERT_HAS_DMABUF_SUPPORT
       void* addr;
-      if (auto status = LiteRtGetTensorBufferDmaBuf(tensor_buffer, &addr, &fd);
+      if (auto status =
+              LiteRtGetTensorBufferDmaBufBuffer(tensor_buffer, &addr, &fd);
           status != kLiteRtStatusOk) {
         return Error(status, "Failed to get DMA-BUF");
       }
 #else
       return Error(kLiteRtStatusErrorRuntimeFailure,
                    "DMA-BUF is not supported on this platform");
-#endif
+#endif  // LITERT_HAS_DMABUF_SUPPORT
       if (neuron_adapter_api_.api().memory_create_from_fd(
               tensor_buffer_size, /*protect*/ PROT_READ | PROT_WRITE, fd,
               tensor_buffer_offset, &neuron_memory) != NEURON_NO_ERROR) {

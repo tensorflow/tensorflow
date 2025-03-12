@@ -30,12 +30,22 @@ litert_dynamic_lib(
         "litert_dispatch_device_context.h",
         "litert_dispatch_invocation_context.h",
     ],
+    copts = [
+        "-Os",
+        "-fno-exceptions",
+        "-fno-unwind-tables",
+        "-fno-asynchronous-unwind-tables",
+        "-ffunction-sections",
+        "-fdata-sections",
+    ],
     export_litert_only = True,
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
-    }),
-    linkstatic = 1,
+    }) + [
+        "-Wl,-soname=libLiteRtDispatch_GoogleTensor.so",
+        "-Wl,-lc++abi",
+    ],
     shared_lib_name = "dispatch_api_so",
     so_name = "libLiteRtDispatch_Mediatek.so",
     tags = [
@@ -66,7 +76,6 @@ litert_dynamic_lib(
 cc_library(
     name = "dispatch_api_shared_lib",
     srcs = [":dispatch_api_so"],
-    linkstatic = 1,
 )
 
 cc_test(
