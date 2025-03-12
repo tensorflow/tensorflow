@@ -49,6 +49,7 @@ message Node {
     LayoutAnalysis layout = 5;
     uint32 computation_primitive_size = 6;
     uint64 fingerprint = 7;
+    uint64 program_id = 8;
     message LayoutAnalysis {
       // The physical data layout, from most-minor to most-major dimensions.
       repeated Dimension dimensions = 1;
