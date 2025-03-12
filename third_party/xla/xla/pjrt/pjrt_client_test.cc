@@ -102,7 +102,7 @@ std::unique_ptr<PjRtLoadedExecutable> MakeIncrementProgram(
   CompileOptions options;
   options.parameter_is_tupled_arguments = tuplize_arg;
   options.executable_build_options.set_device_assignment(assignment);
-  return client->Compile(computation, options).value();
+  return client->CompileAndLoad(computation, options).value();
 }
 
 class PjRtClientTest
@@ -558,7 +558,7 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, {}));
+                          client->CompileAndLoad(xla_computation, {}));
 
   std::vector<float> data(4, 0);
   TF_ASSERT_OK_AND_ASSIGN(auto buffer0,

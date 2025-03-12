@@ -248,8 +248,9 @@ absl::Span<PjRtMemorySpace* const> TfrtGpuClient::memory_spaces() const {
   return memory_spaces_;
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtGpuClient::Compile(
-    const XlaComputation& computation, CompileOptions options) {
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
+                              CompileOptions options) {
   std::vector<const Shape*> argument_layout_pointers;
   const ExecutableBuildOptions& build_options =
       options.executable_build_options;
@@ -331,8 +332,8 @@ TfrtGpuClient::CompileInternal(
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtGpuClient::Compile(
-    mlir::ModuleOp module, CompileOptions options) {
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
   XlaComputation xla_computation;
   const ExecutableBuildOptions& exec_build_options =
       options.executable_build_options;
@@ -344,7 +345,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtGpuClient::Compile(
   // TODO(b/382117736): Add support for LayoutModesToXlaShapes
   // Ref:
   // https://github.com/openxla/xla/blob/b729ae319d85d5ec1ec11c488092c2d6683a63f2/xla/pjrt/pjrt_stream_executor_client.cc#L3538-L3586
-  return Compile(xla_computation, options);
+  return CompileAndLoad(xla_computation, options);
 }
 
 absl::StatusOr<TfrtGpuClient::ExecutableExtras>

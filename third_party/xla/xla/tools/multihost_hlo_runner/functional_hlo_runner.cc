@@ -839,7 +839,7 @@ FunctionalHloRunner::Compile(PjRtClient& client, HloModule* hlo_module,
   return ConvertAndCallCompiler<PjRtLoadedExecutable>(
       preproc_options.compile_as_stablehlo, hlo_module,
       [&](const auto& module) {
-        return client.Compile(module, modified_compile_options);
+        return client.CompileAndLoad(module, modified_compile_options);
       });
 }
 
