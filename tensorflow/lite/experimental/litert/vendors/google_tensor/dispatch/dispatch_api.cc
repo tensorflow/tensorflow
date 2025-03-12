@@ -206,6 +206,7 @@ LiteRtStatus InvocationContextCreate(
     const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
     int num_inputs, int num_outputs,
     LiteRtDispatchInvocationContext* invocation_context) {
+  function_name = "";
   if (auto result = LiteRtDispatchInvocationContextT::CreateFromBytecode(
           *TheSouthbound, device_context, exec_type, exec_bytecode_buffer,
           function_name, num_inputs, num_outputs);
@@ -504,6 +505,7 @@ LiteRtStatus AssignNodeFunction(LiteRtDispatchGraph graph,
                                 LiteRtDispatchNodeId node_id,
                                 LiteRtDispatchExecutableHandle exec_handle,
                                 const char* function_name) {
+  function_name = "";
   if (auto result =
           graph->AssignNodeFunction(node_id, exec_handle, function_name);
       result) {
