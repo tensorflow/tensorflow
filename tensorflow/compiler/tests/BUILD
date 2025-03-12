@@ -1551,6 +1551,12 @@ tf_xla_py_strict_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+        "gpu_a100",
+        "gpu_h100",
+    ],
     tags = [
         "config-cuda-only",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1677,8 +1683,12 @@ tf_xla_py_strict_test(
     name = "tensor_array_ops_test",
     size = "medium",
     srcs = ["tensor_array_ops_test.py"],
-    # TensorArray ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = ["cpu_ondemand"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+        "gpu_a100",
+        "gpu_h100",
+    ],
     tags = [
         "config-cuda-only",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2418,6 +2428,7 @@ tf_xla_py_strict_test(
     ],
     shard_count = 10,
     tags = [
+        "manual",
         "notap",
     ],
     deps = [
