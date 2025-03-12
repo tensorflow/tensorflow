@@ -2052,6 +2052,44 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "small_while_loop_hoisting_pass",
+    srcs = ["small_while_loop_hoisting_pass.cc"],
+    hdrs = ["small_while_loop_hoisting_pass.h"],
+    deps = [
+        ":cpu_executable",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "small_while_loop_hoisting_pass_test",
+    srcs = ["small_while_loop_hoisting_pass_test.cc"],
+    deps = [
+        ":backend_config_proto_cc",
+        ":small_while_loop_hoisting_pass",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:test",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "metrics_test",
     srcs = ["metrics_test.cc"],
