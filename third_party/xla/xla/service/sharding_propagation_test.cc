@@ -12484,5 +12484,35 @@ ENTRY main {
   EXPECT_TRUE(instruction->sharding().IsReplicated());
 }
 
+TEST_F(ShardingPropagationTest,
+       ShardingPropagatesThroughPinToDeviceCustomCall) {
+  const char* const hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(s32[8,2]{1,0:T(2,128)})->s32[8,2]{0,1:T(2,128)}}, allow_spmd_sharding_propagation_to_output={true}, num_partitions=8
+
+ENTRY %main.6 (Arg_0.1: s32[8,2]) -> s32[8,2] {
+  %Arg_0.1 = s32[8,2]{1,0} parameter(0), sharding={devices=[4,2]<=[8]}, metadata={op_name="x"}
+  %custom-call = s32[8,2]{1,0} custom-call(s32[8,2]{1,0} %Arg_0.1), custom_call_target="PinToDevice"
+  %constant.0 = s32[] constant(2)
+  %broadcast.0 = s32[8,2]{1,0} broadcast(s32[] %constant.0), dimensions={}
+  ROOT %multiply.5 = s32[8,2]{1,0} multiply(s32[8,2]{1,0} %custom-call, s32[8,2]{1,0} %broadcast.0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* original_custom_call =
+      FindInstruction(module.get(), "custom-call");
+  ASSERT_NE(original_custom_call, nullptr);
+  EXPECT_THAT(original_custom_call, op::NoSharding());
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  HloInstruction* sharded_custom_call =
+      FindInstruction(module.get(), "custom-call");
+  ASSERT_NE(sharded_custom_call, nullptr);
+  EXPECT_THAT(sharded_custom_call, op::Sharding("{devices=[4,2]<=[8]}"));
+}
+
 }  // namespace
 }  // namespace xla
