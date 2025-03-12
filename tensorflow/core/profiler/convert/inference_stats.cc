@@ -57,20 +57,20 @@ namespace {
 
 using ::tensorflow::profiler::EventType;
 using ::tensorflow::profiler::EventTypeSpan;
-using ::tensorflow::profiler::HostEventType;
-using ::tensorflow::profiler::StatType;
 using ::tensorflow::profiler::StepEvents;
 using ::tensorflow::profiler::ToNonOverlappedEvents;
-using ::tensorflow::profiler::XPlane;
-using ::tensorflow::profiler::XSpace;
 using ::tsl::profiler::CreateTfXPlaneVisitor;
 using ::tsl::profiler::DeviceType;
 using ::tsl::profiler::GroupMetadata;
 using ::tsl::profiler::GroupMetadataMap;
+using ::tsl::profiler::HostEventType;
+using ::tsl::profiler::StatType;
 using ::tsl::profiler::Timespan;
 using ::tsl::profiler::XEventVisitor;
 using ::tsl::profiler::XLineVisitor;
+using ::tsl::profiler::XPlane;
 using ::tsl::profiler::XPlaneVisitor;
+using ::tsl::profiler::XSpace;
 using ::tsl::profiler::XStatVisitor;
 
 using EventsByType =
@@ -463,7 +463,7 @@ void BuildTPUDeviceEvents(const std::vector<XPlane*>& device_traces,
     XPlaneVisitor device_plane = CreateTfXPlaneVisitor(device_trace);
     device_plane.ForEachLine([request_events_map, &event_to_update,
                               &group_metadata_map](const XLineVisitor& line) {
-      if (line.Name() != tensorflow::profiler::kXlaModuleLineName) return;
+      if (line.Name() != tsl::profiler::kXlaModuleLineName) return;
       line.ForEachEvent([request_events_map, &event_to_update,
                          &group_metadata_map](const XEventVisitor& event) {
         std::optional<XStatVisitor> group_id =
@@ -1229,7 +1229,7 @@ void BuildBatchDetails(
 void ParseTfstreamzForBatchingParameter(
     const XSpace& xspace, tensorflow::profiler::ModelIdDatabase* model_id_db) {
   const XPlane* tfstreamz_plane = ::tsl::profiler::FindPlaneWithName(
-      xspace, tensorflow::profiler::kTFStreamzPlaneName);
+      xspace, tsl::profiler::kTFStreamzPlaneName);
   // There are two TFStreamz events per profile, one at the beginning, one at
   // the end of the profile, each represents a snapshot of the TFstreamz.
   // Use the last one as the source to get batching parameters because the

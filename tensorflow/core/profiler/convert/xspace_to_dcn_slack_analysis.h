@@ -16,16 +16,14 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XSPACE_TO_DCN_SLACK_ANALYSIS_H_
 
 #include <cstdint>
-#include <deque>
 #include <list>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tsl/profiler/utils/timespan.h"
@@ -157,8 +155,8 @@ class DcnTracker {
 
 // Convert Hlo Events in XSpace to Dcn Slack analysis.
 DcnSlackAnalysis ConvertXSpaceToDcnSlackAnalysis(
-    const tensorflow::profiler::XSpace& xspace,
-    const tensorflow::profiler::XPlane* dcn_host_plane,
+    const tsl::profiler::XSpace& xspace,
+    const tsl::profiler::XPlane* dcn_host_plane,
     const tensorflow::profiler::Topology* topology, bool is_megacore = true);
 
 }  // namespace profiler

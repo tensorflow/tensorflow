@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_CONVERT_DCN_ANALYSIS_H_
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
@@ -23,10 +25,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/profiler/convert/dcn_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -126,7 +129,7 @@ class DcnEventsProcessor {
   bool IsMegacore() const { return is_megacore_; }
 
   // Populates available megascale messages from event metadata.
-  void SetupMessageInfo(const tensorflow::profiler::XPlaneVisitor &plane);
+  void SetupMessageInfo(const tsl::profiler::XPlaneVisitor &plane);
 
   std::optional<int32_t> MegaScaleMessageId(absl::string_view msg_name) const {
     auto iter = megascale_msg_.find(msg_name);
@@ -153,12 +156,11 @@ class DcnEventsProcessor {
 
   // Main function to process receive messages, and call other functions
   // to generate timestamp events and bursts.
-  void ProcessReceiveMessages(const tensorflow::profiler::XPlaneVisitor &plane);
+  void ProcessReceiveMessages(const tsl::profiler::XPlaneVisitor &plane);
 
   // Update XPlanes using DCN traffic info
-  void AddHostDcnTrafficToXPlane(tensorflow::profiler::XPlane *host_xplane);
-  void AddTpuCollectiveDcnTrafficToXPlane(
-      tensorflow::profiler::XPlane *device_xplane);
+  void AddHostDcnTrafficToXPlane(tsl::profiler::XPlane *host_xplane);
+  void AddTpuCollectiveDcnTrafficToXPlane(tsl::profiler::XPlane *device_xplane);
 
  private:
   // Tensor cores and megacore flag for this host. DCN messages are sent to a
@@ -206,9 +208,9 @@ class DcnEventsProcessor {
   void QualifyCollectives();
   // Export collective DCN activity to trace viewer.
   void AddQualifiedCollectivesToXPlane(
-      tensorflow::profiler::XPlaneBuilder &plane_builder, uint32_t tpu_idx);
+      tsl::profiler::XPlaneBuilder &plane_builder, uint32_t tpu_idx);
   void AddUnqualifiedCollectivesToXPlane(
-      tensorflow::profiler::XPlaneBuilder &plane_builder, uint32_t tpu_idx);
+      tsl::profiler::XPlaneBuilder &plane_builder, uint32_t tpu_idx);
 
   // Create timestamp events for every message
   void GenerateTimestampEvents(
