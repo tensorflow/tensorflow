@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -9,7 +9,7 @@ package(
     licenses = ["notice"],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "model_utils_core_pybind",
     srcs = [
         "model_utils_core_pybind.cc",
