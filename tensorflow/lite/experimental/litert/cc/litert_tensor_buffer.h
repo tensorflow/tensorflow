@@ -24,6 +24,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"

@@ -19,7 +19,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -28,6 +27,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
+#include "tensorflow/lite/experimental/litert/runtime/event.h"
 
 #if LITERT_HAS_OPENGL_SUPPORT
 #include <GLES3/gl31.h>
@@ -36,11 +36,9 @@
 #include "absl/types/span.h"
 #include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #if LITERT_HAS_OPENGL_SUPPORT
 #include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
@@ -112,18 +110,21 @@ class LiteRtTensorBufferT {
   size_t buffer_size() const { return buffer_size_; }
   size_t buffer_offset() const { return buffer_offset_; }
 
-  bool HasEvent() const { return event_.has_value(); }
+  bool HasEvent() const { return event_ != nullptr; }
 
-  litert::Expected<LiteRtEvent> GetEvent() const {
+  litert::Expected<LiteRtEventT*> GetEvent() const {
     if (!HasEvent()) {
       return litert::Error(kLiteRtStatusErrorRuntimeFailure,
                            "TensorBuffer has no event");
     }
-    return event_->Get();
+    return event_.get();
   }
 
-  void SetEvent(LiteRtEvent e) { event_ = litert::Event(e, true); }
-  void ClearEvent() { event_ = std::nullopt; }
+  void SetEvent(LiteRtEventT* e) {
+    // Take ownership of the event.
+    event_ = std::unique_ptr<LiteRtEventT>(e);
+  }
+  void ClearEvent() { event_ = nullptr; }
 
   litert::Expected<void*> GetHostBuffer();
   litert::Expected<AHardwareBuffer*> GetAhwbBuffer();
@@ -233,7 +234,7 @@ class LiteRtTensorBufferT {
   size_t buffer_size_;
   size_t buffer_offset_;
   BufferVariant buffer_;
-  std::optional<litert::Event> event_;
+  std::unique_ptr<LiteRtEventT> event_;
   mutable std::atomic_int_fast32_t ref_;
   // A map of memory backed buffers. Memory backed buffers are backed by the
   // memory of buffer_. For example, a GL buffer can be backed by the memory of

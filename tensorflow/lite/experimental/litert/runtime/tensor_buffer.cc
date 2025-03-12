@@ -32,11 +32,11 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/util/tensor_type_util.h"
 #include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/dmabuf_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/event.h"
 #include "tensorflow/lite/experimental/litert/runtime/fastrpc_buffer.h"
 #if LITERT_HAS_OPENGL_SUPPORT
 #include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
@@ -568,13 +568,11 @@ Expected<litert::internal::GlBuffer*> LiteRtTensorBufferT::GetGlBuffer() {
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 
 Expected<void*> LiteRtTensorBufferT::Lock() {
-  if (event_) {
+  if (event_ != nullptr) {
     // Only AHWB supports waiting on an input sync fence when locking the
     // buffer. For all other buffer types we wait here.
     if (buffer_type() != kLiteRtTensorBufferTypeAhwb) {
-      if (auto status = event_->Wait(/*timeout_in_ms=*/-1); !status) {
-        return status.Error();
-      }
+      LITERT_RETURN_IF_ERROR(event_->Wait(/*timeout_in_ms=*/-1));
     }
   }
 
@@ -583,7 +581,7 @@ Expected<void*> LiteRtTensorBufferT::Lock() {
       return *GetHostBuffer();
     case kLiteRtTensorBufferTypeAhwb:
       return litert::internal::AhwbBuffer::Lock(
-          *GetAhwbBuffer(), event_ ? event_->Get() : nullptr);
+          *GetAhwbBuffer(), event_ != nullptr ? event_.get() : nullptr);
     case kLiteRtTensorBufferTypeIon:
       return GetIonBuffer()->first;
     case kLiteRtTensorBufferTypeDmaBuf:

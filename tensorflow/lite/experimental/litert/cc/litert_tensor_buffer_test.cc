@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
@@ -26,6 +27,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
@@ -47,15 +49,15 @@
 namespace litert {
 namespace {
 
-using ::testing::Ne;
-#if LITERT_HAS_OPENGL_SUPPORT
 using ::testing::Eq;
-#endif  // LITERT_HAS_OPENGL_SUPPORT
+using ::testing::Ne;
 
 constexpr const float kTensorData[] = {10, 20, 30, 40};
 
 constexpr const int32_t kTensorDimensions[] = {sizeof(kTensorData) /
                                                sizeof(kTensorData[0])};
+
+constexpr int kFakeSyncFenceFd = 1;
 
 constexpr const LiteRtRankedTensorType kTestTensorType = {
     /*.element_type=*/kLiteRtElementTypeFloat32,
@@ -583,6 +585,28 @@ TEST(TensorBuffer, GetAhwb) {
                                   sizeof(kTensorData)));
   LITERT_ASSERT_OK_AND_ASSIGN(AHardwareBuffer * ahwb, tensor_buffer.GetAhwb());
   EXPECT_THAT(ahwb, Ne(nullptr));
+}
+
+TEST(TensorBuffer, Event) {
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer tensor_buffer,
+      TensorBuffer::CreateManaged(kLiteRtTensorBufferTypeHostMemory,
+                                  RankedTensorType(kTestTensorType),
+                                  sizeof(kTensorData)));
+  // Create event.
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      Event event, Event::CreateFromSyncFenceFd(kFakeSyncFenceFd, true));
+  // Move event into tensor buffer.
+  LITERT_EXPECT_OK(tensor_buffer.SetEvent(std::move(event)));
+  EXPECT_TRUE(tensor_buffer.HasEvent());
+  LITERT_ASSERT_OK_AND_ASSIGN(Event tensor_buffer_event,
+                              tensor_buffer.GetEvent());
+  LITERT_ASSERT_OK_AND_ASSIGN(int fence_fd,
+                              tensor_buffer_event.GetSyncFenceFd());
+  EXPECT_THAT(fence_fd, Eq(kFakeSyncFenceFd));
+  // Clear event.
+  LITERT_ASSERT_OK(tensor_buffer.ClearEvent());
+  EXPECT_FALSE(tensor_buffer.HasEvent());
 }
 
 }  // namespace

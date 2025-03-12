@@ -186,6 +186,7 @@ cc_test(
     }),
     deps = [
         ":litert_element_type",
+        ":litert_event",
         ":litert_layout",
         ":litert_macros",
         ":litert_model",
