@@ -1329,14 +1329,12 @@ cc_library(
         "transforms/prepare_quantize_helper.cc",
         "transforms/quantize.cc",
         "transforms/quantize_variables.cc",
-        "transforms/tfl_quantization_driver.cc",
         "utils/generated_op_quant_spec_getters.inc",
     ],
     hdrs = [
         "transforms/lower_quant_annotations_helper.h",
         "transforms/passes.h",
         "transforms/prepare_quantize_helper.h",
-        "transforms/tfl_quantization_driver.h",
     ],
     deps = [
         "convert_type",
@@ -1349,6 +1347,7 @@ cc_library(
         ":tensorflow_lite_quantize_by_converter_inc_gen",
         ":tensorflow_lite_quantize_inc_gen",
         ":validators",
+        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:tfl_quantization_driver",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",

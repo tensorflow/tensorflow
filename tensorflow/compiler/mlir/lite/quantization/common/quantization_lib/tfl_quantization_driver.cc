@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/lite/transforms/tfl_quantization_driver.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/tfl_quantization_driver.h"
 
 #include <cmath>
 #include <cstdint>
