@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
@@ -25,6 +28,14 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
+#include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpContext.h"
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 #include "third_party/qairt/latest/include/QNN/QnnBackend.h"
@@ -37,14 +48,6 @@
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemCommon.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemInterface.h"
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
-#include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
 
 namespace litert::qnn {
 
@@ -367,7 +370,7 @@ Expected<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
                       "Failed to create QNN context");
   }
   auto deleter = Api()->contextFree;
-  return ContextHandle{context_handle, /*profile=*/nullptr, deleter};
+  return ContextHandle{context_handle, /*profile=*/nullptr, deleter, nullptr};
 }
 
 Expected<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
@@ -382,8 +385,10 @@ Expected<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                       "Failed to create QNN context");
   }
-  auto deleter = Api()->contextFree;
-  return ContextHandle{context_handle, profile_handle, deleter};
+  auto context_deleter = Api()->contextFree;
+  auto profile_deleter = Api()->profileFree;
+  return ContextHandle{context_handle, profile_handle, context_deleter,
+                       profile_deleter};
 }
 
 Expected<QnnManager::Ptr> QnnManager::Create(
