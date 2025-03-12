@@ -69,6 +69,13 @@ jobs:
             bazel_arch_dir: "k8-opt",
             platform: "GPU"
           },
+          {
+            pool: "linux-x86-a4-224-b200-1gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 GPU A4 B200 224 vcpu Presubmit",
+            bazel_arch_dir: "k8-opt",
+            platform: "GPU"
+          },
         ]
     name: ${{ matrix.job_info.pretty_name }}
     runs-on: ${{ matrix.job_info.pool }}
