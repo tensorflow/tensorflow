@@ -857,6 +857,12 @@ class LiteRtModelT {
     return ::litert::Error(kLiteRtStatusErrorNotFound);
   }
 
+  // Contains details about the compiler used if this model was compiled.
+  struct BuildStamp {
+    absl::string_view soc_manufacturer;
+    absl::string_view soc_model;
+  };
+
   // IR is generally, default constructible and movable but not copyable.
   LiteRtModelT() = default;
   LiteRtModelT(const LiteRtModelT&) = delete;
@@ -898,6 +904,15 @@ class LiteRtModelT {
   TflOpCodes tfl_operator_codes_;
   TflFlatbuffer tfl_flatbuffer_;
 };
+
+// Get the build stamp from the model if it exists.
+// TODO: Consider a setter and internalizeing all build stamp stuff behind model
+// interface.
+std::optional<LiteRtModelT::BuildStamp> GetBuildStamp(
+    const LiteRtModelT& model);
+
+// Returns true if this model contains any ops compiled for NPU.
+bool IsCompiled(const LiteRtModelT& model);
 
 // Get the custom op code from a given op if it is a custom op.
 std::optional<std::string> GetCustomOpCode(const LiteRtModelT& model,

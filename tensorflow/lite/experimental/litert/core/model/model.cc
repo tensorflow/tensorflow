@@ -30,7 +30,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
+#include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 
 using ::litert::BufferRef;
 using ::litert::internal::TflBuffer;
@@ -39,6 +39,27 @@ using ::litert::internal::TflOpCode;
 using ::litert::internal::TflOpCodePtr;
 using ::litert::internal::TflOptions;
 using ::litert::internal::TflOptions2;
+
+std::optional<LiteRtModelT::BuildStamp> GetBuildStamp(
+    const LiteRtModelT& model) {
+  using ::litert::internal::kLiteRtBuildStampKey;
+  using ::litert::internal::ParseBuildStamp;
+
+  auto stamp_meta = model.FindMetadata(kLiteRtBuildStampKey);
+  if (!stamp_meta) {
+    return std::nullopt;
+  }
+  auto parsed_stamp = ParseBuildStamp(*stamp_meta);
+  if (!parsed_stamp) {
+    return std::nullopt;
+  }
+  auto [soc_manufacturer, soc_model] = *parsed_stamp;
+  return LiteRtModelT::BuildStamp{soc_manufacturer, soc_model};
+}
+
+bool IsCompiled(const LiteRtModelT& model) {
+  return GetBuildStamp(model).has_value();
+}
 
 std::optional<std::string> GetCustomOpCode(const LiteRtModelT& model,
                                            const LiteRtOpT& op) {
