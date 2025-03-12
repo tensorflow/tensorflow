@@ -306,11 +306,12 @@ int64_t GetFlops(const HloDotInstruction& dot) {
   // Get non-contracting dims
   auto get_non_contracting_dim_sizes =
       [&dot, &dim_size](const absl::flat_hash_set<int>& contracting_dims,
+                        const absl::flat_hash_set<int>& batch_dims,
                         int operand_id) {
         int64_t fmas = 1;
         for (int dim = 0; dim < dot.operand(operand_id)->shape().rank();
              ++dim) {
-          if (contracting_dims.contains(dim)) {
+          if (contracting_dims.contains(dim) || batch_dims.contains(dim)) {
             continue;
           }
           fmas *= dim_size(*dot.operand(operand_id), dim);
@@ -318,16 +319,38 @@ int64_t GetFlops(const HloDotInstruction& dot) {
         return fmas;
       };
   fmas *= get_non_contracting_dim_sizes(
-      {dot.dot_dimension_numbers().lhs_contracting_dimensions().begin(),
-       dot.dot_dimension_numbers().lhs_contracting_dimensions().end()},
+      /*contracting_dims=*/
+      {
+          dot.dot_dimension_numbers().lhs_contracting_dimensions().begin(),
+          dot.dot_dimension_numbers().lhs_contracting_dimensions().end(),
+      },
+      /*batch_dims=*/
+      {
+          dot.dot_dimension_numbers().lhs_batch_dimensions().begin(),
+          dot.dot_dimension_numbers().lhs_batch_dimensions().end(),
+      },
       0);
   fmas *= get_non_contracting_dim_sizes(
-      {dot.dot_dimension_numbers().rhs_contracting_dimensions().begin(),
-       dot.dot_dimension_numbers().rhs_contracting_dimensions().end()},
+      /*contracting_dims=*/
+      {
+          dot.dot_dimension_numbers().rhs_contracting_dimensions().begin(),
+          dot.dot_dimension_numbers().rhs_contracting_dimensions().end(),
+      },
+      /*batch_dims=*/
+      {
+          dot.dot_dimension_numbers().rhs_batch_dimensions().begin(),
+          dot.dot_dimension_numbers().rhs_batch_dimensions().end(),
+      },
       1);
 
   // Get contracting dim.
   for (int dim : dot.dot_dimension_numbers().lhs_contracting_dimensions()) {
+    fmas *= dim_size(*dot.operand(0), dim);
+  }
+
+  // Get batch dim
+  for (int dim : dot.dot_dimension_numbers().lhs_batch_dimensions()) {
+    CHECK_EQ(dim_size(*dot.operand(0), dim), dim_size(*dot.operand(1), dim));
     fmas *= dim_size(*dot.operand(0), dim);
   }
 
