@@ -17,6 +17,7 @@
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -53,9 +54,9 @@ Expected<void> RegisterSharedObjectAccelerator(
   // maybe_lib contains a value.
   SharedLibrary lib(std::move(maybe_lib.Value()));
   LITERT_ASSIGN_OR_RETURN(auto registration_function,
-                          lib.LookupSymbol<void (*)(LiteRtEnvironment)>(
+                          lib.LookupSymbol<LiteRtStatus (*)(LiteRtEnvironment)>(
                               registration_function_name.data()));
-  registration_function(&environment);
+  LITERT_RETURN_IF_ERROR(registration_function(&environment));
   environment.GetAcceleratorRegistry().TakeOwnershipOfSharedLibrary(
       std::move(lib));
   return {};
