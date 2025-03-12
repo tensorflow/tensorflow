@@ -19,8 +19,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
@@ -420,15 +423,16 @@ ENTRY e {
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
-// TODO(b/393299275): correctly hoist bitcasts through broadcast.
-TEST_F(NestGemmFusionTest, DISABLED_BitcastsAreHoistedPastBroadcasts) {
+TEST_F(NestGemmFusionTest, BitcastsAreHoistedUpThroughBroadcasts) {
+  // TODO(b/393299275): check if such rewrite will work with device test.
+  // TODO(b/393299275): dimensions={0,1,2,4} does not work and I don't know why.
   absl::string_view hlo = R"(
 HloModule t
 
 triton_dot {
-  p0 = f32[11,24]{1,0} parameter(0)
-  p0_broadcast = f32[11,24,128]{2,1,0} broadcast(p0), dimensions={0,1}
-  p0_reshape = f32[264,128]{1,0} bitcast(p0_broadcast)
+  p0 = f32[11,1,24,1] parameter(0)
+  p0_broadcast = f32[11,1,24,1,128] broadcast(p0), dimensions={0,1,2,3}
+  p0_reshape = f32[264,128] bitcast(p0_broadcast)
 
   p1 = f32[128,8]{1,0} parameter(1)
   ROOT result = f32[264,8]{1,0} dot(p0_reshape, p1),
@@ -436,8 +440,8 @@ triton_dot {
 }
 
 ENTRY e {
-  p0 = f32[11,24]{1,0} parameter(0)
-  p1 = f32[128,8]{1,0} parameter(1)
+  p0 = f32[11,1,24,1] parameter(0)
+  p1 = f32[128,8] parameter(1)
   ROOT result = f32[264,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
     triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
@@ -446,6 +450,18 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+// Broadcast fusion:
+// CHECK: {{.*}} {
+// CHECK-NEXT: [[broadcast_p0:[^ ]+]] = f32[264]{0} parameter(0)
+// CHECK-NEXT: ROOT {{.*}} = f32[264,128]{1,0} broadcast([[broadcast_p0]]), dimensions={0}
+// CHECK-NEXT: }
+// CHECK: ENTRY {{.*}} {
+// CHECK: [[entry_p0:[^ ]+]] = f32[11,1,24,1]{3,2,1,0} parameter(0)
+// CHECK: {{.*}} = f32[264]{0} bitcast([[entry_p0]])
+)"),
+      IsOkAndHolds(true));
 }
 
 }  // namespace
