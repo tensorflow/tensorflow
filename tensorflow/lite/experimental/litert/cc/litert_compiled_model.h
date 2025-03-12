@@ -131,9 +131,13 @@ class CompiledModel
   // The model is loaded into memory and the caller takes ownership of the
   // returned CompiledModel object. The caller should keep the model alive
   // until the CompiledModel is destroyed.
+  // The given `compilation_options` is used for JIT compilation of the model.
   //
-  // The given environment must outlive the compiled model and any execution
-  // running it.
+  // Note: The given environment must outlive the compiled model and any
+  // execution running it.
+  // Note: If the model is fully AOT compiled for NPU, NPU accelerator is used
+  // automatically which means the provided `compilation_options` are
+  // meaningless.
   static Expected<CompiledModel> Create(litert::Environment& env,
                                         litert::Model& model,
                                         Options&& compilation_options) {
@@ -145,6 +149,12 @@ class CompiledModel
     return CompiledModel(litert_model, compiled_model);
   }
 
+  // Simpler version of Create() that uses the default compilation options.
+  // The provided hardware accelerator is used for JIT compilation of the model.
+  //
+  // Note: If the model is fully AOT compiled for NPU, NPU accelerator
+  // is used automatically which means the provided `hardware_accelerator` is
+  // meaningless.
   static Expected<CompiledModel> Create(
       litert::Environment& env, litert::Model& model,
       LiteRtHwAccelerators hardware_accelerator = kLiteRtHwAcceleratorCpu) {
