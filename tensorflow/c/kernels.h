@@ -115,8 +115,8 @@ TF_CAPI_EXPORT extern TF_KernelBuilder* TF_NewAsyncKernelBuilder(
 
 // Specifies that this kernel's attribute only supports the given type.
 TF_CAPI_EXPORT extern void TF_KernelBuilder_TypeConstraint(
-    TF_KernelBuilder* kernel_builder, const char* attr_name,
-    const TF_DataType type, TF_Status* status);
+    TF_KernelBuilder* kernel_builder, const char* attr_name, TF_DataType type,
+    TF_Status* status);
 
 // Specify that this kernel requires/provides an input/output arg
 // in host memory (instead of the default, device memory).
