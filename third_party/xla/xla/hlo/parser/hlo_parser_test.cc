@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -71,7 +72,6 @@ struct TestData {
   std::string test_name;
   std::string module_string;
   int64_t replica_count = 1;
-  bool enable_verification = true;
 };
 
 std::string TestDataToString(const ::testing::TestParamInfo<TestData>& data) {
@@ -2792,6 +2792,18 @@ ENTRY test {
   // clang-format on
 }
 
+absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnVerifiedModule(
+    absl::string_view name, absl::string_view hlo_text,
+    const HloModuleConfig& config) {
+  auto verified_module = std::make_unique<VerifiedHloModule>(
+      std::string(name), config,
+      /*verifier_layout_sensitive=*/false,
+      /*allow_mixed_precision_in_hlo_verifier=*/true,
+      ShapeUtil::ByteSizeOfElements);
+  TF_RETURN_IF_ERROR(verified_module->ParseHloStringAndVerifyModule(hlo_text));
+  return verified_module;
+}
+
 // The test class for those tests defined above which round-trip through the
 // parser and ToString is templatized on two bool parameters:
 //
@@ -2810,6 +2822,15 @@ class HloParameterizedParserTest
     : public ::testing::Test,
       public ::testing::WithParamInterface<TestData> {
  protected:
+  absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text) {
+    HloModuleConfig config;
+    config.set_replica_count(GetParam().replica_count);
+    return xla::ParseAndReturnVerifiedModule(
+        ::testing::UnitTest::GetInstance()->current_test_info()->name(),
+        hlo_text, config);
+  }
+
   // Expects "ToString(ParseHloModule(ToString(ParseHloModule(std::string)))) ==
   // string", that is, parses the string, asserts that it succeeded, stringifies
   // the parsed module, parses this string to ensure that the default ToString()
@@ -2819,33 +2840,13 @@ class HloParameterizedParserTest
   void ExpectEqual() {
     VLOG(3) << "Running HloParameterizedParserTest with short_form = "
             << short_form << ", proto_round_trip = " << proto_round_trip;
-    std::unique_ptr<HloModule> module;
     const std::string& original = GetParam().module_string;
-    HloModuleConfig config;
-    config.set_replica_count(GetParam().replica_count);
-    if (GetParam().enable_verification) {
-      auto verified_module = std::make_unique<VerifiedHloModule>(
-          GetParam().test_name, config,
-          /*verifier_layout_sensitive=*/false,
-          /*allow_mixed_precision_in_hlo_verifier=*/true,
-          ShapeUtil::ByteSizeOfElements);
-      TF_ASSERT_OK(verified_module->ParseHloStringAndVerifyModule(original));
-      module = std::move(verified_module);
-      verified_module = std::make_unique<VerifiedHloModule>(
-          GetParam().test_name, config,
-          /*verifier_layout_sensitive=*/false,
-          /*allow_mixed_precision_in_hlo_verifier=*/true,
-          ShapeUtil::ByteSizeOfElements);
-      TF_ASSERT_OK(verified_module->ParseHloStringAndVerifyModule(
-          module->ToString(HloPrintOptions().set_print_operand_shape(true))));
-      module = std::move(verified_module);
-    } else {
-      TF_ASSERT_OK_AND_ASSIGN(module,
-                              ParseAndReturnUnverifiedModule(original, config));
-      TF_ASSERT_OK_AND_ASSIGN(
-          module,
-          ParseAndReturnUnverifiedModule(module->ToString(), module->config()));
-    }
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(original));
+    TF_ASSERT_OK_AND_ASSIGN(
+        module, ParseAndReturnVerifiedModule(module->ToString(
+                    HloPrintOptions().set_print_operand_shape(true))));
+
     if (proto_round_trip) {
       TF_ASSERT_OK_AND_ASSIGN(module, HloModule::CreateFromProto(
                                           module->ToProto(), module->config()));
@@ -2897,13 +2898,10 @@ INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
 class HloNonRoundtripParserTest
     : public ::testing::TestWithParam<NonRoundtripTestData> {};
 TEST_P(HloNonRoundtripParserTest, Run) {
-  auto module = std::make_unique<VerifiedHloModule>(
-      GetParam().test_name, HloModuleConfig{},
-      /*verifier_layout_sensitive=*/false,
-      /*allow_mixed_precision_in_hlo_verifier=*/true,
-      ShapeUtil::ByteSizeOfElements);
-  TF_ASSERT_OK(
-      module->ParseHloStringAndVerifyModule(GetParam().input_module_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(GetParam().test_name,
+                                                GetParam().input_module_string,
+                                                HloModuleConfig()));
   EXPECT_EQ(absl::StripAsciiWhitespace(GetParam().output_module_string),
             absl::StripAsciiWhitespace(
                 module->ToString(HloPrintOptions::ShortParsable())));
@@ -2920,16 +2918,11 @@ class HloParserTest : public ::testing::Test {
     EXPECT_TRUE(absl::StrContains(s, expected))
         << "'" << s << "' does not contain '" << expected << "'";
   }
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-  ParseAndReturnVerifiedModule(absl::string_view hlo_text) {
-    auto module = std::make_unique<VerifiedHloModule>(
+  absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text) {
+    return xla::ParseAndReturnVerifiedModule(
         ::testing::UnitTest::GetInstance()->current_test_info()->name(),
-        HloModuleConfig(),
-        /*verifier_layout_sensitive=*/false,
-        /*allow_mixed_precision_in_hlo_verifier=*/true,
-        ShapeUtil::ByteSizeOfElements);
-    TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
-    return std::move(module);
+        hlo_text, HloModuleConfig());
   }
 };
 
