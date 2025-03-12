@@ -17,8 +17,11 @@
 #include <cstddef>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/runtime/event.h"
+#if LITERT_HAS_AHWB_SUPPORT
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#endif  // LITERT_HAS_AHWB_SUPPORT
 
 namespace litert {
 namespace internal {
@@ -71,23 +74,19 @@ Expected<size_t> AhwbBuffer::GetSize(AHardwareBuffer* ahwb) {
 #endif  // LITERT_HAS_AHWB_SUPPORT
 }
 
-Expected<void*> AhwbBuffer::Lock(AHardwareBuffer* ahwb, LiteRtEvent event) {
+Expected<void*> AhwbBuffer::Lock(AHardwareBuffer* ahwb, LiteRtEventT* event) {
 #if LITERT_HAS_AHWB_SUPPORT
   int fence = -1;
-  if (event) {
-    if (auto status = LiteRtGetEventSyncFenceFd(event, &fence);
-        status != kLiteRtStatusOk) {
-      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                        "Failed to get sync fence fd from event");
-    }
+  if (event != nullptr) {
+    LITERT_ASSIGN_OR_RETURN(fence, event->GetSyncFenceFd());
   }
   void* host_addr;
-  if (AHardwareBuffer_lock(ahwb,
+  LITERT_RETURN_IF_ERROR(
+      AHardwareBuffer_lock(ahwb,
                            AHARDWAREBUFFER_USAGE_CPU_READ_RARELY |
                                AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY,
-                           fence, /*rect=*/nullptr, &host_addr) != 0) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure, "Failed to lock AHWB");
-  }
+                           fence, /*rect=*/nullptr, &host_addr) == 0,
+      Unexpected(kLiteRtStatusErrorRuntimeFailure, "Failed to lock AHWB"));
   return host_addr;
 #else
   return Unexpected(kLiteRtStatusErrorRuntimeFailure,

@@ -198,6 +198,35 @@ Expected<void> GlBuffer::Unlock() {
   return Expected<void>();
 }
 
+#if LITERT_HAS_AHWB_SUPPORT
+Expected<int> GlBuffer::CreateEglSyncAndFence() {
+  LITERT_RETURN_IF_ERROR(
+      IsAhwbToGlInteropSupported(),
+      Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                 "AHardwareBuffer to GL interop is not supported"));
+
+  auto egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+  LITERT_RETURN_IF_ERROR(egl_display != EGL_NO_DISPLAY,
+                         Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                                    "Failed to get EGL display"));
+
+  EGLSyncKHR egl_sync =
+      eglCreateSyncKHR(egl_display, EGL_SYNC_NATIVE_FENCE_ANDROID, nullptr);
+  LITERT_RETURN_IF_ERROR(
+      egl_sync != EGL_NO_SYNC_KHR,
+      Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to create EGL sync from AHardwareBuffer"));
+
+  int native_fence = eglDupNativeFenceFDANDROID(egl_display, egl_sync);
+  LITERT_RETURN_IF_ERROR(
+      native_fence != -1,
+      Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                 "Failed to dup native fence from AHardwareBuffer"));
+
+  return native_fence;
+}
+#endif  // LITERT_HAS_AHWB_SUPPORT
+
 }  // namespace internal
 }  // namespace litert
 

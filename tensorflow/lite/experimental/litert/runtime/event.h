@@ -27,6 +27,14 @@ struct LiteRtEventT {
 #endif
   ~LiteRtEventT();
   litert::Expected<void> Wait(int64_t timeout_in_ms);
+  litert::Expected<int> GetSyncFenceFd() const {
+#if LITERT_HAS_SYNC_FENCE_SUPPORT
+    return fd;
+#else
+    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                              "Sync fence is not supported on this platform");
+#endif
+  }
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_EVENT_H_

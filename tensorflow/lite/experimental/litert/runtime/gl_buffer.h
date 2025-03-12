@@ -108,6 +108,12 @@ class GlBuffer {
   size_t size_bytes() const { return tflite_gl_buffer_.bytes_size(); }
   size_t offset() const { return tflite_gl_buffer_.offset(); }
 
+// Creates an EGL sync object on the GPU command queue and returns a native
+// fence associated with the sync object.
+#if LITERT_HAS_AHWB_SUPPORT
+  static Expected<int> CreateEglSyncAndFence();
+#endif  // LITERT_HAS_AHWB_SUPPORT
+
  private:
   absl::Mutex mutex_;
   tflite::gpu::gl::GlBuffer tflite_gl_buffer_;
