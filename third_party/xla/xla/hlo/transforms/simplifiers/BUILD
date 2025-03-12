@@ -653,6 +653,37 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "slice_hoisting",
+    srcs = ["slice_hoisting.cc"],
+    hdrs = ["slice_hoisting.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "slice_hoisting_test",
+    srcs = ["slice_hoisting_test.cc"],
+    deps = [
+        ":slice_hoisting",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "convert_mover",
     srcs = ["convert_mover.cc"],
     hdrs = ["convert_mover.h"],
