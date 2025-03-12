@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <iterator>
 #include <memory>
 #include <ostream>
 #include <set>
@@ -27,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -58,10 +60,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -308,7 +306,7 @@ absl::Status LayoutAssignment::SetBufferLayout(const Layout& layout,
   }
   VLOG(3) << "SUCC setting buffer constraint: "
           << buffer_constraint->ToString();
-  added_constraints_.push_back(buffer_constraint.get());
+  PushAddedConstraints(buffer_constraint.get());
   const HloInstruction* instruction = buffer.instruction();
   if (dynamic_cast<const HloCallableInstruction*>(instruction) != nullptr) {
     // Check and propagate via output-operand aliasing
@@ -386,14 +384,15 @@ void LayoutAssignment::PushAddedConstraints(
     const LayoutConstraint* constraint) {
   if (!constraint->dfs()) {
     // Insert a new constraint to the first location where it's strictly greater
-    // than all the subsequent constraints. Assumes invariant that the list is
-    // sorted.
-    auto it = absl::c_upper_bound(
-        added_constraints_, constraint,
-        [&](const LayoutConstraint* a, const LayoutConstraint* b) {
-          return a->priority() > b->priority();
-        });
-    added_constraints_.insert(it, constraint);
+    // than all the subsequent constraints.
+    for (auto it = added_constraints_.end(); it != added_constraints_.begin();
+         --it) {
+      if (constraint->priority() <= (*std::prev(it))->priority()) {
+        added_constraints_.insert(it, constraint);
+        return;
+      }
+    }
+    added_constraints_.insert(added_constraints_.begin(), constraint);
   } else {
     added_constraints_.push_back(constraint);
   }
