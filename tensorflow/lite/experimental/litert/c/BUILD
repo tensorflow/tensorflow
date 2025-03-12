@@ -251,25 +251,26 @@ cc_library(
 )
 
 cc_library(
-    name = "litert_compiled_model_options",
-    srcs = ["litert_compiled_model_options.cc"],
+    name = "litert_compilation_options",
+    srcs = ["litert_compilation_options.cc"],
     hdrs = [
-        "litert_compiled_model_options.h",
+        "litert_compilation_options.h",
     ],
     deps = [
         ":litert_accelerator_options",
         ":litert_common",
         ":litert_logging",
+        "//tensorflow/lite/experimental/litert/runtime:compilation_options",
     ],
 )
 
 cc_test(
-    name = "litert_compiled_model_options_test",
-    srcs = ["litert_compiled_model_options_test.cc"],
+    name = "litert_compilation_options_test",
+    srcs = ["litert_compilation_options_test.cc"],
     deps = [
         ":litert_accelerator_options",
         ":litert_common",
-        ":litert_compiled_model_options",
+        ":litert_compilation_options",
         "//tensorflow/lite/experimental/litert/core:accelerator",
         "@com_google_googletest//:gtest_main",
     ],
@@ -283,7 +284,7 @@ cc_library(
     ],
     deps = [
         ":litert_common",
-        ":litert_compiled_model_options",
+        ":litert_compilation_options",
         ":litert_environment",
         ":litert_logging",
         ":litert_model",
@@ -303,8 +304,8 @@ cc_test(
     ],
     deps = [
         ":litert_common",
+        ":litert_compilation_options",
         ":litert_compiled_model",
-        ":litert_compiled_model_options",
         ":litert_environment",
         ":litert_model",
         ":litert_tensor_buffer",
@@ -431,7 +432,7 @@ LITERT_C_API_COMMON_DEPS = [
     ":litert_any",
     ":litert_common",
     ":litert_compiled_model",
-    ":litert_compiled_model_options",
+    ":litert_compilation_options",
     ":litert_dispatch_delegate",
     ":litert_event",
     ":litert_environment",
@@ -473,7 +474,7 @@ cc_library(
         ":litert_any.h",
         ":litert_common.h",
         ":litert_compiled_model.h",
-        ":litert_compiled_model_options.h",
+        ":litert_compilation_options.h",
         ":litert_event.h",
         ":litert_layout.h",
         ":litert_logging.h",

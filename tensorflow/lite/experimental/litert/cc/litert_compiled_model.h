@@ -25,11 +25,11 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
@@ -59,61 +59,6 @@ namespace litert {
 class CompiledModel
     : public internal::Handle<LiteRtCompiledModel, LiteRtDestroyCompiledModel> {
  public:
-  class Options {
-    struct Deleter {
-      void operator()(LiteRtCompilationOptions options) {
-        LiteRtDestroyCompilationOptions(options);
-      }
-    };
-
-    // Were making the default constructor private to avoid  null options
-    // created by mistake.
-    Options() = default;
-    explicit Options(LiteRtCompilationOptions options) : impl_(options) {}
-
-   public:
-    using Ptr = std::unique_ptr<LiteRtCompilationOptionsT, Deleter>;
-
-    // Creates a new LiteRtCompilationOptions object wrapped in a `unique_ptr`.
-    static Expected<Options> Create() {
-      LiteRtCompilationOptions options;
-      if (auto status = LiteRtCreateCompilationOptions(&options);
-          status != kLiteRtStatusOk) {
-        return Error(status, "Could not create default compilation options");
-      }
-      return Options(options);
-    }
-
-    // Create a NULL pointer.
-    static Options None() { return {}; }
-
-    Ptr GetUnderlyingPtr() { return Ptr(release()); }
-
-    Expected<void> SetHardwareAccelerators(
-        LiteRtHwAcceleratorSet accelerators) {
-      if (auto status = LiteRtSetCompilationOptionsHardwareAccelerators(
-              get(), accelerators);
-          status != kLiteRtStatusOk) {
-        return Error(
-            status,
-            "Could not set hardware accelerators in compilation options");
-      }
-      return {};
-    }
-
-    // Mimic unique_ptr API.
-
-    Ptr::pointer release() noexcept { return impl_.release(); }
-    void reset(Ptr::pointer ptr = nullptr) noexcept { return impl_.reset(ptr); }
-
-    Ptr::pointer get() const noexcept { return impl_.get(); }
-    Ptr::pointer operator->() const noexcept { return impl_.operator->(); }
-    auto& operator*() const noexcept { return impl_.operator*(); }
-
-   private:
-    Ptr impl_;
-  };
-
   CompiledModel() = default;
 
   // Creates a CompiledModel instance.
@@ -138,13 +83,13 @@ class CompiledModel
   // Note: If the model is fully AOT compiled for NPU, NPU accelerator is used
   // automatically which means the provided `compilation_options` are
   // meaningless.
-  static Expected<CompiledModel> Create(litert::Environment& env,
-                                        litert::Model& model,
-                                        Options&& compilation_options) {
+  static Expected<CompiledModel> Create(
+      litert::Environment& env, litert::Model& model,
+      const CompilationOptions& jit_compilation_options) {
     LiteRtModel litert_model = model.Get();
     LiteRtCompiledModel compiled_model;
     LITERT_RETURN_IF_ERROR(LiteRtCreateCompiledModel(
-        env.Get(), litert_model, compilation_options.release(),
+        env.Get(), litert_model, jit_compilation_options.Get(),
         &compiled_model));
     return CompiledModel(litert_model, compiled_model);
   }
@@ -158,9 +103,10 @@ class CompiledModel
   static Expected<CompiledModel> Create(
       litert::Environment& env, litert::Model& model,
       LiteRtHwAccelerators hardware_accelerator = kLiteRtHwAcceleratorCpu) {
-    LITERT_ASSIGN_OR_RETURN(Options options, Options::Create());
-    options.SetHardwareAccelerators(hardware_accelerator);
-    return Create(env, model, std::move(options));
+    LITERT_ASSIGN_OR_RETURN(auto jit_compilation_options,
+                            CompilationOptions::Create());
+    jit_compilation_options.SetHardwareAccelerators(hardware_accelerator);
+    return Create(env, model, jit_compilation_options);
   }
 
   // Get input buffer requirements for the given signature and input name.

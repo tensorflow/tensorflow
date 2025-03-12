@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILED_MODEL_OPTIONS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILED_MODEL_OPTIONS_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILATION_OPTIONS_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILATION_OPTIONS_H_
 
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -26,16 +26,10 @@ extern "C" {
 LITERT_DEFINE_HANDLE(LiteRtCompilationOptions);
 
 // Creates a compilation option object.
-//
-// This doesn't need to be passed to `LiteRtDestroyCompilationOptions` after
-// calling `LiteRtCreateCompiledModel`.
 LiteRtStatus LiteRtCreateCompilationOptions(LiteRtCompilationOptions* options);
 
 // Destroys a compilation option object.
-//
-// WARNING: this only needs to be called if the options were not passed to
-// `LiteRtCreateCompiledModel`.
-LiteRtStatus LiteRtDestroyCompilationOptions(LiteRtCompilationOptions options);
+void LiteRtDestroyCompilationOptions(LiteRtCompilationOptions options);
 
 // Sets the requested hardware accelerators to apply during model compilation.
 LiteRtStatus LiteRtSetCompilationOptionsHardwareAccelerators(
@@ -70,4 +64,4 @@ LiteRtStatus LiteRtGetAcceleratorCompilationOptions(
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILED_MODEL_OPTIONS_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILATION_OPTIONS_H_

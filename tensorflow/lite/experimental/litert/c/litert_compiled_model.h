@@ -18,7 +18,7 @@
 #include <stddef.h>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
@@ -46,9 +46,10 @@ extern "C" {
 
 LITERT_DEFINE_HANDLE(LiteRtCompiledModel);
 
-// Creates a LiteRtCompiledModel from a LiteRtModel object.
-// The model is loaded into memory and the caller takes ownership of the
-// returned object.
+// Creates a LiteRtCompiledModel from a LiteRtModel object. Parameter
+// `jit_compilation_options` is optional and can be null, and is owned by the
+// caller.  The model is loaded into memory and the caller takes ownership of
+// the returned object.
 LiteRtStatus LiteRtCreateCompiledModel(
     LiteRtEnvironment environment, LiteRtModel model,
     LiteRtCompilationOptions compilation_options,

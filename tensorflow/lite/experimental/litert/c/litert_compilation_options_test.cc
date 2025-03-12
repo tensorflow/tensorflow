@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compilation_options.h"
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
@@ -24,7 +24,7 @@ namespace {
 TEST(LiteRtCompiledModelOptionsTest, CreateAndDestroyDontLeak) {
   LiteRtCompilationOptions options;
   ASSERT_EQ(LiteRtCreateCompilationOptions(&options), kLiteRtStatusOk);
-  ASSERT_EQ(LiteRtDestroyCompilationOptions(options), kLiteRtStatusOk);
+  LiteRtDestroyCompilationOptions(options);
 }
 
 TEST(LiteRtCompiledModelOptionsTest, CreateWithANullPointerErrors) {
@@ -79,7 +79,7 @@ TEST(LiteRtCompiledModelOptionsTest, SetAndGetHardwareAcceleratorsWorks) {
                 nullptr, kLiteRtHwAcceleratorNone),
             kLiteRtStatusErrorInvalidArgument);
 
-  EXPECT_EQ(LiteRtDestroyCompilationOptions(options), kLiteRtStatusOk);
+  LiteRtDestroyCompilationOptions(options);
 }
 
 struct DummyAccleratorCompilationOptions {
@@ -137,7 +137,7 @@ TEST(LiteRtCompiledModelOptionsTest, AddAcceleratorCompilationOptionsWorks) {
             kLiteRtStatusOk);
   EXPECT_EQ(options_it, accelerator_options2);
 
-  EXPECT_EQ(LiteRtDestroyCompilationOptions(options), kLiteRtStatusOk);
+  LiteRtDestroyCompilationOptions(options);
 }
 
 }  // namespace

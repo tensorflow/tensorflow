@@ -28,6 +28,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/core/accelerator.h"
 #include "tensorflow/lite/experimental/litert/core/accelerator_model_compilation_data.h"
 
 #if defined(__ANDROID__)
@@ -42,7 +43,7 @@
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -56,6 +57,7 @@
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
+#include "tensorflow/lite/experimental/litert/runtime/compilation_options.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 #include "tensorflow/lite/interpreter.h"
@@ -93,15 +95,59 @@ Expected<void> LiteRtCompiledModelT::Initialize() {
   return {};
 }
 
+namespace {
+
+// A utility class that allows appending additional compilation options, but
+// only for the duration of a scope.
+class ScopedCompilationOptionsModifier {
+ public:
+  explicit ScopedCompilationOptionsModifier(
+      LiteRtCompilationOptions compilation_options) {
+    last_accelerator_option_ptr_ =
+        &compilation_options->accelerator_compilation_options;
+    while (*last_accelerator_option_ptr_) {
+      last_accelerator_option_ptr_ = &((*last_accelerator_option_ptr_)->next);
+    }
+  }
+
+  ~ScopedCompilationOptionsModifier() {
+    // Remove any option that was appended during the lifetime of this object.
+    if (*last_accelerator_option_ptr_) {
+      LiteRtDestroyAcceleratorCompilationOptions(*last_accelerator_option_ptr_);
+      *last_accelerator_option_ptr_ = nullptr;
+    }
+  }
+
+  LiteRtStatus Append(LiteRtAcceleratorCompilationOptions accelerator_options) {
+    return LiteRtAppendAcceleratorCompilationOptions(
+        last_accelerator_option_ptr_, accelerator_options);
+  }
+
+ private:
+  LiteRtAcceleratorCompilationOptions* last_accelerator_option_ptr_;
+};
+
+}  // namespace
+
 Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
     LiteRtEnvironmentT* env, LiteRtModel model,
-    OptionsPtr compilation_options) {
+    LiteRtCompilationOptions jit_compilation_options) {
+  // If no compilation options were passed, we use default object. This allows
+  // us to add (for instance) accelerator compilation options.
+  std::unique_ptr<LiteRtCompilationOptionsT>
+      placeholder_jit_compilation_options;
+  if (!jit_compilation_options) {
+    placeholder_jit_compilation_options =
+        std::make_unique<LiteRtCompilationOptionsT>();
+    jit_compilation_options = placeholder_jit_compilation_options.get();
+  }
+
   auto compiled_model = std::make_unique<LiteRtCompiledModelT>();
 
   std::optional<OwningBufferRef<uint8_t>> new_flatbuffer;
   LiteRtHwAcceleratorSet hardware_accelerators = kLiteRtHwAcceleratorNone;
-  if (compilation_options) {
-    LiteRtGetCompilationOptionsHardwareAccelerators(compilation_options.get(),
+  if (jit_compilation_options) {
+    LiteRtGetCompilationOptionsHardwareAccelerators(jit_compilation_options,
                                                     &hardware_accelerators);
   }
   // TODO: b/379317134 - Support other delegates with compilation options.
@@ -174,26 +220,23 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
 
   // TODO: b/397399776 - Auto register accelerators
 
-  // If no compilation options were passed, we create a default object. This
-  // allows us to add (for instance) accelerator compilation options.
-  if (!compilation_options) {
-    LiteRtCompilationOptions tmp_options = nullptr;
-    LITERT_RETURN_IF_ERROR(LiteRtCreateCompilationOptions(&tmp_options));
-    compilation_options.reset(tmp_options);
-  }
-
   // Add a new link in the accelerator compilation options that holds some data
   // that is computed during model compilation.
   LITERT_ASSIGN_OR_RETURN(auto model_compilation_data,
                           litert::ModelCompilationData::Create());
   model_compilation_data->allocation_base = model_buffer;
-  LITERT_RETURN_IF_ERROR(LiteRtAddAcceleratorCompilationOptions(
-      compilation_options.get(), model_compilation_data.release()));
+
+  // Temporarily append model_compilation_data to the jit_compilation_options,
+  // but remove it before returning from this function since the caller owns
+  // jit_compilation_options and may use it for other purposes.
+  ScopedCompilationOptionsModifier scoped_modifier(jit_compilation_options);
+  LITERT_RETURN_IF_ERROR(
+      scoped_modifier.Append(model_compilation_data.release()));
 
   // Retrieve the accelerator options list.
   LiteRtAcceleratorCompilationOptions accelerator_options = nullptr;
   LITERT_RETURN_IF_ERROR(LiteRtGetAcceleratorCompilationOptions(
-      compilation_options.get(), &accelerator_options));
+      jit_compilation_options, &accelerator_options));
 
   // Apply accelerators matching the requested hardware support to the
   // model in the order they were registered.
