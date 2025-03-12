@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/litert_dispatch_invocation_context.h"
 
@@ -19,6 +22,7 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "third_party/qairt/latest/include/QNN/HTP/QnnHtpProfile.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -28,12 +32,29 @@
 #include "tensorflow/lite/experimental/litert/core/util/tensor_type_util.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/context_binary_info.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/litert_dispatch_device_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 using litert::Expected;
 using litert::Unexpected;
 using litert::qnn::QnnManager;
+
+std::string inline GetEventUnit(QnnProfile_EventUnit_t unit) {
+  switch (unit) {
+    case QNN_PROFILE_EVENTUNIT_MICROSEC:
+      return "us";
+    case QNN_PROFILE_EVENTUNIT_BYTES:
+      return "bytes";
+    case QNN_PROFILE_EVENTUNIT_CYCLES:
+      return "cycles";
+    case QNN_PROFILE_EVENTUNIT_COUNT:
+      return "count";
+    case QNN_PROFILE_EVENTUNIT_BACKEND:
+    default:
+      return "";
+  }
+}
 
 LiteRtDispatchInvocationContextT::LiteRtDispatchInvocationContextT(
     litert::qnn::QnnManager& qnn_manager,
@@ -91,7 +112,21 @@ LiteRtDispatchInvocationContextT::Create(
   }
 
   auto configs = QnnManager::DefaultContextConfigs();
+
+  // TODO: Add profiling_level as an option & related test code with different
+  // profiling level after having option interface
+  int profiling_level = LiteRtProfilingOptions::kProfilingOff;
+
   Qnn_ProfileHandle_t profile_handle = nullptr;
+  if (profiling_level != LiteRtProfilingOptions::kProfilingOff) {
+    if (auto status = qnn.Api()->profileCreate(
+            qnn.BackendHandle(), profiling_level, &profile_handle);
+        status != QNN_SUCCESS) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to create profile handle");
+    }
+  }
+
   auto context_handle = qnn.CreateContextHandle(
       configs,
       absl::MakeSpan(static_cast<const uint8_t*>(exec_bytecode_ptr),
@@ -229,12 +264,82 @@ Expected<void> LiteRtDispatchInvocationContextT::Execute() {
   }
 
   if (auto status = qnn_manager_.Api()->graphExecute(
-          graph_handle_, inputs, num_ins, outputs, num_outs,
-          /*profileHandle=*/nullptr, /*signalHandle=*/nullptr);
+          graph_handle_, inputs, num_ins, outputs, num_outs, profile_handle_,
+          /*signalHandle=*/nullptr);
       status != QNN_SUCCESS) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                       "Failed to execute graph");
   }
+
+  if (profile_handle_ != nullptr) {
+    if (auto status = Profile(); !status) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to profile the execution result");
+    }
+  }
+
+  return {};
+}
+
+Expected<void> LiteRtDispatchInvocationContextT::Profile() {
+  // TODO: Implement a viewer class to beautify the format of profiling output
+  std::stringstream data_ss;
+  data_ss << "\nExecute Stats:\n"
+          << "----------------" << std::endl;
+  const QnnProfile_EventId_t* events_ptr = nullptr;
+  const QnnProfile_EventId_t* sub_events_ptr = nullptr;
+  std::uint32_t num_events = 0;
+  std::uint32_t num_sub_events = 0;
+
+  if (auto status = qnn_manager_.Api()->profileGetEvents(
+          profile_handle_, &events_ptr, &num_events);
+      status != QNN_SUCCESS) {
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to get the profile events");
+  }
+
+  QnnProfile_EventData_t event_data;
+  for (std::uint32_t i = 0; i < num_events; ++i) {
+    if (auto status =
+            qnn_manager_.Api()->profileGetEventData(events_ptr[i], &event_data);
+        status != QNN_SUCCESS) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to get the event data from profiling result");
+    }
+    data_ss << "    " << event_data.identifier << ": " << event_data.value
+            << " " << GetEventUnit(event_data.unit) << std::endl;
+
+    // Check the sub events only related to graph execution time
+    if (event_data.type ==
+        QNN_HTP_PROFILE_EVENTTYPE_GRAPH_EXECUTE_ACCEL_TIME_CYCLE) {
+      if (auto status = qnn_manager_.Api()->profileGetSubEvents(
+              events_ptr[i], &sub_events_ptr, &num_sub_events);
+          status != QNN_SUCCESS) {
+        return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                          "Failed to get the event data from profiling result");
+      }
+
+      QnnProfile_EventData_t sub_event_data;
+      for (std::uint32_t j = 0; j < num_sub_events; ++j) {
+        if (auto status = qnn_manager_.Api()->profileGetEventData(
+                sub_events_ptr[j], &sub_event_data);
+            status != QNN_SUCCESS) {
+          return Unexpected(
+              kLiteRtStatusErrorRuntimeFailure,
+              "Failed to get the sub event data from profiling result");
+        }
+        if (sub_event_data.type == QNN_PROFILE_EVENTTYPE_NODE &&
+            (sub_event_data.unit == QNN_PROFILE_EVENTUNIT_MICROSEC ||
+             sub_event_data.unit == QNN_PROFILE_EVENTUNIT_CYCLES)) {
+          data_ss << "        " << sub_event_data.identifier << ": "
+                  << sub_event_data.value << " "
+                  << GetEventUnit(sub_event_data.unit) << std::endl;
+        }
+      }
+    }
+  }
+
+  LITERT_LOG(LITERT_INFO, "%s", data_ss.str().c_str());
 
   return {};
 }
