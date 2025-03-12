@@ -20,10 +20,6 @@ load(
     "tf_exec_properties",
 )
 load("//xla/tsl/platform/default:build_config.bzl", "strict_cc_test")
-load(
-    "//xla/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_XLA_USERS)
 
@@ -66,13 +62,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
     "//xla/tsl/profiler/utils:time_utils_impl",
     "//xla/tsl/protobuf:protos_all_cc_impl",
-]) + if_cuda_is_configured([
-    Label("//xla/stream_executor/cuda:all_runtime"),
-    Label("//xla/stream_executor/cuda:stream_executor_cuda"),
 ]) + if_rocm_is_configured([
-    Label("//xla/stream_executor/gpu:gpu_stream"),
-    Label("//xla/stream_executor/rocm:all_runtime"),
-    Label("//xla/stream_executor/rocm:stream_executor_rocm"),
     "//xla/tsl/util:determinism",
 ])
 
