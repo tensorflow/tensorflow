@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -2288,7 +2289,8 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
     }
     fingerprint = tsl::FingerprintCat128(
         fingerprint,
-        tsl::Fingerprint128(executable->executable()->module().ToString()));
+        tsl::Fingerprint128(executable->executable()->module().ToString(
+            HloPrintOptions::ModuleFingerprint())));
     executables_.emplace_back(std::move(executable));
     on_device_executable_parameter_shapes_.push_back(
         std::move(parameter_shapes));
