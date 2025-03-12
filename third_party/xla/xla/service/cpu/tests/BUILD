@@ -346,9 +346,12 @@ xla_cc_test(
     srcs = ["cpu_while_test.cc"],
     deps = [
         ":cpu_codegen_test_main",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep

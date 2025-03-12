@@ -171,6 +171,7 @@ limitations under the License.
 #include "xla/service/cpu/metrics.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
 #include "xla/service/cpu/runtime_symbol_generator.h"
+#include "xla/service/cpu/small_while_loop_hoisting_pass.h"
 #include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/dump.h"
@@ -858,6 +859,13 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
         /*use_region_based_live_range_analysis=*/-1);
   } else {
     pipeline.AddPass<CopyInsertion>();
+  }
+
+  // The hoisting of small while loops is only useful in the context of the
+  // thunk runtime.
+  if (module->config().debug_options().xla_cpu_use_thunk_runtime()) {
+    pipeline.AddPass<SmallWhileLoopHoistingPass>(
+        /*small_buffer_access_size*/ 256);
   }
 
   pipeline.AddPass<HloDCE>();
