@@ -15,9 +15,11 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_
 
+#include <memory>
+#include <sstream>
+#include <string>
 #include <utility>
 
-#include "absl/log/absl_check.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"  // IWYU pragma: keep
@@ -66,6 +68,14 @@
 // Returns `return_value` if the result of `expr` represents an error.
 //
 // The result of `expr` may be referenced as `status` in `return_expr`.
+//
+// By default, the return value is an `ErrorStatusBuilder` built from using the
+// result of `expr`. The error message of this builder can be customized by
+// using its `*Log*()` functions and the << operator.
+//
+// ```cpp
+// LITERT_RETURN_IF_ERROR(expr) << "Failed while trying to ...";
+// ```
 #define LITERT_RETURN_IF_ERROR(...)                                       \
   LITERT_RETURN_IF_ERROR_SELECT_OVERLOAD(                                 \
       (__VA_ARGS__, LITERT_RETURN_IF_ERROR_2, LITERT_RETURN_IF_ERROR_1))( \
@@ -81,34 +91,44 @@
 // `LiteRtStatus` if required.
 //
 // `return_value` may be specified to return a custom value in case of error.
+//
+// By when specifying `return_value`, an `ErrorStatusBuilder` variable called
+// `_` can be used to customize the error message.
+//
+// ```cpp
+// LITERT_ASSIGN_OR_RETURN(expr, _ << "Failed while trying to ...");
+// ```
 #define LITERT_ASSIGN_OR_RETURN(DECL, ...)                                     \
   LITERT_ASSIGN_OR_RETURN_SELECT_OVERLOAD((DECL, __VA_ARGS__,                  \
                                            LITERT_ASSIGN_OR_RETURN_HELPER_3,   \
                                            LITERT_ASSIGN_OR_RETURN_HELPER_2))( \
       _CONCAT_NAME(expected_value_or_error_, __LINE__), DECL, __VA_ARGS__)
 
-//////////// Implementation details start here. ///////////////////////
+namespace litert {
 
 // Converts implicitly to either `LiteRtStatus` or `litert::Expected` holding an
 // error. This allows returning a status in functions using either of these as a
-// return type in `LITERT_RETURN_IF_ERROR`.
+// return type in `LITERT_RETURN_IF_ERROR` and `LITERT_ASSIGN_OR_RETURN`.
 //
 // When a C++ error with a message is converted to a `LiteRtStatus`, the message
-// is logged as an error.
-class ErrorStatusReturnHelper {
+// is logged (as an error by default, use the `Log*()` functions to customize
+// that).
+//
+// The error message may be completed with extra info by using the << operator.
+class ErrorStatusBuilder {
  public:
-  explicit ErrorStatusReturnHelper(bool expr_result)
+  explicit ErrorStatusBuilder(bool expr_result)
       : error_(kLiteRtStatusErrorUnknown) {}
   template <class T>
-  explicit ErrorStatusReturnHelper(const litert::Expected<T>& expected)
+  explicit ErrorStatusBuilder(const litert::Expected<T>& expected)
       : error_(expected.Error()) {}
   template <class T>
-  explicit ErrorStatusReturnHelper(litert::Expected<T>&& expected)
+  explicit ErrorStatusBuilder(litert::Expected<T>&& expected)
       : error_(std::move(expected.Error())) {}
-  explicit ErrorStatusReturnHelper(LiteRtStatus status) : error_(status) {}
-  explicit ErrorStatusReturnHelper(const litert::Unexpected& unexpected)
+  explicit ErrorStatusBuilder(LiteRtStatus status) : error_(status) {}
+  explicit ErrorStatusBuilder(const litert::Unexpected& unexpected)
       : error_(unexpected.Error()) {}
-  explicit ErrorStatusReturnHelper(litert::Unexpected&& unexpected)
+  explicit ErrorStatusBuilder(litert::Unexpected&& unexpected)
       : error_(std::move(unexpected.Error())) {}
 
   // NOLINTBEGIN(*-explicit-constructor): This class transparently converts to
@@ -116,15 +136,15 @@ class ErrorStatusReturnHelper {
 
   // Note: this conversion logs the error message if there is one.
   operator LiteRtStatus() const noexcept {
-    if (!error_.Message().empty()) {
-      LITERT_LOG(LITERT_ERROR, "%s", error_.Message().data());
+    if (ShouldLog()) {
+      LITERT_LOG(log_level_, "%s", LogMessage().c_str());
     }
     return error_.Status();
   }
 
   template <class T>
   operator litert::Expected<T>() const noexcept {
-    return litert::Unexpected(error_);
+    return litert::Unexpected(error_.Status(), LogMessage());
   }
   // NOLINTEND(*-explicit-constructor)
 
@@ -141,9 +161,75 @@ class ErrorStatusReturnHelper {
     return !expected.HasValue();
   }
 
+  // Appends data to the error message.
+  template <class T>
+  ErrorStatusBuilder& operator<<(T&& val) {
+    if (!extra_log_) {
+      extra_log_ = std::make_unique<std::stringstream>();
+    }
+    *extra_log_ << static_cast<T&&>(val);
+    return *this;
+  }
+
+  // Sets the log level used when converting to a `LiteRtStatus`.
+  ErrorStatusBuilder& Log(LiteRtLogSeverity log_level) noexcept {
+    log_level_ = log_level;
+    return *this;
+  }
+
+  // Sets the log level used when converting to a `LiteRtStatus` to `error`.
+  ErrorStatusBuilder& LogVerbose() noexcept {
+    return Log(kLiteRtLogSeverityVerbose);
+  }
+
+  // Sets the log level used when converting to a `LiteRtStatus` to `info`.
+  ErrorStatusBuilder& LogInfo() noexcept { return Log(kLiteRtLogSeverityInfo); }
+
+  // Sets the log level used when converting to a `LiteRtStatus` to `error`.
+  ErrorStatusBuilder& LogWarning() noexcept {
+    return Log(kLiteRtLogSeverityWarning);
+  }
+
+  // Sets the log level used when converting to a `LiteRtStatus` to `error`.
+  ErrorStatusBuilder& LogError() noexcept {
+    return Log(kLiteRtLogSeverityError);
+  }
+
+  // Prevent logging any message when converting to a `LiteRtStatus`.
+  ErrorStatusBuilder& NoLog() noexcept { return Log(kLiteRtLogSeveritySilent); }
+
  private:
+  bool ShouldLog() const noexcept {
+    return log_level_ != kLiteRtLogSeveritySilent &&
+           (!error_.Message().empty() || extra_log_);
+  }
+
+  std::string LogMessage() const {
+    if (!error_.Message().empty() && extra_log_) {
+      std::string res;
+      res.reserve(error_.Message().size() + extra_log_->tellp() + 2);
+      res.append(error_.Message());
+      res.append(" ");
+      res.append(extra_log_->str());
+      return res;
+    }
+    if (!error_.Message().empty()) {
+      return error_.Message();
+    }
+    if (extra_log_) {
+      return extra_log_->str();
+    }
+    return {};
+  }
+
   litert::Error error_;
+  std::unique_ptr<std::stringstream> extra_log_;
+  LiteRtLogSeverity log_level_ = kLiteRtLogSeverityError;
 };
+
+}  // namespace litert
+
+//////////// Implementation details start here. ///////////////////////
 
 #define LITERT_RETURN_IF_ERROR_SELECT_OVERLOAD_HELPER(_1, _2, OVERLOAD, ...) \
   OVERLOAD
@@ -152,14 +238,12 @@ class ErrorStatusReturnHelper {
   LITERT_RETURN_IF_ERROR_SELECT_OVERLOAD_HELPER args
 
 #define LITERT_RETURN_IF_ERROR_1(EXPR) \
-  LITERT_RETURN_IF_ERROR_2(EXPR, ErrorStatusReturnHelper{std::move(status)})
+  LITERT_RETURN_IF_ERROR_2(EXPR,       \
+                           ::litert::ErrorStatusBuilder{std::move(status)})
 
-#define LITERT_RETURN_IF_ERROR_2(EXPR, RETURN_VALUE)                      \
-  do {                                                                    \
-    if (auto status = (EXPR); ErrorStatusReturnHelper::IsError(status)) { \
-      return RETURN_VALUE;                                                \
-    }                                                                     \
-  } while (false)
+#define LITERT_RETURN_IF_ERROR_2(EXPR, RETURN_VALUE)                       \
+  if (auto status = (EXPR); ::litert::ErrorStatusBuilder::IsError(status)) \
+  return RETURN_VALUE
 
 #define LITERT_ASSIGN_OR_RETURN_SELECT_OVERLOAD_HELPER(_1, _2, _3, OVERLOAD, \
                                                        ...)                  \
@@ -169,12 +253,12 @@ class ErrorStatusReturnHelper {
   LITERT_ASSIGN_OR_RETURN_SELECT_OVERLOAD_HELPER args
 
 #define LITERT_ASSIGN_OR_RETURN_HELPER_2(TMP_VAR, DECL, EXPR) \
-  LITERT_ASSIGN_OR_RETURN_HELPER_3(                           \
-      TMP_VAR, DECL, EXPR, ErrorStatusReturnHelper(std::move(TMP_VAR)))
+  LITERT_ASSIGN_OR_RETURN_HELPER_3(TMP_VAR, DECL, EXPR, _)
 
 #define LITERT_ASSIGN_OR_RETURN_HELPER_3(TMP_VAR, DECL, EXPR, RETURN_VALUE) \
   auto&& TMP_VAR = (EXPR);                                                  \
-  if (ErrorStatusReturnHelper::IsError(TMP_VAR)) {                          \
+  if (::litert::ErrorStatusBuilder::IsError(TMP_VAR)) {                     \
+    [[maybe_unused]] ::litert::ErrorStatusBuilder _(std::move(TMP_VAR));    \
     return RETURN_VALUE;                                                    \
   }                                                                         \
   DECL = std::move(TMP_VAR.Value());
