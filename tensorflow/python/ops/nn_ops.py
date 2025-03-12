@@ -4949,12 +4949,7 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
   >>> ksize = 2  
   >>> strides = 2  
   >>> padding = 'VALID'  
-  >>> output_tensor = tf.nn.max_pool1d(
-  ... input=input_tensor,
-  ... ksize=ksize,
-  ... strides=strides,
-  ... padding=padding,
-  ... data_format='NWC',)
+  >>> output_tensor = tf.nn.max_pool1d(input=input_tensor, ksize=ksize, strides=strides, padding=padding, data_format='NWC')
   <array([[[ 4.,  5.,  6.],
            [10., 11., 12.]],
           [[16., 17., 18.],
