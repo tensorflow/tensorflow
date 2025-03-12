@@ -515,20 +515,20 @@ def scan(fn,
   Examples:
 
   >>> elems = np.array([1, 2, 3, 4, 5, 6])
-  >>> sum = scan(lambda a, x: a + x, elems)
+  >>> tf.scan(lambda a, x: a + x, elems)
   < tf.Tensor([ 1 3 6 10 15 21], shape=(6,), dtype=int64) >
 
-  >>> sum = scan(lambda a, x: a + x, elems, reverse=True)
+  >>> tf.scan(lambda a, x: a + x, elems, reverse=True)
   < tf.Tensor([21 20 18 15 11 6], shape=(6,), dtype=int64) >
 
   >>> elems = np.array([1, 2, 3, 4, 5, 6])
   >>> initializer = np.array(0)
-  >>> sum_one = scan(lambda a, x: x[0] - x[1] + a, (elems + 1, elems), initializer)
+  >>> tf.scan(lambda a, x: x[0] - x[1] + a, (elems + 1, elems), initializer)
   < tf.Tensor([1 2 3 4 5 6], shape=(6,), dtype=int64)> 
 
   >>> elems = np.array([1, 0, 0, 0, 0, 0])
   >>> initializer = (np.array(0), np.array(1))
-  >>> fibonaccis = scan(lambda a, _: (a[1], a[0] + a[1]), elems, initializer)
+  >>> tf.scan(lambda a, _: (a[1], a[0] + a[1]), elems, initializer)
   < tf.Tensor: shape=(6,), dtype=int64, numpy=array([1, 1, 2, 3, 5, 8])>, <tf.Tensor: shape=(6,), dtype=int64, numpy=array([ 1, 2, 3, 5, 8, 13]) >
   """
   if not callable(fn):
@@ -772,28 +772,24 @@ def scan_v2(fn,
       do not match.
 
   Examples:
-    ```python
-    elems = np.array([1, 2, 3, 4, 5, 6])
-    sum = tf.scan(lambda a, x: a + x, elems)
-    # sum == [1, 3, 6, 10, 15, 21]
-    sum = tf.scan(lambda a, x: a + x, elems, reverse=True)
-    # sum == [21, 20, 18, 15, 11, 6]
-    ```
+    
+    >>> elems = np.array([1, 2, 3, 4, 5, 6])
+    >>> tf.scan(lambda a, x: a + x, elems)
+    <tf.Tensor: shape=(6,), dtype=int64, numpy=array([ 1,  3,  6, 10, 15, 21])>
+    >>> tf.scan(lambda a, x: a + x, elems, reverse=True)
+    <tf.Tensor: shape=(6,), dtype=int64, numpy=array([21, 20, 18, 15, 11,  6])>
+    
+    
+    >>> elems = np.array([1, 2, 3, 4, 5, 6])
+    >>> initializer = np.array(0)
+    >>> tf.scan(lambda a, x: x[0] - x[1] + a, (elems + 1, elems), initializer)
+    < tf.Tensor([1 2 3 4 5 6], shape=(6,), dtype=int64)>
 
-    ```python
-    elems = np.array([1, 2, 3, 4, 5, 6])
-    initializer = np.array(0)
-    sum_one = tf.scan(
-        lambda a, x: x[0] - x[1] + a, (elems + 1, elems), initializer)
-    # sum_one == [1, 2, 3, 4, 5, 6]
-    ```
+    >>> elems = np.array([1, 0, 0, 0, 0, 0])
+    >>> initializer = (np.array(0), np.array(1))
+    >>> tf.scan(lambda a, _: (a[1], a[0] + a[1]), elems, initializer)
+    < tf.Tensor: shape=(6,), dtype=int64, numpy=array([1, 1, 2, 3, 5, 8])>, <tf.Tensor: shape=(6,), dtype=int64, numpy=array([ 1, 2, 3, 5, 8, 13]) >
 
-    ```python
-    elems = np.array([1, 0, 0, 0, 0, 0])
-    initializer = (np.array(0), np.array(1))
-    fibonaccis = tf.scan(lambda a, _: (a[1], a[0] + a[1]), elems, initializer)
-    # fibonaccis == ([1, 1, 2, 3, 5, 8], [1, 2, 3, 5, 8, 13])
-    ```
   """
   return scan(
       fn=fn,
