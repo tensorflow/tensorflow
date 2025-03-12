@@ -147,6 +147,7 @@ class Optimize(enum.Enum):
   DEFAULT = "DEFAULT"
 
   # Deprecated. Does the same as DEFAULT.
+  # TESTING REMOVE THIS AFTER
   OPTIMIZE_FOR_SIZE = "OPTIMIZE_FOR_SIZE"
 
   # Deprecated. Does the same as DEFAULT.
