@@ -14,13 +14,11 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/accelerators/auto_registration.h"
 
-#include <dlfcn.h>
-
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
@@ -28,16 +26,36 @@
 
 namespace litert {
 
+Expected<void> TriggerAcceleratorAutomaticRegistration(
+    LiteRtEnvironmentT& environment) {
+  // Register the GPU accelerator.
+  auto gpu_registration = RegisterSharedObjectAccelerator(
+      environment, /*plugin_path=*/"libLiteRtGpuAccelerator.so",
+      /*registration_function_name=*/"LiteRtRegisterAcceleratorGpuOpenCl");
+  if (!gpu_registration) {
+    LITERT_LOG(LITERT_WARNING,
+               "GPU accelerator could not be loaded and registered: %s.",
+               gpu_registration.Error().Message().c_str());
+  } else {
+    LITERT_LOG(LITERT_INFO, "GPU accelerator registered.");
+  }
+  return {};
+};
+
 Expected<void> RegisterSharedObjectAccelerator(
     LiteRtEnvironmentT& environment, absl::string_view plugin_path,
     absl::string_view registration_function_name) {
-  LITERT_ASSIGN_OR_RETURN(
-      SharedLibrary lib,
-      SharedLibrary::Load(plugin_path, RtldFlags::Now().Local().DeepBind()));
+  auto maybe_lib = SharedLibrary::Load(plugin_path, RtldFlags::Lazy().Local());
+  if (!maybe_lib.HasValue()) {
+    maybe_lib = SharedLibrary::Load(RtldFlags::kDefault);
+  }
+  // Note: the Load(kDefault) overload always succeeds, so we are sure that
+  // maybe_lib contains a value.
+  SharedLibrary lib(std::move(maybe_lib.Value()));
   LITERT_ASSIGN_OR_RETURN(auto registration_function,
-                          lib.LookupSymbol<LiteRtStatus (*)(LiteRtEnvironment)>(
+                          lib.LookupSymbol<void (*)(LiteRtEnvironment)>(
                               registration_function_name.data()));
-  LITERT_RETURN_IF_ERROR(registration_function(&environment));
+  registration_function(&environment);
   environment.GetAcceleratorRegistry().TakeOwnershipOfSharedLibrary(
       std::move(lib));
   return {};

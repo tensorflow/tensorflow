@@ -24,7 +24,7 @@ cc_library(
     srcs = ["auto_registration.cc"],
     hdrs = ["auto_registration.h"],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_shared_library",
