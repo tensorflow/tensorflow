@@ -466,8 +466,8 @@ class HloModuleConfig {
   std::vector<bool> param_requires_broadcast_via_collectives_;
 
   // Whether to use SPMD (true) or MPMD (false) when num_partitions_ > 0 and XLA
-  // needs to partition the module.
-  bool use_spmd_partitioning_ = false;
+  // needs to partition the module. MPMD is deprecated.
+  bool use_spmd_partitioning_ = true;
 
   // Whether to automatically generate XLA shardings for SPMD partitioner.
   bool use_auto_spmd_partitioning_ = false;

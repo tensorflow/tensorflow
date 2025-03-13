@@ -903,50 +903,6 @@ TEST_F(LayoutAssignmentTest, AllReduceSpmd) {
   AssignLayouts(m.get(), &computation_layout);
 }
 
-TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
-  // Pin non matching layouts to parameter and root.
-  const char* module_str = R"(
-    HloModule test_module
-
-    add {
-      lhs = f32[] parameter(0)
-      rhs = f32[] parameter(1)
-      ROOT add = f32[] add(lhs, rhs)
-    }
-
-    ENTRY entry_computation {
-      param = (f32[2,2]) parameter(0)
-      gte = f32[2,2] get-tuple-element(param), index=0
-      ar.0 = f32[2,2] all-reduce(gte),
-        channel_id=1, replica_groups={{0}}, to_apply=add,
-        sharding={maximal device=0}
-      const = f32[2,2] constant({{0,1},{2,3}})
-      ROOT ar.1 = f32[2,2] all-reduce(const),
-        channel_id=1, replica_groups={{0}}, to_apply=add,
-        sharding={maximal device=1}
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(module_str));
-  ComputationLayout computation_layout(
-      m->entry_computation()->ComputeProgramShape());
-  Shape param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1})});
-  TF_ASSERT_OK(
-      computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
-          param_shape));
-  computation_layout.mutable_result_layout()->ResetLayout(
-      LayoutUtil::MakeLayout({1, 0}));
-
-  ChannelLayoutConstraints channel_constraints;
-  AssignLayouts(m.get(), &computation_layout, &channel_constraints);
-
-  EXPECT_THAT(LayoutOf(m.get(), "gte"), ElementsAre(0, 1));
-  EXPECT_THAT(LayoutOf(m.get(), "ar.0"), ElementsAre(0, 1));
-  EXPECT_THAT(LayoutOf(m.get(), "ar.1"), ElementsAre(0, 1));
-  const HloInstruction* root = m->entry_computation()->root_instruction();
-  EXPECT_THAT(root->shape().layout().minor_to_major(), ElementsAre(1, 0));
-}
-
 TEST_F(LayoutAssignmentTest, CopySliceOperandToAvoidImplicitLayoutChange) {
   const char* module_str = R"(
     HloModule CopySliceOperandToAvoidImplicitLayoutChange
