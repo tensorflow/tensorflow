@@ -70,14 +70,14 @@ jobs:
         run: bazel build -c opt --config=cuda --dynamic_mode=off //xla/tools/multihost_hlo_runner:hlo_runner_main
 
       # TODO(juliagmt): Add more performance-critical HLOs to benchmark.
-      - name: Run gpu_hlo_pass.hlo and dump XSpace with profile stats
+      - name: Run gpu_hlo_backend.hlo and dump XSpace with profile stats
         run: |
-          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=gpu --log_output=True --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to=results/gpu_hlo_pass_xspace.pb xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo
+          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=gpu --log_output=True --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to=results/gpu_hlo_backend_xspace.pb xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo
 
-      - name: Compute the cost of gpu_hlo_pass.hlo
+      - name: Compute the cost of gpu_hlo_backend.hlo
         run: |
           PWD=$(pwd)
-          bazel run //xla/tools:compute_cost -- --input=$PWD/xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo --format=hlo --gpu
+          bazel run //xla/tools:compute_cost -- --input=$PWD/xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo --format=hlo --gpu
 
       - name: Download and run Gemma2 2B HLO and collect runtime and compile time
         run: |
@@ -98,14 +98,14 @@ jobs:
       - name: Build run_hlo_module
         run: bazel build -c opt --config=cuda --dynamic_mode=off xla/tools:run_hlo_module
 
-      - name: Run gpu_hlo_pass.hlo and collect runtime and compile time
+      - name: Run gpu_hlo_backend.hlo and collect runtime and compile time
         run: |
-          ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=GPU xla/tools/hlo_opt/tests/gpu_hlo_pass.hlo
+          ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=GPU xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo
 
       - name: Compute device stats
         run: |
           PWD=$(pwd)
-          bazel run //xla/tools:compute_gpu_device_stats_main -- --input=$PWD/results/gpu_hlo_pass_xspace.pb
+          bazel run //xla/tools:compute_gpu_device_stats_main -- --input=$PWD/results/gpu_hlo_backend_xspace.pb
           bazel run //xla/tools:compute_gpu_device_stats_main -- --input=$PWD/results/gemma2_2b_keras_jax_xspace.pb
 
       - name: Upload XSpace
