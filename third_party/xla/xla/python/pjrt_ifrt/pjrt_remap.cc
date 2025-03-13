@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -130,11 +131,15 @@ PjRtCompatibleClientRemapArrays(
   std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
   output_arrays.reserve(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
-    TF_ASSIGN_OR_RETURN(auto output_array,
-                        PjRtArray::Create(client, plan.output_specs[i].dtype,
-                                          plan.output_specs[i].shape,
-                                          plan.output_specs[i].sharding,
-                                          std::move(out_buffers_list[i])));
+    CHECK_GE(out_buffers_list[i].size(), 1);
+    std::shared_ptr<const xla::PjRtLayout> layout =
+        out_buffers_list[i].front()->layout();
+    TF_ASSIGN_OR_RETURN(
+        auto output_array,
+        PjRtArray::Create(client, plan.output_specs[i].dtype,
+                          plan.output_specs[i].shape,
+                          plan.output_specs[i].sharding,
+                          std::move(out_buffers_list[i]), std::move(layout)));
     output_arrays.push_back(std::move(output_array));
   }
   return output_arrays;
