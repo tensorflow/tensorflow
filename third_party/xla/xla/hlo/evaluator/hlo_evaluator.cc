@@ -1004,6 +1004,11 @@ absl::StatusOr<Literal> HloEvaluator::EvaluateWithSubstitutions(
     const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
         substitutions,
     bool recursively_evaluate_nonconstant_operands) {
+  auto value = substitutions.find(instruction);
+  if (value != substitutions.end()) {
+    return value->second->Clone();
+  }
+
   std::vector<std::unique_ptr<HloInstruction>> owned_operands;
   for (const HloInstruction* operand : instruction->operands()) {
     auto it = substitutions.find(operand);

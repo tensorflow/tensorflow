@@ -3394,6 +3394,23 @@ TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutionsWithConstantOperand) {
       LiteralUtil::CreateR1<float>({11, 22, 33, 44}), result));
 }
 
+// Check that EvaluateWithSubstitutions works if the thing we're evaluating is
+// being substituted.
+TEST_P(HloEvaluatorBf16Test, EvaluateSubstitutedInstruction) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+
+  HloInstruction* param =
+      b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param0"));
+
+  HloEvaluator evaluator;
+  Literal literal = LiteralUtil::CreateR1<float>({10, 20, 30, 40});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, evaluator.EvaluateWithSubstitutions(
+                                              param, {{param, &literal}}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({10, 20, 30, 40}), result));
+}
+
 TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsLiteralBase) {
   HloComputation::Builder b(TestName());
   Shape shape = ShapeUtil::MakeShape(S64, {3});
