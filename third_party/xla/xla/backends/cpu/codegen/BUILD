@@ -362,9 +362,9 @@ cc_library(
 )
 
 cc_library(
-    name = "call_kernel_emitter",
-    srcs = ["call_kernel_emitter.cc"],
-    hdrs = ["call_kernel_emitter.h"],
+    name = "computation_kernel_emitter",
+    srcs = ["computation_kernel_emitter.cc"],
+    hdrs = ["computation_kernel_emitter.h"],
     deps = [
         ":kernel_api_ir_builder",
         ":target_machine_features",
@@ -454,8 +454,8 @@ xla_cc_test(
 )
 
 py_strict_test(
-    name = "call_kernel_emitter_test",
-    srcs = ["call_kernel_emitter_test.py"],
+    name = "computation_kernel_emitter_test",
+    srcs = ["computation_kernel_emitter_test.py"],
     tags = [
         "no_oss",
     ],

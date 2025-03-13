@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_CODEGEN_CALL_KERNEL_EMITTER_H_
-#define XLA_BACKENDS_CPU_CODEGEN_CALL_KERNEL_EMITTER_H_
+#ifndef XLA_BACKENDS_CPU_CODEGEN_COMPUTATION_KERNEL_EMITTER_H_
+#define XLA_BACKENDS_CPU_CODEGEN_COMPUTATION_KERNEL_EMITTER_H_
 
 #include <cstdint>
 
@@ -43,11 +43,11 @@ namespace xla::cpu {
 // producing a synthetic buffer_table for all arguments and results (including
 // intermediate instructions), though this may change in the future to use stack
 // allocations for small buffers.
-class CallKernelEmitter final : public KernelEmitter {
+class ComputationKernelEmitter final : public KernelEmitter {
  public:
-  CallKernelEmitter(const HloInstruction* instr,
-                    const BufferAssignment* buffer_assignment,
-                    const TargetMachineFeatures* target_machine);
+  ComputationKernelEmitter(const HloInstruction* instr,
+                           const BufferAssignment* buffer_assignment,
+                           const TargetMachineFeatures* target_machine);
 
   absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
 
@@ -67,4 +67,4 @@ class CallKernelEmitter final : public KernelEmitter {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_CODEGEN_CALL_KERNEL_EMITTER_H_
+#endif  // XLA_BACKENDS_CPU_CODEGEN_COMPUTATION_KERNEL_EMITTER_H_

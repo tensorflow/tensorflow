@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/codegen/call_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 
 #include <cstdint>
 #include <memory>
@@ -125,14 +125,15 @@ absl::Status GetAllSlices(
 
 }  // namespace
 
-CallKernelEmitter::CallKernelEmitter(
+ComputationKernelEmitter::ComputationKernelEmitter(
     const HloInstruction* instr, const BufferAssignment* buffer_assignment,
     const TargetMachineFeatures* target_machine)
     : instr_(instr),
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<KernelDefinition> CallKernelEmitter::EmitKernelDefinition() {
+absl::StatusOr<KernelDefinition>
+ComputationKernelEmitter::EmitKernelDefinition() {
   VLOG(2) << "Emit Computation host kernel: " << instr_->name();
 
   auto ctx = std::make_unique<llvm::LLVMContext>();
@@ -223,7 +224,7 @@ absl::StatusOr<KernelDefinition> CallKernelEmitter::EmitKernelDefinition() {
   return KernelDefinition(std::move(spec), std::move(source));
 }
 
-absl::StatusOr<llvm::Function*> CallKernelEmitter::EmitNestedComputation(
+absl::StatusOr<llvm::Function*> ComputationKernelEmitter::EmitNestedComputation(
     llvm::Function* function, llvm::BasicBlock* return_block,
     llvm::IRBuilderBase& builder, llvm::Module& llvm_module,
     absl::flat_hash_map<BufferAllocation::Slice, int64_t> buffer_table_index)

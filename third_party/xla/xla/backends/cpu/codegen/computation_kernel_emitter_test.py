@@ -88,13 +88,13 @@ class CallKernelTest(parameterized.TestCase):
 
     jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
-    call_emitter = testlib_cpu.CallKernelEmitter(
+    computation_emitter = testlib_cpu.ComputationKernelEmitter(
         hlo_module.get_root_instruction(),
         buffer_assignment,
         jit_compiler.get_target_machine(),
     )
 
-    kernel_definition = call_emitter.emit_kernel_definition()
+    kernel_definition = computation_emitter.emit_kernel_definition()
     self.assertIsNotNone(kernel_definition)
 
     runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)

@@ -903,7 +903,7 @@ cc_library(
         "//xla/backends/cpu:onednn_fusion",
         "//xla/backends/cpu:xnn_emitter",
         "//xla/backends/cpu:xnn_fusion",
-        "//xla/backends/cpu/codegen:call_kernel_emitter",
+        "//xla/backends/cpu/codegen:computation_kernel_emitter",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
         "//xla/backends/cpu/codegen/elemental:concatenate_kernel_emitter",

@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/codegen/call_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
@@ -552,8 +552,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
   if (std::optional<std::string> maybe_small_call =
           instruction->get_frontend_attribute("xla_cpu_small_call");
       maybe_small_call.has_value() && *maybe_small_call == "true") {
-    CallKernelEmitter emitter(instruction, &buffer_assignment_,
-                              &target_machine_features_);
+    ComputationKernelEmitter emitter(instruction, &buffer_assignment_,
+                                     &target_machine_features_);
     TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                         emitter.EmitKernelDefinition());
 
