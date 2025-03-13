@@ -29,15 +29,7 @@ auto* free_gpu_system_memory = tsl::monitoring::Gauge<int64_t, 1>::New(
 
 namespace gpu_metrics {
 
-void RecordFreeGpuSystemMemory(const int device_ordinal,
-                               const int64_t free_memory) {
-  free_gpu_system_memory->GetCell(absl::StrCat(device_ordinal))
-      ->Set(free_memory);
-}
 
-int64_t GetFreeGpuSystemMemory(int gpu_id) {
-  return free_gpu_system_memory->GetCell(absl::StrCat(gpu_id))->value();
-}
 
 }  // namespace gpu_metrics
 }  // namespace xla
