@@ -30,10 +30,10 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
-#include "tensorflow/core/profiler/convert/trace_viewer/trace_event_arguments_builder.h"
-#include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
+#include "xprof/convert/trace_viewer/trace_event_arguments_builder.h"  // from @org_xprof
+#include "xprof/convert/trace_viewer/trace_events_util.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
