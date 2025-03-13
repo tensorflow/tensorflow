@@ -113,5 +113,77 @@ TEST(CompiledModelTest, RunWithGoogleTensorModel) {
   }
 }
 
+TEST(CompiledModel, RunAsyncWithGoogleTensorModel) {
+  if (!litert::internal::AhwbBuffer::IsSupported()) {
+    GTEST_SKIP()
+        << "The rest of this test is specific to Android devices with a "
+           "GoogleTensor eTPU";
+  }
+
+  // Environment setup.
+  const std::vector<litert::Environment::Option> environment_options = {
+      litert::Environment::Option{
+          litert::Environment::OptionTag::DispatchLibraryDir,
+          kDispatchLibraryDir,
+      },
+  };
+  LITERT_ASSERT_OK_AND_ASSIGN(Environment env,
+                              litert::Environment::Create(environment_options));
+
+  // Create Model.
+
+  // TODO(gcarranza): Replace internal API with C++ API or single npu tflite
+  // file.
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      BufferRef<uint8_t> model_with_byte_code,
+      internal::GetModelBufWithByteCode(testing::GetTestFilePath(kTfliteFile),
+                                        testing::GetTestFilePath(kNpuFile)));
+
+  LITERT_ASSERT_OK_AND_ASSIGN(Model model,
+                              Model::CreateFromBuffer(model_with_byte_code));
+  // Create CompiledModel.
+  LITERT_ASSERT_OK_AND_ASSIGN(CompiledModel compiled_model,
+                              CompiledModel::Create(env, model));
+
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      std::vector<TensorBuffer> input_buffers,
+      compiled_model.CreateInputBuffers(model.DefaultSignatureKey()));
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      std::vector<TensorBuffer> output_buffers,
+      compiled_model.CreateOutputBuffers(model.DefaultSignatureKey()));
+
+  ASSERT_THAT(input_buffers, SizeIs(2));
+  ASSERT_THAT(output_buffers, SizeIs(1));
+
+  // Confirm input and output buffers are AHWB.
+  EXPECT_THAT(*input_buffers[0].BufferType(), Eq(kLiteRtTensorBufferTypeAhwb));
+  EXPECT_THAT(*input_buffers[1].BufferType(), Eq(kLiteRtTensorBufferTypeAhwb));
+  EXPECT_THAT(*output_buffers[0].BufferType(), Eq(kLiteRtTensorBufferTypeAhwb));
+
+  LITERT_ASSERT_OK(input_buffers[0].Write<float>(
+      absl::MakeConstSpan(kTestInput0Tensor, kTestInput0Size)));
+  LITERT_ASSERT_OK(input_buffers[1].Write<float>(
+      absl::MakeConstSpan(kTestInput1Tensor, kTestInput1Size)));
+
+  // Run compiled model.
+  bool async;
+  compiled_model.RunAsync(model.DefaultSignatureKey(), input_buffers,
+                          output_buffers, async);
+  // Since output buffers have events, async should be true.
+  ASSERT_TRUE(async);
+
+  // Check model output.
+  {
+    LITERT_ASSERT_OK_AND_ASSIGN(
+        auto lock_and_addr,
+        litert::TensorBufferScopedLock::Create<const float>(output_buffers[0]));
+    auto output = absl::MakeSpan(lock_and_addr.second, kTestOutputSize);
+    for (auto i = 0; i < kTestOutputSize; ++i) {
+      ABSL_LOG(INFO) << "Result: " << output[i] << "\t" << kTestOutputTensor[i];
+    }
+    EXPECT_THAT(output, Pointwise(FloatNear(1e-5), kTestOutputTensor));
+  }
+}
+
 }  // namespace
 }  // namespace litert

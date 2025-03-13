@@ -244,6 +244,20 @@ class CompiledModel
     return Run(signature_index, input_buffers, output_buffers);
   }
 
+  // Runs the model of the given signature key asynchronously, if possible, with
+  // the provided input/output TensorBuffers. If asynchronous execution is
+  // possible then the function returns true in parameter `async`; otherwise the
+  // function runs the model synchronously.
+  Expected<void> RunAsync(absl::string_view signature_key,
+                          const std::vector<TensorBuffer>& input_buffers,
+                          const std::vector<TensorBuffer>& output_buffers,
+                          bool& async) const {
+    async = true;
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_key));
+    return RunAsync(signature_index, input_buffers, output_buffers, async);
+  }
+
   // Runs the model of the given signature key synchronously with the provided
   // input/output TensorBuffer map.
   Expected<void> Run(
