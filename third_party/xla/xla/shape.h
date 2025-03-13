@@ -52,14 +52,28 @@ class Shape {
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);
 
+  // Creates a token or opaque shape.
+  // Precondition:
+  //  - `element_type` must be TOKEN or OPAQUE_TYPE.
+  explicit Shape(PrimitiveType element_type) : element_type_(element_type) {}
+
+  // Creates an array shape. `dimensions` can be empty, in which case the shape
+  // is a scalar (degenerated array).
+  // Precondition:
+  //  - `element_type` must be a valid array type.
+  //  - `dynamic_dimensions` must be either empty or have the same size as
+  //    `dimensions`.
   Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-        absl::Span<const bool> dynamic_dimensions,
-        std::vector<Shape> tuple_shapes)
+        absl::Span<const bool> dynamic_dimensions)
       : element_type_(element_type),
         dimensions_(dimensions.begin(), dimensions.end()),
         dynamic_dimensions_(dynamic_dimensions.begin(),
-                            dynamic_dimensions.end()),
-        tuple_shapes_(std::move(tuple_shapes)) {}
+                            dynamic_dimensions.end()) {}
+
+  // Creates a tuple shape. `tuple_shapes` can be empty, in which case the
+  // shape is a nil shape (empty tuple).
+  explicit Shape(std::vector<Shape> tuple_shapes)
+      : element_type_(TUPLE), tuple_shapes_(std::move(tuple_shapes)) {}
 
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
@@ -76,9 +90,7 @@ class Shape {
 
   // Returns the rank (number of dimensions) of the given shape. Returns 0 for
   // non-array shapes.
-  int64_t rank() const {
-    return dimensions_.size();
-  }
+  int64_t rank() const { return dimensions_.size(); }
 
   // Returns whether the shape is of the specified type (array, tuple, etc).
   bool IsArray() const { return primitive_util::IsArrayType(element_type()); }

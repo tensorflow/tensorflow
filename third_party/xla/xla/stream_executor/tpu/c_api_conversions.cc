@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -302,8 +303,13 @@ xla::Shape FromC(const XLA_Shape* c_shape) {
     tuple_shapes.push_back(FromC(&c_shape->tuple_shapes[i]));
   }
 
-  xla::Shape result(static_cast<xla::PrimitiveType>(c_shape->element_type),
-                    dims, dynamic_dims, std::move(tuple_shapes));
+  const auto type = static_cast<xla::PrimitiveType>(c_shape->element_type);
+  xla::Shape result = xla::primitive_util::IsArrayType(type)
+                          ? xla::Shape(type, dims, dynamic_dims)
+                      : type == xla::PrimitiveType::TUPLE
+                          ? xla::Shape(std::move(tuple_shapes))
+                          // type is TOKEN or OPAQUE_TYPE.
+                          : xla::Shape(type);
   if (c_shape->has_layout) {
     *result.mutable_layout() = FromC(&c_shape->layout);
   }
