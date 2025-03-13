@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/TaskDispatch.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
@@ -183,12 +184,20 @@ JitCompiler::JitCompiler(
 
 JitCompiler::~JitCompiler() = default;
 
+static void AddDylibIndexModuleFlag(llvm::Module& llvm_module,
+                                    size_t dylib_index) {
+  auto i64ty = llvm::Type::getInt64Ty(llvm_module.getContext());
+  llvm_module.addModuleFlag(llvm::Module::Error, "xla_dylib_index",
+                            llvm::ConstantInt::get(i64ty, dylib_index));
+}
+
 absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
                                     size_t dylib_index) {
   // Set up module for codegen for the target machine at hand.
   module.withModuleDo([&](llvm::Module& m) {
     m.setDataLayout(target_machine_->createDataLayout());
     m.setTargetTriple(target_machine_->getTargetTriple().getTriple());
+    AddDylibIndexModuleFlag(m, dylib_index);
   });
 
   // Add module to the selected dynamic library.

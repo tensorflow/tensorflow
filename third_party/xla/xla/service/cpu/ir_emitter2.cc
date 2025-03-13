@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/ir_emitter2.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -32,6 +33,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -82,6 +85,17 @@ limitations under the License.
 
 namespace xla::cpu {
 
+namespace {
+
+std::string SortCsv(absl::string_view csv) {
+  std::vector<absl::string_view> v =
+      absl::StrSplit(csv, ',', absl::SkipEmpty());
+  std::sort(v.begin(), v.end());
+  return absl::StrJoin(v, ",");
+}
+
+}  // namespace
+
 //===----------------------------------------------------------------------===//
 // IrEmitter2
 //===----------------------------------------------------------------------===//
@@ -105,6 +119,17 @@ IrEmitter2::KernelInfo::KernelInfo(KernelPrototype prototype,
       block_dims(block_dims),
       thread_dims(thread_dims),
       invariant_arguments(std::move(prototype.invariant_arguments)) {}
+
+IrEmitter2::KernelInfo::KernelInfo(
+    const std::string& name, const se::BlockDim& block_dims,
+    const se::ThreadDim& thread_dims,
+    const absl::flat_hash_set<int64_t>& invariant_arguments,
+    absl::string_view backend_extra_options)
+    : name(name),
+      block_dims(block_dims),
+      thread_dims(thread_dims),
+      invariant_arguments(invariant_arguments),
+      backend_extra_options(SortCsv(backend_extra_options)) {}
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
     const HloInstruction* pad) {

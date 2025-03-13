@@ -16,12 +16,17 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
@@ -29,6 +34,7 @@ limitations under the License.
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/MCContext.h"
@@ -36,6 +42,7 @@ limitations under the License.
 #include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Errc.h"
@@ -47,6 +54,7 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
+#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/util.h"
@@ -69,6 +77,65 @@ static llvm::OptimizationLevel GetOptimizationLevel(
     case llvm::CodeGenOptLevel::Aggressive:
       return llvm::OptimizationLevel::O3;
   }
+}
+
+static std::unique_ptr<HloModuleConfig> ParseXlaBackendExtraOptions(
+    absl::string_view config_csv) {
+  auto module_config = std::make_unique<HloModuleConfig>();
+  DebugOptions& debug_options = module_config->mutable_debug_options();
+  auto* map = debug_options.mutable_xla_backend_extra_options();
+  std::vector<absl::string_view> vec =
+      absl::StrSplit(config_csv, ',', absl::SkipEmpty());
+  for (const auto& v : vec) {
+    std::vector<absl::string_view> kv = absl::StrSplit(v, '=');
+    (*map)[kv[0]] = kv.size() == 1 ? "" : kv[1];
+  }
+  return module_config;
+}
+
+// Returns an HloModuleConfig with its DebugOptions.xla_backend_extra_options
+// set by the values embedded in the LLVM module. The rest of the fields
+// of the proto should be ignored since they're just the default values.
+// We could instead return an unordered_map<str, str>, but we already have
+// helpers that expect a DebugOptions, so this ends up being simpler.
+static absl::Nullable<std::unique_ptr<HloModuleConfig>>
+GetXlaBackendExtraOptions(const llvm::Module& llvm_module) {
+  llvm::Metadata* md = llvm_module.getModuleFlag("xla_backend_extra_options");
+  if (md == nullptr) return nullptr;
+  auto* md_string = llvm::dyn_cast<llvm::MDString>(md);
+  if (md_string == nullptr) return nullptr;
+  std::string config_csv = md_string->getString().str();
+  return ParseXlaBackendExtraOptions(config_csv);
+}
+
+static llvm::PipelineTuningOptions GetPipelineTuningOptions(
+    const llvm::Module& module, IrCompiler::Options options) {
+  auto pto_from_options = [](const IrCompiler::Options opts) {
+    llvm::PipelineTuningOptions pto;
+    pto.LoopVectorization = !opts.optimize_for_size;
+    pto.SLPVectorization =
+        !opts.optimize_for_size && !opts.disable_slp_vectorizer;
+    pto.LoopUnrolling = !opts.disable_loop_unrolling;
+    return pto;
+  };
+
+  std::unique_ptr<HloModuleConfig> config = GetXlaBackendExtraOptions(module);
+  if (config == nullptr) {
+    return pto_from_options(options);
+  }
+
+  // Apply overrides from the embedded config.
+  IrCompiler::Options with_overrides(options);
+  if (options::OptimizeForSizeRequested(*config)) {
+    with_overrides.optimize_for_size = true;
+  }
+  if (options::SlpVectorizerDisabled(*config)) {
+    with_overrides.disable_slp_vectorizer = true;
+  }
+  if (options::DisableLoopUnrolling(*config)) {
+    with_overrides.disable_loop_unrolling = true;
+  }
+  return pto_from_options(with_overrides);
 }
 
 IrCompiler::IrCompiler(TargetMachineBuilder target_machine_builder,
@@ -105,12 +172,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     }
   }
 
-  llvm::PipelineTuningOptions pto;
-  pto.LoopVectorization = !options_.optimize_for_size;
-  pto.SLPVectorization =
-      !options_.optimize_for_size && !options_.disable_slp_vectorizer;
-  pto.LoopUnrolling = !options_.disable_loop_unrolling;
-
+  llvm::PipelineTuningOptions pto = GetPipelineTuningOptions(module, options_);
   llvm::LoopAnalysisManager lam;
   llvm::FunctionAnalysisManager fam;
   llvm::CGSCCAnalysisManager cgam;
