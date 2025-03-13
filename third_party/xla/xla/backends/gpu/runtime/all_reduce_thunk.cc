@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/nccl_all_reduce_thunk.h"
+#include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 
 #include <cstdint>
 #include <optional>
@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -33,10 +33,10 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -77,12 +77,12 @@ absl::Status CheckImplementableInst(const HloInstruction* inst,
 }
 
 template <typename HloInstType>
-NcclAllReduceConfig GetNcclAllReduceConfigInst(HloInstType* inst) {
+AllReduceConfig GetAllReduceConfigInst(HloInstType* inst) {
   std::optional<ReductionKind> reduction_kind =
       MatchReductionComputation(inst->called_computations().front());
   CHECK(reduction_kind.has_value());
 
-  NcclAllReduceConfig config;
+  AllReduceConfig config;
   config.config = GetCollectiveConfig(inst, inst->use_global_device_ids());
   config.reduction_kind = *reduction_kind;
   return config;
@@ -90,13 +90,13 @@ NcclAllReduceConfig GetNcclAllReduceConfigInst(HloInstType* inst) {
 
 template <typename HloInstType>
 CollectiveOpGroupMode GetGroupModeInst(HloInstType* inst) {
-  return GetNcclAllReduceConfigInst(inst).config.group_mode;
+  return GetAllReduceConfigInst(inst).config.group_mode;
 }
 
 }  // namespace impl
 
-NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
-    Thunk::Kind kind, ThunkInfo thunk_info, NcclAllReduceConfig config,
+AllReduceReduceScatterThunkBase::AllReduceReduceScatterThunkBase(
+    Thunk::Kind kind, ThunkInfo thunk_info, AllReduceConfig config,
     std::vector<Buffer> buffers, bool is_sync)
     : CollectiveThunk(kind, thunk_info, is_sync, AsyncStreamKind::kCollective),
       config_(std::move(config)),
@@ -104,28 +104,29 @@ NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
-NcclAllReduceStartThunk::NcclAllReduceStartThunk(
-    ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
-    std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
-    : NcclAllReduceReduceScatterThunkBase(
-          Thunk::kNcclAllReduceStart, thunk_info,
-          impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
-          IsGPUSyncCollective(*inst)) {}
+AllReduceStartThunk::AllReduceStartThunk(ThunkInfo thunk_info,
+                                         const HloAllReduceInstruction* inst,
+                                         std::vector<Buffer> buffers,
+                                         bool p2p_memcpy_enabled)
+    : AllReduceReduceScatterThunkBase(Thunk::kAllReduceStart, thunk_info,
+                                      impl::GetAllReduceConfigInst(inst),
+                                      std::move(buffers),
+                                      IsGPUSyncCollective(*inst)) {}
 
-absl::Status NcclAllReduceStartThunk::CheckImplementable(
+absl::Status AllReduceStartThunk::CheckImplementable(
     const HloAllReduceInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
-  return AddOpDescription<NcclAllReduceStartThunk>(
-      impl::CheckImplementableInst(inst, Thunk::kNcclAllReduceStart), inst,
+  return AddOpDescription<AllReduceStartThunk>(
+      impl::CheckImplementableInst(inst, Thunk::kAllReduceStart), inst,
       replica_count, partition_count);
 }
 
-CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
+CollectiveOpGroupMode AllReduceStartThunk::GetGroupMode(
     const HloAllReduceInstruction* inst) {
   return impl::GetGroupModeInst(inst);
 }
 
-absl::Status NcclAllReduceStartThunk::RunCollective(
+absl::Status AllReduceStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
@@ -140,9 +141,9 @@ absl::Status NcclAllReduceStartThunk::RunCollective(
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
     ThunkInfo thunk_info, const HloReduceScatterInstruction* inst,
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
-    : NcclAllReduceReduceScatterThunkBase(
+    : AllReduceReduceScatterThunkBase(
           Thunk::kNcclReduceScatterStart, thunk_info,
-          impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
+          impl::GetAllReduceConfigInst(inst), std::move(buffers),
           IsGPUSyncCollective(*inst)) {}
 
 /*static*/ absl::Status NcclReduceScatterStartThunk::CheckImplementable(

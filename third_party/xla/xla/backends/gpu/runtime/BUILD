@@ -50,12 +50,12 @@ cc_library(
     srcs = ["command_buffer_cmd.cc"],
     hdrs = ["command_buffer_cmd.h"],
     deps = [
+        ":all_reduce_thunk",
         ":annotation",
         ":collective_thunk",
         ":custom_call_thunk",
         ":dynamic_slice_thunk",
         ":nccl_all_gather_thunk",
-        ":nccl_all_reduce_thunk",
         ":nccl_all_to_all_thunk",
         ":nccl_collective_broadcast_thunk",
         ":thunk",
@@ -120,6 +120,7 @@ cc_library(
     srcs = ["command_buffer_cmd_emitter.cc"],
     hdrs = ["command_buffer_cmd_emitter.h"],
     deps = [
+        ":all_reduce_thunk",
         ":collective_thunk",
         ":command_buffer_cmd",
         ":conditional_thunk",
@@ -131,7 +132,6 @@ cc_library(
         ":kernel_thunk",
         ":memset_thunk",
         ":nccl_all_gather_thunk",
-        ":nccl_all_reduce_thunk",
         ":nccl_all_to_all_thunk",
         ":replica_id_thunk",
         ":sequential_thunk",
@@ -718,14 +718,15 @@ cc_library(
 )
 
 cc_library(
-    name = "nccl_all_reduce_thunk",
-    srcs = ["nccl_all_reduce_thunk.cc"],
-    hdrs = ["nccl_all_reduce_thunk.h"],
+    name = "all_reduce_thunk",
+    srcs = ["all_reduce_thunk.cc"],
+    hdrs = ["all_reduce_thunk.h"],
     deps = [
         ":collective_thunk",
         ":thunk",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/core/collectives:communicator",
         "//xla/hlo/ir:hlo",
@@ -733,12 +734,12 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/stream_executor:stream",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

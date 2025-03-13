@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_NCCL_ALL_REDUCE_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_NCCL_ALL_REDUCE_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_THUNK_H_
 
 #include <cstdint>
 #include <vector>
@@ -31,19 +31,18 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct NcclAllReduceConfig {
+struct AllReduceConfig {
   CollectiveConfig config;
   ReductionKind reduction_kind;
 };
 
 // Thunk that performs a NCCL-based All-Reduce or Reduce-Scatter among CUDA
 // GPU-based replicas.
-class NcclAllReduceReduceScatterThunkBase : public CollectiveThunk {
+class AllReduceReduceScatterThunkBase : public CollectiveThunk {
  public:
-  NcclAllReduceReduceScatterThunkBase(Kind kind, ThunkInfo thunk_info,
-                                      NcclAllReduceConfig config,
-                                      std::vector<Buffer> buffers,
-                                      bool is_sync);
+  AllReduceReduceScatterThunkBase(Kind kind, ThunkInfo thunk_info,
+                                  AllReduceConfig config,
+                                  std::vector<Buffer> buffers, bool is_sync);
 
   const CollectiveConfig& config() const override { return config_.config; }
   ReductionKind reduction_kind() const { return config_.reduction_kind; }
@@ -51,7 +50,7 @@ class NcclAllReduceReduceScatterThunkBase : public CollectiveThunk {
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
  protected:
-  const NcclAllReduceConfig config_;
+  const AllReduceConfig config_;
   const std::vector<Buffer> buffers_;
 };
 
@@ -59,12 +58,11 @@ class NcclAllReduceReduceScatterThunkBase : public CollectiveThunk {
 // AllReduce thunk.
 // -----------------------------------------------------------------------------
 
-class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
+class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
  public:
-  NcclAllReduceStartThunk(ThunkInfo thunk_info,
-                          const HloAllReduceInstruction* inst,
-                          std::vector<Buffer> buffers,
-                          bool p2p_memcpy_enabled = false);
+  AllReduceStartThunk(ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
+                      std::vector<Buffer> buffers,
+                      bool p2p_memcpy_enabled = false);
 
   static const char* GetHloOpName() { return "all-reduce-start"; }
 
@@ -83,7 +81,8 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
 // -----------------------------------------------------------------------------
 // ReduceScatter thunk
 // -----------------------------------------------------------------------------
-class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
+
+class NcclReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
  public:
   NcclReduceScatterStartThunk(ThunkInfo thunk_info,
                               const HloReduceScatterInstruction* inst,
@@ -119,4 +118,4 @@ absl::Status RunReduceScatter(GpuCollectives* collectives,
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_NCCL_ALL_REDUCE_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_THUNK_H_

@@ -264,9 +264,9 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNcclAllGather);
     CASE(kNcclAllGatherStart);
     CASE(kNcclAllGatherDone);
-    CASE(kNcclAllReduce);
-    CASE(kNcclAllReduceStart);
-    CASE(kNcclAllReduceDone);
+    CASE(kAllReduce);
+    CASE(kAllReduceStart);
+    CASE(kAllReduceDone);
     CASE(kNcclCollectiveBroadcast);
     CASE(kNcclCollectiveBroadcastStart);
     CASE(kNcclCollectiveBroadcastDone);
@@ -328,7 +328,7 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
 }
 
 bool IsReductionCollective(Thunk::Kind kind) {
-  return kind == Thunk::kNcclAllReduce || kind == Thunk::kNcclAllReduceStart ||
+  return kind == Thunk::kAllReduce || kind == Thunk::kAllReduceStart ||
          kind == Thunk::kNcclReduceScatter ||
          kind == Thunk::kNcclReduceScatterStart;
 }
@@ -351,9 +351,9 @@ bool Thunk::IsCollective() const {
     case kNcclAllGather:
     case kNcclAllGatherStart:
     case kNcclAllGatherDone:
-    case kNcclAllReduce:
-    case kNcclAllReduceStart:
-    case kNcclAllReduceDone:
+    case kAllReduce:
+    case kAllReduceStart:
+    case kAllReduceDone:
     case kNcclCollectiveBroadcast:
     case kNcclCollectiveBroadcastStart:
     case kNcclCollectiveBroadcastDone:

@@ -119,6 +119,7 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/rocm/rocm_solver_context.h"
 #endif  // TENSORFLOW_USE_ROCM
+#include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/cholesky_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
@@ -137,7 +138,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_collective_permute_thunk.h"
@@ -2608,11 +2608,11 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     }
 
     case HloOpcode::kAllReduceDone:
-      return EmitNcclAsyncDone(Thunk::kNcclAllReduceDone, instr);
+      return EmitNcclAsyncDone(Thunk::kAllReduceDone, instr);
     case HloOpcode::kAllReduceStart: {
       auto* all_reduce = Cast<HloAllReduceInstruction>(instr);
-      return EmitNcclThunk<NcclAllReduceStartThunk, HloAllReduceInstruction>(
-          Thunk::kNcclAllReduceStart, all_reduce, all_reduce,
+      return EmitNcclThunk<AllReduceStartThunk, HloAllReduceInstruction>(
+          Thunk::kAllReduceStart, all_reduce, all_reduce,
           all_reduce->use_global_device_ids());
     }
     case HloOpcode::kAsyncDone: {

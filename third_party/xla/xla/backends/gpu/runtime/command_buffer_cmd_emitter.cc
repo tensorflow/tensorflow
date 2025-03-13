@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -172,7 +172,7 @@ static absl::StatusOr<Command> Convert(
       thunk.branch_index_is_bool(), std::move(branch_cmds));
 }
 
-static absl::StatusOr<Command> Convert(const NcclAllReduceStartThunk& thunk) {
+static absl::StatusOr<Command> Convert(const AllReduceStartThunk& thunk) {
   return std::make_unique<AllReduceCmd>(
       thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
       thunk.config(), thunk.reduction_kind(), thunk.buffers());
@@ -311,8 +311,8 @@ static absl::Status AppendCommands(
       return append(Convert<MemzeroThunk>(thunk));
     case Thunk::Kind::kNcclAllGatherStart:
       return append(Convert<NcclAllGatherStartThunk>(thunk));
-    case Thunk::Kind::kNcclAllReduceStart:
-      return append(Convert<NcclAllReduceStartThunk>(thunk));
+    case Thunk::Kind::kAllReduceStart:
+      return append(Convert<AllReduceStartThunk>(thunk));
     case Thunk::Kind::kNcclReduceScatterStart:
       return append(Convert<NcclReduceScatterStartThunk>(thunk));
     case Thunk::Kind::kNcclAllToAllStart:
@@ -334,7 +334,7 @@ static absl::Status AppendCommands(
                             synchronization_mode);
 
     case Thunk::Kind::kNcclAllGatherDone:
-    case Thunk::Kind::kNcclAllReduceDone:
+    case Thunk::Kind::kAllReduceDone:
     case Thunk::Kind::kNcclReduceScatterDone:
     case Thunk::Kind::kNcclAllToAllDone:
       return append(Convert<CollectiveDoneThunk>(thunk));
