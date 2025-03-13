@@ -397,7 +397,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:status",
-    ] + if_cuda_is_configured(["@local_config_cuda//cuda:nvml_headers"]),
+    ] + if_cuda_is_configured(["@local_config_cuda//cuda:cuda_headers"]),
 )
 
 xla_cc_test(
