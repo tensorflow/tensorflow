@@ -1307,8 +1307,6 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         TF_RET_CHECK(proto.called_computation_ids_size() == 2)
             << "While should have 2 called computation but has "
             << proto.called_computation_ids_size();
-        computation_map.at(proto.called_computation_ids(0))
-            ->SetWhileCallInstruction(instruction.get());
       }
 
       for (const int64_t operand_id : proto.operand_ids()) {
@@ -1316,9 +1314,6 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
       for (const int64_t computation_id : proto.called_computation_ids()) {
         instruction->AppendComputation(computation_map.at(computation_id));
-      }
-      if (instruction->opcode() == HloOpcode::kWhile) {
-        instruction->while_body()->SetWhileCallInstruction(instruction.get());
       }
 
       TF_RET_CHECK(!proto.has_precision_config())
@@ -1987,8 +1982,6 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
   // Body comes before condition computation in the vector.
   instruction->AppendComputation(body);
   instruction->AppendComputation(condition);
-  // Set back pointer from body computation to the while call instruction.
-  body->SetWhileCallInstruction(instruction.get());
   return instruction;
 }
 
@@ -2770,10 +2763,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       clone =
           CreateWhile(shape, while_condition(), while_body(), new_operands[0]);
-      // Repoint the while body back at the original while instruction.
-      // If a context was passed, the body will be cloned and the clone will
-      // point to the copied instruction.
-      while_body()->SetWhileCallInstruction(const_cast<HloInstruction*>(this));
       break;
     case HloOpcode::kConditional:
       CHECK_EQ(new_operands.size(), branch_count() + 1);
@@ -2817,9 +2806,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                  ? context->module()->DeepCloneComputation(callee, context)
                  : callee;
     });
-    if (opcode() == HloOpcode::kWhile) {
-      clone->while_body()->SetWhileCallInstruction(clone.get());
-    }
   }
 
   if (!suffix.empty()) {

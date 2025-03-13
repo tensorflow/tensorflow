@@ -766,6 +766,7 @@ struct MatMulDims {
   int64_t m;
   int64_t n;
   int64_t k;
+  TritonGemmConfig config;
 
   std::string ToString() const {
     return absl::StrCat("MxNxK: ", m, "x", n, "x", k,
@@ -823,6 +824,7 @@ Value RoundToBF16(EmitterLocOpBuilder b, Value input) {
     const TritonGemmConfig& config, const HloDotInstruction& dot,
     const TritonFusionAnalysis& analysis) {
   MatMulDims matmul_dims;
+  matmul_dims.config = config;
   if (config.split_k > 1) {
     // split-k is always the first logical dimension.
     matmul_dims.out_split_k_dim_idx = 0;
@@ -2166,8 +2168,8 @@ Value EmitMaskOnInput(EmitterLocOpBuilder& b,
   return if_op.getResult(0);
 }
 
-Value EmitDotOperation(EmitterLocOpBuilder& b, Value lhs, Value rhs, Value acc,
-                       const HloDotInstruction* dot_instr) {
+Value EmitRegularMatmul(EmitterLocOpBuilder& b, Value lhs, Value rhs, Value acc,
+                        const HloDotInstruction* dot_instr) {
   // Execute matrix multiplication of input tiles and pass the accumulator.
   // TODO(manany): Should be looked into once we enable Hopper workloads.
   // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
@@ -2212,6 +2214,90 @@ absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
   return TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
 }
 
+Type GetIndexType(EmitterLocOpBuilder& b, const HloDotInstruction& dot_instr,
+                  const TritonGemmConfig& config) {
+  // Use 32-bit indexing if addressing any of the inputs or the output (which
+  // could grow if split_k is set) does not cross the INT_MAX boundary.
+  // Otherwise, fall back to 64-bit indexing, which is slower.
+  bool use_64bit_indexing =
+      ShapeUtil::ElementsIn(dot_instr.operand(0)->shape()) > INT_MAX ||
+      ShapeUtil::ElementsIn(dot_instr.operand(1)->shape()) > INT_MAX ||
+      ShapeUtil::ElementsIn(dot_instr.shape()) * config.split_k > INT_MAX;
+  return b.getIntegerType(use_64bit_indexing ? 64 : 32);
+}
+
+void EmitForLoopBody(EmitterLocOpBuilder& b, MatMulEmitterHelper& emitter,
+                     const Scopes& scopes, const HloDotInstruction* dot_instr,
+                     bool is_sparse, const MatMulDims& dims,
+                     const llvm::SmallVector<IterableInput>& inputs, Value ki,
+                     ValueRange iter_args) {
+  SmallVector<Value> args_for_yield;
+  std::array<absl::flat_hash_map<const HloInstruction*, Value>, 3> values;
+
+  // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
+  for (const IterableInput& input : inputs) {
+    Value param_value = input.EmitLoad(b, iter_args[input.iter_arg_index_]);
+    CHECK(values[input.operand_index_]
+              .insert({input.hlo_instr_, param_value})
+              .second);
+    args_for_yield.push_back(input.EmitAdvance(b, emitter, ki, iter_args));
+  }
+
+  // Emit all operations of LHS and RHS scopes.
+  Value dot_lhs =
+      emitter.MakeInput(b, scopes.lhs(), kLhsIndex, values[kLhsIndex]);
+  Value dot_rhs =
+      emitter.MakeInput(b, scopes.rhs(), kRhsIndex, values[kRhsIndex]);
+  Value dot_meta = is_sparse ? emitter.MakeInput(b, *scopes.meta(), kMetaIndex,
+                                                 values[kMetaIndex])
+                             : Value{};
+
+  // Operation in the fusion before the dot can alter the elements of the
+  // tiles that were zero masked during loads. These have to be zeroed here
+  // again just before the dot so that they do not affect the output.
+  // Only the K dimension needs masking here because unnecessary elements in
+  // the other two get discarded by the masked store at the end.
+  const bool need_masking =
+      dims.k % (dims.config.block_k * dims.config.split_k) > 0;
+  if (need_masking) {
+    dot_lhs = EmitMaskOnInput(
+        b, MaskExpandDimension::kMajor, dot_lhs, is_sparse ? 2 : 1, ki, dims.k,
+        dims.config.block_k, scopes.pid_k(), dims.config.block_m);
+    dot_rhs = EmitMaskOnInput(b, MaskExpandDimension::kMinor, dot_rhs, 1, ki,
+                              dims.k, dims.config.block_k, scopes.pid_k(),
+                              dims.config.block_n);
+    // Masking the metadata is not necessary, as the inputs are masked
+    // (i.e. zeroed out), so the padded metadata can hold any values.
+  }
+
+  if (is_sparse) {
+    args_for_yield.push_back(b.create<mt::xla::SparseDotOp>(
+        dot_lhs, dot_rhs, iter_args.back(), dot_meta));
+    b.create<mlir::scf::YieldOp>(args_for_yield);
+    return;
+  }
+
+  Value acc_next;
+  auto algorithm = dot_instr->precision_config().algorithm();
+
+  if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9) {
+    TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
+    acc_next = EmitBF16x9Matmul(b, dot_lhs, dot_rhs, iter_args.back());
+  } else if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6) {
+    TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
+    acc_next = EmitBF16x6Matmul(b, dot_lhs, dot_rhs, iter_args.back());
+  } else if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3) {
+    TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
+    acc_next = EmitBF16x3Matmul(b, dot_lhs, dot_rhs, iter_args.back());
+  } else {
+    acc_next =
+        EmitRegularMatmul(b, dot_lhs, dot_rhs, iter_args.back(), dot_instr);
+  }
+  args_for_yield.push_back(acc_next);
+
+  b.create<mlir::scf::YieldOp>(args_for_yield);
+}
+
 }  // namespace
 
 // Use tiling and execution parameters from 'config'. BlockLevelParameters are
@@ -2238,21 +2324,10 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
   const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(instr);
   bool is_sparse = dot_instr->sparse_operands() > 0;
 
-  // Use 32-bit indexing if addressing any of the inputs or the output (which
-  // could grow if split_k is set) does not cross the INT_MAX boundary.
-  // Otherwise, fall back to 64-bit indexing, which is slower.
-  bool use_64bit_indexing =
-      ShapeUtil::ElementsIn(dot_instr->operand(0)->shape()) > INT_MAX ||
-      ShapeUtil::ElementsIn(dot_instr->operand(1)->shape()) > INT_MAX ||
-      ShapeUtil::ElementsIn(dot_instr->shape()) * config.split_k > INT_MAX;
-  Type index_ty = b.getIntegerType(use_64bit_indexing ? 64 : 32);
+  Type index_ty = GetIndexType(b, *dot_instr, config);
 
   const HloInstruction* root = dot_instr->parent()->root_instruction();
   TF_RET_CHECK(!root->shape().IsTuple());
-
-  // We'll be creating a lot of instructions from a single dot, use an
-  // implicit loc builder so we don't have to pass around the location all the
-  // time.
 
   TF_RETURN_IF_ERROR(ValidateMatMulConfig(config, *dot_instr));
   const int split_k = config.split_k;
@@ -2276,85 +2351,11 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
   // Calculate the sizes of the lhs, rhs, meta, and output sides.
   Scopes scopes(b, dot_instr, analysis, dims, config, launch_config, is_sparse);
 
-  size_t lsize = ScopeInputs(analysis, TritonFusionAnalysis::Scope::LHS).size();
-  size_t rsize = ScopeInputs(analysis, TritonFusionAnalysis::Scope::RHS).size();
-
   llvm::SmallVector<IterableInput> inputs;
-
-  auto body_builder_callback = [&](mlir::OpBuilder&, mlir::Location, Value ki,
-                                   ValueRange iter_args) -> void {
-    SmallVector<Value> args_for_yield;
-    args_for_yield.reserve(iter_args.size());
-    std::array<absl::flat_hash_map<const HloInstruction*, Value>, 3> values;
-
-    // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
-    for (const IterableInput& input : inputs) {
-      Value param_value = input.EmitLoad(b, iter_args[input.iter_arg_index_]);
-      CHECK(values[input.operand_index_]
-                .insert({input.hlo_instr_, param_value})
-                .second);
-      args_for_yield.push_back(input.EmitAdvance(b, emitter, ki, iter_args));
-    }
-
-    // Emit all operations of LHS and RHS scopes.
-    Value dot_lhs =
-        emitter.MakeInput(b, scopes.lhs(), kLhsIndex, values[kLhsIndex]);
-    Value dot_rhs =
-        emitter.MakeInput(b, scopes.rhs(), kRhsIndex, values[kRhsIndex]);
-    Value dot_meta = is_sparse
-                         ? emitter.MakeInput(b, *scopes.meta(), kMetaIndex,
-                                             values[kMetaIndex])
-                         : Value{};
-
-    // Operation in the fusion before the dot can alter the elements of the
-    // tiles that were zero masked during loads. These have to be zeroed here
-    // again just before the dot so that they do not affect the output.
-    // Only the K dimension needs masking here because unnecessary elements in
-    // the other two get discarded by the masked store at the end.
-    const bool need_masking = dims.k % (block_k * split_k) > 0;
-    if (need_masking) {
-      dot_lhs = EmitMaskOnInput(b, MaskExpandDimension::kMajor, dot_lhs,
-                                is_sparse ? 2 : 1, ki, dims.k, block_k,
-                                scopes.pid_k(), block_m);
-      dot_rhs = EmitMaskOnInput(b, MaskExpandDimension::kMinor, dot_rhs, 1, ki,
-                                dims.k, block_k, scopes.pid_k(), block_n);
-      // Masking the metadata is not necessary, as the inputs are masked
-      // (i.e. zeroed out), so the padded metadata can hold any values.
-    }
-
-    if (is_sparse) {
-      args_for_yield.push_back(b.create<mt::xla::SparseDotOp>(
-          dot_lhs, dot_rhs, iter_args.back(), dot_meta));
-      b.create<mlir::scf::YieldOp>(args_for_yield);
-      return;
-    }
-
-    Value acc_next;
-    auto algorithm = dot_instr->precision_config().algorithm();
-
-    if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9) {
-      TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
-      acc_next = EmitBF16x9Matmul(b, dot_lhs, dot_rhs, iter_args.back());
-    } else if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6) {
-      TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
-      acc_next = EmitBF16x6Matmul(b, dot_lhs, dot_rhs, iter_args.back());
-    } else if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3) {
-      TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
-      acc_next = EmitBF16x3Matmul(b, dot_lhs, dot_rhs, iter_args.back());
-    } else {
-      acc_next =
-          EmitDotOperation(b, dot_lhs, dot_rhs, iter_args.back(), dot_instr);
-    }
-    args_for_yield.push_back(acc_next);
-
-    b.create<mlir::scf::YieldOp>(args_for_yield);
-    return;
-  };
 
   // Pointers to inputs of LHS scope, then RHS, then the accumulator
   // that change with every loop iteration and are passed between them.
   SmallVector<Value> iter_args;
-  iter_args.reserve(lsize + rsize + 1 + is_sparse);
   int64_t step_k = block_k * split_k;
   for (const Side* side : scopes.input_scopes()) {
     for (const HloInstruction* input_hlo : ScopeInputs(analysis, side->scope)) {
@@ -2372,6 +2373,12 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
       iter_args.push_back(tensor_ptr);
     }
   }
+
+  auto body_builder_callback = [&](mlir::OpBuilder&, mlir::Location, Value ki,
+                                   ValueRange iter_args) -> void {
+    EmitForLoopBody(b, emitter, scopes, dot_instr, is_sparse, dims, inputs, ki,
+                    iter_args);
+  };
 
   iter_args.push_back(accumulator_init);
   Value acc_final = b.create<mlir::scf::ForOp>(

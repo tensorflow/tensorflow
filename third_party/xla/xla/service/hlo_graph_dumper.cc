@@ -679,7 +679,7 @@ bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
     return false;
   }
 
-  if (subcomp->WhileCallInstruction() != nullptr &&
+  if (!subcomp->caller_instructions(HloOpcode::kWhile).empty() &&
       !hlo_render_options_.show_while_subcomputations) {
     return false;
   }

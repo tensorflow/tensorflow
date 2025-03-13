@@ -33,7 +33,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
-#include "xla/backends/gpu/runtime/send_recv_thunk.h"
+#include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -325,8 +325,8 @@ class IrEmitterUnnested : public IrEmitter {
   ThunkSequence scoped_thunk_sequence_;
   bool emit_group_thunks_ = false;
 
-  // Container for async send/recv events shared by send/recv thunks.
-  std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;
+  // Container for async host send/recv events shared by host send/recv thunks.
+  std::shared_ptr<HostSendRecvAsyncEvents> send_recv_events_;
 
   // Container for async copy-start/copy-done events.
   std::shared_ptr<CopyThunk::AsyncEvents> copy_events_;

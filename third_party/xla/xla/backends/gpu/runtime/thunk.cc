@@ -249,7 +249,10 @@ Thunk::ExecuteParams::ExecuteParams(
   case Thunk::x: \
     return #x
   switch (kind) {
-    CASE(kDynamicSlice);
+    // # go/keep-sorted start
+    CASE(kAllReduce);
+    CASE(kAllReduceDone);
+    CASE(kAllReduceStart);
     CASE(kCholesky);
     CASE(kCommandBuffer);
     CASE(kConditional);
@@ -257,56 +260,55 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kConvolutionReorder);
     CASE(kCopy);
     CASE(kCopyDone);
+    CASE(kCuDnn);
     CASE(kCubSort);
     CASE(kCublasLtMatmul);
     CASE(kCustomCall);
     CASE(kCustomKernel);
-    CASE(kNcclAllGather);
-    CASE(kNcclAllGatherStart);
-    CASE(kNcclAllGatherDone);
-    CASE(kAllReduce);
-    CASE(kAllReduceStart);
-    CASE(kAllReduceDone);
-    CASE(kNcclCollectiveBroadcast);
-    CASE(kNcclCollectiveBroadcastStart);
-    CASE(kNcclCollectiveBroadcastDone);
-    CASE(kNcclCollectivePermute);
-    CASE(kNcclCollectivePermuteStart);
-    CASE(kNcclCollectivePermuteDone);
-    CASE(kNcclGroupStart);
-    CASE(kNcclGroupDone);
-    CASE(kNcclReduceScatter);
-    CASE(kNcclReduceScatterStart);
-    CASE(kNcclReduceScatterDone);
-    CASE(kNcclAllToAll);
-    CASE(kNcclAllToAllStart);
-    CASE(kNcclAllToAllDone);
-    CASE(kNcclSend);
-    CASE(kNcclSendDone);
-    CASE(kNcclRaggedAllToAll);
-    CASE(kNcclRaggedAllToAllStart);
-    CASE(kNcclRaggedAllToAllDone);
-    CASE(kNcclRecv);
-    CASE(kNcclRecvDone);
+    CASE(kDynamicSlice);
     CASE(kFft);
     CASE(kGemm);
+    CASE(kHostRecv);
+    CASE(kHostRecvDone);
+    CASE(kHostSend);
+    CASE(kHostSendDone);
     CASE(kInfeed);
     CASE(kKernel);
     CASE(kMemset32BitValue);
     CASE(kMemzero);
+    CASE(kNcclAllGather);
+    CASE(kNcclAllGatherDone);
+    CASE(kNcclAllGatherStart);
+    CASE(kNcclAllToAll);
+    CASE(kNcclAllToAllDone);
+    CASE(kNcclAllToAllStart);
+    CASE(kNcclCollectiveBroadcast);
+    CASE(kNcclCollectiveBroadcastDone);
+    CASE(kNcclCollectiveBroadcastStart);
+    CASE(kNcclCollectivePermute);
+    CASE(kNcclCollectivePermuteDone);
+    CASE(kNcclCollectivePermuteStart);
+    CASE(kNcclGroupDone);
+    CASE(kNcclGroupStart);
+    CASE(kNcclRaggedAllToAll);
+    CASE(kNcclRaggedAllToAllDone);
+    CASE(kNcclRaggedAllToAllStart);
+    CASE(kNcclRecv);
+    CASE(kNcclRecvDone);
+    CASE(kNcclReduceScatter);
+    CASE(kNcclReduceScatterDone);
+    CASE(kNcclReduceScatterStart);
+    CASE(kNcclSend);
+    CASE(kNcclSendDone);
     CASE(kNorm);
     CASE(kOutfeed);
-    CASE(kSend);
-    CASE(kSendDone);
     CASE(kPartitionId);
     CASE(kReplicaId);
-    CASE(kRecv);
-    CASE(kRecvDone);
     CASE(kSequential);
     CASE(kTriangularSolve);
-    CASE(kWhile);
     CASE(kWaitForStreams);
-    CASE(kCuDnn);
+    CASE(kWhile);
+    // # go/keep-sorted end
   }
 }
 
