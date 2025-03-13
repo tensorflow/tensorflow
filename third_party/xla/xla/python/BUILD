@@ -285,6 +285,45 @@ cc_library(
 )
 
 cc_library(
+    name = "ffi",
+    srcs = ["ffi.cc"],
+    hdrs = ["ffi.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":callback",
+        ":nb_numpy",
+        ":py_host_callback",
+        ":types",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/ffi/api:c_api",
+        "//xla/pjrt:host_callback",
+        "//xla/pjrt:status_casters",
+        "//xla/python:nb_absl_span",
+        "//xla/python/ifrt",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@dlpack",
+        "@llvm-project//llvm:Support",
+        "@local_config_python//:python_headers",
+        "@nanobind",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "py_client",
     srcs = [
         "py_array.cc",
@@ -1379,6 +1418,7 @@ tsl_pybind_extension(
         ":config",
         ":custom_call_sharding",
         ":dlpack",
+        ":ffi",
         ":guard_lib",
         ":jax_jit",
         ":logging",

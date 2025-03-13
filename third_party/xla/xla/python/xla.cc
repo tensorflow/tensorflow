@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/python/config.h"
 #include "xla/python/custom_call_sharding.h"
 #include "xla/python/dlpack.h"
+#include "xla/python/ffi.h"
 #include "xla/python/guard_lib.h"
 #include "xla/python/jax_jit.h"
 #include "xla/python/logging.h"  // IWYU pragma: keep
@@ -602,6 +603,7 @@ NB_MODULE(xla_extension, m) {
   BuildMlirSubmodule(m);
   BuildSdySubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
+  BuildFfiSubmodule(m);
 #if defined(__linux__)
   aux::RegisterTransferServerTypes(m);
 #endif  // defined(__linux__)
