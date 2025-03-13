@@ -108,6 +108,8 @@ class GpuExecutable : public Executable {
 
   const xla::Shape& output_shape() const { return output_shape_; }
 
+  const Shape& result_shape() const override { return output_shape_; }
+
   const absl::flat_hash_map<ShapeIndex, OutputInfo>& output_info() const {
     return output_info_;
   }
