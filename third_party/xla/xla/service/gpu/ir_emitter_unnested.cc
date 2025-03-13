@@ -121,6 +121,7 @@ limitations under the License.
 #endif  // TENSORFLOW_USE_ROCM
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
+#include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/cholesky_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
@@ -139,7 +140,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_group_thunk.h"
@@ -2687,7 +2687,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         }
         case HloOpcode::kAllToAll: {
           auto* all_to_all = Cast<HloAllToAllInstruction>(wrapped);
-          return EmitNcclThunk<NcclAllToAllStartThunk, HloAllToAllInstruction>(
+          return EmitNcclThunk<AllToAllStartThunk, HloAllToAllInstruction>(
               Thunk::kNcclAllToAll, instr, all_to_all, std::nullopt);
         }
         case HloOpcode::kRaggedAllToAll: {

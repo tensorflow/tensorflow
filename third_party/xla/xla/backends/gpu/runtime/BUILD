@@ -52,11 +52,11 @@ cc_library(
     deps = [
         ":all_gather_thunk",
         ":all_reduce_thunk",
+        ":all_to_all_thunk",
         ":annotation",
         ":collective_thunk",
         ":custom_call_thunk",
         ":dynamic_slice_thunk",
-        ":nccl_all_to_all_thunk",
         ":nccl_collective_broadcast_thunk",
         ":thunk",
         "//xla:debug_options_flags",
@@ -122,6 +122,7 @@ cc_library(
     deps = [
         ":all_gather_thunk",
         ":all_reduce_thunk",
+        ":all_to_all_thunk",
         ":collective_thunk",
         ":command_buffer_cmd",
         ":conditional_thunk",
@@ -132,7 +133,6 @@ cc_library(
         ":gpublas_lt_matmul_thunk",
         ":kernel_thunk",
         ":memset_thunk",
-        ":nccl_all_to_all_thunk",
         ":replica_id_thunk",
         ":sequential_thunk",
         ":thunk",
@@ -745,9 +745,9 @@ cc_library(
 )
 
 cc_library(
-    name = "nccl_all_to_all_thunk",
-    srcs = ["nccl_all_to_all_thunk.cc"],
-    hdrs = ["nccl_all_to_all_thunk.h"],
+    name = "all_to_all_thunk",
+    srcs = ["all_to_all_thunk.cc"],
+    hdrs = ["all_to_all_thunk.h"],
     deps = [
         ":collective_thunk",
         ":thunk",

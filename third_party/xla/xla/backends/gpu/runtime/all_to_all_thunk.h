@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_NCCL_ALL_TO_ALL_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_NCCL_ALL_TO_ALL_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_ALL_TO_ALL_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_ALL_TO_ALL_THUNK_H_
 
 #include <cstdint>
 #include <memory>
@@ -37,19 +37,18 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct NcclAllToAllConfig {
+struct AllToAllConfig {
   CollectiveConfig config;
   bool has_split_dimension;
 };
 
-// Thunk that performs a NCCL-based All-to-All among CUDA GPU-based replicas.
-class NcclAllToAllStartThunk : public CollectiveThunk {
+// Thunk that performs an All-to-All among CUDA GPU-based replicas.
+class AllToAllStartThunk : public CollectiveThunk {
  public:
-  NcclAllToAllStartThunk(ThunkInfo thunk_info,
-                         const HloAllToAllInstruction* instr,
-                         std::vector<Buffer> buffers, bool p2p_memcpy_enabled);
+  AllToAllStartThunk(ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
+                     std::vector<Buffer> buffers, bool p2p_memcpy_enabled);
 
-  // Returns whether the given instruction can be lowered to a nccl all-to-all
+  // Returns whether the given instruction can be lowered to an all-to-all
   // call.
   static absl::Status CheckImplementable(const HloAllToAllInstruction* instr,
                                          int64_t replica_count,
@@ -75,7 +74,7 @@ class NcclAllToAllStartThunk : public CollectiveThunk {
   bool is_local() const;
 
  private:
-  const NcclAllToAllConfig config_;
+  const AllToAllConfig config_;
   const std::vector<Buffer> buffers_;
   int64_t device_count_ = 1;
   bool p2p_memcpy_enabled_ = false;
@@ -106,4 +105,4 @@ absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_NCCL_ALL_TO_ALL_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_ALL_TO_ALL_THUNK_H_

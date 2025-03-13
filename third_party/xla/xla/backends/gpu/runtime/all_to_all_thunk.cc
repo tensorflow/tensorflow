@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
+#include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -54,8 +54,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
-NcclAllToAllConfig GetNcclAllToAllConfig(const HloAllToAllInstruction* instr) {
-  NcclAllToAllConfig config;
+AllToAllConfig GetAllToAllConfig(const HloAllToAllInstruction* instr) {
+  AllToAllConfig config;
   // FIXME(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
   // attribute and it should be removed.
   config.config = GetCollectiveConfig(instr, std::nullopt);
@@ -65,19 +65,19 @@ NcclAllToAllConfig GetNcclAllToAllConfig(const HloAllToAllInstruction* instr) {
 
 }  // namespace
 
-NcclAllToAllStartThunk::NcclAllToAllStartThunk(
+AllToAllStartThunk::AllToAllStartThunk(
     ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
     std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
     : CollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
                       IsGPUSyncCollective(*instr),
                       AsyncStreamKind::kCollective),
-      config_(GetNcclAllToAllConfig(instr)),
+      config_(GetAllToAllConfig(instr)),
       buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
-/*static*/ absl::Status NcclAllToAllStartThunk::CheckImplementable(
+/*static*/ absl::Status AllToAllStartThunk::CheckImplementable(
     const HloAllToAllInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
   auto status = [&instr]() -> absl::Status {
@@ -94,17 +94,16 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
     }
     return absl::OkStatus();
   };
-  return AddOpDescription<NcclAllToAllStartThunk>(
-      status(), instr, replica_count, partition_count);
+  return AddOpDescription<AllToAllStartThunk>(status(), instr, replica_count,
+                                              partition_count);
 }
 
-/*static*/ CollectiveOpGroupMode NcclAllToAllStartThunk::GetGroupMode(
+/*static*/ CollectiveOpGroupMode AllToAllStartThunk::GetGroupMode(
     const HloAllToAllInstruction* instr) {
-  return GetNcclAllToAllConfig(instr).config.group_mode;
+  return GetAllToAllConfig(instr).config.group_mode;
 }
 
-absl::Status NcclAllToAllStartThunk::Initialize(
-    const InitializeParams& params) {
+absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   device_count_ = params.local_device_count;
   CHECK_GT(device_count_, 0);
@@ -142,9 +141,9 @@ absl::Status NcclAllToAllStartThunk::Initialize(
   return absl::OkStatus();
 }
 
-absl::Status NcclAllToAllStartThunk::RunCollective(
-    const ExecuteParams& params, se::Stream& stream,
-    CommunicatorHandle comm_handle) {
+absl::Status AllToAllStartThunk::RunCollective(const ExecuteParams& params,
+                                               se::Stream& stream,
+                                               CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
@@ -170,14 +169,14 @@ absl::Status NcclAllToAllStartThunk::RunCollective(
                                device_buffers, stream, comm_handle.comm);
 }
 
-AsyncStreamKind NcclAllToAllStartThunk::GetAsyncStreamKind() const {
+AsyncStreamKind AllToAllStartThunk::GetAsyncStreamKind() const {
   if (is_local() && p2p_memcpy_enabled_) {
     return AsyncStreamKind::kMemCpyP2P;
   }
   return CollectiveThunk::GetAsyncStreamKind();
 }
 
-bool NcclAllToAllStartThunk::is_local() const {
+bool AllToAllStartThunk::is_local() const {
   for (const auto& replica_group : config_.config.replica_groups) {
     const int64_t node_id = replica_group.replica_ids().at(0) / device_count_;
     if (!absl::c_all_of(replica_group.replica_ids(),
