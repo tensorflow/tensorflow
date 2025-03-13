@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
+#include "xla/backends/gpu/runtime/all_gather_thunk.h"
 
 #include <cstdint>
 #include <utility>
@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -33,17 +34,16 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 namespace impl {
-NcclAllGatherConfig GetNcclAllGatherConfig(
-    const HloAllGatherInstruction* inst) {
-  NcclAllGatherConfig config;
+AllGatherConfig GetAllGatherConfig(const HloAllGatherInstruction* inst) {
+  AllGatherConfig config;
   config.config = GetCollectiveConfig(inst, inst->use_global_device_ids());
   return config;
 }
@@ -66,29 +66,30 @@ absl::Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
 }
 }  // namespace impl
 
-NcclAllGatherStartThunk::NcclAllGatherStartThunk(
-    ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
-    std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
+AllGatherStartThunk::AllGatherStartThunk(ThunkInfo thunk_info,
+                                         const HloAllGatherInstruction* inst,
+                                         std::vector<Buffer> buffers,
+                                         bool p2p_memcpy_enabled)
     : CollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info,
                       IsGPUSyncCollective(*inst), AsyncStreamKind::kCollective),
-      config_(impl::GetNcclAllGatherConfig(inst)),
+      config_(impl::GetAllGatherConfig(inst)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
-/*static*/ absl::Status NcclAllGatherStartThunk::CheckImplementable(
+/*static*/ absl::Status AllGatherStartThunk::CheckImplementable(
     const HloAllGatherInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
-  return AddOpDescription<NcclAllGatherStartThunk>(
+  return AddOpDescription<AllGatherStartThunk>(
       impl::CheckImplementableInst(inst), inst, replica_count, partition_count);
 }
 
-/*static*/ CollectiveOpGroupMode NcclAllGatherStartThunk::GetGroupMode(
+/*static*/ CollectiveOpGroupMode AllGatherStartThunk::GetGroupMode(
     const HloAllGatherInstruction* inst) {
-  return impl::GetNcclAllGatherConfig(inst).config.group_mode;
+  return impl::GetAllGatherConfig(inst).config.group_mode;
 }
 
-absl::Status NcclAllGatherStartThunk::RunCollective(
+absl::Status AllGatherStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(

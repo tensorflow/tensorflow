@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_NCCL_ALL_GATHER_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_NCCL_ALL_GATHER_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_THUNK_H_
 
 #include <cstdint>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -30,17 +31,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct NcclAllGatherConfig {
+struct AllGatherConfig {
   CollectiveConfig config;
 };
 
-// Thunk that performs a NCCL-based All-Gather among CUDA GPU-based replicas.
-class NcclAllGatherStartThunk : public CollectiveThunk {
+// Thunk that performs an All-Gather among CUDA GPU-based replicas.
+class AllGatherStartThunk : public CollectiveThunk {
  public:
-  NcclAllGatherStartThunk(ThunkInfo thunk_info,
-                          const HloAllGatherInstruction* inst,
-                          std::vector<Buffer> buffers,
-                          bool p2p_memcpy_enabled = false);
+  AllGatherStartThunk(ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
+                      std::vector<Buffer> buffers,
+                      bool p2p_memcpy_enabled = false);
 
   static const char* GetHloOpName() { return "all-gather-start"; }
 
@@ -59,7 +59,7 @@ class NcclAllGatherStartThunk : public CollectiveThunk {
                              CommunicatorHandle comm_handle) override;
 
  private:
-  const NcclAllGatherConfig config_;
+  const AllGatherConfig config_;
   const std::vector<Buffer> buffers_;
 };
 
@@ -70,4 +70,4 @@ absl::Status RunAllGather(GpuCollectives* collectives,
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_NCCL_ALL_GATHER_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_THUNK_H_

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -191,7 +191,7 @@ static absl::StatusOr<Command> Convert(const NcclAllToAllStartThunk& thunk) {
       thunk.config(), thunk.has_split_dimension(), thunk.buffers());
 }
 
-static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
+static absl::StatusOr<Command> Convert(const AllGatherStartThunk& thunk) {
   return std::make_unique<AllGatherCmd>(thunk.nccl_execution_stream_id(),
                                         thunk.execution_stream_id(),
                                         thunk.config(), thunk.buffers());
@@ -310,7 +310,7 @@ static absl::Status AppendCommands(
     case Thunk::Kind::kMemzero:
       return append(Convert<MemzeroThunk>(thunk));
     case Thunk::Kind::kNcclAllGatherStart:
-      return append(Convert<NcclAllGatherStartThunk>(thunk));
+      return append(Convert<AllGatherStartThunk>(thunk));
     case Thunk::Kind::kAllReduceStart:
       return append(Convert<AllReduceStartThunk>(thunk));
     case Thunk::Kind::kNcclReduceScatterStart:

@@ -119,6 +119,7 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/rocm/rocm_solver_context.h"
 #endif  // TENSORFLOW_USE_ROCM
+#include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/cholesky_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -138,7 +139,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_collective_permute_thunk.h"
@@ -2602,7 +2602,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       return EmitNcclAsyncDone(Thunk::kNcclAllGatherDone, instr);
     case HloOpcode::kAllGatherStart: {
       auto* all_gather = Cast<HloAllGatherInstruction>(instr);
-      return EmitNcclThunk<NcclAllGatherStartThunk, HloAllGatherInstruction>(
+      return EmitNcclThunk<AllGatherStartThunk, HloAllGatherInstruction>(
           Thunk::kNcclAllGatherStart, all_gather, all_gather,
           all_gather->use_global_device_ids());
     }
