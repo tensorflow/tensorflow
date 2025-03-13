@@ -13,15 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_NCCL_COLLECTIVE_PERMUTE_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_NCCL_COLLECTIVE_PERMUTE_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_PERMUTE_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_PERMUTE_THUNK_H_
 
 #include <cstdint>
 #include <memory>
-#include <unordered_map>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -33,9 +35,8 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
@@ -43,8 +44,8 @@ namespace gpu {
 
 using tsl::AsyncValueRef;
 
-// Thunk that performs a NCCL-based collective permute.
-class NcclCollectivePermuteStartThunk : public CollectiveThunk {
+// Thunk that performs a collective permute.
+class CollectivePermuteStartThunk : public CollectiveThunk {
  public:
   class RecvPtrMap {
    public:
@@ -100,13 +101,12 @@ class NcclCollectivePermuteStartThunk : public CollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloCollectivePermuteInstruction* instr);
 
-  NcclCollectivePermuteStartThunk(ThunkInfo thunk_info,
-                                  const HloCollectivePermuteInstruction* instr,
-                                  int64_t replica_count,
-                                  int64_t partition_count,
-                                  const std::vector<Buffer>& buffers,
-                                  bool p2p_memcpy_enabled,
-                                  AsyncStreamKind stream_kind);
+  CollectivePermuteStartThunk(ThunkInfo thunk_info,
+                              const HloCollectivePermuteInstruction* instr,
+                              int64_t replica_count, int64_t partition_count,
+                              const std::vector<Buffer>& buffers,
+                              bool p2p_memcpy_enabled,
+                              AsyncStreamKind stream_kind);
   absl::Status Initialize(const InitializeParams& params) override;
 
   static const char* GetHloOpName() { return "collective-permute-start"; }
@@ -121,7 +121,7 @@ class NcclCollectivePermuteStartThunk : public CollectiveThunk {
   std::vector<Buffer> buffers_;
   RecvPtrMap recv_ptr_map_;
   absl::Mutex barrier_mutex_;
-  std::unordered_map<int64_t, std::unique_ptr<se::Event>>
+  absl::flat_hash_map<int64_t, std::unique_ptr<se::Event>>
       receiver_barrier_events_;
   bool p2p_memcpy_enabled_ = false;
   int64_t device_count_;
@@ -132,9 +132,9 @@ absl::Status RunCollectivePermute(
     NcclP2PConfig::SourceTargetMapEntry source_target,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator* comm, absl::string_view device_string, int64_t current_id,
-    bool use_memcpy, NcclCollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map);
+    bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map);
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_NCCL_COLLECTIVE_PERMUTE_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_PERMUTE_THUNK_H_

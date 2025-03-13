@@ -123,6 +123,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/cholesky_thunk.h"
+#include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
+#include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
@@ -140,8 +142,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_collective_broadcast_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_group_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/nccl_ragged_all_to_all_thunk.h"
@@ -1882,8 +1882,8 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
 
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
                         GetAllocationSliceForHlo(operand));
-    if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
-                                                      partition_count)) {
+    if (CollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
+                                                  partition_count)) {
       // For a degenerate collective permute, just generate a copy thunk.
       AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(instr),
@@ -1902,9 +1902,9 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
       buffers.push_back(buffer);
     }
   }
-  if (!NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
-                                                     partition_count)) {
-    auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
+  if (!CollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
+                                                 partition_count)) {
+    auto thunk = std::make_unique<CollectivePermuteStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
         partition_count, buffers,
         ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
@@ -2700,7 +2700,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         case HloOpcode::kCollectiveBroadcast: {
           auto* collective_broadcast =
               Cast<HloCollectiveBroadcastInstruction>(wrapped);
-          return EmitNcclThunk<NcclCollectiveBroadcastStartThunk,
+          return EmitNcclThunk<CollectiveBroadcastStartThunk,
                                HloCollectiveBroadcastInstruction>(
               Thunk::kNcclCollectiveBroadcast, instr, collective_broadcast,
               std::nullopt);

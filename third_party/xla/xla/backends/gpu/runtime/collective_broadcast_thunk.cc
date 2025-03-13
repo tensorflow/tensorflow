@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/nccl_collective_broadcast_thunk.h"
+#include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 
 #include <cstdint>
 #include <optional>
@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -31,13 +32,13 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
-NcclCollectiveBroadcastStartThunk::NcclCollectiveBroadcastStartThunk(
+CollectiveBroadcastStartThunk::CollectiveBroadcastStartThunk(
     ThunkInfo thunk_info, const HloCollectiveBroadcastInstruction* instr,
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
     : CollectiveThunk(Thunk::kNcclCollectiveBroadcastStart, thunk_info,
@@ -46,19 +47,18 @@ NcclCollectiveBroadcastStartThunk::NcclCollectiveBroadcastStartThunk(
       config_(GetCollectiveConfig(instr, std::nullopt)),
       buffers_(std::move(buffers)) {}
 
-/*static*/ absl::Status NcclCollectiveBroadcastStartThunk::CheckImplementable(
+/*static*/ absl::Status CollectiveBroadcastStartThunk::CheckImplementable(
     const HloInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
   return absl::OkStatus();
 }
 
-/*static*/ CollectiveOpGroupMode
-NcclCollectiveBroadcastStartThunk::GetGroupMode(
+/*static*/ CollectiveOpGroupMode CollectiveBroadcastStartThunk::GetGroupMode(
     const HloCollectiveBroadcastInstruction* inst) {
   return GetCollectiveConfig(inst, std::nullopt).group_mode;
 }
 
-absl::Status NcclCollectiveBroadcastStartThunk::RunCollective(
+absl::Status CollectiveBroadcastStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(

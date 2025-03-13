@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_NCCL_COLLECTIVE_BROADCAST_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_NCCL_COLLECTIVE_BROADCAST_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_BROADCAST_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_BROADCAST_THUNK_H_
 
 #include <cstdint>
 #include <vector>
@@ -29,8 +29,9 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
-// Thunk that performs a NCCL-based collective broadcast.
-class NcclCollectiveBroadcastStartThunk : public CollectiveThunk {
+
+// Thunk that performs a collective broadcast.
+class CollectiveBroadcastStartThunk : public CollectiveThunk {
  public:
   static absl::Status CheckImplementable(const HloInstruction* instr,
                                          int64_t replica_count,
@@ -44,9 +45,10 @@ class NcclCollectiveBroadcastStartThunk : public CollectiveThunk {
 
   static const char* GetHloOpName() { return "collective-broadcast-start"; }
 
-  NcclCollectiveBroadcastStartThunk(
-      ThunkInfo thunk_info, const HloCollectiveBroadcastInstruction* instr,
-      std::vector<Buffer> buffers, bool p2p_memcpy_enabled = false);
+  CollectiveBroadcastStartThunk(ThunkInfo thunk_info,
+                                const HloCollectiveBroadcastInstruction* instr,
+                                std::vector<Buffer> buffers,
+                                bool p2p_memcpy_enabled = false);
 
  protected:
   absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
@@ -63,4 +65,4 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_NCCL_COLLECTIVE_BROADCAST_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_BROADCAST_THUNK_H_
