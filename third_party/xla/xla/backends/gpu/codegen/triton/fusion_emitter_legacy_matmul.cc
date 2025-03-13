@@ -2154,6 +2154,36 @@ Value EmitMaskOnInput(EmitterLocOpBuilder& b,
   return if_op.getResult(0);
 }
 
+Value EmitDotOperation(EmitterLocOpBuilder& b, Value lhs, Value rhs, Value acc,
+                       const HloDotInstruction* dot_instr) {
+  // Execute matrix multiplication of input tiles and pass the accumulator.
+  // TODO(manany): Should be looked into once we enable Hopper workloads.
+  // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
+  // lower precision than the output type. The change was introduced here:
+  // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
+  auto dot_precision = InferDotPrecision(dot_instr);
+
+  // Cast F32 inputs to BF16 if the algorithm is BF16_BF16_F32.
+  if (dot_instr->precision_config().algorithm() ==
+      PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
+    if (dot_instr->operand(0)->shape().element_type() == F32) {
+      lhs = Cast(b, lhs, b.getBF16Type());
+    }
+    if (dot_instr->operand(1)->shape().element_type() == F32) {
+      rhs = Cast(b, rhs, b.getBF16Type());
+    }
+  }
+
+  // For fp8 matmuls, disable accumulator promotion, as it's what cublas
+  // does. It may make sense to enable frequent accumulator promotion at
+  // higher matmul precisions set in the config.
+  int max_num_imprecise_acc =
+      IsFp8Matmul(dot_instr) ? std::numeric_limits<int>::max() : 0;
+  return b.create<mt::DotOp>(lhs, rhs, acc,
+                             /*inputPrecision=*/dot_precision,
+                             /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
+}
+
 }  // namespace
 
 // Use tiling and execution parameters from 'config'. BlockLevelParameters are
@@ -2303,33 +2333,8 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
       TF_CHECK_OK(CheckF32Type(b, dot_lhs, dot_rhs, iter_args.back()));
       acc_next = EmitBF16x3Matmul(b, dot_lhs, dot_rhs, iter_args.back());
     } else {
-      // Execute matrix multiplication of input tiles and pass the accumulator.
-      // TODO(manany): Should be looked into once we enable Hopper workloads.
-      // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
-      // lower precision than the output type. The change was introduced here:
-      // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
-      auto dot_precision = InferDotPrecision(dot_instr);
-
-      // Cast F32 inputs to BF16 if the algorithm is BF16_BF16_F32.
-      if (dot_instr->precision_config().algorithm() ==
-          PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
-        if (dot_instr->operand(0)->shape().element_type() == F32) {
-          dot_lhs = Cast(b, dot_lhs, b.getBF16Type());
-        }
-        if (dot_instr->operand(1)->shape().element_type() == F32) {
-          dot_rhs = Cast(b, dot_rhs, b.getBF16Type());
-        }
-      }
-
-      // For fp8 matmuls, disable accumulator promotion, as it's what cublas
-      // does. It may make sense to enable frequent accumulator promotion at
-      // higher matmul precisions set in the config.
-      int max_num_imprecise_acc =
-          IsFp8Matmul(dot_instr) ? std::numeric_limits<int>::max() : 0;
       acc_next =
-          b.create<mt::DotOp>(dot_lhs, dot_rhs, iter_args.back(),
-                              /*inputPrecision=*/dot_precision,
-                              /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
+          EmitDotOperation(b, dot_lhs, dot_rhs, iter_args.back(), dot_instr);
     }
     args_for_yield.push_back(acc_next);
 
