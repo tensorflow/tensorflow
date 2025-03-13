@@ -924,13 +924,14 @@ cc_library(
 )
 
 [
-    xla_cc_test(
+    xla_test(
         name = "hlo_op_profiler_run_" + sm,
         timeout = "eternal",
         srcs = ["hlo_op_profiler_run.cc"],
         # Disable backend optimizations (in particular reassociate and instcombine) which would optimize
         # expressions like integer add and multiply.
         args = ["--xla_backend_optimization_level=0"],
+        backends = ["gpu"],
         # This is a development tool, not a normal test, and thus should only be run
         # manually with --config=cuda.
         tags = [
