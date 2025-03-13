@@ -902,7 +902,7 @@ int64_t GetConstantTensorSize(Node* n) {
   if (n->op_def().name() != "Const") return -1;
 
   const TensorProto* proto = nullptr;
-  Status s = GetNodeAttr(n->def(), "value", &proto);
+  absl::Status s = GetNodeAttr(n->def(), "value", &proto);
   if (!s.ok()) return -1;
 
   if (!proto->has_tensor_shape()) {
