@@ -1111,9 +1111,9 @@ cc_library(
 )
 
 cc_library(
-    name = "send_recv_thunk",
-    srcs = ["send_recv_thunk.cc"],
-    hdrs = ["send_recv_thunk.h"],
+    name = "host_send_recv_thunk",
+    srcs = ["host_send_recv_thunk.cc"],
+    hdrs = ["host_send_recv_thunk.h"],
     deps = [
         ":thunk",
         "//xla:shape_util",
@@ -1122,17 +1122,19 @@ cc_library(
         "//xla/service:global_device_id",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:event",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
