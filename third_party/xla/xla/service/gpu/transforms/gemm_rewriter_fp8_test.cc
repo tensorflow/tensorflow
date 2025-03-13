@@ -35,12 +35,14 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_rewriter_test_lib.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -118,12 +120,16 @@ class ParameterizedFp8GemmRewriteTest
     }
   }
 
+  using ParameterizedGemmRewriteTestBase::ParseAndReturnVerifiedModule;
+
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                               int64_t replica_count = 1,
-                               int64_t num_partitions = 1) {
+  ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, int64_t replica_count = 1,
+      int64_t num_partitions = 1,
+      std::optional<DeviceAssignment> device_assignment = std::nullopt) const {
     return GemmRewriteTestBase::ParseAndReturnVerifiedModule(
-        absl::StrReplaceAll(hlo_text, replacements_));
+        absl::StrReplaceAll(hlo_text, replacements_), replica_count,
+        num_partitions, device_assignment);
   }
 
  private:

@@ -287,6 +287,9 @@ class HloModuleConfig {
   void set_static_device_assignment(const DeviceAssignment& device_assignment) {
     static_device_assignment_ = device_assignment;
   }
+  void reset_static_device_assignment() {
+    static_device_assignment_ = std::nullopt;
+  }
 
   // Checks if this config has a simulated device assignment.
   bool has_pre_simulation_device_assignment() const {
