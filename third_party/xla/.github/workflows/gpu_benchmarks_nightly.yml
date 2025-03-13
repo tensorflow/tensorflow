@@ -33,6 +33,11 @@ jobs:
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
             pretty_name: "Linux X86 runner with 4 NVIDIA L4 GPUs",
           },
+          {
+            os: "linux-x86-g2-16-l4-1gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "Linux X86 runner with 1 NVIDIA L4 GPU",
+          },
           # Expect more GPU types in the future.
         ]
     name: ${{ matrix.job_info.pretty_name }}
