@@ -388,6 +388,66 @@ ENTRY entry_computation {
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
+// TODO(b/393299275): correctly hoist bitcast through compare.
+// Fails with: "... [Unknown]: Expected comparison type UNSIGNED.".
+TEST_F(NestGemmFusionTest, DISABLED_BitcastsAreHoistedPastCompare) {
+  absl::string_view hlo = R"(
+HloModule t
+
+triton_dot {
+  p0 = s32[11,24,128]{2,1,0} parameter(0)
+  p1 = s32[11,24,128]{2,1,0} parameter(1)
+  eq = pred[11,24,128]{2,1,0} compare(p0, p1), direction=EQ
+  eq_reshape = pred[264,128]{1,0} bitcast(eq)
+  eq_f32 = f32[264,128]{1,0} convert(eq_reshape)
+  p2 = f32[128,8]{1,0} parameter(2)
+  ROOT result = f32[264,8]{1,0} dot(eq_f32, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = s32[11,24, 128]{2,1,0} parameter(0)
+  p1 = s32[11,24,128]{2,1,0} parameter(1)
+  p2 = f32[128,8]{1,0} parameter(2)
+  ROOT result = f32[264,8] fusion(p0, p1, p2), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {
+      "block_m":32,"block_n":16,"block_k":128,
+      "split_k":1,"num_stages":1,"num_warps":4, "num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+// TODO(b/393299275): correctly hoist bitcasts through broadcast.
+TEST_F(NestGemmFusionTest, DISABLED_BitcastsAreHoistedPastBroadcasts) {
+  absl::string_view hlo = R"(
+HloModule t
+
+triton_dot {
+  p0 = f32[11,24]{1,0} parameter(0)
+  p0_broadcast = f32[11,24,128]{2,1,0} broadcast(p0), dimensions={0,1}
+  p0_reshape = f32[264,128]{1,0} bitcast(p0_broadcast)
+
+  p1 = f32[128,8]{1,0} parameter(1)
+  ROOT result = f32[264,8]{1,0} dot(p0_reshape, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[11,24]{1,0} parameter(0)
+  p1 = f32[128,8]{1,0} parameter(1)
+  ROOT result = f32[264,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
