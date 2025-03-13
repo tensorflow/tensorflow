@@ -204,6 +204,9 @@ HloComputation::~HloComputation() {
   }
   CHECK(caller_computations_.empty());
 
+  // Delete the map from caller instructions to count, if it exists.
+  delete GetCallersMap();
+
   for (const auto& i : instructions_) {
     delete i.inst();
   }
@@ -277,8 +280,6 @@ static void IncrementCount(
   ++map[key];
 }
 
-// Returns true if the callee was present and its count was decremented; returns
-// false if the callee was not present.
 static void DecrementCount(
     absl::btree_map<HloComputation*, int, HloComputation::UniqueIdComparator>&
         map,
@@ -292,17 +293,75 @@ static void DecrementCount(
   }
 }
 
-void HloComputation::AddCallee(HloComputation* callee) {
+void HloComputation::AddCallee(const HloInstruction* caller,
+                               HloComputation* callee) {
   IncrementCount(callee_computations_, callee);
   IncrementCount(callee->caller_computations_, this);
+
+  if (auto* map = callee->GetCallersMap()) {
+    ++(*map)[caller];
+  } else if (callee->callers_ == 0) {
+    callee->callers_ = reinterpret_cast<uintptr_t>(caller);
+  } else {
+    // Convert the single instruction to a map.
+    auto* current_caller = reinterpret_cast<const HloInstruction*>(
+        callee->callers_ & ~kCallerTypeMask);
+    auto* map = new absl::flat_hash_map<const HloInstruction*, int>();
+    (*map)[current_caller] = 1;
+    ++(*map)[caller];
+    callee->callers_ = reinterpret_cast<uintptr_t>(map) |
+                       static_cast<uintptr_t>(CallersType::kCallerCountHashMap);
+  }
+
   if (parent() != nullptr && callee->parent() == parent()) {
     parent()->topological_sort_.AddEdge(this, callee);
   }
 }
 
-void HloComputation::RemoveCallee(HloComputation* callee) {
+void HloComputation::RemoveCallee(const HloInstruction* caller,
+                                  HloComputation* callee) {
+  CHECK(caller);
+  CHECK(callee);
   DecrementCount(callee_computations_, callee);
   DecrementCount(callee->caller_computations_, this);
+
+  if (callee->callers_ == reinterpret_cast<uintptr_t>(caller)) {
+    // The callee had just this single caller, so we reset it to 0 (no caller).
+    callee->callers_ = 0;
+  } else {
+    auto* map = callee->GetCallersMap();
+    CHECK(map) << "Attempted to remove a caller " << caller->name()
+               << " that did not call the computation " << name() << "."
+               << callee->callers_;
+    auto it = map->find(caller);
+    CHECK(it != map->end())
+        << "Attempted to remove a caller " << caller->name()
+        << " that did not call the computation " << name() << ".";
+    --it->second;
+    // We don't convert back to the inline representation, since this case
+    // should be rare.
+  }
+}
+
+absl::flat_hash_map<const HloInstruction*, int>*
+HloComputation::GetCallersMap() {
+  if (static_cast<CallersType>(callers_ & kCallerTypeMask) ==
+      CallersType::kCallerCountHashMap) {
+    return reinterpret_cast<absl::flat_hash_map<const HloInstruction*, int>*>(
+        callers_ & ~kCallerTypeMask);
+  }
+  return nullptr;
+}
+
+absl::flat_hash_map<const HloInstruction*, int>* const
+HloComputation::GetCallersMap() const {
+  if (static_cast<CallersType>(callers_ & kCallerTypeMask) ==
+      CallersType::kCallerCountHashMap) {
+    return reinterpret_cast<
+        absl::flat_hash_map<const HloInstruction*, int>* const>(
+        callers_ & ~kCallerTypeMask);
+  }
+  return nullptr;
 }
 
 HloInstruction* HloComputation::AddInstructionInternal(
@@ -329,7 +388,7 @@ HloInstruction* HloComputation::AddInstructionInternal(
     CHECK(parent() == nullptr || called_computation->parent() == parent())
         << "Called computation " << called_computation->name()
         << " is not in the same module as " << name();
-    AddCallee(called_computation);
+    AddCallee(pinst, called_computation);
   }
   return pinst;
 }

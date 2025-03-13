@@ -982,10 +982,33 @@ class HloComputation {
     return caller_computations_;
   }
 
+  // The returned callers are in no particular order.
+  absl::InlinedVector<const HloInstruction*, 1> caller_instructions() const {
+    if (const auto* map = GetCallersMap()) {
+      absl::InlinedVector<const HloInstruction*, 1> result;
+      for (const auto& [instr, _] : *map) {
+        result.push_back(instr);
+      }
+      return result;
+    }
+
+    if (callers_ == 0) {
+      return {};
+    }
+    return {
+        reinterpret_cast<const HloInstruction*>(callers_ & ~kCallerTypeMask)};
+  }
+
   void ClearCalledComputations();
 
  private:
   friend class HloModule;
+
+  enum class CallersType : uint8_t {
+    kHloInstruction = 0,
+    kCallerCountHashMap = 1,
+  };
+  static constexpr uintptr_t kCallerTypeMask = 0b1;
 
   explicit HloComputation(
       const std::string& name, int parameter_count,
@@ -1051,8 +1074,14 @@ class HloComputation {
   void SetUniqueIdHelper(int64_t id);
 
   friend class HloInstruction;
-  void AddCallee(HloComputation* callee);
-  void RemoveCallee(HloComputation* callee);
+  // Add/remove call from `caller`, which must be in this computation, to
+  // `callee`.
+  void AddCallee(const HloInstruction* caller, HloComputation* callee);
+  void RemoveCallee(const HloInstruction* caller, HloComputation* callee);
+
+  // Returns nullptr if `callers_` is not a map.
+  absl::flat_hash_map<const HloInstruction*, int>* GetCallersMap();
+  absl::flat_hash_map<const HloInstruction*, int>* const GetCallersMap() const;
 
   // Unique ID of this computation.
   // This is set to -1 if the computation is not in a module. Should only be
@@ -1066,6 +1095,11 @@ class HloComputation {
   // Contains HloInstruction* and its type.
   // The respective type in the least significant three bits.
   uintptr_t instruction_and_type_ = 0;
+
+  // Contains an HloInstruction* or an absl::flat_hash_map<HloInstruction*,
+  // /*count=*/int> in the high bits and a CallersType in the least significant
+  // bit.
+  uintptr_t callers_ = 0;
 
   // If this computation is an async computation, this field points to the
   // first async instruction (async-start) in the asynchronous op chain that

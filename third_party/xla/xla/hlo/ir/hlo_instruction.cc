@@ -220,7 +220,7 @@ void HloInstruction::AppendComputation(HloComputation* computation) {
   // of T and hlo_instruction.h does not include hlo_computation.h.
   mutable_rare()->called_computations.push_back(computation);
   if (parent()) {
-    parent()->AddCallee(computation);
+    parent()->AddCallee(this, computation);
   }
 }
 
@@ -235,10 +235,10 @@ void HloInstruction::set_called_computation(int index,
   std::swap(old_computation, mutable_rare()->called_computations[index]);
   if (parent()) {
     if (old_computation) {
-      parent()->RemoveCallee(old_computation);
+      parent()->RemoveCallee(this, old_computation);
     }
     if (computation) {
-      parent()->AddCallee(computation);
+      parent()->AddCallee(this, computation);
     }
   }
 }
@@ -255,7 +255,7 @@ void HloInstruction::ClearCalledComputations() {
     if (parent()) {
       for (HloComputation* computation : called_computations()) {
         if (computation) {
-          parent()->RemoveCallee(computation);
+          parent()->RemoveCallee(this, computation);
         }
       }
     }
