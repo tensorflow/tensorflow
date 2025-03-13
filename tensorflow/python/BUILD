@@ -1252,6 +1252,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
+        "@dlpack",
         "@pybind11",
         # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ] + if_pywrap(
