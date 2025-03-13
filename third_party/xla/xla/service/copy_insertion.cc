@@ -2100,7 +2100,7 @@ absl::Status CopyInsertion::AddCopiesForAsyncSendRecv(
   // For send/recv outside of the while loop, live times are disjoint. No copies
   // needed.
   HloComputation* while_body = start_op->parent();
-  if (!while_body->IsWhileBodyComputation()) return absl::OkStatus();
+  if (!while_body->GetUniqueCaller(HloOpcode::kWhile)) return absl::OkStatus();
 
   // Handle send case.
   HloInstruction* done_op =

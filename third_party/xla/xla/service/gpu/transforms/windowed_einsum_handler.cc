@@ -68,14 +68,16 @@ namespace m = match;
 //   inputs --> (unary) --> while loop {dequant --> collective-permute/dot/etc}.
 //
 // Unary bitcast, broadcast, copy, reshape and transpose ops are allowed between
-// dequantization and while loop. Returns whether the input computation has been
-// changed.
-absl::StatusOr<bool> ShiftDequantizationF8(HloComputation* while_body) {
-  HloInstruction* while_instr = while_body->WhileCallInstruction();
+// dequantization and while loop. Returns the new while loop if the computation
+// was changed.
+absl::StatusOr<HloInstruction*> ShiftDequantizationF8(
+    HloComputation* while_body) {
+  auto maybe_while = while_body->GetUniqueCaller(HloOpcode::kWhile);
   // The input of the while loop will be modified and must have no other users.
-  if (!while_instr || while_instr->operand(0)->user_count() != 1) {
-    return false;
+  if (!maybe_while || (*maybe_while)->operand(0)->user_count() != 1) {
+    return absl::InvalidArgumentError("Expected body to be a loop.");
   }
+  HloInstruction* while_instr = *maybe_while;
 
   // Identify the scalings and type conversions applied to the inputs of the
   // while loop.
@@ -101,7 +103,7 @@ absl::StatusOr<bool> ShiftDequantizationF8(HloComputation* while_body) {
                                        m::Convert(m::Op(&operands[k])),
                                        m::Broadcast(m::Op(&scales[k])))))) {
       VLOG(5) << "Unable to identify FP8 dequantization pattern.";
-      return false;
+      return nullptr;
     }
   }
 
@@ -113,7 +115,7 @@ absl::StatusOr<bool> ShiftDequantizationF8(HloComputation* while_body) {
         (operand_types[0] == F8E4M3FN && operand_types[1] == F8E5M2) ||
         (operand_types[0] == F8E5M2 && operand_types[1] == F8E4M3FN))) {
     VLOG(5) << "Unsupported types.";
-    return false;
+    return nullptr;
   }
 
   // The dequantized types must be BF16, FP16 or FP32.
@@ -122,7 +124,7 @@ absl::StatusOr<bool> ShiftDequantizationF8(HloComputation* while_body) {
         binaries[k]->shape().element_type() != F16 &&
         binaries[k]->shape().element_type() != F32) {
       VLOG(5) << "Unsupported types.";
-      return false;
+      return nullptr;
     }
   }
 
@@ -130,7 +132,7 @@ absl::StatusOr<bool> ShiftDequantizationF8(HloComputation* while_body) {
   if (!ShapeUtil::IsScalar(scales[0]->shape()) ||
       !ShapeUtil::IsScalar(scales[1]->shape())) {
     VLOG(5) << "Scaling factors must be scalars.";
-    return false;
+    return nullptr;
   }
 
   // Identify the dot, get-tuple-element and collective-permute or dynamic-slice
@@ -172,7 +174,7 @@ absl::StatusOr<bool> ShiftDequantizationF8(HloComputation* while_body) {
     VLOG(5) << "Identified reduce-scatter windowed einsum pattern.";
   } else {
     VLOG(5) << "Unable to identify valid windowed einsum pattern.";
-    return false;
+    return nullptr;
   }
 
   // Replace any dequantized bitcast, broadcast, copy, reshape and transpose ops
@@ -294,7 +296,6 @@ absl::StatusOr<bool> ShiftDequantizationF8(HloComputation* while_body) {
       while_instr->CloneWithNewShape(while_root->shape()));
   TF_RETURN_IF_ERROR(
       while_instr->ReplaceAllUsesWithDifferentShape(new_while_instr));
-  while_instr->while_body()->SetWhileCallInstruction(new_while_instr);
   TF_RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
 
   if (coll_perms[0]) {
@@ -305,7 +306,7 @@ absl::StatusOr<bool> ShiftDequantizationF8(HloComputation* while_body) {
   TF_RETURN_IF_ERROR(while_body->RemoveInstruction(gtes[1]));
 
   VLOG(5) << "FP8 dequantization moved into while loop.";
-  return true;
+  return new_while_instr;
 }
 
 int64_t NumberOfInstructionsInComp(const HloComputation* comp, HloOpcode op) {
@@ -1367,12 +1368,23 @@ absl::StatusOr<bool> WindowedEinsumHandler::Run(
       // If present, move the dequantization of FP8 operands of the dot into the
       // while loop to allow e.g. gemm_rewriter.cc to fuse the dequantization
       // and dot into an FP8 GEMM.
-      TF_ASSIGN_OR_RETURN(changed, ShiftDequantizationF8(comp));
-      if (comp->name().find(kWindowedEinsumAgLoopName) == 0) {
-        all_ag_loops_.push_back(
-            WindowedEinsumAgLoops(comp->WhileCallInstruction()));
+      auto maybe_while_op = comp->GetUniqueCaller(HloOpcode::kWhile);
+      if (!maybe_while_op.has_value()) {
+        return absl::InvalidArgumentError(
+            "Expected computation to be a loop body.");
       }
-      all_windowed_einsum_loops.push_back(comp->WhileCallInstruction());
+
+      auto* while_op = *maybe_while_op;
+      TF_ASSIGN_OR_RETURN(auto maybe_new_op, ShiftDequantizationF8(comp));
+      if (maybe_new_op) {
+        changed = true;
+        while_op = maybe_new_op;
+      }
+
+      if (comp->name().find(kWindowedEinsumAgLoopName) == 0) {
+        all_ag_loops_.push_back(WindowedEinsumAgLoops(while_op));
+      }
+      all_windowed_einsum_loops.push_back(while_op);
     }
   }
 

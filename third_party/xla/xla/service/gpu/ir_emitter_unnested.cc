@@ -1029,7 +1029,7 @@ absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(CholeskyOptions options,
                       instr->backend_config<CholeskyOptions>());
   const Shape& shape = instr->operand(0)->shape();
-  int ndim = shape.rank();
+  int ndim = shape.dimensions_size();
   CHECK_GE(ndim, 2);
   int64_t n = shape.dimensions(ndim - 1);
 
@@ -1863,7 +1863,7 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
   const int64_t partition_count = hlo_config.num_partitions();
 
   auto operands = instr->operands();
-  std::vector<CollectiveThunk::Buffer> buffers;
+  std::vector<NcclCollectiveThunk::Buffer> buffers;
   for (int oprd_idx = 0; oprd_idx < operands.size(); ++oprd_idx) {
     const auto operand = operands.at(oprd_idx);
     const ShapeIndex nested_shape_idx = {1, oprd_idx}, normal_shape_idx = {1};
@@ -1893,7 +1893,7 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
       // Signal that start thunk not created with nullptr.
       GetCollectivesAsyncEvents().try_emplace(instr, nullptr);
     } else {
-      const CollectiveThunk::Buffer buffer = {
+      const NcclCollectiveThunk::Buffer buffer = {
           /*element_count=*/ShapeUtil::ElementsIn(operand_shape),
           /*source_buffer=*/source_slice,
           /*destination_buffer=*/result_slice,
@@ -1938,15 +1938,15 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   // HLO instructions, so the best solution we have is to use NCCL thunk even
   // for degenerate cases.
   bool is_degenerate = kind != Thunk::Kind::kNcclRaggedAllToAll &&
-                       GetCollectiveConfig(inst, use_global_device_ids)
+                       GetNcclCollectiveConfig(inst, use_global_device_ids)
                            .IsDegenerate(replica_count, partition_count);
   absl::Status implementable_status =
       NcclThunkType::CheckImplementable(inst, replica_count, partition_count);
   bool should_use_nccl_thunk = !is_degenerate && implementable_status.ok();
 
-  // Stash relevant information in CollectiveThunk::Buffer even if we may
-  // not generate an CollectiveThunk.
-  std::vector<CollectiveThunk::Buffer> buffers;
+  // Stash relevant information in NcclCollectiveThunk::Buffer even if we may
+  // not generate an NcclCollectiveThunk.
+  std::vector<NcclCollectiveThunk::Buffer> buffers;
 
   int64_t operand_count = inst->operand_count();
   buffers.reserve(operand_count);
@@ -1955,14 +1955,14 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   auto add_buffer = [&](int64_t element_count, BufferAllocation::Slice src,
                         int64_t src_memory_space, BufferAllocation::Slice dst,
                         int64_t dst_memory_space) {
-    buffers.push_back(
-        CollectiveThunk::Buffer{/*element_count=*/element_count,
-                                /*source_buffer=*/src,
-                                /*destination_buffer=*/dst,
-                                /*source_memory_space=*/src_memory_space,
-                                /*destination_memory_space=*/dst_memory_space,
-                                /*source_value=*/nullptr,
-                                /*destination_value=*/nullptr});
+    buffers.push_back(NcclCollectiveThunk::Buffer{
+        /*element_count=*/element_count,
+        /*source_buffer=*/src,
+        /*destination_buffer=*/dst,
+        /*source_memory_space=*/src_memory_space,
+        /*destination_memory_space=*/dst_memory_space,
+        /*source_value=*/nullptr,
+        /*destination_value=*/nullptr});
   };
 
   if (kind == Thunk::Kind::kNcclAllGatherStart) {
@@ -2115,8 +2115,10 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
           unique_user->opcode() == HloOpcode::kWhile);
     if (unique_user->IsRoot()) {
       // send/recv op in the loop body.
-      CHECK(unique_user->parent()->IsWhileBodyComputation());
-      while_op = unique_user->parent()->WhileCallInstruction();
+      auto maybe_while_op =
+          unique_user->parent()->GetUniqueCaller(HloOpcode::kWhile);
+      CHECK(maybe_while_op);
+      while_op = *maybe_while_op;
       i = unique_user->operand_index(inst);
     } else {
       // send/recv leading into the loop.
@@ -2146,8 +2148,10 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
     if (iter_tuple->opcode() == HloOpcode::kParameter) {
       // send-done/recv-done in the loop body.
       CHECK(Cast<HloParameterInstruction>(iter_tuple)->parameter_number() == 0);
-      CHECK(operand->parent()->IsWhileBodyComputation());
-      while_op = iter_tuple->parent()->WhileCallInstruction();
+      auto maybe_while =
+          iter_tuple->parent()->GetUniqueCaller(HloOpcode::kWhile);
+      CHECK(maybe_while);
+      while_op = *maybe_while;
       i = gte->tuple_index();
     } else {
       // send-done/recv-done proceeding the loop.
@@ -2215,7 +2219,7 @@ absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
   if (is_send_recv) {
     stream_kind = GetStreamKindForP2P(start);
   }
-  AddThunkToThunkSequence(std::make_unique<CollectiveDoneThunk>(
+  AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
       kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
       async_events_it->second, stream_kind));
   return absl::OkStatus();
@@ -2451,7 +2455,7 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
         instr->shape().IsTuple()
             ? instr->shape().tuple_shapes(0).layout().memory_space()
             : instr->shape().layout().memory_space();
-    const CollectiveThunk::Buffer nccl_buffer = {
+    const NcclCollectiveThunk::Buffer nccl_buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(src->shape()),
         /*source_buffer=*/buffer,
         /*destination_buffer=*/buffer,
@@ -2525,7 +2529,7 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
             ? instr->shape().tuple_shapes(0).layout().memory_space()
             : instr->shape().layout().memory_space();
 
-    const CollectiveThunk::Buffer nccl_buffer = {
+    const NcclCollectiveThunk::Buffer nccl_buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(instr->shape().tuple_shapes(0)),
         /*source_buffer=*/buffer,
         /*destination_buffer=*/buffer,

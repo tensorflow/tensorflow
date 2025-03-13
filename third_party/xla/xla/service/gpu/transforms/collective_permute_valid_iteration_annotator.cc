@@ -102,33 +102,35 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
         continue;
       }
 
-      HloInstruction* whileOp = inst->parent()->WhileCallInstruction();
-      if (whileOp == nullptr) {
+      auto maybe_while = inst->parent()->GetUniqueCaller(HloOpcode::kWhile);
+      if (!maybe_while.has_value()) {
         VLOG(2) << "No surrounding while op found. Ignoring " << inst->name();
         continue;
       }
-      if (!whileOp->frontend_attributes().map().contains(
+
+      auto* while_op = *maybe_while;
+      if (!while_op->frontend_attributes().map().contains(
               "is_pipelined_while_loop")) {
         continue;
       }
 
       TF_ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
-                          whileOp->backend_config<WhileLoopBackendConfig>());
+                          while_op->backend_config<WhileLoopBackendConfig>());
       if (!config.has_known_trip_count()) {
-        VLOG(2) << "Trip count for while loop (" << whileOp->name()
+        VLOG(2) << "Trip count for while loop (" << while_op->name()
                 << "): unknown";
         continue;
       }
 
       int64_t trip_count = config.known_trip_count().n();
-      std::optional<int64_t> step = GetStep(whileOp);
-      VLOG(2) << "Trip count for while loop (" << whileOp->name()
+      std::optional<int64_t> step = GetStep(while_op);
+      VLOG(2) << "Trip count for while loop (" << while_op->name()
               << "): " << trip_count;
       if (!step) {
         VLOG(2) << "Could not find step for while operation";
         continue;
       }
-      VLOG(2) << "Step for while loop (" << whileOp->name() << "): " << *step;
+      VLOG(2) << "Step for while loop (" << while_op->name() << "): " << *step;
       if (*step != 1) {
         VLOG(2) << "Step is not 1. Skipping...";
         continue;
