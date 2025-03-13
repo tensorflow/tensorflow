@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -41,6 +42,19 @@ LogicalResult ConvertCustomCallOp::matchAndRewrite(
     mhlo::CustomCallOp mhlo_custom_call, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   auto call_target_name = mhlo_custom_call.getCallTargetName();
+  if (call_target_name.starts_with("tfl.")) {
+    auto bc = mhlo_custom_call.getBackendConfig();
+    if (auto attributes = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(*bc)) {
+      // Short-cut: TFL direct lowering on StableHLO CustomCall carrier.
+      mlir::OperationState new_op(mhlo_custom_call.getLoc(), call_target_name,
+                                  mhlo_custom_call.getOperands(),
+                                  mhlo_custom_call.getResultTypes(),
+                                  attributes.getValue());
+      rewriter.replaceOp(mhlo_custom_call, rewriter.create(new_op));
+      return success();
+    }
+  }
+
   if (!call_target_name.starts_with("custom_call.")) {
     return failure();
   }
@@ -99,6 +113,12 @@ std::optional<bool> IsCustomCallLegal(mhlo::CustomCallOp op) {
   if (call_target_name.starts_with("custom_call.")) {
     auto bc = op.getBackendConfig();
     if (!bc || mlir::isa<mlir::StringAttr>(*bc)) {
+      return false;
+    }
+  }
+  if (call_target_name.starts_with("tfl.")) {
+    auto bc = op.getBackendConfig();
+    if (!bc || mlir::isa<mlir::DictionaryAttr>(*bc)) {
       return false;
     }
   }
