@@ -100,6 +100,19 @@ cc_library(
     alwayslink = 1,
 )
 
+tsl_cc_test(
+    name = "bitmap_test",
+    size = "small",
+    srcs = ["bitmap_test.cc"],
+    deps = [
+        ":bitmap",
+        "//xla/tsl/lib/random:philox",
+        "//xla/tsl/lib/random:philox_random",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "bits",
     hdrs = ["bits.h"],

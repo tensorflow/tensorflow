@@ -27,10 +27,11 @@ namespace core {
 
 void Bitmap::Reset(size_t n) {
   const size_t num_words = NumWords(n);
+
   if (num_words != NumWords(nbits_)) {
     // Reallocate.
     Word* w = new Word[num_words];
-    delete[] word_;
+    if (word_ != nullptr) delete[] word_;
     word_ = w;
   }
   memset(word_, 0, sizeof(word_[0]) * num_words);
