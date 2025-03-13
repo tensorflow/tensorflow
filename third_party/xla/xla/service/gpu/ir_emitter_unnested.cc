@@ -143,13 +143,13 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_group_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/nccl_ragged_all_to_all_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_recv_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_send_thunk.h"
 #include "xla/backends/gpu/runtime/norm_thunk.h"
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
+#include "xla/backends/gpu/runtime/p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
+#include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
@@ -2457,7 +2457,7 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
         /*destination_buffer=*/buffer,
         /*source_memory_space=*/memory_space,
         /*destination_memory_space=*/memory_space};
-    auto thunk = std::make_unique<NcclSendThunk>(
+    auto thunk = std::make_unique<SendThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
         partition_count, nccl_buffer);
     CollectivesAsyncEvents& collectives_async_events =
@@ -2531,7 +2531,7 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
         /*destination_buffer=*/buffer,
         /*source_memory_space=*/memory_space,
         /*destination_memory_space=*/memory_space};
-    auto thunk = std::make_unique<NcclRecvThunk>(
+    auto thunk = std::make_unique<RecvThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
         partition_count, nccl_buffer);
     CollectivesAsyncEvents& collectives_async_events =

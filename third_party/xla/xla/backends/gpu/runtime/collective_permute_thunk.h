@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -91,9 +91,8 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
         ABSL_GUARDED_BY(mutex_);
   };
 
-  static NcclP2PConfig GetNcclP2PConfig(
-      const HloCollectivePermuteInstruction* instr, int64_t replica_count,
-      int64_t partition_count);
+  static P2PConfig GetP2PConfig(const HloCollectivePermuteInstruction* instr,
+                                int64_t replica_count, int64_t partition_count);
 
   static bool IsDegenerate(const HloCollectivePermuteInstruction* instr,
                            int64_t replica_count, int64_t partition_count);
@@ -117,7 +116,7 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
                              CommunicatorHandle comm_handle) override;
 
  private:
-  const NcclP2PConfig config_;
+  const P2PConfig config_;
   std::vector<Buffer> buffers_;
   RecvPtrMap recv_ptr_map_;
   absl::Mutex barrier_mutex_;
@@ -128,8 +127,7 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
 };
 
 absl::Status RunCollectivePermute(
-    GpuCollectives* collectives,
-    NcclP2PConfig::SourceTargetMapEntry source_target,
+    GpuCollectives* collectives, P2PConfig::SourceTargetMapEntry source_target,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator* comm, absl::string_view device_string, int64_t current_id,
     bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map);

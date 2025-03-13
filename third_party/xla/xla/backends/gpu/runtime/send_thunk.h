@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_NCCL_SEND_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_NCCL_SEND_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_SEND_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_SEND_THUNK_H_
 
 #include <cstdint>
 #include <memory>
@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -33,12 +33,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Thunk that performs a NCCL-send.
-class NcclSendThunk : public CollectiveThunk {
+// Thunk that performs a send operation.
+class SendThunk : public CollectiveThunk {
  public:
-  NcclSendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
-                int64_t replica_count, int64_t partition_count,
-                const Buffer& buffer);
+  SendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
+            int64_t replica_count, int64_t partition_count,
+            const Buffer& buffer);
   absl::Status Initialize(const InitializeParams& params) override;
 
  protected:
@@ -48,14 +48,14 @@ class NcclSendThunk : public CollectiveThunk {
   bool NeedFirstCallRendzevous() const override { return false; }
 
  private:
-  const NcclP2PConfig config_;
+  const P2PConfig config_;
   const Buffer buffer_;
   std::shared_ptr<ExecutionCounters> execution_counters_;
   std::string hlo_name_;
 };
 
 absl::Status RunSend(GpuCollectives* collectives,
-                     NcclP2PConfig::SourceTargetMapEntry source_target,
+                     P2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
                      Communicator* comm, absl::string_view device_string,
                      int64_t current_id);
@@ -63,4 +63,4 @@ absl::Status RunSend(GpuCollectives* collectives,
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_NCCL_SEND_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_SEND_THUNK_H_

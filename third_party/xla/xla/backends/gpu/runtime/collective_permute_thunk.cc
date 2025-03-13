@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -62,7 +62,7 @@ namespace {
 
 absl::StatusOr<const int64_t> GetCurrentId(
     Thunk::CollectiveExecuteParams* collective_params,
-    const NcclP2PConfig& config) {
+    const P2PConfig& config) {
   GlobalDeviceId global_device_id = collective_params->global_device_id;
   TF_ASSIGN_OR_RETURN(
       const DeviceAssignment::LogicalID current_logical_id,
@@ -74,9 +74,8 @@ absl::StatusOr<const int64_t> GetCurrentId(
   return current_id;
 }
 
-bool IsLocalPeerTransfer(
-    const NcclP2PConfig::SourceTargetMapEntry& source_target,
-    const int64_t current_id, const int64_t device_count) {
+bool IsLocalPeerTransfer(const P2PConfig::SourceTargetMapEntry& source_target,
+                         const int64_t current_id, const int64_t device_count) {
   const std::optional<int64_t> source_id = source_target.source;
   const std::optional<int64_t> target_id = source_target.target;
   // Mixing nccl p2p with p2p memcopy will cause random deadlocks, namely
@@ -102,14 +101,14 @@ CollectivePermuteStartThunk::CollectivePermuteStartThunk(
     AsyncStreamKind stream_kind)
     : CollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
                       IsGPUSyncCollective(*instr), stream_kind),
-      config_(GetNcclP2PConfig(instr, replica_count, partition_count)),
+      config_(GetP2PConfig(instr, replica_count, partition_count)),
       buffers_(buffers),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {}
 
-/*static*/ NcclP2PConfig CollectivePermuteStartThunk::GetNcclP2PConfig(
+/*static*/ P2PConfig CollectivePermuteStartThunk::GetP2PConfig(
     const HloCollectivePermuteInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
-  NcclP2PConfig collective_permute_config;
+  P2PConfig collective_permute_config;
   auto& config = collective_permute_config.config;
 
   config.operand_count = instr->operand_count();
@@ -196,8 +195,8 @@ absl::Status CollectivePermuteStartThunk::Initialize(
         std::vector<DeviceBufferPair> device_buffers,
         ConvertToDeviceBuffers(params.buffer_allocations, {buffers_},
                                config_.config.operand_element_type));
-    const NcclP2PConfig::SourceTargetMapEntry source_target =
-        NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
+    const P2PConfig::SourceTargetMapEntry source_target =
+        P2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
 
     const std::optional<int64_t> source_id = source_target.source;
 
@@ -246,8 +245,8 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
                       GetCurrentId(params.collective_params, config_));
   std::string device_string = GetDeviceString(*params.collective_params);
 
-  const NcclP2PConfig::SourceTargetMapEntry source_target =
-      NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
+  const P2PConfig::SourceTargetMapEntry source_target =
+      P2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
   bool is_local_peer =
       IsLocalPeerTransfer(source_target, current_id, device_count_);
   VLOG(5) << "Is local peer : " << (is_local_peer ? "true" : "false");
@@ -300,8 +299,7 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
 }
 
 absl::Status RunCollectivePermute(
-    GpuCollectives* collectives,
-    NcclP2PConfig::SourceTargetMapEntry source_target,
+    GpuCollectives* collectives, P2PConfig::SourceTargetMapEntry source_target,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator* comm, absl::string_view device_string, int64_t current_id,
     bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map) {

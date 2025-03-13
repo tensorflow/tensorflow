@@ -852,7 +852,7 @@ cc_library(
     hdrs = ["collective_permute_thunk.h"],
     deps = [
         ":collective_thunk",
-        ":nccl_p2p_thunk_common",
+        ":p2p_thunk_common",
         ":thunk",
         "//xla:executable_run_options",
         "//xla:status_macros",
@@ -944,9 +944,9 @@ cc_library(
 )
 
 cc_library(
-    name = "nccl_p2p_thunk_common",
-    srcs = ["nccl_p2p_thunk_common.cc"],
-    hdrs = ["nccl_p2p_thunk_common.h"],
+    name = "p2p_thunk_common",
+    srcs = ["p2p_thunk_common.cc"],
+    hdrs = ["p2p_thunk_common.h"],
     deps = [
         ":collective_thunk",
         "//xla:executable_run_options",
@@ -971,12 +971,12 @@ cc_library(
 )
 
 cc_library(
-    name = "nccl_recv_thunk",
-    srcs = ["nccl_recv_thunk.cc"],
-    hdrs = ["nccl_recv_thunk.h"],
+    name = "recv_thunk",
+    srcs = ["recv_thunk.cc"],
+    hdrs = ["recv_thunk.h"],
     deps = [
         ":collective_thunk",
-        ":nccl_p2p_thunk_common",
+        ":p2p_thunk_common",
         ":thunk",
         "//xla:status_macros",
         "//xla/backends/gpu/collectives:gpu_clique_key",
@@ -999,12 +999,12 @@ cc_library(
 )
 
 cc_library(
-    name = "nccl_send_thunk",
-    srcs = ["nccl_send_thunk.cc"],
-    hdrs = ["nccl_send_thunk.h"],
+    name = "send_thunk",
+    srcs = ["send_thunk.cc"],
+    hdrs = ["send_thunk.h"],
     deps = [
         ":collective_thunk",
-        ":nccl_p2p_thunk_common",
+        ":p2p_thunk_common",
         ":thunk",
         "//xla:status_macros",
         "//xla/backends/gpu/collectives:gpu_clique_key",

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/nccl_send_thunk.h"
+#include "xla/backends/gpu/runtime/send_thunk.h"
 
 #include <cstdint>
 #include <optional>
@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -43,22 +43,21 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info,
-                             const HloSendInstruction* instr,
-                             int64_t replica_count, int64_t partition_count,
-                             const Buffer& buffer)
+SendThunk::SendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
+                     int64_t replica_count, int64_t partition_count,
+                     const Buffer& buffer)
     : CollectiveThunk(Thunk::kNcclSend, thunk_info,
                       /*is_sync=*/false, GetStreamKindForP2P(instr)),
-      config_(GetNcclP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
-                                          replica_count, partition_count)),
+      config_(GetP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
+                                      replica_count, partition_count)),
       buffer_(buffer),
       execution_counters_(config_.validation_kind ==
-                                  NcclP2PConfig::ValidationKind::kConditional
+                                  P2PConfig::ValidationKind::kConditional
                               ? new ExecutionCounters()
                               : nullptr),
       hlo_name_(instr->name()) {}
 
-absl::Status NcclSendThunk::Initialize(const InitializeParams& params) {
+absl::Status SendThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   if (execution_counters_) {
     TF_RETURN_IF_ERROR(execution_counters_->Initialize(
@@ -67,9 +66,9 @@ absl::Status NcclSendThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status NcclSendThunk::RunCollective(const ExecuteParams& params,
-                                          se::Stream& stream,
-                                          CommunicatorHandle comm_handle) {
+absl::Status SendThunk::RunCollective(const ExecuteParams& params,
+                                      se::Stream& stream,
+                                      CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -87,8 +86,8 @@ absl::Status NcclSendThunk::RunCollective(const ExecuteParams& params,
           : current_logical_id.computation_id;
   std::string device_string = GetDeviceString(*params.collective_params);
 
-  const NcclP2PConfig::SourceTargetMapEntry source_target =
-      NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
+  const P2PConfig::SourceTargetMapEntry source_target =
+      P2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
   DeviceBufferPair& buffer = device_buffers[0];
 
   // Determine the target IDs for this instance. The target ID is the ID
@@ -112,11 +111,9 @@ absl::Status NcclSendThunk::RunCollective(const ExecuteParams& params,
   // Send source buffer to target peer if needed.
   if (target_id) {
     bool should_run =
-        config_.validation_kind == NcclP2PConfig::ValidationKind::kInvalid
-            ? false
-            : true;
-    if (config_.validation_kind ==
-        NcclP2PConfig::ValidationKind::kConditional) {
+        config_.validation_kind == P2PConfig::ValidationKind::kInvalid ? false
+                                                                       : true;
+    if (config_.validation_kind == P2PConfig::ValidationKind::kConditional) {
       se::StreamExecutor* executor = params.stream->parent();
       TF_ASSIGN_OR_RETURN(int64_t* counter,
                           execution_counters_->GetCounter(

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_NCCL_P2P_THUNK_COMMON_H_
-#define XLA_BACKENDS_GPU_RUNTIME_NCCL_P2P_THUNK_COMMON_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_P2P_THUNK_COMMON_H_
+#define XLA_BACKENDS_GPU_RUNTIME_P2P_THUNK_COMMON_H_
 
 #include <cstdint>
 #include <optional>
@@ -50,7 +50,7 @@ class ExecutionCounters {
 };
 
 // Records the information for implementing CollectivePermute, Send and Recv.
-struct NcclP2PConfig {
+struct P2PConfig {
   // Record the target ID for sending a data and the source ID from which to
   // receive a data. Either target or source can be optional.
   struct SourceTargetMapEntry {
@@ -91,11 +91,10 @@ struct NcclP2PConfig {
 absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
     mlir::DictionaryAttr frontend_attributes);
 
-// Constructs the NcclP2PConfig for an HLO Send or Recv instruction.
-NcclP2PConfig GetNcclP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
-                                          const Shape& shape,
-                                          int64_t replica_count,
-                                          int64_t partition_count);
+// Constructs the P2PConfig for an HLO Send or Recv instruction.
+P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
+                                  const Shape& shape, int64_t replica_count,
+                                  int64_t partition_count);
 // Returns the stream kind for the asynchronous stream used to execute an HLO
 // Send or Recv instruction, by inspecting the frontend attributes of the
 // instruction.
@@ -104,4 +103,4 @@ AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr);
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_NCCL_P2P_THUNK_COMMON_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_P2P_THUNK_COMMON_H_
