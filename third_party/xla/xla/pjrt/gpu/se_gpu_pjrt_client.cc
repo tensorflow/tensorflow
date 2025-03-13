@@ -791,9 +791,10 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-StreamExecutorGpuClient::Compile(const XlaComputation& computation,
-                                 CompileOptions options) {
-  auto executable = PjRtStreamExecutorClient::Compile(computation, options);
+StreamExecutorGpuClient::CompileAndLoad(const XlaComputation& computation,
+                                        CompileOptions options) {
+  auto executable =
+      PjRtStreamExecutorClient::CompileAndLoad(computation, options);
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
   for (const PjRtDevice* device : addressable_devices()) {

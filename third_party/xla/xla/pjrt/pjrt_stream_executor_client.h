@@ -276,9 +276,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) override;
 
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
 
   virtual absl::StatusOr<std::string> SerializeExecutable(
