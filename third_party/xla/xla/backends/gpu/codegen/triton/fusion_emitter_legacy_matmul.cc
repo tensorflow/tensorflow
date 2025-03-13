@@ -795,6 +795,18 @@ ma::ConstantOp Cst(EmitterLocOpBuilder b, Type index_ty, int64_t v) {
   return CreateConst(b, index_ty, v);
 }
 
+AutotuneResult::TritonGemmKey DefaultTritonGemmKey() {
+  AutotuneResult::TritonGemmKey triton_gemm_key;
+  triton_gemm_key.set_block_m(64);
+  triton_gemm_key.set_block_k(64);
+  triton_gemm_key.set_block_n(64);
+  triton_gemm_key.set_split_k(1);
+  triton_gemm_key.set_num_stages(1);
+  triton_gemm_key.set_num_warps(2);
+  triton_gemm_key.set_num_ctas(1);
+  return triton_gemm_key;
+}
+
 ma::ConstantOp Cst32(EmitterLocOpBuilder b, int32_t v) {
   return CreateConst(b, b.getI32Type(), v);
 }
@@ -2184,6 +2196,22 @@ Value EmitDotOperation(EmitterLocOpBuilder& b, Value lhs, Value rhs, Value acc,
                              /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
 }
 
+absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
+    const HloFusionInstruction* fusion) {
+  auto backend_config =
+      fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
+
+  if (!backend_config.has_triton_gemm_config()) {
+    // TODO(bchetioui): consolidate default parameters. At the moment, these
+    // may be constructed in two distinct places.
+    LOG(WARNING) << "Using fallback triton GEMM config for op "
+                 << fusion->name();
+    *backend_config.mutable_triton_gemm_config() = DefaultTritonGemmKey();
+  }
+
+  return TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
+}
+
 }  // namespace
 
 // Use tiling and execution parameters from 'config'. BlockLevelParameters are
@@ -2196,27 +2224,8 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     const BlockLevelParameters&) {
   // TODO b/315957220: Populate tma_metadata.
   stream_executor::gpu::TmaMetadata tma_metadata;
-  auto backend_config =
-      fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
 
-  if (!backend_config.has_triton_gemm_config()) {
-    // TODO(bchetioui): consolidate default parameters. At the moment, these
-    // may be constructed in two distinct places.
-    LOG(WARNING) << "Using fallback triton GEMM config for op "
-                 << fusion->name();
-    auto& triton_config = *backend_config.mutable_triton_gemm_config();
-    triton_config.set_block_m(64);
-    triton_config.set_block_k(64);
-    triton_config.set_block_n(64);
-    triton_config.set_split_k(1);
-    triton_config.set_num_stages(1);
-    triton_config.set_num_warps(2);
-    triton_config.set_num_ctas(1);
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      TritonGemmConfig config,
-      TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
+  TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(fusion));
   TF_ASSIGN_OR_RETURN(auto analysis,
                       TritonFusionAnalysis::Execute(
                           *fusion->called_computation(), config.split_k));
