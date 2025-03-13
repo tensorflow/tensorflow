@@ -1100,10 +1100,11 @@ cc_library(
     deps = [
         ":annotation",
         ":thunk",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ],
 )

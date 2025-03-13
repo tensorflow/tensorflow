@@ -345,7 +345,11 @@ absl::Status ExecuteThunksImpl(
       command_buffer_trace_stream, &collective_params, &collective_cliques,
       std::move(additional_execution_streams));
 
+  VLOG(1) << "[" << run_options->device_ordinal() << "] "
+          << "Start GpuExecutable::ExecuteOnStream module: " << module_name;
   TF_RETURN_IF_ERROR(thunk_sequence.ExecuteOnStream(execute_params));
+  VLOG(1) << "[" << run_options->device_ordinal() << "] "
+          << "End GpuExecutable::ExecuteOnStream module: " << module_name;
 
   return MaybeSyncAndProfile(run_options, execution_timer.get(),
                              block_host_until_done ? main_stream : nullptr);
