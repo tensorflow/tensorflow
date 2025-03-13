@@ -1950,3 +1950,43 @@ def RealDivWithF32ConstDivisor : Pat<
       (GetScalarOfType<1> (Arith_ConstantOp $value))),
       (Arith_ConstantOp $value),  TFL_AF_None),
     $activation)>;
+
+// This pattern optimizes:
+//   (x + cst1) + cst2 -> x + cst
+//   (x - cst1) - cst2 -> x - cst
+// Where: cst = cst1 + cst2
+foreach BinaryOp = [TFL_AddOp, TFL_SubOp] in {
+  def OptimizeConsecutive#BinaryOp : Pat<
+    (BinaryOp
+      (BinaryOp $x, (Arith_ConstantOp:$cst1 $cst1_value), TFL_AF_None),
+      (Arith_ConstantOp:$cst2 $cst2_value), $activation),
+    (BinaryOp
+      $x, (TFL_AddOp $cst1, $cst2, TFL_AF_None), $activation)>;
+}
+
+// This pattern optimizes:
+//   (x + cst1) - cst2 -> x - cst
+//   (x - cst1) + cst2 -> x + cst
+// Where: cst = cst2 - cst1
+foreach BinaryOpPair = [[TFL_AddOp, TFL_SubOp],
+                     [TFL_SubOp, TFL_AddOp]] in {
+  def OptimizeConsecutive#BinaryOpPair[0]#BinaryOpPair[1] : Pat<
+    (BinaryOpPair[0]
+      (BinaryOpPair[1] $x, (Arith_ConstantOp:$cst1 $cst1_value), TFL_AF_None),
+      (Arith_ConstantOp:$cst2 $cst2_value), $activation),
+    (BinaryOpPair[0]
+      $x, (TFL_SubOp  $cst2, $cst1, TFL_AF_None), $activation)>;
+}
+
+// This pattern optimizes:
+//   (x * cst1) * cst2 -> x * cst
+//   (x / cst1) / cst2 -> x / cst
+// Where: cst = cst1 * cst2
+foreach BinaryOp = [TFL_MulOp, TFL_DivOp] in {
+  def OptimizeConsecutive#BinaryOp : Pat<
+    (BinaryOp
+      (BinaryOp $x, (Arith_ConstantOp:$cst1 $cst1_value), TFL_AF_None),
+      (Arith_ConstantOp:$cst2 $cst2_value), $activation),
+    (BinaryOp
+      $x, (TFL_MulOp $cst1, $cst2, TFL_AF_None), $activation)>;
+}

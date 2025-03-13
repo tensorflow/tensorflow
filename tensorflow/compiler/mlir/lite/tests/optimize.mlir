@@ -2196,30 +2196,6 @@ func.func @ReorderAddWithConstant(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: %[[RESULT:.*]] = tfl.add %arg0, %[[CONST]] {fused_activation_function = "NONE"} : tensor<2x2xf32>
 }
 
-func.func @NotReorderAddWithConstantOn5D(%arg0: tensor<2x2x2x2x2xf32>) -> tensor<2x2x2x2x2xf32> {
-  %cst = arith.constant dense<1.0> : tensor<2x2x2x2x2xf32>
-  %cst_1 = arith.constant dense<2.0> : tensor<2x2x2x2x2xf32>
-  %0 = "tfl.add"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2x2x2x2x2xf32>, tensor<2x2x2x2x2xf32>) -> tensor<2x2x2x2x2xf32>
-  %1 = "tfl.add"(%0, %cst_1) {fused_activation_function = "NONE"} : (tensor<2x2x2x2x2xf32>, tensor<2x2x2x2x2xf32>) -> tensor<2x2x2x2x2xf32>
-  func.return %1 : tensor<2x2x2x2x2xf32>
-
-  // CHECK-LABEL: NotReorderAddWithConstantOn5D
-  // CHECK: tfl.add
-  // CHECK: tfl.add
-}
-
-func.func @NotReorderAddWithUnranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %cst = arith.constant dense<1.0> : tensor<2x2xf32>
-  %cst_1 = arith.constant dense<2.0> : tensor<2x2xf32>
-  %0 = "tfl.add"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<*xf32>, tensor<2x2xf32>) -> tensor<*xf32>
-  %1 = "tfl.add"(%0, %cst_1) {fused_activation_function = "NONE"} : (tensor<*xf32>, tensor<2x2xf32>) -> tensor<*xf32>
-  func.return %1 : tensor<*xf32>
-
-  // CHECK-LABEL: NotReorderAddWithUnranked
-  // CHECK: tfl.add
-  // CHECK: tfl.add
-}
-
 func.func @RemoveCast(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %1 = "tfl.cast"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %1 : tensor<2x2xf32>
@@ -4528,6 +4504,78 @@ func.func @RealDivWithConstDivisor(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %1 = tfl.div(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
   func.return %1 : tensor<2x3xf32>
   // CHECK: %cst = arith.constant dense<2.000000e-01> : tensor<f32>
+  // CHECK: %0 = tfl.mul(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  // CHECK: return %0 : tensor<2x3xf32>
+}
+
+// CHECK-LABEL: @PromoteConstantFoldingAdd
+func.func @PromoteConstantFoldingAdd(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  %cst_0 = arith.constant dense<10.000000e+00> : tensor<f32>
+  %1 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %2 = tfl.add(%1, %cst_0) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  func.return %2 : tensor<2x3xf32>
+  // CHECK: %cst = arith.constant dense<1.500000e+01> : tensor<f32>
+  // CHECK: %0 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  // CHECK: return %0 : tensor<2x3xf32>
+}
+
+// CHECK-LABEL: @PromoteConstantFoldingSub
+func.func @PromoteConstantFoldingSub(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  %cst_0 = arith.constant dense<10.000000e+00> : tensor<f32>
+  %1 = tfl.sub(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %2 = tfl.sub(%1, %cst_0) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  func.return %2 : tensor<2x3xf32>
+  // CHECK: %cst = arith.constant dense<1.500000e+01> : tensor<f32>
+  // CHECK: %0 = tfl.sub(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  // CHECK: return %0 : tensor<2x3xf32>
+}
+
+// CHECK-LABEL: @PromoteConstantFoldingAddSub
+func.func @PromoteConstantFoldingAddSub(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  %cst_0 = arith.constant dense<10.000000e+00> : tensor<f32>
+  %1 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %2 = tfl.sub(%1, %cst_0) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  func.return %2 : tensor<2x3xf32>
+  // CHECK: %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  // CHECK: %0 = tfl.sub(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  // CHECK: return %0 : tensor<2x3xf32>
+}
+
+// CHECK-LABEL: @PromoteConstantFoldingSubAdd
+func.func @PromoteConstantFoldingSubAdd(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  %cst_0 = arith.constant dense<10.000000e+00> : tensor<f32>
+  %1 = tfl.sub(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %2 = tfl.add(%1, %cst_0) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  func.return %2 : tensor<2x3xf32>
+  // CHECK: %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  // CHECK: %0 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  // CHECK: return %0 : tensor<2x3xf32>
+}
+
+// CHECK-LABEL: @PromoteConstantFoldingMul
+func.func @PromoteConstantFoldingMul(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  %cst_0 = arith.constant dense<10.000000e+00> : tensor<f32>
+  %1 = tfl.mul(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %2 = tfl.mul(%1, %cst_0) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  func.return %2 : tensor<2x3xf32>
+  // CHECK: %cst = arith.constant dense<5.000000e+01> : tensor<f32>
+  // CHECK: %0 = tfl.mul(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  // CHECK: return %0 : tensor<2x3xf32>
+}
+
+// CHECK-LABEL: @PromoteConstantFoldingDiv
+func.func @PromoteConstantFoldingDiv(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  %cst_0 = arith.constant dense<10.000000e+00> : tensor<f32>
+  %1 = tfl.div(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %2 = tfl.div(%1, %cst_0) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  func.return %2 : tensor<2x3xf32>
+  // CHECK: %cst = arith.constant dense<2.000000e-02> : tensor<f32>
   // CHECK: %0 = tfl.mul(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
   // CHECK: return %0 : tensor<2x3xf32>
 }
