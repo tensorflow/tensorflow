@@ -38,9 +38,8 @@ namespace profiler {
 namespace {
 
 absl::StatusOr<PreprocessResult> GetMemoryViewerPreprocessResult(
-    const xla::HloProto& hlo_proto) {
+    const xla::HloProto& hlo_proto, int kMemorySpaceColor) {
   static constexpr int kSmallBufferSize = 16 * 1024;  // 16KB
-  static constexpr int kMemorySpaceColor = 0;         // HBM
 
   auto result_or = ConvertHloProtoToPreprocessResult(
       hlo_proto, kSmallBufferSize, kMemorySpaceColor);
@@ -53,8 +52,9 @@ absl::StatusOr<PreprocessResult> GetMemoryViewerPreprocessResult(
 }
 
 absl::StatusOr<std::string> ConvertHloProtoToMemoryViewer(
-    const xla::HloProto& hlo_proto) {
-  auto result_or = GetMemoryViewerPreprocessResult(hlo_proto);
+    const xla::HloProto& hlo_proto, int kMemorySpaceColor) {
+  auto result_or =
+      GetMemoryViewerPreprocessResult(hlo_proto, kMemorySpaceColor);
   if (!result_or.ok()) {
     return result_or.status();
   }
@@ -75,8 +75,9 @@ absl::StatusOr<std::string> ConvertHloProtoToMemoryViewer(
 }
 
 absl::StatusOr<std::string> ConvertHloProtoToAllocationTimeline(
-    const xla::HloProto& hlo_proto) {
-  auto result_or = GetMemoryViewerPreprocessResult(hlo_proto);
+    const xla::HloProto& hlo_proto, int kMemorySpaceColor) {
+  auto result_or =
+      GetMemoryViewerPreprocessResult(hlo_proto, kMemorySpaceColor);
   if (!result_or.ok()) {
     return result_or.status();
   }
@@ -117,11 +118,15 @@ absl::StatusOr<std::string> ConvertHloProtoToToolData(
       GetHloProtoByModuleName(session_snapshot, *hlo_module_name));
 
   // Convert from HLO proto to tools data.
+  std::string memory_space_color_str =
+      GetParamWithDefault(options, "memory_space", std::string("0"));
+  int memory_space_color = std::stoi(memory_space_color_str);
+
   if (tool_name == "memory_viewer") {
     if (GetParamWithDefault(options, "view_memory_allocation_timeline", 0)) {
-      return ConvertHloProtoToAllocationTimeline(hlo_proto);
+      return ConvertHloProtoToAllocationTimeline(hlo_proto, memory_space_color);
     }
-    return ConvertHloProtoToMemoryViewer(hlo_proto);
+    return ConvertHloProtoToMemoryViewer(hlo_proto, memory_space_color);
   } else if (tool_name == "graph_viewer") {
     return ConvertHloProtoToGraphViewer(hlo_proto, options);
   } else {
