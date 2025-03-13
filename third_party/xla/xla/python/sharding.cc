@@ -188,8 +188,7 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
   if (idl.is_none()) {
     internal_device_list_ = std::nullopt;
   } else {
-    internal_device_list_ = nb::cast<xla::nb_class_ptr<jax::PyDeviceList>>(
-        nb::object(mesh_.attr("_internal_device_list")));
+    internal_device_list_ = nb::cast<xla::nb_class_ptr<jax::PyDeviceList>>(idl);
   }
   if (internal_device_list_) {
     memory_kind_ =
@@ -198,8 +197,14 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
     memory_kind_ = nb::none();
   }
 
-  nb::module_ si = nb::module_::import_("jax._src.named_sharding");
-  si.attr("check_pspec")(mesh_, spec_, manual_axes_);
+  // TODO(phawkins): this leaks a reference to the check_pspec function.
+  // A better way to fix this would be to move PartitionSpec and this check into
+  // C++.
+  static nb::object* check_pspec = []() {
+    nb::module_ si = nb::module_::import_("jax._src.named_sharding");
+    return new nb::object(si.attr("check_pspec"));
+  }();
+  (*check_pspec)(mesh_, spec_, manual_axes_);
 }
 
 SingleDeviceSharding::SingleDeviceSharding(nb::object device,
