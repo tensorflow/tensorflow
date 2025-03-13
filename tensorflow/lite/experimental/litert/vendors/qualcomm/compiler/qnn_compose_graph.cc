@@ -700,7 +700,6 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
     std::move(op_wrappers.begin(), op_wrappers.end(),
               std::back_inserter(graph_op_wrappers));
   }
-  // Insert all tensors into Qnn graph and update the id of Qnn_Tensor_t inside.
   tensor_pool.ForEach(
       [&qnn, &graph_mapper](::qnn::TensorWrapper& tensor_wrapper) {
         // TODO(chunhsue): Use compile interface to get useQInt16AsQUint16.
@@ -708,14 +707,38 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
         if constexpr (useQInt16AsQUint16) {
           tensor_wrapper.ConvertQint16ToQuint16();
         }
+      });
+  // Create ops and their corresponding tensorss.
+  for (auto& op_wrapper : graph_op_wrappers) {
+    for (const auto& tensor_wrapper_ref : op_wrapper.GetInputTensors()) {
+      ::qnn::TensorWrapper& tensor_wrapper =
+          const_cast<::qnn::TensorWrapper&>(tensor_wrapper_ref.get());
+      if (tensor_wrapper.HasRefs()) {
         qnn.Api()->tensorCreateGraphTensor(graph_mapper.QnnGraph(),
                                            &tensor_wrapper.GetQnnTensor());
-      });
-  // Then op can be added into Qnn graph after the tensor ids are updated.
-  for (auto& op_wrapper : graph_op_wrappers) {
+        tensor_wrapper.ResetRefCnt();
+      }
+    }
+    for (const auto& tensor_wrapper_ref : op_wrapper.GetOutputTensors()) {
+      ::qnn::TensorWrapper& tensor_wrapper =
+          const_cast<::qnn::TensorWrapper&>(tensor_wrapper_ref.get());
+      if (tensor_wrapper.HasRefs()) {
+        qnn.Api()->tensorCreateGraphTensor(graph_mapper.QnnGraph(),
+                                           &tensor_wrapper.GetQnnTensor());
+        tensor_wrapper.ResetRefCnt();
+      }
+    }
+    for (const auto& tensor_param : op_wrapper.GetTensorParams()) {
+      ::qnn::TensorWrapper& tensor_wrapper =
+          const_cast<::qnn::TensorWrapper&>(tensor_param.GetTensorWrapper());
+      if (tensor_wrapper.HasRefs()) {
+        qnn.Api()->tensorCreateGraphTensor(graph_mapper.QnnGraph(),
+                                           &tensor_wrapper.GetQnnTensor());
+        tensor_wrapper.ResetRefCnt();
+      }
+    }
     qnn.Api()->graphAddNode(graph_mapper.QnnGraph(), op_wrapper.GetOpConfig());
   }
-
   LITERT_RETURN_STATUS_IF_QNN_NOT_OK(graph_mapper.Finalize());
 
   return kLiteRtStatusOk;
