@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
@@ -25,6 +28,15 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
+#include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/schema/soc_table.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpContext.h"
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 #include "third_party/qairt/latest/include/QNN/QnnBackend.h"
@@ -37,14 +49,6 @@
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemCommon.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemInterface.h"
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
-#include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
 
 namespace litert::qnn {
 
@@ -262,7 +266,7 @@ LiteRtStatus QnnManager::ValidateOp(const Qnn_OpConfig_t& op_config) {
 
 LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
                               std::optional<std::string> shared_library_dir,
-                              std::optional<QnnHtpDevice_Arch_t> soc_model) {
+                              std::optional<::qnn::SocInfo> soc_info) {
   // Users can set ADSP_LIBRARY_PATH, if it is not set, we will set it to the
   // shared library directory.
   if (getenv("ADSP_LIBRARY_PATH") == nullptr &&
@@ -309,22 +313,64 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
     return kLiteRtStatusErrorRuntimeFailure;
   }
 
-  if (soc_model.has_value()) {
-    soc_model_ = *soc_model;
+  if (soc_info.has_value()) {
+    soc_info_ = *soc_info;
     LITERT_LOG(LITERT_INFO,
-               "Initializing QNN backend for device architecture %d",
-               *soc_model);
-    QnnHtpDevice_CustomConfig_t arch_custom_config = {};
-    arch_custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_ARCH;
-    arch_custom_config.arch.arch = *soc_model;
-    arch_custom_config.arch.deviceId = 0;
+               "Initializing QNN backend for device architecture V%d",
+               soc_info_.dsp_arch);
 
-    QnnDevice_Config_t arch_device_config = {};
-    arch_device_config.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
-    arch_device_config.customConfig = &arch_custom_config;
+    QnnHtpDevice_DeviceInfoExtension_t htp_device_device_info_extension;
+    htp_device_device_info_extension.devType = QNN_HTP_DEVICE_TYPE_ON_CHIP;
+    htp_device_device_info_extension.onChipDevice.vtcmSize =
+        soc_info_.vtcm_size_in_mb;
+    htp_device_device_info_extension.onChipDevice.signedPdSupport =
+        0;  // TODO(jiunkaiy): Change to compilation flag.
+    htp_device_device_info_extension.onChipDevice.socModel =
+        static_cast<uint32_t>(soc_info_.soc_model);
+    htp_device_device_info_extension.onChipDevice.arch =
+        static_cast<QnnHtpDevice_Arch_t>(soc_info_.dsp_arch);
+    htp_device_device_info_extension.onChipDevice.dlbcSupport =
+        0;  // TODO(jiunkaiy): Refer to soc table.
 
-    const QnnDevice_Config_t* device_configs[2] = {
-        &arch_device_config,
+    QnnDevice_CoreInfo_t device_core_info;
+    device_core_info.version = QNN_DEVICE_CORE_INFO_VERSION_1;
+    device_core_info.v1.coreId = 0;
+    device_core_info.v1.coreType = 0;
+    device_core_info.v1.coreInfoExtension = nullptr;
+
+    QnnDevice_HardwareDeviceInfo_t device_hardware_device_info;
+    device_hardware_device_info.version =
+        QNN_DEVICE_HARDWARE_DEVICE_INFO_VERSION_1;
+    device_hardware_device_info.v1.deviceId = 0;
+    device_hardware_device_info.v1.deviceType = 0;
+    device_hardware_device_info.v1.numCores = 1;
+    device_hardware_device_info.v1.deviceInfoExtension =
+        &htp_device_device_info_extension;
+    device_hardware_device_info.v1.cores = &device_core_info;
+
+    QnnDevice_PlatformInfo_t device_platform_info;
+    device_platform_info.version = QNN_DEVICE_PLATFORM_INFO_VERSION_1;
+    device_platform_info.v1.numHwDevices = 1;
+    device_platform_info.v1.hwDevices = &device_hardware_device_info;
+
+    QnnDevice_Config_t device_config_platform_info = {};
+    device_config_platform_info.option = QNN_DEVICE_CONFIG_OPTION_PLATFORM_INFO;
+    device_config_platform_info.customConfig =
+        static_cast<QnnDevice_CustomConfig_t>(&device_platform_info);
+
+    QnnHtpDevice_CustomConfig_t htp_device_custom_config;
+    htp_device_custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_SOC;
+    htp_device_custom_config.socModel =
+        static_cast<uint32_t>(soc_info_.soc_model);
+
+    QnnDevice_Config_t device_config_custom = {};
+    device_config_custom.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
+    device_config_custom.customConfig =
+        static_cast<QnnDevice_CustomConfig_t>(&htp_device_custom_config);
+
+    const QnnDevice_Config_t* device_configs[3] = {
+        &device_config_custom,
+        &device_config_platform_info,
         nullptr,
     };
 
@@ -385,9 +431,9 @@ Expected<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
 Expected<QnnManager::Ptr> QnnManager::Create(
     absl::Span<const QnnBackend_Config_t*> configs,
     std::optional<std::string> shared_library_dir,
-    std::optional<QnnHtpDevice_Arch_t> soc_model) {
+    std::optional<::qnn::SocInfo> soc_info) {
   Ptr qnn_manager(new QnnManager);
-  if (auto status = qnn_manager->Init(configs, shared_library_dir, soc_model);
+  if (auto status = qnn_manager->Init(configs, shared_library_dir, soc_info);
       status != kLiteRtStatusOk) {
     return Unexpected(status, "Failed to set up QNN manager");
   }
