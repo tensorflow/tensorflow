@@ -307,7 +307,7 @@ def LegalizeSelectV2NotSameStaticShape : Pat<
   [(OpHasNotSameStaticShapes $src_op)]>;
 def LegalizeShape : Pat<(TF_ShapeOp $arg), (TFL_ShapeOp $arg)>;
 def LegalizeSigmoid : Pat<(TF_SigmoidOp $arg), (TFL_LogisticOp $arg)>;
-def LegalizeSin : Pat<(TF_SinOp F32Tensor:$arg), (TFL_SinOp $arg)>;
+def LegalizeSin : Pat<(TF_SinOp $arg), (TFL_SinOp $arg)>;
 def LegalizeSlice : Pat<(TF_SliceOp $input, $begin, $size),
                         (TFL_SliceOp $input, $begin, $size)>;
 def LegalizeSoftmax : Pat<(TF_SoftmaxOp $arg),
