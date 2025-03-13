@@ -46,10 +46,11 @@ static bool InstructionIsUnavailable(const HloInstruction* instr) {
   // requires a thread pool to be passed so we conservitvely exclude it.
   // (This could be relaxed with a little work to make it optional if required).
   switch (instr->opcode()) {
+    case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
-    case HloOpcode::kConvolution:
+    case HloOpcode::kScatter:
       return true;
     default:
       return IsCollective(instr);
