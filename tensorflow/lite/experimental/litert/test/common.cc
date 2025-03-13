@@ -97,6 +97,17 @@ std::string GetTfliteFilePath(absl::string_view filename) {
   }
 }
 
+std::string GetLiteRtPath(absl::string_view rel_path) {
+  static constexpr absl::string_view kLiteRtRoot =
+      "tensorflow/lite/experimental/litert/";
+
+  if constexpr (!tsl::kIsOpenSource) {
+    return internal::Join({"third_party", kLiteRtRoot, rel_path});
+  } else {
+    return internal::Join({kLiteRtRoot, rel_path});
+  }
+}
+
 Model LoadTestFileModel(absl::string_view filename) {
   return *Model::CreateFromFile(GetTestFilePath(filename));
 }

@@ -47,8 +47,14 @@ class UniqueTestDirectory {
   std::string tmpdir_;
 };
 
+// Gets the path to the given filename in the testdata directory.
 std::string GetTestFilePath(absl::string_view filename);
+
+// Gets a path to the given filename in the tflite directory.
 std::string GetTfliteFilePath(absl::string_view filename);
+
+// Gets a full path given a path relative to the litert directory.
+std::string GetLiteRtPath(absl::string_view rel_path);
 
 Model LoadTestFileModel(absl::string_view filename);
 
