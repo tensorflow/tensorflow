@@ -87,10 +87,9 @@ def map_fn(fn,
 
   #### Specifying `fn`'s output signature
 
-  If `fn`'s input and output signatures are different, then the output
-  signature must be specified using `fn_output_signature`.  (The input and
-  output signatures are differ if their structures, dtypes, or tensor types do
-  not match).  E.g.:
+  If `fn`'s input and output signatures differ (their structures, dtypes or
+  tensor types do not match), then the output signature must be specified using
+  `fn_output_signature`. For example:
 
   >>> tf.map_fn(fn=tf.strings.length,  # input & output have different dtypes
   ...           elems=tf.constant(["hello", "moon"]),
