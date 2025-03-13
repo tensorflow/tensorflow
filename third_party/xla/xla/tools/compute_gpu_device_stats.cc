@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/tools/compute_gpu_device_stats.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -24,16 +26,62 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "third_party/tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
+#include "third_party/tensorflow/core/profiler/protobuf/memory_profile.pb.h"
+#include "third_party/tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "third_party/tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla::gpu {
 
-// Checks if an event is a memcpy operation.
+namespace {
+
+const char* const kMemcpyDetailsStatName = "memcpy_details";
+const char* const kGpuDeviceName = "/device:GPU:0";
+
+// Calculates the peak device memory usage by iterating across all allocators
+// and skipping over any allocations made in host memory.
+absl::StatusOr<int64_t> PeakDeviceMemUsageLifetime(
+    const tensorflow::profiler::MemoryProfile& memory_profile) {
+  int64_t peak_bytes = 0;
+  // Finds the max memory usage among all memory allocators.
+  for (const auto& [id, allocator] :
+       memory_profile.memory_profile_per_allocator()) {
+    // Skips the host memory.
+    if (absl::StrContains(absl::AsciiStrToLower(id), "host")) continue;
+    const auto& peak_stats = allocator.profile_summary().peak_stats();
+    peak_bytes = std::max(
+        {peak_bytes, allocator.profile_summary().peak_bytes_usage_lifetime(),
+         peak_stats.peak_bytes_in_use()});
+  }
+  return peak_bytes;
+}
+
+// Returns the peak memory usage of the device.
+absl::StatusOr<int64_t> GetPeakDeviceMemory(
+    const tensorflow::profiler::XSpace& xspace) {
+  const tensorflow::profiler::XPlane* host_plane =
+      tensorflow::profiler::FindPlaneWithName(
+          xspace, tsl::profiler::kHostThreadsPlaneName);
+  if (!host_plane) {
+    VLOG(1) << "No host plane found.";
+    return 0;
+  }
+  tensorflow::profiler::MemoryProfile memory_profile =
+      tensorflow::profiler::ConvertXPlaneToMemoryProfile(
+          *host_plane, std::numeric_limits<int64_t>::max());
+  return PeakDeviceMemUsageLifetime(memory_profile);
+}
+}  // namespace
+
 bool IsMemcpy(const tensorflow::profiler::XEvent& event,
               int64_t memcpy_details_id) {
   for (const auto& stat : event.stats()) {
@@ -56,45 +104,49 @@ absl::StatusOr<LineStats> ProcessLineEvents(
   return stats;
 }
 
-absl::StatusOr<GpuDeviceStats> CalculateDeviceTimeAndMemcpy(
-    const tensorflow::profiler::XSpace& xspace, absl::string_view device_name) {
+absl::StatusOr<GpuDeviceStats> ComputeGPUDeviceStats(
+    const tensorflow::profiler::XSpace& xspace) {
   GpuDeviceStats result;
   int64_t total_time_ps = 0;
   int64_t memcpy_time_ps = 0;
+  int64_t memcpy_details_id = -1;
+  bool device_plane_found = false;
 
-  // Iterate over planes to find the device
   for (const tensorflow::profiler::XPlane& plane : xspace.planes()) {
-    if (plane.name() != device_name) {
-      continue;  // Skip planes that aren't the target device.
-    }
+    if (plane.name() == kGpuDeviceName) {
+      device_plane_found = true;
 
-    // Create a map for stat metadata
-    absl::flat_hash_map<std::string, int64_t> stat_metadata_map;
-    for (const auto& stat_metadata : plane.stat_metadata()) {
-      stat_metadata_map[stat_metadata.second.name()] =
-          stat_metadata.second.id();
-    }
+      absl::flat_hash_map<std::string, int64_t> stat_metadata_map;
+      for (const auto& stat_metadata : plane.stat_metadata()) {
+        stat_metadata_map[stat_metadata.second.name()] =
+            stat_metadata.second.id();
+      }
 
-    // Determine the memcpy details ID.
-    int64_t memcpy_details_id = -1;
-    if (auto it = stat_metadata_map.find("memcpy_details");
-        it != stat_metadata_map.end()) {
-      memcpy_details_id = it->second;
-    }
+      if (auto it = stat_metadata_map.find(kMemcpyDetailsStatName);
+          it != stat_metadata_map.end()) {
+        memcpy_details_id = it->second;
+      }
 
-    // Process each line in the plane
-    for (const auto& line : plane.lines()) {
-      TF_ASSIGN_OR_RETURN(LineStats line_stats,
-                          ProcessLineEvents(line, memcpy_details_id));
-      total_time_ps += line_stats.total_time_ps;
-      memcpy_time_ps += line_stats.memcpy_time_ps;
+      for (const auto& line : plane.lines()) {
+        TF_ASSIGN_OR_RETURN(LineStats line_stats,
+                            ProcessLineEvents(line, memcpy_details_id));
+        total_time_ps += line_stats.total_time_ps;
+        memcpy_time_ps += line_stats.memcpy_time_ps;
+      }
+      break;
     }
-    break;
   }
 
-  // Calculate the time in microseconds
+  if (!device_plane_found) {
+    return absl::NotFoundError(absl::StrFormat(
+        "Device plane '%s' not found in XSpace.", kGpuDeviceName));
+  }
+
   result.device_time_us = static_cast<double>(total_time_ps) / 1e6;
   result.device_memcpy_time_us = static_cast<double>(memcpy_time_ps) / 1e6;
+
+  TF_ASSIGN_OR_RETURN(result.peak_device_mem_bytes,
+                      GetPeakDeviceMemory(xspace));
   return result;
 }
 
@@ -112,10 +164,9 @@ absl::Status Run(absl::string_view input_file) {
 
   LOG(INFO) << "Successfully parsed XSpace proto.";
 
-  // Calculate device and memcpy times
-  const std::string device_name = "/device:GPU:0";
-  absl::StatusOr<GpuDeviceStats> stats =
-      CalculateDeviceTimeAndMemcpy(*xspace_proto, device_name);
+  // Calculate the GPU device statistics: device time, memcpy time, and peak
+  // device memory usage.
+  absl::StatusOr<GpuDeviceStats> stats = ComputeGPUDeviceStats(*xspace_proto);
   if (!stats.ok()) {
     return stats.status();
   }
@@ -124,6 +175,9 @@ absl::Status Run(absl::string_view input_file) {
   std::cout << absl::StrFormat("Device Time: %.2f us\n", stats->device_time_us)
             << absl::StrFormat("Device Memcpy Time: %.2f us\n",
                                stats->device_memcpy_time_us);
+  std::cout << absl::StrFormat("Peak Device Memory Usage: %d bytes\n",
+                               stats->peak_device_mem_bytes);
+
   return absl::OkStatus();
 }
 
