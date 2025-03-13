@@ -25,6 +25,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/macros.h"
@@ -781,8 +783,14 @@ class RandomAccessFile {
   /// because of EOF.
   ///
   /// Safe for concurrent use by multiple threads.
+  ABSL_DEPRECATED("Use the version that takes absl::Span<char> instead.")
   virtual absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
                             char* scratch) const = 0;
+
+  virtual absl::Status Read(uint64 offset, size_t n, absl::string_view& result,
+                            absl::Span<char> scratch) const {
+    return Read(offset, n, &result, scratch.data());
+  }
 
 #if defined(TF_CORD_SUPPORT)
   /// \brief Read up to `n` bytes from the file starting at `offset`.
