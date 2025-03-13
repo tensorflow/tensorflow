@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/nccl_ragged_all_to_all_thunk.h"
+#include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 
 #include <cstdint>
 #include <memory>
@@ -65,9 +65,9 @@ namespace {
 // send_sizes, output_offsets, and recv_sizes.
 constexpr int64_t kNumRaggedMetadataOperands = 4;
 
-NcclRaggedAllToAllConfig GetNcclRaggedAllToAllConfig(
+RaggedAllToAllConfig GetRaggedAllToAllConfig(
     const HloRaggedAllToAllInstruction* instr) {
-  NcclRaggedAllToAllConfig config;
+  RaggedAllToAllConfig config;
   config.config = GetCollectiveConfig(instr, std::nullopt);
 
   const Shape& input_size_shape = instr->operand(2)->shape();
@@ -396,13 +396,13 @@ absl::Status RunOneShotRaggedAllToAll(
 
 }  // namespace
 
-NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
+RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
     ThunkInfo thunk_info, const HloRaggedAllToAllInstruction* instr,
     std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
     : CollectiveThunk(Thunk::kNcclRaggedAllToAllStart, thunk_info,
                       IsGPUSyncCollective(*instr),
                       AsyncStreamKind::kCollective),
-      config_(GetNcclRaggedAllToAllConfig(instr)),
+      config_(GetRaggedAllToAllConfig(instr)),
       buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled),
       one_shot_kernel_enabled_(
@@ -413,7 +413,7 @@ NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
-/*static*/ absl::Status NcclRaggedAllToAllStartThunk::CheckImplementable(
+/*static*/ absl::Status RaggedAllToAllStartThunk::CheckImplementable(
     const HloRaggedAllToAllInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
   auto status = [&instr]() -> absl::Status {
@@ -437,16 +437,16 @@ NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
 
     return absl::OkStatus();
   };
-  return AddOpDescription<NcclRaggedAllToAllStartThunk>(
+  return AddOpDescription<RaggedAllToAllStartThunk>(
       status(), instr, replica_count, partition_count);
 }
 
-/*static*/ CollectiveOpGroupMode NcclRaggedAllToAllStartThunk::GetGroupMode(
+/*static*/ CollectiveOpGroupMode RaggedAllToAllStartThunk::GetGroupMode(
     const HloRaggedAllToAllInstruction* instr) {
-  return GetNcclRaggedAllToAllConfig(instr).config.group_mode;
+  return GetRaggedAllToAllConfig(instr).config.group_mode;
 }
 
-absl::Status NcclRaggedAllToAllStartThunk::Initialize(
+absl::Status RaggedAllToAllStartThunk::Initialize(
     const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   device_count_ = params.local_device_count;
@@ -498,7 +498,7 @@ absl::Status NcclRaggedAllToAllStartThunk::Initialize(
   return absl::OkStatus();
 }
 
-bool NcclRaggedAllToAllStartThunk::is_local() const {
+bool RaggedAllToAllStartThunk::is_local() const {
   CHECK_NE(device_count_, -1);
   for (const auto& replica_group : config_.config.replica_groups) {
     const int64_t node_id = replica_group.replica_ids().at(0) / device_count_;
@@ -512,7 +512,7 @@ bool NcclRaggedAllToAllStartThunk::is_local() const {
   return true;
 }
 
-absl::Status NcclRaggedAllToAllStartThunk::RunCollective(
+absl::Status RaggedAllToAllStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(

@@ -143,10 +143,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_group_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/norm_thunk.h"
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
@@ -2692,7 +2692,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         }
         case HloOpcode::kRaggedAllToAll: {
           auto* ragged_all_to_all = Cast<HloRaggedAllToAllInstruction>(wrapped);
-          return EmitNcclThunk<NcclRaggedAllToAllStartThunk,
+          return EmitNcclThunk<RaggedAllToAllStartThunk,
                                HloRaggedAllToAllInstruction>(
               Thunk::kNcclRaggedAllToAll, instr, ragged_all_to_all,
               std::nullopt);

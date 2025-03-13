@@ -781,9 +781,9 @@ cc_library(
 )
 
 cc_library(
-    name = "nccl_ragged_all_to_all_thunk",
-    srcs = ["nccl_ragged_all_to_all_thunk.cc"],
-    hdrs = ["nccl_ragged_all_to_all_thunk.h"],
+    name = "ragged_all_to_all_thunk",
+    srcs = ["ragged_all_to_all_thunk.cc"],
+    hdrs = ["ragged_all_to_all_thunk.h"],
     tags = ["gpu"],
     deps = [
         ":collective_thunk",

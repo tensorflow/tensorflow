@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_NCCL_RAGGED_ALL_TO_ALL_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_NCCL_RAGGED_ALL_TO_ALL_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_THUNK_H_
 
 #include <cstdint>
 #include <memory>
@@ -36,7 +36,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct NcclRaggedAllToAllConfig {
+struct RaggedAllToAllConfig {
   CollectiveConfig config;
   int64_t num_total_updates = 1;
   int64_t num_input_rows = 1;
@@ -45,12 +45,12 @@ struct NcclRaggedAllToAllConfig {
 
 // Thunk that performs a NCCL-based Ragged-All-to-All among CUDA GPU-based
 // replicas.
-class NcclRaggedAllToAllStartThunk : public CollectiveThunk {
+class RaggedAllToAllStartThunk : public CollectiveThunk {
  public:
-  NcclRaggedAllToAllStartThunk(ThunkInfo thunk_info,
-                               const HloRaggedAllToAllInstruction* instr,
-                               std::vector<Buffer> buffers,
-                               bool p2p_memcpy_enabled);
+  RaggedAllToAllStartThunk(ThunkInfo thunk_info,
+                           const HloRaggedAllToAllInstruction* instr,
+                           std::vector<Buffer> buffers,
+                           bool p2p_memcpy_enabled);
 
   // Returns whether the given instruction can be lowered to a nccl
   // ragged-all-to-all call.
@@ -79,7 +79,7 @@ class NcclRaggedAllToAllStartThunk : public CollectiveThunk {
     return one_shot_kernel_enabled_ && is_local();
   }
 
-  const NcclRaggedAllToAllConfig config_;
+  const RaggedAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
   int64_t device_count_ = -1;
   const bool p2p_memcpy_enabled_;
@@ -106,4 +106,4 @@ class NcclRaggedAllToAllStartThunk : public CollectiveThunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_NCCL_RAGGED_ALL_TO_ALL_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_THUNK_H_
