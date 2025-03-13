@@ -907,6 +907,7 @@ xla_cc_test(
         "gpu",
         "no_oss",
         "nomsan",
+        "notap",  # TODO(b/399931591): Re-enable once flakiness is resolved.
     ] + if_google(google_value = ["requires-gpu-nvidia:2"]),  # This tag is not documented in OSS yet.
     deps = [
         "//xla:debug_options_flags",
