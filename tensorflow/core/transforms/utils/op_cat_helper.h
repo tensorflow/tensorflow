@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TRANSFORMS_UTILS_OP_CAT_HELPER_H_
 #define TENSORFLOW_CORE_TRANSFORMS_UTILS_OP_CAT_HELPER_H_
 
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
