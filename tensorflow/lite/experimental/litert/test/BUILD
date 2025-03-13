@@ -182,5 +182,6 @@ cc_library(
 
 exports_files(srcs = [
     "testdata/simple_model_google_tensor.bin",
+    "testdata/simple_model_mtk.bin",
     "testdata/simple_model_qualcomm.bin",
 ])
