@@ -183,6 +183,9 @@ def ExpandTo4DForConv: NativeCodeCall<"ExpandTo4DForConv($0)">;
 def ExpandTo4DForDepthwiseConv: NativeCodeCall<
   "ExpandTo4DForDepthwiseConv($0)">;
 
+def IsScaleOfSum:
+   Constraint<CPred<"IsScaleOfSum($0, $1, $2)">>;
+
 // If we see a (div or Mul) op (dividing/multiplying) a constant value
 // to a convolution op with constant filter and bias, we can fuse the div/mul
 // into the convolution op by constant folding
@@ -1950,3 +1953,15 @@ def RealDivWithF32ConstDivisor : Pat<
       (GetScalarOfType<1> (Arith_ConstantOp $value))),
       (Arith_ConstantOp $value),  TFL_AF_None),
     $activation)>;
+
+
+// Fuse Sum -> Mul into Mean if the  RHS of Mul is constant equals to scale 
+// where scale = 1  then  scale= scale *(1/number of element) for each axis 
+// in the sum.
+def FuseSumMulintoMean: Pat<
+  (TFL_MulOp:$src
+    (TFL_SumOp:$sum $sum_input, (Arith_ConstantOp I32ElementsAttr: $axes),
+                             $keep_dims),
+    (Arith_ConstantOp FloatElementsAttr:$scale), TFL_AF_None),
+  (TFL_MeanOp $sum_input, (Arith_ConstantOp $axes), $keep_dims),
+  [(IsScaleOfSum $sum_input, $axes, $scale)]>;

@@ -690,6 +690,39 @@ bool HasOneUseOrUsedByOnlyBinaryOps(Value out_value) {
   return true;
 }
 
+// Fuse Sum -> Mul into Mean if the  RHS of Mul is constant equals to scale
+// where scale = 1  then  scale= scale *(1/number of element) for each axis
+// in the sum.
+bool IsScaleOfSum(mlir::Value sum_input, const mlir::Attribute &axes,
+                  const mlir::Attribute &expected_scale) {
+  auto sum_input_type = mlir::dyn_cast<ShapedType>(sum_input.getType());
+  auto axes_attr = mlir::dyn_cast<DenseIntElementsAttr>(axes);
+  auto expected_scale_attr =
+      mlir::dyn_cast<DenseFPElementsAttr>(expected_scale);
+
+  if (!sum_input_type || !axes_attr || !expected_scale_attr) {
+    return false;
+  }
+
+  double expected_scale_value =
+      expected_scale_attr.getValues<APFloat>()[0].convertToDouble();
+  double scale_value = 1;
+
+  for (auto axis : axes_attr.getValues<APInt>()) {
+    int64_t axis_value = axis.getSExtValue();
+    if (axis_value < 0) {
+      axis_value += sum_input_type.getRank();
+    }
+    if (axis_value < 0 || axis_value >= sum_input_type.getRank()) {
+      return false;
+    }
+
+    scale_value /= sum_input_type.getDimSize(axis_value);
+  }
+
+  return std::abs(scale_value - expected_scale_value) < 1e-6;
+}
+
 // Returns true if attr is a DenseIntElementsAttr of int32 or int64 values or
 // an incrementing sequence from 0 to N-1.
 //
