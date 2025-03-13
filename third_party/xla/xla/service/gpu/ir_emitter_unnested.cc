@@ -135,6 +135,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/fft_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
@@ -149,7 +150,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/norm_thunk.h"
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
-#include "xla/backends/gpu/runtime/send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
@@ -185,7 +185,7 @@ namespace gpu {
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
-      send_recv_events_(std::make_shared<SendRecvAsyncEvents>()),
+      send_recv_events_(std::make_shared<HostSendRecvAsyncEvents>()),
       copy_events_(std::make_shared<CopyThunk::AsyncEvents>()),
       call_graph_(CallGraph::Build(&ir_emitter_context->hlo_module())) {}
 
@@ -2483,7 +2483,7 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
         "Unknown channel id in host transfer send instruction");
   }
 
-  AddThunkToThunkSequence(std::make_unique<SendThunk>(
+  AddThunkToThunkSequence(std::make_unique<HostSendThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), src->shape(), buffer,
       *instr->channel_id(), send_recv_events_,
       ConvertFrontendAttributes(instr->frontend_attributes()),
@@ -2503,7 +2503,7 @@ absl::Status IrEmitterUnnested::EmitSendDoneThunk(
         "Unknown channel id in host transfer send done instruction");
   }
 
-  AddThunkToThunkSequence(std::make_unique<SendDoneThunk>(
+  AddThunkToThunkSequence(std::make_unique<HostSendDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
       send_recv_events_, DeviceConstraint(instr)));
 
@@ -2556,7 +2556,7 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
         "Unknown channel id in host transfer recv instruction");
   }
 
-  AddThunkToThunkSequence(std::make_unique<RecvThunk>(
+  AddThunkToThunkSequence(std::make_unique<HostRecvThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr),
       instr->shape().tuple_shapes()[0], buffer, *instr->channel_id(),
       send_recv_events_,
@@ -2575,7 +2575,7 @@ absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
     return absl::InternalError(
         "Unknown channel id in host transfer recv done instruction");
   }
-  AddThunkToThunkSequence(std::make_unique<RecvDoneThunk>(
+  AddThunkToThunkSequence(std::make_unique<HostRecvDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
       send_recv_events_, DeviceConstraint(instr)));
 

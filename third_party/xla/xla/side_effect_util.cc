@@ -75,4 +75,8 @@ const char kXlaMultiRecvCountAttr[] = "_xla_multi_recv_count";
 
 const char kXlaSchedulingGroupIdAttr[] = "_scheduling_group_id";
 
+const char kMustFuseAttr[] = "MUST_FUSE";
+
+const char kMaximalFuseAttr[] = "MAXIMAL_FUSE";
+
 }  // namespace xla

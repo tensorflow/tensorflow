@@ -85,6 +85,17 @@ extern const char kXlaMultiRecvCountAttr[];
 
 // XLA frontend attribute for specifying the scheduling group id annotations.
 extern const char kXlaSchedulingGroupIdAttr[];
+
+// XLA frontend attributes for specifying fusion directives.
+// MUST_FUSE: all ops labeled so should form as single fusion,
+// MAXIMAL_FUSE: all ops labeled should be in a fusion, but can be split among
+// multiple fusions, else, the compiler will return errors.
+// TODO(b/366060148): Currently, the JAX framework has not finalized on the
+// frontend attribute name for MUST_FUSE and MAXIMAL_FUSE. Update this code
+// once the name is finalized and any additional attributes related to fusion
+// are added.
+extern const char kMustFuseAttr[];
+extern const char kMaximalFuseAttr[];
 }  // namespace xla
 
 #endif  // XLA_SIDE_EFFECT_UTIL_H_

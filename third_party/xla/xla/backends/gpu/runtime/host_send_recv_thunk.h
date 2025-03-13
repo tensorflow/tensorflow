@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_SEND_RECV_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_SEND_RECV_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_HOST_SEND_RECV_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_HOST_SEND_RECV_THUNK_H_
 
 #include <cstdint>
 #include <memory>
@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
@@ -38,10 +39,10 @@ limitations under the License.
 namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
-// SendRecvAsyncEvents
+// HostSendRecvAsyncEvents
 //===----------------------------------------------------------------------===//
 
-// Send/Recv operations have two levels of async behavior:
+// Host Send/Recv operations have two levels of async behavior:
 //
 // (1) AsyncValueRef will become available only after send/recv handler
 //     schedules all activities on the device.
@@ -54,12 +55,12 @@ namespace xla::gpu {
 //
 // Each channel can have at most one event in flight for a given executor.
 //
-// We have a single instance of `SendRecvAsyncEvents` for each Gpu executable,
-// and all thunks share it using a shared pointer.
+// We have a single instance of `HostSendRecvAsyncEvents` for each Gpu
+// executable, and all thunks share it using a shared pointer.
 //
 // TODO(ezhulenev): Rename to `SendRecvEvents` once we remove deprecated XLA
 // runtime, as it has name conflict.
-class SendRecvAsyncEvents {
+class HostSendRecvAsyncEvents {
  public:
   // Emplace a new send/recv completion event.
   absl::Status Emplace(se::StreamExecutor* executor, int32_t channel_id,
@@ -78,15 +79,16 @@ class SendRecvAsyncEvents {
 };
 
 //===----------------------------------------------------------------------===//
-// SendThunk
+// HostSendThunk
 //===----------------------------------------------------------------------===//
 
-class SendThunk : public Thunk {
+class HostSendThunk : public Thunk {
  public:
-  SendThunk(ThunkInfo thunk_info, Shape shape, BufferAllocation::Slice buffer,
-            int64_t channel_id, std::shared_ptr<SendRecvAsyncEvents> events,
-            absl::flat_hash_map<std::string, std::string> frontend_attrs,
-            std::optional<GlobalDeviceId> device_constraint);
+  HostSendThunk(ThunkInfo thunk_info, Shape shape,
+                BufferAllocation::Slice buffer, int64_t channel_id,
+                std::shared_ptr<HostSendRecvAsyncEvents> events,
+                absl::flat_hash_map<std::string, std::string> frontend_attrs,
+                std::optional<GlobalDeviceId> device_constraint);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -96,40 +98,41 @@ class SendThunk : public Thunk {
 
   int64_t channel_id_;
 
-  std::shared_ptr<SendRecvAsyncEvents> events_;
+  std::shared_ptr<HostSendRecvAsyncEvents> events_;
   absl::flat_hash_map<std::string, std::string> frontend_attrs_;
   std::optional<GlobalDeviceId> device_constraint_;
 };
 
 //===----------------------------------------------------------------------===//
-// SendDoneThunk
+// HostSendDoneThunk
 //===----------------------------------------------------------------------===//
 
-class SendDoneThunk : public Thunk {
+class HostSendDoneThunk : public Thunk {
  public:
-  SendDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
-                std::shared_ptr<SendRecvAsyncEvents> events,
-                std::optional<GlobalDeviceId> device_constraint);
+  HostSendDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
+                    std::shared_ptr<HostSendRecvAsyncEvents> events,
+                    std::optional<GlobalDeviceId> device_constraint);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   int64_t channel_id_;
 
-  std::shared_ptr<SendRecvAsyncEvents> events_;
+  std::shared_ptr<HostSendRecvAsyncEvents> events_;
   std::optional<GlobalDeviceId> device_constraint_;
 };
 
 //===----------------------------------------------------------------------===//
-// RecvThunk
+// HostRecvThunk
 //===----------------------------------------------------------------------===//
 
-class RecvThunk : public Thunk {
+class HostRecvThunk : public Thunk {
  public:
-  RecvThunk(ThunkInfo thunk_info, Shape shape, BufferAllocation::Slice buffer,
-            int64_t channel_id, std::shared_ptr<SendRecvAsyncEvents> events,
-            absl::flat_hash_map<std::string, std::string> frontend_attrs,
-            std::optional<GlobalDeviceId> device_constraint);
+  HostRecvThunk(ThunkInfo thunk_info, Shape shape,
+                BufferAllocation::Slice buffer, int64_t channel_id,
+                std::shared_ptr<HostSendRecvAsyncEvents> events,
+                absl::flat_hash_map<std::string, std::string> frontend_attrs,
+                std::optional<GlobalDeviceId> device_constraint);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -139,30 +142,30 @@ class RecvThunk : public Thunk {
 
   int64_t channel_id_;
 
-  std::shared_ptr<SendRecvAsyncEvents> events_;
+  std::shared_ptr<HostSendRecvAsyncEvents> events_;
   absl::flat_hash_map<std::string, std::string> frontend_attrs_;
   std::optional<GlobalDeviceId> device_constraint_;
 };
 
 //===----------------------------------------------------------------------===//
-// RecvDoneThunk
+// HostRecvDoneThunk
 //===----------------------------------------------------------------------===//
 
-class RecvDoneThunk : public Thunk {
+class HostRecvDoneThunk : public Thunk {
  public:
-  RecvDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
-                std::shared_ptr<SendRecvAsyncEvents> events,
-                std::optional<GlobalDeviceId> device_constraint);
+  HostRecvDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
+                    std::shared_ptr<HostSendRecvAsyncEvents> events,
+                    std::optional<GlobalDeviceId> device_constraint);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   int64_t channel_id_;
 
-  std::shared_ptr<SendRecvAsyncEvents> events_;
+  std::shared_ptr<HostSendRecvAsyncEvents> events_;
   std::optional<GlobalDeviceId> device_constraint_;
 };
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_SEND_RECV_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_HOST_SEND_RECV_THUNK_H_
