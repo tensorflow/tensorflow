@@ -53,17 +53,16 @@ xla_client._xla.jax_jit.set_thread_local_state_initialization_callback(
     lambda: None
 )
 
-bfloat16 = xla_client.bfloat16
-# TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
-# float4_e2m1fn = xla_client.float4_e2m1fn
-# float8_e3m4 = xla_client.float8_e3m4
-# float8_e4m3 = xla_client.float8_e4m3
-# float8_e8m0fnu = xla_client.float8_e8m0fnu
-float8_e4m3fn = xla_client.float8_e4m3fn
-float8_e4m3fnuz = xla_client.float8_e4m3fnuz
-float8_e4m3b11fnuz = xla_client.float8_e4m3b11fnuz
-float8_e5m2 = xla_client.float8_e5m2
-float8_e5m2fnuz = xla_client.float8_e5m2fnuz
+bfloat16 = ml_dtypes.bfloat16
+float4_e2m1fn = ml_dtypes.float4_e2m1fn
+float8_e3m4 = ml_dtypes.float8_e3m4
+float8_e4m3 = ml_dtypes.float8_e4m3
+float8_e8m0fnu = ml_dtypes.float8_e8m0fnu
+float8_e4m3fn = ml_dtypes.float8_e4m3fn
+float8_e4m3fnuz = ml_dtypes.float8_e4m3fnuz
+float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11fnuz
+float8_e5m2 = ml_dtypes.float8_e5m2
+float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
 ops = xla_client.ops
 xla_computation_to_mlir_module = (
     xla_client._xla.mlir.xla_computation_to_mlir_module)
