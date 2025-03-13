@@ -26,9 +26,11 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -42,14 +44,18 @@ namespace ifrt {
 struct XlaCompileOptions
     : llvm::RTTIExtends<XlaCompileOptions, CompileOptions> {
   XlaCompileOptions() = default;
-  explicit XlaCompileOptions(xla::CompileOptions compile_options,
-                             std::vector<tsl::RCReference<LoadedHostCallback>>
-                                 loaded_host_callbacks = {})
+  explicit XlaCompileOptions(
+      xla::CompileOptions compile_options,
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks =
+          {},
+      std::shared_ptr<xla::ffi::ExecutionContext> execution_context = nullptr)
       : compile_options(std::move(compile_options)),
-        loaded_host_callbacks(std::move(loaded_host_callbacks)) {}
+        loaded_host_callbacks(std::move(loaded_host_callbacks)),
+        execution_context(std::move(execution_context)) {}
 
   xla::CompileOptions compile_options;
   std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks;
+  std::shared_ptr<xla::ffi::ExecutionContext> execution_context;
 
   // CompileOptions implementation.
 
@@ -71,14 +77,17 @@ struct XlaDeserializeExecutableOptions
   explicit XlaDeserializeExecutableOptions(
       std::optional<xla::CompileOptions> compile_options,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks =
-          {})
+          {},
+      std::shared_ptr<xla::ffi::ExecutionContext> execution_context = nullptr)
       : compile_options(std::move(compile_options)),
-        loaded_host_callbacks(std::move(loaded_host_callbacks)) {}
+        loaded_host_callbacks(std::move(loaded_host_callbacks)),
+        execution_context(std::move(execution_context)) {}
 
   // `compile_options` may be unspecified if deserialization does not override
   // it.
   std::optional<xla::CompileOptions> compile_options;
   std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks;
+  std::shared_ptr<xla::ffi::ExecutionContext> execution_context;
 
   // DeserializeExecutableOptions implementation.
 

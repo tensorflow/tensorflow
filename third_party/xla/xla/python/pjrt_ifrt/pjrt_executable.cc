@@ -31,6 +31,8 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/ffi/execution_context.h"
+#include "xla/ffi/type_id_registry.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/pjrt/host_callback.h"
@@ -204,7 +206,8 @@ absl::StatusOr<std::string> PjRtExecutable::Serialize() const {
 absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+    std::shared_ptr<xla::ffi::ExecutionContext> execution_context) {
   // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
   // shape.
   VLOG(3) << "PjRtLoadedExecutable::Create";
@@ -221,7 +224,8 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
   return CreateInternal(client, std::move(pjrt_loaded_executable),
                         result_element_types, result_dimensions,
                         /*result_hlo_sharding=*/std::nullopt,
-                        result_memory_kinds, loaded_host_callbacks);
+                        result_memory_kinds, std::move(loaded_host_callbacks),
+                        std::move(execution_context));
 }
 
 static absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
@@ -243,7 +247,8 @@ static absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
 absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client, mlir::ModuleOp module,
     xla::CompileOptions compile_options,
-    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+    std::shared_ptr<xla::ffi::ExecutionContext> execution_context) {
   VLOG(3) << "PjRtLoadedExecutable::Create";
   if (VLOG_IS_ON(3)) {
     module.dump();
@@ -276,8 +281,8 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     return CreateInternal(client, std::move(pjrt_loaded_executable),
                           result_element_types, result_dimensions,
                           /*result_hlo_sharding=*/std::nullopt,
-                          result_memory_kinds,
-                          std::move(loaded_host_callbacks));
+                          result_memory_kinds, std::move(loaded_host_callbacks),
+                          std::move(execution_context));
   } else {
     VLOG(3) << "Using full shape";
     // TODO(yueshengys): Consider getting element types and dimensions directly
@@ -306,8 +311,8 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     return CreateInternal(client, std::move(pjrt_loaded_executable),
                           shape_partial_info.element_types,
                           shape_partial_info.dimensions, result_hlo_sharding,
-                          result_memory_kinds,
-                          std::move(loaded_host_callbacks));
+                          result_memory_kinds, std::move(loaded_host_callbacks),
+                          std::move(execution_context));
   }
 }
 
@@ -319,7 +324,8 @@ PjRtLoadedExecutable::CreateInternal(
     absl::Span<const xla::DimensionVector> result_dimensions,
     const std::optional<xla::HloSharding>& result_hlo_sharding,
     const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
-    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+    std::shared_ptr<xla::ffi::ExecutionContext> execution_context) {
   BasicDeviceList::Devices ds;
   ds.reserve(pjrt_loaded_executable->addressable_devices().size());
   for (xla::PjRtDevice* device :
@@ -461,8 +467,9 @@ PjRtLoadedExecutable::CreateInternal(
   return std::unique_ptr<LoadedExecutable>(new PjRtLoadedExecutable(
       client, std::move(pjrt_loaded_executable), std::move(devices),
       std::move(addressable_devices), std::move(loaded_host_callbacks),
-      std::move(host_send_and_recv_callbacks), std::move(output_dtypes),
-      std::move(output_shapes), std::move(output_shardings)));
+      std::move(execution_context), std::move(host_send_and_recv_callbacks),
+      std::move(output_dtypes), std::move(output_shapes),
+      std::move(output_shardings)));
 }
 
 PjRtLoadedExecutable::PjRtLoadedExecutable(
@@ -470,6 +477,7 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     DeviceListRef devices, std::vector<Device*> addressable_devices,
     std::vector<tsl::RCReference<LoadedHostCallback>> all_loaded_host_callbacks,
+    std::shared_ptr<xla::ffi::ExecutionContext> execution_context,
     std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
         host_send_recv_callbacks,
     std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
@@ -481,6 +489,7 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
       all_loaded_host_callbacks_(
           std::make_shared<std::vector<tsl::RCReference<LoadedHostCallback>>>(
               std::move(all_loaded_host_callbacks))),
+      execution_context_(std::move(execution_context)),
       host_send_recv_callbacks_(std::move(host_send_recv_callbacks)),
       output_dtypes_(std::move(output_dtypes)),
       output_shapes_(std::move(output_shapes)),
@@ -550,14 +559,30 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   // Forward callbacks via FFI's ExecutionContext for CPU/GPU platforms only.
   if (platform_id == CpuId() || platform_id == CudaId() ||
       platform_id == RocmId() || platform_id == SyclId()) {
-    CHECK_OK(context->ffi_context().Insert(all_loaded_host_callbacks_.get()));
+    auto fn_pre = [&](xla::ffi::TypeIdRegistry::TypeId type_id, void* data) {
+      LOG(INFO) << "fn_post: " << type_id << "\n";
+    };
+    context->ffi_context().ForEach(fn_pre);
+    if (execution_context_ != nullptr) {
+      auto copy_ffi_execution_context =
+          [&](xla::ffi::TypeIdRegistry::TypeId type_id, void* data) {
+            CHECK_OK(context->ffi_context().Insert(type_id, data));
+          };
+      execution_context_->ForEach(copy_ffi_execution_context);
+    }
+    auto fn_post = [&](xla::ffi::TypeIdRegistry::TypeId type_id, void* data) {
+      LOG(INFO) << "fn_post: " << type_id << "\n";
+    };
+    context->ffi_context().ForEach(fn_post);
     opts.context = context.get();
   }
 
   // When using host callbacks on CPU, we need to use synchronous dispatch to
   // avoid deadlocks with reentrant callbacks. Note that this option only
   // affects the CPU runtime.
-  if (!all_loaded_host_callbacks_->empty()) {
+  bool has_callbacks =
+      !all_loaded_host_callbacks_->empty() || execution_context_ != nullptr;
+  if (has_callbacks) {
     opts.execution_mode = xla::ExecuteOptions::ExecutionMode::kSynchronous;
   }
 
@@ -608,15 +633,18 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
   }
 
-  if (!all_loaded_host_callbacks_->empty()) {
+  if (has_callbacks) {
     // For host callbacks to work, returned futures must be supported so that we
     // can use the futures to extend the lifetime of the host callbacks until
     // the execution finishes.
-    status.OnReady([all_loaded_host_callbacks = all_loaded_host_callbacks_,
-                    host_callback_states = std::move(host_callback_states),
-                    context = std::move(context)](absl::Status) mutable {
-      all_loaded_host_callbacks.reset();
-    });
+    status.OnReady(
+        [all_loaded_host_callbacks = all_loaded_host_callbacks_,
+         host_callback_states = std::move(host_callback_states),
+         context = std::move(context),
+         execution_context = execution_context_](absl::Status) mutable {
+          all_loaded_host_callbacks.reset();
+          execution_context.reset();
+        });
   }
 
   // Convert 2-level PjRtBuffer vectors into an Array vector.
