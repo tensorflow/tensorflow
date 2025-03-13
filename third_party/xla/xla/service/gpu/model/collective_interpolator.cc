@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/interpolator.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -49,13 +50,9 @@ namespace xla::gpu {
 
 namespace {
 
-// TODO(olechwierowicz): Add support per device generation (Ampere, Hopper,
-// Blackwell).
-constexpr uint8_t kNumDevicesPerHost = 8;
-
 struct InterpolationSpecification {
   HloOpcode opcode;
-  CollectiveInterpolator::CommunicationType comm;
+  GPUCommunicationType comm;
   int num_devices;
   int transfer_size;
 };
@@ -75,26 +72,6 @@ absl::StatusOr<int> GetNumParticipatingDevices(
   return GetNumParticipatingDevices(instr.device_list());
 }
 
-absl::StatusOr<CollectiveInterpolator::CommunicationType> CommType(
-    const CollectiveDeviceList& device_list) {
-  auto iota = device_list.iota_replica_group_list();
-  if (!iota.has_value()) {
-    return absl::FailedPreconditionError(
-        "Only iota device assignment is supported.");
-  }
-  if (iota->num_replica_groups() == 1) {
-    return CollectiveInterpolator::CommunicationType::RAIL_ALIGNED;
-  }
-  if (iota->num_replica_groups() == kNumDevicesPerHost &&
-      iota->transpose_perm().size() == 2 && iota->transpose_perm()[0] == 1) {
-    return CollectiveInterpolator::CommunicationType::NON_RAIL_ALIGNED;
-  }
-  if (iota->num_devices_per_group() == kNumDevicesPerHost) {
-    return CollectiveInterpolator::CommunicationType::SINGLE_HOST;
-  }
-  return CollectiveInterpolator::CommunicationType::UNDEFINED;
-}
-
 absl::StatusOr<InterpolationSpecification> Spec(
     const HloInstructionProfile& profile,
     const se::DeviceDescription& device_info) {
@@ -110,7 +87,9 @@ absl::StatusOr<InterpolationSpecification> Spec(
   TF_RETURN_IF_ERROR(collective->Accept(&analysis));
   int bytes_transferred = analysis.BytesTransferred(*collective);
 
-  TF_ASSIGN_OR_RETURN(auto comm, CommType(collective->device_list()));
+  TF_ASSIGN_OR_RETURN(
+      auto comm,
+      CommunicationType(*collective, device_info.gpu_compute_capability()));
   TF_ASSIGN_OR_RETURN(int num_devices, GetNumParticipatingDevices(*collective));
 
   return InterpolationSpecification{
@@ -298,7 +277,7 @@ std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
   GpuHloCostAnalysis analysis(GpuHloCostAnalysis::Options(), device_info_);
   CHECK_OK(instr.Accept(&analysis));
   int64_t bytes_transferred = analysis.BytesTransferred(instr);
-  auto comm = CommType(instr.device_list());
+  auto comm = CommunicationType(instr, device_info_.gpu_compute_capability());
   if (!comm.ok()) {
     return std::nullopt;
   }
