@@ -3911,7 +3911,6 @@ absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
                                      primitive_type_constant>(
               operand_literal, random_literal, result_shape);
         }
-        // TODO(b/232442915): Enable converting big floats to small floats.
         return Unimplemented(
             "Stochastically converting from type %s to type %s is not "
             "implemented.",
@@ -3933,7 +3932,7 @@ absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
               primitive_util::UnsignedIntegralTypeForBitWidth(
                   primitive_util::BitWidth(primitive_type_constant))>(
               operand_literal, random_literal, result_shape);
-        }  // TODO(b/232442915): Enable converting big floats to small floats.
+        }
         return Unimplemented(
             "Stochastically converting from type %s to type %s is not "
             "implemented.",
