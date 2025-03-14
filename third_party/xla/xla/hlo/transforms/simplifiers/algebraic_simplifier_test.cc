@@ -4314,6 +4314,37 @@ TEST_F(AlgebraicSimplifierTest, FailureToSinkBroadcastDoesntAffectChangedBit) {
   EXPECT_TRUE(simplifier.Run(m.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest, ReshapeOperandPropagation) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[10] parameter(0)
+      bitcast_op = f32[1, 10] bitcast(f32[10] param)
+      reshaped_after_bitcast = f32[1,1,10] reshape(f32[1, 10] bitcast_op)
+      ROOT reshaped_after_reshape = f32[1, 2, 5] reshape(f32[1,1,10] reshaped_after_bitcast)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), IsOkAndHolds(true));
+
+  const HloInstruction* param = FindInstruction(module.get(), "param");
+  const HloInstruction* reshaped_after_reshape =
+      FindInstruction(module.get(), "reshaped_after_reshape");
+  EXPECT_EQ(reshaped_after_reshape->operand(0), param);
+
+  // As expected, intermediate instructions were removed.
+  const HloInstruction* reshaped_after_bitcast =
+      FindInstruction(module.get(), "reshaped_after_bitcast");
+  EXPECT_EQ(reshaped_after_bitcast, nullptr);
+  const HloInstruction* bitcast_op =
+      FindInstruction(module.get(), "bitcast_op");
+  EXPECT_EQ(bitcast_op, nullptr);
+}
+
 TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast1) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
