@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -32,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "mlir/IR/BuiltinOps.h"
@@ -44,6 +47,8 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
+#include "xla/pjrt/gpu/tfrt/gpu_event.h"
+#include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -55,10 +60,13 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -119,6 +127,7 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       local_hardware_id_(options.local_hardware_id),
       stream_pool_(options.executor, options.stream_capacity),
       compute_stream_pool_(options.executor, options.max_inflight_computations),
+      allocator_(std::move(options.allocator)),
       description_(options.id, options.platform_version) {
   description_.SetDebugString(absl::StrCat("TFRT_GPU_", id_));
   description_.SetToString(absl::StrCat("GpuDevice(id=", id_, ")"));
@@ -516,6 +525,192 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtGpuClient>(
       /*process_index=*/0, xla_client, std::move(devices),
       std::move(host_memory_allocator), gpu_topology));
+}
+
+TfrtGpuBuffer::TfrtGpuBuffer(
+    Shape on_device_shape,
+    std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer,
+    TfrtGpuClient* client, TfrtGpuDevice* device, PjRtMemorySpace* memory_space)
+    : client_(client),
+      on_device_shape_(std::move(on_device_shape)),
+      device_(device),
+      memory_space_(CHECK_NOTNULL(memory_space)),
+      tracked_device_buffer_(std::move(tracked_device_buffer)),
+      donation_event_(tsl::MakeAvailableAsyncValueRef<bool>(false)),
+      external_references_dropped_event_(
+          tsl::MakeConstructedAsyncValueRef<GpuEvent>()) {}
+
+TfrtGpuBuffer::~TfrtGpuBuffer() { Delete(); }
+
+absl::StatusOr<size_t> TfrtGpuBuffer::GetOnDeviceSizeInBytes() const {
+  return ShapeUtil::ByteSizeOf(on_device_shape_);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
+TfrtGpuBuffer::AcquireExternalReference() {
+  class ScopedExternalReference : public PjRtBuffer::ExternalReference {
+   public:
+    explicit ScopedExternalReference(
+        TfrtGpuBuffer* buffer, tsl::AsyncValueRef<MaybeOwningGpuMemory> data)
+        : buffer_(buffer), data_(std::move(data)) {
+      DCHECK(data_);
+      data_ptr_ = data_->buffer().opaque();
+    }
+
+    ~ScopedExternalReference() override { buffer_->DropExternalReference(); }
+
+   private:
+    TfrtGpuBuffer* buffer_ = nullptr;
+    // Keep a reference to the underlying data used. Note that it is still
+    // users' responsibility to synchronize reads and writes to the data.
+    tsl::AsyncValueRef<MaybeOwningGpuMemory> data_;
+  };
+
+  absl::MutexLock lock(&mu_);
+  if (tracked_device_buffer_ == nullptr) {
+    return InvalidArgument("Buffer has been deleted or donated.");
+  }
+
+  ++external_reference_counter_;
+
+  tsl::BlockUntilReady(tracked_device_buffer_->definition_event());
+  if (tracked_device_buffer_->definition_event().IsError()) {
+    return tracked_device_buffer_->definition_event().GetError();
+  }
+  return {std::make_unique<ScopedExternalReference>(
+      this, tracked_device_buffer_->buffer())};
+}
+
+class TrackedGpuDeviceBufferExternalReference
+    : public PjRtBuffer::ExternalReference {
+ public:
+  explicit TrackedGpuDeviceBufferExternalReference(
+      std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer)
+      : tracked_device_buffer_(std::move(tracked_device_buffer)) {
+    data_ptr_ = tracked_device_buffer_->buffer()->buffer().opaque();
+  }
+
+  ~TrackedGpuDeviceBufferExternalReference() override = default;
+
+ private:
+  std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer_;
+};
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
+TfrtGpuBuffer::ReleaseDeviceMemoryOwnership(
+    bool wait_for_operations_to_complete) {
+  if (on_device_shape_.IsTuple()) {
+    return InvalidArgument(
+        "ReleaseDeviceMemoryOwnership allowed only for non-tuple");
+  }
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer,
+      Release(wait_for_operations_to_complete));
+
+  std::unique_ptr<PjRtBuffer::ExternalReference> ref;
+  if (tracked_device_buffer) {
+    ref = std::make_unique<TrackedGpuDeviceBufferExternalReference>(
+        std::move(tracked_device_buffer));
+  }
+  return ref;
+}
+
+void TfrtGpuBuffer::Delete() {
+  tsl::profiler::TraceMe traceme("Gpu buffer delete");
+  std::unique_ptr<TrackedTfrtGpuDeviceBuffer> device_buffer;
+  tsl::AsyncValueRef<GpuEvent> external_references_dropped_event;
+  {
+    absl::MutexLock lock(&mu_);
+    device_buffer = ReleaseBufferLocked();
+    if (device_buffer == nullptr) return;
+
+    if (external_reference_counter_ > 0) {
+      external_references_dropped_event =
+          external_references_dropped_event_.CopyRef();
+    } else {
+      external_references_dropped_event =
+          tsl::MakeAvailableAsyncValueRef<GpuEvent>();
+    }
+  }
+  if (device_buffer == nullptr) return;
+
+  tsl::AsyncValueRef<bool> donation_event = GetDonationEvent();
+
+  // Now that all holds have completed and no more can be added, we can get
+  // the final set of usage events.
+  tsl::AsyncValueRef<GpuEvent> usage_event =
+      device_buffer->LockUseAndTransferUsageEvents();
+
+  std::array event_avs{
+      usage_event.GetAsyncValue(),
+      // We should also wait for the definition event.
+      device_buffer->definition_event().GetAsyncValue(),
+      donation_event.GetAsyncValue(),
+      external_references_dropped_event.GetAsyncValue(),
+  };
+
+  tsl::RunWhenReady(
+      event_avs, [device_buffer = std::move(device_buffer),
+                  usage_event(std::move(usage_event)),
+                  donation_event(std::move(donation_event))]() mutable {
+        VLOG(3) << "device_buffer is being deleted: " << device_buffer.get();
+        device_buffer.reset();
+      });
+}
+
+bool TfrtGpuBuffer::IsDeleted() {
+  absl::MutexLock lock(&mu_);
+  return tracked_device_buffer_ == nullptr;
+}
+
+void TfrtGpuBuffer::DropExternalReference() {
+  absl::MutexLock lock(&mu_);
+  CHECK_GT(external_reference_counter_, 0);
+  --external_reference_counter_;
+  if (external_reference_counter_ == 0) {
+    external_references_dropped_event_.SetStateConcrete();
+  }
+}
+
+absl::StatusOr<std::unique_ptr<TrackedTfrtGpuDeviceBuffer>>
+TfrtGpuBuffer::Release(bool wait_for_operations_to_complete) {
+  auto donation_event = GetDonationEvent();
+  tsl::BlockUntilReady(donation_event);
+  std::unique_ptr<TrackedTfrtGpuDeviceBuffer> device_buffer;
+  {
+    absl::MutexLock lock(&mu_);
+    device_buffer = ReleaseBufferLocked();
+  }
+  if (device_buffer == nullptr) return {nullptr};
+
+  std::array events{
+      // Now that all holds have completed and no more can be added, we can get
+      // the final set of usage events.
+      device_buffer->LockUseAndTransferUsageEvents(),
+      device_buffer->definition_event().CopyRef(),
+  };
+
+  if (wait_for_operations_to_complete) {
+    // Block the host until all usage events have completed. Usage events
+    // dominate definition events, so this also waits for the buffer to be
+    // defined. Return the first error encountered.
+    absl::Status first_error;
+    for (const auto& av : events) {
+      tsl::BlockUntilReady(av);
+      if (auto* error = av.GetErrorIfPresent()) {
+        first_error.Update(*error);
+      }
+    }
+    if (!first_error.ok()) return std::move(first_error);
+  }
+
+  return device_buffer;
+}
+
+std::unique_ptr<TrackedTfrtGpuDeviceBuffer>
+TfrtGpuBuffer::ReleaseBufferLocked() {
+  tsl::profiler::TraceMe traceme("TfrtGpuBuffer::ReleaseBufferLocked");
+  return std::move(tracked_device_buffer_);
 }
 
 TfrtGpuExecutable::TfrtGpuExecutable(
