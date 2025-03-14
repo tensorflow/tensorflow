@@ -7173,6 +7173,7 @@ cc_library(
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/png:png_io",
+        "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/protobuf:autotuning_proto_cc",

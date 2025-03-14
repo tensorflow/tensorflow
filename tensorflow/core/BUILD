@@ -2035,6 +2035,7 @@ filegroup(
         "//tensorflow/core/lib/gif/testdata:gif_testdata",
         # BMP data
         "//tensorflow/core/lib/bmp:bmp_testdata",
+        "//tensorflow/core/lib/webp:testdata",
     ],
     visibility = ["//visibility:public"],
 )
