@@ -91,9 +91,8 @@ bool Slice(SliceOperator const& op, Array const& input_array,
 
 }  // namespace
 
-::tensorflow::Status ResolveConstantSlice::Run(Model* model,
-                                               std::size_t op_index,
-                                               bool* modified) {
+absl::Status ResolveConstantSlice::Run(Model* model, std::size_t op_index,
+                                       bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
