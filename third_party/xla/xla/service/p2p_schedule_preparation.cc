@@ -431,7 +431,7 @@ absl::Status MayAddWhileOpToPipelinedGroup(HloInstruction* while_op,
   int pipelined_group = 0;
   // Check whether the while-op init contains a token from a Send result.
   for (auto hlo : while_op->while_init()->operands()) {
-    if (hlo->opcode() != HloOpcode::kSendDone) {
+    if (HloPredicateIsNotOp<HloOpcode::kSendDone>(hlo)) {
       continue;
     }
     int64_t channel_id = hlo->channel_id().value();
@@ -571,7 +571,7 @@ absl::Status GatherP2PGroupsAndCollectiveInfo(
       collective_in_computation[computation] = true;
     }
 
-    if (hlo->opcode() == HloOpcode::kWhile) {
+    if (HloPredicateIsOp<HloOpcode::kWhile>(hlo)) {
       // The pipelined Recv-done/Send-done appears after the while-op. As
       // such, the pipelined group hasn't been constructed at this point.
       // Keep the while-op and add to the pipelined group later.
@@ -800,7 +800,7 @@ absl::Status LinearizeCollectivesWithOtherP2P(
     if (!MayInvokeCollectiveOp(hlo, collective_in_computation)) {
       continue;
     }
-    if (hlo->opcode() == HloOpcode::kWhile &&
+    if (HloPredicateIsOp<HloOpcode::kWhile>(hlo) &&
         group.kind == P2PGroupKind::kPipelined && group.GetWhileOp() == hlo) {
       // This is the while-op for chain A. No need to add control dependence.
       continue;
@@ -852,7 +852,7 @@ absl::Status LinearizeCollectivesWithPipelinedP2PChild(
     if (IsP2POp(hlo) && opcode != HloOpcode::kSendDone) {
       continue;
     }
-    if (hlo->opcode() == HloOpcode::kSendDone) {
+    if (HloPredicateIsOp<HloOpcode::kSendDone>(hlo)) {
       auto group_it = p2p_group_map.find(hlo->channel_id().value());
       if (group_it == p2p_group_map.end()) {
         continue;
