@@ -18,6 +18,35 @@ namespace qnn {
 
 std::size_t GetDataTypeSize(const Qnn_DataType_t data_type);
 
+template <typename T>
+void TransposeOp(const T* weight_data, const uint32_t* weight_dims,
+                         T* weight_data_transpose) {
+  uint32_t output = weight_dims[0];
+  uint32_t height = weight_dims[1];
+  uint32_t width = weight_dims[2];
+  uint32_t input = weight_dims[3];
+  // OHWI->HWIO
+  uint32_t map_o = 0;
+  uint32_t map_w = 0;
+  uint32_t map_h = 0;
+  for (uint32_t index_o = 0; index_o < output; index_o++) {
+    map_o = index_o * height * width * input;
+    for (uint32_t index_h = 0; index_h < height; index_h++) {
+      map_h = index_h * width * input;
+      for (uint32_t index_w = 0; index_w < width; index_w++) {
+        map_w = index_w * input;
+        for (uint32_t index_i = 0; index_i < input; index_i++) {
+          T inval = weight_data[map_o + map_h + map_w + index_i];
+          uint32_t index_transpose = index_h * width * input * output +
+                                     index_w * input * output +
+                                     index_i * output + index_o;
+          weight_data_transpose[index_transpose] = inval;
+        }
+      }
+    }
+  }
+}
+
 class TensorWrapper final {
   friend class TensorPool;
 

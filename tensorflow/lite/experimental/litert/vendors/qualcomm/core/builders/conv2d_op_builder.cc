@@ -6,18 +6,18 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 #include <variant>
 #include <vector>
 
-#include "third_party/qairt/latest/include/QNN/QnnOpDef.h"
-#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
-
+#include "third_party/qairt/latest/include/QNN/QnnOpDef.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 namespace qnn {
 
 namespace {
@@ -41,39 +41,72 @@ std::vector<OpWrapper> BuildConv2dOp(
 
   // transpose filter
   TensorWrapper& filter_tensor = inputs[kFilterIndex];
+  int filters_num =
+      std::accumulate(filter_tensor.GetDims().begin(),
+                      filter_tensor.GetDims().end(), 1, std::multiplies<>());
+  const void* filters_data = filter_tensor.GetStaticTensorData();
+  const std::vector<uint32_t> filters_dims = filter_tensor.GetDims();
   auto& filter_quant_params = filter_tensor.GetQuantParams();
-  if (std::holds_alternative<AxisScaleOffsetQuantizeParamsWrapper>(
-          filter_quant_params)) {
-    auto& axis_quant_params =
-        std::get<AxisScaleOffsetQuantizeParamsWrapper>(filter_quant_params);
-    const std::array<std::int32_t, 4> new_axis{3, 0, 1, 2};
-    axis_quant_params.SetAxis(new_axis[axis_quant_params.GetAxis()]);
+  size_t filter_bytes = filter_tensor.GetTensorSize();
+  TensorWrapper* transposed_filter_tensor;
+  if (filter_tensor.IsTensorStatic() &&
+      filter_tensor.GetDataType() ==
+          Qnn_DataType_t::QNN_DATATYPE_SFIXED_POINT_8) {
+    const auto* filter_data = filter_tensor.GetStaticTensorData();
+    std::vector<int8_t> transpose_weight_int8;
+    transpose_weight_int8.resize(filter_tensor.GetTensorSize());
+    const auto* filters_data_int8 = static_cast<const int8_t*>(filters_data);
+    TransposeOp(filters_data_int8, filters_dims.data(),
+                transpose_weight_int8.data());
+    transposed_filter_tensor = &(tensor_pool.CreateStaticTensor(
+        filter_tensor.GetDataType(), filter_quant_params, filters_dims,
+        filter_bytes, transpose_weight_int8.data()));
+  } else if (filter_tensor.IsTensorStatic() &&
+             filter_tensor.GetDataType() ==
+                 Qnn_DataType_t::QNN_DATATYPE_UFIXED_POINT_8) {
+    const auto* filter_data = filter_tensor.GetStaticTensorData();
+    std::vector<uint8_t> transpose_weight_uint8;
+    transpose_weight_uint8.resize(filter_tensor.GetTensorSize());
+    const auto* filters_data_uint8 = static_cast<const uint8_t*>(filters_data);
+    TransposeOp(filters_data_uint8, filters_dims.data(),
+                transpose_weight_uint8.data());
+    transposed_filter_tensor = &(tensor_pool.CreateStaticTensor(
+        filter_tensor.GetDataType(), filter_quant_params, filters_dims,
+        filter_bytes, transpose_weight_uint8.data()));
+  } else {
+    if (std::holds_alternative<AxisScaleOffsetQuantizeParamsWrapper>(
+            filter_quant_params)) {
+      auto& axis_quant_params =
+          std::get<AxisScaleOffsetQuantizeParamsWrapper>(filter_quant_params);
+      const std::array<std::int32_t, 4> new_axis{3, 0, 1, 2};
+      axis_quant_params.SetAxis(new_axis[axis_quant_params.GetAxis()]);
+    }
+
+    const std::vector<std::uint32_t> permute_dims{
+        filter_tensor.GetDim(kHeightIndex), filter_tensor.GetDim(kWidthIndex),
+        filter_tensor.GetDim(kChannelIndex), filter_tensor.GetDim(kBatchIndex)};
+    transposed_filter_tensor =
+        &(tensor_pool.CloneNativeTensorFrom(filter_tensor, permute_dims));
+
+    const std::vector<std::uint32_t> permute_shape{4};
+    const std::array<std::uint32_t, 4> permute_data{kHeightIndex, kWidthIndex,
+                                                    kChannelIndex, kBatchIndex};
+    auto& permute_tensor = tensor_pool.CreateStaticTensor(
+        QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, permute_shape,
+        sizeof(decltype(permute_data)::value_type) * permute_data.size(),
+        permute_data.data());
+
+    OpWrapper& transpose_op = CreateOpWrapper(res, QNN_OP_TRANSPOSE);
+    transpose_op.AddInputTensor(filter_tensor);
+    transpose_op.AddOutputTensor(*transposed_filter_tensor);
+    transpose_op.AddTensorParam(QNN_OP_TRANSPOSE_PARAM_PERM, permute_tensor);
   }
-
-  const std::vector<std::uint32_t> permute_dims{
-      filter_tensor.GetDim(kHeightIndex), filter_tensor.GetDim(kWidthIndex),
-      filter_tensor.GetDim(kChannelIndex), filter_tensor.GetDim(kBatchIndex)};
-  auto& transposed_filter_tensor =
-      tensor_pool.CloneNativeTensorFrom(filter_tensor, permute_dims);
-
-  const std::vector<std::uint32_t> permute_shape{4};
-  const std::array<std::uint32_t, 4> permute_data{kHeightIndex, kWidthIndex,
-                                                  kChannelIndex, kBatchIndex};
-  auto& permute_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, permute_shape,
-      sizeof(decltype(permute_data)::value_type) * permute_data.size(),
-      permute_data.data());
-
-  OpWrapper& transpose_op = CreateOpWrapper(res, QNN_OP_TRANSPOSE);
-  transpose_op.AddInputTensor(filter_tensor);
-  transpose_op.AddOutputTensor(transposed_filter_tensor);
-  transpose_op.AddTensorParam(QNN_OP_TRANSPOSE_PARAM_PERM, permute_tensor);
 
   // conv
   OpWrapper& conv_op = CreateOpWrapper(res, QNN_OP_CONV_2D);
   TensorWrapper& input_tensor = inputs[kInputIndex];
   conv_op.AddInputTensor(input_tensor);
-  conv_op.AddInputTensor(transposed_filter_tensor);
+  conv_op.AddInputTensor(*transposed_filter_tensor);
   if (inputs.size() - 1 >= kBiasIndex) {
     TensorWrapper& bias_tensor = inputs[kBiasIndex];
     // QNN only support per-tensor quant for bias,

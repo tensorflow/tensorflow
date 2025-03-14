@@ -3,6 +3,7 @@
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/fully_connected_op_builder.h"
 
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 namespace qnn {
 
 namespace {
@@ -13,7 +14,6 @@ std::vector<OpWrapper> BuildFullyConnectedOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const bool keep_num_dims) {
   std::vector<OpWrapper> res;
-
   OpWrapper& fully_connected_op = CreateOpWrapper(res, QNN_OP_FULLY_CONNECTED);
 
   TensorWrapper& input_tensor = inputs[0];

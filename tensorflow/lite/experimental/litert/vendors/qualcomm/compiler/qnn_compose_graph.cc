@@ -26,8 +26,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/qairt/latest/include/QNN/QnnCommon.h"
-#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -51,6 +49,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gather_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gelu_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/hard_swish_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/htp_preferences/fully_connected_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/leaky_relu_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/matmul_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/mean_op_builder.h"
@@ -73,6 +72,8 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
+#include "third_party/qairt/latest/include/QNN/QnnCommon.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
 namespace litert::qnn {
 
@@ -344,8 +345,16 @@ LiteRtStatus ConvertOp(
       bool keep_num_dims{};
       LITERT_RETURN_IF_ERROR(LiteRtGetFullyConnectedKeepNumDimsOption(
           litert_op.Get(), &keep_num_dims));
-      op_wrappers = ::qnn::BuildFullyConnectedOp(tensor_pool, input_tensors,
-                                                 output_tensors, keep_num_dims);
+      // TODO(jiunkaiy): Use compile interface to get useHtpPreferencs.
+      constexpr LiteRtQnnOptions qnn_options = LITERT_QNN_OPTIONS_INIT;
+      if (qnn_options.useHtpPreferencs) {
+        op_wrappers = ::qnn::BuildFullyConnectedOpHtp(
+            tensor_pool, input_tensors, output_tensors, keep_num_dims);
+      }
+      if (op_wrappers.empty()) {
+        op_wrappers = ::qnn::BuildFullyConnectedOp(
+            tensor_pool, input_tensors, output_tensors, keep_num_dims);
+      }
       break;
     }
     case LiteRtOpCode::kLiteRtOpCodeTflGather: {
