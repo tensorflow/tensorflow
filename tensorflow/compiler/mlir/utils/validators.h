@@ -16,8 +16,8 @@ limitations under the License.
 // This header file defines common validators used by TFLite transformation
 // passes to validate op attributes or values.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_VALIDATORS_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_VALIDATORS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_UTILS_VALIDATORS_H_
+#define TENSORFLOW_COMPILER_MLIR_UTILS_VALIDATORS_H_
 
 #include <cstdint>
 
@@ -123,4 +123,4 @@ bool IsDimensionsDegenerateExceptLastOne(ArrayRef<int64_t> elements_shape);
 }  // end namespace TFL
 }  // end namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_UTILS_VALIDATORS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_UTILS_VALIDATORS_H_

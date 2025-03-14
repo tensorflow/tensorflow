@@ -355,22 +355,6 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "validators",
-    srcs = [
-        "utils/validators.cc",
-    ],
-    hdrs = [
-        "utils/validators.h",
-    ],
-    deps = [
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
     name = "stateful_error_reporter",
     hdrs = ["stateful_error_reporter.h"],
     compatible_with = get_compatible_with_portable(),
@@ -1120,7 +1104,6 @@ cc_library(
         ":tensorflow_lite_prepare_tf_inc_gen",
         ":tensorflow_lite_tf_unfreeze_global_tensors",
         ":tftext_utils",
-        ":validators",
         ":variables_utils",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
@@ -1148,6 +1131,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:unroll_batch_matmul_pass",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf_with_tf2xla",
+        "//tensorflow/compiler/mlir/utils:validators",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -1195,12 +1179,12 @@ cc_library(
         ":tensorflow_lite_ops",
         ":tensorflow_lite_optimize_inc_gen",
         ":utils",
-        ":validators",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow:verification_utils",
+        "//tensorflow/compiler/mlir/utils:validators",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -1230,12 +1214,12 @@ cc_library(
         ":tensorflow_lite_optimize_batch_matmul_inc_gen",
         ":tensorflow_lite_passes_inc_gen",
         ":utils",
-        ":validators",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:verification_utils",
+        "//tensorflow/compiler/mlir/utils:validators",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -1346,7 +1330,6 @@ cc_library(
         ":tensorflow_lite_post_quantize_inc_gen",
         ":tensorflow_lite_quantize_by_converter_inc_gen",
         ":tensorflow_lite_quantize_inc_gen",
-        ":validators",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:tfl_quantization_driver",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
@@ -1358,6 +1341,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/utils:validators",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:logging",
