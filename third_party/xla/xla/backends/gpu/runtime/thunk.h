@@ -234,6 +234,11 @@ class Thunk {
     // Returns whether the clique is a local clique.
     absl::StatusOr<bool> is_local_clique(const GpuCliqueKey& clique_key) const;
 
+    // Returns whether peer device memory access is possible between all devices
+    // in the clique.
+    absl::StatusOr<bool> peer_access_enabled(
+        const GpuCliqueKey& clique_key) const;
+
     bool empty() const { return cliques_map_.empty(); }
 
     bool num_transient_cliques() const { return num_transient_cliques_; }

@@ -2161,33 +2161,6 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
     return opts;
   }
 
-  // Enable peer access if needed. Returns false if peer access is required but
-  // can not be enabled. Otherwise returns true.
-  bool MaybeEnablePeerAccess() {
-    if (std::get<1>(GetParam()) != RaggedAllToAllImplType::kOneShot) {
-      // Peer access is only needed for the one-shot kernel.
-      return true;
-    }
-
-    auto& stream_executors = backend().stream_executors();
-    if (!stream_executors[0]->CanEnablePeerAccessTo(stream_executors[1])) {
-      // Peer access can not be enabled. Likely because of the hardware
-      // limitations.
-      return false;
-    }
-
-    EnablePeerAccess(stream_executors);
-    return true;
-  }
-
-  void SetUp() override {
-    if (std::get<1>(GetParam()) == RaggedAllToAllImplType::kOneShot &&
-        !MaybeEnablePeerAccess()) {
-      GTEST_SKIP() << "Test requires direct peer access between GPUs.";
-    }
-    CollectiveOpsWithFlagsBase::SetUp();
-  }
-
   // Computes ragged tensor offsets based on the sizes of the ragged rows.
   Array<int64_t> CalculateOffsetsFromSizes(const Array<int64_t>& sizes) {
     int64_t num_replicas = sizes.dim(0);

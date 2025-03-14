@@ -75,9 +75,6 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
  private:
   bool is_local() const;
   bool should_use_memcpy() const { return p2p_memcpy_enabled_ && is_local(); }
-  bool should_use_one_shot_kernel() const {
-    return one_shot_kernel_enabled_ && is_local();
-  }
 
   const RaggedAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
