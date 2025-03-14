@@ -399,7 +399,7 @@ absl::Status RunOneShotRaggedAllToAll(
 RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
     ThunkInfo thunk_info, const HloRaggedAllToAllInstruction* instr,
     std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
-    : CollectiveThunk(Thunk::kNcclRaggedAllToAllStart, thunk_info,
+    : CollectiveThunk(Thunk::kRaggedAllToAllStart, thunk_info,
                       IsGPUSyncCollective(*instr),
                       AsyncStreamKind::kCollective),
       config_(GetRaggedAllToAllConfig(instr)),
@@ -419,7 +419,7 @@ RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
   auto status = [&instr]() -> absl::Status {
     for (HloInstruction* operand : instr->operands()) {
       Shape shape = operand->shape();
-      TF_RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kNcclRaggedAllToAll));
+      TF_RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kRaggedAllToAll));
     }
 
     if (!ShapeUtil::IsEffectivelyMostMajorDimension(instr->shape(), 0)) {

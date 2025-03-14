@@ -68,7 +68,7 @@ AllToAllConfig GetAllToAllConfig(const HloAllToAllInstruction* instr) {
 AllToAllStartThunk::AllToAllStartThunk(
     ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
     std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
-    : CollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
+    : CollectiveThunk(Thunk::kAllToAllStart, thunk_info,
                       IsGPUSyncCollective(*instr),
                       AsyncStreamKind::kCollective),
       config_(GetAllToAllConfig(instr)),
@@ -84,7 +84,7 @@ AllToAllStartThunk::AllToAllStartThunk(
     std::optional<uint64_t> split_dim = instr->split_dimension();
     for (HloInstruction* operand : instr->operands()) {
       Shape shape = operand->shape();
-      TF_RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kNcclAllToAll));
+      TF_RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kAllToAll));
       if (split_dim &&
           !ShapeUtil::IsEffectivelyMostMajorDimension(shape, *split_dim)) {
         return absl::UnimplementedError(absl::Substitute(

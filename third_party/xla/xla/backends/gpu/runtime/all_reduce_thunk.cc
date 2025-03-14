@@ -141,16 +141,16 @@ absl::Status AllReduceStartThunk::RunCollective(
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
     ThunkInfo thunk_info, const HloReduceScatterInstruction* inst,
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
-    : AllReduceReduceScatterThunkBase(
-          Thunk::kNcclReduceScatterStart, thunk_info,
-          impl::GetAllReduceConfigInst(inst), std::move(buffers),
-          IsGPUSyncCollective(*inst)) {}
+    : AllReduceReduceScatterThunkBase(Thunk::kReduceScatterStart, thunk_info,
+                                      impl::GetAllReduceConfigInst(inst),
+                                      std::move(buffers),
+                                      IsGPUSyncCollective(*inst)) {}
 
 /*static*/ absl::Status NcclReduceScatterStartThunk::CheckImplementable(
     const HloReduceScatterInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
   return AddOpDescription<NcclReduceScatterStartThunk>(
-      impl::CheckImplementableInst(inst, Thunk::kNcclReduceScatterStart), inst,
+      impl::CheckImplementableInst(inst, Thunk::kReduceScatterStart), inst,
       replica_count, partition_count);
 }
 

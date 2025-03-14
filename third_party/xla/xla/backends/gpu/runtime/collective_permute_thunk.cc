@@ -99,7 +99,7 @@ CollectivePermuteStartThunk::CollectivePermuteStartThunk(
     int64_t replica_count, int64_t partition_count,
     const std::vector<Buffer>& buffers, bool p2p_memcpy_enabled,
     AsyncStreamKind stream_kind)
-    : CollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
+    : CollectiveThunk(Thunk::kCollectivePermuteStart, thunk_info,
                       IsGPUSyncCollective(*instr), stream_kind),
       config_(GetP2PConfig(instr, replica_count, partition_count)),
       buffers_(buffers),

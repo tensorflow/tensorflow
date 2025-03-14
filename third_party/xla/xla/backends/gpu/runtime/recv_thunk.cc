@@ -45,7 +45,7 @@ namespace gpu {
 RecvThunk::RecvThunk(ThunkInfo thunk_info, const HloRecvInstruction* instr,
                      int64_t replica_count, int64_t partition_count,
                      const Buffer& buffer)
-    : CollectiveThunk(Thunk::kNcclRecv, thunk_info,
+    : CollectiveThunk(Thunk::kRecv, thunk_info,
                       /*is_sync=*/false, GetStreamKindForP2P(instr)),
       config_(GetP2PConfigForSendRecv(instr, instr->shape().tuple_shapes(0),
                                       replica_count, partition_count)),

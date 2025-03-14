@@ -46,7 +46,7 @@ namespace gpu {
 SendThunk::SendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
                      int64_t replica_count, int64_t partition_count,
                      const Buffer& buffer)
-    : CollectiveThunk(Thunk::kNcclSend, thunk_info,
+    : CollectiveThunk(Thunk::kSend, thunk_info,
                       /*is_sync=*/false, GetStreamKindForP2P(instr)),
       config_(GetP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
                                       replica_count, partition_count)),

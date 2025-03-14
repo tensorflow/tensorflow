@@ -52,7 +52,7 @@ absl::Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
   for (HloInstruction* operand : inst->operands()) {
     const Shape& shape = operand->shape();
 
-    TF_RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kNcclAllGather));
+    TF_RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kAllGather));
 
     if (!ShapeUtil::IsEffectivelyMostMajorDimension(
             shape, inst->all_gather_dimension())) {
@@ -70,7 +70,7 @@ AllGatherStartThunk::AllGatherStartThunk(ThunkInfo thunk_info,
                                          const HloAllGatherInstruction* inst,
                                          std::vector<Buffer> buffers,
                                          bool p2p_memcpy_enabled)
-    : CollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info,
+    : CollectiveThunk(Thunk::kAllGatherStart, thunk_info,
                       IsGPUSyncCollective(*inst), AsyncStreamKind::kCollective),
       config_(impl::GetAllGatherConfig(inst)),
       buffers_(std::move(buffers)) {

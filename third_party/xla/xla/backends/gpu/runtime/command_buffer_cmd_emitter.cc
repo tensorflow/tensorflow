@@ -309,13 +309,13 @@ static absl::Status AppendCommands(
       return append(Convert<Memset32BitValueThunk>(thunk));
     case Thunk::Kind::kMemzero:
       return append(Convert<MemzeroThunk>(thunk));
-    case Thunk::Kind::kNcclAllGatherStart:
+    case Thunk::Kind::kAllGatherStart:
       return append(Convert<AllGatherStartThunk>(thunk));
     case Thunk::Kind::kAllReduceStart:
       return append(Convert<AllReduceStartThunk>(thunk));
-    case Thunk::Kind::kNcclReduceScatterStart:
+    case Thunk::Kind::kReduceScatterStart:
       return append(Convert<NcclReduceScatterStartThunk>(thunk));
-    case Thunk::Kind::kNcclAllToAllStart:
+    case Thunk::Kind::kAllToAllStart:
       return append(Convert<AllToAllStartThunk>(thunk));
     case Thunk::Kind::kPartitionId:
       return append(Convert<PartitionIdThunk>(thunk));
@@ -333,10 +333,10 @@ static absl::Status AppendCommands(
                             static_cast<const SequentialThunk&>(thunk).thunks(),
                             synchronization_mode);
 
-    case Thunk::Kind::kNcclAllGatherDone:
+    case Thunk::Kind::kAllGatherDone:
     case Thunk::Kind::kAllReduceDone:
-    case Thunk::Kind::kNcclReduceScatterDone:
-    case Thunk::Kind::kNcclAllToAllDone:
+    case Thunk::Kind::kReduceScatterDone:
+    case Thunk::Kind::kAllToAllDone:
       return append(Convert<CollectiveDoneThunk>(thunk));
 
     case Thunk::Kind::kDynamicSlice:

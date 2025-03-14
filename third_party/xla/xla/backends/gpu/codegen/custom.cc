@@ -1172,7 +1172,7 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
   Thunk::Kind collective_done_thunk_kind;
   switch (instr->opcode()) {
     case HloOpcode::kReduceScatter:
-      collective_done_thunk_kind = Thunk::kNcclReduceScatterDone;
+      collective_done_thunk_kind = Thunk::kReduceScatterDone;
       break;
     default:
       return absl::InternalError(
