@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 
-#include <string>
 #include <unordered_map>
 
+#include <gmock/gmock.h>
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
