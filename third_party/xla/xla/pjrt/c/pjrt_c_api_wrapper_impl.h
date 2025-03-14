@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -129,8 +130,13 @@ struct PJRT_ExecuteContext {
 };
 
 struct PJRT_Executable {
-  // Must be shared_ptr so that we can share with PJRT_LoadedExecutable.
-  std::shared_ptr<xla::PjRtExecutable> executable;
+  // Self pointer to the cpp type.
+  std::unique_ptr<xla::PjRtExecutable> executable;
+
+  // If this PJRT executable is produced by calling GetExecutable() on a
+  // PJRT_LoadedExecutable, then this will be the same as the
+  // PJRT_LoadedExecutable's executable. Otherwise, this will be nullptr.
+  xla::PjRtExecutable* unowned_executable;
 
   absl::StatusOr<std::string> fingerprint;
 
@@ -155,26 +161,44 @@ struct PJRT_Executable {
   std::vector<int64_t> out_dimensions;
   std::vector<size_t> out_dimension_sizes;
 
-  explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
+  const xla::PjRtExecutable* get() const {
+    return executable == nullptr ? unowned_executable : executable.get();
+  }
+  xla::PjRtExecutable* get() {
+    return executable == nullptr ? unowned_executable : executable.get();
+  }
 
-  const xla::PjRtExecutable* get() const { return executable.get(); }
-  xla::PjRtExecutable* get() { return executable.get(); }
+  explicit PJRT_Executable(std::unique_ptr<xla::PjRtExecutable> executable)
+      : executable(std::move(executable)),
+        fingerprint(this->executable->FingerprintExecutable()) {}
+  explicit PJRT_Executable(xla::PjRtExecutable* executable)
+      : unowned_executable(executable),
+        fingerprint(this->executable->FingerprintExecutable()) {}
 };
 
 struct PJRT_LoadedExecutable {
-  // Must be shared_ptr so that we can share with PJRT_Executable.
-  std::shared_ptr<xla::PjRtLoadedExecutable> executable;
+  // Self pointer to the cpp type.
+  std::unique_ptr<xla::PjRtLoadedExecutable> loaded_executable;
   PJRT_Client* client;
   // These pointers are a subset of `client`'s `addressable_devices`, i.e. those
   // addressed by the compiled executable program. `client` owns the objects
   // these point to.
   std::vector<PJRT_Device*> addressable_devices;
 
-  PJRT_LoadedExecutable(std::shared_ptr<xla::PjRtLoadedExecutable> executable,
+  PJRT_LoadedExecutable(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
                         PJRT_Client* client);
 
-  const xla::PjRtLoadedExecutable* get() const { return executable.get(); }
-  xla::PjRtLoadedExecutable* get() { return executable.get(); }
+  const xla::PjRtLoadedExecutable* get() const {
+    return loaded_executable.get();
+  }
+  xla::PjRtLoadedExecutable* get() { return loaded_executable.get(); }
+
+  // Get a pointer to the executable that was used to create this loaded
+  // executable.
+  const xla::PjRtExecutable* executable() const {
+    return loaded_executable->executable();
+  }
+  xla::PjRtExecutable* executable() { return loaded_executable->executable(); }
 };
 
 struct PJRT_Buffer {

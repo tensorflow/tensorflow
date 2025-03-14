@@ -1861,7 +1861,7 @@ PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_LoadedExecutable_GetExecutable_Args",
       PJRT_LoadedExecutable_GetExecutable_Args_STRUCT_SIZE, args->struct_size));
-  args->executable = new PJRT_Executable{args->loaded_executable->executable};
+  args->executable = new PJRT_Executable(args->loaded_executable->executable());
   return nullptr;
 }
 
@@ -2617,14 +2617,9 @@ PJRT_Client::PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client)
     : client(std::move(cpp_client)),
       topology(pjrt::GetStatusOrTopologyDescription(*client)) {}
 
-PJRT_Executable::PJRT_Executable(
-    std::shared_ptr<xla::PjRtExecutable> executable)
-    : executable(std::move(executable)),
-      fingerprint(this->executable->FingerprintExecutable()) {}
-
 PJRT_LoadedExecutable::PJRT_LoadedExecutable(
-    std::shared_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
-    : executable(std::move(executable)), client(client) {
+    std::unique_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
+    : loaded_executable(std::move(executable)), client(client) {
   pjrt::PopulatePjrtExecutableAddressableDevices(this);
 }
 
