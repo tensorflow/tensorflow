@@ -216,6 +216,9 @@ bool HloInstruction::Users::CheckInvariants() {
 }
 
 void HloInstruction::AppendComputation(HloComputation* computation) {
+  if (true) {  //  DO NOT SUBMIT
+    LOG(INFO) << "AppendComputation: " << computation->name();
+  }
   // In .cc file since PtrVec<T*>::push_back() wants to check the alignment
   // of T and hlo_instruction.h does not include hlo_computation.h.
   mutable_rare()->called_computations.push_back(computation);
