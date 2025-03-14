@@ -223,7 +223,8 @@ Layout& Layout::operator=(Layout&& other) = default;
   const auto alignment = proto.tail_padding_alignment_in_elements() != 0
                              ? proto.tail_padding_alignment_in_elements()
                              : 1;
-  layout.set_tail_padding_alignment_in_elements(alignment);
+  layout.set_tail_padding_alignment_in_elements(alignment,
+                                                ActionOnError::kWarning);
   layout.set_index_primitive_type(proto.index_primitive_type());
   layout.set_pointer_primitive_type(proto.pointer_primitive_type());
   layout.set_element_size_in_bits(proto.element_size_in_bits());
