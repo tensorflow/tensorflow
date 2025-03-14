@@ -82,12 +82,12 @@ class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
 // ReduceScatter thunk
 // -----------------------------------------------------------------------------
 
-class NcclReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
+class ReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
  public:
-  NcclReduceScatterStartThunk(ThunkInfo thunk_info,
-                              const HloReduceScatterInstruction* inst,
-                              std::vector<Buffer> buffers,
-                              bool p2p_memcpy_enabled = false);
+  ReduceScatterStartThunk(ThunkInfo thunk_info,
+                          const HloReduceScatterInstruction* inst,
+                          std::vector<Buffer> buffers,
+                          bool p2p_memcpy_enabled = false);
 
   static const char* GetHloOpName() { return "reduce-scatter-start"; }
 

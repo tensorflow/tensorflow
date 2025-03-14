@@ -147,13 +147,14 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitRecvThunk(const HloRecvInstruction* instr);
   absl::Status EmitRecvDoneThunk(const HloRecvDoneInstruction* instr);
 
-  template <typename NcclThunkType, typename HloInstType>
-  absl::Status EmitNcclThunk(Thunk::Kind kind,
-                             const HloInstruction* async_start,
-                             const HloInstType* inst,
-                             std::optional<bool> use_global_device_ids);
+  template <typename CollectiveThunkType, typename HloInstType>
+  absl::Status EmitCollectiveThunk(Thunk::Kind kind,
+                                   const HloInstruction* async_start,
+                                   const HloInstType* inst,
+                                   std::optional<bool> use_global_device_ids);
 
-  absl::Status EmitNcclAsyncDone(Thunk::Kind kind, const HloInstruction* instr);
+  absl::Status EmitCollectiveAsyncDone(Thunk::Kind kind,
+                                       const HloInstruction* instr);
 
   template <typename ThunkType>
   absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
@@ -167,7 +168,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitHloInstruction(const HloInstruction* instr);
 
-  absl::Status EmitNcclGroupStartThunk(const HloInstruction* instr);
+  absl::Status EmitCollectiveGroupStartThunk(const HloInstruction* instr);
 
   absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,

@@ -178,8 +178,7 @@ static absl::StatusOr<Command> Convert(const AllReduceStartThunk& thunk) {
       thunk.config(), thunk.reduction_kind(), thunk.buffers());
 }
 
-static absl::StatusOr<Command> Convert(
-    const NcclReduceScatterStartThunk& thunk) {
+static absl::StatusOr<Command> Convert(const ReduceScatterStartThunk& thunk) {
   return std::make_unique<ReduceScatterCmd>(
       thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
       thunk.config(), thunk.reduction_kind(), thunk.buffers());
@@ -314,7 +313,7 @@ static absl::Status AppendCommands(
     case Thunk::Kind::kAllReduceStart:
       return append(Convert<AllReduceStartThunk>(thunk));
     case Thunk::Kind::kReduceScatterStart:
-      return append(Convert<NcclReduceScatterStartThunk>(thunk));
+      return append(Convert<ReduceScatterStartThunk>(thunk));
     case Thunk::Kind::kAllToAllStart:
       return append(Convert<AllToAllStartThunk>(thunk));
     case Thunk::Kind::kPartitionId:

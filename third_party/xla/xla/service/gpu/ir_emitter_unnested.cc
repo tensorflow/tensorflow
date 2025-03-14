@@ -172,12 +172,12 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/human_readable_json.h"
-#include "tsl/platform/statusor.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
@@ -1915,14 +1915,14 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
   return absl::OkStatus();
 }
 
-template <typename NcclThunkType, typename HloInstType>
-absl::Status IrEmitterUnnested::EmitNcclThunk(
+template <typename CollectiveThunkType, typename HloInstType>
+absl::Status IrEmitterUnnested::EmitCollectiveThunk(
     Thunk::Kind kind, const HloInstruction* async_start,
     const HloInstType* inst, std::optional<bool> use_global_device_ids) {
   const auto& hlo_config = ir_emitter_context_->hlo_module().config();
   int64_t replica_count = hlo_config.replica_count();
   int64_t partition_count = hlo_config.num_partitions();
-  VLOG(2) << NcclThunkType::GetHloOpName()
+  VLOG(2) << CollectiveThunkType::GetHloOpName()
           << "; replica count: " << replica_count
           << "; partition count: " << partition_count
           << "; operand count: " << inst->operand_count();
@@ -1940,8 +1940,8 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   bool is_degenerate = kind != Thunk::Kind::kRaggedAllToAll &&
                        GetCollectiveConfig(inst, use_global_device_ids)
                            .IsDegenerate(replica_count, partition_count);
-  absl::Status implementable_status =
-      NcclThunkType::CheckImplementable(inst, replica_count, partition_count);
+  absl::Status implementable_status = CollectiveThunkType::CheckImplementable(
+      inst, replica_count, partition_count);
   bool should_use_nccl_thunk = !is_degenerate && implementable_status.ok();
 
   // Stash relevant information in CollectiveThunk::Buffer even if we may
@@ -2029,7 +2029,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
     if (ir_emitter_context_->debug_options().xla_syntax_sugar_async_ops()) {
       thunk_info.profile_annotation = async_start->name();
     }
-    auto thunk = std::make_unique<NcclThunkType>(
+    auto thunk = std::make_unique<CollectiveThunkType>(
         thunk_info, inst, /*buffers=*/std::move(buffers),
         ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
     GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
@@ -2167,7 +2167,7 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
   return canonical_start_op;
 }
 
-absl::Status IrEmitterUnnested::EmitNcclGroupStartThunk(
+absl::Status IrEmitterUnnested::EmitCollectiveGroupStartThunk(
     const HloInstruction* instr) {
   emit_group_thunks_ = true;
   std::optional<AsyncStreamKind> stream_kind;
@@ -2192,8 +2192,8 @@ absl::Status IrEmitterUnnested::EmitNcclGroupStartThunk(
   return absl::OkStatus();
 }
 
-absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
-                                                  const HloInstruction* inst) {
+absl::Status IrEmitterUnnested::EmitCollectiveAsyncDone(
+    Thunk::Kind kind, const HloInstruction* inst) {
   // Partial pipelining is only implemented for send/recv.
   bool is_send_recv =
       kind == Thunk::Kind::kRecvDone || kind == Thunk::Kind::kSendDone;
@@ -2495,7 +2495,7 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
 absl::Status IrEmitterUnnested::EmitSendDoneThunk(
     const HloSendDoneInstruction* instr) {
   if (!instr->is_host_transfer()) {
-    return EmitNcclAsyncDone(Thunk::kSendDone, instr);
+    return EmitCollectiveAsyncDone(Thunk::kSendDone, instr);
   }
 
   if (!instr->channel_id().has_value()) {
@@ -2569,7 +2569,7 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
 absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
     const HloRecvDoneInstruction* instr) {
   if (!instr->is_host_transfer()) {
-    return EmitNcclAsyncDone(Thunk::kRecvDone, instr);
+    return EmitCollectiveAsyncDone(Thunk::kRecvDone, instr);
   }
   if (!instr->channel_id().has_value()) {
     return absl::InternalError(
@@ -2599,37 +2599,38 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     const HloInstruction* instr) {
   switch (instr->opcode()) {
     case HloOpcode::kAllGatherDone:
-      return EmitNcclAsyncDone(Thunk::kAllGatherDone, instr);
+      return EmitCollectiveAsyncDone(Thunk::kAllGatherDone, instr);
     case HloOpcode::kAllGatherStart: {
       auto* all_gather = Cast<HloAllGatherInstruction>(instr);
-      return EmitNcclThunk<AllGatherStartThunk, HloAllGatherInstruction>(
+      return EmitCollectiveThunk<AllGatherStartThunk, HloAllGatherInstruction>(
           Thunk::kAllGatherStart, all_gather, all_gather,
           all_gather->use_global_device_ids());
     }
 
     case HloOpcode::kAllReduceDone:
-      return EmitNcclAsyncDone(Thunk::kAllReduceDone, instr);
+      return EmitCollectiveAsyncDone(Thunk::kAllReduceDone, instr);
     case HloOpcode::kAllReduceStart: {
       auto* all_reduce = Cast<HloAllReduceInstruction>(instr);
-      return EmitNcclThunk<AllReduceStartThunk, HloAllReduceInstruction>(
+      return EmitCollectiveThunk<AllReduceStartThunk, HloAllReduceInstruction>(
           Thunk::kAllReduceStart, all_reduce, all_reduce,
           all_reduce->use_global_device_ids());
     }
     case HloOpcode::kAsyncDone: {
       if (!instr->async_wrapped_computation()
                ->CanExpandIntoSingleInstruction()) {
-        return EmitNcclAsyncDone(Thunk::kGroupDone, instr);
+        return EmitCollectiveAsyncDone(Thunk::kGroupDone, instr);
       }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
         case HloOpcode::kReduceScatter:
-          return EmitNcclAsyncDone(Thunk::kReduceScatterDone, instr);
+          return EmitCollectiveAsyncDone(Thunk::kReduceScatterDone, instr);
         case HloOpcode::kAllToAll:
-          return EmitNcclAsyncDone(Thunk::kAllToAllDone, instr);
+          return EmitCollectiveAsyncDone(Thunk::kAllToAllDone, instr);
         case HloOpcode::kRaggedAllToAll:
-          return EmitNcclAsyncDone(Thunk::kRaggedAllToAllDone, instr);
+          return EmitCollectiveAsyncDone(Thunk::kRaggedAllToAllDone, instr);
         case HloOpcode::kCollectiveBroadcast:
-          return EmitNcclAsyncDone(Thunk::kCollectiveBroadcastDone, instr);
+          return EmitCollectiveAsyncDone(Thunk::kCollectiveBroadcastDone,
+                                         instr);
         case HloOpcode::kFusion: {
           auto collective_hero = GetCollectiveHeroForDynamicSliceFusion(
               Cast<HloFusionInstruction>(wrapped));
@@ -2637,7 +2638,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
             switch ((*collective_hero)->opcode()) {
               case HloOpcode::kReduceScatter:
                 TF_RETURN_IF_ERROR(
-                    EmitNcclAsyncDone(Thunk::kReduceScatterDone, instr));
+                    EmitCollectiveAsyncDone(Thunk::kReduceScatterDone, instr));
                 break;
               default:
                 return absl::InternalError(absl::StrFormat(
@@ -2674,33 +2675,34 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       // Multi-op async start will emit a NCCL group thunk.
       if (!instr->async_wrapped_computation()
                ->CanExpandIntoSingleInstruction()) {
-        return EmitNcclGroupStartThunk(instr);
+        return EmitCollectiveGroupStartThunk(instr);
       }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
         case HloOpcode::kReduceScatter: {
           auto* reduce_scatter = Cast<HloReduceScatterInstruction>(wrapped);
-          return EmitNcclThunk<NcclReduceScatterStartThunk,
-                               HloReduceScatterInstruction>(
+          return EmitCollectiveThunk<ReduceScatterStartThunk,
+                                     HloReduceScatterInstruction>(
               Thunk::kReduceScatter, instr, reduce_scatter,
               reduce_scatter->use_global_device_ids());
         }
         case HloOpcode::kAllToAll: {
           auto* all_to_all = Cast<HloAllToAllInstruction>(wrapped);
-          return EmitNcclThunk<AllToAllStartThunk, HloAllToAllInstruction>(
+          return EmitCollectiveThunk<AllToAllStartThunk,
+                                     HloAllToAllInstruction>(
               Thunk::kAllToAll, instr, all_to_all, std::nullopt);
         }
         case HloOpcode::kRaggedAllToAll: {
           auto* ragged_all_to_all = Cast<HloRaggedAllToAllInstruction>(wrapped);
-          return EmitNcclThunk<RaggedAllToAllStartThunk,
-                               HloRaggedAllToAllInstruction>(
+          return EmitCollectiveThunk<RaggedAllToAllStartThunk,
+                                     HloRaggedAllToAllInstruction>(
               Thunk::kRaggedAllToAll, instr, ragged_all_to_all, std::nullopt);
         }
         case HloOpcode::kCollectiveBroadcast: {
           auto* collective_broadcast =
               Cast<HloCollectiveBroadcastInstruction>(wrapped);
-          return EmitNcclThunk<CollectiveBroadcastStartThunk,
-                               HloCollectiveBroadcastInstruction>(
+          return EmitCollectiveThunk<CollectiveBroadcastStartThunk,
+                                     HloCollectiveBroadcastInstruction>(
               Thunk::kCollectiveBroadcast, instr, collective_broadcast,
               std::nullopt);
         }
@@ -2736,7 +2738,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     case HloOpcode::kCall:
       return EmitCommandBufferThunk(instr);
     case HloOpcode::kCollectivePermuteDone:
-      return EmitNcclAsyncDone(Thunk::kCollectivePermuteDone, instr);
+      return EmitCollectiveAsyncDone(Thunk::kCollectivePermuteDone, instr);
     case HloOpcode::kCollectivePermuteStart:
       return EmitCollectivePermute(
           Cast<HloCollectivePermuteInstruction>(instr));
