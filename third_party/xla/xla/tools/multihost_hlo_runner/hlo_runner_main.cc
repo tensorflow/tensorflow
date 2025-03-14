@@ -133,10 +133,10 @@ ArgumentModeFromString(absl::string_view text) {
     return FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
   }
   return absl::InvalidArgumentError(
-      absl::StrCat("Unrecognized module argument mode specified. Expect "
-                   "\"use_device_id_as_input\", \"use_random_inputs\", or "
-                   "\"use_shared_random_inputs\"., got: ",
-                   text));
+      absl::StrCat(R"(Invalid --hlo_argument_mode specified. Expected one of: )"
+                   R"("use_device_id_as_input", "use_random_inputs", )"
+                   R"("use_shared_random_inputs", "use_zeros_as_input", or )",
+                   R"("uninitialized". Got: )", text));
 }
 
 static absl::StatusOr<FunctionalHloRunner::PreprocessingOptions>
