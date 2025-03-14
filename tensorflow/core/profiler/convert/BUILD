@@ -1388,7 +1388,7 @@ cc_library(
 
 cc_library(
     name = "tpu_input_pipeline_analysis_constants",
-    srcs = [tf_profiler_alias("//tensorflow/core/profiler/convert/", "tpu_input_pipeline_analysis_constants.cc")],
+    srcs = [tf_profiler_alias("@org_xprof//xprof/convert/", "tpu_input_pipeline_analysis_constants.cc")],
     hdrs = ["tpu_input_pipeline_analysis_constants.h"],
     visibility = ["@local_xla//xla/tsl/profiler:friends"],
     deps = [
