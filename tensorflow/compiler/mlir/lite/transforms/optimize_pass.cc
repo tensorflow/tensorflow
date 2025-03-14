@@ -2705,6 +2705,114 @@ struct EnableFullyConnectedKeepNumDimsBeforeReshape
   }
 };
 
+// This pattern push transposes through squeeze ops to facilitate further
+// transpose and reshape fusions. For example, some JAX model could have
+// subgraphs like Reshape-Transpose-Squeeze. With this pattern, the transpose
+// can be pushed through the squeeze op, and fused with a subsequent reshape or
+// removed entirely. The squeeze op could also be fused with the former reshape.
+//
+// The pattern is designed to have lower benefit/priority than others,
+// while the push may still happen if the transpose could be fused with
+// downstream optimization phases or passe..
+struct PushTransposeThroughSqueeze : public RewritePattern {
+  explicit PushTransposeThroughSqueeze(MLIRContext *context)
+      : RewritePattern(TFL::SqueezeOp::getOperationName(), /*benefit=*/0,
+                       context) {}
+
+  LogicalResult matchAndRewrite(mlir::Operation *op,
+                                PatternRewriter &rewriter) const override {
+    TFL::SqueezeOp squeeze = cast<TFL::SqueezeOp>(op);
+    auto transpose = llvm::dyn_cast_or_null<TFL::TransposeOp>(
+        squeeze.getInput().getDefiningOp());
+    if (!transpose) {
+      return failure();
+    }
+
+    int32_t input_rank = transpose.getType().getShape().size();
+
+    llvm::SmallVector<int32_t, 4> squeeze_dims;
+    if (squeeze->hasAttr("squeeze_dims")) {
+      for (const auto &squeeze_dim : squeeze.getSqueezeDimsAttr()) {
+        squeeze_dims.push_back(
+            mlir::dyn_cast<IntegerAttr>(squeeze_dim).getInt());
+      }
+    }
+    if (squeeze_dims.empty()) {
+      for (int dim = 0; dim < input_rank; ++dim) {
+        if (transpose.getType().getDimSize(dim) == 1) {
+          squeeze_dims.push_back(dim);
+        }
+      }
+    }
+
+    mlir::DenseIntElementsAttr perm_attr;
+    if (!matchPattern(transpose.getPerm(), m_Constant(&perm_attr))) {
+      return failure();
+    }
+    llvm::SmallVector<int32_t, 4> perm;
+    for (const auto &dim : perm_attr.getValues<APInt>()) {
+      perm.push_back(dim.getSExtValue());
+    }
+
+    // Map squeeze dimensions to their positions after transpose.
+    llvm::sort(squeeze_dims);
+    llvm::SmallVector<int32_t, 4> new_squeeze_dims;
+    for (int32_t dim : squeeze_dims) {
+      new_squeeze_dims.push_back(perm[dim]);
+    }
+    llvm::sort(new_squeeze_dims);
+
+    // Filter the original transpose permutation to keep only non-squeezed
+    // positions.
+    llvm::SmallVector<int32_t> filtered_perm_original_indices;
+    for (int i = 0; i < input_rank; ++i) {
+      if (!llvm::is_contained(squeeze_dims, i)) {
+        filtered_perm_original_indices.push_back(perm[i]);
+      }
+    }
+
+    // Map the remaining original dimension indices to new 0-based indices after
+    // squeeze.
+    llvm::SmallVector<int32_t> original_remaining_dims;
+    for (int i = 0; i < input_rank; ++i) {
+      if (!llvm::is_contained(new_squeeze_dims, i)) {
+        original_remaining_dims.push_back(i);
+      }
+    }
+
+    llvm::SmallVector<int32_t> original_to_new_index_map(input_rank, -1);
+    for (int i = 0; i < original_remaining_dims.size(); ++i) {
+      original_to_new_index_map[original_remaining_dims[i]] = i;
+    }
+
+    llvm::SmallVector<int32_t> new_perm;
+    for (const auto &original_dim : filtered_perm_original_indices) {
+      new_perm.push_back(original_to_new_index_map[original_dim]);
+    }
+
+    llvm::SmallVector<int64_t> new_squeeze_shape;
+    for (int i = 0; i < input_rank; ++i) {
+      if (!llvm::is_contained(new_squeeze_dims, i)) {
+        new_squeeze_shape.push_back(
+            transpose.getInput().getType().getDimSize(i));
+      }
+    }
+    auto new_squeeze = rewriter.create<TFL::SqueezeOp>(
+        squeeze->getLoc(),
+        mlir::RankedTensorType::get(new_squeeze_shape,
+                                    squeeze.getType().getElementType()),
+        transpose.getInput(), rewriter.getI32ArrayAttr(new_squeeze_dims));
+
+    auto new_transpose = rewriter.create<TFL::TransposeOp>(
+        squeeze->getLoc(), squeeze.getType(), new_squeeze,
+        rewriter.create<arith::ConstantOp>(
+            squeeze->getLoc(), GetI32ElementsAttr(new_perm, &rewriter)));
+
+    rewriter.replaceOp(squeeze, new_transpose);
+    return success();
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2727,7 +2835,8 @@ void OptimizePass::runOnOperation() {
            FuseOutputReshape_BatchMatMulWithFlattenedContractingDims,
            FuseSqueezingLhsReshapeIntoFC_Output,
            FuseReshapesAroundBatchMatMulLHS, FuseReshapesAroundBatchMatMulLHS1,
-           FuseInputReshape_BatchMatMulWithFlattenedRhsDims>(ctx);
+           FuseInputReshape_BatchMatMulWithFlattenedRhsDims,
+           PushTransposeThroughSqueeze>(ctx);
   (void)applyPatternsGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus

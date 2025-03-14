@@ -146,6 +146,9 @@ def IsAllOnesConstant : Constraint<CPred<"TFL::IsAllOnesConstant($0)">>;
 def IsTransposeTrivial : Constraint<CPred<
   "TFL::IsTransposeTrivial($0.getType().cast<ShapedType>().getShape(), $1)">>;
 
+// Constraint that checks if the transpose op is a no-op.
+def IsTransposeNoop : Constraint<CPred<"TFL::IsTransposeNoop($0)">>;
+
 // Constraint that checks if the reshape op is equivalent to a transpose op.
 // This is true if the reshape op is a trivial reshape op, meaning no change in
 // the order of non-identity dimensions.
