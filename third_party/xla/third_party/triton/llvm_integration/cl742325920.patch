@@ -1,0 +1,58 @@
+
+--- a/third_party/amd/include/Analysis/RangeAnalysis.h	2025-03-25 07:48:50.000000000 -0700
++++ b/third_party/amd/include/Analysis/RangeAnalysis.h	2025-03-31 11:20:15.000000000 -0700
+@@ -118,8 +118,11 @@
+ 
+ std::optional<SmallVector<ConstantIntRanges>>
+ collectRanges(const DataFlowSolver &solver, ValueRange values);
++
+ bool cmpIIsStaticallyTrue(const DataFlowSolver &solver, arith::CmpIOp cmpOp);
+ 
++bool isEmptyInitializedRange(ConstantIntRanges rv);
++
+ } // namespace mlir::triton::AMD
+ 
+ #endif
+
+--- a/third_party/amd/lib/Analysis/RangeAnalysis.cpp	2025-03-25 07:48:50.000000000 -0700
++++ b/third_party/amd/lib/Analysis/RangeAnalysis.cpp	2025-03-31 11:20:15.000000000 -0700
+@@ -186,6 +186,13 @@
+ 
+ namespace mlir::triton::AMD {
+ 
++bool isEmptyInitializedRange(ConstantIntRanges rv) {
++  if (!rv.umin().getBitWidth() || !rv.umax().getBitWidth() ||
++      !rv.smin().getBitWidth() || !rv.smax().getBitWidth())
++    return true;
++  return false;
++}
++
+ std::optional<SmallVector<ConstantIntRanges>>
+ collectRanges(const DataFlowSolver &solver, ValueRange values) {
+   SmallVector<ConstantIntRanges> ranges;
+@@ -196,6 +203,8 @@
+       return {};
+     const ConstantIntRanges &inferredRange =
+         maybeInferredRange->getValue().getValue();
++    if (isEmptyInitializedRange(inferredRange))
++      return {};
+     ranges.push_back(inferredRange);
+   }
+   return ranges;
+
+--- a/third_party/amd/test/lib/Analysis/TestAMDRangeAnalysis.cpp	2025-03-25 07:48:50.000000000 -0700
++++ b/third_party/amd/test/lib/Analysis/TestAMDRangeAnalysis.cpp	2025-03-31 11:20:16.000000000 -0700
+@@ -34,6 +34,13 @@
+       return signalPassFailure();
+ 
+     auto nonNegativePred = [&solver](Value v) -> bool {
++      if (const auto *r =
++              solver->lookupState<dataflow::IntegerValueRangeLattice>(v)) {
++        if (r->getValue().isUninitialized())
++          return false;
++        if (AMD::isEmptyInitializedRange(r->getValue().getValue()))
++          return false;
++      }
+       return succeeded(dataflow::staticallyNonNegative(*solver, v));
+     };
+     mod->walk<WalkOrder::PreOrder>([&solver, nonNegativePred](Operation *op) {
