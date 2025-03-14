@@ -62,8 +62,6 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
     "//xla/tsl/profiler/utils:time_utils_impl",
     "//xla/tsl/protobuf:protos_all_cc_impl",
-]) + if_rocm_is_configured([
-    "//xla/tsl/util:determinism",
 ])
 
 def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):
