@@ -1152,8 +1152,7 @@ xla::Shape GetShape(shape_inference::ShapeHandle shape_handle,
   return xla::Shape(
       // Type matters only for indices. S64 is the widest possible type.
       xla::PrimitiveType::S64, dims,
-      absl::InlinedVector<bool, 4>(dynamic_dims.begin(), dynamic_dims.end()),
-      /*tuple_shapes=*/{});
+      absl::InlinedVector<bool, 4>(dynamic_dims.begin(), dynamic_dims.end()));
 }
 
 REGISTER_OP("XlaGather")

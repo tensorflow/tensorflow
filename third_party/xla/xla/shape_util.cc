@@ -534,7 +534,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 // Prepend new major-most dimension sized `bound` to the shape.
 Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
-  Shape new_shape(shape.element_type(), {}, {}, {});
+  Shape new_shape(shape.element_type(), {}, {});
   new_shape.add_dimensions(bound);
   for (const int64_t dim : shape.dimensions()) {
     new_shape.add_dimensions(dim);
@@ -1767,8 +1767,7 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
   Shape new_shape(shape.element_type(),
                   Permute(shape.dimensions(), permutation),
                   absl::InlinedVector<bool, 8>(dynamic_dimensions.begin(),
-                                               dynamic_dimensions.end()),
-                  {});
+                                               dynamic_dimensions.end()));
   if (shape.has_layout()) {
     *new_shape.mutable_layout() = shape.layout();
     for (int64_t& dim : *new_shape.mutable_layout()->mutable_minor_to_major()) {
