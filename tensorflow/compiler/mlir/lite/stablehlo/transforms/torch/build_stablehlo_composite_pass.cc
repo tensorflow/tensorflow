@@ -264,10 +264,7 @@ class BuildStableHLOCompositePass
 
       std::string boundary_key = metadata->boundary_key();
       auto& output_ops = boundary_output_ops[boundary_key];
-      if (metadata->pos >= output_ops.size()) {
-        output_ops.resize(metadata->pos + 1, nullptr);
-      }
-      output_ops[metadata->pos] = op.getOperation();
+      output_ops.push_back(op.getOperation());
 
       // Update the boundary order, which is determined by the order of the
       // last output op of each boundary.
