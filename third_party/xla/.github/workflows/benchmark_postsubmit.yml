@@ -69,6 +69,13 @@ jobs:
             bazel_arch_dir: "k8-opt",
             platform: "GPU"
           },
+          {
+            pool: "linux-x86-g2-48-l4-4gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 GPU T4 48 vcpu Presubmit",
+            bazel_arch_dir: "k8-opt",
+            platform: "GPU"
+          },
         ]
     name: ${{ matrix.job_info.pretty_name }}
     runs-on: ${{ matrix.job_info.pool }}
@@ -105,6 +112,17 @@ jobs:
             echo "Pull Request Head Ref: ${{ github.event.pull_request.head.ref }}"
             echo "Pull Request Base Ref: ${{ github.event.pull_request.base.ref }}"
           fi
+      # Find the current PR number, if any, because github context doesn't have it for push events.
+      - uses: jwalton/gh-find-current-pr@master
+        id: findPr
+        with:
+          # Can be "open", "closed", or "all".  Defaults to "open".
+          state: all
+      # This will echo "Your PR is 7", or be skipped if there is no current PR.
+      - run: echo "PR_NUMBER=${{ steps.findPr.outputs.pr }}"
+        if: success() && steps.findPr.outputs.number
+        env:
+          PR: ${{ steps.findPr.outputs.pr }}
 
       - name: Checkout OpenXLA
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
@@ -149,8 +167,13 @@ jobs:
           FILENAME="hlo_test_output.txt"
           COMMIT_SHA="${{ github.sha }}"
           RUN_ID="${{ github.run_id }}"
+          PR_NUMBER="${{ steps.findPr.outputs.pr }}"
+          PR_SUFFIX=""
+          if [[ -n "$PR_NUMBER" ]]; then
+            PR_SUFFIX="_pr_${PR_NUMBER}"
+          fi
 
-          GCS_OBJECT_NAME="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.pool }}_run_${RUN_ID}_commit_${COMMIT_SHA}_${FILENAME}"
+          GCS_OBJECT_NAME="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.pool }}_run_${RUN_ID}_commit_${COMMIT_SHA}${PR_SUFFIX}_${FILENAME}"
 
           echo "Uploading $OUTPUT_FILE_PATH to $GCS_BUCKET/$GCS_OBJECT_NAME"
           ls -l "$OUTPUT_FILE_PATH" # Verify the file exists

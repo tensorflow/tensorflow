@@ -109,6 +109,7 @@ class BuildType(enum.Enum):
   XLA_LINUX_ARM64_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_T4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_T4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
 
   XLA_MACOS_X86_CPU_KOKORO = enum.auto()
   XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
@@ -330,6 +331,25 @@ _XLA_LINUX_ARM64_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS_BUILD = Build(
 
 _XLA_LINUX_X86_GPU_T4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS_BUILD = Build(
     type_=BuildType.XLA_LINUX_X86_GPU_T4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
+    + _tag_filters_for_compute_capability(compute_capability=75),
+    build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        "repo_env": f"TF_CUDA_COMPUTE_CAPABILITIES={7.5}",
+        # Use User Mode and Kernel Mode Drivers pre-installed on the system.
+        "@cuda_driver//:enable_forward_compatibility": "false",
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    extra_setup_commands=(["nvidia-smi"],),
+    subcommand="build",
+)
+
+_XLA_LINUX_X86_GPU_T4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_T4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     configs=("warnings", "rbe_linux_cuda_nvcc"),

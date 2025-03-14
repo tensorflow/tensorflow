@@ -31,12 +31,12 @@ jobs:
           {
             os: "linux-x86-g2-48-l4-4gpu",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            pretty_name: "Linux X86 runner with 4 NVIDIA L4 GPUs",
+            pretty_name: "XLA Linux x86 GPU T4 48 vcpu Presubmit",
           },
           {
             os: "linux-x86-g2-16-l4-1gpu",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
-            pretty_name: "Linux X86 runner with 1 NVIDIA L4 GPU",
+            pretty_name: "XLA Linux x86 GPU T4 16 vcpu Presubmit",
           },
           # Expect more GPU types in the future.
         ]
@@ -46,7 +46,9 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 360
+    timeout-minutes: 240
+    env:
+      OUTPUT_DIR: ${{ github.workspace }}/output
     steps:
       - name: Checkout XLA
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
@@ -58,63 +60,84 @@ jobs:
           df -h    # Disk space information
           uname -a # Kernel information
 
-      - name: Create results directory
-        run: mkdir -p results
-
-      - name: Configure XLA for GPU backend
-        run: |
-          ./configure.py --backend CUDA --nccl
-
-      - name: Set TF_CPP_MAX_VLOG_LEVEL
-        env:
-          TF_CPP_MAX_VLOG_LEVEL: 1
-        run: |
-          echo "TF_CPP_MAX_VLOG_LEVEL is: $TF_CPP_MAX_VLOG_LEVEL"
-
-      - name: Build hlo_runner_main
-        run: bazel build -c opt --config=cuda --dynamic_mode=off //xla/tools/multihost_hlo_runner:hlo_runner_main
-
-      # TODO(juliagmt): Add more performance-critical HLOs to benchmark.
-      - name: Run gpu_hlo_backend.hlo and dump XSpace with profile stats
-        run: |
-          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=gpu --log_output=True --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to=results/gpu_hlo_backend_xspace.pb xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo
-
-      - name: Compute the cost of gpu_hlo_backend.hlo
-        run: |
-          PWD=$(pwd)
-          bazel run //xla/tools:compute_cost -- --input=$PWD/xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo --format=hlo --gpu
-
-      - name: Download and run Gemma2 2B HLO and collect runtime and compile time
+      - name: Download Gemma2 2B HLO
         run: |
           mkdir -p tmp_hlo
           cd tmp_hlo
           wget https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo
           cd ..
 
-      - name: Run gemma2_2b_keras_jax.hlo and dump XSpace with profile stats
+      - name: "Run build.py"
         run: |
-          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=gpu --log_output=True --use_spmd_partitioning --xla_gpu_dump_xspace_to=results/gemma2_2b_keras_jax_xspace.pb tmp_hlo/gemma2_2b_keras_jax.hlo
+          ./build_tools/ci/build.py --build="${{ matrix.job_info.pretty_name }}_github_actions"
 
-      - name: Compute the cost of gemma2_2b_keras_jax.hlo
+      - name: Run HLO tests and collect data
         run: |
-          PWD=$(pwd)
-          bazel run //xla/tools:compute_cost -- --input=$PWD/tmp_hlo/gemma2_2b_keras_jax.hlo --format=hlo --gpu
+          binary_dir="./bazel-out/k8-opt/bin/xla/tools"
+          mkdir -p "$OUTPUT_DIR"
 
-      - name: Build run_hlo_module
-        run: bazel build -c opt --config=cuda --dynamic_mode=off xla/tools:run_hlo_module
+          # Run gpu_hlo_backend.hlo
+          HLO_FILE_GB="xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo"
+          OUTPUT_PREFIX_GB="$OUTPUT_DIR/gpu_hlo_backend"
+          echo "Running GPU test: $HLO_FILE_GB"
+          $binary_dir/multihost_hlo_runner/hlo_runner_main_gpu \
+            --device_type=gpu \
+            --log_output=True \
+            --use_spmd_partitioning \
+            --profile_execution=True \
+            --xla_gpu_dump_xspace_to="${OUTPUT_PREFIX_GB}_xspace.pb" \
+            "$HLO_FILE_GB" \
+            > "${OUTPUT_PREFIX_GB}.txt"
 
-      - name: Run gpu_hlo_backend.hlo and collect runtime and compile time
+          $binary_dir/compute_gpu_device_stats_main_gpu \
+            --input="${OUTPUT_PREFIX_GB}_xspace.pb" \
+            >> "${OUTPUT_PREFIX_GB}.txt"
+
+          cat "${OUTPUT_PREFIX_GB}.txt"
+
+          # Run gemma2_2b_keras_jax.hlo
+          HLO_FILE_GEMMA="tmp_hlo/gemma2_2b_keras_jax.hlo"
+          OUTPUT_PREFIX_GEMMA="$OUTPUT_DIR/gemma2_2b_keras_jax"
+          echo "Running GPU test: $HLO_FILE_GEMMA"
+          $binary_dir/multihost_hlo_runner/hlo_runner_main_gpu \
+            --device_type=gpu \
+            --log_output=True \
+            --use_spmd_partitioning \
+            --profile_execution=True \
+            --xla_gpu_dump_xspace_to="${OUTPUT_PREFIX_GEMMA}_xspace.pb" \
+            "$HLO_FILE_GEMMA" \
+            > "${OUTPUT_PREFIX_GEMMA}.txt"
+
+          $binary_dir/compute_gpu_device_stats_main_gpu \
+            --input="${OUTPUT_PREFIX_GEMMA}_xspace.pb" \
+            >> "${OUTPUT_PREFIX_GEMMA}.txt"
+
+          cat "${OUTPUT_PREFIX_GEMMA}.txt"
+
+          echo "Output written to: ${OUTPUT_PREFIX_GB}.txt and ${OUTPUT_PREFIX_GEMMA}.txt"
+
+      - name: Upload HLO test output to GCS
         run: |
-          ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=GPU xla/tools/hlo_opt/tests/gpu_hlo_backend.hlo
+          GCS_BUCKET="gs://openxla-nightly-transient"
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          DATE_FOLDER=$(date +%Y%m%d)
+          COMMIT_SHA="${{ github.sha }}"
+          RUN_ID="${{ github.run_id }}"
 
-      - name: Compute device stats
-        run: |
-          PWD=$(pwd)
-          bazel run //xla/tools:compute_gpu_device_stats_main -- --input=$PWD/results/gpu_hlo_backend_xspace.pb
-          bazel run //xla/tools:compute_gpu_device_stats_main -- --input=$PWD/results/gemma2_2b_keras_jax_xspace.pb
+          # Upload output for gpu_hlo_backend
+          GB_BASE_NAME="gpu_hlo_backend"
+          GCS_FILE_NAME_GB="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.os }}_run_${RUN_ID}_commit_${COMMIT_SHA}$_${GB_BASE_NAME}.txt"
+          echo "Uploading $OUTPUT_DIR/${GB_BASE_NAME}.txt to $GCS_BUCKET/$GCS_FILE_NAME_GB"
+          gsutil cp "$OUTPUT_DIR/${GB_BASE_NAME}.txt" "$GCS_BUCKET/$GCS_FILE_NAME_GB"
 
-      - name: Upload XSpace
+          # Upload output for gemma2_2b_keras_jax
+          GEMMA_BASE_NAME="gemma2_2b_keras_jax"
+          GCS_FILE_NAME_GEMMA="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.os }}_run_${RUN_ID}_commit_${COMMIT_SHA}_${GEMMA_BASE_NAME}.txt"
+          echo "Uploading $OUTPUT_DIR/${GEMMA_BASE_NAME}.txt to $GCS_BUCKET/$GCS_FILE_NAME_GEMMA"
+          gsutil cp "$OUTPUT_DIR/${GEMMA_BASE_NAME}.txt" "$GCS_BUCKET/$GCS_FILE_NAME_GEMMA"
+
+      - name: Upload XSpace artifacts
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
-          name: gpu-xla-benchmarks-xspace
-          path: results/
+          name: gpu-xla-benchmarks-xspace-${{ matrix.job_info.os }}
+          path: ${{ github.workspace }}/output/*_xspace.pb
