@@ -31,8 +31,7 @@
 #include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"
 #endif  // LITERT_HAS_AHWB_SUPPORT
 
-namespace litert {
-namespace internal {
+namespace litert::internal {
 
 class GlBuffer {
  public:
@@ -127,8 +126,7 @@ class GlBuffer {
 #endif  // LITERT_HAS_AHWB_SUPPORT
 };
 
-}  // namespace internal
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 

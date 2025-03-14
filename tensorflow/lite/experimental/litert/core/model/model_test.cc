@@ -207,9 +207,9 @@ TEST(ModelOpTest, Options) {
   options.Set(::tflite::AddOptionsT());
 
   LiteRtOpT op;
-  detail::SetTflOptions(op, std::move(options));
+  litert::internal::SetTflOptions(op, std::move(options));
 
-  ASSERT_EQ(detail::GetTflOptions(op).type, kOptsType);
+  ASSERT_EQ(litert::internal::GetTflOptions(op).type, kOptsType);
 }
 
 TEST(ModelOpTest, OpCode) {
@@ -370,7 +370,7 @@ TEST(ModelTest, TransferSubgraphToReindexComposite) {
   TflOptions2 options;
   options.type = tflite::BuiltinOptions2_StableHLOCompositeOptions;
   options.Set(std::move(opts));
-  detail::SetTflOptions2(composite, std::move(options));
+  litert::internal::SetTflOptions2(composite, std::move(options));
 
   LiteRtSubgraphT::Alloc dest;
   std::vector<size_t> indices = {1};
@@ -380,7 +380,7 @@ TEST(ModelTest, TransferSubgraphToReindexComposite) {
               ElementsAreArray({&subgraph, &decomp_subgraph}));
   EXPECT_THAT(dest.Elements(), ElementsAreArray({&other_subgraph}));
 
-  const auto& new_opts = detail::GetTflOptions2(composite);
+  const auto& new_opts = litert::internal::GetTflOptions2(composite);
   const auto new_decomp_ind =
       new_opts.AsStableHLOCompositeOptions()->decomposition_subgraph_index;
   EXPECT_EQ(new_decomp_ind, 1);
@@ -402,7 +402,7 @@ TEST(ModelTest, TransferSubgraphToReindexCompositeNoChange) {
   options.type = tflite::BuiltinOptions2_StableHLOCompositeOptions;
   ;
   options.Set(std::move(opts));
-  detail::SetTflOptions2(composite, std::move(options));
+  litert::internal::SetTflOptions2(composite, std::move(options));
 
   LiteRtSubgraphT::Alloc dest;
   std::vector<size_t> indices = {2};
@@ -412,7 +412,7 @@ TEST(ModelTest, TransferSubgraphToReindexCompositeNoChange) {
               ElementsAreArray({&subgraph, &decomp_subgraph}));
   EXPECT_THAT(dest.Elements(), ElementsAreArray({&other_subgraph}));
 
-  const auto& new_opts = detail::GetTflOptions2(composite);
+  const auto& new_opts = litert::internal::GetTflOptions2(composite);
   const auto new_decomp_ind =
       new_opts.AsStableHLOCompositeOptions()->decomposition_subgraph_index;
   EXPECT_EQ(new_decomp_ind, 1);
@@ -437,7 +437,7 @@ TEST(ModelTest, TransferSubgraphToReindexCompositeMultiple) {
   options.type = tflite::BuiltinOptions2_StableHLOCompositeOptions;
   ;
   options.Set(std::move(opts));
-  detail::SetTflOptions2(composite, std::move(options));
+  litert::internal::SetTflOptions2(composite, std::move(options));
 
   LiteRtSubgraphT::Alloc dest;
   std::vector<size_t> indices = {1, 3, 5};
@@ -449,7 +449,7 @@ TEST(ModelTest, TransferSubgraphToReindexCompositeMultiple) {
       dest.Elements(),
       ElementsAreArray({&other_subgraph, &other_subgraph3, &other_subgraph4}));
 
-  const auto& new_opts = detail::GetTflOptions2(composite);
+  const auto& new_opts = litert::internal::GetTflOptions2(composite);
   const auto new_decomp_ind =
       new_opts.AsStableHLOCompositeOptions()->decomposition_subgraph_index;
   EXPECT_EQ(new_decomp_ind, 2);

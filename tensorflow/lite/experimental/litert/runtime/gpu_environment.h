@@ -24,8 +24,7 @@
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_context.h"
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_device.h"
 
-namespace litert {
-namespace internal {
+namespace litert::internal {
 
 // Inner singleton class that is for storing the MLD global environment.
 // This class is used to store OpenCL, OpenGL environment objects.
@@ -70,7 +69,6 @@ class GpuEnvironmentSingleton {
   static GpuEnvironmentSingleton* instance_;
 };
 
-}  // namespace internal
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_GPU_ENVIRONMENT_H_

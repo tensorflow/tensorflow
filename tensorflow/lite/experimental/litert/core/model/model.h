@@ -82,7 +82,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 // All tflite schema type usage.
-namespace detail {
+namespace litert::internal {
 
 // OP
 
@@ -127,7 +127,7 @@ void SetTflFlatbuffer(LiteRtModelT& litert_model,
 const ::litert::internal::FlatbufferWrapper& GetTflFlatbuffer(
     const LiteRtModelT& litert_model);
 
-}  // namespace detail
+}  // namespace litert::internal
 
 //
 // Helpers for conceptual unions from C api.
@@ -484,30 +484,30 @@ class LiteRtOpT {
   LiteRtOpT& operator=(LiteRtOpT&&) = default;
 
   // Friendship for internal tflite details.
-  friend void detail::SetTflOpCodeInd(LiteRtOpT& litert_op,
-                                      int32_t tfl_op_code_ind);
+  friend void litert::internal::SetTflOpCodeInd(LiteRtOpT& litert_op,
+                                                int32_t tfl_op_code_ind);
 
-  friend int32_t detail::GetTflOpCodeInd(const LiteRtOpT& litert_op);
-
-  template <class Arg>
-  friend void detail::SetTflOptions(LiteRtOpT& litert_op, Arg&& arg);
+  friend int32_t litert::internal::GetTflOpCodeInd(const LiteRtOpT& litert_op);
 
   template <class Arg>
-  friend void detail::SetTflOptions2(LiteRtOpT& litert_op, Arg&& arg);
+  friend void litert::internal::SetTflOptions(LiteRtOpT& litert_op, Arg&& arg);
 
-  friend const ::litert::internal::TflOptions& detail::GetTflOptions(
+  template <class Arg>
+  friend void litert::internal::SetTflOptions2(LiteRtOpT& litert_op, Arg&& arg);
+
+  friend const ::litert::internal::TflOptions& litert::internal::GetTflOptions(
       const LiteRtOpT& litert_op);
 
-  friend const ::litert::internal::TflOptions2& detail::GetTflOptions2(
-      const LiteRtOpT& litert_op);
+  friend const ::litert::internal::TflOptions2&
+  litert::internal::GetTflOptions2(const LiteRtOpT& litert_op);
 
-  friend ::litert::internal::TflOptions&& detail::TakeTflOptions(
+  friend ::litert::internal::TflOptions&& litert::internal::TakeTflOptions(
       LiteRtOpT& litert_op);
 
-  friend ::litert::internal::TflOptions2&& detail::TakeTflOptions2(
+  friend ::litert::internal::TflOptions2&& litert::internal::TakeTflOptions2(
       LiteRtOpT& litert_op);
 
-  friend void detail::ClearTflOptions(LiteRtOpT& litert_op);
+  friend void litert::internal::ClearTflOptions(LiteRtOpT& litert_op);
 
  private:
   LiteRtOpCode litert_op_code_;
@@ -518,17 +518,18 @@ class LiteRtOpT {
   std::vector<LiteRtTensor> outputs_;
 
   // TFLITE
-  int32_t tfl_op_code_ind_ = detail::kDispatchOpCodeTflInd;
+  int32_t tfl_op_code_ind_ = litert::internal::kDispatchOpCodeTflInd;
   ::litert::internal::TflOptions tfl_option_;
   ::litert::internal::TflOptions2 tfl_option_2_;
 };
 
 // Clears any attribute data and sets the op to be a dispatch op.
 inline void MakeDispatchOp(LiteRtOpT& op) {
-  detail::ClearTflOptions(op);
+  litert::internal::ClearTflOptions(op);
   op.ClearCustomOptions();
   op.SetOpCode(kLiteRtOpCodeTflCustom);
-  detail::SetTflOpCodeInd(op, detail::kDispatchOpCodeTflInd);
+  litert::internal::SetTflOpCodeInd(op,
+                                    litert::internal::kDispatchOpCodeTflInd);
 }
 
 //
@@ -873,18 +874,20 @@ class LiteRtModelT {
   // TFLITE
 
   // Friendship for internal tflite details.
-  friend const TflOpCodes& detail::GetTflOpCodes(
+  friend const TflOpCodes& litert::internal::GetTflOpCodes(
       const LiteRtModelT& litert_model);
 
   template <class Arg>
-  friend void detail::SetTflOpCodes(LiteRtModelT& litert_model, Arg&& arg);
+  friend void litert::internal::SetTflOpCodes(LiteRtModelT& litert_model,
+                                              Arg&& arg);
 
-  friend TflOpCodes&& detail::TakeTflOpCodes(LiteRtModelT& litert_model);
+  friend TflOpCodes&& litert::internal::TakeTflOpCodes(
+      LiteRtModelT& litert_model);
 
-  friend void detail::SetTflFlatbuffer(LiteRtModelT& litert_model,
-                                       TflFlatbuffer&& tfl_flatbuffer);
+  friend void litert::internal::SetTflFlatbuffer(
+      LiteRtModelT& litert_model, TflFlatbuffer&& tfl_flatbuffer);
 
-  friend const TflFlatbuffer& detail::GetTflFlatbuffer(
+  friend const TflFlatbuffer& litert::internal::GetTflFlatbuffer(
       const LiteRtModelT& litert_model);
 
   explicit LiteRtModelT(TflFlatbuffer&& tfl_flatbuffer)
@@ -922,7 +925,7 @@ std::optional<std::string> GetCustomOpCode(const LiteRtModelT& model,
 ::litert::Expected<LiteRtSubgraph> LookupSubgraph(
     const LiteRtModelT& model, absl::string_view signature_key);
 
-namespace detail {
+namespace litert::internal {
 
 template <class Arg>
 void SetTflOptions(LiteRtOpT& litert_op, Arg&& arg) {
@@ -944,7 +947,7 @@ void SetTflOpCodes(LiteRtModelT& litert_model, Arg&& arg) {
   litert_model.tfl_operator_codes_ = std::forward<Arg>(arg);
 }
 
-}  // namespace detail
+}  // namespace litert::internal
 
 //
 // Misc Ir Containers

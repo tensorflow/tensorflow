@@ -26,13 +26,10 @@
 #include "tensorflow/lite/delegates/gpu/gl/gl_texture.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 
-namespace litert {
-namespace internal {
+namespace litert::internal {
 
 class GlTexture {
  public:
-  // GlTexture() = default;
-
   GlTexture(GLenum target, GLuint id, GLenum format, size_t size_bytes,
             GLint layer, LiteRtGlTextureDeallocator deallocator);
 
@@ -52,8 +49,7 @@ class GlTexture {
   LiteRtGlTextureDeallocator deallocator_;
 };
 
-}  // namespace internal
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // LITERT_HAS_OPENGL_SUPPORT
 

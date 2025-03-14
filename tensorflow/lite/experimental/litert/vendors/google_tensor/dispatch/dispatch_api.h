@@ -20,8 +20,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
-namespace litert {
-namespace google_tensor {
+namespace litert::google_tensor {
 
 LiteRtStatus GraphCreate(LiteRtDispatchDeviceContext device_context,
                          LiteRtDispatchGraph* graph);
@@ -61,7 +60,6 @@ LiteRtStatus InvocationContextCreateFromGraph(
     LiteRtDispatchDeviceContext device_context, LiteRtDispatchGraph graph,
     LiteRtDispatchInvocationContext* invocation_context);
 
-}  // namespace google_tensor
-}  // namespace litert
+}  // namespace litert::google_tensor
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_GOOGLE_TENSOR_DISPATCH_DISPATCH_API_H_

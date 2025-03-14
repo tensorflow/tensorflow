@@ -179,7 +179,7 @@ class SerializationContext {
 };
 
 void SetOptions(const LiteRtOpT& litert_op, TflOp& tfl_op) {
-  tfl_op.builtin_options = detail::GetTflOptions(litert_op);
+  tfl_op.builtin_options = litert::internal::GetTflOptions(litert_op);
   if (litert_op.CustomOptions().Size() != 0) {
     tfl_op.custom_options = litert_op.CustomOptions().ToVec();
     tfl_op.custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS;
@@ -189,8 +189,9 @@ void SetOptions(const LiteRtOpT& litert_op, TflOp& tfl_op) {
 LiteRtStatus PackOp(SerializationContext& builder, LiteRtOpT& litert_op,
                     TflOp& tfl_op, const TensorMap& tensor_map) {
   // Get index of the op code in the tfl model.
-  auto tfl_op_code_ind = detail::GetTflOpCodeInd(litert_op);
-  const bool is_dispatch_op = tfl_op_code_ind == detail::kDispatchOpCodeTflInd;
+  auto tfl_op_code_ind = litert::internal::GetTflOpCodeInd(litert_op);
+  const bool is_dispatch_op =
+      tfl_op_code_ind == litert::internal::kDispatchOpCodeTflInd;
 
   if (is_dispatch_op) {
     tfl_op_code_ind = builder.DispatchOpCodeInd();
@@ -207,7 +208,7 @@ LiteRtStatus PackOp(SerializationContext& builder, LiteRtOpT& litert_op,
   }
 
   // Set generic options.
-  tfl_op.builtin_options = detail::GetTflOptions(litert_op);
+  tfl_op.builtin_options = litert::internal::GetTflOptions(litert_op);
 
   return kLiteRtStatusOk;
 }
@@ -525,7 +526,7 @@ Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model,
                                                   size_t bytecode_alignment) {
   // Pass the op code list through that was saved during loading. Add one more
   // op code for the dispatch ops
-  auto tfl_op_codes = detail::TakeTflOpCodes(model);
+  auto tfl_op_codes = litert::internal::TakeTflOpCodes(model);
   tfl_op_codes.push_back(
       MakeCustomOpCode(std::string(kLiteRtDispatchOpCustomCode)));
 

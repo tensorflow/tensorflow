@@ -102,11 +102,13 @@ class NpuAccelerator final {
 
   // Goes through the options in the linked list and returns the model
   // compilation data if it exists.
-  static Expected<const litert::ModelCompilationData*> GetModelCompilationData(
-      LiteRtAcceleratorCompilationOptions options) {
+  static Expected<const litert::internal::ModelCompilationData*>
+  GetModelCompilationData(LiteRtAcceleratorCompilationOptions options) {
     while (options) {
-      if (options->identifier == litert::ModelCompilationData::kIdentifier) {
-        return reinterpret_cast<litert::ModelCompilationData*>(options);
+      if (options->identifier ==
+          litert::internal::ModelCompilationData::kIdentifier) {
+        return reinterpret_cast<litert::internal::ModelCompilationData*>(
+            options);
       }
       LiteRtGetNextAcceleratorCompilationOptions(&options);
     }
@@ -126,9 +128,8 @@ class NpuAccelerator final {
                   kLiteRtStatusErrorInvalidArgument,
                   "Accelerator is not registered to an environment.");
 
-    LITERT_ASSIGN_OR_RETURN(
-        const litert::ModelCompilationData* compilation_data,
-        GetModelCompilationData(options));
+    LITERT_ASSIGN_OR_RETURN(const auto* compilation_data,
+                            GetModelCompilationData(options));
     const char* allocation_base = compilation_data->allocation_base;
 
     LITERT_ENSURE(allocation_base != nullptr, kLiteRtStatusErrorRuntimeFailure,

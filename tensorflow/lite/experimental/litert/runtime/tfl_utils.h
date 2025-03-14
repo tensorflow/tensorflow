@@ -20,15 +20,13 @@
 
 struct TfLiteOpaqueTensor;
 
-namespace litert {
-namespace internal {
+namespace litert::internal {
 
 Expected<ElementType> ConvertElementType(TfLiteType tfl_type);
 
 Expected<RankedTensorType> ConvertTensorType(
     const TfLiteOpaqueTensor* tfl_opaque_tensor);
 
-}  // namespace internal
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TFL_UTILS_H_

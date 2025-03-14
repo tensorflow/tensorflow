@@ -55,7 +55,7 @@ class FlatbufferContext {
     const auto builtin_code =
         PackedModel()->operator_codes()->Get(ind)->builtin_code();
     litert_op.SetOpCode(static_cast<LiteRtOpCode>(builtin_code));
-    detail::SetTflOpCodeInd(litert_op, ind);
+    litert::internal::SetTflOpCodeInd(litert_op, ind);
   }
 
   // Get the buffer at the given index in the tflite model.
@@ -132,8 +132,10 @@ LiteRtStatus UnpackOp(FlatbufferContext& context, LiteRtSubgraphT& parent,
 
   // TODO figure out how to parse builtins with the packed flatbuffer api.
   TflOpPtr tfl_op_ptr(tfl_op.UnPack());
-  detail::SetTflOptions(litert_op, std::move(tfl_op_ptr->builtin_options));
-  detail::SetTflOptions2(litert_op, std::move(tfl_op_ptr->builtin_options_2));
+  litert::internal::SetTflOptions(litert_op,
+                                  std::move(tfl_op_ptr->builtin_options));
+  litert::internal::SetTflOptions2(litert_op,
+                                   std::move(tfl_op_ptr->builtin_options_2));
 
   // OP CODE
 
@@ -354,7 +356,7 @@ LiteRtStatus UnpackSignatures(std::vector<TflSignaturePtr>& tfl_signatures,
 Expected<LiteRtModelT::Ptr> UnpackModel(FlatbufferWrapper&& flatbuffer) {
   auto litert_model = std::make_unique<LiteRtModelT>(std::move(flatbuffer));
 
-  FlatbufferContext context(detail::GetTflFlatbuffer(*litert_model),
+  FlatbufferContext context(litert::internal::GetTflFlatbuffer(*litert_model),
                             litert_model->Buffers());
   const auto* packed_model = context.PackedModel();
 
@@ -403,7 +405,7 @@ Expected<LiteRtModelT::Ptr> UnpackModel(FlatbufferWrapper&& flatbuffer) {
       TflOpCodePtr tfl_op_code_ptr(tfl_op_code->UnPack());
       tfl_op_codes[i] = std::move(tfl_op_code_ptr);
     }
-    detail::SetTflOpCodes(*litert_model, std::move(tfl_op_codes));
+    litert::internal::SetTflOpCodes(*litert_model, std::move(tfl_op_codes));
   }
 
   return litert_model;

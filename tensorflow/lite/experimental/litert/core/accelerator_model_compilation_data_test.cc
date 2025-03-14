@@ -20,26 +20,26 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/test/matchers.h"
 
-namespace litert {
 namespace {
 using testing::Eq;
 using testing::StrEq;
 
 TEST(ModelCompilationDataTest, CreateSetsUpAllNecessaryFields) {
-  LITERT_ASSERT_OK_AND_ASSIGN(auto ptr, ModelCompilationData::Create());
+  LITERT_ASSERT_OK_AND_ASSIGN(auto ptr,
+                              litert::internal::ModelCompilationData::Create());
 
   const char* identifier = nullptr;
   LITERT_EXPECT_OK(
       LiteRtGetAcceleratorCompilationOptionsIdentifier(ptr.get(), &identifier));
-  EXPECT_THAT(identifier, StrEq(ModelCompilationData::kIdentifier));
+  EXPECT_THAT(identifier,
+              StrEq(litert::internal::ModelCompilationData::kIdentifier));
 
   LiteRtApiVersion version;
   LITERT_EXPECT_OK(
       LiteRtGetAcceleratorCompilationOptionsVersion(ptr.get(), &version));
-  EXPECT_THAT(LiteRtCompareApiVersion(version, ModelCompilationData::kVersion),
+  EXPECT_THAT(LiteRtCompareApiVersion(
+                  version, litert::internal::ModelCompilationData::kVersion),
               Eq(0));
 }
 
 }  // namespace
-
-}  // namespace litert

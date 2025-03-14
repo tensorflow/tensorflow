@@ -22,6 +22,7 @@
 
 namespace {
 using testing::StrEq;
+using testing::litert::IsError;
 
 struct DummyAccleratorCompilationOptions {
   static constexpr const char* const kIdentifier = "dummy-accelerator";
@@ -76,7 +77,7 @@ TEST_F(LiteRtAcceleratorOptionsTest, GetIdentifier) {
               StrEq(DummyAccleratorCompilationOptions::kIdentifier));
   EXPECT_THAT(
       LiteRtGetAcceleratorCompilationOptionsIdentifier(nullptr, &identifier),
-      testing::litert::IsError(kLiteRtStatusErrorInvalidArgument));
+      IsError(kLiteRtStatusErrorInvalidArgument));
   EXPECT_EQ(LiteRtGetAcceleratorCompilationOptionsIdentifier(options_, nullptr),
             kLiteRtStatusErrorInvalidArgument);
 }

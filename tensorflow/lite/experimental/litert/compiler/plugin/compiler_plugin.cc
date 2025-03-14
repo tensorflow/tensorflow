@@ -495,7 +495,7 @@ Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
   sliced_model.TransferSubgraphsFrom(std::move(subgraphs));
 
   // Copy op codes.
-  const auto& op_codes = detail::GetTflOpCodes(model);
+  const auto& op_codes = litert::internal::GetTflOpCodes(model);
 
   LiteRtModelT::TflOpCodes codes;
   codes.reserve(op_codes.size());
@@ -503,7 +503,7 @@ Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
     codes.emplace_back(std::make_unique<TflOpCode>(*op_code));
   }
 
-  detail::SetTflOpCodes(sliced_model, std::move(codes));
+  litert::internal::SetTflOpCodes(sliced_model, std::move(codes));
 
   // Pass sliced subgraphs to plugin for compilation.
   auto compiled_result = compiler_plugin.Compile(&sliced_model, soc_model);

@@ -19,8 +19,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 
-namespace litert {
-namespace internal {
+namespace litert::internal {
 
 // Converts the given tensor buffer to the specified buffer type. A new tensor
 // buffer is created and returned. This function locks/unlocks the tensor buffer
@@ -29,7 +28,6 @@ namespace internal {
 Expected<LiteRtTensorBufferT::Ptr> TensorBufferConvertTo(
     LiteRtTensorBufferType buffer_type, LiteRtTensorBufferT& tensor_buffer);
 
-}  // namespace internal
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TENSOR_BUFFER_CONVERSION_H_

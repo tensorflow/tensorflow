@@ -42,7 +42,7 @@ TEST(OpOptionsTest, GetCompositeOptions) {
   internal::TflOptions2 tfl_options;
   tfl_options.type = kOptsType;
   tfl_options.Set(std::move(options));
-  detail::SetTflOptions2(op, std::move(tfl_options));
+  litert::internal::SetTflOptions2(op, std::move(tfl_options));
 
   auto res = GetOptionsAs<CompositeOptions>(&op);
   ASSERT_TRUE(res);
