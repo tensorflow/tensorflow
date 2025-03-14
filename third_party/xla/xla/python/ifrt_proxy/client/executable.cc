@@ -374,8 +374,9 @@ LoadedExecutable::~LoadedExecutable() {
 
   rpc_helper_->LoadedExecutableDestruct(std::move(req))
       .OnReady(
-          [](absl::StatusOr<std::shared_ptr<LoadedExecutableDestructResponse>>
-                 response) {
+          [rpc_helper = rpc_helper_](
+              absl::StatusOr<std::shared_ptr<LoadedExecutableDestructResponse>>
+                  response) {
             if (!response.ok()) {
               LOG(ERROR) << "Failed to destroy `LoadedExecutable`: "
                          << response.status();
