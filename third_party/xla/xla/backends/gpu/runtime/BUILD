@@ -1027,9 +1027,9 @@ cc_library(
 )
 
 cc_library(
-    name = "nccl_group_thunk",
-    srcs = ["nccl_group_thunk.cc"],
-    hdrs = ["nccl_group_thunk.h"],
+    name = "collective_group_thunk",
+    srcs = ["collective_group_thunk.cc"],
+    hdrs = ["collective_group_thunk.h"],
     deps = [
         ":collective_thunk",
         ":thunk",

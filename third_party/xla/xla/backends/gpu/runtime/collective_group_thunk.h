@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_NCCL_GROUP_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_NCCL_GROUP_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_GROUP_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_GROUP_THUNK_H_
 
 #include <memory>
 #include <vector>
@@ -28,15 +28,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// NCCL group thunk fuses together a set of arbitrary operations into a single
-// NCCL group call in order for them to be dispatched to NCCL as a NCCL group.
-// NCCL may or may not execute them in parallel.
+// Collective group thunk fuses together a set of arbitrary collective
+// operations into a single group call in order for them to be dispatched
+// together. Implementation is backend-specific and might not be supported by
+// all collective implementations.
 
-class NcclGroupThunk : public Thunk {
+class CollectiveGroupThunk : public Thunk {
  public:
-  NcclGroupThunk(const HloInstruction* instruction, Thunk::Kind kind,
-                 std::vector<std::unique_ptr<Thunk>> thunks,
-                 AsyncStreamKind stream_kind);
+  CollectiveGroupThunk(const HloInstruction* instruction, Thunk::Kind kind,
+                       std::vector<std::unique_ptr<Thunk>> thunks,
+                       AsyncStreamKind stream_kind);
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequestsInterface& resource_requests) override;
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
@@ -54,4 +55,4 @@ class NcclGroupThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_NCCL_GROUP_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_GROUP_THUNK_H_

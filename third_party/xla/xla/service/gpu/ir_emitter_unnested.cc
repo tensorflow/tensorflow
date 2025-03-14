@@ -124,6 +124,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/cholesky_thunk.h"
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
+#include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
@@ -142,7 +143,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
-#include "xla/backends/gpu/runtime/nccl_group_thunk.h"
 #include "xla/backends/gpu/runtime/norm_thunk.h"
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
@@ -2182,7 +2182,7 @@ absl::Status IrEmitterUnnested::EmitNcclGroupStartThunk(
       stream_kind = GetStreamKindForP2P(nested_instruction);
     }
   }
-  auto thunk = std::make_unique<NcclGroupThunk>(
+  auto thunk = std::make_unique<CollectiveGroupThunk>(
       instr, Thunk::Kind::kNcclGroupStart, std::move(scoped_thunk_sequence_),
       stream_kind.value_or(AsyncStreamKind::kCollective));
   emit_group_thunks_ = false;

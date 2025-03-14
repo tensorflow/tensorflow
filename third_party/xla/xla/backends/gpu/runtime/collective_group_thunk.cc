@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/nccl_group_thunk.h"
+#include "xla/backends/gpu/runtime/collective_group_thunk.h"
 
 #include <cstdint>
 #include <memory>
@@ -34,10 +34,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-NcclGroupThunk::NcclGroupThunk(const HloInstruction* instruction,
-                               Thunk::Kind kind,
-                               std::vector<std::unique_ptr<Thunk>> thunks,
-                               AsyncStreamKind stream_kind)
+CollectiveGroupThunk::CollectiveGroupThunk(
+    const HloInstruction* instruction, Thunk::Kind kind,
+    std::vector<std::unique_ptr<Thunk>> thunks, AsyncStreamKind stream_kind)
     : Thunk(kind, ThunkInfo::WithProfileAnnotation(instruction)),
       stream_kind_(stream_kind),
       async_events_(new CollectiveThunk::AsyncEvents()) {
@@ -45,14 +44,14 @@ NcclGroupThunk::NcclGroupThunk(const HloInstruction* instruction,
     thunks_.emplace_back(std::move(thunk));
   }
 }
-absl::Status NcclGroupThunk::Prepare(
+absl::Status CollectiveGroupThunk::Prepare(
     const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
     TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
   }
   return absl::OkStatus();
 }
-absl::Status NcclGroupThunk::Initialize(const InitializeParams& params) {
+absl::Status CollectiveGroupThunk::Initialize(const InitializeParams& params) {
   if (async_events_) {
     TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
   }
@@ -62,7 +61,7 @@ absl::Status NcclGroupThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status NcclGroupThunk::ExecuteOnStream(
+absl::Status CollectiveGroupThunk::ExecuteOnStream(
     const Thunk::ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   int64_t async_stream_idx = static_cast<int64_t>(stream_kind_);
