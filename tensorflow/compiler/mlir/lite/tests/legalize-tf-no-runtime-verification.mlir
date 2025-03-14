@@ -5,7 +5,8 @@ func.func @broadcast_to_bf16(%arg0: tensor<3xbf16>, %arg1: tensor<2xi64>) -> ten
   func.return %0: tensor<3x3xbf16>
 
 // CHECK-LABEL: broadcast_to_bf16
-// CHECK:  [[CST:%.*]] = arith.constant dense<1.000000e+00> : tensor<3x3xbf16>
-// CHECK:  [[MUL:%.*]] = tfl.mul(%arg0, [[CST]]) <{fused_activation_function = "NONE"}> : (tensor<3xbf16>, tensor<3x3xbf16>) -> tensor<3x3xbf16>
+// CHECK:  [[CST:%.*]] = arith.constant dense<1.000000e+00> : tensor<bf16>
+// CHECK:  [[FILL:%.*]] = "tfl.fill"(%arg1, [[CST]]) : (tensor<2xi64>, tensor<bf16>) -> tensor<3x3xbf16>
+// CHECK:  [[MUL:%.*]] = tfl.mul(%arg0, [[FILL]]) <{fused_activation_function = "NONE"}> : (tensor<3xbf16>, tensor<3x3xbf16>) -> tensor<3x3xbf16>
 // CHECK:  return [[MUL]] : tensor<3x3xbf16>
 }

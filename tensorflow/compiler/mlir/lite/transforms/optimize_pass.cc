@@ -993,7 +993,7 @@ struct SqueezeReshapesAroundBroadcastOp
 };
 
 // This pattern matches TFL::BroadcastToOp WITH TENSOR RANK <= 4 and replaces
-// it with a MulOp that multiplies the tensor by a splat constant with 1s.
+// it with a MulOp that multiplies the tensor with the output of a TFL::FillOp.
 struct ConvertTFLBroadcastToMulOp
     : public OpRewritePattern<TFL::BroadcastToOp> {
   using OpRewritePattern<TFL::BroadcastToOp>::OpRewritePattern;
@@ -1037,26 +1037,15 @@ struct ConvertTFLBroadcastToMulOp
           "Unsigned broadcast_to output with dynamic shape is not supported");
     }
 
-    Value mul_rhs_value;
-    if (!output_type.hasRank() || (output_type.getNumDynamicDims() > 0)) {
-      auto status_or_const_op =
-          CreateConstOpWithSingleValue(&rewriter, loc, input_type, 1);
-      if (!status_or_const_op.ok()) {
-        return failure();
-      }
-
-      mul_rhs_value = rewriter.create<TFL::FillOp>(
-          loc, output_type, tfl_broadcast_to_op.getShape(),
-          status_or_const_op.value());
-    } else {
-      auto status_or_const_op =
-          CreateConstOpWithVectorValue(&rewriter, loc, output_type, 1);
-      if (!status_or_const_op.ok()) {
-        return failure();
-      }
-
-      mul_rhs_value = status_or_const_op.value();
+    auto status_or_const_op =
+        CreateConstOpWithSingleValue(&rewriter, loc, input_type, 1);
+    if (!status_or_const_op.ok()) {
+      return failure();
     }
+
+    Value mul_rhs_value = rewriter.create<TFL::FillOp>(
+        loc, output_type, tfl_broadcast_to_op.getShape(),
+        status_or_const_op.value());
 
     auto mul_op = rewriter.create<TFL::MulOp>(
         loc, output_type, tfl_broadcast_to_op.getInput(), mul_rhs_value,
