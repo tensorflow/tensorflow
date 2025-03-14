@@ -515,4 +515,31 @@ bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t> seq) {
          seq.size() - 1;
 }
 
+std::string PrintAllFields(const google::protobuf::Message& message) {
+  tsl::protobuf::TextFormat::Printer tsl_printer;
+  const google::protobuf::Reflection* reflection = message.GetReflection();
+  std::stringstream result;
+  std::string buffer;
+  const google::protobuf::Descriptor* descriptor = message.GetDescriptor();
+  for (int i = 0; i < descriptor->field_count(); ++i) {
+    const google::protobuf::FieldDescriptor* field = descriptor->field(i);
+    if (field->is_repeated()) {
+      result << field->name() << ": [";
+      for (int j = 0; j < reflection->FieldSize(message, field); ++j) {
+        if (j > 0) {
+          result << ", ";
+        }
+        tsl_printer.PrintFieldValueToString(message, field, j, &buffer);
+        result << buffer;
+      }
+      result << "]\n";
+    } else {
+      result << field->name() << ": ";
+      tsl_printer.PrintFieldValueToString(message, field, -1, &buffer);
+      result << buffer << "\n";
+    }
+  }
+  return result.str();
+}
+
 }  // namespace xla

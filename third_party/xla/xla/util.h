@@ -950,6 +950,8 @@ inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
 
+std::string PrintAllFields(const google::protobuf::Message& message);
+
 }  // namespace xla
 
 // Note that STRING is evaluated regardless of whether it will be logged.
