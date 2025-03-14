@@ -175,18 +175,26 @@ static absl::StatusOr<DecomposedCp> DecomposeCollectivePermute(
   TF_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
   TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
 
-  // Control dependencies are require to assure order of the instructions.
-  // To avoid deadlocks as the program runs on multiple devices, we need to
-  // assure that we initiate receival before initiating sending and that receive
-  // done is executed after send is initiated.
-  TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
-  if (pipeline_parallelism_opt_level !=
-      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
-    TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send_done));
-  }
-  if (pipeline_parallelism_opt_level ==
-      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
-    TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
+  // We choose to run recv before send as an invariant, which helps avoid
+  // deadlocks. At the same time, running recv before send allows for pipelining
+  // recv into prior loop iterations, which is especially beneficial for
+  // pipeline parallelism.
+  switch (pipeline_parallelism_opt_level) {
+    case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE:
+      TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
+      TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
+      break;
+    case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE:
+      TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send));
+      break;
+    case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER:
+      TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
+      TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send_done));
+      break;
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported pipeline parallelism opt level: ",
+                       pipeline_parallelism_opt_level));
   }
 
   if (!pipeline_decision.empty()) {
