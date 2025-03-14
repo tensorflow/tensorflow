@@ -290,15 +290,15 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   return shape;
 }
 
-/* static */ Shape ShapeUtil::MakeScalarShape(PrimitiveType element_type) {
-  return MakeShape(element_type, {});
-}
-
 /* static */ Shape ShapeUtil::MakeShape(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-    const std::vector<bool>& dynamic_dimensions) {
+    absl::Span<const bool> dynamic_dimensions) {
   return MakeValidatedShape(element_type, dimensions, dynamic_dimensions)
       .value();
+}
+
+/* static */ Shape ShapeUtil::MakeScalarShape(PrimitiveType element_type) {
+  return MakeShape(element_type, {});
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithStaticDimensions(
@@ -321,7 +321,7 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
 
 /* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedShape(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-    const std::vector<bool>& dynamic_dimensions) {
+    absl::Span<const bool> dynamic_dimensions) {
   if (dynamic_dimensions.size() != dimensions.size()) {
     return InvalidArgument(
         "dynamic dimensions size %d did not match number of dimensions %d",
