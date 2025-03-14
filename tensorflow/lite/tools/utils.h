@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/c/c_api_types.h"
@@ -56,6 +55,19 @@ TfLiteStatus TfLiteTensorToFloat32Array(const TfLiteTensor& tensor,
 // Same as above, but converts to int64_t array.
 TfLiteStatus TfLiteTensorToInt64Array(const TfLiteTensor& tensor,
                                       absl::Span<int64_t> values);
+
+// Converts a float array to InputTensorData. Returns an error if the tensor
+// type is not supported or the total number of allocated bytes is not equal to
+// the number of values array elements multiplied by the size of the tensor
+// type.
+TfLiteStatus Float32ArrayToInputTensorData(absl::Span<const float> values,
+                                           size_t bytes, TfLiteType tensor_type,
+                                           InputTensorData& tensor);
+
+// Same as above, but converts from int64_t array.
+TfLiteStatus Int64ArrayToInputTensorData(absl::Span<const int64_t> values,
+                                         size_t bytes, TfLiteType tensor_type,
+                                         InputTensorData& tensor);
 }  // namespace utils
 }  // namespace tflite
 

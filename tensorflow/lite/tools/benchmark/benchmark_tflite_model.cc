@@ -421,6 +421,38 @@ CreateProfileSummaryFormatter(const std::string& output_mode) {
   }
 }
 
+// Load Input data from tf example proto file. Returns an error if the feature
+// values is not float list or int64 list. Also returns an error if the total
+// number of allocated bytes is not equal to the feature value array size
+// multiplied by the size of the tensor type.
+TfLiteStatus LoadInputTensorDataFromProto(const TfLiteTensor& t,
+                                          const std::string& input_file_path,
+                                          InputTensorData& t_data) {
+  std::ifstream value_file(input_file_path, std::ios::binary);
+  if (!value_file.good()) {
+    TFLITE_LOG(FATAL) << "Failed to read the input proto file:"
+                      << input_file_path;
+  }
+
+  tensorflow::Example example;
+  if (!example.ParseFromIstream(&value_file)) {
+    TFLITE_LOG(FATAL) << "Failed to parse the input proto file:"
+                      << input_file_path;
+  }
+  // Convert the feature values to the input tensor data.
+  const auto& feature = example.features().feature().at(t.name);
+  if (feature.has_float_list()) {
+    return utils::Float32ArrayToInputTensorData(feature.float_list().value(),
+                                                t.bytes, t.type, t_data);
+  } else if (feature.has_int64_list()) {
+    return utils::Int64ArrayToInputTensorData(feature.int64_list().value(),
+                                              t.bytes, t.type, t_data);
+  } else {
+    // Only support data format of float and int64 now.
+    return kTfLiteError;
+  }
+}
+
 }  // namespace
 
 TfLiteStatus SplitInputLayerNameAndValueFile(
@@ -615,6 +647,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("output_proto_filepath",
                           BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("input_proto_filepath",
+                          BenchmarkParam::Create<std::string>(""));
 
   default_params.AddParam("tensor_name_display_length",
                           BenchmarkParam::Create<int32_t>(25));
@@ -726,6 +760,9 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<std::string>(
           "output_proto_filepath", &params_,
           "File path to export outputs layer as tf example proto."),
+      CreateFlag<std::string>(
+          "input_proto_filepath", &params_,
+          "File path to load input tensors from tf example proto file."),
       CreateFlag<int32_t>(
           "tensor_name_display_length", &params_,
           "The number of characters to show for the tensor's name when "
@@ -811,6 +848,9 @@ void BenchmarkTfLiteModel::LogParams() {
   LOG_BENCHMARK_PARAM(std::string, "output_proto_filepath",
                       "File path to export outputs layer as tf example to",
                       verbose);
+  LOG_BENCHMARK_PARAM(std::string, "input_proto_filepath",
+                      "File path to load input tensors from tf example",
+                      verbose);
   LOG_BENCHMARK_PARAM(int32_t, "tensor_name_display_length",
                       "Tensor name display length", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "tensor_type_display_length",
@@ -856,6 +896,13 @@ TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
           "op_profiling_output_file",
           params_.Get<std::string>("profiling_output_csv_file"));
     }
+  }
+
+  if (!params_.Get<std::string>("input_proto_filepath").empty() &&
+      !params_.Get<std::string>("input_layer_value_files").empty()) {
+    TFLITE_LOG(ERROR) << "Please specify either --input_proto_filepath or "
+                         "--input_layer_value_files";
+    return kTfLiteError;
   }
 
   return PopulateInputLayerInfo(
@@ -974,6 +1021,8 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
   // simply use the corresponding input layer info to initialize the input
   // data value properly.
   const std::vector<int>& runner_inputs = interpreter_runner_->inputs();
+  const std::string input_proto_filepath =
+      params_.Get<std::string>("input_proto_filepath");
   for (int i = 0; i < runner_inputs.size(); ++i) {
     int tensor_index = runner_inputs[i];
     const TfLiteTensor& t = *(interpreter_runner_->tensor(tensor_index));
@@ -985,6 +1034,11 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     InputTensorData t_data;
     if (input_layer_info && !input_layer_info->input_file_path.empty()) {
       t_data = LoadInputTensorData(t, input_layer_info->input_file_path);
+    } else if (!input_proto_filepath.empty()) {
+      if (LoadInputTensorDataFromProto(t, input_proto_filepath, t_data) !=
+          kTfLiteOk) {
+        return kTfLiteError;
+      }
     } else {
       t_data = CreateRandomTensorData(t, input_layer_info);
     }
