@@ -89,7 +89,6 @@ cc_library(
         ":remove_sharding_custom_call_inc_gen",
         ":stablehlo_passes_inc_gen",
         ":stablehlo_type_utils",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:func",
