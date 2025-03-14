@@ -15,26 +15,12 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ENVIRONMENT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_ENVIRONMENT_H_
 
-#include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
-
-typedef enum {
-  kLiteRtEnvOptionTagCompilerPluginLibraryDir = 0,
-  kLiteRtEnvOptionTagDispatchLibraryDir = 1,
-  kLiteRtEnvOptionTagOpenClDeviceId = 2,
-  kLiteRtEnvOptionTagOpenClPlatformId = 3,
-  kLiteRtEnvOptionTagOpenClContext = 4,
-  kLiteRtEnvOptionTagOpenClCommandQueue = 5,
-} LiteRtEnvOptionTag;
-
-typedef struct {
-  LiteRtEnvOptionTag tag;
-  LiteRtAny value;
-} LiteRtEnvOption;
 
 LITERT_DEFINE_HANDLE(LiteRtEnvironment);
 
@@ -44,6 +30,10 @@ LiteRtStatus LiteRtEnvironmentCreate(int num_options,
                                      LiteRtEnvironment* environment);
 
 void LiteRtDestroyEnvironment(LiteRtEnvironment environment);
+
+// Get the options that the environment was created with.
+LiteRtStatus LiteRtGetEnvironmentOptions(LiteRtEnvironment environment,
+                                         LiteRtEnvironmentOptions* options);
 
 #ifdef __cplusplus
 }
