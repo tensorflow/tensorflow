@@ -30,6 +30,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/dispatch/litert_dispatch_device_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/schema/schema_resolver.h"
 
 using litert::Error;
 using litert::Expected;
@@ -231,12 +232,31 @@ LiteRtDispatchInvocationContextT::Create(
     LiteRtDispatchExecutableType exec_type,
     const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
     int num_inputs, int num_outputs) {
-  auto exec_bytecode_ptr =
+  neuron::SchemaResolver resolver;
+
+  const void* exec_bytecode_ptr =
       static_cast<const uint8_t*>(exec_bytecode_buffer->base_addr) +
       exec_bytecode_buffer->offset;
-  auto model_and_compilation = LoadModelAndCompilation(
-      neuron_adapter_api, exec_bytecode_ptr, exec_bytecode_buffer->size,
-      num_inputs, num_outputs);
+  auto exec_bytecode_size = exec_bytecode_buffer->size;
+  auto res = resolver.Initialize((const uint8_t*)exec_bytecode_ptr,
+                                 exec_bytecode_size);
+  if (res.HasValue() && res.Value()) {
+    std::string func = function_name != nullptr ? function_name : "";
+    auto graph = resolver.GetCompiledGraph(func);
+    if (!graph.has_value()) {
+      return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                           "Couldn't find the subgraph");
+    }
+    auto compile_graph = graph.value().GetCompiledNetwork();
+    if (!compile_graph) {
+      return compile_graph.Error();
+    }
+    std::tie(exec_bytecode_ptr, exec_bytecode_size) = compile_graph.Value();
+  }
+
+  auto model_and_compilation =
+      LoadModelAndCompilation(neuron_adapter_api, exec_bytecode_ptr,
+                              exec_bytecode_size, num_inputs, num_outputs);
   if (!model_and_compilation) {
     return model_and_compilation.Error();
   }
