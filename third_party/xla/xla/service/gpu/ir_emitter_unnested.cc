@@ -1434,9 +1434,11 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
         KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
                                 instr->operands(),
                                 /*dedup=*/false));
-    auto launch_dimensions =
-        LaunchDimensions(se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
-                         se::ThreadDim(call.num_warps * 32));
+    auto launch_dimensions = LaunchDimensions(
+        se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
+        se::ThreadDim(
+            call.num_warps *
+            ir_emitter_context_->gpu_device_info().threads_per_warp()));
 
     std::string sanitized_kernel_name =
         GetSanitizedUniqueName(*ir_emitter_context_, kernel_name);
