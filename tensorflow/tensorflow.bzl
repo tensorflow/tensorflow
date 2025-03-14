@@ -406,7 +406,6 @@ def get_win_copts(is_external = False):
         # "-DPLATFORM_WINDOWS",
         # "-DEIGEN_HAS_C99_MATH",
         # "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
-        # "-DEIGEN_AVOID_STL_ARRAY",
         # "-Iexternal/gemmlowp",
         # "-Wno-sign-compare",
         # "-DNOGDI",
@@ -414,7 +413,6 @@ def get_win_copts(is_external = False):
         "/DPLATFORM_WINDOWS",
         "/DEIGEN_HAS_C99_MATH",
         "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-        "/DEIGEN_AVOID_STL_ARRAY",
         "/Iexternal/gemmlowp",
         "/wd4018",  # -Wno-sign-compare
         # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
@@ -457,7 +455,6 @@ def tf_copts(
         android_copts.append(android_optimization_level_override)
     return (
         if_not_windows([
-            "-DEIGEN_AVOID_STL_ARRAY",
             "-Iexternal/gemmlowp",
             "-Wno-sign-compare",
             "-ftemplate-depth=900",
