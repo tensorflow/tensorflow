@@ -6728,6 +6728,7 @@ void ScatterDimensionNumbersAttr::print(AsmPrinter& printer) const {
 }
 Attribute ScatterDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
+
   SmallVector<int64_t> updateWindowDims;
   SmallVector<int64_t> insertedWindowDims;
   SmallVector<int64_t> inputBatchingDims;
@@ -6750,6 +6751,8 @@ Attribute ScatterDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
         << "failed parsing scatter dimension numbers attribute";
     return {};
   }
+
+  if (failed(parser.parseGreater())) return {};
 
   return ScatterDimensionNumbersAttr::get(
       parser.getContext(), updateWindowDims, insertedWindowDims,
@@ -6793,6 +6796,8 @@ Attribute GatherDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
         << "failed parsing gather dimension numbers attribute";
     return {};
   }
+
+  if (failed(parser.parseGreater())) return {};
 
   return GatherDimensionNumbersAttr::get(
       parser.getContext(), offsetDims, collapsedSliceDims, operandBatchingDims,
@@ -7261,6 +7266,7 @@ void ArgResultAliasAttr::print(AsmPrinter& printer) const {
 
 Attribute ArgResultAliasAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
+
   llvm::SmallVector<int64_t> argTupleIndices;
   // The first element of result indices holds the aliased result index and the
   // remaining elements are the result tuple indices.
@@ -7290,6 +7296,8 @@ Attribute ArgResultAliasAttr::parse(AsmParser& parser, Type type) {
         << "failed parsing argument-result alias attribute";
     return {};
   }
+
+  if (failed(parser.parseGreater())) return {};
 
   int64_t resultIndex = resultIndices[0];
   auto resultTupleIndices =
