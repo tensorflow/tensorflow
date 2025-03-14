@@ -16,6 +16,7 @@
 
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
@@ -25,11 +26,26 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 
+// Define a weak function to allow the accelerator registration to be overridden
+// by the LiteRT environment.
+// This is used to link the GPU accelerator statically.
+// NOTE: weak function is only supported in Linux.
+//
+// Return true if the accelerator is registered successfully.
+ABSL_ATTRIBUTE_WEAK extern "C" bool RegisterStaticLinkedAcceleratorGpu(
+    LiteRtEnvironmentT& environment) {
+  return false;
+}
+
 namespace litert {
 
 Expected<void> TriggerAcceleratorAutomaticRegistration(
     LiteRtEnvironmentT& environment) {
   // Register the GPU accelerator.
+  if (RegisterStaticLinkedAcceleratorGpu(environment)) {
+    LITERT_LOG(LITERT_INFO, "Statically linked GPU accelerator registered.");
+    return {};
+  }
   auto gpu_registration = RegisterSharedObjectAccelerator(
       environment, /*plugin_path=*/"libLiteRtGpuAccelerator.so",
       /*registration_function_name=*/"LiteRtRegisterAcceleratorGpuOpenCl");
