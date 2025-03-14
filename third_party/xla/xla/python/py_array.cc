@@ -556,7 +556,14 @@ PyArrayResultHandler::PyArrayResultHandler(nb::object aval, nb::object sharding,
 }
 
 PyArray PyArrayResultHandler::Call(absl::Span<const PyArray> py_arrays) const {
-  return Call(py_arrays.at(0).py_client(),
+  auto py_device_list = jax::GetPyDeviceList(sharding_);
+  if (!py_device_list.ok()) {
+    throw nb::value_error(
+        absl::StrCat("Failed to get py device list from sharding: ",
+                     py_device_list.status().ToString())
+            .c_str());
+  }
+  return Call(py_device_list.value()->py_client(),
               CreateIfRtArrayFromSingleDeviceShardedPyArrays(
                   dtype_, shape_, py_arrays, sharding_),
               xla::PjRtFuture<>());
