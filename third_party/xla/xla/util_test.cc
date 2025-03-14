@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/maybe_owning.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
@@ -407,6 +409,18 @@ TEST(UtilTest, MaybeOwningTestShared) {
   EXPECT_EQ(*c1, 'x');
   EXPECT_EQ(*c2, 'x');
   EXPECT_EQ(c1.get(), c2.get());
+}
+
+TEST(UtilTest, PrintAllFields) {
+  // Here we are using one of the bool fields that has the default value to
+  // false and ensuring that it is always printed.
+  ExecutionProfile execution_profile;
+  execution_profile.set_compilation_cache_hit(true);
+  std::string result = PrintAllFields(execution_profile);
+  EXPECT_TRUE(absl::StrContains(result, "compilation_cache_hit: true"));
+  execution_profile.set_compilation_cache_hit(false);
+  result = PrintAllFields(execution_profile);
+  EXPECT_TRUE(absl::StrContains(result, "compilation_cache_hit: false"));
 }
 
 }  // namespace
