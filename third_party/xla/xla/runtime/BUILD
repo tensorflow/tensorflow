@@ -37,3 +37,8 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
     ],
 )
+
+cc_library(
+    name = "thunk",
+    hdrs = ["thunk.h"],
+)
