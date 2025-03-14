@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
@@ -99,12 +99,12 @@ ENTRY main {
     // None of the inputs should be a "to host" custom call.
     for (const HloInstruction* operand : instruction->operands()) {
       EXPECT_FALSE(operand->IsCustomCall(
-          {host_memory_offload_annotations::kMoveToHostCustomCallTarget}));
+          {memory_annotations::kMoveToHostCustomCallTarget}));
     }
     // None of the outputs should be a "to device" custom call.
     for (const HloInstruction* user : instruction->users()) {
       EXPECT_FALSE(user->IsCustomCall(
-          {host_memory_offload_annotations::kMoveToDeviceCustomCallTarget}));
+          {memory_annotations::kMoveToDeviceCustomCallTarget}));
     }
   }
 }
@@ -149,12 +149,12 @@ ENTRY main {
     // None of the inputs should be a "to host" custom call.
     for (const HloInstruction* operand : instruction->operands()) {
       EXPECT_FALSE(operand->IsCustomCall(
-          {host_memory_offload_annotations::kMoveToHostCustomCallTarget}));
+          {memory_annotations::kMoveToHostCustomCallTarget}));
     }
     // None of the outputs should be a "to device" custom call.
     for (const HloInstruction* user : instruction->users()) {
       EXPECT_FALSE(user->IsCustomCall(
-          {host_memory_offload_annotations::kMoveToDeviceCustomCallTarget}));
+          {memory_annotations::kMoveToDeviceCustomCallTarget}));
     }
   }
 }
@@ -200,12 +200,12 @@ ENTRY main {
     // None of the inputs should be a "to host" custom call.
     for (const HloInstruction* operand : instruction->operands()) {
       EXPECT_FALSE(operand->IsCustomCall(
-          {host_memory_offload_annotations::kMoveToHostCustomCallTarget}));
+          {memory_annotations::kMoveToHostCustomCallTarget}));
     }
     // None of the outputs should be a "to device" custom call.
     for (const HloInstruction* user : instruction->users()) {
       EXPECT_FALSE(user->IsCustomCall(
-          {host_memory_offload_annotations::kMoveToDeviceCustomCallTarget}));
+          {memory_annotations::kMoveToDeviceCustomCallTarget}));
     }
   }
 }

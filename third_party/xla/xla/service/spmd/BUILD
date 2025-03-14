@@ -68,7 +68,7 @@ cc_library(
         "//xla/service:hlo_creation_utils",
         "//xla/service:hlo_cse",
         "//xla/service:hlo_module_config",
-        "//xla/service:host_memory_offload_annotations_hdr",
+        "//xla/service:memory_annotations_hdr",
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
         "//xla/service:sharding_propagation",

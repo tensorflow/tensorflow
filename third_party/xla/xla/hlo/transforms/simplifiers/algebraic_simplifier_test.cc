@@ -53,8 +53,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
-#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/layout_assignment.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
@@ -8132,7 +8132,7 @@ ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffload {
   ROOT dynamic_update_slice = bf16[56,2,2048,2,128] dynamic-update-slice(broadcast_0, custom_call, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
 }
 )",
-      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+      memory_annotations::kMoveToHostCustomCallTarget);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
@@ -8153,9 +8153,8 @@ ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffload {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::DynamicUpdateSlice(
           m::Broadcast(m::ConstantScalar(0)),
-          m::CustomCall(
-              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
-              m::Parameter(0)),
+          m::CustomCall({memory_annotations::kMoveToHostCustomCallTarget},
+                        m::Parameter(0)),
           m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
           m::ConstantScalar(0), m::ConstantScalar(0))));
 }
@@ -8180,7 +8179,7 @@ ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadWithReshape {
   ROOT dynamic_update_slice = bf16[56,2,2048,2,128] dynamic-update-slice(broadcast_0, reshape, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
 }
 )",
-      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+      memory_annotations::kMoveToHostCustomCallTarget);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
@@ -8202,9 +8201,9 @@ ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadWithReshape {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::DynamicUpdateSlice(
           m::Broadcast(m::ConstantScalar(0)),
-          m::Reshape(m::CustomCall(
-              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
-              m::Parameter(0))),
+          m::Reshape(
+              m::CustomCall({memory_annotations::kMoveToHostCustomCallTarget},
+                            m::Parameter(0))),
           m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
           m::ConstantScalar(0), m::ConstantScalar(0))));
 }
@@ -8229,7 +8228,7 @@ ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadWithBitcast {
   ROOT dynamic_update_slice = bf16[56,2,2048,2,128] dynamic-update-slice(broadcast_0, bitcast, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
 }
 )",
-      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+      memory_annotations::kMoveToHostCustomCallTarget);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
@@ -8251,9 +8250,9 @@ ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadWithBitcast {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::DynamicUpdateSlice(
           m::Broadcast(m::ConstantScalar(0)),
-          m::Bitcast(m::CustomCall(
-              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
-              m::Parameter(0))),
+          m::Bitcast(
+              m::CustomCall({memory_annotations::kMoveToHostCustomCallTarget},
+                            m::Parameter(0))),
           m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
           m::ConstantScalar(0), m::ConstantScalar(0))));
 }
@@ -8279,7 +8278,7 @@ ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadMultiLevel {
   ROOT dynamic_update_slice = bf16[56,2,2048,2,128]{4,3,2,1,0} dynamic-update-slice(broadcast_0, bitcast, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
 }
 )",
-      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+      memory_annotations::kMoveToHostCustomCallTarget);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
@@ -8305,9 +8304,9 @@ ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadMultiLevel {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::DynamicUpdateSlice(
           m::Broadcast(m::ConstantScalar(0)),
-          m::Bitcast(m::Copy(m::CustomCall(
-              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
-              m::Parameter(0)))),
+          m::Bitcast(m::Copy(
+              m::CustomCall({memory_annotations::kMoveToHostCustomCallTarget},
+                            m::Parameter(0)))),
           m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
           m::ConstantScalar(0), m::ConstantScalar(0))));
 }

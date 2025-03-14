@@ -22,7 +22,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
@@ -34,23 +34,18 @@ namespace xla {
 namespace {
 absl::StatusOr<absl::string_view> GetCustomCallTarget(
     absl::string_view external_annotation) {
-  if (external_annotation ==
-          host_memory_offload_annotations::kMemoryTargetPinnedHost ||
-      external_annotation ==
-          host_memory_offload_annotations::kMemoryTargetUnpinnedHost) {
-    return host_memory_offload_annotations::kMoveToHostCustomCallTarget;
+  if (external_annotation == memory_annotations::kMemoryTargetPinnedHost ||
+      external_annotation == memory_annotations::kMemoryTargetUnpinnedHost) {
+    return memory_annotations::kMoveToHostCustomCallTarget;
   }
-  if (external_annotation ==
-      host_memory_offload_annotations::kMemoryTargetDevice) {
-    return host_memory_offload_annotations::kMoveToDeviceCustomCallTarget;
+  if (external_annotation == memory_annotations::kMemoryTargetDevice) {
+    return memory_annotations::kMoveToDeviceCustomCallTarget;
   }
-  if (external_annotation ==
-      host_memory_offload_annotations::kMemoryTargetDeviceSram) {
-    return host_memory_offload_annotations::kPinToDeviceSramCustomCallTarget;
+  if (external_annotation == memory_annotations::kMemoryTargetDeviceSram) {
+    return memory_annotations::kPinToDeviceSramCustomCallTarget;
   }
-  if (external_annotation ==
-      host_memory_offload_annotations::kMemoryTargetPinnedDevice) {
-    return host_memory_offload_annotations::kPinToDeviceCustomCallTarget;
+  if (external_annotation == memory_annotations::kMemoryTargetPinnedDevice) {
+    return memory_annotations::kPinToDeviceCustomCallTarget;
   }
   return absl::InvalidArgumentError(
       absl::StrCat("Invalid external annotation: ", external_annotation));
@@ -67,14 +62,12 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
   // XLA currently does not differentiate between pinned and unpinned host
   // memory.
   const bool is_to_host_case =
-      (it->second == host_memory_offload_annotations::kMemoryTargetPinnedHost ||
-       it->second ==
-           host_memory_offload_annotations::kMemoryTargetUnpinnedHost);
+      (it->second == memory_annotations::kMemoryTargetPinnedHost ||
+       it->second == memory_annotations::kMemoryTargetUnpinnedHost);
   const bool is_to_device_case =
-      (it->second == host_memory_offload_annotations::kMemoryTargetDevice ||
-       it->second == host_memory_offload_annotations::kMemoryTargetDeviceSram ||
-       it->second ==
-           host_memory_offload_annotations::kMemoryTargetPinnedDevice);
+      (it->second == memory_annotations::kMemoryTargetDevice ||
+       it->second == memory_annotations::kMemoryTargetDeviceSram ||
+       it->second == memory_annotations::kMemoryTargetPinnedDevice);
   if (!is_to_host_case && !is_to_device_case) {
     return false;
   }
@@ -87,8 +80,8 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
       return Internal(
           "Custom calls with target %s must have exactly one operand. %s "
           "has %d.",
-          host_memory_offload_annotations::kDevicePlacement,
-          instruction->name(), instruction->operand_count());
+          memory_annotations::kDevicePlacement, instruction->name(),
+          instruction->operand_count());
     }
     HloInstruction* input = instruction->mutable_operand(0);
     HloInstruction* move_to_host_custom_call =
@@ -123,8 +116,7 @@ absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
   bool changed = false;
   for (HloComputation* c : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : c->MakeInstructionPostOrder()) {
-      if (instruction->IsCustomCall(
-              host_memory_offload_annotations::kDevicePlacement)) {
+      if (instruction->IsCustomCall(memory_annotations::kDevicePlacement)) {
         TF_ASSIGN_OR_RETURN(
             auto result,
             ConvertCustomCallWithExternalAnnotationToInternalAnnotation(

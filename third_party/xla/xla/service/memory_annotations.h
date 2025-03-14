@@ -13,13 +13,13 @@
  limitations under the License.
  ==============================================================================*/
 
-#ifndef XLA_SERVICE_HOST_MEMORY_OFFLOAD_ANNOTATIONS_H_
-#define XLA_SERVICE_HOST_MEMORY_OFFLOAD_ANNOTATIONS_H_
+#ifndef XLA_SERVICE_MEMORY_ANNOTATIONS_H_
+#define XLA_SERVICE_MEMORY_ANNOTATIONS_H_
 
 #include "absl/strings/string_view.h"
 
 namespace xla {
-namespace host_memory_offload_annotations {
+namespace memory_annotations {
 
 // External annotations:
 inline const absl::string_view kDevicePlacement = "annotate_device_placement";
@@ -36,7 +36,7 @@ inline const absl::string_view kPinToDeviceCustomCallTarget = "PinToDevice";
 inline const absl::string_view kPinToDeviceSramCustomCallTarget =
     "PinToDeviceSram";
 
-}  // namespace host_memory_offload_annotations
+}  // namespace memory_annotations
 }  // namespace xla
 
-#endif  // XLA_SERVICE_HOST_MEMORY_OFFLOAD_ANNOTATIONS_H_
+#endif  // XLA_SERVICE_MEMORY_ANNOTATIONS_H_

@@ -502,7 +502,7 @@ xla_cc_test(
         ":collective_pipeliner",
         ":hlo_module_config",
         ":hlo_verifier",
-        ":host_memory_offload_annotations_hdr",
+        ":memory_annotations_hdr",
         ":scheduling_annotations_util",
         "//xla:literal_util",
         "//xla:test_helpers",
@@ -669,7 +669,7 @@ cc_library(
         ":custom_call_sharding_helper",
         ":dot_as_convolution_util",
         ":hlo_graph_dumper",
-        ":host_memory_offload_annotations_hdr",
+        ":memory_annotations_hdr",
         "//xla:array",
         "//xla:protobuf_util",
         "//xla:shape_tree",
@@ -4926,8 +4926,8 @@ cc_library(
 )
 
 cc_library(
-    name = "host_memory_offload_annotations_hdr",
-    hdrs = ["host_memory_offload_annotations.h"],
+    name = "memory_annotations_hdr",
+    hdrs = ["memory_annotations.h"],
     deps = [
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -4961,7 +4961,7 @@ cc_library(
     deps = [
         ":call_graph",
         ":hlo_buffer",
-        ":host_memory_offload_annotations_hdr",
+        ":memory_annotations_hdr",
         ":pattern_matcher",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -4988,8 +4988,8 @@ xla_cc_test(
     srcs = ["host_offload_utils_test.cc"],
     deps = [
         ":hlo_verifier",
-        ":host_memory_offload_annotations_hdr",
         ":host_offload_utils",
+        ":memory_annotations_hdr",
         ":pattern_matcher",
         ":pattern_matcher_gmock",
         "//xla:shape_util",

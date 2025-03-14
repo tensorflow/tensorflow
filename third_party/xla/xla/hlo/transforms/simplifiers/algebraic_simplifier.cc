@@ -61,8 +61,8 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/host_offload_utils.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
@@ -7455,8 +7455,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
     // HostOffloader is run the broadcast should be rewritten to an
     // AllocateBuffer so this dus->pad rewrite won't apply anymore.
     auto is_host_offloading = [&](HloInstruction* hlo) {
-      const auto custom_call_pattern = m::CustomCall(
-          {host_memory_offload_annotations::kMoveToHostCustomCallTarget});
+      const auto custom_call_pattern =
+          m::CustomCall({memory_annotations::kMoveToHostCustomCallTarget});
       if (Match(hlo, custom_call_pattern)) {
         return true;
       }

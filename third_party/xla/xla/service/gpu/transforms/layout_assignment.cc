@@ -44,8 +44,8 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/logical_buffer.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -699,9 +699,9 @@ bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(
       DynCast<HloCustomCallInstruction>(instruction);
   if (custom_call != nullptr &&
       (custom_call->custom_call_target() ==
-           host_memory_offload_annotations::kMoveToHostCustomCallTarget ||
+           memory_annotations::kMoveToHostCustomCallTarget ||
        custom_call->custom_call_target() ==
-           host_memory_offload_annotations::kMoveToDeviceCustomCallTarget ||
+           memory_annotations::kMoveToDeviceCustomCallTarget ||
        custom_call->custom_call_target() == kTopKCustomCallTarget)) {
     return false;
   }
