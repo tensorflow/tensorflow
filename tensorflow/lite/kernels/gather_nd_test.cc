@@ -221,6 +221,46 @@ TEST(GatherNdOpTest, DuplicateIndexingIntoRank3Tensor) {
               Pointwise(FloatingPointEq(), {-2.1, 2.2, 2.3, -2.1, 2.2, 2.3}));
 }
 
+TEST(GatherNdOpTest, BFloat16Int32) {
+  GatherNdOpModel m({TensorType_BFLOAT16, {3, 2, 3}},
+                    {TensorType_INT32, {2, 2}});
+  m.SetInput<Eigen::bfloat16>(
+      {Eigen::bfloat16(1.1), Eigen::bfloat16(-1.2), Eigen::bfloat16(1.3),
+       Eigen::bfloat16(-2.1), Eigen::bfloat16(2.2), Eigen::bfloat16(2.3),  //
+       Eigen::bfloat16(3.1), Eigen::bfloat16(3.2), Eigen::bfloat16(-3.3),
+       Eigen::bfloat16(-4.1), Eigen::bfloat16(-4.2), Eigen::bfloat16(4.3),  //
+       Eigen::bfloat16(5.1), Eigen::bfloat16(-5.2), Eigen::bfloat16(5.3),
+       Eigen::bfloat16(6.1), Eigen::bfloat16(-6.2), Eigen::bfloat16(6.3)});
+  m.SetPositions<int32_t>({0, 1, 1, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<Eigen::bfloat16>(),
+              Pointwise(FloatingPointEq(),
+                        {Eigen::bfloat16(-2.1), Eigen::bfloat16(2.2),
+                         Eigen::bfloat16(2.3), Eigen::bfloat16(3.1),
+                         Eigen::bfloat16(3.2), Eigen::bfloat16(-3.3)}));
+}
+
+TEST(GatherNdOpTest, Float16Int32) {
+  GatherNdOpModel m({TensorType_FLOAT16, {3, 2, 3}},
+                    {TensorType_INT32, {2, 2}});
+  m.SetInput<Eigen::half>(
+      {Eigen::half(1.1), Eigen::half(-1.2), Eigen::half(1.3), Eigen::half(-2.1),
+       Eigen::half(2.2), Eigen::half(2.3),  //
+       Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3), Eigen::half(-4.1),
+       Eigen::half(-4.2), Eigen::half(4.3),  //
+       Eigen::half(5.1), Eigen::half(-5.2), Eigen::half(5.3), Eigen::half(6.1),
+       Eigen::half(-6.2), Eigen::half(6.3)});
+  m.SetPositions<int32_t>({0, 1, 1, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(
+      m.GetOutput<Eigen::half>(),
+      Pointwise(FloatingPointEq(),
+                {Eigen::half(-2.1), Eigen::half(2.2), Eigen::half(2.3),
+                 Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3)}));
+}
+
 TEST(GatherNdOpTest, Float32Int32) {
   GatherNdOpModel m({TensorType_FLOAT32, {3, 2, 3}},
                     {TensorType_INT32, {2, 2}});
@@ -232,6 +272,46 @@ TEST(GatherNdOpTest, Float32Int32) {
 
   EXPECT_THAT(m.GetOutput<float>(),
               Pointwise(FloatingPointEq(), {-2.1, 2.2, 2.3, 3.1, 3.2, -3.3}));
+}
+
+TEST(GatherNdOpTest, BFloat16Int64) {
+  GatherNdOpModel m({TensorType_BFLOAT16, {3, 2, 3}},
+                    {TensorType_INT64, {2, 2}});
+  m.SetInput<Eigen::bfloat16>(
+      {Eigen::bfloat16(1.1), Eigen::bfloat16(-1.2), Eigen::bfloat16(1.3),
+       Eigen::bfloat16(-2.1), Eigen::bfloat16(2.2), Eigen::bfloat16(2.3),  //
+       Eigen::bfloat16(3.1), Eigen::bfloat16(3.2), Eigen::bfloat16(-3.3),
+       Eigen::bfloat16(-4.1), Eigen::bfloat16(-4.2), Eigen::bfloat16(4.3),  //
+       Eigen::bfloat16(5.1), Eigen::bfloat16(-5.2), Eigen::bfloat16(5.3),
+       Eigen::bfloat16(6.1), Eigen::bfloat16(-6.2), Eigen::bfloat16(6.3)});
+  m.SetPositions<int64_t>({0LL, 1LL, 1LL, 0LL});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<Eigen::bfloat16>(),
+              Pointwise(FloatingPointEq(),
+                        {Eigen::bfloat16(-2.1), Eigen::bfloat16(2.2),
+                         Eigen::bfloat16(2.3), Eigen::bfloat16(3.1),
+                         Eigen::bfloat16(3.2), Eigen::bfloat16(-3.3)}));
+}
+
+TEST(GatherNdOpTest, Float16Int64) {
+  GatherNdOpModel m({TensorType_FLOAT16, {3, 2, 3}},
+                    {TensorType_INT64, {2, 2}});
+  m.SetInput<Eigen::half>(
+      {Eigen::half(1.1), Eigen::half(-1.2), Eigen::half(1.3), Eigen::half(-2.1),
+       Eigen::half(2.2), Eigen::half(2.3),  //
+       Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3), Eigen::half(-4.1),
+       Eigen::half(-4.2), Eigen::half(4.3),  //
+       Eigen::half(5.1), Eigen::half(-5.2), Eigen::half(5.3), Eigen::half(6.1),
+       Eigen::half(-6.2), Eigen::half(6.3)});
+  m.SetPositions<int64_t>({0LL, 1LL, 1LL, 0LL});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(
+      m.GetOutput<Eigen::half>(),
+      Pointwise(FloatingPointEq(),
+                {Eigen::half(-2.1), Eigen::half(2.2), Eigen::half(2.3),
+                 Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3)}));
 }
 
 TEST(GatherNdOpTest, Float32Int64) {
@@ -357,6 +437,46 @@ TEST(GatherNdOpTest, Int64Int64) {
 
   EXPECT_THAT(m.GetOutput<int64_t>(),
               ElementsAreArray({-2LL, 2LL, 2LL, 3LL, 3LL, -3LL}));
+}
+
+TEST(GatherNdOpTest, BFloat16Int16) {
+  GatherNdOpModel m({TensorType_BFLOAT16, {3, 2, 3}},
+                    {TensorType_INT16, {2, 2}});
+  m.SetInput<Eigen::bfloat16>(
+      {Eigen::bfloat16(1.1), Eigen::bfloat16(-1.2), Eigen::bfloat16(1.3),
+       Eigen::bfloat16(-2.1), Eigen::bfloat16(2.2), Eigen::bfloat16(2.3),  //
+       Eigen::bfloat16(3.1), Eigen::bfloat16(3.2), Eigen::bfloat16(-3.3),
+       Eigen::bfloat16(-4.1), Eigen::bfloat16(-4.2), Eigen::bfloat16(4.3),  //
+       Eigen::bfloat16(5.1), Eigen::bfloat16(-5.2), Eigen::bfloat16(5.3),
+       Eigen::bfloat16(6.1), Eigen::bfloat16(-6.2), Eigen::bfloat16(6.3)});
+  m.SetPositions<int16_t>({0, 1, 1, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<Eigen::bfloat16>(),
+              Pointwise(FloatingPointEq(),
+                        {Eigen::bfloat16(-2.1), Eigen::bfloat16(2.2),
+                         Eigen::bfloat16(2.3), Eigen::bfloat16(3.1),
+                         Eigen::bfloat16(3.2), Eigen::bfloat16(-3.3)}));
+}
+
+TEST(GatherNdOpTest, Float16Int16) {
+  GatherNdOpModel m({TensorType_FLOAT16, {3, 2, 3}},
+                    {TensorType_INT16, {2, 2}});
+  m.SetInput<Eigen::half>(
+      {Eigen::half(1.1), Eigen::half(-1.2), Eigen::half(1.3), Eigen::half(-2.1),
+       Eigen::half(2.2), Eigen::half(2.3),  //
+       Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3), Eigen::half(-4.1),
+       Eigen::half(-4.2), Eigen::half(4.3),  //
+       Eigen::half(5.1), Eigen::half(-5.2), Eigen::half(5.3), Eigen::half(6.1),
+       Eigen::half(-6.2), Eigen::half(6.3)});
+  m.SetPositions<int16_t>({0, 1, 1, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(
+      m.GetOutput<Eigen::half>(),
+      Pointwise(FloatingPointEq(),
+                {Eigen::half(-2.1), Eigen::half(2.2), Eigen::half(2.3),
+                 Eigen::half(3.1), Eigen::half(3.2), Eigen::half(-3.3)}));
 }
 
 TEST(GatherNdOpTest, Float32Int16) {
