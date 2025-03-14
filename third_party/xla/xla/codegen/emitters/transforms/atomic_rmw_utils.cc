@@ -104,6 +104,7 @@ std::optional<std::pair<Value, ml::AtomicBinOp>> GetAtomicModifierParameters(
     return std::nullopt;
   }
   // Match the kind of the atomic op.
+  // TODO(rocm): Match bf16 ops
   mlir::Operation* modifier_op = &operations.front();
   auto kind = GetAtomicBinOp(modifier_op, element_type);
   if (!kind.has_value()) {
