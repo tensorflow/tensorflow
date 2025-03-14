@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/python/transfer/socket_bulk_transport.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/streaming_ifrt.h"
+#include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/python/types.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
