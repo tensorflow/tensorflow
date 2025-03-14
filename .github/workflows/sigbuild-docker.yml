@@ -102,4 +102,24 @@ jobs:
       -
         name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
-
+      - name: Get the sha256 digest of the image
+        env:
+          DIGEST: ${{ steps.docker_build.outputs.digest }}
+        id: sha256-selector
+        # This will convert sha256:abcdef to abcdef.
+        run: echo "digest=${DIGEST##*:}" >> "$GITHUB_OUTPUT"
+      -
+        name: Tag image with infrastructure-public-image prefix for security measurement.
+        id: docker_build
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # v6.10.0
+        with:
+          push: true
+          context: ./tensorflow/tools/tf_sig_build_dockerfiles
+          target: devel
+          build-args: |
+            PYTHON_VERSION=${{ matrix.python-version }}
+            CACHEBUSTER=${{ steps.tf-version.outputs.DATE }}
+          tags: |
+            infrastructure-public-image-${{ steps.sha256-selector.outputs.digest }}
+          cache-from: type=registry,ref=tensorflow/build:latest-${{ matrix.python-version }}
+          cache-to: type=inline
