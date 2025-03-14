@@ -43,9 +43,9 @@ int PadAttributeArray(Array* attribute_array, std::vector<int> pad_values,
   return mask;
 }
 
-::tensorflow::Status ResolveStridedSliceAttributes::Run(Model* model,
-                                                        std::size_t op_index,
-                                                        bool* modified) {
+absl::Status ResolveStridedSliceAttributes::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
   *modified = false;
   const auto slice_it = model->operators.begin() + op_index;
   auto* slice_op = slice_it->get();
