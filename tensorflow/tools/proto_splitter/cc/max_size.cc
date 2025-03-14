@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
 
+#include <cstdint>
+
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
 #include "absl/synchronization/mutex.h"
 
 namespace tensorflow {
