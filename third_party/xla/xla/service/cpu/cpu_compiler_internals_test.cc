@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/base/nullability.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
+#include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/llvm_compiler.h"
@@ -53,9 +55,27 @@ std::optional<int64_t> GetMetadataInt(absl::Nullable<llvm::Metadata*> value) {
   return c->getSExtValue();
 }
 
+std::optional<std::string> GetMetadataString(
+    absl::Nullable<llvm::Metadata*> value) {
+  if (value == nullptr) {
+    return std::nullopt;
+  }
+  auto* md_string = llvm::dyn_cast<llvm::MDString>(value);
+  if (md_string == nullptr) {
+    return std::nullopt;
+  }
+  return md_string->getString().str();
+}
+
 std::optional<int64_t> GetXlaDylibIndex(const llvm::Module& llvm_module) {
   llvm::Metadata* md = llvm_module.getModuleFlag("xla_dylib_index");
   return GetMetadataInt(md);
+}
+
+std::optional<std::string> GetXlaBackendExtraOptions(
+    const llvm::Module& llvm_module) {
+  llvm::Metadata* md = llvm_module.getModuleFlag("xla_backend_extra_options");
+  return GetMetadataString(md);
 }
 
 static constexpr absl::string_view kAddScatterHlo = R"(
@@ -142,6 +162,50 @@ TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
   EXPECT_EQ(max_seen, 0) << "max dylib_index(" << max_seen
                          << ") != 0, but only "
                          << "one dylib is allowed.";
+}
+
+TEST_F(CpuCompilerInternalsTest, JustTwoDylibsWithFusionEmitters) {
+  if (!kFusionEmitterScatterEnabled) {
+    GTEST_SKIP() << "Needs scatter fusion emitter since that reserves one of "
+                 << "the dylibs for specific compilation flags.";
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kAddScatterHlo));
+  DebugOptions& debug_options =
+      hlo_module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_cpu_use_thunk_runtime(true);
+  debug_options.set_xla_cpu_use_fusion_emitters(true);
+  debug_options.set_xla_cpu_parallel_codegen_split_count(2);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(std::move(hlo_module)));
+
+  int64_t max_seen = -1;
+  auto pre_opt_hook = [&](const llvm::Module& llvm_module) {
+    std::optional<int64_t> dylib_index = GetXlaDylibIndex(llvm_module);
+    if (!dylib_index) return;
+    if (*dylib_index == 0) {
+      std::optional<std::string> extra_opts =
+          GetXlaBackendExtraOptions(llvm_module);
+      ASSERT_TRUE(extra_opts.has_value())
+          << "dylib 0 must have xla_backend_extra_options set.";
+      EXPECT_EQ(*extra_opts, "xla_cpu_disable_loop_unrolling");
+    }
+    max_seen = std::max(max_seen, *dylib_index);
+  };
+
+  LLVMCompiler* compiler = static_cast<LLVMCompiler*>(backend().compiler());
+  compiler->SetPreOptimizationHook(pre_opt_hook);
+  ASSERT_TRUE(compiler
+                  ->RunBackend(std::move(optimized_module),
+                               backend().default_stream_executor(),
+                               /*device_allocator=*/nullptr)
+                  .ok());
+  compiler->RemovePreOptimizationHook();
+
+  EXPECT_EQ(max_seen, 1)
+      << "max dylib_index(" << max_seen << ") != 1, but only "
+      << "one default dylib is allowed (the other one is for overriding "
+      << "compilation flags).";
 }
 
 }  // namespace

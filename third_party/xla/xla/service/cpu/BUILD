@@ -521,6 +521,7 @@ xla_test(
         "cpu",
     ],
     deps = [
+        "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitter_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:llvm_compiler",
