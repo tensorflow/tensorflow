@@ -29,8 +29,13 @@ cc_library(
         "event.h",
     ],
     deps = [
+        ":gpu_environment",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_event_type",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "//tensorflow/lite/experimental/litert/runtime/opencl:cl_event",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -65,6 +70,7 @@ cc_library(
     deps = [
         ":gpu_environment",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_event_type",
         "//tensorflow/lite/experimental/litert/c:litert_layout",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_types",
@@ -104,6 +110,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/lite/experimental/litert:__subpackages__",
+        "//tensorflow/lite/experimental/litert/c:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_any",

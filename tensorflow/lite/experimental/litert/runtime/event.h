@@ -18,12 +18,23 @@
 #include <cstdint>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_event_type.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
+#if LITERT_HAS_OPENCL_SUPPORT
+extern "C" {
+typedef struct _cl_event* cl_event;
+}
+#endif  // LITERT_HAS_OPENCL_SUPPORT
+
 struct LiteRtEventT {
+  LiteRtEventType type = LiteRtEventTypeUnknown;
 #if LITERT_HAS_SYNC_FENCE_SUPPORT
   int fd = -1;
   bool owns_fd = false;
+#endif
+#if LITERT_HAS_OPENCL_SUPPORT
+  cl_event opencl_event;
 #endif
   ~LiteRtEventT();
   litert::Expected<void> Wait(int64_t timeout_in_ms);
@@ -35,6 +46,8 @@ struct LiteRtEventT {
                               "Sync fence is not supported on this platform");
 #endif
   }
+  litert::Expected<void> Signal();
+  static litert::Expected<LiteRtEventT*> CreateManaged(LiteRtEventType type);
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_EVENT_H_

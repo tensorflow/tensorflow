@@ -63,6 +63,7 @@ cc_library(
         ":litert_handle",
         ":litert_macros",
         "//tensorflow/lite/experimental/litert/c:litert_event",
+        "//tensorflow/lite/experimental/litert/c:litert_event_type",
     ],
 )
 
