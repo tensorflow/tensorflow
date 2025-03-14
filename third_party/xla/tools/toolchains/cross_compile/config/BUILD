@@ -41,5 +41,5 @@ toolchain(
         "@platforms//cpu:x86_64",
     ],
     toolchain = "//tools/toolchains/cross_compile/cc:macos_x86_toolchain",
-    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+    toolchain_type = "@bazel_tools@bazel_tools//tools/cpp:current_cc_toolchain",
 )
