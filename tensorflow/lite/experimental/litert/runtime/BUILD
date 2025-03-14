@@ -63,7 +63,7 @@ cc_library(
     ],
     linkopts = gles_linkopts(),
     deps = [
-        ":environment",
+        ":gpu_environment",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_layout",
         "//tensorflow/lite/experimental/litert/c:litert_model",
@@ -95,15 +95,15 @@ cc_library(
 )
 
 cc_library(
-    name = "environment",
+    name = "gpu_environment",
     srcs = [
-        "environment.cc",
+        "gpu_environment.cc",
     ],
     hdrs = [
-        "environment.h",
+        "gpu_environment.h",
     ],
     visibility = [
-        "//third_party/odml/infra/ml_drift_delegate:__subpackages__",
+        "//tensorflow/lite/experimental/litert:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_any",
@@ -120,8 +120,8 @@ cc_library(
 )
 
 cc_test(
-    name = "environment_test",
-    srcs = ["environment_test.cc"],
+    name = "gpu_environment_test",
+    srcs = ["gpu_environment_test.cc"],
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
@@ -130,7 +130,7 @@ cc_test(
         "requires-gpu-nvidia",
     ],
     deps = [
-        ":environment",
+        ":gpu_environment",
         "@com_google_googletest//:gtest_main",
         # copybara:uncomment_begin(google-only)
         # "//third_party/ml_drift/cl:environment",

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/runtime/environment.h"
+#include "tensorflow/lite/experimental/litert/runtime/gpu_environment.h"
 
 #include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_any.h"
@@ -27,7 +27,8 @@
 namespace litert {
 namespace internal {
 
-EnvironmentSingleton::EnvironmentSingleton(LiteRtEnvironmentT* environment) {
+GpuEnvironmentSingleton::GpuEnvironmentSingleton(
+    LiteRtEnvironmentT* environment) {
   cl_device_id device_id = nullptr;
   cl_platform_id platform_id = nullptr;
   cl_context context = nullptr;
@@ -87,7 +88,7 @@ EnvironmentSingleton::EnvironmentSingleton(LiteRtEnvironmentT* environment) {
   }
 }
 
-EnvironmentSingleton* EnvironmentSingleton::instance_ = nullptr;
+GpuEnvironmentSingleton* GpuEnvironmentSingleton::instance_ = nullptr;
 
 }  // namespace internal
 }  // namespace litert

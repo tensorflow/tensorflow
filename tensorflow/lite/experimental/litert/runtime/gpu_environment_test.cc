@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/runtime/environment.h"
+#include "tensorflow/lite/experimental/litert/runtime/gpu_environment.h"
 
 #include <any>
 #include <array>
@@ -62,14 +62,14 @@ TEST(EnvironmentSingletonTest, OpenClEnvironment) {
   auto litert_envt = LiteRtEnvironmentT::CreateWithOptions(environment_options);
   ASSERT_TRUE(litert_envt);
   auto singleton_env =
-      litert::internal::EnvironmentSingleton::Create(litert_envt->get());
+      litert::internal::GpuEnvironmentSingleton::Create(litert_envt->get());
   ASSERT_TRUE(singleton_env);
   EXPECT_EQ((*singleton_env)->getContext()->context(), env.context().context());
   EXPECT_EQ((*singleton_env)->getCommandQueue()->queue(), env.queue()->queue());
 
   // Create another singleton environment should fail.
   auto another_singleton_env =
-      litert::internal::EnvironmentSingleton::Create(litert_envt->get());
+      litert::internal::GpuEnvironmentSingleton::Create(litert_envt->get());
   EXPECT_FALSE(another_singleton_env);
 }
 

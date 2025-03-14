@@ -39,6 +39,7 @@ cc_library(
         ":litert_environment_options",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core:environment",
+        "//tensorflow/lite/experimental/litert/runtime:gpu_environment",
         "//tensorflow/lite/experimental/litert/runtime/accelerators:auto_registration",
         "@com_google_absl//absl/types:span",
     ],

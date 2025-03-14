@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_ENVIRONMENT_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_ENVIRONMENT_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_GPU_ENVIRONMENT_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_GPU_ENVIRONMENT_H_
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
@@ -29,28 +29,28 @@ namespace internal {
 
 // Inner singleton class that is for storing the MLD global environment.
 // This class is used to store OpenCL, OpenGL environment objects.
-class EnvironmentSingleton {
+class GpuEnvironmentSingleton {
  public:
-  EnvironmentSingleton(const EnvironmentSingleton&) = delete;
-  EnvironmentSingleton& operator=(const EnvironmentSingleton&) = delete;
-  ~EnvironmentSingleton() = default;
+  GpuEnvironmentSingleton(const GpuEnvironmentSingleton&) = delete;
+  GpuEnvironmentSingleton& operator=(const GpuEnvironmentSingleton&) = delete;
+  ~GpuEnvironmentSingleton() = default;
   litert::cl::ClDevice* getDevice() { return &device_; }
   litert::cl::ClContext* getContext() { return &context_; }
   litert::cl::ClCommandQueue* getCommandQueue() { return &command_queue_; }
 
-  static EnvironmentSingleton& GetInstance() {
+  static GpuEnvironmentSingleton& GetInstance() {
     if (instance_ == nullptr) {
-      instance_ = new EnvironmentSingleton(nullptr);
+      instance_ = new GpuEnvironmentSingleton(nullptr);
     }
     return *instance_;
   }
 
   // Create the singleton instance with the given environment.
   // It will fail if the singleton instance already exists.
-  static Expected<EnvironmentSingleton*> Create(
+  static Expected<GpuEnvironmentSingleton*> Create(
       LiteRtEnvironmentT* environment) {
     if (instance_ == nullptr) {
-      instance_ = new EnvironmentSingleton(environment);
+      instance_ = new GpuEnvironmentSingleton(environment);
       LITERT_LOG(LITERT_INFO, "Created LiteRT EnvironmentSingleton.");
     } else {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
@@ -62,15 +62,15 @@ class EnvironmentSingleton {
  private:
   // Load the OpenCL device, context and command queue from the environment if
   // available. Otherwise, create the default device, context and command queue.
-  explicit EnvironmentSingleton(LiteRtEnvironmentT* environment);
+  explicit GpuEnvironmentSingleton(LiteRtEnvironmentT* environment);
 
   litert::cl::ClDevice device_;
   litert::cl::ClContext context_;
   litert::cl::ClCommandQueue command_queue_;
-  static EnvironmentSingleton* instance_;
+  static GpuEnvironmentSingleton* instance_;
 };
 
 }  // namespace internal
 }  // namespace litert
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_ENVIRONMENT_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_GPU_ENVIRONMENT_H_
