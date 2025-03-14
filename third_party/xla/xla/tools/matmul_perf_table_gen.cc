@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -303,55 +304,31 @@ int64_t GetFlops(const HloDotInstruction& dot) {
     return ShapeUtil::GetDimension(instr.shape(), idx);
   };
 
+  const DotDimensionNumbers& dot_dims = dot.dot_dimension_numbers();
+  const HloInstruction& lhs = *dot.operand(0);
+  const HloInstruction& rhs = *dot.operand(1);
+
   // Get non-contracting dims
-  auto get_non_contracting_dim_sizes =
-      [&dot, &dim_size](const absl::flat_hash_set<int>& contracting_dims,
-                        const absl::flat_hash_set<int>& batch_dims,
-                        int operand_id) {
-        int64_t fmas = 1;
-        for (int dim = 0; dim < dot.operand(operand_id)->shape().rank();
-             ++dim) {
-          if (contracting_dims.contains(dim) || batch_dims.contains(dim)) {
-            continue;
-          }
-          fmas *= dim_size(*dot.operand(operand_id), dim);
-        }
-        return fmas;
-      };
-  fmas *= get_non_contracting_dim_sizes(
-      /*contracting_dims=*/
-      {
-          dot.dot_dimension_numbers().lhs_contracting_dimensions().begin(),
-          dot.dot_dimension_numbers().lhs_contracting_dimensions().end(),
-      },
-      /*batch_dims=*/
-      {
-          dot.dot_dimension_numbers().lhs_batch_dimensions().begin(),
-          dot.dot_dimension_numbers().lhs_batch_dimensions().end(),
-      },
-      0);
-  fmas *= get_non_contracting_dim_sizes(
-      /*contracting_dims=*/
-      {
-          dot.dot_dimension_numbers().rhs_contracting_dimensions().begin(),
-          dot.dot_dimension_numbers().rhs_contracting_dimensions().end(),
-      },
-      /*batch_dims=*/
-      {
-          dot.dot_dimension_numbers().rhs_batch_dimensions().begin(),
-          dot.dot_dimension_numbers().rhs_batch_dimensions().end(),
-      },
-      1);
+  for (int dim : GetNonContractingDims(lhs.shape().rank(),
+                                       dot_dims.lhs_contracting_dimensions(),
+                                       dot_dims.lhs_batch_dimensions())) {
+    fmas *= dim_size(lhs, dim);
+  }
+  for (int dim : GetNonContractingDims(rhs.shape().rank(),
+                                       dot_dims.rhs_contracting_dimensions(),
+                                       dot_dims.rhs_batch_dimensions())) {
+    fmas *= dim_size(rhs, dim);
+  }
 
   // Get contracting dim.
   for (int dim : dot.dot_dimension_numbers().lhs_contracting_dimensions()) {
-    fmas *= dim_size(*dot.operand(0), dim);
+    fmas *= dim_size(lhs, dim);
   }
 
   // Get batch dim
   for (int dim : dot.dot_dimension_numbers().lhs_batch_dimensions()) {
-    CHECK_EQ(dim_size(*dot.operand(0), dim), dim_size(*dot.operand(1), dim));
-    fmas *= dim_size(*dot.operand(0), dim);
+    CHECK_EQ(dim_size(lhs, dim), dim_size(rhs, dim));
+    fmas *= dim_size(lhs, dim);
   }
 
   return fmas * 2;  // Every FMA is 2 floating point ops.
