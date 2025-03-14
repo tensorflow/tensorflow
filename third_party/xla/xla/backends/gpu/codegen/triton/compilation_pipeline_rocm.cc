@@ -57,14 +57,13 @@ using ::mlir::Type;
 using ::mlir::Value;
 using mlir::ValueRange;
 
-absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
-                                  std::string arch_name, int num_warps,
-                                  int num_ctas, int num_stages,
-                                  mt::nvidia_gpu::ClusterInfo& out_cluster_info,
-                                  bool is_xla_fusion) {
-  // TODO(ROCm): Check why some test fail when threadsPerWarp is set to 64.
-  const int threadsPerWarp = 32;
-  auto cc = se::RocmComputeCapability(std::move(arch_name));
+absl::Status CreateTritonPipeline(
+    mlir::OpPassManager* pm,
+    const stream_executor::DeviceDescription& device_info, int num_warps,
+    int num_ctas, int num_stages, mt::nvidia_gpu::ClusterInfo& out_cluster_info,
+    bool is_xla_fusion) {
+  const int threadsPerWarp = device_info.threads_per_warp();
+  auto cc = device_info.rocm_compute_capability();
 
   if (is_xla_fusion) {
     pm->addPass(mt_xla::CreateInt4ToPackedInt4RewritePass());
@@ -109,7 +108,8 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   }
   pm->addPass(mlir::createTritonAMDGPUCanonicalizePointersPass());
   pm->addPass(mlir::createCanonicalizerPass());
-  pm->addPass(mlir::createTritonAMDGPUConvertToBufferOpsPass(arch_name));
+  // TODO(rocm) This is still experimental
+  pm->addPass(mlir::createTritonAMDGPUConvertToBufferOpsPass(cc.gfx_version()));
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
