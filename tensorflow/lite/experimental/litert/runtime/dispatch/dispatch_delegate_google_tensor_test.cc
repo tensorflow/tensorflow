@@ -18,6 +18,8 @@
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -92,12 +94,14 @@ TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
+  LiteRtEnvironmentOptions env_options = nullptr;
+  LiteRtGetEnvironmentOptions(env.Get(), &env_options);
   DispatchDelegateOptionsPtr dispatch_delegate_options =
-      CreateDispatchDelegateOptionsPtr(*env.Get());
+      CreateDispatchDelegateOptionsPtr(env_options);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            runtime->Flatbuffer().Buf().Data());
   DispatchDelegatePtr dispatch_delegate = CreateDispatchDelegatePtr(
-      *env.Get(), std::move(dispatch_delegate_options));
+      env_options, std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -160,12 +164,15 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
+  LiteRtEnvironmentOptions env_options = nullptr;
+  LiteRtGetEnvironmentOptions(env.Get(), &env_options);
+
   DispatchDelegateOptionsPtr dispatch_delegate_options =
-      CreateDispatchDelegateOptionsPtr(*env.Get());
+      CreateDispatchDelegateOptionsPtr(env_options);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            runtime->Flatbuffer().Buf().Data());
   DispatchDelegatePtr dispatch_delegate = CreateDispatchDelegatePtr(
-      *env.Get(), std::move(dispatch_delegate_options));
+      env_options, std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "

@@ -318,7 +318,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
-        "//tensorflow/lite/experimental/litert/c:litert_environment",
+        "//tensorflow/lite/experimental/litert/c:litert_environment_options",
         "//tensorflow/lite/experimental/litert/runtime/dispatch:dispatch_delegate",
     ],
 )

@@ -25,6 +25,7 @@
 #include "absl/cleanup/cleanup.h"
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
@@ -267,8 +268,12 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   // Apply the dispatch delegate, unconditionally, since the loaded model may
   // have been compiled for NPU at AOT.
   // TODO: b/394958439 - Get the DispatchDelegate from the AcceleratorRegistry.
+
+  LiteRtEnvironmentOptions env_options = nullptr;
+  LITERT_RETURN_IF_ERROR(LiteRtGetEnvironmentOptions(env, &env_options));
+
   auto dispatch_delegate_options =
-      litert::CreateDispatchDelegateOptionsPtr(*env);
+      litert::CreateDispatchDelegateOptionsPtr(env_options);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            model_buffer);
 
@@ -283,7 +288,7 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   }
 
   auto dispatch_delegate = litert::CreateDispatchDelegatePtr(
-      *env, std::move(dispatch_delegate_options));
+      env_options, std::move(dispatch_delegate_options));
   if (auto status = compiled_model->interp_->ModifyGraphWithDelegate(
           dispatch_delegate.get());
       status != kTfLiteOk) {

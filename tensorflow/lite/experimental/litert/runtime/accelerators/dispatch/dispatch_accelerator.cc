@@ -135,8 +135,8 @@ class NpuAccelerator final {
     LITERT_ENSURE(allocation_base != nullptr, kLiteRtStatusErrorRuntimeFailure,
                   "No model allocation was passed by the runtime.");
 
-    auto dispatch_delegate_options =
-        litert::CreateDispatchDelegateOptionsPtr(*accelerator->env);
+    auto dispatch_delegate_options = litert::CreateDispatchDelegateOptionsPtr(
+        &accelerator->env->GetOptions());
     LITERT_ENSURE(dispatch_delegate_options != nullptr,
                   kLiteRtStatusErrorRuntimeFailure,
                   "Dispatch delegate options failed to be created.");
@@ -148,7 +148,7 @@ class NpuAccelerator final {
         "Could not add allocation base to dispatch delegate options.");
 
     auto dispatch_delegate = litert::CreateDispatchDelegatePtr(
-        *accelerator->env, std::move(dispatch_delegate_options));
+        &accelerator->env->GetOptions(), std::move(dispatch_delegate_options));
     LITERT_ENSURE(dispatch_delegate != nullptr,
                   kLiteRtStatusErrorRuntimeFailure,
                   "Dispatch delegate failed to be created.");

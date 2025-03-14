@@ -206,6 +206,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_compilation_options",
         "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",
+        "//tensorflow/lite/experimental/litert/c:litert_environment_options",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
