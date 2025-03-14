@@ -521,6 +521,9 @@ message DebugOptions {
   // Specifies the distance threshold in ScheduleAwareCollectiveOpsCSE
   int64 xla_gpu_experimental_collective_cse_distance_threshold = 374;
 
+  // Path to experimental collective perf tables.
+  string xla_gpu_experimental_collective_perf_table_path = 377;
+
   // Experimentally disables binary libraries in GPU compiler passes.
   bool xla_gpu_experimental_disable_binary_libraries = 329;
 
@@ -1184,7 +1187,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 377
+  // Next id: 378
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

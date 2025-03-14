@@ -305,6 +305,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
+  opts.set_xla_gpu_experimental_collective_perf_table_path("");
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
   opts.set_xla_ignore_channel_id(true);
   opts.set_xla_gpu_dot_merger_threshold_mb(32);
@@ -2286,6 +2287,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_experimental_collective_cse_distance_threshold),
       debug_options->xla_gpu_experimental_collective_cse_distance_threshold(),
       "Set distance threshold for Collective CSE."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_collective_perf_table_path",
+      string_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_collective_perf_table_path),
+      debug_options->xla_gpu_experimental_collective_perf_table_path(),
+      "If non empty will interpret this variable as a path for performance "
+      "tables for collectives. Expects `xla.gpu.DeviceHloInstructionProfiles` "
+      "proto."));
 }  // NOLINT(readability/fn_size)1
 
 // Allocates flag_values and flag_objects; this function must not be called more

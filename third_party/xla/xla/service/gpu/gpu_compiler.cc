@@ -168,6 +168,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/gpu/model/collective_ptable_stats_collection.h"
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model_stats_collection.h"
@@ -2560,9 +2561,19 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
     // Cost model analysis for compute.
     pipeline.AddPass<GpuCostModelStatsCollection>(gpu_device_info,
                                                   cost_analysis_options);
-    // Cost model analysis for collectives.
+    // S-curve model analysis for collectives.
     pipeline.AddPass<SolGpuCostModelStatsCollection>(gpu_device_info,
                                                      ShapeSizeBytesFunction());
+
+    // Perf tables model analysis for collectives.
+    if (std::string collective_perf_table_path =
+            module->config()
+                .debug_options()
+                .xla_gpu_experimental_collective_perf_table_path();
+        !collective_perf_table_path.empty()) {
+      pipeline.AddPass<CollectivePerfTableStatsCollection>(
+          collective_perf_table_path, gpu_device_info);
+    }
   }
   return pipeline.Run(module).status();
 }

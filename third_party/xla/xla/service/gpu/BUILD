@@ -1496,6 +1496,7 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/service/gpu/autotuning:custom_kernel_fusion_autotuner",
+        "//xla/service/gpu/model:collective_ptable_stats_collection",
         "//xla/service/gpu/model:gpu_cost_model_stats_collection",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
         "//xla/service/gpu/model:sol_gpu_cost_model_stats_collection",
