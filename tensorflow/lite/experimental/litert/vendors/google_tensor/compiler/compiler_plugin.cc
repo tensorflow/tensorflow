@@ -305,6 +305,11 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   LITERT_LOG(LITERT_INFO,
              "Starting GoogleTensor Compilation for %d subgraphs, soc_model=%s",
              num_partitions, soc_model);
+  if (num_partitions > 1) {
+    LITERT_LOG(LITERT_ERROR,
+               "GoogleTensor Compilation only supports single subgraph");
+    return kLiteRtStatusErrorInvalidArgument;
+  }
 
   // Serialize model.
   LITERT_LOG(LITERT_INFO, "%s", "Serializing model");
@@ -351,8 +356,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   result->byte_code = std::string(compiled.data(), compiled.size());
   // Generate per_op_data.
   for (auto i = 0; i < num_partitions; ++i) {
-    result->per_op_data.emplace_back(
-        absl::StrFormat("Partition_%d", static_cast<int>(i)));
+    result->per_op_data.emplace_back("");
   }
   *compiled_result = result.release();
   return kLiteRtStatusOk;
