@@ -1067,6 +1067,127 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvScaledReluF8) {
       )");
 }
 
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledRelu6F8) {
+  MAYBE_SKIP_TEST("F8");
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale = f32[] parameter(2)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       c0 = f32[] constant(0)
+       c0_bcast = f32[1,16,6,6] broadcast(c0), dimensions={}
+       c6 = f32[] constant(6)
+       c6_bcast = f32[1,16,6,6] broadcast(c6), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       relu6_a = f32[1,16,6,6] clamp(c0_bcast, conv_a, c6_bcast)
+       relu6_a_scaled = f32[1,16,6,6] multiply(relu6_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       relu6_a_clamped = f32[1,16,6,6] clamp(c1_bcast, relu6_a_scaled, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(relu6_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]], [[OPERAND3:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[RELU_UID:[0-9]+]]:[f32]relu([[CONV_UID]]);[[MIN_UID:[0-9]+]]:[f32]min([[RELU_UID]]);[[SCALE0_UID:[0-9]+]]:[f8e4m3fn]scale([[MIN_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledEluF8) {
+  MAYBE_SKIP_TEST("F8");
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale = f32[] parameter(2)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       c0 = f32[] constant(0)
+       c0_bcast = f32[1,16,6,6] broadcast(c0), dimensions={}
+       alpha = f32[] constant(0.2)
+       alpha_bcast = f32[1,16,6,6] broadcast(alpha), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_compare = compare(conv_a, c0_bcast), direction=GT
+       expm1_a = exponential-minus-one(conv_a)
+       elu_a = select(conv_a_compare, conv_a, expm1_a)
+       elu_a_scaled = f32[1,16,6,6] multiply(elu_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       elu_a_clamped = f32[1,16,6,6] clamp(c1_bcast, elu_a_scaled, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(elu_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[ELU_UID:[0-9]+]]:[f32]elu([[CONV_UID]]);[[SCALE0_UID:[0-9]+]]:[f8e4m3fn]scale([[ELU_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledLeakyReluF8) {
+  MAYBE_SKIP_TEST("F8");
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale = f32[] parameter(2)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       c0 = f32[] constant(0)
+       c0_bcast = f32[1,16,6,6] broadcast(c0), dimensions={}
+       alpha = f32[] constant(0.2)
+       alpha_bcast = f32[1,16,6,6] broadcast(alpha), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_compare = compare(conv_a, c0_bcast), direction=GT
+       conv_a_alpha = multiply(conv_a, alpha_bcast)
+       lrelu_a = select(conv_a_compare, conv_a, conv_a_alpha)
+       lrelu_a_scaled = f32[1,16,6,6] multiply(lrelu_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       lrelu_a_clamped = f32[1,16,6,6] clamp(c1_bcast, lrelu_a_scaled, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(lrelu_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]], [[OPERAND3:%[^ ]+]], [[OPERAND4:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[MIN_UID:[0-9]+]]:[f32]min([[CONV_UID]]);[[SCALE0_UID:[0-9]+]]:[f32]scale([[MIN_UID]]);[[MAX_UID:[0-9]+]]:[f32]max([[SCALE0_UID]],[[CONV_UID]]);[[SCALE1_UID:[0-9]+]]:[f8e4m3fn]scale([[MAX_UID]]);"
+      )");
+}
+
 TEST_F(CudnnFusedConvRewriterTest, TestConvAmaxF8) {
   MAYBE_SKIP_TEST("F8");
   TestF8(
@@ -1186,15 +1307,18 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputMultipleUsersF8) {
        z_scale0_bcast = f32[1,16,6,6] broadcast(z_scale0), dimensions={}
        z_scale1 = f32[] parameter(3)
        z_scale1_bcast = f32[1,16,6,6] broadcast(z_scale1), dimensions={}
+       z_scale2 = f32[] parameter(4)
+       z_scale2_bcast = f32[1,16,6,6] broadcast(z_scale2), dimensions={}
        conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
        conv_a_scaled0 = f32[1,16,6,6] multiply(conv_a, z_scale0_bcast)
-       conv_a_scaled1 = f32[1,16,6,6] multiply(conv_a, z_scale1_bcast)
+       conv_a_scaled1 = f32[1,16,6,6] multiply(conv_a_scaled0, z_scale1_bcast)
+       conv_a_scaled2 = f32[1,16,6,6] multiply(conv_a_scaled0, z_scale2_bcast)
        c1 = f32[] constant(-448.)
        c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
        c2 = f32[] constant(448.)
        c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
-       conv_a_clamped0 = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled0, c2_bcast)
-       conv_a_clamped1 = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled1, c2_bcast)
+       conv_a_clamped0 = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled1, c2_bcast)
+       conv_a_clamped1 = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled2, c2_bcast)
        conv_a_convert0 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped0)
        conv_a_convert1 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped1)
        ROOT conv_f8 = (f8e4m3fn[1,16,6,6], f8e4m3fn[1,16,6,6]) tuple(conv_a_convert0, conv_a_convert1)
@@ -1202,11 +1326,140 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputMultipleUsersF8) {
     })",
       // custom_call
       R"(
-// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f32[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f32[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
   )",
       // serialized_graph
       R"(
-// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();"
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[SCALE_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest,
+       TestConvScaledOutputMultipleUsersInGraphAddF8) {
+  MAYBE_SKIP_TEST("F8");
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale0 = f32[] parameter(2)
+       z_scale0_bcast = f32[1,16,6,6] broadcast(z_scale0), dimensions={}
+       z_scale1 = f32[] parameter(3)
+       z_scale1_bcast = f32[1,16,6,6] broadcast(z_scale1), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_scaled0 = f32[1,16,6,6] multiply(conv_a, z_scale0_bcast)
+       conv_a_scaled1 = f32[1,16,6,6] multiply(conv_a, z_scale1_bcast)
+       conv_a_scaled_sum = f32[1,16,6,6] add(conv_a_scaled0, conv_a_scaled1)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled_sum, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]], [[OPERAND3:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[SCALE0_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[SCALE1_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[ADD_UID:[0-9]+]]:[f8e4m3fn]add([[SCALE0_UID]],[[SCALE1_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest,
+       TestConvScaledOutputMultipleUsersInGraphDoubleAddF8) {
+  MAYBE_SKIP_TEST("F8");
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale0 = f32[] parameter(2)
+       z_scale0_bcast = f32[1,16,6,6] broadcast(z_scale0), dimensions={}
+       z_scale1 = f32[] parameter(3)
+       z_scale1_bcast = f32[1,16,6,6] broadcast(z_scale1), dimensions={}
+       z_scale2 = f32[] parameter(4)
+       z_scale2_bcast = f32[1,16,6,6] broadcast(z_scale2), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_scaled0 = f32[1,16,6,6] multiply(conv_a, z_scale0_bcast)
+       conv_a_scaled1 = f32[1,16,6,6] multiply(conv_a, z_scale1_bcast)
+       conv_a_scaled_sum0 = f32[1,16,6,6] add(conv_a_scaled0, conv_a_scaled1)
+       conv_a_scaled2 = f32[1,16,6,6] multiply(conv_a, z_scale2_bcast)
+       conv_a_scaled_sum1 = f32[1,16,6,6] add(conv_a_scaled_sum0, conv_a_scaled2)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled_sum1, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]], [[OPERAND3:%[^ ]+]], [[OPERAND4:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[SCALE0_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[SCALE1_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[ADD0_UID:[0-9]+]]:[f32]add([[SCALE0_UID]],[[SCALE1_UID]]);[[SCALE2_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[ADD1_UID:[0-9]+]]:[f8e4m3fn]add([[ADD0_UID]],[[SCALE2_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest,
+       TestConvScaledOutputMultipleUsersInGraphTripleAddF8) {
+  MAYBE_SKIP_TEST("F8");
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale0 = f32[] parameter(2)
+       z_scale0_bcast = f32[1,16,6,6] broadcast(z_scale0), dimensions={}
+       z_scale1 = f32[] parameter(3)
+       z_scale1_bcast = f32[1,16,6,6] broadcast(z_scale1), dimensions={}
+       z_scale2 = f32[] parameter(4)
+       z_scale2_bcast = f32[1,16,6,6] broadcast(z_scale2), dimensions={}
+       z_scale3 = f32[] parameter(5)
+       z_scale3_bcast = f32[1,16,6,6] broadcast(z_scale3), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_scaled0 = f32[1,16,6,6] multiply(conv_a, z_scale0_bcast)
+       conv_a_scaled1 = f32[1,16,6,6] multiply(conv_a, z_scale1_bcast)
+       conv_a_scaled_sum0 = f32[1,16,6,6] add(conv_a_scaled0, conv_a_scaled1)
+       conv_a_scaled2 = f32[1,16,6,6] multiply(conv_a, z_scale2_bcast)
+       conv_a_scaled3 = f32[1,16,6,6] multiply(conv_a, z_scale3_bcast)
+       conv_a_scaled_sum1 = f32[1,16,6,6] add(conv_a_scaled2, conv_a_scaled3)
+       conv_a_scaled_sum2 = f32[1,16,6,6] add(conv_a_scaled_sum0, conv_a_scaled_sum1)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled_sum2, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]], [[OPERAND3:%[^ ]+]], [[OPERAND4:%[^ ]+]], /*index=5*/[[OPERAND5:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[SCALE0_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[SCALE1_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[ADD0_UID:[0-9]+]]:[f32]add([[SCALE0_UID]],[[SCALE1_UID]]);[[SCALE2_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[SCALE3_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[ADD1_UID:[0-9]+]]:[f32]add([[SCALE2_UID]],[[SCALE3_UID]]);[[ADD2_UID:[0-9]+]]:[f8e4m3fn]add([[ADD0_UID]],[[ADD1_UID]]);"
       )");
 }
 

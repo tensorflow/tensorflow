@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/log/log_streamer.h"
 #include "absl/random/random.h"
 #include "absl/strings/str_join.h"
 #include "xla/tsl/platform/test.h"
