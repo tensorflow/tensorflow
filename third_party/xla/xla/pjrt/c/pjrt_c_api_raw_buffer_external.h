@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_RAW_BUFFER_EXTERNAL_H_
 #define XLA_PJRT_C_PJRT_C_API_RAW_BUFFER_EXTERNAL_H_
 
+#include "absl/status/statusor.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
