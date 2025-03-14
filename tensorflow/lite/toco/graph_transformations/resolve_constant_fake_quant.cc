@@ -64,9 +64,8 @@ void GetBoundsForQuantizedDataType(ArrayDataType quantized_data_type,
   }
 }
 
-::tensorflow::Status ResolveConstantFakeQuant::Run(Model* model,
-                                                   std::size_t op_index,
-                                                   bool* modified) {
+absl::Status ResolveConstantFakeQuant::Run(Model* model, std::size_t op_index,
+                                           bool* modified) {
   *modified = false;
   const auto fakequant_it = model->operators.begin() + op_index;
   const auto* fakequant_base_op = fakequant_it->get();
