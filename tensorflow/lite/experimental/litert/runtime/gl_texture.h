@@ -15,42 +15,43 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_GL_TEXTURE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_GL_TEXTURE_H_
 
-#if LITERT_HAS_OPENGL_SUPPORT
-
-#include <GLES3/gl31.h>
-#include <GLES3/gl32.h>
-
 #include <cstddef>
 
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/lite/delegates/gpu/gl/gl_texture.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_gl_types.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+
+#if LITERT_HAS_OPENGL_SUPPORT
+#include "tensorflow/lite/delegates/gpu/gl/gl_texture.h"
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 
 namespace litert::internal {
 
 class GlTexture {
  public:
-  GlTexture(GLenum target, GLuint id, GLenum format, size_t size_bytes,
-            GLint layer, LiteRtGlTextureDeallocator deallocator);
+  GlTexture(LiteRtGLenum target, LiteRtGLuint id, LiteRtGLenum format,
+            size_t size_bytes, LiteRtGLint layer,
+            LiteRtGlTextureDeallocator deallocator);
 
   GlTexture(GlTexture&& other);
 
   ~GlTexture();
 
-  GLenum target() const { return tflite_gl_texture_.target(); }
-  GLuint id() const { return tflite_gl_texture_.id(); }
-  GLenum format() const { return tflite_gl_texture_.format(); }
-  size_t size_bytes() const { return tflite_gl_texture_.bytes_size(); }
-  GLint layer() const { return tflite_gl_texture_.layer(); }
+  LiteRtGLenum target() const;
+  LiteRtGLuint id() const;
+  LiteRtGLenum format() const;
+  size_t size_bytes() const;
+  LiteRtGLint layer() const;
 
  private:
   absl::Mutex mutex_;
+#if LITERT_HAS_OPENGL_SUPPORT
   tflite::gpu::gl::GlTexture tflite_gl_texture_;
+#endif  // LITERT_HAS_OPENGL_SUPPORT
   LiteRtGlTextureDeallocator deallocator_;
 };
 
 }  // namespace litert::internal
-
-#endif  // LITERT_HAS_OPENGL_SUPPORT
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_GL_TEXTURE_H_

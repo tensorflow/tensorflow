@@ -26,24 +26,18 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
-#include "tensorflow/lite/experimental/litert/runtime/event.h"
-
-#if LITERT_HAS_OPENGL_SUPPORT
-#include <GLES3/gl31.h>
-#include <GLES3/gl32.h>
-#endif  // LITERT_HAS_OPENGL_SUPPORT
 #include "absl/types/span.h"
 #include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_gl_types.h"
 #include "tensorflow/lite/experimental/litert/c/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#if LITERT_HAS_OPENGL_SUPPORT
+#include "tensorflow/lite/experimental/litert/runtime/event.h"
 #include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/gl_texture.h"
-#endif  // LITERT_HAS_OPENGL_SUPPORT
 #include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
 
 class LiteRtTensorBufferT {
@@ -89,17 +83,14 @@ class LiteRtTensorBufferT {
       const LiteRtRankedTensorType& tensor_type, cl_mem buffer,
       size_t opencl_buffer_size, LiteRtOpenClDeallocator deallocator = nullptr);
 
-#if LITERT_HAS_OPENGL_SUPPORT
   static litert::Expected<Ptr> CreateFromGlBuffer(
-      const LiteRtRankedTensorType& tensor_type, GLenum target, GLuint id,
-      size_t size_bytes, size_t offset,
+      const LiteRtRankedTensorType& tensor_type, LiteRtGLenum target,
+      LiteRtGLuint id, size_t size_bytes, size_t offset,
       LiteRtGlBufferDeallocator deallocator = nullptr);
-
   static litert::Expected<Ptr> CreateFromGlTexture(
-      const LiteRtRankedTensorType& tensor_type, GLenum target, GLuint id,
-      GLenum format, size_t size_bytes, GLint layer,
-      LiteRtGlTextureDeallocator deallocator = nullptr);
-#endif  // LITERT_HAS_OPENGL_SUPPORT
+      const LiteRtRankedTensorType& tensor_type, LiteRtGLenum target,
+      LiteRtGLuint id, LiteRtGLenum format, size_t size_bytes,
+      LiteRtGLint layer, LiteRtGlTextureDeallocator deallocator = nullptr);
 
   static litert::Expected<Ptr> CreateManaged(
       LiteRtTensorBufferType buffer_type,
@@ -132,10 +123,8 @@ class LiteRtTensorBufferT {
   litert::Expected<std::pair<void*, int>> GetDmaBufBuffer();
   litert::Expected<std::pair<void*, int>> GetFastRpcBuffer();
   litert::Expected<litert::internal::OpenClBuffer*> GetOpenClBuffer();
-#if LITERT_HAS_OPENGL_SUPPORT
-  litert::Expected<litert::internal::GlTexture*> GetGlTexture();
   litert::Expected<litert::internal::GlBuffer*> GetGlBuffer();
-#endif  // LITERT_HAS_OPENGL_SUPPORT
+  litert::Expected<litert::internal::GlTexture*> GetGlTexture();
 
   litert::Expected<void*> Lock();
   litert::Expected<void> Unlock();
@@ -191,12 +180,8 @@ class LiteRtTensorBufferT {
 
   using BufferVariant =
       std::variant<HostBuffer, AhwbBuffer, IonBuffer, DmaBufBuffer,
-                   FastRpcBuffer, litert::internal::OpenClBuffer
-#if LITERT_HAS_OPENGL_SUPPORT
-                   ,
-                   litert::internal::GlBuffer, litert::internal::GlTexture
-#endif  // LITERT_HAS_OPENGL_SUPPORT
-                   >;
+                   FastRpcBuffer, litert::internal::OpenClBuffer,
+                   litert::internal::GlBuffer, litert::internal::GlTexture>;
 
   LiteRtTensorBufferT(const LiteRtRankedTensorType& tensor_type,
                       LiteRtTensorBufferType buffer_type, size_t buffer_size,
@@ -220,10 +205,8 @@ class LiteRtTensorBufferT {
   static litert::Expected<Ptr> CreateManagedOpenClBuffer(
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
 
-#if LITERT_HAS_OPENGL_SUPPORT
   static litert::Expected<Ptr> CreateManagedGlBuffer(
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
-#endif  // LITERT_HAS_OPENGL_SUPPORT
 
   litert::Expected<void> IsValid();
 
