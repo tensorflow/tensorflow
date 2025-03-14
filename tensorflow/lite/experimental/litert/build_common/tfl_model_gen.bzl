@@ -14,23 +14,25 @@
 
 """Utility to generate tflite models from MLIR files."""
 
-def tfl_model_gen(name, srcs):
+def tfl_model_gen(name, srcs, subdir = "testdata"):
     """
     Generates tflite models from MLIR files.
 
     Args:
       name: name of the rule.
       srcs: list of MLIR files.
+      subdir: subdirectory to place the generated tflite files.
     """
     OUT_DIR = "$(RULEDIR)"
     CONVERTER = "//tensorflow/compiler/mlir/lite:tf_tfl_translate"
     CMD = """
     for mlir_file in $(SRCS); do
-        $(location {converter}) --input-mlir $$mlir_file --o={out_dir}/testdata/$$(basename $$mlir_file .mlir).tflite
+        $(location {converter}) --input-mlir $$mlir_file --o={out_dir}/{subdir}/$$(basename $$mlir_file .mlir).tflite
     done
     """.format(
         converter = CONVERTER,
         out_dir = OUT_DIR,
+        subdir = subdir,
     )
 
     native.genrule(

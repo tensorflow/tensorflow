@@ -123,8 +123,9 @@ void ParseTests() {
 #if defined(__ANDROID__)
     model_path_flag = "/data/local/tmp/";
 #else
-    model_path_flag =
-        testing::GetLiteRtPath("integration_test/classic_ml_models/");
+    // Set this on linux for smoke check linux presubmit.
+    model_path_flag = testing::GetLiteRtPath(
+        "integration_test/single_op_models/add_f32.tflite");
 #endif
   }
   const auto model_paths = GetModelPaths(model_path_flag);
