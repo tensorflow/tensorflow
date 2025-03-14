@@ -601,6 +601,7 @@ constexpr R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
 }
 
 namespace internal {
+
 template <PrimitiveType primitive_type>
 inline constexpr int PrimitiveTypeBitWidth() {
   if constexpr (IsArrayType(primitive_type)) {
@@ -638,15 +639,29 @@ inline constexpr auto BitWidthArrayHelper(
 inline constexpr auto kBitWidths = BitWidthArrayHelper(
     std::make_integer_sequence<int, PrimitiveType_ARRAYSIZE>{});
 
+// ByteWidthArrayHelper(<i0, i1, ...>) returns an array of byte widths for the
+// given primitive types static_cast<PrimitiveType>(i0),
+// static_cast<PrimitiveType>(i1), ...
 template <int... Types>
 inline constexpr auto ByteWidthArrayHelper(
     std::integer_sequence<int, Types...>) {
   return std::array{
-      CeilOfRatio(PrimitiveTypeBitWidth<PrimitiveType{Types}>(), 8)...};
+      // The byte width of a primitive type is the number of bytes needed to
+      // store its bits.
+      CeilOfRatio(PrimitiveTypeBitWidth<PrimitiveType{Types}>(),
+                  // Number of bits in a byte.
+                  8)...};
 }
+
+// kByteWidths is an array of byte widths for all primitive types, where
+// kByteWidths[i] is the byte width of primitive type
+// static_cast<PrimitiveType>(i).
 inline constexpr auto kByteWidths = ByteWidthArrayHelper(
     std::make_integer_sequence<int, PrimitiveType_ARRAYSIZE>{});
 
+// If type is an array type, returns the width of the array element. Otherwise
+// crashes. Depending on the kWidths template parameter, this can return either
+// the bit or byte width of the array element.
 template <const std::array<int, PrimitiveType_ARRAYSIZE>& kWidths>
 inline constexpr int WidthForType(PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsArrayType(type))) {
@@ -654,14 +669,17 @@ inline constexpr int WidthForType(PrimitiveType type) {
   }
   LOG(FATAL) << "Unhandled primitive type " << type;
 }
+
 }  // namespace internal
 
-// Returns the number of bits in the representation for a given type.
+// Returns the number of bits in the representation for a given type. Crashes if
+// the type is not an array type.
 inline constexpr int BitWidth(PrimitiveType type) {
   return internal::WidthForType<internal::kBitWidths>(type);
 }
 
-// Returns the number of bytes in the representation for a given type.
+// Returns the number of bytes in the representation for a given type. Crashes
+// if the type is not an array type.
 inline constexpr int ByteWidth(PrimitiveType type) {
   return internal::WidthForType<internal::kByteWidths>(type);
 }

@@ -7,14 +7,19 @@ short).
 
 ## Terminology, notation, and conventions
 
+NOTE: The **rank** concept here is different from the rank concept in linear
+algebra, where it means the number of independent columns (or rows) of a matrix.
+Please do not mix them up.
+
 *   The rank of an array is equal to the number of dimensions. The *true rank*
     of an array is the number of dimensions which have a size greater than 1.
 
 *   Dimensions are numbered from `0` up to `N-1` for an `N` dimensional array.
-    The dimension numbers are arbitrary labels for convenience. The order of
-    these dimension numbers does not imply a particular minor/major ordering in
-    the layout of the shape. The layout is determined by the `LayoutProto`
-    proto.
+    The size of a dimension is a non-negative integer. In particular, size 0 is
+    valid. The dimension numbers are arbitrary labels for convenience. The
+    order of these dimension numbers does not imply a particular minor/major
+    ordering in the layout of the shape. The layout is determined by the
+    `LayoutProto` proto.
 
 *   By convention, dimensions are listed in increasing order of dimension
     number. For example, for a 3-dimensional array of size `[A x B x C]`,
