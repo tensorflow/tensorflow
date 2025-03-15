@@ -53,7 +53,7 @@ TEST(TfClientTest, ExecuteAndHloSnapshot) {
   debug_opts->set_xla_dump_hlo_snapshots(true);
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, options));
+                          client->CompileAndLoad(xla_computation, options));
 
   auto* device = client->addressable_devices()[0];
 

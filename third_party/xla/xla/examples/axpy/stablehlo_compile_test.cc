@@ -123,7 +123,7 @@ TEST_F(StableHloAxpyTest, CompileCPUTestProgram) {
 
   // Use our client to compile our StableHLO program to an executable.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client->Compile(*program, CompileOptions{}));
+                          client->CompileAndLoad(*program, CompileOptions{}));
 }
 
 TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
@@ -139,7 +139,7 @@ TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
 
   // Use our client to compile our StableHLO program to an executable.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client->Compile(*program, CompileOptions{}));
+                          client->CompileAndLoad(*program, CompileOptions{}));
 
   // Create inputs to our computation.
   auto alpha_literal = xla::LiteralUtil::CreateR0<float>(3.14f);

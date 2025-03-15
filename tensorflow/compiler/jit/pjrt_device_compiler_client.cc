@@ -45,9 +45,10 @@ PjRtDeviceCompilerClient::BuildExecutable(
     const XlaCompiler::CompilationResult& result) {
   VLOG(2) << "Compiling to xla::PjRtLoadedExecutable.";
 
-  TF_ASSIGN_OR_RETURN(auto executable,
-                      client_->Compile(*result.computation,
-                                       GetPjRtCompileOptions(options, result)));
+  TF_ASSIGN_OR_RETURN(
+      auto executable,
+      client_->CompileAndLoad(*result.computation,
+                              GetPjRtCompileOptions(options, result)));
 
   VLOG(2) << "Compiled PJRT executable " << executable->name()
           << " num_replicas " << executable->num_replicas()

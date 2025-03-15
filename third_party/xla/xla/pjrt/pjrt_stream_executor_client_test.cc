@@ -90,7 +90,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
   TF_ASSIGN_OR_RETURN(auto computation,
                       builder.Build(/*remove_dynamic_dimensions=*/true));
   TF_ASSIGN_OR_RETURN(auto executable,
-                      client.Compile(computation, compile_options));
+                      client.CompileAndLoad(computation, compile_options));
   return executable;
 }
 

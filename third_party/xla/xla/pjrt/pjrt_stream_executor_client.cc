@@ -3591,7 +3591,7 @@ PjRtStreamExecutorClient::CompileAndLoad(mlir::ModuleOp module,
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.
   if (options.argument_layouts) {
-    return Compile(xla_computation, options);
+    return CompileAndLoad(xla_computation, options);
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
