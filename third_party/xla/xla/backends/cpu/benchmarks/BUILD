@@ -15,6 +15,18 @@ package_group(
 )
 
 cc_library(
+    name = "aot_benchmark_helper",
+    testonly = 1,
+    srcs = ["aot_benchmark_helper.cc"],
+    hdrs = ["aot_benchmark_helper.h"],
+    deps = [
+        "//xla/service:compiler",
+        "//xla/service/cpu:cpu_aot_compilation_result",
+        "//xla/service/cpu:test_header_helper",
+    ],
+)
+
+cc_library(
     name = "hlo_benchmark_runner",
     testonly = 1,
     srcs = ["hlo_benchmark_runner.cc"],
@@ -26,14 +38,17 @@ cc_library(
         "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/cpu:cpu_client",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/service:compiler",
         "//xla/service:hlo_module_config",
         "//xla/tests:test_utils",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform/google:casts",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
