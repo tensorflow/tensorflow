@@ -56,7 +56,7 @@ class CompositeTensorGradient(object, metaclass=abc.ABCMeta):
     """Returns the components of `value` that should be included in gradients.
 
     This method may not call TensorFlow ops, since any new ops added to the
-    graph would not be propertly tracked by the gradient mechanisms.
+    graph would not be properly tracked by the gradient mechanisms.
 
     Args:
       value: A `CompositeTensor` value.

@@ -704,7 +704,7 @@ def disable_control_flow_v2(unused_msg: str) -> Callable[[_F], _F]:
 
 
 def enable_output_all_intermediates(fn: _F) -> _F:
-  """Force-enable outputing all intermediates from functional control flow ops.
+  """Force-enable outputting all intermediates from functional control flow ops.
 
   Args:
     fn: the function to be wrapped
@@ -739,7 +739,7 @@ def assert_no_new_pyobjects_executing_eagerly(
   a bit of Python.
 
   Args:
-    warmup_iters: The numer of warmup iterations, excluded from measuring.
+    warmup_iters: The number of warmup iterations, excluded from measuring.
 
   Returns:
     A decorator function which can be applied to the test function.
