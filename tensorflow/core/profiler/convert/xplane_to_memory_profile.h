@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
+#include "tsl/profiler/protobuf/memory_profile.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {

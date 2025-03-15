@@ -35,11 +35,11 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/profiler/protobuf/memory_profile.pb.h"
 
 namespace tensorflow {
 namespace profiler {
