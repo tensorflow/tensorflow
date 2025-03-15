@@ -21,18 +21,18 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "xla/debug_options_flags.h"
-#include "xla/tools/compute_gpu_device_stats.h"
+#include "xla/tools/compute_xspace_stats.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 
 namespace {
 
 const char* const kUsage = R"(
-    This tool computes GPU statistics from an XSpace protobuf.
+    This tool computes GPU/CPU statistics from an XSpace protobuf.
 
     Usage:
 
-      bazel run compute_gpu_device_stats -- --input=path/to/xspace.pb
+      bazel run compute_xspace_stats -- --input=path/to/xspace.pb --device_type=GPU
 
     Output:
       Device Time: 12345.67 us
@@ -41,8 +41,10 @@ const char* const kUsage = R"(
 }  // namespace
 
 int main(int argc, char* argv[]) {
-  std::string input;
-  std::vector<tsl::Flag> flag_list = {tsl::Flag("input", &input, "input file")};
+  std::string input, device_type;
+  std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("input", &input, "input file"),
+      tsl::Flag("device_type", &device_type, "device type")};
   xla::AppendDebugOptionsFlags(&flag_list);
   const std::string usage_string =
       absl::StrCat(kUsage, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
@@ -56,7 +58,7 @@ int main(int argc, char* argv[]) {
     LOG(QFATAL) << "Must specify input file with --input=<filename>";
   }
 
-  absl::Status status = xla::gpu::Run(input);
+  absl::Status status = xla::gpu::Run(input, device_type);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;
