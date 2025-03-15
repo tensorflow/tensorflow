@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -405,10 +407,167 @@ bool IsSafeToHoistPast(HloInstruction* instruction) {
     case HloOpcode::kParameter:
     case HloOpcode::kConstant:
     case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcast:
       return true;
     default:
       return instruction->IsElementwise();
   }
+}
+
+// Matches subgroups of the given from and to shapes of identical size.
+// Fails if the total shape sizes (products of all dimensions) do not match.
+// Dimensions of 1 are separated into subgroups with like [1]->[] and []->[1]
+// to create smallest possible subgroups.
+// For example, GroupDimensions([1, 2, 3, 4], [1, 6, 2, 2]) returns:
+// [([1], []),  ([], [1]), ([2, 3], [6]), ([4], [2, 2])].
+absl::StatusOr<
+    std::vector<std::pair<std::vector<int64_t>, std::vector<int64_t>>>>
+GroupDimensions(absl::Span<const int64_t> from, absl::Span<const int64_t> to) {
+  std::vector<std::pair<std::vector<int64_t>, std::vector<int64_t>>> result;
+  int64_t from_idx = 0;
+  int64_t to_idx = 0;
+  while (from_idx < from.size() || to_idx < to.size()) {
+    if (from_idx < from.size() && from[from_idx] == 1) {
+      result.emplace_back(std::vector<int64_t>({1}), std::vector<int64_t>());
+      from_idx++;
+      continue;
+    }
+    if (to_idx < to.size() && to[to_idx] == 1) {
+      result.emplace_back(std::vector<int64_t>(), std::vector<int64_t>({1}));
+      to_idx++;
+      continue;
+    }
+    if (from_idx >= from.size() || to_idx >= to.size()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Cannot group reshapes for ", absl::StrJoin(from, ","), " and ",
+          absl::StrJoin(to, ","), ", total shape sizes do not match"));
+    }
+    int64_t from_subgroup_size = from[from_idx];
+    std::vector<int64_t> from_subgroup = {from[from_idx]};
+    from_idx++;
+    std::vector<int64_t> to_subgroup;
+    int64_t to_subgroup_size = 1;
+    while (from_subgroup_size != to_subgroup_size) {
+      if (from_subgroup_size < to_subgroup_size) {
+        if (from_idx >= from.size()) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Cannot group reshapes for ", absl::StrJoin(from, ","), " and ",
+              absl::StrJoin(to, ","), ", total shape sizes do not match"));
+        }
+        from_subgroup.push_back(from[from_idx]);
+        from_subgroup_size *= from[from_idx];
+        from_idx++;
+      } else {
+        if (to_idx >= to.size()) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Cannot group reshapes for ", absl::StrJoin(from, ","), " and ",
+              absl::StrJoin(to, ","), ", total shape sizes do not match"));
+        }
+        to_subgroup.push_back(to[to_idx]);
+        to_subgroup_size *= to[to_idx];
+        to_idx++;
+      }
+    }
+    result.emplace_back(from_subgroup, to_subgroup);
+  }
+  return result;
+}
+
+// Returns (new operand's shape, broadcast dims parameter)
+// to make the shape of the result match the target shape.
+// That enables the rewrite of broadcast + reshape as reshape + broadcast:
+//
+// b = T[...] broadcast(operand)
+// c = T[target_dims] reshape(b)
+//
+// to
+//
+// d = T[new operand's shape] reshape(operand)
+// c = T[target_dims] broadcast(d), dimensions={broadcast dims parameter}.
+//
+// Assumes and checks that:
+// - broadcast does not transpose dimensions.
+// - reshape does not mix operand and broadcast dimensions.
+absl::StatusOr<std::pair<std::vector<int64_t>, std::vector<int64_t>>>
+ReshapeBroadcastResultParams(const HloBroadcastInstruction* broadcast,
+                             absl::Span<const int64_t> target_dims) {
+  // Rewrite works by spitting the broadcast dimensions and target dimensions
+  // into smallest groups of equal size.
+  // If every group is associated only with the operand or only broadcasted then
+  // we can update the broadcast operation to match the target shape.
+  // We consider operand dimensions of size 1 as neutral as they can be either
+  // broadcasted or go directly to the result.
+  auto broadcast_dims = broadcast->shape().dimensions();
+  auto op_dims = broadcast->operand(0)->shape().dimensions();
+  auto op_dims_map = broadcast->dimensions();
+
+  QCHECK_EQ(op_dims.size(), op_dims_map.size())
+      << absl::StrCat("op dimensions size: ", op_dims.size(),
+                      " != broadcast dimensions size: ", op_dims_map.size());
+  if (!absl::c_is_sorted(op_dims_map)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Broadcast dimensions are not sorted: ",
+                     absl::StrJoin(op_dims_map, ",")));
+  }
+  // Reverse map from broadcast dimension index to operand dimension index.
+  std::vector<int64_t> broadcast_dim_to_op(broadcast_dims.size(), -1);
+  for (int64_t i = 0; i < op_dims_map.size(); ++i) {
+    broadcast_dim_to_op[op_dims_map[i]] = i;
+  }
+
+  int64_t broadcast_dim_pos = 0;
+  std::vector<int64_t> new_operand_dims;
+  std::vector<int64_t> new_broadcast_dim_map;
+  TF_ASSIGN_OR_RETURN(auto groups,
+                      GroupDimensions(broadcast_dims, target_dims));
+  for (const auto& [from_dims, to_dims] : groups) {
+    int64_t max_operand_dim = 0;
+    bool has_broadcasted_dim = false;
+    for (int64_t i = 0; i < from_dims.size(); ++i) {
+      int64_t op_idx = broadcast_dim_to_op[i + broadcast_dim_pos];
+      if (op_idx > -1) {
+        max_operand_dim = std::max(max_operand_dim, op_dims[op_idx]);
+      } else {
+        has_broadcasted_dim = true;
+      }
+    }
+    if (max_operand_dim > 1 && has_broadcasted_dim) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot reshape broadcast for ", broadcast->ToString(),
+                       " as it mixes operand and broadcast dimensions."));
+    }
+    if (max_operand_dim > 1) {
+      // Those dimensions are coming from the operand, update the operand shape
+      // with the newly expected dimensions.
+      for (int64_t i = 0; i < to_dims.size(); ++i) {
+        new_broadcast_dim_map.push_back(new_operand_dims.size());
+        new_operand_dims.push_back(to_dims[i]);
+      }
+    }
+    broadcast_dim_pos += from_dims.size();
+  }
+  return std::make_pair(std::move(new_operand_dims),
+                        std::move(new_broadcast_dim_map));
+}
+
+// Rewrites the broadcast so the result matches the target shape.
+// Returns the new expected shape of the broadcast operand.
+absl::StatusOr<Shape> ReshapeBroadcastResult(HloBroadcastInstruction* broadcast,
+                                             const Shape& new_result_shape) {
+  VLOG(2) << absl::StrCat("rewriting ", broadcast->ToString(), " shape from ",
+                          broadcast->shape().ToString(), " to ",
+                          new_result_shape.ToString());
+  TF_ASSIGN_OR_RETURN(
+      auto params,
+      ReshapeBroadcastResultParams(broadcast, new_result_shape.dimensions()));
+  auto [new_operand_dimensions, new_broadcast_dimension_map] = params;
+  *broadcast->mutable_shape() = new_result_shape;
+  *broadcast->mutable_dimensions() = new_broadcast_dimension_map;
+  Shape new_op_shape = ShapeUtil::MakeShape(
+      broadcast->operand(0)->shape().element_type(), new_operand_dimensions);
+  LOG(INFO) << absl::StrCat("updated broadcast ", broadcast->ToString(),
+                            ", new operand shape: ", new_op_shape.ToString());
+  return new_op_shape;
 }
 
 // Hoists the given 'bitcast' upwards out of its computation, to the parent of
@@ -417,7 +576,6 @@ absl::Status HoistBitcastUpwardsToCallers(
     HloInstruction* bitcast, const std::vector<HloInstruction*>& callers) {
   HloInstructionSet producers = GetProducerSet(bitcast);
   TF_RETURN_IF_ERROR(VerifyIsClosedProducerSet(producers, bitcast));
-
   if (auto it = absl::c_find_if_not(producers, IsSafeToHoistPast);
       it != producers.end()) {
     return absl::InternalError(
@@ -425,20 +583,56 @@ absl::Status HoistBitcastUpwardsToCallers(
   }
 
   // Adjust the shape of every producer instruction.
-  Shape shape = bitcast->shape();
-  for (HloInstruction* instruction : producers) {
-    *instruction->mutable_shape() = shape;
-    if (HloPredicateIsNotOp<HloOpcode::kParameter>(instruction)) {
-      continue;
+  // The target shape might be different depending on which instructions we
+  // have passed through.
+  std::deque<std::pair<HloInstruction*, Shape>> worklist;
+  auto append = [&](const absl::Span<HloInstruction* const> instructions,
+                    const Shape& shape) {
+    for (HloInstruction* instruction : instructions) {
+      worklist.emplace_back(instruction, shape);
     }
-    // For parameters, we need to bitcast the caller's operand.
-    int64_t number = instruction->parameter_number();
-    for (HloInstruction* caller : callers) {
-      HloInstruction* new_bitcast =
-          caller->AddInstruction(HloInstruction::CreateBitcast(
-              shape, caller->mutable_operand(number)));
-      TF_RETURN_IF_ERROR(
-          caller->ReplaceOperandWithDifferentShape(number, new_bitcast));
+  };
+  append(bitcast->operands(), bitcast->shape());
+  HloInstructionSet result;
+  while (!worklist.empty()) {
+    auto [instruction, shape] = worklist.front();
+    worklist.pop_front();
+    VLOG(2) << absl::StrCat("rewriting shape of ", instruction->ToString(),
+                            " from ", instruction->shape().ToString(), " to ",
+                            shape.ToString());
+    // TODO(b/393299275): check that instruction shape type matches the target
+    // shape.
+    switch (instruction->opcode()) {
+      case HloOpcode::kParameter: {
+        *instruction->mutable_shape() = shape;
+        // Bitcast in the caller.
+        int64_t number = instruction->parameter_number();
+        for (HloInstruction* caller : callers) {
+          HloInstruction* new_bitcast =
+              caller->AddInstruction(HloInstruction::CreateBitcast(
+                  shape, caller->mutable_operand(number)));
+          TF_RETURN_IF_ERROR(
+              caller->ReplaceOperandWithDifferentShape(number, new_bitcast));
+        }
+        break;
+      }
+      case HloOpcode::kBroadcast: {
+        TF_ASSIGN_OR_RETURN(
+            auto op_shape,
+            ReshapeBroadcastResult(Cast<HloBroadcastInstruction>(instruction),
+                                   shape));
+        if (result.insert(instruction).second) {
+          append(instruction->operands(), op_shape);
+        }
+        break;
+      }
+      default: {
+        *instruction->mutable_shape() = shape;
+        if (result.insert(instruction).second) {
+          append(instruction->operands(), shape);
+        }
+        break;
+      }
     }
   }
 
@@ -457,8 +651,13 @@ absl::Status HoistBitcastDownwardsToCallers(
   CHECK(is_root(bitcast) || absl::c_any_of(consumers, is_root))
       << "Expected" << bitcast->ToString()
       << " to be a root or have a root consumer.";
-
-  if (auto it = absl::c_find_if_not(consumers, IsSafeToHoistPast);
+  // TODO(b/393299275): Support hoisting bitcast through broadcast.
+  if (auto it = absl::c_find_if_not(consumers,
+                                    [&](HloInstruction* instr) {
+                                      return IsSafeToHoistPast(instr) &&
+                                             instr->opcode() !=
+                                                 HloOpcode::kBroadcast;
+                                    });
       it != consumers.end()) {
     return absl::InternalError(
         absl::StrCat("Cannot hoist bitcast past ", (*it)->ToString()));
