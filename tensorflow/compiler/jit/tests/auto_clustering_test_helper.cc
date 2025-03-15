@@ -15,12 +15,26 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/tests/auto_clustering_test_helper.h"
 
+#include <climits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <utility>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "third_party/protobuf/message.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
@@ -28,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/port.h"
 #include "tensorflow/tools/optimization/optimization_pass_runner.h"
 
