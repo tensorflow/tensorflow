@@ -416,8 +416,9 @@ PjRtCApiClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
-                                      std::optional<CompileOptions> options) {
+PjRtCApiClient::LoadSerializedExecutable(absl::string_view serialized,
+                                         std::optional<CompileOptions> options,
+                                         const LoadOptions& load_options) {
   PJRT_Executable_DeserializeAndLoad_Args des_args;
 
   des_args.struct_size = PJRT_Executable_DeserializeAndLoad_Args_STRUCT_SIZE;
