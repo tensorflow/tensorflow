@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantizeUtils.h"
 
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -22,8 +22,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
 
-using namespace mlir;
-using namespace mlir::quantfork;
+namespace mlir {
+namespace quant::ir {
 
 /// Converts a possible primitive, real expressed value attribute to a
 /// corresponding storage attribute (typically FloatAttr -> IntegerAttr).
@@ -32,8 +32,7 @@ using namespace mlir::quantfork;
 /// Returns a converter Attribute or nullptr if conversion is not possible.
 static Attribute convertPrimitiveValueAttr(
     Attribute origRealValue, quant::QuantizedType quantizedElementType,
-    const mlir::quant::ir::UniformQuantizedValueConverter &converter,
-    Type &outConvertedType) {
+    const UniformQuantizedValueConverter &converter, Type &outConvertedType) {
   if (mlir::isa<FloatAttr>(origRealValue)) {
     FloatAttr floatAttr = mlir::cast<FloatAttr>(origRealValue);
     outConvertedType = quantizedElementType.getStorageType();
@@ -50,7 +49,7 @@ static Attribute convertPrimitiveValueAttr(
 static DenseElementsAttr convertDenseFPElementsAttr(
     DenseFPElementsAttr realFPElementsAttr,
     quant::QuantizedType quantizedElementType,
-    const mlir::quant::ir::UniformQuantizedValueConverter &converter) {
+    const UniformQuantizedValueConverter &converter) {
   return realFPElementsAttr.mapValues(
       quantizedElementType.getStorageType(),
       [&converter](const APFloat &realVal) {
@@ -64,7 +63,7 @@ static DenseElementsAttr convertDenseFPElementsAttr(
 static SparseElementsAttr convertSparseElementsAttr(
     SparseElementsAttr realSparseAttr,
     quant::QuantizedType quantizedElementType,
-    const mlir::quant::ir::UniformQuantizedValueConverter &converter) {
+    const UniformQuantizedValueConverter &converter) {
   DenseElementsAttr realDenseAttr = realSparseAttr.getValues();
   if (!mlir::isa<DenseFPElementsAttr>(realDenseAttr)) {
     return nullptr;
@@ -91,10 +90,10 @@ static SparseElementsAttr convertSparseElementsAttr(
 /// Converts a real expressed Attribute to a corresponding Attribute containing
 /// quantized storage values assuming the given uniform quantizedElementType and
 /// converter.
-Attribute mlir::quantfork::quantizeAttrUniform(
-    Attribute realValue, quant::UniformQuantizedType quantizedElementType,
-    const mlir::quant::ir::UniformQuantizedValueConverter &converter,
-    Type &outConvertedType) {
+Attribute quantizeAttrUniform(Attribute realValue,
+                              quant::UniformQuantizedType quantizedElementType,
+                              const UniformQuantizedValueConverter &converter,
+                              Type &outConvertedType) {
   // Fork to handle different variants of constants supported.
   if (mlir::isa<DenseFPElementsAttr>(realValue)) {
     // Dense tensor or vector constant.
@@ -122,20 +121,19 @@ Attribute mlir::quantfork::quantizeAttrUniform(
 /// quantizedElementType.getStorageType().
 /// Returns nullptr if the conversion is not supported.
 /// On success, stores the converted type in outConvertedType.
-Attribute mlir::quantfork::quantizeAttr(
-    Attribute realValue, quant::QuantizedType quantizedElementType,
-    Type &outConvertedType) {
+Attribute quantizeAttr(Attribute realValue,
+                       quant::QuantizedType quantizedElementType,
+                       Type &outConvertedType) {
   if (auto uniformQuantized =
           mlir::dyn_cast<quant::UniformQuantizedType>(quantizedElementType)) {
-    mlir::quant::ir::UniformQuantizedValueConverter converter(uniformQuantized);
+    UniformQuantizedValueConverter converter(uniformQuantized);
     return quantizeAttrUniform(realValue, uniformQuantized, converter,
                                outConvertedType);
   }
   if (auto uniformQuantizedPerAxis =
           mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
               quantizedElementType)) {
-    mlir::quant::ir::UniformQuantizedPerAxisValueConverter converter(
-        uniformQuantizedPerAxis);
+    UniformQuantizedPerAxisValueConverter converter(uniformQuantizedPerAxis);
     auto converted = converter.convert(realValue);
     // TODO: why we need this outConvertedType? remove it?
     if (converted) {
@@ -145,3 +143,6 @@ Attribute mlir::quantfork::quantizeAttr(
   }
   return nullptr;
 }
+
+}  // namespace quant::ir
+}  // namespace mlir
