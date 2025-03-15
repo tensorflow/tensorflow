@@ -557,7 +557,7 @@ absl::Status FunctionalHloRunner::LoadAndRunAndDump(
     const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
     const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
     const xla::FunctionalHloRunner::RunningOptions& running_options,
-    absl::string_view hlo_text, InputFormat input_format,
+    absl::string_view hlo_file, InputFormat input_format,
     std::string dump_output_to, int task_id, int num_nodes,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
   TF_ASSIGN_OR_RETURN(
@@ -568,7 +568,7 @@ absl::Status FunctionalHloRunner::LoadAndRunAndDump(
       FunctionalHloRunner::PerDeviceLiteralVecType output,
       FunctionalHloRunner::LoadAndRun(client, debug_options, preproc_options,
                                       compile_options, running_options,
-                                      hlo_text, input_format));
+                                      hlo_file, input_format));
   return dump_output_to.empty()
              ? absl::OkStatus()
              : FunctionalHloRunner::DumpOutput(output, dump_output_to, task_id);
@@ -580,7 +580,7 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
                                 const PreprocessingOptions& preproc_options,
                                 const CompileOptions& compile_options,
                                 const RunningOptions& running_options,
-                                absl::string_view hlo_text,
+                                absl::string_view hlo_file,
                                 InputFormat input_format,
                                 const PerDeviceLiteralVecType& arguments,
                                 std::minstd_rand0* engine) {
@@ -590,7 +590,7 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
   // proper device ID, so loading and executing from HLO snapshot might not
   // replay the original execution.
   TF_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
-                      LoadHloModuleAndArguments(hlo_text, input_format));
+                      LoadHloModuleAndArguments(hlo_file, input_format));
   // Arguments from `arguments` take precedence over the arguments from a
   // snapshot.
   if (!arguments.empty()) {
