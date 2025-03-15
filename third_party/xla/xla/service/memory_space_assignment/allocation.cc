@@ -372,19 +372,14 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
   if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
-    if (sync_mem_op_->opcode() == HloOpcode::kSlice) {
+    if (sync_mem_op_->opcode() == HloOpcode::kSlice ||
+        sync_mem_op_->opcode() == HloOpcode::kDynamicSlice) {
       TF_ASSIGN_OR_RETURN(copy_done_,
                           computation->CreateAsyncInstructions(
                               sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
                               HloInstruction::kMainExecutionThread, false));
     } else {
-      TF_RET_CHECK(sync_mem_op_->opcode() == HloOpcode::kDynamicSlice);
-      TF_ASSIGN_OR_RETURN(
-          copy_done_,
-          computation->CreateAsyncInstructions(
-              sync_mem_op_,
-              {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})},
-              HloInstruction::kMainExecutionThread, false));
+      return Internal("Sync mem op is not a copy, slice, or dynamic slice.");
     }
     copy_start_ = copy_done_->mutable_operand(0);
     // If the shape of the copy start operand is not compatible with the
