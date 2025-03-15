@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_SHARDY_SHARDY_XLA_PASS_H_
 #define XLA_SERVICE_SPMD_SHARDY_SHARDY_XLA_PASS_H_
 
-#include <string>
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
