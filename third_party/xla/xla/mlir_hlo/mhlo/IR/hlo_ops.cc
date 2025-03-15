@@ -6831,6 +6831,9 @@ Attribute DotDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
         << "failed parsing dot dimension numbers attribute";
     return {};
   }
+
+  if (failed(parser.parseGreater())) return {};
+
   return DotDimensionNumbersAttr::get(
       parser.getContext(), lhsBatchingDimensions, rhsBatchingDimensions,
       lhsContractingDimensions, rhsContractingDimensions);
@@ -6856,9 +6859,14 @@ Attribute RaggedDotDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
           {"dot_dimension_numbers", "lhs_ragged_dimensions",
            "rhs_group_dimensions"},
           {[&]() {
-             auto result = DotDimensionNumbersAttr::parse(parser, type);
-             if (!result) return ParseResult(failure());
-             dotDimensionNumbers = llvm::cast<DotDimensionNumbersAttr>(result);
+             Attribute attr;
+             if (failed(parser.parseAttribute(attr)))
+               return ParseResult(failure());
+             dotDimensionNumbers =
+                 llvm::dyn_cast<DotDimensionNumbersAttr>(attr);
+             if (!dotDimensionNumbers)
+               parser.emitError(parser.getCurrentLocation(),
+                                "expected #mhlo.dot attribute");
              return ParseResult(success());
            },
            [&]() { return parseDims(parser, lhsRaggedDimensions); },
@@ -6867,6 +6875,9 @@ Attribute RaggedDotDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
         << "failed parsing ragged dot dimension numbers attribute";
     return {};
   }
+
+  if (failed(parser.parseGreater())) return {};
+
   return RaggedDotDimensionNumbersAttr::get(
       parser.getContext(), dotDimensionNumbers, lhsRaggedDimensions,
       rhsGroupDimensions);
