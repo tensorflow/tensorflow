@@ -361,33 +361,62 @@ absl::StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
 
 // The format of the serialized graph describing a sequence of ops fused
 // into the cuDNN convolution Custom Call is
-// "UID:[output_type]conv();UID[output_type]:op_name(operand
-// UID);UID:[output_type]op_name(operand UID);..." with the convolution assumed
-// to be the first op in the graph. Operand UIDs identifying ops outside the
-// serialized graph are elided. Currently, multiplication and division by a
-// broadcast scalar, addition of a matrix bias, the application of a ReLU
-// activation and the calculation of the maximum of the absolute value are
-// supported.
+// "UID:[output_type]conv();UID:[output_type]op_name(operand
+// UIDs);UID:[output_type]op_name(operand UIDs);..." with the convolution
+// assumed to be the first op in the graph. Operand UIDs identifying ops outside
+// the serialized graph are elided. Currently, multiplication and division by a
+// broadcast scalar, addition, the application of various activations and the
+// calculation of the maximum of the absolute value are supported.
 class GraphString {
  public:
   GraphString() = default;
 
   bool AppendOp(std::string op_name, HloInstruction* op,
                 std::vector<HloInstruction*> operands = {}) {
-    std::optional<int64_t> operand_uid;
-    int num_operands_in_graph = 0;
-    for (HloInstruction* operand : operands) {
-      if (OpInGraph(operand->unique_id())) {
-        num_operands_in_graph++;
-        // Ops with more than one operand in the graph are not supported.
-        if (num_operands_in_graph > 1) {
-          return false;
-        }
-        operand_uid = operand->unique_id();
-      }
+    return AppendOp(op_name, op, op->shape().element_type(), operands);
+  }
+
+  bool AppendOp(std::string op_name, HloInstruction* op,
+                PrimitiveType element_type,
+                std::vector<HloInstruction*> operands = {}) {
+    // Do not add the same op multiple times.
+    if (OpInGraph(op)) {
+      return false;
     }
-    graph_.emplace_back(OpDescriptor(
-        {op->unique_id(), op->shape().element_type(), op_name, operand_uid}));
+
+    // Insert op in front of its first use as an operand in graph_ or at the end
+    // of graph_ if not an operand of another op.
+    auto pos = std::find_if(
+        graph_.begin(), graph_.end(), [op](OpDescriptor graph_op) -> bool {
+          return std::find(graph_op.operands.begin(), graph_op.operands.end(),
+                           op) != graph_op.operands.end();
+        });
+    pos = graph_.insert(pos, OpDescriptor{op, element_type, op_name, operands});
+
+    // If necessary, move the operands of the op already in the graph in front
+    // of the op and recursively repeat for the operands' operands. Iterator pos
+    // marks the position of op in the vector and serves as an approximately
+    // optimal start point when finding operands that may need to be moved. With
+    // the exception of cases with multiple in-graph operands, pos is expected
+    // to be graph_.end(), which causes reorder_operands to return immediately.
+    std::function<void(std::vector<HloInstruction*>,
+                       std::vector<OpDescriptor>::iterator)>
+        reorder_operands = [&](auto operands, auto pos) {
+          for (HloInstruction* operand : operands) {
+            auto operand_pos = std::find_if(
+                pos, graph_.end(), [operand](OpDescriptor graph_op) -> bool {
+                  return operand == graph_op.instr;
+                });
+            if (operand_pos != graph_.end()) {
+              OpDescriptor operand_desc = *operand_pos;
+              graph_.erase(operand_pos);
+              pos = graph_.insert(pos, operand_desc);
+              reorder_operands(Operands(operand), pos);
+            }
+          }
+        };
+    reorder_operands(operands, pos);
+
     return true;
   }
 
@@ -399,38 +428,53 @@ class GraphString {
   std::string Graph() const {
     std::string graph;
     for (OpDescriptor op : graph_) {
-      graph.append(std::to_string(op.uid));
+      std::vector<int64_t> operand_uids_in_graph;
+      for (HloInstruction* operand : op.operands) {
+        if (OpInGraph(operand)) {
+          operand_uids_in_graph.push_back(operand->unique_id());
+        }
+      }
+      graph.append(std::to_string(op.instr->unique_id()));
       graph.append(":[" +
                    primitive_util::LowercasePrimitiveTypeName(op.output_type) +
                    "]");
       graph.append(op.name);
       graph.append("(");
-      if (op.operand.has_value()) {
-        graph.append(std::to_string(*op.operand));
-      }
+      graph.append(absl::StrJoin(operand_uids_in_graph, ","));
       graph.append(");");
     }
     return graph;
   }
 
-  bool OpInGraph(int64_t uid, std::string op_name = "") const {
-    auto op_filter = [&](OpDescriptor op) -> bool {
+  bool OpInGraph(HloInstruction* op, std::string op_name = "") const {
+    auto op_filter = [&](OpDescriptor graph_op) -> bool {
       if (op_name.empty()) {
-        return op.uid == uid;
+        return graph_op.instr->unique_id() == op->unique_id();
       } else {
-        return op.uid == uid && op.name == op_name;
+        return graph_op.instr->unique_id() == op->unique_id() &&
+               graph_op.name == op_name;
       }
     };
     return std::find_if(graph_.begin(), graph_.end(), op_filter) !=
            graph_.end();
   }
 
+  std::vector<HloInstruction*> Operands(HloInstruction* op) const {
+    auto op_it = std::find_if(
+        graph_.begin(), graph_.end(),
+        [op](OpDescriptor graph_op) -> bool { return op == graph_op.instr; });
+    if (op_it != graph_.end()) {
+      return op_it->operands;
+    }
+    return {};
+  }
+
  private:
   struct OpDescriptor {
-    int64_t uid;
+    HloInstruction* instr;
     PrimitiveType output_type;
     std::string name;
-    std::optional<int64_t> operand;
+    std::vector<HloInstruction*> operands;
   };
 
   std::vector<OpDescriptor> graph_;
@@ -488,120 +532,217 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
                                std::vector<HloInstruction*>& aux_outputs,
                                GraphString& graph_string,
                                absl::flat_hash_set<int>& visited_instrs,
-                               HloInstruction*& final_instr) {
+                               HloInstruction*& final_instr,
+                               int& num_endpoints) {
   // Avoid visiting the same instruction more than once.
   if (!visited_instrs.emplace(instr->unique_id()).second) {
     return;
   }
-  final_instr = instr;
 
   // Copy the current state in case fusion will be unsuccessful or unfavorable.
   GraphString init_graph_string = graph_string;
-  std::vector<HloInstruction*> init_operands = operands,
-                               init_aux_outputs = aux_outputs;
-  // The loop adds each user of `instr` that supports fusion into the
-  // cuDNN convolution Custom Call to GraphString. Most ops following the
-  // convolution describe a linear sequence that generates a single return
-  // tensor. The identification of one of these linear ops is followed by a
-  // recursive call of CaptureConvGraphRecursive to match and potentially fuse
-  // its users. The calculation of the scalar maximum of the absolute value
-  // (Amax) of a preceding op is considered a nonlinear user as it adds a
-  // return value to the convolution. The users of a nonlinear op are
-  // not considered for fusion into the Custom Call. The numbers of linear and
-  // nonlinear users of `instr` are stored in `num_linear_users` and
-  // `num_nonlinear_users`.
-  int num_linear_users = 0, num_nonlinear_users = 0;
+  std::vector<HloInstruction*> init_operands = operands;
+  std::vector<HloInstruction*> init_aux_outputs = aux_outputs;
+  int init_num_endpoints = num_endpoints;
+
+  // The loop adds each user of instr that supports fusion into the cuDNN
+  // convolution Custom Call to graph_string. The identification of an op is
+  // followed by a recursive call of CaptureConvGraphRecursive to match and
+  // potentially fuse its users. Aside from scalar reduction results, the graph
+  // must have a single tensor endpoint.
+  //
+  // Examples:
+  //
+  //        C
+  //       / \
+  //  A - B   E - F
+  //       \ /
+  //        D
+  //
+  // The graph is fully fused since it has one endpoint.
+  //
+  //        C - D
+  //       /
+  //  A - B
+  //       \
+  //        E - F
+  //
+  // Fusion stops at B since the graph would have two endpoints.
+  int num_new_users = 0;
+  int num_existing_users = 0;
   for (HloInstruction* user : instr->users()) {
-    HloInstruction *op, *operand0, *operand1;
+    HloInstruction *op0, *op1, *op2, *operand0, *operand1;
     // Add
-    if (Match(user, m::AddAnyOrder(&op, m::Op(&operand0), m::Op(&operand1)))) {
-      if (graph_string.AppendOp("add", op, {operand0, operand1})) {
-        operands.push_back(operand0 == instr ? operand1 : operand0);
-        num_linear_users++;
+    if (Match(user,
+              m::AddAnyOrder(&op0, m::Op().Is(instr), m::Op(&operand0)))) {
+      if (graph_string.AppendOp("add", op0, {instr, operand0})) {
+        operands.push_back(operand0);
+        ++num_new_users;
         CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                  visited_instrs, final_instr);
+                                  visited_instrs, final_instr, num_endpoints);
+      } else {
+        // Since operands only holds ops that are not part of the graph, remove
+        // instr.
+        operands.erase(std::remove(operands.begin(), operands.end(), instr),
+                       operands.end());
+        ++num_existing_users;
       }
       continue;
     }
     // Scale
-    if (Match(user, m::MultiplyAnyOrder(&op, m::Op(&operand0),
-                                        m::Broadcast(m::Op(&operand1)))) &&
-        ShapeUtil::IsScalar(operand1->shape())) {
-      if (graph_string.AppendOp("scale", op, {operand0, operand1})) {
-        operands.push_back(operand1);
-        num_linear_users++;
+    if (Match(user, m::MultiplyAnyOrder(&op0, m::Op().Is(instr),
+                                        m::Broadcast(m::Op(&operand0)))) &&
+        ShapeUtil::IsScalar(operand0->shape())) {
+      if (graph_string.AppendOp("scale", op0, {instr, operand0})) {
+        operands.push_back(operand0);
+        ++num_new_users;
         CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                  visited_instrs, final_instr);
+                                  visited_instrs, final_instr, num_endpoints);
       }
       continue;
     }
     // Inverse Scale
-    if (Match(user, m::Divide(&op, m::Op(&operand0),
-                              m::Broadcast(m::Op(&operand1)))) &&
-        ShapeUtil::IsScalar(operand1->shape())) {
-      if (graph_string.AppendOp("invscale", op, {operand0, operand1})) {
-        operands.push_back(operand1);
-        num_linear_users++;
+    if (Match(user, m::Divide(&op0, m::Op().Is(instr),
+                              m::Broadcast(m::Op(&operand0)))) &&
+        ShapeUtil::IsScalar(operand0->shape())) {
+      if (graph_string.AppendOp("invscale", op0, {instr, operand0})) {
+        operands.push_back(operand0);
+        ++num_new_users;
         CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                  visited_instrs, final_instr);
+                                  visited_instrs, final_instr, num_endpoints);
       }
       continue;
     }
     // ReLU
-    if (Match(user, m::MaximumAnyOrder(&op, m::Op(&operand0),
+    if (Match(user, m::MaximumAnyOrder(&op0, m::Op().Is(instr),
                                        m::Broadcast(m::ConstantScalar(0))))) {
-      if (graph_string.AppendOp("relu", op, {operand0})) {
-        num_linear_users++;
+      if (graph_string.AppendOp("relu", op0, {instr})) {
+        ++num_new_users;
         CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                  visited_instrs, final_instr);
+                                  visited_instrs, final_instr, num_endpoints);
       }
       continue;
     }
-    //  Maximum of the absolute value (Amax) following ReLU (elided Abs) -- not
-    //  a linear user
-    if (Match(user, m::Reduce(&op, m::Op(&operand0), m::Op())) &&
-        graph_string.OpInGraph(operand0->unique_id(), "relu") &&
-        AppliesMaxReduce(op)) {
-      if (graph_string.AppendOp("amax", op, {operand0})) {
-        aux_outputs.push_back(op);
-        num_nonlinear_users++;
+    //  Maximum of the absolute value (Amax) following ReLU (elided Abs)
+    if (Match(user, m::Reduce(&op0, m::Op().Is(instr), m::Op())) &&
+        graph_string.OpInGraph(instr, "relu") && AppliesMaxReduce(op0)) {
+      if (graph_string.AppendOp("amax", op0, {instr})) {
+        aux_outputs.push_back(op0);
+        ++num_new_users;
+      }
+      continue;
+    }
+    // ReLU6, equivalently represented in the cuDNN graph as min(ReLU, 6)
+    if (Match(
+            user,
+            m::Clamp(
+                &op1,
+                m::Broadcast(&op0, m::ConstantEffectiveScalar(0)).WithOneUser(),
+                m::Op().Is(instr),
+                m::Broadcast(&operand0, m::ConstantEffectiveScalar(6))
+                    .WithOneUser()))) {
+      if (!graph_string.OpInGraph(op0) && !graph_string.OpInGraph(op1)) {
+        graph_string.AppendOp("relu", op0, {instr});
+        graph_string.AppendOp("min", op1, {op0, operand0});
+        ++num_new_users;
+        operands.push_back(operand0);
+        CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
+                                  visited_instrs, final_instr, num_endpoints);
+      }
+      continue;
+    }
+    // ELU
+    if (Match(user,
+              m::Select(&op0,
+                        m::Compare(m::Op().Is(instr),
+                                   m::Broadcast(m::ConstantEffectiveScalar(0)))
+                            .WithComparisonDirection(ComparisonDirection::kGt),
+                        m::Op().Is(instr), m::Expm1(m::Op().Is(instr))))) {
+      if (graph_string.AppendOp("elu", op0, {instr})) {
+        num_new_users += 3;
+        CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
+                                  visited_instrs, final_instr, num_endpoints);
       }
       continue;
     }
 
     // The following patterns match the user of `user`.
-    if (!user->users().empty()) {
+    if (user->user_count() == 1) {
       HloInstruction* users_user = user->users()[0];
       // Convert with Clamp to FP8 types
       std::optional<PrimitiveType> f8_type = IsSaturatingCastToF8(users_user);
       if (f8_type.has_value()) {
         graph_string.ChangeDataType(f8_type.value());
-        num_linear_users++;
+        ++num_new_users;
         CaptureConvGraphRecursive(users_user, operands, aux_outputs,
-                                  graph_string, visited_instrs, final_instr);
+                                  graph_string, visited_instrs, final_instr,
+                                  num_endpoints);
         continue;
       }
-      // Maximum of the absolute value (Amax) -- not a linear user
+      // Maximum of the absolute value (Amax)
       if (Match(users_user,
-                m::Reduce(&op, m::Abs(m::Op(&operand0)), m::Op())) &&
-          AppliesMaxReduce(op)) {
-        if (graph_string.AppendOp("amax", op, {operand0})) {
-          aux_outputs.push_back(op);
-          num_nonlinear_users++;
+                m::Reduce(&op0, m::Abs(m::Op().Is(instr)), m::Op())) &&
+          AppliesMaxReduce(op0)) {
+        if (graph_string.AppendOp("amax", op0, {instr})) {
+          aux_outputs.push_back(op0);
+          ++num_new_users;
+        }
+        continue;
+      }
+      // Leaky ReLU, equivalently represented in the cuDNN graph as the maximum
+      // of the value and the slope times the minimum of zero and the value,
+      // max(x, alpha * min(0, x))
+      if (Match(
+              users_user,
+              m::Select(&op2,
+                        m::Compare(&op0, m::Op().Is(instr),
+                                   m::Broadcast(&operand0,
+                                                m::ConstantEffectiveScalar(0)))
+                            .WithComparisonDirection(ComparisonDirection::kGt)
+                            .WithOneUser(),
+                        m::Op().Is(instr),
+                        m::MultiplyAnyOrder(
+                            &op1, m::Op().Is(instr),
+                            m::Broadcast(m::ConstantEffectiveScalar(&operand1)))
+                            .WithOneUser()))) {
+        if (!graph_string.OpInGraph(op0) && !graph_string.OpInGraph(op1) &&
+            !graph_string.OpInGraph(op2)) {
+          graph_string.AppendOp("min", op0, op2->shape().element_type(),
+                                {instr, operand0});
+          graph_string.AppendOp("scale", op1, {op0, operand1});
+          graph_string.AppendOp("max", op2, {op1, instr});
+          num_new_users += 3;
+          operands.push_back(operand0);
+          operands.push_back(operand1);
+          CaptureConvGraphRecursive(users_user, operands, aux_outputs,
+                                    graph_string, visited_instrs, final_instr,
+                                    num_endpoints);
         }
         continue;
       }
     }
   }
-  // Do not fuse into the cuDNN convolution Custom Call when there are more than
-  // one linear or nonlinear users, or when the number of users eligible for
-  // fusion is less than the total number of users.
-  if (num_linear_users > 1 || num_nonlinear_users > 1 ||
-      num_linear_users + num_nonlinear_users < instr->user_count()) {
-    graph_string = init_graph_string;
+
+  // instr is an endpoint when the number of users eligible for fusion is less
+  // than the total number of users or when instr has no users.
+  if (num_new_users + num_existing_users < instr->user_count() ||
+      instr->user_count() == 0) {
+    final_instr = instr;
+    ++num_endpoints;
+  }
+
+  // Since the cuDNN graph cannot have more than one endpoint, do not fuse
+  // into the cuDNN convolution Custom Call and roll back the graph when there
+  // are multiple endpoints. If the resulting graph still has more than one
+  // endpoint, the recursive caller will continue to roll back the graph.
+  if (num_endpoints > 1) {
+    graph_string = std::move(init_graph_string);
     operands = init_operands;
     aux_outputs = init_aux_outputs;
     final_instr = instr;
+    // Reverting the graph removes any users of instr from the cuDNN graph and
+    // makes instr an endpoint.
+    num_endpoints = init_num_endpoints + 1;
   }
 }
 
@@ -644,8 +785,9 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
   std::vector<HloInstruction*> operands, aux_outputs;
   absl::flat_hash_set<int> visited_instrs;
   HloInstruction* final_instr;
+  int num_endpoints = 0;
   CaptureConvGraphRecursive(instr, operands, aux_outputs, graph_string,
-                            visited_instrs, final_instr);
+                            visited_instrs, final_instr, num_endpoints);
   return std::make_tuple(operands, aux_outputs, graph_string, final_instr);
 }
 
@@ -657,9 +799,7 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
 // 2. Optionally unscale the filter and input by multiplying or dividing by
 // scalars.
 // 3. Evaluate the convolution based on the scaled filter and input.
-// 4. Apply a series of elementwise transformations, where a transformation can
-// be adding a matrix bias, applying a ReLU activation, or
-// multiplying or dividing by a broadcast scalar.
+// 4. Apply a series of elementwise transformations.
 // 5. Optionally calculate the maximum of the absolute of the result.
 // 6. Optionally cast the output back to FP8.
 absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
