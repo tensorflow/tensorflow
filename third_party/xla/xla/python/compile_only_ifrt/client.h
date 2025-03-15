@@ -211,6 +211,14 @@ class CompileOnlyIfRtClient final
     return Unimplemented(
         "MakeArrayFromHostBuffer not available with compile-only client.");
   }
+  absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
+  MakeArraysFromHostBufferShards(
+      absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
+      HostBufferSemantics semantics) override {
+    return Unimplemented(
+        "MakeArraysFromHostBufferShards not available with compile-only "
+        "client.");
+  }
 
   absl::StatusOr<tsl::RCReference<ifrt::Array>>
   AssembleArrayFromSingleDeviceArrays(

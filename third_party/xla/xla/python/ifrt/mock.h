@@ -123,6 +123,11 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
                HostBufferSemantics semantics,
                std::function<void()> on_done_with_host_buffer),
               (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
+              MakeArraysFromHostBufferShards,
+              (absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
+               HostBufferSemantics semantics),
+              (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
               AssembleArrayFromSingleDeviceArrays,
               (Shape shape,

@@ -125,6 +125,7 @@ cc_library(
         ":host_callback",
         ":version",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",

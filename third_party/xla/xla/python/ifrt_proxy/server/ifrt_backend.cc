@@ -74,6 +74,7 @@
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/ifrt_proxy/server/version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -103,6 +104,69 @@ MakeStringArrayFromHostBuffer(
       /*on_done_with_host_buffer=*/
       [host_buffer = std::move(host_buffer),
        string_host_buffer = std::move(string_host_buffer)]() {});
+}
+
+// Parses a `MakeArraysFromHostBufferShardsRequest::ShardIndices` proto to
+// `xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::ShardIndices`.
+xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::ShardIndices
+ParseMakeArraysFromHostBufferShardsSpecShardIndicesProto(
+    const MakeArraysFromHostBufferShardsRequest::ShardIndices&
+        shard_indices_proto) {
+  xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::ShardIndices
+      shard_indices;
+  shard_indices.reserve(shard_indices_proto.indices_size());
+  for (const int shard_index : shard_indices_proto.indices()) {
+    shard_indices.push_back(shard_index);
+  }
+  return shard_indices;
+}
+
+// Parses a `MakeArraysFromHostBufferShardsRequest::HostBuffer` proto to
+// `xla::ifrt::Client::HostBuffer`. It requires a referenced host buffer handle
+// to exist in `host_buffer_store`. Once this function returns, the host buffer
+// may be deleted from `host_buffer_store` without affecting the returned
+// `xla::ifrt::Client::HostBuffer`.
+absl::StatusOr<xla::ifrt::Client::HostBuffer>
+ParseMakeArraysFromHostBufferShardsSpecHostBufferProto(
+    HostBufferStore* host_buffer_store,
+    const MakeArraysFromHostBufferShardsRequest::HostBuffer&
+        host_buffer_proto) {
+  TF_ASSIGN_OR_RETURN(DType dtype, DType::FromProto(host_buffer_proto.dtype()));
+  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(host_buffer_proto.shape()));
+  std::optional<std::vector<int64_t>> byte_strides;
+  if (host_buffer_proto.has_byte_strides()) {
+    byte_strides = FromByteStridesProto(host_buffer_proto.byte_strides());
+  }
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const std::string> host_buffer,
+      host_buffer_store->Lookup(host_buffer_proto.host_buffer_handle(),
+                                /*timeout=*/absl::InfiniteDuration()));
+  const void* data;
+  std::function<void()> on_done_with_host_buffer;
+  if (dtype.kind() == DType::kString) {
+    TF_ASSIGN_OR_RETURN(std::vector<absl::Cord> string_host_buffer,
+                        DeserializeStringHostBufferFromString(*host_buffer));
+    data = string_host_buffer.data();
+    on_done_with_host_buffer = [host_buffer = std::move(host_buffer),
+                                string_host_buffer =
+                                    std::move(string_host_buffer)]() mutable {
+      string_host_buffer.clear();
+      host_buffer.reset();
+    };
+  } else {
+    TF_ASSIGN_OR_RETURN(const auto mem_region,
+                        ArrayMemRegion::FromMinimalMemRegion(
+                            *host_buffer, dtype, shape, byte_strides));
+    data = mem_region.zeroth_element();
+    on_done_with_host_buffer = [host_buffer =
+                                    std::move(host_buffer)]() mutable {
+      host_buffer.reset();
+    };
+  }
+
+  return xla::ifrt::Client::HostBuffer{data, dtype, std::move(shape),
+                                       std::move(byte_strides),
+                                       std::move(on_done_with_host_buffer)};
 }
 
 // Returns a string_view that is guaranteed to be valid and constant until this
@@ -336,6 +400,9 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
     case IfrtRequest::RequestCase::kMakeArrayFromHostBufferRequest:
       return Future<Response>(
           HandleMakeArrayFromHostBufferRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kMakeArraysFromHostBufferShardsRequest:
+      return Future<Response>(
+          HandleMakeArraysFromHostBufferShardsRequest(std::move(request)));
     case IfrtRequest::RequestCase::kAssembleArrayFromSingleDeviceArraysRequest:
       return Future<Response>(
           HandleAssembleArrayFromSingleDeviceArraysRequest(std::move(request)));
@@ -704,6 +771,96 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
   auto* make_array_resp =
       response->mutable_make_array_from_host_buffer_response();
   make_array_resp->set_array_handle(handle);
+
+  return response;
+}
+
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  CHECK(request->has_make_arrays_from_host_buffer_shards_request());
+  auto* make_arrays_request =
+      request->mutable_make_arrays_from_host_buffer_shards_request();
+
+  absl::Cleanup cleanup = [&] {
+    for (const auto& spec : make_arrays_request->specs()) {
+      for (const auto& host_buffer : spec.host_buffers()) {
+        host_buffer_store_->Delete(host_buffer.host_buffer_handle())
+            .IgnoreError();
+      }
+    }
+  };
+
+  std::vector<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs;
+  specs.reserve(make_arrays_request->specs_size());
+  for (const auto& spec_proto : make_arrays_request->specs()) {
+    xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::Buffers buffers;
+    buffers.reserve(spec_proto.host_buffers_size());
+    for (int buffer_idx = 0; buffer_idx < spec_proto.host_buffers_size();
+         ++buffer_idx) {
+      xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::ShardIndices
+          shard_indices =
+              ParseMakeArraysFromHostBufferShardsSpecShardIndicesProto(
+                  spec_proto.addressable_shard_indices(buffer_idx));
+      TF_ASSIGN_OR_RETURN(
+          xla::ifrt::Client::HostBuffer host_buffer,
+          ParseMakeArraysFromHostBufferShardsSpecHostBufferProto(
+              host_buffer_store_.get(), spec_proto.host_buffers(buffer_idx)));
+      buffers.push_back({std::move(shard_indices), std::move(host_buffer)});
+    }
+    TF_ASSIGN_OR_RETURN(
+        auto array_spec,
+        ArraySpec::FromProto(client_.get(), spec_proto.array_spec()));
+    specs.push_back({std::move(buffers), std::move(array_spec)});
+  }
+
+  std::move(cleanup).Invoke();
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<tsl::RCReference<xla::ifrt::Array>> arrays,
+      client_->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(specs), xla::ifrt::Client::HostBufferSemantics::
+                                     kImmutableUntilTransferCompletes));
+
+  std::vector<uint64_t> handles;
+  handles.reserve(make_arrays_request->specs_size());
+  if (!make_arrays_request->array_handles().empty()) {
+    TF_RET_CHECK(make_arrays_request->array_handles_size() ==
+                 make_arrays_request->specs_size());
+    for (uint64_t handle : make_arrays_request->array_handles()) {
+      handles.push_back(handle);
+    }
+  } else {
+    // TODO(b/282757875): Consider merging the handle_generator with the
+    // arrays_.
+    for (int i = 0; i < make_arrays_request->specs_size(); ++i) {
+      handles.push_back(handle_generator_.GenerateAtServer());
+    }
+  }
+
+  {
+    absl::MutexLock lock(&arrays_mutex_);
+    for (int i = 0; i < make_arrays_request->specs_size(); ++i) {
+      uint64_t handle = handles[i];
+      const bool inserted =
+          arrays_.insert({handle, std::move(arrays[i])}).second;
+      if (!inserted) {
+        CHECK(!make_arrays_request->array_handles().empty()) << handle;
+        return absl::InvalidArgumentError(absl::StrCat(
+            "IFRT proxy: MakeArrayFromHostBuffer with client-supplied handle ",
+            handle, " that already exists at the server."));
+      }
+    }
+  }
+
+  std::unique_ptr<IfrtResponse> response =
+      NewIfrtResponse(request->request_metadata().op_id());
+  auto* make_arrays_resp =
+      response->mutable_make_arrays_from_host_buffer_shards_response();
+  make_arrays_resp->mutable_array_handles()->Reserve(handles.size());
+  for (uint64_t handle : handles) {
+    make_arrays_resp->add_array_handles(handle);
+  }
 
   return response;
 }

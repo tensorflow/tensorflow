@@ -139,6 +139,8 @@ class IfrtBackend final : public BackendInterface {
 
   absl::StatusOr<Response> HandleMakeArrayFromHostBufferRequest(
       std::unique_ptr<IfrtRequest> request);
+  absl::StatusOr<Response> HandleMakeArraysFromHostBufferShardsRequest(
+      std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleAssembleArrayFromSingleDeviceArraysRequest(
       std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleRemapArraysRequest(
