@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cassert>
 #include <functional>
 #include <memory>
@@ -1059,6 +1060,94 @@ TEST_F(ClientServerTest, GetAliveTasks_Succeed) {
       return alive_tasks.status();
     }
     TF_RETURN_IF_ERROR(client->Shutdown());
+    return absl::OkStatus();
+  };
+
+  std::vector<absl::Status> statuses(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    TF_EXPECT_OK(statuses[i]);
+  }
+}
+
+TEST_F(ClientServerTest, GetJobState) {
+  // This test registers a JobStateCallback with the first client. It also fails
+  // the second client after a brief delay. The JobStateCallback should be
+  // called twice. The first time, all tasks should be healthy. The second time,
+  // the second task should be unhealthy.
+  const int num_nodes = 2;
+  StartService(num_nodes);
+
+  absl::Notification done;
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    auto client =
+        GetClient(node_id,
+                  /*init_and_shutdown_timeout=*/absl::Seconds(3),
+                  /*shutdown_on_destruction=*/true, /*recoverable=*/true);
+    TF_RETURN_IF_ERROR(client->Connect());
+
+    if (node_id != 0) {
+      // Sleep for a while, before shutting down.
+      absl::SleepFor(absl::Seconds(3));
+      return absl::OkStatus();
+    }
+
+    int num_updates = 0;
+    client->AddJobStateCallback(
+        [&](const CoordinationServiceAgent::JobStateUpdate& update) {
+          num_updates++;
+
+          // Sort the task states by task id.
+          using Info = tensorflow::CoordinatedTaskStateInfo;
+          auto less = [](const Info& x, const Info& y) -> bool {
+            return x.task().task_id() < y.task().task_id();
+          };
+          std::vector<Info> previous(update.previous_state.begin(),
+                                     update.previous_state.end());
+          std::vector<Info> current(update.current_state.begin(),
+                                    update.current_state.end());
+          std::sort(previous.begin(), previous.end(), less);
+          std::sort(current.begin(), current.end(), less);
+
+          if (num_updates == 1) {
+            // The first update should have no previous state and should have
+            // all tasks healthy in the current state.
+            ASSERT_TRUE(previous.empty());
+            ASSERT_EQ(current[0].task().task_id(), 0);
+            ASSERT_EQ(current[0].state(),
+                      tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
+            ASSERT_EQ(current[1].task().task_id(), 1);
+            ASSERT_EQ(current[1].state(),
+                      tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
+          }
+
+          if (num_updates == 2) {
+            // The second update should have the second task unhealthy in the
+            // current state.
+            ASSERT_EQ(previous[0].task().task_id(), 0);
+            ASSERT_EQ(previous[0].state(),
+                      tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
+            ASSERT_EQ(previous[1].task().task_id(), 1);
+            ASSERT_EQ(previous[1].state(),
+                      tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
+
+            ASSERT_EQ(current[0].task().task_id(), 0);
+            ASSERT_EQ(current[0].state(),
+                      tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
+            ASSERT_EQ(current[1].task().task_id(), 1);
+            ASSERT_EQ(current[1].state(),
+                      tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED);
+
+            done.Notify();
+          }
+        });
+    done.WaitForNotification();
     return absl::OkStatus();
   };
 
