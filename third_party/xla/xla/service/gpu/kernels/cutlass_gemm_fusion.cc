@@ -64,7 +64,7 @@ struct RootWithWorkspace {
   HloInstruction* workspace;
 };
 
-static RootWithWorkspace MatchRootWithWorkspace(HloInstruction* root) {
+RootWithWorkspace MatchRootWithWorkspace(HloInstruction* root) {
   RootWithWorkspace result;
   if (Match(root, match::Tuple(match::Op(&result.root),
                                match::CustomCall(
@@ -139,6 +139,12 @@ absl::Status MatchRowMajorGemm(HloDotInstruction* dot) {
 
   return absl::OkStatus();
 }
+
+int64_t GetContractingDimensionSize(HloDotInstruction* dot) {
+  int64_t contracting_dimension =
+      dot->dot_dimension_numbers().lhs_contracting_dimensions()[0];
+  return dot->operand(0)->shape().dimensions(contracting_dimension);
+}
 }  // namespace
 
 // Return OK if dot instruction is a simple gemm with all operands and result
@@ -177,12 +183,22 @@ static absl::StatusOr<GemmWithUpcast> MatchGemmWithUpcast(
   // C <- convert(A) * B
   if (Match(const_cast<HloInstruction*>(dot->operand(0)),
             match::Convert(&match.lhs_upcast, match::Op()))) {
+    int64_t contracting_dimension_size = GetContractingDimensionSize(dot);
+    if (contracting_dimension_size != 32 && contracting_dimension_size != 64) {
+      return absl::InternalError(
+          "contracting dimension size needs to be 32 or 64");
+    }
     return match;
   }
 
   // C <- A * convert(B)
   if (Match(const_cast<HloInstruction*>(dot->operand(1)),
             match::Convert(&match.rhs_upcast, match::Op()))) {
+    int64_t contracting_dimension_size = GetContractingDimensionSize(dot);
+    if (contracting_dimension_size != 32 && contracting_dimension_size != 64) {
+      return absl::InternalError(
+          "contracting dimension size needs to be 32 or 64");
+    }
     return match;
   }
 

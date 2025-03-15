@@ -111,10 +111,10 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcast) {
   const char* hlo = R"(
     HloModule test
 
-    ENTRY %main (p0: bf16[15,19], p1: f32[19,17]) -> f32[15,17] {
-      %p0 = bf16[15,19]{1,0} parameter(0)
-      %p1 = bf16[19,17]{1,0} parameter(1)
-      %c1 = f32[19,17]{1,0} convert(%p1)
+    ENTRY %main (p0: bf16[15,32], p1: f32[32,17]) -> f32[15,17] {
+      %p0 = bf16[15,32]{1,0} parameter(0)
+      %p1 = bf16[32,17]{1,0} parameter(1)
+      %c1 = f32[32,17]{1,0} convert(%p1)
       ROOT %r = f32[15,17]{1,0} dot(%p0, %c1),
         lhs_contracting_dims={1}, rhs_contracting_dims={0}
     }
@@ -122,9 +122,9 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcast) {
 
   const char* expected = R"(
     ; CHECK: %cutlass_gemm_with_upcast {{.*}} {
-    ; CHECK-DAG: [[P0:%[^ ]+]] = bf16[15,19]{1,0} parameter
-    ; CHECK-DAG: [[P1:%[^ ]+]] = bf16[19,17]{1,0} parameter
-    ; CHECK:     [[C1:%[^ ]+]] = f32[19,17]{1,0} convert([[P1]])
+    ; CHECK-DAG: [[P0:%[^ ]+]] = bf16[15,32]{1,0} parameter
+    ; CHECK-DAG: [[P1:%[^ ]+]] = bf16[32,17]{1,0} parameter
+    ; CHECK:     [[C1:%[^ ]+]] = f32[32,17]{1,0} convert([[P1]])
     ; CHECK:     ROOT [[DOT:%[^ ]+]] = f32[15,17]{1,0} dot([[P0]], [[C1]]),
     ; CHECK:       lhs_contracting_dims={1}, rhs_contracting_dims={0}
     ; CHECK: }
@@ -200,6 +200,32 @@ TEST_F(CutlassFusionTest, DoNotPatternMatchNotImplementedKernelTypes) {
       %p1 = s8[19,17]{1,0} parameter(1)
       %c2 = f32[19,17]{1,0} convert(%p1)
       ROOT %r = f32[15,17]{1,0} dot(%c1, %c2),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithUpcastPattern>();
+
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
+      ParseAndReturnVerifiedModule(hlo);
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
+
+  ASSERT_FALSE(pass.Run(hlo_module.value().get()).value());
+}
+
+TEST_F(CutlassFusionTest,
+       DoNotPatternMatchRowMajorGemmWithUpcastIfContractingDimSizeUnsupported) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY %main (p0: bf16[15,19], p1: f32[32,17]) -> f32[15,17] {
+      %p0 = bf16[15,19]{1,0} parameter(0)
+      %p1 = bf16[19,17]{1,0} parameter(1)
+      %c1 = f32[19,17]{1,0} convert(%p1)
+      ROOT %r = f32[15,17]{1,0} dot(%p0, %c1),
         lhs_contracting_dims={1}, rhs_contracting_dims={0}
     }
   )";
@@ -443,8 +469,6 @@ TEST_F(CutlassFusionTest, RowMajorGemmKernel) {
                                       error_spec, /*run_hlo_passes=*/false));
 }
 
-// TODO(b/362698643): Add a test for a kernel with a left-hand side upcast once
-// we add a kernel for it.
 TEST_F(CutlassFusionTest, GemmWithRightHandSideUpcastKernel) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 

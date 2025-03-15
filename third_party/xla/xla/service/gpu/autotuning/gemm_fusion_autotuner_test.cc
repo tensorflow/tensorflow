@@ -1302,18 +1302,18 @@ TEST_F(GemmFusionAutotunerTest, GeneratesConfigForUpcastGemmWithPrologue) {
   const std::string kHlo = R"(
   HloModule module
 
-  %gemm_fusion_r_computation (parameter_0.1: f32[1,256,4,4096], parameter_1.1: bf16[1,4,4096,4096]) -> f32[256,4096] {
-    %parameter_0.1 = f32[1,256,4,4096]{3,2,1,0} parameter(0)
-    %bitcast.60 = f32[256,16384]{1,0} bitcast(f32[1,256,4,4096]{3,2,1,0} %parameter_0.1)
-    %parameter_1.1 = bf16[1,4,4096,4096]{3,2,1,0} parameter(1)
-    %bitcast.61 = bf16[16384,4096]{1,0} bitcast(bf16[1,4,4096,4096]{3,2,1,0} %parameter_1.1)
-    %convert.22 = f32[16384,4096]{1,0} convert(bf16[16384,4096]{1,0} %bitcast.61)
-    ROOT r = f32[256,4096]{1,0} dot(f32[256,16384]{1,0} %bitcast.60, f32[16384,4096]{1,0} %convert.22), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %gemm_fusion_r_computation (parameter_0.1: f32[1,256,4,16], parameter_1.1: bf16[1,4,16,4096]) -> f32[256,4096] {
+    %parameter_0.1 = f32[1,256,4,16]{3,2,1,0} parameter(0)
+    %bitcast.60 = f32[256,64]{1,0} bitcast(f32[1,256,4,16]{3,2,1,0} %parameter_0.1)
+    %parameter_1.1 = bf16[1,4,16,4096]{3,2,1,0} parameter(1)
+    %bitcast.61 = bf16[64,4096]{1,0} bitcast(bf16[1,4,16,4096]{3,2,1,0} %parameter_1.1)
+    %convert.22 = f32[64,4096]{1,0} convert(bf16[64,4096]{1,0} %bitcast.61)
+    ROOT r = f32[256,4096]{1,0} dot(f32[256,64]{1,0} %bitcast.60, f32[64,4096]{1,0} %convert.22), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
 
   ENTRY main {
-    %p0 = f32[1,256,4,4096] parameter(0)
-    %p1 = bf16[1,4,4096,4096] parameter(1)
+    %p0 = f32[1,256,4,16] parameter(0)
+    %p1 = bf16[1,4,16,4096] parameter(1)
     ROOT %gemm_fusion_r = f32[256,4096] fusion(%p0, %p1), kind=kCustom,
     calls=gemm_fusion_r_computation,
     backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
@@ -1346,13 +1346,13 @@ TEST_F(GemmFusionAutotunerTest,
   const std::string kHlo = R"(
   HloModule module
 
-  %gemm_fusion_r_computation (parameter_0.1: f32[1,256,4,4096], parameter_1.1: bf16[1,4,4096,4096]) -> bf16[1048576] {
-    %parameter_0.1 = f32[1,256,4,4096]{3,2,1,0} parameter(0)
-    %bitcast.60 = f32[256,16384]{1,0} bitcast(f32[1,256,4,4096]{3,2,1,0} %parameter_0.1)
-    %parameter_1.1 = bf16[1,4,4096,4096]{3,2,1,0} parameter(1)
-    %bitcast.61 = bf16[16384,4096]{1,0} bitcast(bf16[1,4,4096,4096]{3,2,1,0} %parameter_1.1)
-    %convert.22 = f32[16384,4096]{1,0} convert(bf16[16384,4096]{1,0} %bitcast.61)
-    %dot.5 = f32[256,4096]{1,0} dot(f32[256,16384]{1,0} %bitcast.60, f32[16384,4096]{1,0} %convert.22), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %gemm_fusion_r_computation (parameter_0.1: f32[1,256,4,16], parameter_1.1: bf16[1,4,16,4096]) -> bf16[1048576] {
+    %parameter_0.1 = f32[1,256,4,16]{3,2,1,0} parameter(0)
+    %bitcast.60 = f32[256,64]{1,0} bitcast(f32[1,256,4,16]{3,2,1,0} %parameter_0.1)
+    %parameter_1.1 = bf16[1,4,16,4096]{3,2,1,0} parameter(1)
+    %bitcast.61 = bf16[64,4096]{1,0} bitcast(bf16[1,4,16,4096]{3,2,1,0} %parameter_1.1)
+    %convert.22 = f32[64,4096]{1,0} convert(bf16[64,4096]{1,0} %bitcast.61)
+    %dot.5 = f32[256,4096]{1,0} dot(f32[256,64]{1,0} %bitcast.60, f32[64,4096]{1,0} %convert.22), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     %convert.23 = bf16[256,4096]{1,0} convert(f32[256,4096]{1,0} %dot.5)
     %bitcast.62 = bf16[1,256,4096]{2,1,0} bitcast(bf16[256,4096]{1,0} %convert.23)
     %transpose.18 = bf16[1,4096,256]{2,1,0} transpose(bf16[1,256,4096]{2,1,0} %bitcast.62), dimensions={0,2,1}
@@ -1360,8 +1360,8 @@ TEST_F(GemmFusionAutotunerTest,
   }
 
   ENTRY main {
-    %p0 = f32[1,256,4,4096] parameter(0)
-    %p1 = bf16[1,4,4096,4096] parameter(1)
+    %p0 = f32[1,256,4,16] parameter(0)
+    %p1 = bf16[1,4,16,4096] parameter(1)
     ROOT %gemm_fusion_r = bf16[1048576] fusion(%p0, %p1), kind=kCustom,
     calls=gemm_fusion_r_computation,
     backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
