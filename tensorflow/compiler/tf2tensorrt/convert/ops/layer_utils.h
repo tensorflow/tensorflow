@@ -312,8 +312,8 @@ class TRTNetworkBuilder {
   // The tensor has "nb_dims" dimensions and each dimension has only one
   // element. The data type of the tensor is determined by the data type of
   // "scalar".
-  template <typename T,
-            typename std::enable_if<std::is_pod<T>::value>::type* = nullptr>
+  template <typename T, typename std::enable_if<std::is_trivially_copyable<
+                            T>::value>::type* = nullptr>
   StatusOr<nvinfer1::IConstantLayer*> Constant(const T scalar,
                                                const int nb_dims) noexcept {
     TRT_ENSURE(nb_dims <= nvinfer1::Dims::MAX_DIMS);
@@ -355,8 +355,8 @@ class TRTNetworkBuilder {
   }
 
   // Creates a nvinfer1::Weights object containing a single scalar.
-  template <typename T,
-            typename std::enable_if<std::is_pod<T>::value>::type* = nullptr>
+  template <typename T, typename std::enable_if<std::is_trivially_copyable<
+                            T>::value>::type* = nullptr>
   StatusOr<nvinfer1::Weights> ScalarWeights(const T scalar,
                                             const int nb_dims) noexcept {
     TRT_ENSURE(nb_dims <= nvinfer1::Dims::MAX_DIMS);

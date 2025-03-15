@@ -40,11 +40,13 @@ namespace tensorflow {
 // * A protocol buffer (TypeResolver<T, false, false, true>)
 // * None of the above (TypeResolver<T, false, false, false>)
 //
-template <typename T, bool = std::is_pod<typename std::decay<T>::type>::value,
-          bool = std::is_same<typename std::decay<T>::type,
-                              ::tensorflow::Tensor>::value,
-          bool = std::is_base_of<protobuf::MessageLite,
-                                 typename std::decay<T>::type>::value>
+template <
+    typename T,
+    bool = std::is_trivially_copyable<typename std::decay<T>::type>::value,
+    bool =
+        std::is_same<typename std::decay<T>::type, ::tensorflow::Tensor>::value,
+    bool = std::is_base_of<protobuf::MessageLite,
+                           typename std::decay<T>::type>::value>
 struct TypeResolver {};
 
 // Specialization for POD type
