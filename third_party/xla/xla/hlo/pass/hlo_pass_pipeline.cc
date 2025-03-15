@@ -301,8 +301,9 @@ absl::StatusOr<bool> HloPassPipeline::Run(
           << name();
 
   tsl::profiler::TraceMe traceme(name());
-  return RunPassesInternal(module, module->config().debug_options(),
-                           execution_threads);
+  // Copy debug options by value as passes may modify module config.
+  DebugOptions debug_options = module->config().debug_options();
+  return RunPassesInternal(module, debug_options, execution_threads);
 }
 
 absl::StatusOr<bool> HloPassPipeline::RunOnModuleGroup(
@@ -318,9 +319,9 @@ absl::StatusOr<bool> HloPassPipeline::RunOnModuleGroup(
     return false;
   }
 
-  return RunPassesInternal(module_group,
-                           module_group->module(0).config().debug_options(),
-                           execution_threads);
+  // Copy debug options by value as passes may modify module config.
+  DebugOptions debug_options = module_group->module(0).config().debug_options();
+  return RunPassesInternal(module_group, debug_options, execution_threads);
 }
 
 }  // namespace xla
