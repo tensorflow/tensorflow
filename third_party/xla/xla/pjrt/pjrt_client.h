@@ -622,10 +622,12 @@ class PjRtClient {
   // Pending completion of b/237720161, `options` is a mandatory argument in
   // most implementations of this interface. They _are_ optional for
   // implementations related to the PJRT C API.
+  // ABSL_DEPRECATED("Use LoadSerializedExecutable() below instead")
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   DeserializeExecutable(absl::string_view serialized,
                         std::optional<CompileOptions> options) {
-    return Unimplemented("Deserialize is not supported.");
+    return LoadSerializedExecutable(serialized, std::move(options),
+                                    LoadOptions());
   }
 
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
