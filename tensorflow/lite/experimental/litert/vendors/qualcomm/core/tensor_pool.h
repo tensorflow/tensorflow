@@ -4,10 +4,13 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_TENSOR_POOL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_TENSOR_POOL_H_
 
+#include <cstdint>
 #include <functional>
 #include <list>
+#include <vector>
 
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 namespace qnn {
@@ -46,6 +49,9 @@ class TensorPool {
 
   TensorWrapper& CloneStaticTensorFrom(const TensorWrapper& src,
                                        Qnn_DataType_t data_type);
+
+  TensorWrapper& CloneStaticTensorFrom(
+      const TensorWrapper& src, const std::vector<std::uint32_t>& dimentions);
 
  private:
   std::function<void(TensorWrapper&)> tensor_callback_{};
