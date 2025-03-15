@@ -125,4 +125,8 @@ jobs:
 
       - name: Run hlo_runner_main on gemma2_2b_keras_jax.hlo and collect profile stats
         run: |
-          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=host --log_output=True --use_spmd_partitioning --profile_execution=True tmp_hlo/gemma2_2b_keras_jax.hlo
+          PWD=$(pwd)
+          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=host --log_output=True --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to=$PWD/gemma2_2b_xspace.pb tmp_hlo/gemma2_2b_keras_jax.hlo
+          bazel run //third_party/tensorflow/compiler/xla/tools:compute_xspace_stats_main -- --input=$PWD/gemma2_2b_xspace.pb --device_type=CPU
+          ./bazel-bin/xla/tools/multihost_hlo_runner/hlo_runner_main --device_type=host --log_output=True --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to=$PWD/cpu_llvm_xspace.pb xla/tools/hlo_opt/tests/cpu_llvm.hlo
+          bazel run //third_party/tensorflow/compiler/xla/tools:compute_xspace_stats_main -- --input=$PWD/cpu_llvm_xspace.pb --device_type=CPU
