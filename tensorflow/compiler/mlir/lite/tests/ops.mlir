@@ -1599,6 +1599,14 @@ func.func @testBatchMatmulHybridQuant(%arg0 : tensor<1x4x384x32xf32>, %arg1 : te
 
 // -----
 
+func.func @testBatchMatmulHybridBf16F32(%arg0 : tensor<1x4x384x32xbf16>, %arg1 : tensor<1x4x384x32xbf16>) -> tensor<1x4x384x384xf32> {
+  // expected-error @+1 {{'tfl.batch_matmul' op operand #0 must be tensor of 32-bit float or QI8 type or QI16 type or 8-bit signless integer values}}
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<1x4x384x32xbf16>, tensor<1x4x384x32xbf16>) -> tensor<1x4x384x384xf32>
+  func.return %0 : tensor<1x4x384x384xf32>
+}
+
+// -----
+
 func.func @testConcat(%arg0: tensor<1x2xi32>, %arg1: tensor<1x2xi32>) -> tensor<2x2xi32> {
   // CHECK: "tfl.concatenation"(%arg0, %arg1) <{axis = 0 : i32, fused_activation_function = "NONE"}>
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<2x2xi32>

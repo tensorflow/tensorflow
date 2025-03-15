@@ -77,7 +77,7 @@ class TFL_OperandsHaveSameShapesOrBroadcastableShape<
   TFL_RuntimePredOpTrait<"operands do not have the same shape or "
       "broadcastable shapes within the rank " # max_bcast_rank,
     CPred<"TFL::VerifyOperandsHaveSameShapesOrBroadcastableShape("
-            "$_op, llvm::ArrayRef<unsigned>({" # !interleave(indices, ", ") #
+            "&$_op, llvm::ArrayRef<unsigned>({" # !interleave(indices, ", ") #
             "}), " # max_bcast_rank # ")">>;
 
 // These additional types/type constraints here are used to decouple the ops
@@ -1114,7 +1114,7 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
    TFL_OperandHasAtleastRank<0, 2>,
    TFL_OperandHasAtleastRank<1, 2>,
    QuantizableResult,
-   PredOpTrait<"x and output must have same element type or they are int8 and int32",
+   TFL_RuntimePredOpTrait<"x and output must have same element type or they are int8 and int32",
        Or<[TFL_TCresVTEtIsSameAsOp<0, 0>,
            And<[CPred<"getElementTypeOrSelf($_op.getOperand(0)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getOperand(1)).isInteger(8)">,
