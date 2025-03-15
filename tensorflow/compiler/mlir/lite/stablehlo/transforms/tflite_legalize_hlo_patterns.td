@@ -28,6 +28,9 @@ def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
 def CreateTFLCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
+def ConstDefaultResultAccuracyAttr :
+  ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
+
 def : Pat<
   (MHLO_ConstantOp:$output $value),
   (Arith_ConstantOp $value),
@@ -318,7 +321,7 @@ in {
 // unary element-wise op
 //===----------------------------------------------------------------------===//
 
-def LowerCbrt : Pat<(MHLO_CbrtOp $opr),
+def LowerCbrt : Pat<(MHLO_CbrtOp $opr, ConstDefaultResultAccuracyAttr),
   (TFL_PowOp $opr,
     (TFL_DivOp
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
@@ -335,29 +338,26 @@ def : Pat<(MHLO_AbsOp MHLO_PredIntFpOrQuantizedTensor:$arg), (TFL_AbsOp $arg)>;
 foreach pair = [
   [MHLO_BitcastConvertOp, TFL_BitcastOp],
   [MHLO_CeilOp, TFL_CeilOp],
-  [MHLO_CosineOp, TFL_CosOp],
   [MHLO_FloorOp, TFL_FloorOp],
   [MHLO_ImagOp, TFL_ImagOp],
-  [MHLO_LogOp, TFL_LogOp],
-  [MHLO_LogisticOp, TFL_LogisticOp],
   [MHLO_NegOp, TFL_NegOp],
   [MHLO_RealOp, TFL_RealOp],
-  [MHLO_RsqrtOp, TFL_RsqrtOp],
-  [MHLO_SineOp, TFL_SinOp],
   [MHLO_SignOp, TFL_SignOp],
-  [MHLO_SqrtOp, TFL_SqrtOp],
-  [MHLO_TanhOp, TFL_TanhOp]
 ] in {
   def : Pat<
     (pair[0] $input),
     (pair[1] $input)>;
 }
 
-def ConstDefaultResultAccuracyAttr :
-  ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
-
 foreach pair = [
+  [MHLO_CosineOp, TFL_CosOp],
   [MHLO_ExpOp, TFL_ExpOp],
+  [MHLO_LogOp, TFL_LogOp],
+  [MHLO_LogisticOp, TFL_LogisticOp],
+  [MHLO_RsqrtOp, TFL_RsqrtOp],
+  [MHLO_SineOp, TFL_SinOp],
+  [MHLO_SqrtOp, TFL_SqrtOp],
+  [MHLO_TanhOp, TFL_TanhOp],
 ] in {
   def : Pat<
     (pair[0] $input, ConstDefaultResultAccuracyAttr),
@@ -370,7 +370,7 @@ def : Pat<
   (TFL_CastOp $input)>;
 
 def : Pat<
-  (MHLO_Expm1Op F32Tensor:$x),
+  (MHLO_Expm1Op F32Tensor:$x, ConstDefaultResultAccuracyAttr),
   (TFL_SubOp
     (TFL_ExpOp $x),
     (Arith_ConstantOp
@@ -385,7 +385,7 @@ def : Pat<
       ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">))>;
 
 def : Pat<
-  (MHLO_Log1pOp F32Tensor:$x),
+  (MHLO_Log1pOp F32Tensor:$x, ConstDefaultResultAccuracyAttr),
   (TFL_LogOp
     (TFL_AddOp
       $x,
