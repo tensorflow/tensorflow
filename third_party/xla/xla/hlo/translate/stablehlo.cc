@@ -59,17 +59,12 @@ absl::Status MhloToStablehlo(mlir::ModuleOp module) {
   return absl::OkStatus();
 }
 
-// TODO(b/385393967) Separate createCanonicalizerPass from StableHLO -> HLO
-// Translation
-absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
+absl::Status StablehloToMhlo(mlir::ModuleOp module) {
   mlir::MLIRContext* context = module->getContext();
   mlir::PassManager pm(context);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createChloLegalizeToHloPass());
-  if (run_canonicalizer) {
-    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  }
   // In order to export to XLA, we must sink constants to control flow
   // regions, since XLA uses functional control flow.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -142,7 +137,7 @@ absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
                                         xla::HloProto* hlo_proto) {
   if (!module) return absl::InvalidArgumentError("Module is null");
 
-  TF_RETURN_IF_ERROR(StablehloToMhlo(module, /*run_canonicalizer=*/true));
+  TF_RETURN_IF_ERROR(StablehloToMhlo(module));
 
   mlir::MlirToHloConversionOptions options;
   options.return_tuple = false;
@@ -156,7 +151,7 @@ absl::Status ConvertStablehloWithManyArgsToHloProto(mlir::ModuleOp module,
                                                     bool use_tuple_args) {
   if (!module) return absl::InvalidArgumentError("Module is null");
 
-  TF_RETURN_IF_ERROR(StablehloToMhlo(module, /*run_canonicalizer=*/false));
+  TF_RETURN_IF_ERROR(StablehloToMhlo(module));
 
   mlir::MlirToHloConversionOptions options;
   options.return_tuple = false;
