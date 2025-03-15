@@ -19,12 +19,12 @@ func.func @broadcast_mul1(%arg0: tensor<7xf32>, %arg1: tensor<5x7xf32>) -> tenso
 }
 
 // CHECK-LABEL: @broadcast_eq
-func.func @broadcast_eq(%arg0: tensor<5x7xf32>, %arg1: tensor<7xf32>) -> tensor<5x7xf32> {
+func.func @broadcast_eq(%arg0: tensor<5x7xf32>, %arg1: tensor<7xf32>) -> tensor<5x7xi1> {
   %cst = mhlo.constant dense<[5, 7]> : tensor<2xi32>
   %0 = "tfl.broadcast_to"(%arg1, %cst) : (tensor<7xf32>, tensor<2xi32>) -> tensor<5x7xf32>
-  %1 = "tfl.equal"(%arg0, %0) : (tensor<5x7xf32>, tensor<5x7xf32>) -> tensor<5x7xf32>
-  func.return %1 : tensor<5x7xf32>
-  // CHECK: %0 = "tfl.equal"(%arg0, %arg1) : (tensor<5x7xf32>, tensor<7xf32>) -> tensor<5x7xf32>
+  %1 = "tfl.equal"(%arg0, %0) : (tensor<5x7xf32>, tensor<5x7xf32>) -> tensor<5x7xi1>
+  func.return %1 : tensor<5x7xi1>
+  // CHECK: %0 = "tfl.equal"(%arg0, %arg1) : (tensor<5x7xf32>, tensor<7xf32>) -> tensor<5x7xi1>
 }
 
 // CHECK-LABEL: @broadcast_eq_no_fold
@@ -664,4 +664,446 @@ func.func @DontFuseMulIntoFullyConnectedForLargeFilter(%arg0: tensor<128x256000x
 
 // CHECK:  %[[a:.*]] = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}>
 // CHECK:  %[[b:.*]] = tfl.mul(%[[a]], %cst) <{fused_activation_function = "RELU6"}>
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoRhsOfAdd
+func.func @FuseBroadcastToLhsOfMulIntoRhsOfAdd(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.div(%4, %arg1) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.add(%arg2, %5) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoRhsOfAdd_neg
+func.func @FuseBroadcastToLhsOfMulIntoRhsOfAdd_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.div(%4, %arg1) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.add(%arg2, %5) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoLhsOfAdd
+func.func @FuseBroadcastToLhsOfMulIntoLhsOfAdd(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.div(%4, %arg1) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.add(%5, %arg2) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoLhsOfAdd_neg
+func.func @FuseBroadcastToLhsOfMulIntoLhsOfAdd_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.div(%4, %arg1) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.add(%5, %arg2) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMulIntoRhsOfAdd
+func.func @FuseBroadcastToRhsOfMulIntoRhsOfAdd(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.div(%arg1, %4) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = tfl.add(%arg2, %5) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMulIntoRhsOfAdd_neg
+func.func @FuseBroadcastToRhsOfMulIntoRhsOfAdd_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%arg1, %4) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = tfl.add(%arg2, %5) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMulIntoLhsOfAdd
+func.func @FuseBroadcastToRhsOfMulIntoLhsOfAdd(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%arg1, %4) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = tfl.add(%5, %arg2) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMulIntoLhsOfAdd_neg
+func.func @FuseBroadcastToRhsOfMulIntoLhsOfAdd_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%arg1, %4) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = tfl.add(%5, %arg2) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoRhsOfMin
+func.func @FuseBroadcastToLhsOfMulIntoRhsOfMin(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%4, %arg1) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%arg2, %5) : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoRhsOfMin_neg
+func.func @FuseBroadcastToLhsOfMulIntoRhsOfMin_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%4, %arg1) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%arg2, %5) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoLhsOfMin
+func.func @FuseBroadcastToLhsOfMulIntoLhsOfMin(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%4, %arg1) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%5, %arg2) : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoLhsOfMin_neg
+func.func @FuseBroadcastToLhsOfMulIntoLhsOfMin_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%4, %arg1) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%5, %arg2) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMulIntoRhsOfMin
+func.func @FuseBroadcastToRhsOfMulIntoRhsOfMin(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%arg1, %4) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%arg2, %5) : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMulIntoRhsOfMin_neg
+func.func @FuseBroadcastToRhsOfMulIntoRhsOfMin_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%arg1, %4) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%arg2, %5) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMulIntoLhsOfMin
+func.func @FuseBroadcastToRhsOfMulIntoLhsOfMin(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%arg1, %4) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%5, %arg2) : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMulIntoLhsOfMin_neg
+func.func @FuseBroadcastToRhsOfMulIntoLhsOfMin_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%arg1, %4) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%5, %arg2) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoRhsOfMinWithActFn
+func.func @FuseBroadcastToLhsOfMulIntoRhsOfMinWithActFn(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%4, %arg1) {fused_activation_function = "RELU"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%arg2, %5) : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoRhsOfMinWithActFn_neg
+func.func @FuseBroadcastToLhsOfMulIntoRhsOfMinWithActFn_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%4, %arg1) {fused_activation_function = "RELU"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%arg2, %5) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoLhsOfMinWithActFn
+func.func @FuseBroadcastToLhsOfMulIntoLhsOfMinWithActFn(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%4, %arg1) {fused_activation_function = "RELU"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%5, %arg2) : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMulIntoLhsOfMinWithActFn_neg
+func.func @FuseBroadcastToLhsOfMulIntoLhsOfMinWithActFn_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = tfl.mul(%4, %arg1) {fused_activation_function = "RELU"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.minimum"(%5, %arg2) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoRhsOfMul
+func.func @FuseBroadcastToLhsOfMinIntoRhsOfMul(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%arg2, %5) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoRhsOfMul_neg
+func.func @FuseBroadcastToLhsOfMinIntoRhsOfMul_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%arg2, %5) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoLhsOfMul
+func.func @FuseBroadcastToLhsOfMinIntoLhsOfMul(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%5, %arg2) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoLhsOfMul_neg
+func.func @FuseBroadcastToLhsOfMinIntoLhsOfMul_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%5, %arg2) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMinIntoRhsOfMul
+func.func @FuseBroadcastToRhsOfMinIntoRhsOfMul(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%arg1, %4) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%arg2, %5) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMinIntoRhsOfMul_neg
+func.func @FuseBroadcastToRhsOfMinIntoRhsOfMul_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%arg1, %4) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%arg2, %5) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMinIntoLhsOfMul
+func.func @FuseBroadcastToRhsOfMinIntoLhsOfMul(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%arg1, %4) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%5, %arg2) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMinIntoLhsOfMul_neg
+func.func @FuseBroadcastToRhsOfMinIntoLhsOfMul_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%arg1, %4) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%5, %arg2) {fused_activation_function = "NONE"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoRhsOfMulWithActFn
+func.func @FuseBroadcastToLhsOfMinIntoRhsOfMulWithActFn(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%arg2, %5) {fused_activation_function = "RELU"} : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoRhsOfMulWithActFn_neg
+func.func @FuseBroadcastToLhsOfMinIntoRhsOfMulWithActFn_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%arg2, %5) {fused_activation_function = "RELU"} : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoLhsOfMulWithActFn
+func.func @FuseBroadcastToLhsOfMinIntoLhsOfMulWithActFn(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%5, %arg2) {fused_activation_function = "RELU"} : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoLhsOfMulWithActFn_neg
+func.func @FuseBroadcastToLhsOfMinIntoLhsOfMulWithActFn_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = tfl.mul(%5, %arg2) {fused_activation_function = "RELU"} : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoRhsOfMax
+func.func @FuseBroadcastToLhsOfMinIntoRhsOfMax(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.maximum"(%arg2, %5) : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoRhsOfMax_neg
+func.func @FuseBroadcastToLhsOfMinIntoRhsOfMax_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.maximum"(%arg2, %5) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoLhsOfMax
+func.func @FuseBroadcastToLhsOfMinIntoLhsOfMax(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.maximum"(%5, %arg2) : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToLhsOfMinIntoLhsOfMax_neg
+func.func @FuseBroadcastToLhsOfMinIntoLhsOfMax_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%4, %arg1) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.maximum"(%5, %arg2) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMinIntoRhsOfMax
+func.func @FuseBroadcastToRhsOfMinIntoRhsOfMax(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%arg1, %4) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.maximum"(%arg2, %5) : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMinIntoRhsOfMax_neg
+func.func @FuseBroadcastToRhsOfMinIntoRhsOfMax_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%arg1, %4) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.maximum"(%arg2, %5) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMinIntoLhsOfMax
+func.func @FuseBroadcastToRhsOfMinIntoLhsOfMax(%arg1: tensor<f32>, %arg2: tensor<25x32x1xf32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%arg1, %4) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.maximum"(%5, %arg2) : (tensor<25x32x1xf32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK-NOT: tfl.broadcast_to
+}
+
+// CHECK-LABEL: FuseBroadcastToRhsOfMinIntoLhsOfMax_neg
+func.func @FuseBroadcastToRhsOfMinIntoLhsOfMax_neg(%arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<25x32x1xf32> {
+  %cst_4 = arith.constant dense<5.0> : tensor<f32>
+  %arg0 = arith.constant dense<[25, 32, 1]> : tensor<3xi32>
+  %4 = "tfl.broadcast_to"(%cst_4, %arg0) : (tensor<f32>, tensor<3xi32>) -> tensor<25x32x1xf32>
+  %5 = "tfl.minimum"(%arg1, %4) : (tensor<f32>, tensor<25x32x1xf32>) -> tensor<25x32x1xf32>
+  %6 = "tfl.maximum"(%5, %arg2) : (tensor<25x32x1xf32>, tensor<f32>) -> tensor<25x32x1xf32>
+  return %6 : tensor<25x32x1xf32>
+  // CHECK: tfl.broadcast_to
 }
