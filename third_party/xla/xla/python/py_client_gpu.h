@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_CLIENT_GPU_H_
 #define XLA_PYTHON_PY_CLIENT_GPU_H_
 
+#include <cstddef>
+
 #if TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
 #else
 #include "third_party/gpus/cuda/include/cuda.h"
 #endif
-#include "xla/ffi/ffi.h"
+#include "xla/ffi/api/ffi.h"
 #include "xla/service/custom_call_status.h"
 
 #if TENSORFLOW_USE_ROCM
