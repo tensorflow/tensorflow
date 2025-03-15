@@ -887,8 +887,10 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // The hoisting of small while loops is only useful in the context of the
   // thunk runtime.
   if (module->config().debug_options().xla_cpu_use_thunk_runtime()) {
-    pipeline.AddPass<SmallWhileLoopHoistingPass>(
-        /*small_buffer_access_size*/ 256);
+    TF_ASSIGN_OR_RETURN(
+        int64_t byte_threshold,
+        xla::cpu::options::SmallWhileLoopByteThreshold(module->config()));
+    pipeline.AddPass<SmallWhileLoopHoistingPass>(byte_threshold);
   }
 
   pipeline.AddPass<HloDCE>();

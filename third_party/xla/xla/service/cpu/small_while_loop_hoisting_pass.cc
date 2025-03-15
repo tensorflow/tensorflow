@@ -42,8 +42,8 @@ static bool InstructionIsUnavailable(const HloInstruction* instr) {
   // The following instructions are not currently supported by the call thunk
   // emitter due to how the legacy & thunk emitters interact; specifically,
   // how the run options are passed.
-  // Convolution may or may not call into Eigen depending on the shape, Eigen
-  // requires a thread pool to be passed so we conservitvely exclude it.
+  // Convolution & Dot may or may not call into Eigen depending on the shape,
+  // Eigen requires a thread pool to be passed so we conservatively exclude it.
   // (This could be relaxed with a little work to make it optional if required).
   switch (instr->opcode()) {
     case HloOpcode::kConvolution:
@@ -51,6 +51,7 @@ static bool InstructionIsUnavailable(const HloInstruction* instr) {
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kScatter:
+    case HloOpcode::kDot:
       return true;
     default:
       return IsCollective(instr);
