@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -82,11 +83,9 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
     // Everything is as expected. Replace this dynamic-slice with the async
     // equivalent.
     const Shape context_shape = ShapeUtil::MakeScalarShape(U32);
-    const Shape transfer_bytes_shape = ShapeUtil::MakeScalarShape(S32);
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * async_done,
-        dynamic_slice->parent()->CreateAsyncInstructions(
-            dynamic_slice, {context_shape, transfer_bytes_shape}));
+    TF_ASSIGN_OR_RETURN(HloInstruction * async_done,
+                        dynamic_slice->parent()->CreateAsyncInstructions(
+                            dynamic_slice, {context_shape}));
     VLOG(1) << "DynamicSlice \"" << dynamic_slice->ToString()
             << "\" is slicing from host memory. Converting to async "
             << async_done->ToString();
