@@ -15,16 +15,33 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 
+#include <memory>
+#include <stdint.h>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
+
+class DonationTransactionPeer {
+ public:
+  static absl::StatusOr<TfrtGpuBuffer::DonationTransaction> AcquireDonation(
+      std::unique_ptr<TfrtGpuBuffer> tfrt_buffer) {
+    return tfrt_buffer->AcquireDonation();
+  }
+};
+
 namespace {
 
 using ::testing::HasSubstr;
@@ -71,6 +88,35 @@ TEST(TfrtGpuClientTest, MemorySpacesUniqueIds) {
                             << "' and '" << debug_string << "'";
     }
   }
+}
+
+TEST(TfrtGpuClientTest, AcquireDonation) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  ASSERT_GE(client->devices().size(), 1);
+
+  // Create TfrtGpuBuffer.
+  Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
+  TfrtGpuDevice* device =
+      tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
+  auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_buffer,
+      MaybeOwningGpuMemory::AllocateShared(device->allocator(), size_in_bytes));
+  auto buffer_async_value_ref =
+      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+          std::move(device_buffer));
+  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+      std::move(buffer_async_value_ref),
+      tsl::MakeAvailableAsyncValueRef<GpuEvent>());
+  auto memory_space = device->default_memory_space().value();
+  auto tfrt_buffer = std::make_unique<TfrtGpuBuffer>(
+      on_device_shape, std::move(tracked_device_buffer),
+      tensorflow::down_cast<TfrtGpuClient*>(client.get()), device,
+      memory_space);
+
+  auto donation_transaction =
+      DonationTransactionPeer::AcquireDonation(std::move(tfrt_buffer));
+  EXPECT_TRUE(donation_transaction.ok());
 }
 
 }  // namespace

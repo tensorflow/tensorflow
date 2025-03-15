@@ -95,11 +95,15 @@ xla_cc_test(
     ],
     deps = [
         ":tfrt_gpu_client",
+        ":tracked_tfrt_gpu_device_buffer",
+        "//xla:shape_util",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:gpu_plugin",
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
