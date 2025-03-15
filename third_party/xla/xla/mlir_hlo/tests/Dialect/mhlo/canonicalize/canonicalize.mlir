@@ -929,6 +929,30 @@ func.func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
   func.return %arg0 : tensor<i64>
 }
 
+// CHECK-LABEL: while_op_dce_no_side_effect
+func.func @while_op_dce_no_side_effect(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = mhlo.constant dense<1> : tensor<i32>
+  %1 = mhlo.constant dense<10> : tensor<i32>
+  %2 = mhlo.constant dense<0> : tensor<i32>
+  %3 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %4 = "mhlo.broadcast_in_dim"(%3) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<10xf32>
+  // CHECK: mhlo.while(%iterArg = %2, %iterArg_0 = %3) : tensor<i32>, tensor<10xf32> attributes {mhlo.frontend_attributes = {test_attr = "true"}}
+  %5:3 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %2, %iterArg_1 = %4) : tensor<10xf32>, tensor<i32>, tensor<10xf32> attributes {mhlo.frontend_attributes = {test_attr = "true"}}
+    cond {
+    %6 = mhlo.compare  LT, %iterArg_0, %1,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    mhlo.return %6 : tensor<i1>
+  } do {
+    %6 = "mhlo.dynamic_slice"(%iterArg, %iterArg_0) <{slice_sizes = dense<1> : tensor<1xi64>}> : (tensor<10xf32>, tensor<i32>) -> tensor<1xf32>
+    %7 = mhlo.reshape %6 : (tensor<1xf32>) -> tensor<f32>
+    %8 = mhlo.sine %7 : tensor<f32>
+    %9 = "mhlo.broadcast_in_dim"(%8) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<1xf32>
+    %10 = mhlo.dynamic_update_slice %iterArg_1, %9, %iterArg_0 : (tensor<10xf32>, tensor<1xf32>, tensor<i32>) -> tensor<10xf32>
+    %11 = mhlo.add %iterArg_0, %0 : tensor<i32>
+    mhlo.return %iterArg, %11, %10 : tensor<10xf32>, tensor<i32>, tensor<10xf32>
+  }
+  return %5#2 : tensor<10xf32>
+}
+
 ////////
 // Tensor/Shape canonicalize
 
