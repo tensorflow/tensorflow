@@ -18,6 +18,12 @@ typedef enum LiteRtQnnLogLevel {  // NOLINT(modernize-use-using)
   kLogLevelDebug = 5,
 } LiteRtQnnLogLevel;
 
+typedef enum LiteRtProfilingOptions {  // NOLINT(modernize-use-using)
+  kProfilingOff = 0,
+  kProfilnigBasic = 1,
+  kProfilingDetailed = 2
+} LiteRtProfilingOptions;
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
