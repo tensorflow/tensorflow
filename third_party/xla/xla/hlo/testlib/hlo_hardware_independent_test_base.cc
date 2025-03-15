@@ -243,7 +243,7 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matches,
         RunFileCheck(
-            module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
+            module->ToString(HloPrintOptions().set_print_large_constants(true)),
             *expected));
     EXPECT_TRUE(filecheck_matches);
     if (after_pass_checks) {
@@ -287,7 +287,7 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloModuleGroupRewrite(
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matches,
         RunFileCheck(module_group.module(index).ToString(
-                         HloPrintOptions{}.set_print_operand_shape(false)),
+                         HloPrintOptions().set_print_large_constants(true)),
                      expected_str));
     EXPECT_TRUE(filecheck_matches);
     index++;
