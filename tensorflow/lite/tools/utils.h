@@ -43,6 +43,10 @@ struct InputTensorData {
 InputTensorData CreateRandomTensorData(const TfLiteTensor& tensor,
                                        float low_range, float high_range);
 
+InputTensorData CreateRandomTensorData(TfLiteType type, int num_elements,
+                                       std::string name, float low_range,
+                                       float high_range);
+
 // Fills out params 'low_range' and 'high_range' with range for tensor type
 // 'type'. Note that these ranges returned are just dummy used only for
 // benchmarking and/or testing purposes.
