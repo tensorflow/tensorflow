@@ -1114,6 +1114,24 @@ foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
   def Optimize#SelectOp#Not : Pat<
     (SelectOp (TFL_LogicalNotOp $condition), $input1, $input2),
     (SelectOp $condition, $input2, $input1)>;
+  // select(C, true_tensor, false_tensor) -> C
+  def Optimize#SelectOp#IsNoop : Pat<
+    (SelectOp:$result $condition,
+                       (Arith_ConstantOp $input1),
+                       (Arith_ConstantOp $input2)),
+    (replaceWithValue $condition),
+    [(HaveSameType $condition, $result),
+     (AllElementsAreBool<"true"> $input1),
+     (AllElementsAreBool<"false"> $input2)]>;
+  // select(C, false_tensor, true_tensor) -> logical_not(C)
+  def Optimize#SelectOp#IsNegate : Pat<
+    (SelectOp:$result $condition,
+                       (Arith_ConstantOp $input1),
+                       (Arith_ConstantOp $input2)),
+    (TFL_LogicalNotOp $condition),
+    [(HaveSameType $condition, $result),
+     (AllElementsAreBool<"false"> $input1),
+     (AllElementsAreBool<"true"> $input2)]>;
 }
 
 def EliminateLogicalAndTrue : Pat<
