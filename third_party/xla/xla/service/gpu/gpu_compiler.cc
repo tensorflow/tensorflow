@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/collectives/all_gather_broadcast_reorder.h"
 #include "xla/hlo/transforms/collectives/all_reduce_contiguous.h"
+#include "xla/hlo/transforms/collectives/collective_permute_combiner.h"
 #include "xla/hlo/transforms/collectives/collective_quantizer.h"
 #include "xla/hlo/transforms/collectives/collectives_schedule_linearizer.h"
 #include "xla/hlo/transforms/convert_memory_placement_to_internal_annotations.h"
@@ -1148,6 +1149,10 @@ absl::Status RunPostFusionPasses(
       combine_threshold_count,
       /*combine_by_dim=*/opts.xla_gpu_enable_reduce_scatter_combine_by_dim(),
       /*pointer_size=*/pointer_size);
+  pipeline.AddPass<CollectivePermuteCombiner>(
+      /*combine_threshold_in_bytes=*/
+      opts.xla_gpu_collective_permute_combine_threshold_bytes(),
+      combine_threshold_count);
 
   pipeline.AddPass<AllReduceContiguous>();
 
