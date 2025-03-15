@@ -19,13 +19,13 @@ cc_library(
     features = ["-layering_check"],
     deps = [
         "//tensorflow/core/platform:types",
+        "//third_party/libwebp:webp",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
-        "@libwebp//:webp",
     ] + if_google([
-        "@libwebp//:webp_demux",
+        "//third_party/libwebp:webp_demux",
     ]),
 )
 
