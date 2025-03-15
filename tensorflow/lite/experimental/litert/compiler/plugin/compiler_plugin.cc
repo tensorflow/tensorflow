@@ -337,10 +337,11 @@ Expected<LiteRtHwAccelerators> CompilerPlugin::SupportedHardware() const {
 }
 
 Expected<std::vector<LiteRtOpWithPartitionIndex>> CompilerPlugin::Partition(
-    const Subgraph& subgraph) {
+    const Subgraph& subgraph, absl::string_view soc_model) {
   LiteRtOpListT ops;
+  const char* soc_model_str = !soc_model.empty() ? soc_model.data() : nullptr;
   LITERT_RETURN_IF_ERROR(plugin_api_.compiler_plugin_partition(
-      plugin_handle_, subgraph.Get(), &ops));
+      plugin_handle_, soc_model_str, subgraph.Get(), &ops));
   return ops.Values();
 }
 

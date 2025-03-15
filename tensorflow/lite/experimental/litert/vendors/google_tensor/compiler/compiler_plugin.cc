@@ -279,6 +279,7 @@ bool IsOpSupported(const litert::Op& op) {
 }  // namespace google_tensor
 
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           const char* soc_model,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops) {
   ::litert::Subgraph graph(subgraph);

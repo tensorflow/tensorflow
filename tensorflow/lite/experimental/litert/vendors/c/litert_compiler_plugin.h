@@ -62,6 +62,7 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
 // Select desired ops for compilation. This will only be called once
 // per subgraph, plugins should select all supportable ops.
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           const char* soc_model,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops);
 

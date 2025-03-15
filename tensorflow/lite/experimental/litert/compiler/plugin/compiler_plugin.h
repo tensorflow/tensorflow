@@ -105,7 +105,7 @@ class CompilerPlugin {
 
   // Selects ops for the plugin to compile.
   Expected<std::vector<LiteRtOpWithPartitionIndex>> Partition(
-      const Subgraph& subgraph);
+      const Subgraph& subgraph, absl::string_view soc_model = "");
 
   // Compile given LiteRtSubgraphs. Result object must be outlived by
   // this CompilerPlugin.
