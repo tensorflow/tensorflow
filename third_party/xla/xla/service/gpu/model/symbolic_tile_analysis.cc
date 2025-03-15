@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
