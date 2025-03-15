@@ -2105,8 +2105,7 @@ std::shared_ptr<const PjRtLayout> PjRtCApiBuffer::layout() const {
 
 const Shape& PjRtCApiBuffer::on_device_shape() const {
   if (!on_device_shape_.has_value()) {
-    Shape shape(element_type(), dimensions(), is_dynamic_dimension(),
-                /*tuple_shapes=*/{});
+    Shape shape(element_type(), dimensions(), is_dynamic_dimension());
     *shape.mutable_layout() = layout()->xla_layout();
     absl::MutexLock lock(&mu_);
     on_device_shape_ = shape;
@@ -2119,8 +2118,7 @@ absl::StatusOr<Shape> PjRtCApiBuffer::logical_on_device_shape() {
   if (!dims.ok()) {
     return dims.status();
   }
-  Shape result(element_type(), *dims, is_dynamic_dimension(),
-               /*tuple_shapes=*/{});
+  Shape result(element_type(), *dims, is_dynamic_dimension());
   *result.mutable_layout() = layout()->xla_layout();
   return result;
 }

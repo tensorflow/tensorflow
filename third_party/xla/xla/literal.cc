@@ -111,8 +111,8 @@ template <PrimitiveType kType>
 const Shape& ScalarShapeImpl() {
   static_assert(primitive_util::IsArrayType(kType),
                 "Not a valid type for a scalar.");
-  static const Shape* shape = [] {
-    auto shape = new Shape(kType, {}, {}, {});
+  static const Shape* const shape = [] {
+    auto* const shape = new Shape(kType, {}, {});
     shape->mutable_layout();
     return shape;
   }();
@@ -128,7 +128,8 @@ const Shape& ScalarShape(PrimitiveType type) {
 }
 
 const Shape& NilShape() {
-  static const Shape* shape = new Shape(TUPLE, {}, {}, {});
+  // Create a nullary tuple.
+  static const Shape* const shape = new Shape(std::vector<Shape>());
   return *shape;
 }
 
