@@ -111,9 +111,43 @@ class LiteRtCompiledModelT {
                                  bool* async);
 
  private:
-  // Processes the model and initializes the internal states.
+  // Initializes the internal tfl interpreter and related objects.
   // This is called in the public Create*() methods.
-  litert::Expected<void> Initialize();
+  // The flatbuffer_model_ must be set before calling this method.
+  litert::Expected<void> InitializeRuntime();
+
+  // Handles any JIT compilation and intializes the flatbuffer_model_ and
+  // related field within the compiled model.
+  //
+  // If no JIT compilation is requested, the compiled model will point to the
+  // underlying tflite::Model* owned by the input litert model. The compiled
+  // models alloc_ and model_buf_ will be nullptr as these are only relevant
+  // when compiled model owns a flatbuffer.
+  //
+  // If JIT compilation does occur, a new flatbuffer owned by the compiled model
+  // will be serialized from the result of compilation. The alloc_ and
+  // model_buf_ will be set for storage of the new flatbuffer.
+  //
+  // NOTE: JIT compilation invalidates the input litert model.
+  // TODO: Design a better abstraction for optional ownership for flatbuffer,
+  // consider caching JIT result.
+  litert::Expected<void> InitializeModel(LiteRtModelT& model,
+                                         LiteRtHwAcceleratorSet hw_accelerators,
+                                         LiteRtEnvironmentT* env);
+
+  // Returns the base address of the allocation.
+  const char* GetAllocBase() {
+    if (fb_model_ == nullptr) {
+      return nullptr;
+    }
+    const auto* alloc = fb_model_->allocation();
+    if (alloc) {
+      // Flatbuffer owns the allocation.
+      return reinterpret_cast<const char*>(alloc->base());
+    }
+    // Compiled model owns the allocation.
+    return model_buf_.StrData();
+  }
 
   // Returns the buffer requirements for the given tensor.
   litert::Expected<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
@@ -156,7 +190,6 @@ class LiteRtCompiledModelT {
   // The Interpreter and related objects used to run the model.
   std::unique_ptr<::tflite::Interpreter> interp_;
   std::unique_ptr<::tflite::FlatBufferModel> fb_model_;
-  std::unique_ptr<::tflite::Allocation> alloc_;
   litert::OwningBufferRef<uint8_t> model_buf_;
   std::vector<const std::string*> signature_keys_;
 
