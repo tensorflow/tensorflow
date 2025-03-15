@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <cstdint>
 #include <memory>
+#include <ostream>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "xla/array2d.h"
