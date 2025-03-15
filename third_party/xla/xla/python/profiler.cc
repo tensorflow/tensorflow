@@ -231,6 +231,9 @@ void BuildProfilerSubmodule(nb::module_& m) {
       .def_prop_rw("host_tracer_level",
                    &tensorflow::ProfileOptions::host_tracer_level,
                    &tensorflow::ProfileOptions::set_host_tracer_level)
+      .def_prop_rw("report_error_on_start",
+                   &tensorflow::ProfileOptions::report_error_on_start,
+                   &tensorflow::ProfileOptions::set_report_error_on_start)
       .def_prop_rw("python_tracer_level",
                    &tensorflow::ProfileOptions::python_tracer_level,
                    &tensorflow::ProfileOptions::set_python_tracer_level)
