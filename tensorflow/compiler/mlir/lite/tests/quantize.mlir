@@ -316,17 +316,17 @@ func.func @QuantizeConcat(tensor<1x2xf32>, tensor<1x2xf32>) -> tensor<2x2x!quant
 // -----
 
 // CHECK-LABEL: QuantizeConcatRequantize
-func.func @QuantizeConcatRequantize(tensor<1x2x!quant.uniform<u8:f32, 2.0:128>>, tensor<1x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 0.1:128>> {
-^bb0(%arg0: tensor<1x2x!quant.uniform<u8:f32, 2.0:128>>, %arg1: tensor<1x2xf32>):
-  %1 = "tfl.dequantize"(%arg0) : (tensor<1x2x!quant.uniform<u8:f32, 2.0:128>>) -> tensor<1x2xf32>
+func.func @QuantizeConcatRequantize(tensor<1x2x!quant.uniform<i8:f32, 2.0:128>>, tensor<1x2xf32>) -> tensor<2x2x!quant.uniform<i8:f32, 0.1:128>> {
+^bb0(%arg0: tensor<1x2x!quant.uniform<i8:f32, 2.0:128>>, %arg1: tensor<1x2xf32>):
+  %1 = "tfl.dequantize"(%arg0) : (tensor<1x2x!quant.uniform<i8:f32, 2.0:128>>) -> tensor<1x2xf32>
   %2 = "tfl.concatenation"(%1, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xf32>, tensor<1x2xf32>) -> tensor<2x2xf32>
-  %3 = "tfl.quantize"(%2) {qtype = tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
-  func.return %3 : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
+  %3 = "tfl.quantize"(%2) {qtype = tensor<2x2x!quant.uniform<i8:f32, 1.000000e-01:128>>} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<i8:f32, 1.000000e-01:128>>
+  func.return %3 : tensor<2x2x!quant.uniform<i8:f32, 1.000000e-01:128>>
 
-// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg1) <{qtype = tensor<1x2x!quant.uniform<u8:f32, 1.000000e-01:128>>}> {volatile}
-// CHECK: %[[q0:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<1x2x!quant.uniform<u8:f32, 1.000000e-01:128>>}>
+// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg1) <{qtype = tensor<1x2x!quant.uniform<i8:f32, 1.000000e-01:128>>}> {volatile}
+// CHECK: %[[q0:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<1x2x!quant.uniform<i8:f32, 1.000000e-01:128>>}>
 // CHECK: %[[cc:.*]] = "tfl.concatenation"(%[[q0]], %[[q1]]) <{axis = 0 : i32, fused_activation_function = "NONE"}>
-// CHECK: return %[[cc]] : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
+// CHECK: return %[[cc]] : tensor<2x2x!quant.uniform<i8:f32, 1.000000e-01:128>>
 }
 
 // -----
