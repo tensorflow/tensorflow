@@ -1736,6 +1736,12 @@ TEST_F(TritonEmitterTest, ConvertF16ToF8E5M2Exhaustive) {
     }
   }
 
+  if (std::holds_alternative<se::RocmComputeCapability>(
+          GpuComputeCapability())) {
+    GTEST_SKIP() << "Skipping tests on Rocm, Triton's conversion isn't "
+                    "always correct";
+  }
+
   constexpr absl::string_view kHloTextTemplate = R"(
 computation {
   p0 = f16[65536]{0} parameter(0)

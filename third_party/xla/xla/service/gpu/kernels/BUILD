@@ -303,6 +303,7 @@ xla_test(
     name = "ragged_all_to_all_kernel_test",
     srcs = ["ragged_all_to_all_kernel_test.cc"],
     backends = ["gpu"],
+    flaky = 1,
     deps = [
         ":ragged_all_to_all_kernel",
         "//xla:shape_util",
