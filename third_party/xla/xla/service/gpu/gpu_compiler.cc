@@ -646,7 +646,8 @@ absl::Status RunSPMDPasses(
 }
 
 absl::Status RunOptimizationPasses(
-    HloModule* hlo_module, const Compiler::TargetConfig& gpu_target_config,
+    HloModule* hlo_module, stream_executor::StreamExecutor* stream_exec,
+    const Compiler::TargetConfig& gpu_target_config,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
@@ -687,7 +688,7 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
   if (hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort()) {
-    pipeline.AddPass<SortRewriter>();
+    pipeline.AddPass<SortRewriter>(stream_exec);
   }
 
   // Comparison total order expander
@@ -776,7 +777,7 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<StableSortExpander>();
 
   if (hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort()) {
-    pipeline.AddPass<SortRewriter>();
+    pipeline.AddPass<SortRewriter>(stream_exec);
   }
 
   se::GpuComputeCapability gpu_version =
@@ -1338,7 +1339,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunPreSPMDPartitionerPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunSPMDPasses(hlo_module, gpu_target_config,
                                    layout_insensitive_algsimp_opts));
-  TF_RETURN_IF_ERROR(RunOptimizationPasses(hlo_module, gpu_target_config,
+  TF_RETURN_IF_ERROR(RunOptimizationPasses(hlo_module, stream_exec,
+                                           gpu_target_config,
                                            layout_insensitive_algsimp_opts));
   se::GpuComputeCapability gpu_version =
       device_description.gpu_compute_capability();
