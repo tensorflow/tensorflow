@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_QNN_MANAGER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_QNN_MANAGER_H_
@@ -39,6 +42,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/schema/soc_table.h"
 
 //===----------------------------------------------------------------------===//
 //
@@ -84,7 +88,7 @@ class QnnManager {
   static Expected<Ptr> Create(
       absl::Span<const QnnBackend_Config_t*> configs,
       std::optional<std::string> shared_library_dir = std::nullopt,
-      std::optional<QnnHtpDevice_Arch_t> soc_model = std::nullopt);
+      std::optional<::qnn::SocInfo> soc_info = std::nullopt);
 
   static absl::Span<const QnnBackend_Config_t*> DefaultBackendConfigs();
   static absl::Span<const QnnContext_Config_t*> DefaultContextConfigs();
@@ -125,14 +129,14 @@ class QnnManager {
 
   LiteRtStatus ValidateOp(const Qnn_OpConfig_t& op_config);
 
-  bool IsLegacySocModel() { return soc_model_ == QNN_HTP_DEVICE_ARCH_V68; }
+  bool IsLegacySocModel() { return soc_info_.dsp_arch == ::qnn::DspArch::V68; }
 
  private:
   QnnManager() = default;
 
   LiteRtStatus Init(absl::Span<const QnnBackend_Config_t*> configs,
                     std::optional<std::string> shared_library_dir,
-                    std::optional<QnnHtpDevice_Arch_t> soc_model);
+                    std::optional<::qnn::SocInfo> soc_info);
 
   //
   // Manage libQnn*.so Loading
@@ -195,7 +199,7 @@ class QnnManager {
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_BackendHandle_t backend_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
-  QnnHtpDevice_Arch_t soc_model_ = QNN_HTP_DEVICE_ARCH_UNKNOWN;
+  ::qnn::SocInfo soc_info_ = ::qnn::kSocInfos[0];
 };
 
 // Unfortunately we can't use std::unique_ptr with a deleter because
