@@ -42,6 +42,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -102,6 +103,7 @@ cc_library(
         "//xla/stream_executor/cuda:ptx_compiler_helpers",
         "//xla/stream_executor/cuda:subprocess_compilation",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -253,6 +255,7 @@ xla_cc_test(
         "//xla/stream_executor:semantic_version",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -267,6 +270,7 @@ xla_cc_test(
     deps = [
         ":load_ir_module",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ir_headers",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:test",
@@ -291,6 +295,7 @@ xla_cc_test(
     deps = [
         ":utils",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:test",
     ],
