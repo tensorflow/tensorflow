@@ -582,7 +582,13 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
         quantized_attr = quant::Quantize(attr, qtype.getValue());
       }
       if (quantized_attr) {
-        rewriter.replaceOpWithNewOp<QConstOp>(op, qtype, quantized_attr);
+        auto qconst_op =
+            rewriter.create<QConstOp>(op.getLoc(), qtype, quantized_attr);
+        if (auto volatile_attr = op->getAttr(quant::kVolatileOpAttrName)) {
+          qconst_op->setAttr(quant::kVolatileOpAttrName, volatile_attr);
+        }
+        op.replaceAllUsesWith(qconst_op.getOutput());
+        rewriter.eraseOp(op);
         return success();
       }
     }
