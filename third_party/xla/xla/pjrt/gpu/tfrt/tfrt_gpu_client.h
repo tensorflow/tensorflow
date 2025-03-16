@@ -212,6 +212,8 @@ class TfrtGpuClient final : public PjRtClient {
                 std::unique_ptr<tsl::Allocator> host_memory_allocator,
                 std::shared_ptr<const GpuTopology> gpu_topology);
 
+  ~TfrtGpuClient() override;
+
   int process_index() const override { return process_index_; }
 
   int device_count() const override { return devices_.size(); }
@@ -226,6 +228,9 @@ class TfrtGpuClient final : public PjRtClient {
     return addressable_devices_;
   }
 
+  absl::StatusOr<PjRtDevice*> LookupDevice(
+      PjRtGlobalDeviceId global_device_id) const override;
+
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
   PjRtPlatformId platform_id() const override {
@@ -239,10 +244,16 @@ class TfrtGpuClient final : public PjRtClient {
     return platform_version_;
   }
 
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
+
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
 
  private:
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
@@ -267,12 +278,6 @@ class TfrtGpuClient final : public PjRtClient {
 
   const std::string platform_version_;
 
-  // Device memory allocator. If owned, the allocator must outlive the devices,
-  // because it is the device destructor that waits for any outstanding work to
-  // complete.
-  se::DeviceMemoryAllocator* allocator_;
-  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
-
   // Includes all devices, including non-local devices on multi-host platforms.
   std::vector<std::unique_ptr<TfrtGpuDevice>> owned_devices_;
   // Pointers to `owned_devices_`.
@@ -281,6 +286,7 @@ class TfrtGpuClient final : public PjRtClient {
   absl::flat_hash_map<PjRtGlobalDeviceId, TfrtGpuDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<PjRtDevice*> addressable_devices_;
+  std::unique_ptr<ComputationPlacer> computation_placer_;
 
   // Addressable memory spaces.
   std::vector<std::unique_ptr<PjRtMemorySpace>> owned_memory_spaces_;

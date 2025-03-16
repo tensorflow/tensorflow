@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -204,6 +205,7 @@ TfrtGpuClient::TfrtGpuClient(
       xla_client_(CHECK_NOTNULL(xla_client)),
       platform_version_(get_platform_version(xla_client)),
       owned_devices_(std::move(devices)),
+      computation_placer_(std::make_unique<ComputationPlacer>()),
       compile_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
           tsl::Env::Default(), "TfrtGpuClient_compile_thread_pool",
           std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()))) {
@@ -253,8 +255,25 @@ TfrtGpuClient::TfrtGpuClient(
   LOG(INFO) << "TfrtGpuClient created.";
 }
 
+TfrtGpuClient::~TfrtGpuClient() { LOG(INFO) << "TfrtGpuClient destroyed."; }
+
+absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupDevice(
+    PjRtGlobalDeviceId global_device_id) const {
+  auto it = id_to_device_.find(global_device_id);
+  if (it != id_to_device_.end()) {
+    return it->second;
+  }
+  return InvalidArgument("No matching device found for device_id %d",
+                         global_device_id.value());
+}
+
 absl::Span<PjRtMemorySpace* const> TfrtGpuClient::memory_spaces() const {
   return memory_spaces_;
+}
+
+absl::StatusOr<DeviceAssignment> TfrtGpuClient::GetDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) const {
+  return computation_placer_->AssignDevices(num_replicas, num_partitions);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -357,6 +376,32 @@ TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
   return CompileAndLoad(xla_computation, options);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
+    absl::Status error, const Shape& shape, PjRtMemorySpace* memory_space) {
+  CHECK_EQ(memory_space->devices().size(), 1);
+  PjRtDevice* device = memory_space->devices().front();
+  if (memory_space->client() != this) {
+    return absl::InvalidArgumentError(
+        "Memory space is not attached to this client");
+  }
+
+  VLOG(1) << "TfrtGpuClient::CreateErrorBuffer: shape: " << shape.ToString()
+          << " device: " << device->DebugString() << " error: " << error;
+
+  // Create a dummy buffer because the rest of the code expects a buffer
+  // regardless of whether the definition event is an error.
+  auto dummy_gpu_buffer = MaybeOwningGpuMemory(se::DeviceMemoryBase());
+  auto buffer_async_value_ref =
+      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+          std::move(dummy_gpu_buffer));
+  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+      std::move(buffer_async_value_ref),
+      /*definition_event=*/tsl::MakeErrorAsyncValueRef(std::move(error)));
+  return std::make_unique<TfrtGpuBuffer>(
+      shape, std::move(tracked_device_buffer), this,
+      tsl::down_cast<TfrtGpuDevice*>(device), memory_space);
+}
+
 absl::StatusOr<TfrtGpuClient::ExecutableExtras>
 TfrtGpuClient::GetExecutableExtras(CompileOptions* options) {
   ExecutableExtras extras;
@@ -372,7 +417,8 @@ TfrtGpuClient::GetExecutableExtras(CompileOptions* options) {
   }
 
   if (!build_options.device_allocator()) {
-    build_options.set_device_allocator(allocator_);
+    build_options.set_device_allocator(
+        xla_client_->backend().memory_allocator());
   }
 
   auto layout_callback = [local_client = xla_client_,

@@ -15,13 +15,22 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 
+#include <memory>
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -29,6 +38,16 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::testing::status::IsOkAndHolds;
+
+absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
+    absl::string_view program, xla::PjRtClient& client,
+    xla::CompileOptions compile_options = xla::CompileOptions()) {
+  TF_ASSIGN_OR_RETURN(auto hlo_module,
+                      ParseAndReturnUnverifiedModule(program, {}));
+
+  xla::XlaComputation xla_computation(hlo_module->ToProto());
+  return client.Compile(xla_computation, compile_options);
+}
 
 TEST(TfrtGpuClientTest, GpuClientOptions) {
   GpuClientOptions options;
@@ -71,6 +90,40 @@ TEST(TfrtGpuClientTest, MemorySpacesUniqueIds) {
                             << "' and '" << debug_string << "'";
     }
   }
+}
+
+TEST(StreamExecutorGpuClientTest, PropagateError) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
+  absl::Status input_error = absl::InvalidArgumentError("input error");
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->CreateErrorBuffer(
+          input_error, shape,
+          *client->addressable_devices()[0]->default_memory_space()));
+
+  static constexpr char const* kAddProgram =
+      R"(
+HloModule Add.6, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
+  %a.1 = f32[] parameter(0)
+  %b.2 = f32[] parameter(1)
+  %add.3 = f32[] add(f32[] %a.1, f32[] %b.2)
+  %add.4 = f32[] add(f32[] %add.3, f32[] %add.3)
+  ROOT %tuple.5 = (f32[], f32[]) tuple(f32[] %add.3, f32[] %add.4)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kAddProgram, *client));
+
+  // TF_ASSERT_OK_AND_ASSIGN(
+  //     auto result,
+  //     executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/{}));
+
+  // ASSERT_EQ(result.size(), 1);
+  // ASSERT_EQ(result[0].size(), 1);
+  // EXPECT_EQ(result[0][0]->GetReadyFuture().Await(), input_error);
 }
 
 }  // namespace
