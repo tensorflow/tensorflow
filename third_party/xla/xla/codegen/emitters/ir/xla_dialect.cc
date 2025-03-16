@@ -13,9 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
+#include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 
@@ -52,37 +58,42 @@ struct XlaInlinerInterface : public mlir::DialectInlinerInterface {
     if (!func_op) {
       return false;
     }
+    auto pure_call_op = mlir::dyn_cast<PureCallOp>(call);
+    if (!pure_call_op) {
+      return false;
+    }
     auto region = func_op.getCallableRegion();
     if (!region) {
       return false;
     }
 
-    // If callee and caller call the same third function, inline. We have no
-    // guarantee that the indices are the same, but there is a good chance they
-    // are (or if the callee gets inlined as well, there will be CSE
-    // opportunities).
-    // This is duct tape to work around the limitations of our partitioner.
-    // Ideally, the partitioner would be aware of the actual indexing and create
-    // the partitions based on it (i.e., the case where the indices are the same
-    // would never happen).
     llvm::SmallDenseSet<llvm::StringRef> callee_calls;
     for (auto call : region->getOps<PureCallOp>()) {
       callee_calls.insert(call.getCallee());
     }
-    for (auto call : call->getParentRegion()->getOps<PureCallOp>()) {
-      if (callee_calls.contains(call.getCallee())) {
-        return true;
+
+    // If true, then the callee and the caller call the same third function.
+    bool contains_call_to_same_function = false;
+    // The number of calls to the callee in the caller.
+    int num_calls_in_caller = 0;
+    for (auto neighbor_call : call->getParentRegion()->getOps<PureCallOp>()) {
+      contains_call_to_same_function |=
+          callee_calls.contains(neighbor_call.getCallee());
+      if (neighbor_call.getCallee() == pure_call_op.getCallee()) {
+        ++num_calls_in_caller;
       }
     }
+    if (num_calls_in_caller > 1) return false;
+    if (contains_call_to_same_function) return true;
 
     constexpr int kMaxOperationsToInline = 8;
     int num_ops = 0;
     region->front().walk([&](mlir::Operation* op) { ++num_ops; });
 
-    // Don't inline functions that are called more than once and contain more
-    // than one call themselves.
+    // Don't inline functions with more than `kMaxOperationsToInline` ops.
     return num_ops <= kMaxOperationsToInline;
   }
+
   // Returns true if the given operation 'op', that is registered to this
   // dialect, can be inlined into the given region, false otherwise.
   // 'wouldBeCloned' is set to true if the given 'op' is set to be cloned

@@ -290,7 +290,7 @@ TEST_F(CutlassFusionTest, DoNotRewriteOnV100) {
   patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo(CudaComputeCapability{
-      CudaComputeCapability::CudaComputeCapabilities::VOLTA, 0});
+      CudaComputeCapability::CudaComputeCapabilities::kVolta, 0});
   CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   TF_ASSERT_OK_AND_ASSIGN(bool changed,

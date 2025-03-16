@@ -66,9 +66,10 @@ typedef LiteRtStatus (*LiteRtDispatchUnregisterTensorBufferT)(
 
 typedef LiteRtStatus (*LiteRtDispatchInvocationContextCreateT)(
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType exec_type, const void* exec_bytecode,
-    size_t exec_bytecode_size, const char* function_name, int num_inputs,
-    int num_outputs, LiteRtDispatchInvocationContext* invocation_context);
+    LiteRtDispatchExecutableType exec_type,
+    const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
+    int num_inputs, int num_outputs,
+    LiteRtDispatchInvocationContext* invocation_context);
 
 typedef LiteRtStatus (*LiteRtDispatchInvocationContextDestroyT)(
     LiteRtDispatchInvocationContext invocation_context);
@@ -179,8 +180,8 @@ typedef LiteRtStatus (*LiteRtDispatchConnectGraphOutputT)(
 
 typedef LiteRtStatus (*LiteRtDispatchLoadExecutableT)(
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType type, const void* bytecode_ptr,
-    size_t bytecode_size, LiteRtDispatchExecutableHandle* exec_handle);
+    LiteRtDispatchExecutableType type, const LiteRtMemBuffer* bytecode_buffer,
+    LiteRtDispatchExecutableHandle* exec_handle);
 
 typedef LiteRtStatus (*LiteRtDispatchUnloadExecutableT)(
     LiteRtDispatchDeviceContext device_context,

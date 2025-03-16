@@ -18,13 +18,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <functional>
 #include <memory>
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
-#include "absl/strings/str_cat.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"

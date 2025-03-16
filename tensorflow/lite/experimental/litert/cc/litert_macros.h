@@ -60,9 +60,10 @@
 // LITERT_RETURN_IF_ERROR(expr, return_value);
 //
 // Returns the result of `expr` if it represents an LiteRT error status (either
-// `litert::Expected` holding an error or a `LiteRtStatus`).
+// `litert::Expected` holding an error, a `LiteRtStatus` or a bool that
+// evaluated to `false`).
 //
-// Returns `return_expr` if the result of `expr` represents an error.
+// Returns `return_value` if the result of `expr` represents an error.
 //
 // The result of `expr` may be referenced as `status` in `return_expr`.
 #define LITERT_RETURN_IF_ERROR(...)                                       \
@@ -93,6 +94,8 @@
 // return type in `LITERT_RETURN_IF_ERROR`.
 class ErrorStatusReturnHelper {
  public:
+  explicit ErrorStatusReturnHelper(bool expr_result)
+      : error_(kLiteRtStatusErrorUnknown) {}
   template <class T>
   explicit ErrorStatusReturnHelper(const litert::Expected<T>& expected)
       : error_(expected.Error()) {}
@@ -115,7 +118,7 @@ class ErrorStatusReturnHelper {
   }
   // NOLINTEND(*-explicit-constructor)
 
-  static constexpr bool IsError(bool status) { return status; }
+  static constexpr bool IsError(bool status) { return !status; }
 
   static constexpr bool IsError(LiteRtStatus status) {
     return status != kLiteRtStatusOk;

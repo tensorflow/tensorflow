@@ -236,7 +236,25 @@ LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
 //
 
 // Plugins can hold state.
-struct LiteRtCompilerPluginT {};
+struct LiteRtCompilerPluginT {
+  // A "key-only" flag will have an empty string as the value.
+  using Flag = std::pair<std::string, std::string>;
+  std::vector<Flag> flags;
+};
+
+LiteRtStatus LiteRtCompilerPluginSetFlags(LiteRtCompilerPlugin compiler_plugin,
+                                          LiteRtParamIndex num_flags,
+                                          const char** keys,
+                                          const char** values) {
+  auto& flags = compiler_plugin->flags;
+  flags.resize(num_flags);
+  for (int i = 0; i < num_flags; ++i) {
+    auto& flag = flags[i];
+    flag.first = std::string(keys[i]);
+    flag.second = std::string(values[i]);
+  }
+  return kLiteRtStatusOk;
+}
 
 LiteRtStatus LiteRtCreateCompilerPlugin(LiteRtCompilerPlugin* compiler_plugin) {
   auto* plugin = new LiteRtCompilerPluginT;

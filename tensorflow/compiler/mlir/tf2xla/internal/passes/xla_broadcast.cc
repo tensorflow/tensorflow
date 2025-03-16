@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
+#include "tensorflow/core/ir/types/dialect.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -79,6 +80,8 @@ using mlir::func::FuncOp;
 using mlir::TF::ConstOp;
 using mlir::TF::FillOp;
 using mlir::TF::IdentityOp;
+using mlir::TF::ShapeAttr;
+using mlir::TF::TPUDummyInputOp;
 using mlir::TF::XlaAllReduceOp;
 using mlir::tf_device::ClusterOp;
 using mlir::tf_device::LaunchOp;
@@ -88,22 +91,22 @@ using mlir::tf_device::ReplicateOp;
 #define GEN_PASS_DEF_XLABROADCASTPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
-
 struct XlaBroadcast : public impl::XlaBroadcastPassBase<XlaBroadcast> {
   void runOnOperation() override;
 };
 
 // Returns true iff the broadcast val can be substituted with an XlaAllReduce.
-// Sets `zero` and `shape` as params for the dummy zeros that will be created.
-bool GetDummyParams(OpBuilder& builder, Value val_bcast, Attribute& zero,
-                    DenseIntElementsAttr& shape) {
+// Sets `zero_type` and `shape` as params for the dummy zeros that will be
+// created.
+bool GetDummyParams(OpBuilder& builder, Value val_bcast, Type& zero_type,
+                    ShapeAttr& shape) {
   Type type = val_bcast.getType();
   Type elem_type = getElementTypeOrSelf(type);
   // Xla's all_reduce legalizer bitcasts to 32 bits, so only
   // element types size <= 4 bytes are supported.
   if (elem_type.isBF16() || elem_type.isF16() || elem_type.isTF32() ||
       elem_type.isF32()) {
-    zero = builder.getFloatAttr(elem_type, 0);
+    zero_type = type;
   } else {
     return false;
   }
@@ -112,7 +115,7 @@ bool GetDummyParams(OpBuilder& builder, Value val_bcast, Attribute& zero,
     for (int64_t i : type_shape) {
       if (i < 0) return false;
     }
-    shape = builder.getI64TensorAttr(type_shape);
+    shape = ShapeAttr::get(builder.getContext(), type_shape);
   } else {
     return false;
   }
@@ -120,18 +123,13 @@ bool GetDummyParams(OpBuilder& builder, Value val_bcast, Attribute& zero,
 }
 
 // Create a dummy zero to be fed locally from the host to the TPUExecute.
-Value CreateZeroInput(Location loc, OpBuilder& builder, Attribute zero_attr,
-                      DenseIntElementsAttr shape_attr) {
-  ConstOp zero = builder.create<ConstOp>(loc, zero_attr);
-  zero->setAttr(kICIWeightDistributionMlirBridgeMarker,
-                builder.getBoolAttr(true));
-  ConstOp shape = builder.create<ConstOp>(loc, shape_attr);
-  shape->setAttr(kICIWeightDistributionMlirBridgeMarker,
-                 builder.getBoolAttr(true));
-  FillOp fill = builder.create<FillOp>(loc, shape, zero);
-  fill->setAttr(kICIWeightDistributionMlirBridgeMarker,
-                builder.getBoolAttr(true));
-  return fill;
+Value CreateZeroInput(Location loc, OpBuilder& builder, Type zero_type,
+                      ShapeAttr shape_attr) {
+  TPUDummyInputOp tpu_dummy_input =
+      builder.create<TPUDummyInputOp>(loc, zero_type, shape_attr);
+  tpu_dummy_input->setAttr(kICIWeightDistributionMlirBridgeMarker,
+                           builder.getBoolAttr(true));
+  return tpu_dummy_input;
 }
 
 // Add parallel collection of inputs to the replicated op.
@@ -231,9 +229,9 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
                                      ClusterOp cluster, ReplicateOp replicate,
                                      llvm::DenseMap<Value, Value>& orig_to_new,
                                      Value val_bcast, mlir::ModuleOp module) {
-  Attribute zero_attr;
-  DenseIntElementsAttr shape_attr;
-  if (!GetDummyParams(builder, val_bcast, zero_attr, shape_attr))
+  Type zero_type;
+  ShapeAttr shape_attr;
+  if (!GetDummyParams(builder, val_bcast, zero_type, shape_attr))
     return success();
   llvm::SmallVector<Value, 4> inputs;
   inputs.push_back(val_bcast);
@@ -258,7 +256,7 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
     std::string host = tpu_devices[replica][0].host;
     if (host_to_fill.find(host) == host_to_fill.end()) {
       host_to_fill[host] =
-          CreateZeroInput(val_bcast.getLoc(), builder, zero_attr, shape_attr);
+          CreateZeroInput(val_bcast.getLoc(), builder, zero_type, shape_attr);
     }
     inputs.push_back(host_to_fill[host]);
   }

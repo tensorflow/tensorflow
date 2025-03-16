@@ -358,11 +358,11 @@ CreateArrayFromHostTensorForSingleDevice(xla::ifrt::Client& ifrt_client,
 }
 
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-MakeAssembledArrayFromHostBuffer(
-    xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    const xla::HloSharding& hlo_sharding,
-    const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
-    const tsl::thread::ThreadPool& thread_pool) {
+MakeAssembledArrayFromHostBuffer(xla::ifrt::Client& ifrt_client,
+                                 const tensorflow::Tensor& input_tensor,
+                                 const xla::HloSharding& hlo_sharding,
+                                 const xla::ifrt::DeviceListRef& device_list,
+                                 const tsl::thread::ThreadPool& thread_pool) {
   // TODO(b/316959894): use xla::HloSharding to identifying sharding axis.
   auto sharding = xla::ifrt::HloSharding::Create(
       device_list, xla::ifrt::MemoryKind(), hlo_sharding);
@@ -470,7 +470,7 @@ MakeAssembledArrayFromHostBuffer(
 absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
-    const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
+    const xla::ifrt::DeviceListRef& device_list,
     tsl::thread::ThreadPool& thread_pool) {
   TF_ASSIGN_OR_RETURN(tensorflow::DataType data_type,
                       ToTensorDataType(input_array.dtype()));
@@ -648,7 +648,7 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
 xla::ifrt::Future<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
-    const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
+    const xla::ifrt::DeviceListRef& device_list,
     tsl::thread::ThreadPool& thread_pool) {
   absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> output_tensor_future =
       MakeTensorFromArrayHelper(ifrt_client, input_array, hlo_sharding,
@@ -662,7 +662,7 @@ xla::ifrt::Future<tensorflow::Tensor> MakeTensorFromArray(
 
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
+    const xla::ifrt::DeviceListRef& device_list,
     const xla::HloSharding& hlo_sharding,
     const tsl::thread::ThreadPool& thread_pool) {
   VLOG(3) << "IsTiled: " << hlo_sharding.IsTiled();
@@ -733,8 +733,7 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
         ifrt_client.LookupDevice(xla::ifrt::DeviceId(device_id)));
     devices.push_back(device);
   }
-  tsl::RCReference<xla::ifrt::DeviceList> device_list(
-      ifrt_client.MakeDeviceList(devices));
+  xla::ifrt::DeviceListRef device_list(ifrt_client.MakeDeviceList(devices));
 
   return MakeArrayFromTensor(ifrt_client, input_tensor, device_list,
                              hlo_sharding, thread_pool);

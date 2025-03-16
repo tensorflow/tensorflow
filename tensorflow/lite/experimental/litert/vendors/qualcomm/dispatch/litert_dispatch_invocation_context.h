@@ -39,8 +39,7 @@ class LiteRtDispatchInvocationContextT {
   static litert::Expected<Ptr> Create(
       litert::qnn::QnnManager& qnn_manager,
       LiteRtDispatchDeviceContextT& device_context,
-      const void* exec_bytecode_ptr, size_t exec_bytecode_size,
-      const char* function_name);
+      const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name);
 
   litert::Expected<LiteRtTensorBufferRequirements> GetInputRequirements(
       int input_index, const LiteRtRankedTensorType& tensor_type);

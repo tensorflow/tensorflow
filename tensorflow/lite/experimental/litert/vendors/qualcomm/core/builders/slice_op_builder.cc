@@ -1,7 +1,9 @@
-// Copyright (c) Qualcomm Innovation Center, Inc.
-// All Rights Reserved.
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/slice_op_builder.h"
+
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
 
 namespace qnn {
 
@@ -20,7 +22,8 @@ std::vector<OpWrapper> BuildSliceOp(
   TensorWrapper& begin_tensor = inputs[1];
   TensorWrapper& size_tensor = inputs[2];
   if (!begin_tensor.IsTensorStatic() || !size_tensor.IsTensorStatic()) {
-    // TODO: error log
+    QNN_LOG_ERROR(
+        "The begin tensor and size tensor of Slice OP is not static.");
     return res;
   }
 

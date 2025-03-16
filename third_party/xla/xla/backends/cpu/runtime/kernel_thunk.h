@@ -163,8 +163,9 @@ class KernelThunk : public KernelThunkBase {
   absl::StatusOr<Kernel> kernel_;
 
   // Pre-initialized kernel arguments that are updated with memory addresses
-  // before the kernel launch.
-  KernelArgs kernel_args_;
+  // before the kernel launch. Align `KernelArgs` to 64 bytes to allow aligned
+  // moves on a hot path.
+  alignas(64) KernelArgs kernel_args_;
 };
 
 }  // namespace internal

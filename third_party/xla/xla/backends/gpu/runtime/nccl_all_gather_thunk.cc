@@ -70,7 +70,8 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
     ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
     : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info,
-                          IsGPUSyncCollective(*inst)),
+                          IsGPUSyncCollective(*inst),
+                          AsyncStreamKind::kCollective),
       config_(impl::GetNcclAllGatherConfig(inst)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());

@@ -264,6 +264,40 @@ cc_library(
     ]),
 )
 
+cc_library(
+    name = "nvshmem_collectives",
+    srcs = ["nvshmem_collectives.cc"],
+    hdrs = ["nvshmem_collectives.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:collectives_registry",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:numbers",
+        "@nvshmem//:nvshmem_lib",
+    ],
+    alwayslink = True,  # registers collectives implementation
+)
+
 xla_cc_test(
     name = "nccl_communicator_test",
     srcs = if_gpu_is_configured(["nccl_communicator_test.cc"]),
@@ -272,7 +306,15 @@ xla_cc_test(
     ]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = ["requires-gpu-nvidia"],
+    tags = [
+        "requires-gpu-nvidia",
+        # Stop chloroxylenol from running this test with msan because msan does
+        # not work with CUDA.
+        #
+        # go/chloroxylenol-faq#how-do-i-stop-chloroxylenol-from-running-my-test
+        # go/cuda#memorysanitizer
+        "nomsan",
+    ],
     deps = [
         ":gpu_collectives",
         ":nccl_communicator",

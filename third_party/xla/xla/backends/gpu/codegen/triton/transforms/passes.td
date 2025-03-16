@@ -18,6 +18,25 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-triton", "mlir::ModuleOp"> {
+  let summary = "Convert XLA Triton tile, extract and, insert ops to Triton ops.";
+  let description = [{
+    This pass converts `triton_xla.extract`, `triton_xla.insert` and
+    `triton_xla.tile` ops to Triton ops. It also rewrites `func` args to
+    `tt.ptr` types and removes function return args.
+  }];
+  let dependentDialects = [
+    "triton::TritonDialect",
+  ];
+  let options = [
+    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
+           "Serialized stream_executor::GPUDeviceInfo proto">,
+    Option<"tma_enabled_", "tma_enabled", "bool", /*default=*/"false",
+           "Flag to enable/disable TMA">,
+  ];
+  let constructor = "CreateTritonXLAExtractInsertToTritonPass()";
+}
+
 def GeneralizeKernelSignaturePass
     : Pass<"generalize-kernel-signature"> {
   let summary = "Rewrite kernels to use generic data pointer arguments.";

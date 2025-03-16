@@ -77,7 +77,7 @@ static absl::Status MakeError(const char* filename, int line,
     LOG(ERROR) << "Cannot create error with status OK";
     code = absl::StatusCode::kUnknown;
   }
-  const absl::Status status = absl::Status(code, message);
+  absl::Status status = absl::Status(code, message);
   if (ABSL_PREDICT_TRUE(should_log)) {
     LogError(status, filename, line, log_severity, should_log_stack_trace);
   }

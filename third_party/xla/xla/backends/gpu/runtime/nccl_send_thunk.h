@@ -46,13 +46,11 @@ class NcclSendThunk : public NcclCollectiveThunk {
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
                                  CommunicatorHandle comm_handle) override;
-  AsyncStreamKind GetAsyncStreamKind() const override { return stream_kind_; }
   bool NeedFirstCallRendzevous() const override { return false; }
 
  private:
   const NcclP2PConfig config_;
   const Buffer buffer_;
-  const AsyncStreamKind stream_kind_;
   std::shared_ptr<ExecutionCounters> execution_counters_;
   std::string hlo_name_;
 };

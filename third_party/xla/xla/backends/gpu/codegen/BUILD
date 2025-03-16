@@ -78,6 +78,7 @@ xla_test(
         "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:pattern_matcher",
+        "//xla/service/gpu:cudnn_support_utils",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu/tests:gpu_codegen_test",

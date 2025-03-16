@@ -19,8 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/xplane_to_dcn_collective_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
@@ -42,7 +43,6 @@ absl::StatusOr<std::string> GetAvailableToolNames(
     tools.push_back("framework_op_stats");
     tools.push_back("memory_profile");
     tools.push_back("pod_viewer");
-    tools.push_back("tf_data_bottleneck_analysis");
     tools.push_back("op_profile");
     tools.push_back("inference_profile");
     tools.push_back("hlo_stats");

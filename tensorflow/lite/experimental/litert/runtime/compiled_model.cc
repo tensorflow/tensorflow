@@ -26,6 +26,9 @@
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/core/accelerator_model_compilation_data.h"
 
 #if defined(__ANDROID__)
 #include <android/hardware_buffer.h>
@@ -53,7 +56,6 @@
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 #include "tensorflow/lite/interpreter.h"
@@ -72,7 +74,8 @@ Expected<void> LiteRtCompiledModelT::Initialize() {
   tflite::ops::builtin::BuiltinOpResolver resolver;
   tflite::InterpreterBuilder(*fb_model_, resolver)(&interp_);
   if (interp_ == nullptr) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to build TFL interpreter");
   }
 
   signature_keys_ = interp_->signature_keys();
@@ -130,19 +133,24 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   if (new_flatbuffer) {
     model_buffer = reinterpret_cast<const char*>(new_flatbuffer->Data());
     model_buffer_size = new_flatbuffer->Size();
+
   } else if (auto init_model_buffer = detail::GetTflFlatbuffer(*model).Buf();
              init_model_buffer.Size() != 0) {
     // Use the saved the original FB pointer when the LiteRtModel was created
     // from a buffer.
     model_buffer = init_model_buffer.StrData();
     model_buffer_size = init_model_buffer.Size();
+
   } else {
     // TODO b/383120429 - Once LiteRtModel provide tflite::Model object, switch
     // to use it to initialize Interpreter instead of serializing LiteRtModel.
     auto [data, size, offset] = compiled_model->model_buf_.GetWeak();
+    const auto opts = litert::SerializationOptions::Defaults();
     if (LiteRtSerializeModel(model, &data, &size, &offset,
-                             /*destroy_model=*/false) != kLiteRtStatusOk) {
-      return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+                             /*destroy_model=*/false,
+                             opts) != kLiteRtStatusOk) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to serialize model");
     }
     compiled_model->alloc_ = std::make_unique<tflite::MemoryAllocation>(
         compiled_model->model_buf_.Data(), compiled_model->model_buf_.Size(),
@@ -151,52 +159,64 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
         reinterpret_cast<const char*>(compiled_model->alloc_->base());
     model_buffer_size = compiled_model->alloc_->bytes();
   }
+
   compiled_model->fb_model_ =
       tflite::FlatBufferModel::BuildFromBuffer(model_buffer, model_buffer_size);
   if (compiled_model->fb_model_ == nullptr) {
-    return Unexpected(kLiteRtStatusErrorFileIO);
+    return Unexpected(kLiteRtStatusErrorFileIO,
+                      "Failed to build flatbuffer from buffer");
   }
 
   if (auto res = compiled_model->Initialize(); !res.HasValue()) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to inizialize compiled model");
   }
 
-  LiteRtAcceleratorCompilationOptions accelerator_options;
-  LiteRtGetAcceleratorCompilationOptions(compilation_options.get(),
-                                         &accelerator_options);
+  // TODO: b/397399776 - Auto register accelerators
 
-  if (hardware_accelerators & kLiteRtHwAcceleratorGpu) {
-    // Query GPU accelerator and apply the delegate.
-    // TODO b/394958439 - Support NPU delegate here.
-    auto& registry = env->GetAcceleratorRegistry();
-    for (int i = 0; i < registry.size(); ++i) {
-      auto accelerator = registry.Get(i);
-      LiteRtHwAcceleratorSet accelerator_supported_hardware;
-      if ((*accelerator)
-              ->GetHardwareSupport(*accelerator,
-                                   &accelerator_supported_hardware) !=
-          kLiteRtStatusOk) {
-        continue;
+  // If no compilation options were passed, we create a default object. This
+  // allows us to add (for instance) accelerator compilation options.
+  if (!compilation_options) {
+    LiteRtCompilationOptions tmp_options = nullptr;
+    LITERT_RETURN_IF_ERROR(LiteRtCreateCompilationOptions(&tmp_options));
+    compilation_options.reset(tmp_options);
+  }
+
+  // Add a new link in the accelerator compilation options that holds some data
+  // that is computed during model compilation.
+  LITERT_ASSIGN_OR_RETURN(auto model_compilation_data,
+                          litert::ModelCompilationData::Create());
+  model_compilation_data->allocation_base = model_buffer;
+  LITERT_RETURN_IF_ERROR(LiteRtAddAcceleratorCompilationOptions(
+      compilation_options.get(), model_compilation_data.release()));
+
+  // Retrieve the accelerator options list.
+  LiteRtAcceleratorCompilationOptions accelerator_options = nullptr;
+  LITERT_RETURN_IF_ERROR(LiteRtGetAcceleratorCompilationOptions(
+      compilation_options.get(), &accelerator_options));
+
+  // Apply accelerators matching the requested hardware support to the
+  // model in the order they were registered.
+  for (auto& accelerator : env->GetAcceleratorRegistry()) {
+    LiteRtHwAcceleratorSet accelerator_supported_hardware;
+    LITERT_RETURN_IF_ERROR(accelerator->GetHardwareSupport(
+        accelerator.get(), &accelerator_supported_hardware));
+    if (hardware_accelerators & accelerator_supported_hardware) {
+      TfLiteOpaqueDelegate* delegate_ptr = nullptr;
+      LITERT_RETURN_IF_ERROR(
+          accelerator->CreateDelegate(accelerator.get(), accelerator_options,
+                                      reinterpret_cast<void**>(&delegate_ptr)));
+
+      auto delegate = tflite::TfLiteOpaqueDelegateUniquePtr(
+          delegate_ptr, reinterpret_cast<void (*)(TfLiteOpaqueDelegate*)>(
+                            accelerator->DestroyDelegate));
+
+      if (compiled_model->interp_->ModifyGraphWithDelegate(delegate_ptr) !=
+          kTfLiteOk) {
+        return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                          "Failed to modify graph with delegate");
       }
-      if (accelerator_supported_hardware & kLiteRtHwAcceleratorGpu) {
-        TfLiteOpaqueDelegate* delegate_ptr = nullptr;
-        if ((*accelerator)
-                ->CreateDelegate(*accelerator, accelerator_options,
-                                 reinterpret_cast<void**>(&delegate_ptr)) !=
-            kLiteRtStatusOk) {
-          continue;
-        }
-        auto delegate = tflite::TfLiteOpaqueDelegateUniquePtr(
-            delegate_ptr, reinterpret_cast<void (*)(TfLiteOpaqueDelegate*)>(
-                              (*accelerator)->DestroyDelegate));
-        if (compiled_model->interp_->ModifyGraphWithDelegate(delegate_ptr) !=
-            kTfLiteOk) {
-          return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                            "Failed to modify graph with delegate");
-        }
-        compiled_model->RegisterDelegate(std::move(delegate));
-        break;
-      }
+      compiled_model->RegisterDelegate(std::move(delegate));
     }
   }
 
@@ -207,6 +227,17 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
       litert::CreateDispatchDelegateOptionsPtr(*env);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            model_buffer);
+
+  auto* allocation = compiled_model->fb_model_->allocation();
+  if (allocation != nullptr &&
+      allocation->type() == tflite::Allocation::Type::kMMap) {
+    auto& mmap_allocation =
+        static_cast<const tflite::MMAPAllocation&>(*allocation);
+    int flatbuffer_fd = mmap_allocation.fd();
+    LiteRtDispatchDelegateAddAllocFdOption(dispatch_delegate_options.get(),
+                                           flatbuffer_fd);
+  }
+
   auto dispatch_delegate = litert::CreateDispatchDelegatePtr(
       *env, std::move(dispatch_delegate_options));
   if (auto status = compiled_model->interp_->ModifyGraphWithDelegate(
@@ -227,9 +258,18 @@ void LiteRtCompiledModelT::CheckCpuTensors() {
   for (int subgraph_no = 0; subgraph_no < interp_->subgraphs_size();
        ++subgraph_no) {
     auto* subgraph = interp_->subgraph(subgraph_no);
-    for (auto& node_and_registration : subgraph->nodes_and_registration()) {
-      auto& node = node_and_registration.first;
-      auto& registration = node_and_registration.second;
+    auto& execution_plan = subgraph->execution_plan();
+    auto& nodes_and_registration = subgraph->nodes_and_registration();
+    for (int execution_plan_index = 0;
+         execution_plan_index < execution_plan.size(); execution_plan_index++) {
+      int node_index = execution_plan[execution_plan_index];
+      auto& node = nodes_and_registration[node_index].first;
+      const TfLiteRegistration& registration =
+          nodes_and_registration[node_index].second;
+
+      if (registration.builtin_code == kTfLiteBuiltinDelegate) {
+        continue;
+      }
       if (registration.builtin_code == kTfLiteBuiltinCustom &&
           litert::internal::kLiteRtDispatchOpCustomCode ==
               registration.custom_name)
@@ -252,6 +292,8 @@ LiteRtCompiledModelT::GetTensorBufferRequirements(const TfLiteTensor* tensor) {
     if (requirements) {
       return (*requirements)->Get();
     }
+  } else {
+    LITERT_LOG(LITERT_VERBOSE, "Tensor %s is shared with CPU.\n", tensor->name);
   }
   LiteRtTensorBufferRequirements litert_cpu_buffer_requirements;
   LiteRtTensorBufferType cpu_buffer_type[] = {

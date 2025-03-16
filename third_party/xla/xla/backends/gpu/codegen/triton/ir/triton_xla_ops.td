@@ -73,8 +73,8 @@ def TTXLA_TileOp : TTXLA_Op<"tile", [Pure,
 
   let arguments = (ins
     AnyRankedTensor:$tensor,
-    DenseI64ArrayAttr:$offsets,
-    DenseI64ArrayAttr:$sizes,
+    DenseI32ArrayAttr:$offsets,
+    DenseI32ArrayAttr:$sizes,
     DenseI64ArrayAttr:$strides
   );
   let results = (outs TTXLA_TiledTensorType:$tiled_tensor);
@@ -100,7 +100,7 @@ def TTXLA_ExtractOp : TTXLA_Op<"extract", [Pure,
 
   let arguments = (ins
     TTXLA_TiledTensorType:$src,
-    Variadic<Index>:$offsets
+    Variadic<I32>:$offsets
   );
   let results = (outs AnyRankedTensor:$result);
   let hasCustomAssemblyFormat = 1;
@@ -127,7 +127,7 @@ def TTXLA_InsertOp : TTXLA_Op<"insert", [Pure,
   let arguments = (ins
     AnyRankedTensor:$src,
     TTXLA_TiledTensorType:$dst,
-    Variadic<Index>:$offsets
+    Variadic<I32>:$offsets
   );
   let results = (outs AnyRankedTensor:$result);
   let hasCustomAssemblyFormat = 1;

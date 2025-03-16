@@ -51,7 +51,12 @@ template <typename R>
 struct RendezvousResult {
   using Type = std::shared_ptr<R>;
 
-  static Type Wrap(R result) { return std::make_shared<R>(std::move(result)); }
+  template <typename Result>
+  static Type Wrap(Result result) {
+    static_assert(std::is_constructible_v<R, Result>,
+                  "Result `R` is not constructible from `Result`");
+    return std::make_shared<R>(std::move(result));
+  }
 
   static Type Empty() { return std::shared_ptr<R>(); }
 };
@@ -60,9 +65,19 @@ template <typename R>
 struct RendezvousResult<absl::StatusOr<R>> {
   using Type = absl::StatusOr<std::shared_ptr<R>>;
 
-  static Type Wrap(absl::StatusOr<R> result) {
+  template <typename Result>
+  static Type Wrap(absl::StatusOr<Result> result) {
+    static_assert(std::is_constructible_v<R, Result>,
+                  "Result `R` is not constructible from `Result`");
     if (!result.ok()) return result.status();
     return std::make_shared<R>(std::move(*result));
+  }
+
+  template <typename Result>
+  static Type Wrap(Result result) {
+    static_assert(std::is_constructible_v<R, Result>,
+                  "Result `R` is not constructible from `Result`");
+    return std::make_shared<R>(std::move(result));
   }
 
   static Type Empty() { return {std::shared_ptr<R>()}; }
@@ -293,8 +308,8 @@ RendezvousResultType<R> Rendezvous(absl::string_view name, const K& key,
                                    const V& value, size_t num_threads, Fn fn,
                                    absl::Duration warn_stuck_timeout,
                                    absl::Duration terminate_timeout) {
-  // Check that `fn` is callable with a span of values and returns `R`.
-  static_assert(std::is_invocable_r_v<R, Fn, absl::Span<const V*>>,
+  // Check that `fn` is callable with a span of values.
+  static_assert(std::is_invocable_v<Fn, absl::Span<const V*>>,
                 "invalid rendezvous function signature");
 
   // Fast-path (DO NOT REMOVE: the logic below doesn't work for single thread).

@@ -1,7 +1,7 @@
 // RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-flatten-computation-args-result=false %s -o - | FileCheck %s
 // RUN: hlo-translate -hlo-to-mlir -emit-mhlo %s | FileCheck %s
 
-HloModule frontend_attributes, entry_computation_layout={(f32[])->f32[]}
+HloModule frontend_attributes, entry_computation_layout={(f32[], f32[])->f32[]}
 
 comp {
   param = f32[] parameter(0)

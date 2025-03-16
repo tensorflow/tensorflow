@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -48,6 +49,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/CodeGen.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -61,7 +63,6 @@ limitations under the License.
 #include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/parallel_loop_emitter.h"
-#include "xla/service/cpu/shape_partition.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
@@ -70,6 +71,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
+#include "xla/shape_partition.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
@@ -80,17 +82,6 @@ limitations under the License.
 
 namespace xla::cpu {
 
-namespace {
-
-KernelApiIrBuilder::Options KernelApiIrBuilderOptionsFromHloModuleConfig(
-    const HloModuleConfig& config) {
-  return KernelApiIrBuilder::Options{
-      config.debug_options().xla_llvm_enable_invariant_load_metadata(),
-      config.debug_options().xla_cpu_prefer_vector_width()};
-}
-
-}  // namespace
-
 //===----------------------------------------------------------------------===//
 // IrEmitter2
 //===----------------------------------------------------------------------===//
@@ -100,9 +91,9 @@ IrEmitter2::IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
     : hlo_module_(hlo_module),
       module_(module),
       nested_ir_emitter_(nested_ir_emitter),
-      kernel_api_ir_builder_(
-          module_->getContext(),
-          KernelApiIrBuilderOptionsFromHloModuleConfig(hlo_module_.config())) {}
+      kernel_api_ir_builder_(module_->getContext(),
+                             KernelApiIrBuilder::Options::FromHloModuleConfig(
+                                 hlo_module_.config())) {}
 
 bool IrEmitter2::fast_min_max() const {
   return hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max();
@@ -317,9 +308,19 @@ IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
 
 absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
     HloComputation* comparator) {
+  std::string comparator_name(comparator->name().data(),
+                              comparator->name().size());
+  if (hlo_module_.config()
+          .debug_options()
+          .xla_cpu_generate_unique_c_style_kernel_entry_points()) {
+    TF_ASSIGN_OR_RETURN(comparator_name, ConvertToCName(absl::StrCat(
+                                             comparator->parent()->name(), "_",
+                                             comparator->name())));
+  }
+
   // Find if we already emitted this comparator.
   auto info = absl::c_find_if(comparators_, [&](const ComparatorInfo& info) {
-    return info.name == comparator->name();
+    return info.name == comparator_name;
   });
   if (info != comparators_.end()) return *info;
 
@@ -331,7 +332,7 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
   // to set external linkage and to get a pointer to compiled function later.
   TF_ASSIGN_OR_RETURN(llvm::Function * comparator_function,
                       nested_ir_emitter_->EmitComputation(
-                          comparator, comparator->name(),
+                          comparator, comparator_name,
                           /*is_top_level_computation=*/true, schedule,
                           /*allow_reassociation=*/false));
 

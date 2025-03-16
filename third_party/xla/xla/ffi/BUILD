@@ -210,6 +210,7 @@ xla_cc_test(
     srcs = ["ffi_test.cc"],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
+    shuffle_tests = False,
     deps = [
         ":call_frame",
         ":execution_context",

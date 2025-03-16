@@ -15,8 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TPU_STEP_DETAILS_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TPU_STEP_DETAILS_UTILS_H_
 
-#include <cstdint>
-
 #include "tensorflow/core/profiler/protobuf/tpu_input_pipeline.pb.h"
 
 namespace tensorflow {

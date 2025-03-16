@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/profiler/lib/traceme.h"
 
 #define EIGEN_USE_THREADS
 #include "Eigen/Core"
@@ -77,8 +76,6 @@ ConvolutionThunk::ConvolutionThunk(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
-
   TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase input_data,
                       params.buffer_allocations->GetDeviceAddress(
                           convolution_slices_.input_buffer));

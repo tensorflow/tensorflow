@@ -118,6 +118,11 @@ struct Southbound::ThrFunctions {
   decltype(&thrInvocationContextAttachScratchPadBuffer)
       thr_invocation_context_attach_scratch_pad_buffer = nullptr;
 
+  decltype(&thrInvocationContextStartMetricsCollection)
+      thr_invocation_context_start_metrics_collection = nullptr;
+  decltype(&thrInvocationContextStopMetricsCollection)
+      thr_invocation_context_stop_metrics_collection = nullptr;
+
   decltype(&thrVendorSetSystemAttributeStr)
       thr_vendor_set_system_attribute_str = nullptr;
   decltype(&thrVendorSetSystemAttributeInt64)

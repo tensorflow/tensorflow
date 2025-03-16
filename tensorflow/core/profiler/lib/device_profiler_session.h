@@ -23,7 +23,7 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/convert/xplane_to_step_stats.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 #endif
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 

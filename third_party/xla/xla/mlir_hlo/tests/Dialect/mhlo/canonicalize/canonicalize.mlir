@@ -606,6 +606,19 @@ func.func @pad_zero_length(%arg0: tensor<5x0xf32>, %arg1: tensor<f32>) -> tensor
 }
 
 ////////
+// DynamicSliceOp
+
+// CHECK-LABEL: @fold_dynamic_slice
+func.func @fold_dynamic_slice(%767: tensor<i32>, %203: tensor<i32>) -> tensor<1x1xi32> {
+  %28 = mhlo.constant dense<256> : tensor<6x1xi32>
+  %769 = "mhlo.dynamic_slice"(%28, %767, %203) <{slice_sizes = dense<1> : tensor<2xi64>}> : (tensor<6x1xi32>, tensor<i32>, tensor<i32>) -> tensor<1x1xi32>
+
+  // CHECK: %[[RESULT:.*]] = mhlo.constant dense<256>
+  // CHECK: return %[[RESULT]]
+  return %769 : tensor<1x1xi32>
+}
+
+////////
 // RealDynamicSliceOp
 
 // CHECK-LABEL: @simplify_real_dynamic_slice_to_slice

@@ -252,8 +252,8 @@ absl::Status AppendStatus(absl::Status prior, absl::string_view context);
   /*Deduction guide to make variadic arguments play nice with default */ \
   /* absl::SourceLocation argument. */                                   \
   template <typename... Args>                                            \
-  error_type(const absl::FormatSpec<Args...>& format,                    \
-             Args&&...) -> error_type<Args...>;
+  error_type(const absl::FormatSpec<Args...>& format, Args&&...)         \
+      -> error_type<Args...>;
 
 #if defined(PLATFORM_GOOGLE)
 #define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(error_type)               \
@@ -859,7 +859,7 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
     for (size_t j = 0; j < kElementsPerByte; ++j) {
       byte |=
           (input[i * kElementsPerByte + j] & LsbMask<uint8_t>(kBitsPerElement))
-          << (kBitsPerElement * (kElementsPerByte - j - 1));
+          << (kBitsPerElement * j);
     }
     output[i] = byte;
   }
@@ -868,7 +868,7 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
     for (size_t j = 0; j < remainder; ++j) {
       byte |= (input[aligned_inputs * kElementsPerByte + j] &
                LsbMask<uint8_t>(kBitsPerElement))
-              << (kBitsPerElement * (kElementsPerByte - j - 1));
+              << (kBitsPerElement * j);
     }
     output[aligned_inputs] = byte;
   }
@@ -898,16 +898,14 @@ void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
     const char byte = input[i];
     for (int j = 0; j < kElementsPerByte; ++j) {
       output[i * kElementsPerByte + j] =
-          (byte >> (kBitsPerElement * (kElementsPerByte - j - 1))) &
-          LsbMask<uint8_t>(kBitsPerElement);
+          (byte >> (kBitsPerElement * j)) & LsbMask<uint8_t>(kBitsPerElement);
     }
   }
   if (size_t remainder = output.size() % kElementsPerByte; remainder != 0) {
     const char byte = input[aligned_outputs];
     for (size_t j = 0; j < remainder; ++j) {
       output[aligned_outputs * kElementsPerByte + j] =
-          (byte >> (kBitsPerElement * (kElementsPerByte - j - 1))) &
-          LsbMask<uint8_t>(kBitsPerElement);
+          (byte >> (kBitsPerElement * j)) & LsbMask<uint8_t>(kBitsPerElement);
     }
   }
 }

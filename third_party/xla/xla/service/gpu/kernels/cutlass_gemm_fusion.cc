@@ -251,7 +251,7 @@ CutlassGemmWithDynamicUpdateSlicePattern::TryMatch(
   if (std::holds_alternative<se::CudaComputeCapability>(
           device.gpu_compute_capability())) {
     if (device.cuda_compute_capability().major ==
-        se::CudaComputeCapability::CudaComputeCapabilities::VOLTA) {
+        se::CudaComputeCapability::CudaComputeCapabilities::kVolta) {
       return std::nullopt;
     }
   }

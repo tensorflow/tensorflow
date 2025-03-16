@@ -35,9 +35,6 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 
 namespace tsl {
-
-class NotifierListNode;
-
 namespace internal {
 
 template <typename T>
@@ -277,6 +274,8 @@ class AsyncValue {
  protected:
   friend class IndirectAsyncValue;
 
+  struct WaiterListNode;
+
   static constexpr uint16_t kUnknownTypeId = 0;
 
   // Utility template for tag dispatching.
@@ -311,7 +310,7 @@ class AsyncValue {
 
   void NotifyAvailable(State available_state);
   void Destroy();
-  void RunWaiters(NotifierListNode* list);
+  void RunWaiters(WaiterListNode* list);
 
   // IsTypeIdCompatible returns true if the type value stored in this AsyncValue
   // instance can be safely cast to `T`. This is a conservative check. I.e.
@@ -369,6 +368,16 @@ class AsyncValue {
   // This is a 16-bit value that identifies the type.
   uint16_t type_id_ = 0;
 
+  // This is a singly linked list of nodes waiting for notification, hanging off
+  // of AsyncValue. When the value becomes available or if an error occurs, the
+  // callbacks are informed.
+  struct WaiterListNode {
+    virtual ~WaiterListNode() = default;
+    virtual void operator()() = 0;
+
+    WaiterListNode* next = nullptr;
+  };
+
   // The waiter list and the state are compacted into one single atomic word as
   // accesses to them are tightly related. To change the state from unavailable
   // (i.e. kUnconstructed or kConstructed) to available
@@ -379,7 +388,7 @@ class AsyncValue {
   // Invariant: If the state is not available, then the waiter list must be
   // nullptr.
   struct WaitersAndState {
-    // We rely on the fact that all `NotifierListNode` values are aligned at
+    // We rely on the fact that all `WaiterListNode` values are aligned at
     // least to 4 bytes and we can encode state in the lowest 2 bits. We use
     // the conservative estimation of the minimal alignment of pointers returned
     // from memory allocation functions.
@@ -390,7 +399,7 @@ class AsyncValue {
     static constexpr uintptr_t kStateMask = (1ull << 2) - 1;
     static constexpr uintptr_t kPointerMask = ~kStateMask;
 
-    WaitersAndState(NotifierListNode* ptr, State state) {
+    WaitersAndState(WaiterListNode* ptr, State state) {
       value = (reinterpret_cast<uintptr_t>(ptr) & kPointerMask) |
               (state & kStateMask);
     }
@@ -399,8 +408,8 @@ class AsyncValue {
       return State(static_cast<State::StateEnum>(value & kStateMask));
     }
 
-    NotifierListNode* waiter() const {
-      return reinterpret_cast<NotifierListNode*>(value & kPointerMask);
+    WaiterListNode* waiter() const {
+      return reinterpret_cast<WaiterListNode*>(value & kPointerMask);
     }
 
     uintptr_t value;
@@ -466,8 +475,26 @@ class AsyncValue {
     return (*type_info_table)[type_id_ - 1];
   }
 
-  void EnqueueWaiter(absl::AnyInvocable<void()> waiter,
-                     WaitersAndState old_value);
+  // Adds a waiter list node to the waiter linked list. If the value is
+  // available or becomes available, this calls the waiter immediately.
+  // Otherwise, we add waiter to the list where it will be called when the value
+  // becomes available.
+  void EnqueueWaiterListNode(WaiterListNode* waiter,
+                             WaitersAndState waiters_and_state);
+
+  template <typename Waiter>
+  void EnqueueWaiter(Waiter&& waiter, WaitersAndState waiters_and_state) {
+    static_assert(std::is_invocable_v<Waiter>, "Waiter must be invocable");
+
+    struct Node final : public WaiterListNode {
+      explicit Node(Waiter waiter) : waiter(std::move(waiter)) {}
+      void operator()() final { waiter(); }
+      Waiter waiter;
+    };
+
+    EnqueueWaiterListNode(new Node{std::forward<Waiter>(waiter)},
+                          waiters_and_state);
+  }
 
   // This is a global counter of the number of AsyncValue instances currently
   // live in the process.  This is intended to be used for debugging only, and
@@ -983,14 +1010,15 @@ void AsyncValue::AndThen(Waiter&& waiter) {
   // Clients generally want to use AndThen without them each having to check
   // to see if the value is present. Check for them, and immediately run the
   // waiter if it is already here.
-  auto old_value = waiters_and_state_.load(std::memory_order_acquire);
-  if (old_value.state() == State::kConcrete ||
-      old_value.state() == State::kError) {
-    DCHECK_EQ(old_value.waiter(), nullptr);
+  auto waiters_and_state = waiters_and_state_.load(std::memory_order_acquire);
+  if (waiters_and_state.state() == State::kConcrete ||
+      waiters_and_state.state() == State::kError) {
+    DCHECK_EQ(waiters_and_state.waiter(), nullptr);
     waiter();
     return;
   }
-  EnqueueWaiter(std::forward<Waiter>(waiter), old_value);
+
+  EnqueueWaiter(std::forward<Waiter>(waiter), waiters_and_state);
 }
 
 template <typename Waiter>
@@ -998,18 +1026,19 @@ void AsyncValue::AndThen(Executor& executor, Waiter&& waiter) {
   // Clients generally want to use AndThen without them each having to check
   // to see if the value is present. Check for them, and immediately run the
   // waiter if it is already here.
-  auto old_value = waiters_and_state_.load(std::memory_order_acquire);
-  if (old_value.state() == State::kConcrete ||
-      old_value.state() == State::kError) {
-    DCHECK_EQ(old_value.waiter(), nullptr);
+  auto waiters_and_state = waiters_and_state_.load(std::memory_order_acquire);
+  if (waiters_and_state.state() == State::kConcrete ||
+      waiters_and_state.state() == State::kError) {
+    DCHECK_EQ(waiters_and_state.waiter(), nullptr);
     executor.Execute(std::forward<Waiter>(waiter));
     return;
   }
+
   EnqueueWaiter(
-      [&executor, waiter = std::forward<Waiter>(waiter)]() mutable {
+      [&executor, waiter = std::forward<Waiter>(waiter)] {
         executor.Execute(std::move(waiter));
       },
-      old_value);
+      waiters_and_state);
 }
 
 inline void AsyncValue::Destroy() {

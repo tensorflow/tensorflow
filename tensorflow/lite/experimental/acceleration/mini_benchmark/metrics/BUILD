@@ -47,6 +47,7 @@ py_strict_binary(
     deps = [
         ":kl_divergence",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/lite/tools:flatbuffer_utils",
     ],
 )
@@ -90,6 +91,7 @@ py_strict_binary(
     deps = [
         ":kl_divergence",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/lite/tools:flatbuffer_utils",
     ],
 )

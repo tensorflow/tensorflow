@@ -36,6 +36,7 @@ const char* const kXlaForceEnableExperimentalLlvmIrGemm =
 const char* const kLlvmIrGemmTileSize = "xla_llvm_ir_gemm_tile_size";
 const char* const kDisableSlpVectorizer = "xla_cpu_disable_slp_vectorizer";
 const char* const kDisableLoopUnrolling = "xla_cpu_disable_loop_unrolling";
+const char* const kFoldAllConstants = "xla_cpu_fold_all_constants";
 
 }  // namespace
 
@@ -65,6 +66,12 @@ bool DisableLoopUnrolling(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   return extra_options_map.count(kDisableLoopUnrolling) > 0;
+}
+
+bool FoldAllConstants(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kFoldAllConstants) > 0;
 }
 
 std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {

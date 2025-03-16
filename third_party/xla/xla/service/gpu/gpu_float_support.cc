@@ -68,8 +68,8 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
           PrimitiveType,
           stream_executor::CudaComputeCapability::CudaComputeCapabilities>;
       for (auto [type, cc] :
-           {TypeAndCC(F8E4M3FN, se::CudaComputeCapability::AMPERE),
-            TypeAndCC(F8E5M2, se::CudaComputeCapability::HOPPER)}) {
+           {TypeAndCC(F8E4M3FN, se::CudaComputeCapability::kAmpere),
+            TypeAndCC(F8E5M2, se::CudaComputeCapability::kHopper)}) {
         if (LowPrecisionType() == type) {
           auto* cuda_compute_capability =
               std::get_if<se::CudaComputeCapability>(&compute_capability_);

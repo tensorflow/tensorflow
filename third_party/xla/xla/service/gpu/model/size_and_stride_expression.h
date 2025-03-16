@@ -28,6 +28,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
+// Encapsulates expressions for size and stride and the corresponding
+// constraints on the dimension values that need to be satisfied.
 struct SizeAndStrideExpression {
   mlir::AffineExpr size;
   mlir::AffineExpr stride;
@@ -48,6 +50,28 @@ struct SizeAndStrideExpression {
       : size(size), stride(stride), constraints(std::move(constraints)) {}
 };
 
+// Given an expression `strided_indexing` that can be written as
+// `stride_expr * index_expr`, attempts to produce stride and size expressions
+// for the corresponding symbolic tile. A tile is a set of indices that can be
+// represented as `offset + stride * index`, where `0 <= index < size`. A
+// symbolic tile that corresponds to `strided_indexing` would map a tile of the
+// "parameter space" (values plugged into `strided_indexing`) to a tile of the
+// "value space" (with indices produced by `strided_indexing` when fed with the
+// values from the "parameter space" tile). SizeAndStrideExpression also
+// contains constraints that need to be satisfied to ensure that we only allow
+// tiles from the "parameter space" that map to a set of indices in the "value
+// space" that can be represented as a tile (with stride and size chosen
+// according to the computed stride and size expressions from the
+// SizeAndStrideExpression return value).
+//
+// `strided_indexing` should be an AffineExpr involving dimension ids between 0
+// and `dimension_intervals.size() - 1`, and symbol ids between 0 and
+// `symbol_intervals.size() - 1`. `dimension_intervals` specifies the valid
+// range of values for the different dimension ids, `symbol_intervals` specifies
+// the valid range of values for the different symbol ids. This method attempts
+// to linearize the expression into `stride * index` and computes expressions
+// for stride and tile size together with constraints on the values for the
+// dimensions which need to be satisfied to make the expressions valid.
 std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
     mlir::AffineExpr strided_indexing,
     absl::Span<Interval const> dimension_intervals,

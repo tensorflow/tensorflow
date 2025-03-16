@@ -60,6 +60,8 @@ class CollectivePipelineParallelismTest
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_experimental_pipeline_parallelism_opt_level(
         xla_gpu_experimental_pipeline_parallelism_opt_level_);
+    debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
+    debug_options.set_xla_gpu_collective_permute_decomposer_threshold(0);
     config.set_debug_options(debug_options);
 
     return config;
@@ -111,6 +113,12 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
   if (test_runner().device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << test_runner().device_count() << " available)";
+  }
+
+  // TODO(b/398888176): Remove this skip once cycle decomposer is removed.
+  if (xla_gpu_experimental_pipeline_parallelism_opt_level_ ==
+      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER) {
+    GTEST_SKIP();
   }
 
   // Parse HLO module.
@@ -309,6 +317,12 @@ XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
                  << test_runner().device_count() << " available)";
   }
 
+  // TODO(b/398888176): Remove this skip once cycle decomposer is removed.
+  if (xla_gpu_experimental_pipeline_parallelism_opt_level_ ==
+      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER) {
+    GTEST_SKIP();
+  }
+
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
@@ -333,6 +347,7 @@ XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
   const int64_t kMicrobatches = 4;
   Literal real_input =
       LiteralUtil::CreateFingerprintMatixR2<float>(kMicrobatches, kInputSize);
+
   Literal fake_input =
       LiteralUtil::CreateFull<float>({kMicrobatches, kInputSize}, 0.0);
 
@@ -430,6 +445,12 @@ XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
   if (test_runner().device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << test_runner().device_count() << " available)";
+  }
+
+  // TODO(b/398888176): Remove this skip once cycle decomposer is removed.
+  if (xla_gpu_experimental_pipeline_parallelism_opt_level_ ==
+      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER) {
+    GTEST_SKIP();
   }
 
   // Parse HLO module.
@@ -553,6 +574,12 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
   if (test_runner().device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << test_runner().device_count() << " available)";
+  }
+
+  // TODO(b/398888176): Remove this skip once cycle decomposer is removed.
+  if (xla_gpu_experimental_pipeline_parallelism_opt_level_ ==
+      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER) {
+    GTEST_SKIP();
   }
 
   // Parse HLO module.
@@ -903,12 +930,14 @@ XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
 
       // Send data from GPU i to i+1. Break cycle to avoid deadlock.
       after_all = token[] after-all()
-      send_ctx = (f32[2,2], u32[], token[]) send(data, after_all),
+      data_cpy = f32[2,2] copy(data)
+      send_ctx = (f32[2,2], u32[], token[]) send(data_cpy, after_all),
           frontend_attributes={
           _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=1
       recv_ctx = (f32[2,2], u32[], token[]) recv(after_all),
           frontend_attributes={
-          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=2
+          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=2,
+          control-predecessors={data_cpy}
       send_done = token[] send-done(send_ctx), channel_id=1
       recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
       data_ = f32[2,2] get-tuple-element(recv_done), index=0
@@ -967,6 +996,7 @@ XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
       ExecuteReplicated(std::move(module), inputs,
                         /*num_replicas=*/kNumPartitions,
                         /*run_hlo_passes=*/false, &device_assignment));
+
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[1]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[2]);
@@ -992,12 +1022,13 @@ XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
 
       // Just send from GPU 0 to GPU 1 to avoid deadlock.
       after_all = token[] after-all()
-      send_ctx = (f32[2,2], u32[], token[]) send(data, after_all),
+      data_cpy = f32[2,2] copy(data)
+      send_ctx = (f32[2,2], u32[], token[]) send(data_cpy, after_all),
           frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
           channel_id=1
       recv_ctx = (f32[2,2], u32[], token[]) recv(after_all),
           frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
-          channel_id=2
+          channel_id=2, control-predecessors={data_cpy}
       send_done = token[] send-done(send_ctx), channel_id=1
       recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
       data_ = f32[2,2] get-tuple-element(recv_done), index=0
@@ -1083,12 +1114,14 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
       recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
       data = get-tuple-element(recv_done), index=0
       after_all = token[] after-all()
-      send_ctx_ = (f32[2,2], u32[], token[]) send(data, after_all),
+      data_cpy = f32[2,2] copy(data)
+      send_ctx_ = (f32[2,2], u32[], token[]) send(data_cpy, after_all),
           frontend_attributes={
           _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=1
       recv_ctx_ = (f32[2,2], u32[], token[]) recv(after_all),
           frontend_attributes={
-          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=2
+          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=2,
+          control-predecessors={data_cpy}
       c1 = u32[] constant(1)
       i_ = u32[] add(i, c1)
       ROOT result = (u32[], (f32[2,2], u32[], token[]),
@@ -1156,6 +1189,7 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
       ExecuteReplicated(std::move(module), inputs,
                         /*num_replicas=*/kNumPartitions,
                         /*run_hlo_passes=*/false, &device_assignment));
+
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[1]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[2]);
@@ -1186,10 +1220,10 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
       data = get-tuple-element(recv_done), index=0
       after_all = token[] after-all()
       send_ctx_ = (f32[2,2], u32[], token[]) send(data, after_all),
-          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}, 
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
           channel_id=1
       recv_ctx_ = (f32[2,2], u32[], token[]) recv(after_all),
-          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}, 
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
           channel_id=2
       c1 = u32[] constant(1)
       i_ = u32[] add(i, c1)

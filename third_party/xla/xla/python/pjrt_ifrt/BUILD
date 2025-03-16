@@ -454,6 +454,7 @@ xla_cc_test(
 #     srcs = ["pjrt_ifrt.bzl"],
 #     parse_tests = False,
 #     visibility = ["//visibility:private"],
+#     deps = ["//xla/tsl:package_groups_bzl"],
 # )
 #
 # bzl_library(

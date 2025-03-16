@@ -42,6 +42,7 @@ using ::testing::Values;
 // TODO: Add support and uncomment these models.
 const auto kSupportedOps =
                   Values(
+                    "rms_norm_composite.tflite",
                     "simple_add_op.tflite",
                     "simple_div_op.tflite",
                     "simple_mul_op.tflite",
@@ -73,6 +74,14 @@ const auto kSupportedOps =
                     "simple_gather_op.tflite",
                     "simple_mean_op.tflite",
                     "simple_split_op.tflite",
+                    "simple_average_poll_2d.tflite",
+                    "simple_conv_2d_op.tflite",
+                    "simple_depth_to_space_op.tflite",
+                    "simple_depthwise_conv_2d_op.tflite",
+                    "simple_hard_swish_op.tflite",
+                    "simple_leaky_relu_op.tflite",
+                    "simple_resize_bilinear_op.tflite",
+                    "simple_space_to_depth_op.tflite",
                     kFeedForwardModel,
                     kKeyEinsumModel,
                     kQueryEinsumModel,

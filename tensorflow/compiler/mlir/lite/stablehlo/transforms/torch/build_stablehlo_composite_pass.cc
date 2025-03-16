@@ -20,7 +20,9 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "json/json.h"
@@ -42,10 +44,12 @@ limitations under the License.
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
@@ -155,10 +159,10 @@ class BuildStableHLOCompositePass
     for (mlir::func::FuncOp& func_op : func_ops) {
       llvm::DenseMap<const mlir::Operation*, size_t> op_order_map =
           BuildOpOrderMap(func_op);
-      std::unordered_map<std::string, llvm::SmallVector<mlir::Operation*>>
+      llvm::SmallVector<llvm::SmallVector<mlir::Operation*>>
           boundary_output_ops_map = BuildBoundaryOutputOpsMap(func_op);
 
-      for (const auto& [unused, ops] : boundary_output_ops_map) {
+      for (const auto& ops : boundary_output_ops_map) {
         if (mlir::failed(BuildStableHLOComposite(ops, op_order_map))) {
           func_op.emitError() << "failed to build composite.";
           return signalPassFailure();
@@ -178,9 +182,57 @@ class BuildStableHLOCompositePass
       }
       op.erase();
     });
+
+    getOperation()->walk([&](mlir::stablehlo::CompositeOp composite_op) {
+      if (IsCompositeOpOutlined(composite_op)) {
+        // According to the design of torch API, each boundary has one and only
+        // one usage in the entire model, which corresponds to one unique
+        // composite op in module. If the composite op is marked as
+        // outlined, there should be a same composite op nested in another
+        // composite op, and this composite op should be unused and safe to
+        // erase.
+        EraseCompositeOp(composite_op);
+      }
+    });
   }
 
  private:
+  void MarkCompositeOpOutlined(mlir::stablehlo::CompositeOp composite_op) {
+    composite_op->setAttr("_outlined_to_be_erased",
+                          mlir::UnitAttr::get(composite_op.getContext()));
+  }
+
+  bool IsCompositeOpOutlined(mlir::stablehlo::CompositeOp composite_op) {
+    return composite_op->hasAttr("_outlined_to_be_erased");
+  }
+
+  void EraseCompositeOp(mlir::stablehlo::CompositeOp composite_op) {
+    // CompositeOps have side effects and are not eligible for CSE. This
+    // function replaces a CompositeOp with a semantically equivalent
+    // 'dummy_to_be_erased' CustomCallOp that *lacks* side effects. This allows
+    // the CSE pass to eliminate the dummy op and, transitively, any users of
+    // the original CompositeOp.
+    mlir::OpBuilder builder(&getContext());
+
+    builder.setInsertionPointAfter(composite_op);
+    auto dummy_op = builder.create<mlir::stablehlo::CustomCallOp>(
+        composite_op.getLoc(), composite_op.getResultTypes(),
+        composite_op.getOperands(),
+        llvm::SmallVector<NamedAttribute>{
+            builder.getNamedAttr("call_target_name",
+                                 builder.getStringAttr("dummy_to_be_erased")),
+            builder.getNamedAttr(
+                "has_side_effect",
+                builder.getIntegerAttr(builder.getI1Type(), 0)),
+        });
+
+    for (auto [old_result, new_result] :
+         llvm::zip(composite_op.getResults(), dummy_op.getResults())) {
+      old_result.replaceAllUsesWith(new_result);
+    }
+    composite_op.erase();
+  }
+
   llvm::DenseMap<const mlir::Operation*, size_t> BuildOpOrderMap(
       mlir::func::FuncOp func_op) const {
     llvm::DenseMap<const mlir::Operation*, size_t> op_order_map;
@@ -190,10 +242,14 @@ class BuildStableHLOCompositePass
     return op_order_map;
   }
 
-  std::unordered_map<std::string, llvm::SmallVector<mlir::Operation*>>
+  llvm::SmallVector<llvm::SmallVector<mlir::Operation*>>
   BuildBoundaryOutputOpsMap(mlir::func::FuncOp func_op) {
     std::unordered_map<std::string, llvm::SmallVector<mlir::Operation*>>
         boundary_output_ops;
+
+    llvm::SetVector<std::string, std::vector<std::string>,
+                    std::unordered_set<std::string>>
+        ordered_boundary_keys;
 
     for (auto op : func_op.getOps<mlir::stablehlo::CustomCallOp>()) {
       auto metadata_or = GetBoundaryMetadata(op);
@@ -206,13 +262,26 @@ class BuildStableHLOCompositePass
         continue;
       }
 
-      auto& output_ops = boundary_output_ops[metadata->boundary_key()];
+      std::string boundary_key = metadata->boundary_key();
+      auto& output_ops = boundary_output_ops[boundary_key];
       if (metadata->pos >= output_ops.size()) {
         output_ops.resize(metadata->pos + 1, nullptr);
       }
       output_ops[metadata->pos] = op.getOperation();
+
+      // Update the boundary order, which is determined by the order of the
+      // last output op of each boundary.
+      ordered_boundary_keys.remove(boundary_key);
+      ordered_boundary_keys.insert(boundary_key);
     }
-    return boundary_output_ops;
+
+    llvm::SmallVector<llvm::SmallVector<mlir::Operation*>>
+        ordered_boundary_output_ops;
+    for (const auto& boundary_key : ordered_boundary_keys) {
+      ordered_boundary_output_ops.push_back(
+          std::move(boundary_output_ops[boundary_key]));
+    }
+    return ordered_boundary_output_ops;
   }
 
   mlir::FailureOr<std::unique_ptr<BoundaryMetadata>> GetBoundaryMetadata(
@@ -325,7 +394,7 @@ class BuildStableHLOCompositePass
 
   mlir::LogicalResult BuildStableHLOComposite(
       const llvm::SmallVector<mlir::Operation*>& output_ops,
-      const llvm::DenseMap<const mlir::Operation*, size_t>& op_order_map) {
+      llvm::DenseMap<const mlir::Operation*, size_t>& op_order_map) {
     if (output_ops.empty()) {
       return mlir::success();
     }
@@ -377,6 +446,10 @@ class BuildStableHLOCompositePass
             composite_op->getResult(composite_result_i++));
       }
     }
+
+    // Composite op inherits the order of the first output op. The output ops
+    // are not going to be used after this anyway so the duplication is fine.
+    op_order_map[composite_op] = op_order_map[first_output_op];
 
     if (!mlir::sortTopologically(composite_op->getBlock())) {
       composite_op->emitError()
@@ -431,7 +504,7 @@ class BuildStableHLOCompositePass
         if (def_op == nullptr) {
           // Terminal condition: global function arg
           arg_pos_setvec.insert({value, std::numeric_limits<int64_t>::max()});
-        } else if (llvm::isa<mlir::stablehlo::ConstantOp>(def_op)) {
+        } else if (def_op->hasTrait<OpTrait::ConstantLike>()) {
           // Terminal condition: constant
           impl_ops_setvec.insert(def_op);
         } else {
@@ -506,6 +579,11 @@ class BuildStableHLOCompositePass
     for (mlir::Operation* original_op : impl_ops) {
       mlir::Operation* cloned_op = builder.clone(*original_op, mapping);
       mapping.map(original_op, cloned_op);
+      if (auto original_composite_op =
+              mlir::dyn_cast<mlir::stablehlo::CompositeOp>(original_op);
+          original_composite_op != nullptr) {
+        MarkCompositeOpOutlined(original_composite_op);
+      }
     }
 
     llvm::SmallVector<mlir::Value> results;
@@ -549,6 +627,8 @@ class BuildStableHLOCompositePass
     return composite_op;
   }
 };
+
+static PassRegistration<BuildStableHLOCompositePass> pass;
 
 }  // namespace
 }  // namespace odml

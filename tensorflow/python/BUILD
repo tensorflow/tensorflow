@@ -172,8 +172,6 @@ py_strict_library(
         "//tensorflow/python/dlpack",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
-        "//tensorflow/python/eager:profiler",
-        "//tensorflow/python/eager:profiler_client",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework:_pywrap_python_op_gen",
         "//tensorflow/python/framework:_test_metrics_util",
@@ -674,6 +672,7 @@ pywrap_tensorflow_macro(
     exports_filter = [
         "@pybind11",
         "@local_config_python//:python_headers",
+        "@com_googlesource_code_re2//:__subpackages__",
     ] + if_windows([
         "//:__subpackages__",
         "@com_google_absl//:__subpackages__",

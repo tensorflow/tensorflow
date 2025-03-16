@@ -15,28 +15,51 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 
 #if LITERT_HAS_OPENGL_SUPPORT
-#include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
-
 #include <memory>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
+#include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
+
+#if LITERT_HAS_AHWB_SUPPORT
+#include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"
+#endif  // LITERT_HAS_AHWB_SUPPORT
 
 namespace litert {
+namespace internal {
 namespace {
 
 TEST(Buffer, GlBufferAlloc) {
-  if (!internal::GlBuffer::IsSupported()) {
+  if (!GlBuffer::IsSupported()) {
     GTEST_SKIP() << "OpenGL buffers are not supported on this platform";
   }
   std::unique_ptr<tflite::gpu::gl::EglEnvironment> env;
   ASSERT_TRUE(tflite::gpu::gl::EglEnvironment::NewEglEnvironment(&env).ok());
 
-  auto buffer = internal::GlBuffer::Alloc(4 * sizeof(float));
+  auto buffer = GlBuffer::Alloc(4 * sizeof(float));
   ASSERT_TRUE(buffer);
 }
 
+#if LITERT_HAS_AHWB_SUPPORT
+TEST(Buffer, GlBufferAllocFromAhwb) {
+  if (!GlBuffer::IsSupported()) {
+    GTEST_SKIP() << "OpenGL buffers are not supported on this platform";
+  }
+  // TODO(gcarranza): Incorporate this into LiteRT environment.
+  std::unique_ptr<tflite::gpu::gl::EglEnvironment> env;
+  ASSERT_TRUE(tflite::gpu::gl::EglEnvironment::NewEglEnvironment(&env).ok());
+
+  LITERT_ASSERT_OK_AND_ASSIGN(AhwbBuffer ahwb_buffer,
+                              AhwbBuffer::Alloc(4 * sizeof(float)));
+  LITERT_ASSERT_OK_AND_ASSIGN(GlBuffer gl_buffer,
+                              GlBuffer::AllocFromAhwbBuffer(ahwb_buffer));
+  // TODO(gcarranza): Add test to verify buffer content is the same.
+}
+#endif  // LITERT_HAS_AHWB_SUPPORT
+
 }  // namespace
+}  // namespace internal
 }  // namespace litert
 
 #endif  // LITERT_HAS_OPENGL_SUPPORT

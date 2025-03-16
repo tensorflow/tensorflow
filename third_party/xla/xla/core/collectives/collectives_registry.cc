@@ -31,8 +31,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/service/platform_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -97,6 +97,26 @@ absl::StatusOr<Collectives*> CollectivesRegistry::Default(
   }
 
   return registry.platform_collectives[canonical_platform_name].begin()->second;
+}
+
+absl::StatusOr<Collectives*> CollectivesRegistry::Get(
+    absl::string_view platform_name, absl::string_view implementation_name) {
+  TF_ASSIGN_OR_RETURN(std::string canonical_platform_name,
+                      PlatformUtil::CanonicalPlatformName(platform_name));
+
+  auto& registry = GetCollectivesRegistry();
+  absl::MutexLock lock(&registry.mu);
+
+  for (const auto& registration : registry.collectives) {
+    if (registration.platform_name == canonical_platform_name &&
+        registration.name == implementation_name)
+      return registration.collectives.get();
+  }
+
+  return Internal(
+      "No collectives registered for platform: %s (canonical name: %s) and "
+      "implementation: %s",
+      platform_name, canonical_platform_name, implementation_name);
 }
 
 }  // namespace xla

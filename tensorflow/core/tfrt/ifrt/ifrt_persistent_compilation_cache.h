@@ -47,7 +47,7 @@ class IfrtPersistentCompilationCache {
   virtual absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>>
   LookupLoadedExecutableOrCreate(
       std::unique_ptr<xla::ifrt::HloProgram> hlo_program,
-      tsl::RCReference<xla::ifrt::DeviceList> device_list,
+      xla::ifrt::DeviceListRef device_list,
       const xla::CompileOptions& xla_compile_options,
       const std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>&
           loaded_host_callbacks,

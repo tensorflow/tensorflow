@@ -256,16 +256,17 @@ LiteRtStatus LiteRtDispatchUnregisterTensorBuffer(
 
 LiteRtStatus LiteRtDispatchInvocationContextCreate(
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType exec_type, const void* exec_bytecode_ptr,
-    size_t exec_bytecode_size, const char* function_name, int num_inputs,
-    int num_outputs, LiteRtDispatchInvocationContext* invocation_context) {
-  if (!device_context || !exec_bytecode_ptr || !invocation_context) {
+    LiteRtDispatchExecutableType exec_type,
+    const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
+    int num_inputs, int num_outputs,
+    LiteRtDispatchInvocationContext* invocation_context) {
+  if (!device_context || !exec_bytecode_buffer || !invocation_context) {
     LITERT_LOG(LITERT_ERROR, "Null input");
     return kLiteRtStatusErrorInvalidArgument;
   }
   INVOKE_FUNC(invocation_context_create, device_context, exec_type,
-              exec_bytecode_ptr, exec_bytecode_size, function_name, num_inputs,
-              num_outputs, invocation_context);
+              exec_bytecode_buffer, function_name, num_inputs, num_outputs,
+              invocation_context);
 }
 
 LiteRtStatus LiteRtDispatchInvocationContextDestroy(
@@ -496,9 +497,9 @@ LiteRtStatus LiteRtDispatchConnectGraphOutput(LiteRtDispatchGraph graph,
 
 LiteRtStatus LiteRtDispatchLoadExecutable(
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType type, const void* bytecode,
-    size_t bytecode_size, LiteRtDispatchExecutableHandle* exec_handle) {
-  if (!device_context || !bytecode || !exec_handle) {
+    LiteRtDispatchExecutableType type, const LiteRtMemBuffer* bytecode_buffer,
+    LiteRtDispatchExecutableHandle* exec_handle) {
+  if (!device_context || !bytecode_buffer || !exec_handle) {
     LITERT_LOG(LITERT_ERROR, "Null input");
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -510,8 +511,8 @@ LiteRtStatus LiteRtDispatchLoadExecutable(
     LITERT_LOG(LITERT_ERROR, "load_executable not found");
     return kLiteRtStatusErrorRuntimeFailure;
   }
-  INVOKE_GRAPH_FUNC(load_executable, device_context, type, bytecode,
-                    bytecode_size, exec_handle);
+  INVOKE_GRAPH_FUNC(load_executable, device_context, type, bytecode_buffer,
+                    exec_handle);
 }
 
 LiteRtStatus LiteRtDispatchUnloadExecutable(

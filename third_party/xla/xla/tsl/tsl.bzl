@@ -33,14 +33,21 @@ load(
     "if_tensorrt",
 )
 load(
-    "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
+    "@local_xla//third_party/py/rules_pywrap:pywrap.bzl",
     "use_pywrap_rules",
+)
+load(
+    "//xla/tsl:package_groups.bzl",
+    "DEFAULT_LOAD_VISIBILITY",
+    "LEGACY_TSL_TSL_USERS",
 )
 
 # Internally this loads a macro, but in OSS this is a function
 # buildifier: disable=out-of-order-load
 def register_extension_info(**_kwargs):
     pass
+
+visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_TSL_TSL_USERS)
 
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 

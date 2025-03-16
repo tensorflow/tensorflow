@@ -1,7 +1,9 @@
-// Copyright (c) Qualcomm Innovation Center, Inc.
-// All Rights Reserved.
+// Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/mean_op_builder.h"
+
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/utils/log.h"
 
 namespace qnn {
 
@@ -13,7 +15,9 @@ std::vector<OpWrapper> BuildMeanOp(TensorPool& tensor_pool,
 
   TensorWrapper& axis_tensor = inputs[1];
   if (!axis_tensor.IsTensorStatic() || axis_tensor.GetRank() != 1) {
-    // TODO: error log
+    QNN_LOG_ERROR(
+        "The axis tensor is not static, or the rank of axis tensor is not "
+        "equal to 1.");
     return res;
   }
 

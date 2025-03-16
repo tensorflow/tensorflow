@@ -17,17 +17,24 @@ limitations under the License.
 
 #include <atomic>
 #include <memory>
+#include <string>
+#include <utility>
 #include <variant>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/demangle.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace tensorflow {
@@ -153,6 +160,27 @@ void ResourceMgr::Clear() {
   }
 }
 
+void ResourceMgr::Finalize() {
+  const mutex_lock l(mu_);
+  if (finalized_) return;
+  for (const auto& [name, this_container] : containers_) {
+    absl::erase_if(*this_container,
+                   [&](std::pair<const Key, ResourceAndName>& entry) {
+                     ResourceAndName& resource_and_name = entry.second;
+                     const core::RefCountPtr<ResourceBase> resource =
+                         resource_and_name.GetResource();
+                     if (resource == nullptr) {
+                       return true;
+                     }
+
+                     resource->Finalize();
+
+                     return false;
+                   });
+  }
+  finalized_ = true;
+}
+
 string ResourceMgr::DebugString() const {
   mutex_lock l(mu_);
   struct Line {
@@ -187,6 +215,11 @@ string ResourceMgr::DebugString() const {
 absl::Status ResourceMgr::DoCreate(const string& container_name, TypeIndex type,
                                    const string& name, ResourceBase* resource,
                                    bool owns_resource) {
+  if (finalized_) {
+    return absl::FailedPreconditionError(
+        "ResourceMgr is finalized. Cannot create a new resource");
+  }
+
   Container* container = [&]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     Container** ptr = &containers_[container_name];
     if (*ptr == nullptr) {

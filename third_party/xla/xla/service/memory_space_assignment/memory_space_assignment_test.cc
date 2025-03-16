@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
+#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_buffer.h"
@@ -398,6 +399,55 @@ ENTRY entry {
   ASSERT_NE(p0, nullptr);
   EXPECT_THAT(add0->operand(0),
               op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, p0));
+}
+
+TEST_F(MemorySpaceAssignmentTest, SyncCopyReplacementWithControlPredecessor) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  negate0 = f32[2,3]{1,0} negate(p1)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(negate2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[2,3]{1,0} negate(negate5)
+  negate7 = f32[2,3]{1,0} negate(negate6)
+  p0_copy = f32[2,3]{1,0} copy(p0)
+  negate8 = f32[2,3]{1,0} negate(negate7)
+  negate9 = f32[2,3]{1,0} negate(negate8), control-predecessors={p0_copy}
+  ROOT add0 = f32[2,3]{1,0} add(p0_copy, negate9)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_sync_copy_replacement = true;
+  AssignMemorySpace(module.get(), options);
+  HloInstruction* add0 = FindInstruction(module.get(), "add0");
+  ASSERT_NE(add0, nullptr);
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  ASSERT_NE(p0, nullptr);
+  EXPECT_THAT(add0->operand(0),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, p0));
+  HloInstruction* negate9 = FindInstruction(module.get(), "negate9");
+  ASSERT_NE(negate9, nullptr);
+  const HloInstruction* copy_done = add0->operand(0);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  auto find_index = [&](const HloInstruction* instruction) {
+    return std::distance(sequence.instructions().begin(),
+                         std::find(sequence.instructions().begin(),
+                                   sequence.instructions().end(), instruction));
+  };
+  int64_t copy_done_time = find_index(copy_done);
+  int64_t negate9_time = find_index(negate9);
+  // The negate9 instruction should be scheduled after the copy done, because of
+  // the control dependency constraint.
+  EXPECT_GT(negate9_time, copy_done_time);
 }
 
 // This is a case where we p0_copy uses and and p0 uses after copy(p0) are not
@@ -7998,19 +8048,20 @@ ENTRY entry {
   EXPECT_TRUE(repacker_ran);
 }
 
-TEST_F(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
-  // This test is designed to test UpdateReservedScopedVmemSize() in MSA, which
-  // will invoke reserved_scoped_memory_fn to update scoped allocation
-  // size. UpdateReservedScopedVmemSize() should iterate through all scheduled
-  // instruction and check if either their operands or outputs has been assigned
-  // in alternate memory. If so, corresponding operand/output will be passed to
-  // reserved_scoped_memory_fn. We isolate UpdateReservedScopedVmemSize() by
-  // constructing a dummy reserved_scoped_memory_fn that return +1 when operand
-  // set is empty, and return +2 when output set is empty, because if either set
-  // of an instruction is empty, it is gureented that some scoped allocation is
-  // required. We use +1/+2 to distinguish the correctness of each set.
-  // Therefore, after MSA pass, for each instruction, there are a few possible
-  // outcomes:
+TEST_F(MemorySpaceAssignmentTest,
+       ReduceReservedScopedAllocationIfOperandInAlternateMemory) {
+  // This test is designed to test UpdateReservedScopedAllocationSize() in MSA,
+  // which will invoke reserved_scoped_memory_fn to update scoped allocation
+  // size. UpdateReservedScopedAllocationSize() should iterate through all
+  // scheduled instruction and check if either their operands or outputs has
+  // been assigned in alternate memory. If so, corresponding operand/output will
+  // be passed to reserved_scoped_memory_fn. We isolate
+  // UpdateReservedScopedAllocationSize() by constructing a dummy
+  // reserved_scoped_memory_fn that return +1 when operand set is empty, and
+  // return +2 when output set is empty, because if either set of an instruction
+  // is empty, it is gureented that some scoped allocation is required. We use
+  // +1/+2 to distinguish the correctness of each set. Therefore, after MSA
+  // pass, for each instruction, there are a few possible outcomes:
   // 1. If both operand set and output set are not empty, scoped allocation
   //    size should be 0, since reserved_scoped_memory_fn will return 0.
   // 2. If only operand set is empty, scoped allocation size should be 2, since
@@ -8018,11 +8069,11 @@ TEST_F(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
   // 3. If only output set is empty, scoped allocation size should be 1, since
   //    reserved_scoped_memory_fn will return 1.
   // 4. If both sets are empty, scoped allocation size should be 3.
-  // Initially, UpdateReservedScopedVmemSize() will only be invoked after each
-  // MSA repacking, we use a similar test HLO module as used in "Repack" test.
-  // This test is capable of testing if UpdateReservedScopedVmemSize() can
-  // correctly pass operand/output set of all instructions to
-  // reserved_scoped_memory_fn.
+  // Initially, UpdateReservedScopedAllocationSize() will only be invoked after
+  // each MSA repacking, we use a similar test HLO module as used in "Repack"
+  // test. This test is capable of testing if
+  // UpdateReservedScopedAllocationSize() can correctly pass operand/output set
+  // of all instructions to reserved_scoped_memory_fn.
   absl::string_view hlo_string = R"(
   HloModule bug, is_scheduled=true
 
@@ -8059,11 +8110,13 @@ TEST_F(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
         int64_t scoped_memory_size = 0;
         if (operands_in_alternate_memory.empty()) {
           scoped_memory_size += 1;
-          LOG(INFO) << instruction->name() << " has no operand in vmem";
+          LOG(INFO) << instruction->name()
+                    << " has no operand in alternate memory";
         }
         if (outputs_in_alternate_memory.empty()) {
           scoped_memory_size += 2;
-          LOG(INFO) << instruction->name() << " has no output in vmem";
+          LOG(INFO) << instruction->name()
+                    << " has no output in alternate memory";
         }
         return scoped_memory_size;
       };
@@ -8196,7 +8249,7 @@ TEST_F(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
 }
 
 TEST_F(MemorySpaceAssignmentTest,
-       ReduceReservedScopedVmemUpdatesPeakMemoryUsage) {
+       ReduceReservedScopedAllocationUpdatesPeakMemoryUsage) {
   // This test is designed to test that the peak_memory_usage_ is updated
   // correctly after scoped memory allocation is updated. The test HLO module
   // has two HLO values: a and b. The size of a is 64, and the size of b is 128.
@@ -9139,6 +9192,38 @@ TEST_F(MemorySpaceAssignmentTest, HoistCopyStart) {
       break;
     }
   }
+}
+
+// This test verifies that MSA's internal map of instructions and their operands
+// in alternate memory is correct in the presenece of a cross-program prefetch.
+// Internally, at the end of MSA, it validates that it's internal map is
+// correct. So, as long as this test allocates a cross-program-prefetch in
+// alternate memory and doesn't crash, it has passed.
+TEST_F(MemorySpaceAssignmentTest,
+       OperandsInAlternateMemoryWithCrossProgramPrefetch) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true
+
+  ENTRY cross_program_prefetch {
+    p0 = (f32[8,8]{1,0}, f32[8,2]{1,0}) parameter(0)
+    get-tuple-element.0 = f32[8,8]{1,0} get-tuple-element(p0), index=0
+    add.0 = f32[8,8]{1,0} add(get-tuple-element.0, get-tuple-element.0)
+    get-tuple-element.1 = f32[8,2]{1,0} get-tuple-element(p0), index=1
+    dot.0 = f32[8,2]{1,0} dot(add.0, get-tuple-element.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    negate.1 = f32[8,2]{1,0} negate(dot.0)
+    negate.2 = f32[8,2]{1,0} negate(negate.1)
+    ROOT dot.1 = f32[2,2]{1,0} dot(negate.2, get-tuple-element.1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_cross_program_prefetch = true;
+  AssignMemorySpace(module.get(), options);
+
+  // Ensure that get-tuple-element.1 is chosen for cross-program prefetch.
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  ASSERT_EQ(cross_program_prefetches.size(), 1);
 }
 
 TEST_F(MemorySpaceAssignmentTest, WindowPrefetch) {
@@ -11323,14 +11408,22 @@ ENTRY main {
   properties[HloCostAnalysis::kBytesAccessedKey] = kBytesPerSecond;
   HloCostAnalysis hlo_cost_analysis(HloCostAnalysis::DefaultShapeSize,
                                     properties);
+  HloCostAnalysisWithAcceptState hlo_cost_analysis_wrapper(hlo_cost_analysis);
   CostAnalysisOptions cost_analysis_options;
   cost_analysis_options.default_mem_bandwidth_bytes_per_second =
       kBytesPerSecond;
-  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module,
-                               cost_analysis_options));
+  OpCostManager op_cost_manager(
+      OpCostManager::Options{
+          /*enable_cache=*/false,
+          /*enable_analysis_logging=*/false,
+      },
+      OpCostManager::CalculationNode::CreateLeaf(
+          "HloCostAnalysis",
+          CreateHloCostAnalysisCalculator(hlo_cost_analysis_wrapper),
+          /*enable_cache=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
+                          FakeCostAnalysis::Create(op_cost_manager, *module,
+                                                   cost_analysis_options));
   cost_analysis->SetOverrideForGetInstructionElapsed(
       [](const HloInstruction& instruction) -> float { return 10.0; });
   cost_analysis->SetOverrideForGetAsyncCopyElapsed(

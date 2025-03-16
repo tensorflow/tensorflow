@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_LEGALIZE_TF_TO_HLO_H_
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_LEGALIZE_TF_TO_HLO_H_
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 
 namespace tensorflow {

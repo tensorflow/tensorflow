@@ -12,24 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
 
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_HLO_MODULE_MAP_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_HLO_MODULE_MAP_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -45,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_module_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -63,6 +51,7 @@ class HloInstructionInterface {
   virtual size_t flops() const = 0;
   virtual size_t bytes_accessed() const = 0;
   virtual std::string_view op_full_name() const = 0;
+  virtual std::string_view TfOpName() const = 0;
   virtual std::string source_info() const = 0;
   virtual bool isRoot() const = 0;
   virtual bool IsFusion() const = 0;
@@ -107,6 +96,7 @@ class HloInstructionWrapper : public HloInstructionInterface {
   size_t bytes_accessed() const override { return bytes_accessed_; }
 
   std::string_view op_full_name() const override { return op_full_name_; }
+  std::string_view TfOpName() const override { return tf_op_name_; }
   std::string source_info() const override;
 
   bool isRoot() const override { return instr_->IsRoot(); }
@@ -141,6 +131,7 @@ class HloInstructionWrapper : public HloInstructionInterface {
   const xla::HloInstruction* instr_;
   std::vector<const HloInstructionWrapper*> fused_children_;
   std::string op_full_name_;
+  std::string tf_op_name_;
   size_t flops_ = 0;
   size_t bytes_accessed_ = 0;
   std::string category_;

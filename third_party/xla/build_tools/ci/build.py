@@ -13,27 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""XLA build script for use in CI.
+r"""XLA build script for use in CI.
 
-This script is used for the Kokoro builds of XLA, but aims to be as agnostic to
-the specifics of the VM as possible. The only Kokoro-specific things that are
-assumed are:
-  * that `KOKORO_JOB_NAME` is set, which is used to decide what build to run.
-  * and all code ends up in `$PWD/github/$REPO_NAME`.
-The script also assumes that the working directory never changes modulo `cd`ing
-into the repo that should be built (mostly `github/xla`, but also JAX and TF).
+This build script aims to be completely agnostic to the specifics of the VM, the
+exceptions are uses of `KOKORO_ARTIFACTS_DIR` and `GITHUB_WORKSPACE` to know
+where JAX or TensorFlow lives depending on which build is being executed.
+
+To update the goldens associated with this file, run:
+  ```PYTHONDONTWRITEBYTECODE=1 python3 build.py \
+      --dump_commands > golden_commands.txt```
 """
+import argparse
 import dataclasses
 import enum
 import logging
 import os
 import subprocess
 import sys
-from typing import Any, Dict, List, Tuple
+from typing import Any, ClassVar, Dict, List, Tuple
 
 
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
+    color="yes",
     test_output="errors",
     verbose_failures=True,
     keep_going=True,
@@ -49,6 +51,12 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//xla/...",
     "//build_tools/...",
     "@local_tsl//tsl/...",
+)
+_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
+    "//xla/tools:run_hlo_module",
+)
+_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
+    "//xla/tools/multihost_hlo_runner:hlo_runner_main_gpu",
 )
 _KOKORO_ARTIFACTS_DIR = os.environ.get(
     "KOKORO_ARTIFACTS_DIR", "$KOKORO_ARTIFACTS_DIR"
@@ -87,24 +95,43 @@ def _write_to_sponge_config(key, value) -> None:
 
 
 class BuildType(enum.Enum):
-  """Enum representing all types of builds."""
-  CPU_X86_SELF_HOSTED = enum.auto()
-  CPU_ARM64_SELF_HOSTED = enum.auto()
-  GPU_T4_SELF_HOSTED = enum.auto()
+  """Enum representing all types of builds.
 
-  MACOS_CPU_X86 = enum.auto()
-  MACOS_CPU_ARM64 = enum.auto()
+  Should be named as `REPO,OS,HOST_TYPE,BACKEND,GPU_TYPE,CI_TYPE`.
+  """
+  XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
 
-  JAX_CPU_SELF_HOSTED = enum.auto()
-  JAX_X86_GPU_T4_SELF_HOSTED = enum.auto()
+  # Presubmit builds for regression testing.
+  XLA_LINUX_X86_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_ARM64_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_T4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
 
-  TENSORFLOW_CPU_SELF_HOSTED = enum.auto()
-  TENSORFLOW_X86_GPU_T4_SELF_HOSTED = enum.auto()
+  XLA_MACOS_X86_CPU_KOKORO = enum.auto()
+  XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
+
+  JAX_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+
+  TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+
+  @classmethod
+  def from_str(cls, s):
+    try:
+      return cls[s.replace(" ", "_").upper()]
+    except KeyError:
+      # Sloppy looking exception handling, but argparse will catch ValueError
+      # and give a pleasant error message. KeyError would not work here.
+      raise ValueError  # pylint: disable=raise-missing-from
 
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class Build:
   """Class representing a build of XLA."""
+  _builds: ClassVar[Dict[BuildType, "Build"]] = {}
 
   type_: BuildType
   repo: str
@@ -116,6 +143,16 @@ class Build:
   test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   extra_setup_commands: Tuple[List[str], ...] = ()
+  subcommand: str = "test"
+
+  def __post_init__(self):
+    # pylint: disable=protected-access
+    assert self.type_ not in self.__class__._builds
+    self.__class__._builds[self.type_] = self
+
+  @classmethod
+  def all_builds(cls):
+    return cls._builds
 
   def bazel_command(
       self, subcommand: str = "test", extra_options: Tuple[str, ...] = ()
@@ -159,10 +196,11 @@ class Build:
     # problems in practice.
     # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
     # MacOS VM.
-    if (
-        self.type_ != BuildType.MACOS_CPU_X86
-        and self.type_ != BuildType.MACOS_CPU_ARM64
-    ):
+    macos_build = (
+        self.type_ == BuildType.XLA_MACOS_X86_CPU_KOKORO
+        or self.type_ == BuildType.XLA_MACOS_ARM64_CPU_KOKORO
+    )
+    if not macos_build:
       cmds.append(
           retry(
               self.bazel_command(
@@ -170,7 +208,7 @@ class Build:
               )
           )
       )
-    cmds.append(self.bazel_command())
+    cmds.append(self.bazel_command(subcommand=self.subcommand))
     cmds.append(["bazel", "analyze-profile", "profile.json.gz"])
 
     return cmds
@@ -221,8 +259,8 @@ cpu_x86_tag_filter = (
     "-requires-gpu-nvidia",
     "-requires-gpu-amd",
 )
-_CPU_X86_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.CPU_X86_SELF_HOSTED,
+_XLA_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
@@ -238,8 +276,8 @@ cpu_arm_tag_filter = (
     "-requires-gpu-amd",
     "-not_run:arm",
 )
-_CPU_ARM64_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.CPU_ARM64_SELF_HOSTED,
+_XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
@@ -248,10 +286,64 @@ _CPU_ARM64_SELF_HOSTED_BUILD = Build(
     test_tag_filters=cpu_arm_tag_filter,
 )
 
-_GPU_T4_SELF_HOSTED_BUILD = nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.GPU_T4_SELF_HOSTED,
+_XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD = (
+    nvidia_gpu_build_with_compute_capability(
+        type_=BuildType.XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+        configs=("warnings", "rbe_linux_cuda_nvcc"),
+        compute_capability=75,
+    )
+)
+
+_XLA_LINUX_X86_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_X86_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "nonccl", "rbe_linux_cpu"),
+    target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    build_tag_filters=cpu_x86_tag_filter,
+    test_tag_filters=cpu_x86_tag_filter,
+    options=_DEFAULT_BAZEL_OPTIONS,
+    subcommand="build",
+)
+
+_XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "nonccl", "rbe_linux_cpu"),
+    target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    build_tag_filters=cpu_x86_tag_filter,
+    test_tag_filters=cpu_x86_tag_filter,
+    options=_DEFAULT_BAZEL_OPTIONS,
+    subcommand="build",
+)
+
+_XLA_LINUX_ARM64_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_ARM64_CPU_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
+    target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": False},
+    build_tag_filters=cpu_arm_tag_filter,
+    test_tag_filters=cpu_arm_tag_filter,
+    subcommand="build",
+)
+
+_XLA_LINUX_X86_GPU_T4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_T4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     configs=("warnings", "rbe_linux_cuda_nvcc"),
-    compute_capability=75,
+    test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
+    + _tag_filters_for_compute_capability(compute_capability=75),
+    build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        "repo_env": f"TF_CUDA_COMPUTE_CAPABILITIES={7.5}",
+        # Use User Mode and Kernel Mode Drivers pre-installed on the system.
+        "@cuda_driver//:enable_forward_compatibility": "false",
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    extra_setup_commands=(["nvidia-smi"],),
+    subcommand="build",
 )
 
 macos_tag_filter = (
@@ -263,8 +355,8 @@ macos_tag_filter = (
     "-requires-gpu-amd",
 )
 
-_MACOS_X86_BUILD = Build(
-    type_=BuildType.MACOS_CPU_X86,
+_XLA_MACOS_X86_CPU_KOKORO_BUILD = Build(
+    type_=BuildType.XLA_MACOS_X86_CPU_KOKORO,
     repo="openxla/xla",
     configs=("nonccl",),
     target_patterns=(
@@ -297,8 +389,8 @@ _MACOS_X86_BUILD = Build(
     ),
 )
 
-_MACOS_ARM64_BUILD = Build(
-    type_=BuildType.MACOS_CPU_ARM64,
+_XLA_MACOS_ARM64_CPU_KOKORO_BUILD = Build(
+    type_=BuildType.XLA_MACOS_ARM64_CPU_KOKORO,
     repo="openxla/xla",
     configs=("nonccl",),
     target_patterns=(
@@ -324,8 +416,8 @@ _MACOS_ARM64_BUILD = Build(
     ),
 )
 
-_JAX_CPU_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.JAX_CPU_SELF_HOSTED,
+_JAX_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.JAX_LINUX_X86_CPU_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_linux_x86_64",),
     target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
@@ -340,8 +432,8 @@ _JAX_CPU_SELF_HOSTED_BUILD = Build(
     ),
 )
 
-_JAX_GPU_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.JAX_X86_GPU_T4_SELF_HOSTED,
+_JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_linux_x86_64_cuda",),
     target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
@@ -377,8 +469,8 @@ tensorflow_gpu_tag_filters = tensorflow_tag_filters + (
     "+gpu",
 )
 
-_TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.TENSORFLOW_CPU_SELF_HOSTED,
+_TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS,
     repo="tensorflow/tensorflow",
     configs=(
         "release_cpu_linux",
@@ -389,6 +481,7 @@ _TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
         "-//tensorflow/compiler/tf2tensorrt/...",
         "//tensorflow/python/...",
         "-//tensorflow/python/distribute/...",
+        "-//tensorflow/python/kernel_tests/...",
         "-//tensorflow/python/compiler/tensorrt/...",
     ),
     build_tag_filters=tensorflow_cpu_tag_filters,
@@ -399,11 +492,12 @@ _TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
         override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         profile="profile.json.gz",
         test_lang_filters="cc,py",
+        color="yes",
     ),
 )
 
-_TENSORFLOW_GPU_SELF_HOSTED_BUILD = Build(
-    type_=BuildType.TENSORFLOW_X86_GPU_T4_SELF_HOSTED,
+_TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS_BUILD = Build(
+    type_=BuildType.TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     repo="tensorflow/tensorflow",
     configs=(
         "release_gpu_linux",
@@ -414,6 +508,7 @@ _TENSORFLOW_GPU_SELF_HOSTED_BUILD = Build(
         "-//tensorflow/compiler/tf2tensorrt/...",
         "//tensorflow/python/...",
         "-//tensorflow/python/distribute/...",
+        "-//tensorflow/python/kernel_tests/...",
         "-//tensorflow/python/compiler/tensorrt/...",
     ),
     build_tag_filters=tensorflow_gpu_tag_filters,
@@ -424,48 +519,50 @@ _TENSORFLOW_GPU_SELF_HOSTED_BUILD = Build(
         override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         profile="profile.json.gz",
         test_lang_filters="cc,py",
+        color="yes",
     ),
 )
-
-_KOKORO_JOB_NAME_TO_BUILD_MAP = {
-    "tensorflow/xla/macos/github_continuous/cpu_py39_full": _MACOS_X86_BUILD,
-    "tensorflow/xla/macos/cpu/cpu_py39_full": _MACOS_ARM64_BUILD,
-    "xla-linux-x86-cpu": _CPU_X86_SELF_HOSTED_BUILD,
-    "xla-linux-arm64-cpu": _CPU_ARM64_SELF_HOSTED_BUILD,
-    "xla-linux-x86-gpu-t4": _GPU_T4_SELF_HOSTED_BUILD,
-    "jax-linux-x86-cpu": _JAX_CPU_SELF_HOSTED_BUILD,
-    "jax-linux-x86-gpu-t4": _JAX_GPU_SELF_HOSTED_BUILD,
-    "tensorflow-linux-x86-cpu": _TENSORFLOW_CPU_SELF_HOSTED_BUILD,
-    "tensorflow-linux-x86-gpu-t4": _TENSORFLOW_GPU_SELF_HOSTED_BUILD,
-}
 
 
 def dump_all_build_commands():
   """Used to generate what commands are run for each build."""
   # Awkward workaround b/c Build instances are not hashable
-  type_to_build = {b.type_: b for b in _KOKORO_JOB_NAME_TO_BUILD_MAP.values()}
-  for t in sorted(type_to_build.keys(), key=str):
-    build = type_to_build[t]
+  for build in sorted(Build.all_builds().values(), key=lambda b: str(b.type_)):
     sys.stdout.write(f"# BEGIN {build.type_}\n")
     for cmd in build.commands():
       sys.stdout.write(" ".join(cmd) + "\n")
     sys.stdout.write(f"# END {build.type_}\n")
 
 
+def _parse_args():
+  """Defines flags and parses args."""
+  parser = argparse.ArgumentParser(allow_abbrev=False)
+  group = parser.add_mutually_exclusive_group(required=True)
+  group.add_argument(
+      "--build",
+      type=BuildType.from_str,
+      choices=list(BuildType),
+  )
+  group.add_argument(
+      "--dump_commands",
+      action="store_true",
+  )
+
+  return parser.parse_args()
+
+
 def main():
   logging.basicConfig()
   logging.getLogger().setLevel(logging.INFO)
-  kokoro_job_name = os.getenv("KOKORO_JOB_NAME")
 
-  if kokoro_job_name == "GOLDENS":  # HACK!!
+  args = _parse_args()
+
+  if args.dump_commands:
     dump_all_build_commands()
     return
-
-  build = _KOKORO_JOB_NAME_TO_BUILD_MAP[kokoro_job_name]
-  logging.info("build.type_: %s", build.type_)
-  logging.info("build.commands(): %s", build.commands())
-  for cmd in build.commands():
-    sh(cmd)
+  else:
+    for cmd in Build.all_builds()[args.build].commands():
+      sh(cmd)
 
 if __name__ == "__main__":
   main()

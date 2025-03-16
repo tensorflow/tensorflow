@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/map_util.h"
 #include "xla/service/compile_time_cap.h"
 #include "xla/service/while_util.h"
@@ -380,6 +381,9 @@ absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
     // instructions that have the same channel ids).
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module).status());
+    // Simplify while loops after narrowing / widening.
+    TupleSimplifier tuple_simplifier;
+    TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   }
 
   if (changed) {

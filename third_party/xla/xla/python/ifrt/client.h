@@ -153,7 +153,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // device.
   virtual absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
       absl::Span<tsl::RCReference<Array>> arrays,
-      std::optional<tsl::RCReference<DeviceList>> devices,
+      std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) = 0;
 
   // Remaps shards across input `Array`s to create new `Array`s based on `plan`.
@@ -237,7 +237,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       int local_hardware_id) const = 0;
 
   // Creates a device list from the given list of devices.
-  virtual tsl::RCReference<DeviceList> MakeDeviceList(
+  virtual DeviceListRef MakeDeviceList(
       absl::Span<Device* const> devices) const = 0;
 
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
@@ -246,7 +246,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
 
   // Returns a topology that covers the provided devices.
   virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
-      const tsl::RCReference<DeviceList>& devices) const = 0;
+      const DeviceListRef& devices) const = 0;
 
   // Returns the default layout on `device` with `memory_kind` for a buffer with
   // `dtype` and single-shard dimensions `dims`.

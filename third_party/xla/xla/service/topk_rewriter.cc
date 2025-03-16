@@ -282,13 +282,12 @@ struct TopKCustomCall {
   HloInstruction* index_gte;
 };
 
-TopKCustomCall CreateTopKCustomCall(HloInstruction* input,
-                                    const int64_t sort_dim, const int64_t k,
-                                    HloComputation* comparator,
-                                    HloComputation* comp) {
+TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k) {
+  HloInstruction* input = sort->mutable_operand(0);
   Shape data_shape = input->shape();
   PrimitiveType element_type = data_shape.element_type();
   bool has_batch = data_shape.rank() >= 2;
+  int64_t sort_dim = sort->sort_dimension();
   int64_t input_size = data_shape.dimensions(sort_dim);
   int64_t batch_size = 1;
   Shape topk_input_shape;
@@ -306,7 +305,7 @@ TopKCustomCall CreateTopKCustomCall(HloInstruction* input,
 
     if (data_shape.rank() > 2) {
       // Reshape to 2d.
-      input = comp->AddInstruction(HloInstruction::CreateReshape(
+      input = sort->AddInstruction(HloInstruction::CreateReshape(
           sort_dim == 0
               ? ShapeUtil::MakeShape(element_type, {input_size, batch_size})
               : ShapeUtil::MakeShape(element_type, {batch_size, input_size}),
@@ -315,7 +314,7 @@ TopKCustomCall CreateTopKCustomCall(HloInstruction* input,
 
     if (sort_dim == 0) {
       // Transpose for the custom call when sorting the first dimension.
-      input = comp->AddInstruction(
+      input = sort->AddInstruction(
           HloInstruction::CreateTranspose(topk_input_shape, input, {1, 0}));
     }
   } else {
@@ -329,22 +328,22 @@ TopKCustomCall CreateTopKCustomCall(HloInstruction* input,
                  ShapeUtil::MakeShape(S32, {batch_size, k})})
           : ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(element_type, {k}),
                                        ShapeUtil::MakeShape(S32, {k})});
-  HloInstruction* topk = comp->AddInstruction(HloInstruction::CreateCustomCall(
-      topk_shape, {input}, /*to_apply=*/comparator, "TopK"));
+  HloInstruction* topk = sort->AddInstruction(HloInstruction::CreateCustomCall(
+      topk_shape, {input}, sort->to_apply(), "TopK"));
   HloInstruction* value_gte =
-      comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+      sort->AddInstruction(HloInstruction::CreateGetTupleElement(
           topk->shape().tuple_shapes(0), topk, 0));
   HloInstruction* index_gte =
-      comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+      sort->AddInstruction(HloInstruction::CreateGetTupleElement(
           topk->shape().tuple_shapes(1), topk, 1));
 
   if (has_batch) {
     if (sort_dim == 0) {
       // Transpose back.
-      value_gte = comp->AddInstruction(HloInstruction::CreateTranspose(
+      value_gte = sort->AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(element_type, {k, batch_size}), value_gte,
           {1, 0}));
-      index_gte = comp->AddInstruction(HloInstruction::CreateTranspose(
+      index_gte = sort->AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(S32, {k, batch_size}), index_gte, {1, 0}));
     }
     if (data_shape.rank() > 2) {
@@ -352,9 +351,9 @@ TopKCustomCall CreateTopKCustomCall(HloInstruction* input,
       std::vector<int64_t> shape_dim(data_shape.dimensions().begin(),
                                      data_shape.dimensions().end());
       shape_dim[sort_dim] = k;
-      value_gte = comp->AddInstruction(HloInstruction::CreateReshape(
+      value_gte = sort->AddInstruction(HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(element_type, shape_dim), value_gte));
-      index_gte = comp->AddInstruction(HloInstruction::CreateReshape(
+      index_gte = sort->AddInstruction(HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(S32, shape_dim), index_gte));
     }
   }
@@ -388,8 +387,7 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
     return nullptr;
   }
 
-  TopKCustomCall topkcc = CreateTopKCustomCall(
-      data, sort_dim, k.value(), sort->to_apply(), inst->parent());
+  TopKCustomCall topkcc = CreateTopKCustomCall(sort, k.value());
 
   for (HloInstruction* user : sort->users()) {
     if (sort->operand_count() == 2) {
@@ -495,45 +493,42 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
 
   absl::Status DecomposeTopK(HloInstruction* call,
                              HloComputation* variadic_comparator) {
-    HloComputation* comp = call->parent();
     HloInstruction* input = call->mutable_operand(0);
     Shape iota_shape = input->shape();
     iota_shape.set_element_type(S32);
     size_t sort_dimension = input->shape().dimensions_size() - 1;
     std::vector<int64_t> zeroes(iota_shape.rank(), 0);
     std::vector<int64_t> ones(iota_shape.rank(), 1);
-    // Apply a slice to a tuple.
-    auto slice_tuple = [&](HloInstruction* sort, const size_t index) {
-      return comp->AddInstruction(HloInstruction::CreateSlice(
-          call->shape().tuple_shapes(index),
-          comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-              sort->shape().tuple_shapes(index), sort, index)),
-          zeroes, call->shape().tuple_shapes(index).dimensions(), ones));
-    };
     CHECK_NE(variadic_comparator, nullptr);
     // If only the topk values are necessary, skip the iota.
     if (HasSingleUserReadingOnlyTheValueOutput(call) &&
         variadic_comparator->num_parameters() == 2) {
-      HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
-          {input->shape()}, sort_dimension, {input}, variadic_comparator,
+      HloInstruction* sort = call->AddInstruction(HloInstruction::CreateSort(
+          input->shape(), sort_dimension, {input}, variadic_comparator,
           /*is_stable=*/true));
       TF_RETURN_IF_ERROR(ReplaceInstruction(
           call->users().front(),
-          comp->AddInstruction(HloInstruction::CreateSlice(
+          call->AddInstruction(HloInstruction::CreateSlice(
               call->shape().tuple_shapes(0), sort, zeroes,
               call->shape().tuple_shapes(0).dimensions(), ones))));
-      sort->set_metadata(call->metadata());
     } else {
-      HloInstruction* iota = comp->AddInstruction(
+      HloInstruction* iota = call->AddInstruction(
           HloInstruction::CreateIota(iota_shape, iota_shape.rank() - 1));
-      HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
+      HloInstruction* sort = call->AddInstruction(HloInstruction::CreateSort(
           ShapeUtil::MakeTupleShape({input->shape(), iota_shape}),
           sort_dimension, {input, iota}, variadic_comparator,
           /*is_stable=*/true));
+      // Apply a slice to a tuple.
+      auto slice_tuple = [&](const size_t index) {
+        return call->AddInstruction(HloInstruction::CreateSlice(
+            call->shape().tuple_shapes(index),
+            call->AddInstruction(HloInstruction::CreateGetTupleElement(
+                sort->shape().tuple_shapes(index), sort, index)),
+            zeroes, call->shape().tuple_shapes(index).dimensions(), ones));
+      };
       TF_RETURN_IF_ERROR(ReplaceInstruction(
-          call, comp->AddInstruction(HloInstruction::CreateTuple(
-                    {slice_tuple(sort, 0), slice_tuple(sort, 1)}))));
-      sort->set_metadata(call->metadata());
+          call, call->AddInstruction(HloInstruction::CreateTuple(
+                    {slice_tuple(0), slice_tuple(1)}))));
     }
     return absl::OkStatus();
   }

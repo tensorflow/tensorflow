@@ -94,7 +94,9 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
       }
     }
   }
-
+  if (sharding.IsManual()) {
+    return true;
+  }
   if (sharding.IsTileMaximal()) {
     return sharding.IsReplicated();
   }

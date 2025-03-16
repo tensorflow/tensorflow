@@ -674,7 +674,7 @@ absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
   if (toolkit_version < se::SemanticVersion{12, 0, 0}) {
     return false;
   }
-  if (!cc.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
+  if (!cc.IsAtLeast(se::CudaComputeCapability::kHopper)) {
     return false;
   }
   for (auto instr : comp->MakeInstructionPostOrder()) {

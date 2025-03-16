@@ -4,6 +4,7 @@ load("//xla/python/ifrt:ifrt.bzl", "ifrt_package_groups")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla/tsl/platform/default:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -77,6 +78,7 @@ cc_library(
         ":device_proto_cc",
         ":dtype_proto_cc",
         ":execute_options_proto_cc",
+        ":ref_wrapper",
         ":remap_plan_proto_cc",
         ":serdes",
         ":shape_proto_cc",
@@ -179,6 +181,7 @@ xla_cc_test(
     srcs = ["executable_test.cc"],
     deps = [
         ":attribute_map",
+        ":execute_options_proto_cc",
         ":ifrt",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
@@ -228,6 +231,34 @@ xla_cc_test(
     srcs = ["memory_test.cc"],
     deps = [
         ":ifrt",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "ref_wrapper",
+    hdrs = ["ref_wrapper.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "ref_wrapper_test",
+    size = "small",
+    srcs = ["ref_wrapper_test.cc"],
+    deps = [
+        ":ref_wrapper",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
@@ -916,6 +947,7 @@ xla_cc_test(
 #     srcs = ["ifrt.bzl"],
 #     parse_tests = False,
 #     visibility = ["//visibility:private"],
+#     deps = ["//xla/tsl:package_groups_bzl"],
 # )
 #
 # bzl_library(

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/instruction_hoister.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
@@ -147,6 +148,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     }
 
     HloCostAnalysis hlo_cost_analysis(hlo_cost_options);
+    HloCostAnalysisWithAcceptState hlo_cost_analysis_wrapper(hlo_cost_analysis);
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
@@ -160,10 +162,18 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     if (cost_analysis_options_override) {
       cost_analysis_options = *cost_analysis_options_override;
     }
-    HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
+    OpCostManager op_cost_manager(
+        OpCostManager::Options{
+            /*enable_cache=*/false,
+            /*enable_analysis_logging=*/false,
+        },
+        OpCostManager::CalculationNode::CreateLeaf(
+            "HloCostAnalysis",
+            CreateHloCostAnalysisCalculator(hlo_cost_analysis_wrapper),
+            /*enable_cache=*/false));
 
-    auto status_or_cost_analysis = CostAnalysis::Create(
-        hlo_cost_analysis_costs, cost_analysis_options, *module);
+    auto status_or_cost_analysis =
+        CostAnalysis::Create(op_cost_manager, cost_analysis_options, *module);
     TF_CHECK_OK(status_or_cost_analysis.status());
     auto cost_analysis = std::move(status_or_cost_analysis.value());
 

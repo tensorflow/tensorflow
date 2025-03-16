@@ -144,6 +144,7 @@ py_strict_test(
         ":flatbuffer_utils",
         ":test_utils",
         #internal proto upb dep
+        "//tensorflow/lite/python:schema_py",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -245,6 +246,7 @@ cc_library(
     name = "tool_params",
     srcs = ["tool_params.cc"],
     hdrs = ["tool_params.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [":logging"],
 )
@@ -264,6 +266,7 @@ cc_library(
     name = "command_line_flags",
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":logging",

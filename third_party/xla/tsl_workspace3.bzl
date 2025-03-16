@@ -1,7 +1,7 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("@local_tsl//third_party/llvm:workspace.bzl", llvm = "repo")
+load("//third_party/llvm:workspace.bzl", llvm = "repo")
 
 def workspace():
     http_archive(

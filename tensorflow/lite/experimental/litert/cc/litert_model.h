@@ -521,6 +521,12 @@ class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
       : internal::Handle<LiteRtModel, LiteRtDestroyModel>(model, owned) {}
 };
 
+struct SerializationOptions {
+  static LiteRtModelSerializationOptions Defaults() {
+    return LiteRtModelSerializationOptions{};
+  }
+};
+
 }  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MODEL_H_

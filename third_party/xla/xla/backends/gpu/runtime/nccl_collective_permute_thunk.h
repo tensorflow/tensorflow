@@ -105,7 +105,8 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
                                   int64_t replica_count,
                                   int64_t partition_count,
                                   const std::vector<Buffer>& buffers,
-                                  bool p2p_memcpy_enabled);
+                                  bool p2p_memcpy_enabled,
+                                  AsyncStreamKind stream_kind);
   absl::Status Initialize(const InitializeParams& params) override;
 
   static const char* GetHloOpName() { return "collective-permute-start"; }

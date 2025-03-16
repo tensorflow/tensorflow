@@ -699,9 +699,9 @@ std::unique_ptr<ScopedUpdateMode> CudaCommandBuffer::ActivateUpdateMode(
 
 CudaCommandBuffer::~CudaCommandBuffer() {
   if (exec_ != nullptr && is_owned_graph_exec_) {
+    auto exec_num = NotifyExecDestroyed();
     VLOG(5) << "Destroy GPU command buffer executable graph " << exec_ << " "
-            << "(remaining alive executable graphs: " << NotifyExecDestroyed()
-            << ")";
+            << "(remaining alive executable graphs: " << exec_num << ")";
     if (auto status = cuda::ToStatus(cuGraphExecDestroy(exec_),
                                      "Failed to destroy CUDA executable graph");
         !status.ok()) {

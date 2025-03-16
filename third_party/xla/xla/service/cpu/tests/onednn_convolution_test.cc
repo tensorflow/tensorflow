@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-
 #include <utility>
 
 #include "absl/strings/str_replace.h"
@@ -32,6 +30,8 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
+
+#if defined(INTEL_MKL)
 
 class ConvolutionTest : public HloTestBase,
                         public ::testing::WithParamInterface<PrimitiveType> {
@@ -636,7 +636,10 @@ INSTANTIATE_TEST_SUITE_P(
       return test_name;
     });
 
+#endif  // INTEL_MKL
+
+// Ensure at least one test case is linked to avoid test failures.
+TEST(Dummy, Test) {}
+
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3

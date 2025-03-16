@@ -38,10 +38,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
-#include "llvm/IR/Mangler.h"
-#include "llvm/Support/Error.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
@@ -80,23 +76,6 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-using ConstantAllocation = CpuExecutable::ConstantAllocation;
-
-se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
-  if (auto* empty = std::get_if<std::monostate>(&data)) {
-    return se::DeviceMemoryBase();
-  }
-
-  if (auto* owned = std::get_if<std::unique_ptr<Literal>>(&data)) {
-    return se::DeviceMemoryBase((*owned)->untyped_data(),
-                                (*owned)->size_bytes());
-  }
-
-  auto* view = std::get_if<absl::Span<const uint8_t>>(&data);
-  return se::DeviceMemoryBase(
-      const_cast<void*>(reinterpret_cast<const void*>(view->data())),
-      view->size());
-}
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<FunctionLibrary> function_library,

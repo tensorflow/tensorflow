@@ -48,6 +48,7 @@ message BarrierError {
 
 message CoordinatedTaskStateInfo {
   CoordinatedTask task = 1;
+  fixed64 incarnation = 6;
   CoordinatedTaskState state = 2;
   int32 error_code = 3;
   string error_message = 4;

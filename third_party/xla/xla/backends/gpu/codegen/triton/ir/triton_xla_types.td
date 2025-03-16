@@ -68,8 +68,12 @@ def TTXLA_TiledTensorType : TTXLA_Type<"TiledTensor", "tiled_tensor", [
     RankedTensorType getTileType() const {
       return RankedTensorType::get(getTileShape(), getElementType());
     }
+    int64_t getRank() const {
+      return getOriginalShape().size();
+    }
   }];
   let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
 }
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_TYPES_TD_

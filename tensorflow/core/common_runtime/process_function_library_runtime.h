@@ -164,6 +164,11 @@ class ProcessFunctionLibraryRuntime {
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::Handle* handle);
 
+  // Finalizes the function library runtime by calling
+  // FunctionLibraryRuntime::Finalize on all local FLRs. The Instantiate method
+  // should not be called after Finalize is called.
+  absl::Status Finalize();
+
   // Returns whether the function represented by the given handle needs to
   // execute cross process.
   absl::Status IsCrossProcess(FunctionLibraryRuntime::Handle handle,

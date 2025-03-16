@@ -67,20 +67,12 @@ TEST(SimplifyIciDummyVariablesPassTest, flag_is_false) {
   SimplifyIciDummyVariablesPass pass;
   TF_ASSERT_OK(pass.Run(options));
 
-  Node* fill_1_dim = GetNode(*graph, "const_1_ici_specific_index_0_task_id_2");
-  Node* fill_1_value =
-      GetNode(*graph, "const_2_ici_specific_index_0_task_id_2");
-  Node* fill_1 = GetNode(*graph, "fill_ici_specific_index_0_task_id_2");
-  EXPECT_EQ(fill_1_dim, nullptr);
-  EXPECT_EQ(fill_1_value, nullptr);
+  Node* fill_1 =
+      GetNode(*graph, "tpu_dummy_input_ici_specific_index_0_task_id_2");
   EXPECT_EQ(fill_1, nullptr);
 
-  Node* fill_2_dim = GetNode(*graph, "const_1_ici_specific_index_1_task_id_2");
-  Node* fill_2_value =
-      GetNode(*graph, "const_2_ici_specific_index_1_task_id_2");
-  Node* fill_2 = GetNode(*graph, "fill_ici_specific_index_1_task_id_2");
-  EXPECT_EQ(fill_2_dim, nullptr);
-  EXPECT_EQ(fill_2_value, nullptr);
+  Node* fill_2 =
+      GetNode(*graph, "tpu_dummy_input_ici_specific_index_1_task_id_2");
   EXPECT_EQ(fill_2, nullptr);
 }
 
@@ -103,31 +95,15 @@ TEST(SimplifyIciDummyVariablesPassTest, replace_dummy_variable) {
   SimplifyIciDummyVariablesPass pass;
   TF_ASSERT_OK(pass.Run(options));
 
-  Node* fill_1_dim = GetNode(*graph, "const_1_ici_specific_index_0_task_id_2");
-  Node* fill_1_value =
-      GetNode(*graph, "const_2_ici_specific_index_0_task_id_2");
-  Node* fill_1 = GetNode(*graph, "fill_ici_specific_index_0_task_id_2");
-  EXPECT_NE(fill_1_dim, nullptr);
-  EXPECT_NE(fill_1_value, nullptr);
+  Node* fill_1 =
+      GetNode(*graph, "tpu_dummy_input_ici_specific_index_0_task_id_2");
   EXPECT_NE(fill_1, nullptr);
-  EXPECT_EQ(fill_1_dim->requested_device(),
-            "/job:tpu_host_worker/replica:0/task:2/device:CPU:0");
-  EXPECT_EQ(fill_1_value->requested_device(),
-            "/job:tpu_host_worker/replica:0/task:2/device:CPU:0");
   EXPECT_EQ(fill_1->requested_device(),
             "/job:tpu_host_worker/replica:0/task:2/device:CPU:0");
 
-  Node* fill_2_dim = GetNode(*graph, "const_1_ici_specific_index_1_task_id_2");
-  Node* fill_2_value =
-      GetNode(*graph, "const_2_ici_specific_index_1_task_id_2");
-  Node* fill_2 = GetNode(*graph, "fill_ici_specific_index_1_task_id_2");
-  EXPECT_NE(fill_2_dim, nullptr);
-  EXPECT_NE(fill_2_value, nullptr);
+  Node* fill_2 =
+      GetNode(*graph, "tpu_dummy_input_ici_specific_index_1_task_id_2");
   EXPECT_NE(fill_2, nullptr);
-  EXPECT_EQ(fill_2_dim->requested_device(),
-            "/job:tpu_host_worker/replica:0/task:2/device:CPU:0");
-  EXPECT_EQ(fill_2_value->requested_device(),
-            "/job:tpu_host_worker/replica:0/task:2/device:CPU:0");
   EXPECT_EQ(fill_2->requested_device(),
             "/job:tpu_host_worker/replica:0/task:2/device:CPU:0");
 }

@@ -1,6 +1,6 @@
 def if_enable_acl(if_true, if_false = []):
     return select({
-        "@local_tsl//third_party/compute_library:build_with_acl": if_true,
+        "@local_xla//third_party/compute_library:build_with_acl": if_true,
         "//conditions:default": if_false,
     })
 
@@ -15,6 +15,6 @@ def acl_deps():
       inclusion in the deps attribute of rules.
     """
     return select({
-        "@local_tsl//third_party/compute_library:build_with_acl": ["@compute_library//:arm_compute"],
+        "@local_xla//third_party/compute_library:build_with_acl": ["@compute_library//:arm_compute"],
         "//conditions:default": [],
     })

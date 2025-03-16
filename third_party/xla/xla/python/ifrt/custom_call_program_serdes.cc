@@ -81,7 +81,7 @@ class CustomCallProgramSerDes
           "Failed to parse serialized CustomCallProgramProto");
     }
     TF_ASSIGN_OR_RETURN(
-        tsl::RCReference<DeviceList> devices,
+        DeviceListRef devices,
         DeviceList::FromProto(deserialize_program_options->client,
                               proto.devices()));
     std::vector<ArraySpec> input_specs;

@@ -3331,6 +3331,19 @@ void DynamicReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // DynamicSliceOp
 //===----------------------------------------------------------------------===//
 
+// Pattern: dynamic_slice(splat_cst, start, end) -> resized_splat_cst
+OpFoldResult DynamicSliceOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  if (!operands[0]) return nullptr;
+
+  auto cst_attr = operands[0].dyn_cast<DenseElementsAttr>();
+  if (cst_attr && cst_attr.isSplat()) {
+    return cst_attr.resizeSplat(getResult().getType());
+  }
+
+  return nullptr;
+}
+
 namespace {
 // Canonicalizes DynamicSlice ops that can be replaced instead with Slice ops.
 // This canonicalization is applied the case when the `begin` input values are
@@ -3919,11 +3932,47 @@ static LogicalResult tryFoldOutsideValuesReduction(
   return success();
 }
 
+// Pattern: reduce(args...) ({ return cst1, ..., cstN }) -> cst1, ..., cstN
+static LogicalResult tryFoldEmptyBodyConstantInit(
+    ReduceOp reduceOp, SmallVectorImpl<OpFoldResult>& results) {
+  mlir::Block& bb = reduceOp.getBody().front();
+  if (bb.getOperations().size() > 1) {
+    return failure();
+  }
+
+  auto retOp = mlir::dyn_cast<ReturnOp>(bb.back());
+  if (!retOp) {
+    return failure();
+  }
+
+  for (auto [retOpArg, reduceOpResult] :
+       llvm::zip_equal(retOp.getResults(), reduceOp.getResults())) {
+    auto* cstOp = retOpArg.getDefiningOp();
+    if (!cstOp || !cstOp->hasTrait<mlir::OpTrait::ConstantLike>()) {
+      results.clear();
+      return failure();
+    }
+
+    DenseElementsAttr cstAttr;
+    if (!matchPattern(cstOp, m_Constant(&cstAttr))) {
+      results.clear();
+      return failure();
+    }
+
+    auto resultShapedType =
+        mlir::dyn_cast_or_null<ShapedType>(reduceOpResult.getType());
+    results.push_back(DenseElementsAttr::get(
+        resultShapedType, {cstAttr.getSplatValue<Attribute>()}));
+  }
+  return success();
+}
+
 LogicalResult ReduceOp::fold(FoldAdaptor /*adaptor*/,
                              SmallVectorImpl<OpFoldResult>& results) {
   if (succeeded(tryFoldZeroDimReduction(*this, results))) return success();
   if (succeeded(tryFoldOutsideValuesReduction(*this, results)))
     return success();
+  if (succeeded(tryFoldEmptyBodyConstantInit(*this, results))) return success();
   return failure();
 }
 

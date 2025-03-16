@@ -1,4 +1,4 @@
-load("//tools/build_defs/testing:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # copybara:uncomment_begin
 # package(default_applicable_licenses = ["//tensorflow:license"])

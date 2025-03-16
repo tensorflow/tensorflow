@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -30,6 +31,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -65,8 +68,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 using FDH = ::tensorflow::FunctionDefHelper;
-
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
 absl::Status GetOpSig(const string& op, const OpDef** sig) {
@@ -725,6 +729,65 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
       TF_CHECK_OK(flr0_->ReleaseHandle(handle_isolated));
     }
   }
+}
+
+TEST_F(FunctionLibraryRuntimeTest, FunctionLibraryRuntimeRunAfterFinalize) {
+  // Instantiate the function before finalization.
+  Init({test::function::XTimesTwo()});
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, &handle));
+
+  // Run the function before finalization.
+  FunctionLibraryRuntime::Options opts;
+  Tensor x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+  TF_CHECK_OK(Run(flr0_, handle, opts, {x}, {&y}));
+  Tensor expected_y = test::AsTensor<float>({2, 4, 6, 8});
+  test::ExpectTensorEqual<float>(y, expected_y);
+
+  // Finalize the function library runtime.
+  TF_CHECK_OK(flr0_->Finalize());
+
+  // Run the function again after finalization.
+  TF_CHECK_OK(Run(flr0_, handle, opts, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, expected_y);
+}
+
+TEST_F(FunctionLibraryRuntimeTest, FunctionLibraryRuntimeMultipleFinalizeOk) {
+  // Instantiate the function before finalization.
+  Init({test::function::XTimesTwo()});
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, &handle));
+
+  // Run the function before finalization.
+  FunctionLibraryRuntime::Options opts;
+  Tensor x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+  TF_CHECK_OK(Run(flr0_, handle, opts, {x}, {&y}));
+  Tensor expected_y = test::AsTensor<float>({2, 4, 6, 8});
+  test::ExpectTensorEqual<float>(y, expected_y);
+
+  // Finalize the function library runtime twice.
+  TF_CHECK_OK(flr0_->Finalize());
+  TF_CHECK_OK(flr0_->Finalize());
+
+  // Run the function again after finalization.
+  TF_CHECK_OK(Run(flr0_, handle, opts, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, expected_y);
+}
+
+TEST_F(FunctionLibraryRuntimeTest,
+       FunctionLibraryRuntimeInstantiateFailAfterFinalize) {
+  // Instantiate the function before finalization.
+  Init({test::function::XTimesTwo()});
+
+  // Finalize the function library runtime.
+  TF_CHECK_OK(flr0_->Finalize());
+  FunctionLibraryRuntime::Handle handle;
+  EXPECT_THAT(Instantiate(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, &handle),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("FunctionLibraryRuntimeImpl is finalized and "
+                                 "cannot instantiate a new function handle.")));
 }
 
 namespace {

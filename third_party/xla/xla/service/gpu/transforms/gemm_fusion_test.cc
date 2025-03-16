@@ -65,7 +65,7 @@ class GemmFusionTest : public HloTestBase {
   }
 
   se::GpuComputeCapability gpu_version_{
-      se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
+      se::CudaComputeCapability{se::CudaComputeCapability::kAmpere, 0}};
 
   void MatchHloModule(HloModule& module, absl::string_view pattern) {
     TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
@@ -198,7 +198,7 @@ ENTRY e {
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
 
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_TRUE(CublasRequiresPadding(
       *xla::Cast<HloDotInstruction>(
           module->entry_computation()->root_instruction()),
@@ -219,7 +219,7 @@ ENTRY e {
   ROOT t = tuple(d, sout1)
 })"));
 
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
 }
 
@@ -236,7 +236,7 @@ ENTRY e {
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
 
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
@@ -256,7 +256,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
 
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
@@ -276,7 +276,7 @@ ENTRY e {
 })"));
 
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -301,7 +301,7 @@ ENTRY e {
 })"));
 
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   // TODO(b/339810582): Don't duplicate scalar parameters to dot fusions,
@@ -329,7 +329,7 @@ ENTRY e {
   ROOT dot = f32[4,4]{1,0} dot(dot_lhs, reshape),
              lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   // FusionDecision "Unsupported dynamic slice on non-major-most dimension."
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
@@ -348,7 +348,7 @@ ENTRY e {
            lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -368,7 +368,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
 
   ASSERT_TRUE(GemmFusion(cc).Run(module.get()).value());
 
@@ -396,7 +396,7 @@ ENTRY e {
   ROOT r = f32[6,6] dot(d, cv),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
@@ -415,7 +415,7 @@ ENTRY e {
   ROOT r = f32[8192,768] dot(a, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -436,7 +436,7 @@ ENTRY e {
   ROOT r = f32[8192,768] dot(a, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
@@ -452,7 +452,7 @@ ENTRY e {
   ROOT r = f32[1,5504]{1,0} dot(p0, bitcast),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -881,7 +881,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_THAT(
-      GemmFusion(se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0})
+      GemmFusion(
+          se::CudaComputeCapability{se::CudaComputeCapability::kVolta, 0})
           .Run(module.get()),
       tsl::testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
@@ -919,7 +920,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -950,7 +951,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(
@@ -978,7 +979,7 @@ ENTRY e {
   ROOT a = f16[400,400] add(dot0, dot1)
 })"));
   EXPECT_FALSE(GemmFusion(se::CudaComputeCapability{
-                              se::CudaComputeCapability::AMPERE, 0})
+                              se::CudaComputeCapability::kAmpere, 0})
                    .Run(module.get())
                    .value());
 }
@@ -997,7 +998,7 @@ ENTRY e {
   ROOT a = f16[512,512] add(dot0, n)
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1056,7 +1057,7 @@ e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1121,7 +1122,7 @@ e {
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1141,7 +1142,7 @@ e {
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1162,7 +1163,7 @@ e {
     lhs_contracting_dims={2}, rhs_contracting_dims={2}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1190,7 +1191,7 @@ e {
 })"));
 
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(

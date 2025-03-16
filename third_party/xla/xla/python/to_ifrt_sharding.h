@@ -30,7 +30,7 @@ xla::HloSharding GetXlaHloSharding(nanobind::handle sharding,
                                    int64_t num_dimensions);
 
 // Gets `xla::ifrt::DeviceList` from a JAX Sharding.
-absl::StatusOr<tsl::RCReference<xla::ifrt::DeviceList>> GetIfrtDeviceList(
+absl::StatusOr<xla::ifrt::DeviceListRef> GetIfrtDeviceList(
     nanobind::handle sharding_py);
 
 // Converts a JAX Sharding into `xla::ifrt::HloSharding`.

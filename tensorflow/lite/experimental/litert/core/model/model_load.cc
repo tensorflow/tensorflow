@@ -133,6 +133,7 @@ LiteRtStatus UnpackOp(FlatbufferContext& context, LiteRtSubgraphT& parent,
   // TODO figure out how to parse builtins with the packed flatbuffer api.
   TflOpPtr tfl_op_ptr(tfl_op.UnPack());
   detail::SetTflOptions(litert_op, std::move(tfl_op_ptr->builtin_options));
+  detail::SetTflOptions2(litert_op, std::move(tfl_op_ptr->builtin_options_2));
 
   // OP CODE
 

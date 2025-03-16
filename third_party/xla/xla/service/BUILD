@@ -293,7 +293,7 @@ cc_library(
         "//xla/hlo/parser:hlo_parser",
         "//xla/service/graphcycles",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
@@ -462,6 +462,7 @@ cc_library(
         ":call_graph",
         ":collective_ops_utils",
         ":constant_value",
+        ":scheduling_annotations_util",
         ":value_range",
         "//xla:comparison_util",
         "//xla:literal",
@@ -502,6 +503,7 @@ xla_cc_test(
         ":hlo_module_config",
         ":hlo_verifier",
         ":host_memory_offload_annotations_hdr",
+        ":scheduling_annotations_util",
         "//xla:literal_util",
         "//xla:test_helpers",
         "//xla:util",
@@ -1264,6 +1266,7 @@ cc_library(
         "//xla/hlo/ir:ptrvec",
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1588,6 +1591,7 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -2619,6 +2623,42 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "all_gather_simplifier",
+    srcs = ["all_gather_simplifier.cc"],
+    hdrs = ["all_gather_simplifier.h"],
+    deps = [
+        ":collective_opt_utils",
+        ":hlo_module_config",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "all_gather_simplifier_test",
+    srcs = ["all_gather_simplifier_test.cc"],
+    deps = [
+        ":all_gather_simplifier",
+        ":pattern_matcher",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -4266,6 +4306,7 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -4718,6 +4759,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -4764,6 +4806,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -4774,7 +4817,6 @@ cc_library(
     deps = [
         ":computation_layout",
         ":computation_placer_hdr",
-        ":executable",
         ":hlo_module_util",
         ":hlo_runner_interface",
         "//xla:literal",
@@ -4805,7 +4847,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -5127,6 +5169,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -5459,7 +5502,7 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-cc_test(
+xla_cc_test(
     name = "custom_call_target_registry_test",
     srcs = ["custom_call_target_registry_test.cc"],
     deps = [
@@ -5685,9 +5728,10 @@ xla_cc_test(
     srcs = ["topk_rewriter_test.cc"],
     deps = [
         ":pattern_matcher",
-        ":pattern_matcher_gmock",
         ":topk_rewriter",
+        "//xla:literal_util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_matchers",
@@ -5695,9 +5739,10 @@ xla_cc_test(
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -5899,6 +5944,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:logging",
     ],
@@ -5998,6 +6044,8 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

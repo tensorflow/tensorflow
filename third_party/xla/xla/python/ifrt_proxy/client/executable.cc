@@ -470,10 +470,9 @@ absl::StatusOr<xla::ifrt::AttributeMap> LoadedExecutable::GetCostAnalysis()
 }
 
 absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult>
-LoadedExecutable::Execute(
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
-    const ExecuteOptions& options,
-    std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices) {
+LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
+                          const ExecuteOptions& options,
+                          std::optional<xla::ifrt::DeviceListRef> devices) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableExecute");
   auto req = std::make_unique<LoadedExecutableExecuteRequest>();

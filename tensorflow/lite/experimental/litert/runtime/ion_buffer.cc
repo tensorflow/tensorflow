@@ -14,9 +14,6 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/ion_buffer.h"
 
-#include <dlfcn.h>
-#include <sys/mman.h>
-
 #include <cstddef>
 #include <memory>
 #include <utility>
@@ -28,9 +25,15 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
+#if LITERT_HAS_ION_SUPPORT
+#include <dlfcn.h>
+#include <sys/mman.h>
+#endif  // LITERT_HAS_ION_SUPPORT
+
 namespace litert {
 namespace internal {
 
+#if LITERT_HAS_ION_SUPPORT
 namespace {
 
 class IonLibrary {
@@ -155,26 +158,38 @@ Expected<void> InitLibraryIfNeededUnlocked() {
 }
 
 }  // namespace
+#endif  // LITERT_HAS_ION_SUPPORT
 
 bool IonBuffer::IsSupported() {
+#if LITERT_HAS_ION_SUPPORT
   absl::MutexLock lock(&TheMutex);
   auto status = InitLibraryIfNeededUnlocked();
   return static_cast<bool>(status);
+#else   // LITERT_HAS_ION_SUPPORT
+  return false;
+#endif  // LITERT_HAS_ION_SUPPORT
 }
 
 Expected<IonBuffer> IonBuffer::Alloc(size_t size, size_t alignment) {
+#if LITERT_HAS_ION_SUPPORT
   absl::MutexLock lock(&TheMutex);
   if (auto status = InitLibraryIfNeededUnlocked(); !status) {
     return status.Error();
   }
   return TheIonLibrary->Alloc(size, alignment);
+#else   // LITERT_HAS_ION_SUPPORT
+  return Unexpected(kLiteRtStatusErrorUnsupported,
+                    "IonBuffer::Alloc not implemented for this platform");
+#endif  // LITERT_HAS_ION_SUPPORT
 }
 
 void IonBuffer::Free(void* addr) {
+#if LITERT_HAS_ION_SUPPORT
   absl::MutexLock lock(&TheMutex);
   if (TheIonLibrary) {
     TheIonLibrary->Free(addr);
   }
+#endif  // LITERT_HAS_ION_SUPPORT
 }
 
 }  // namespace internal

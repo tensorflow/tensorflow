@@ -38,6 +38,7 @@ absl::StatusOr<void*> GetCusparseDsoHandle();
 absl::StatusOr<void*> GetCuptiDsoHandle();
 absl::StatusOr<void*> GetCudnnDsoHandle();
 absl::StatusOr<void*> GetNcclDsoHandle();
+absl::StatusOr<void*> GetNvshmemDsoHandle();
 absl::StatusOr<void*> GetNvInferDsoHandle();
 absl::StatusOr<void*> GetNvInferPluginDsoHandle();
 

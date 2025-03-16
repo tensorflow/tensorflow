@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tpu_embedding_v3_checkpoint_adapter."""
+
 from tensorflow.core.tpu.kernels import sparse_core_layout_pb2
 from tensorflow.python.framework.constant_op import constant as tf_constant
 from tensorflow.python.ops import array_ops
@@ -98,17 +99,6 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
         )
     )
     layouts = {
-        "one": create_layout(
-            tables_name="one",
-            stacked_table_name="one_two",
-            num_sparse_cores=8,
-            num_partitions=4,
-            unsharded_shape=(20, 4),
-            unsharded_padded_shape=(24, 8),
-            row_offset=0,
-            shard_rotation=0,
-            total_rows_per_sparse_core_shard=7,
-        ),
         "two": create_layout(
             tables_name="two",
             stacked_table_name="one_two",
@@ -120,6 +110,17 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
             shard_rotation=1,
             total_rows_per_sparse_core_shard=7,
         ),
+        "one": create_layout(
+            tables_name="one",
+            stacked_table_name="one_two",
+            num_sparse_cores=8,
+            num_partitions=4,
+            unsharded_shape=(20, 4),
+            unsharded_padded_shape=(24, 8),
+            row_offset=0,
+            shard_rotation=0,
+            total_rows_per_sparse_core_shard=7,
+        ),
     }
     one_t = math_ops.range(start=0.0, limit=20.0, delta=1)[
         :, None
@@ -129,6 +130,21 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
     ] * array_ops.ones((32, 4))
     adapter.initialize_reshard_callbacks(layouts)
     callback = adapter.get_reshard_callback("one")
+    self.assertEqual(callback.object_name(), "one_two")
+    updated_keys, updated_slices = callback.update_restore_inputs(
+        "path/to/embedding/one/in/checkpoint", "56 8 14,28:0,8"
+    )
+    self.assertAllEqual(
+        updated_keys,
+        [
+            "path/to/embedding/one/in/checkpoint",
+            "path/to/embedding/two/in/checkpoint",
+        ],
+    )
+    self.assertAllEqual(
+        updated_slices,
+        ["20 4 0,20:0,4", "32 4 0,32:0,4"],
+    )
     self.assertAllEqual(
         callback.reshard([one_t, two_t], "56 8 14,28:0,8"),
         tf_constant([
@@ -151,6 +167,11 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
             [70, 70, 70, 70, 0, 0, 0, 0],
             [78, 78, 78, 78, 0, 0, 0, 0],
         ]),
+    )
+    self.assertAllEqual(callback._checkpoint_local_names, ["one", "two"])
+    self.assertAllEqual(
+        [l.table_name for l in callback._to_shard_layout],
+        ["one", "two"],
     )
 
   def test_adapt_sharded_to_unsharded_simple(self):

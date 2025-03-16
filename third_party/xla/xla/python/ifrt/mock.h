@@ -148,7 +148,7 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>, CopyArrays,
               (absl::Span<tsl::RCReference<Array>> arrays,
-               std::optional<tsl::RCReference<DeviceList>> devices,
+               std::optional<DeviceListRef> devices,
                std::optional<MemoryKind> memory_kind,
                ArrayCopySemantics semantics),
               (final));
@@ -180,12 +180,11 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (const, final));
   MOCK_METHOD(absl::StatusOr<Device*>, LookupAddressableDevice,
               (int local_hardware_id), (const, final));
-  MOCK_METHOD(tsl::RCReference<DeviceList>, MakeDeviceList,
+  MOCK_METHOD(DeviceListRef, MakeDeviceList,
               (absl::Span<Device* const> devices), (const));
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
-              (const tsl::RCReference<xla::ifrt::DeviceList>& devices),
-              (const, final));
+              (const xla::ifrt::DeviceListRef& devices), (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const PjRtLayout>>,
               GetDefaultLayout,
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
@@ -319,7 +318,7 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<ExecuteResult>, Execute,
               (absl::Span<tsl::RCReference<Array>> args,
                const ExecuteOptions& options,
-               std::optional<tsl::RCReference<DeviceList>> devices),
+               std::optional<DeviceListRef> devices),
               (final));
   MOCK_METHOD(Future<>, Delete, (), (final));
   MOCK_METHOD(bool, IsDeleted, (), (const, final));
@@ -357,7 +356,7 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
             BasicDeviceList::Create({}), MemoryKind(),
             /*is_fully_replicated=*/false) {}
 
-  MockSharding(tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
+  MockSharding(DeviceListRef devices, MemoryKind memory_kind,
                bool is_fully_replicated)
       : llvm::RTTIExtends<MockSharding, Sharding>(devices, memory_kind,
                                                   is_fully_replicated) {}
@@ -395,7 +394,7 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
   MOCK_METHOD(bool, HasSamePartitioning, (const Sharding& other),
               (const final));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Sharding>>, WithDeviceAssignment,
-              (std::optional<tsl::RCReference<DeviceList>> devices,
+              (std::optional<DeviceListRef> devices,
                std::optional<MemoryKind> memory_kind),
               (const final));
   MOCK_METHOD(void, Hash, (absl::HashState), (const final));

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_filter_interface.h"
@@ -138,11 +139,17 @@ class TraceVisibilityFilter : public TraceEventsFilterInterface {
     tsl::profiler::Timespan visible_span = VisibleSpan();
     uint64_t start_time_ps = visible_span.begin_ps();
     uint64_t end_time_ps = visible_span.end_ps();
-    if (end_time_ps == 0 && trace.has_max_timestamp_ps()) {
-      end_time_ps = trace.max_timestamp_ps();
-    }
-    if (start_time_ps == 0 && trace.has_min_timestamp_ps()) {
+    if (trace.has_min_timestamp_ps() &&
+        start_time_ps < trace.min_timestamp_ps()) {
+      VLOG(1) << "Adjusting start_time_ps from " << start_time_ps << " to "
+              << trace.min_timestamp_ps();
       start_time_ps = trace.min_timestamp_ps();
+    }
+    if (trace.has_max_timestamp_ps() &&
+        (end_time_ps == 0 || end_time_ps > trace.max_timestamp_ps())) {
+      VLOG(1) << "Adjusting end_time_ps from " << end_time_ps << " to "
+              << trace.max_timestamp_ps();
+      end_time_ps = trace.max_timestamp_ps();
     }
     visible_span =
         tsl::profiler::Timespan::FromEndPoints(start_time_ps, end_time_ps);

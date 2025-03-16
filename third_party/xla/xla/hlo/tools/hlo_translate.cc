@@ -98,7 +98,8 @@ constexpr char kLoadHloError[] = "Failed to parse HLO.";
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOText(
     absl::string_view content, mlir::MLIRContext* context) {
-  auto hlo_text = xla::ParseAndReturnUnverifiedModule(content);
+  auto hlo_text = xla::ParseAndReturnUnverifiedModule(
+      content, {}, xla::HloParserOptions().set_keep_module_auto_layouts(true));
   if (!hlo_text.ok()) return absl::InvalidArgumentError(kLoadHloError);
 
   mlir::OwningOpRef<mlir::ModuleOp> module =

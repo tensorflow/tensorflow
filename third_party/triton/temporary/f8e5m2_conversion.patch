@@ -1,0 +1,62 @@
+diff --git a/python/test/unit/language/test_conversions.py b/python/test/unit/language/test_conversions.py
+--- a/python/test/unit/language/test_conversions.py
++++ b/python/test/unit/language/test_conversions.py
+@@ -331,14 +331,18 @@ def test_typeconvert_upcast(src_dtype, d
+ def test_typeconvert_downcast(src_dtype, dst_dtype, rounding, max_repr, device):
+ 
+     if is_cuda():
+-        if src_dtype != 'float32' and torch.cuda.get_device_capability(0) < (9, 0):
+-            pytest.skip("non-float32 downcast tests only supported on NVGPU with compute capability 9.0+")
+-
+-        if dst_dtype in ('float8e5', 'float8e4nv') and rounding == 'rtne' and torch.cuda.get_device_capability(0) < (9, 0):
+-            pytest.skip(f"{dst_dtype} downcast with RTNE rounding tests only supported on NVGPU with compute capability 9.0+")
+-
+-        if dst_dtype in ('float8e5b16', 'float8e4b8') and rounding == 'rtne':
++        if dst_dtype in ('float8e5b16', 'float8e4b8'):
+             pytest.skip(f"{dst_dtype} downcast with RTNE rounding tests only supported on AMDGPU MI300")
++        if torch.cuda.get_device_capability(0) < (9, 0):
++            match (src_dtype, dst_dtype, rounding):
++                case ('float16', 'float8e5', 'rtne'):
++                    ...
++                case (_, ty, 'rtne') if ty in ('float8e5', 'float8e4nv'):
++                    pytest.skip(f"{dst_dtype} downcast with RTNE rounding tests only supported on NVGPU with compute capability 9.0+")
++                case (ty, _, _) if ty != 'float32':
++                    pytest.skip("non-float32 downcast tests only supported on NVGPU with compute capability 9.0+")
++                case _:
++                    ...
+ 
+     if is_hip():
+         if dst_dtype == 'float8e5' and rounding == 'rtne':
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
+@@ -27,15 +27,20 @@ struct Fp8ConversionDesc {
+ static const Fp8ConversionDesc Fp16_to_Fp8E5M2_RTNE(bool hasNativeFP) {
+   Fp8ConversionDesc ret;
+   if (!hasNativeFP) {
+-    ret = {"{                            \n"
+-           ".reg .b32 a<2>;              \n"
+-           "and.b32 a0, $1, 0xfffefffe;  \n"   // a0 &= 0xfffefffe
+-           "and.b32 a1, $2, 0xfffefffe;  \n"   // (strip lowest bit)
+-           "add.u32 a0, a0, 0x00800080;  \n"   // a0 += 0x00800080
+-           "add.u32 a1, a1, 0x00800080;  \n"   // (round to nearest)
+-           "prmt.b32 $0, a0, a1, 0x7531; \n\t" // output = a1a0
+-           "}",
+-           32, 32, 4};
++    ret = {
++        "{                            \n"
++        ".reg .b32 a<2>;              \n"
++        "and.b32 a0, $1, 0x01000100;  \n"    // a0 = $1 & 0x01000100
++        "and.b32 a1, $2, 0x01000100;  \n"    // (least significant result bit)
++        "shr.b32 a0, a0, 8;           \n"    // a0 >>= 8
++        "shr.b32 a1, a1, 8;           \n"    // (shift the lsb)
++        "add.u32 a0, a0, 0x007f007f;  \n"    // a0 += 0x007f007f
++        "add.u32 a1, a1, 0x007f007f;  \n"    // (add rounding base)
++        "add.u32 a0, a0, $1;          \n"    // res = $1 + lsb + 0x7f
++        "add.u32 a1, a1, $2;          \n"    // (round to nearest)
++        "prmt.b32 $0, a0, a1, 0x7531; \n\t"  // output = a1a0
++        "}",
++        32, 32, 4};
+   } else {
+     ret = {"cvt.rn.satfinite.e5m2x2.f16x2 $0, $1; \n\t", 32, 16, 2};
+   }

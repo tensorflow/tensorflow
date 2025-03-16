@@ -99,6 +99,8 @@ LiteRtElementType MapElementType(TflElementType type) {
       return kLiteRtElementTypeInt16;
     case tflite::TensorType_INT8:
       return kLiteRtElementTypeInt8;
+    case tflite::TensorType_UINT8:
+      return kLiteRtElementTypeUInt8;
     default:
       return kLiteRtElementTypeNone;
   }

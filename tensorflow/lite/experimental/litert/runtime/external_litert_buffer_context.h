@@ -23,6 +23,7 @@
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
@@ -51,6 +52,15 @@ class ExternalLiteRtBufferContext : public TfLiteExternalContext {
     return RegisterBufferRequirement(
         reinterpret_cast<const TfLiteOpaqueTensor*>(tensor),
         std::move(buffer_requirements));
+  }
+
+  inline LiteRtStatus RegisterLiteRtBufferRequirement(
+      const TfLiteTensor* tensor,
+      LiteRtTensorBufferRequirements& litert_buffer_requirements) {
+    return RegisterBufferRequirement(
+        reinterpret_cast<const TfLiteOpaqueTensor*>(tensor),
+        TensorBufferRequirements(litert_buffer_requirements,
+                                 /*owned=*/true));
   }
 
   // Gets a registered tensor buffer requirements for the given tensor.

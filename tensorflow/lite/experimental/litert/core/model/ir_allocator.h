@@ -15,10 +15,14 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_IR_ALLOCATOR_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_IR_ALLOCATOR_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <list>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -80,10 +84,42 @@ class IrAllocator {
     refs_->resize(size);
   }
 
-  // Transfers the ownership of given allocator to this one.
-  void Transfer(IrAllocator&& other) {
-    storage_.splice(storage_.cend(), other.storage_);
-    refs_->insert(refs_->end(), other.refs_->cbegin(), other.refs_->cend());
+  // Transfers the ownership of given allocator to this one. If `indices` is
+  // provided, only the objects at the given indices are transferred.
+  void TransferFrom(IrAllocator& other,
+                    std::optional<std::vector<size_t>> indices = std::nullopt) {
+    if (!indices) {
+      storage_.splice(storage_.cend(), other.storage_);
+      refs_->insert(refs_->end(), other.refs_->cbegin(), other.refs_->cend());
+      other.ResetRefs();
+      return;
+    }
+
+    auto& inds = *indices;
+    std::sort(inds.begin(), inds.end());
+    std::vector<typename Storage::iterator> its;
+    auto i = 0;
+    auto it = other.storage_.begin();
+    for (auto ind : inds) {
+      std::advance(it, ind - i);
+      i = ind;
+      its.push_back(it);
+    }
+    for (auto it : its) {
+      storage_.splice(storage_.cend(), other.storage_, it);
+    }
+
+    ResetRefs();
+    other.ResetRefs();
+  }
+
+  // Override for rvalues.
+  void TransferFrom(IrAllocator&& other) { TransferFrom(other, std::nullopt); }
+
+  // Transfers the object at the given index to the back of the given allocator.
+  void TransferTo(IrAllocator& other,
+                  std::optional<std::vector<size_t>> indices = std::nullopt) {
+    other.TransferFrom(*this, std::move(indices));
   }
 
   // Number of elements stored by this allocator.
@@ -100,6 +136,14 @@ class IrAllocator {
   IrAllocator& operator=(IrAllocator&& other) = default;
 
  private:
+  void ResetRefs() {
+    refs_->resize(storage_.size());
+    auto it = storage_.begin();
+    for (auto i = 0; i < storage_.size(); ++i, ++it) {
+      refs_->at(i) = &*it;
+    }
+  }
+
   Storage storage_;
   std::unique_ptr<Refs> refs_;
 };

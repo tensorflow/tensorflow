@@ -18680,6 +18680,26 @@ For internal use only.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TPUDummyInputOp : TF_Op<"TPUDummyInput", [Pure, TF_NoConstantFold]> {
+  let summary = [{
+Generates a zero-valued tensor for use as a dummy input to a TPU.
+  }];
+
+  let description = [{
+For the internal use of the TF2XLA bridge in the XLA Broadcast pass. This op
+  }];
+
+  let arguments = (ins
+    TF_ShapeAttr:$shape
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Float32]>:$output
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_TPUEmbeddingActivationsOp : TF_Op<"TPUEmbeddingActivations", [Pure]> {
   let summary = "An op enabling differentiation of TPU Embeddings.";
 

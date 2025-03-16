@@ -249,7 +249,7 @@ TEST_F(LoadedExecutableTest, Execute) {
                                                           })pb")))))
       .WillOnce(MockClientSessionReturnResponse(check_future_response));
 
-  tsl::RCReference<DeviceList> devices = BasicDeviceList::Create({&device});
+  DeviceListRef devices = BasicDeviceList::Create({&device});
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> args;
   for (const uint64_t handle : {1000, 1001}) {

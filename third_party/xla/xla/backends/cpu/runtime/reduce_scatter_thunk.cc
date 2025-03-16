@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -65,8 +64,6 @@ ReduceScatterThunk::ReduceScatterThunk(Info info, ReductionKind reduction_kind,
 
 tsl::AsyncValueRef<ReduceScatterThunk::ExecuteEvent>
 ReduceScatterThunk::Execute(const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
-
   TF_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   VLOG(3) << absl::StreamFormat(

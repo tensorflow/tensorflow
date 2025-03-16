@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if GOOGLE_CUDA
 
 #include <memory>
 
@@ -23,6 +22,8 @@ limitations under the License.
 namespace experiments {
 namespace benchmark {
 namespace {
+
+#if GOOGLE_CUDA
 
 constexpr int kNumSM = 108;
 constexpr int kNum32BitRegisters = 64 * 1024;
@@ -308,8 +309,11 @@ TEST(SMBandwidthTest, UseMaxNumberOfRegistersPerSm) {
   ForLoop<10>::iterate<UseMaxNumberOfRegistersPerSmImpl>();
 }
 
+#endif  // GOOGLE_CUDA
+
+// Ensure at least one test case is linked to avoid test failures.
+TEST(Dummy, Test) {}
+
 }  // namespace
 }  // namespace benchmark
 }  // namespace experiments
-
-#endif  // GOOGLE_CUDA

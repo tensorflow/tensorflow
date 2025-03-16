@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/cuda_config.h"
 #include "third_party/nccl/nccl_config.h"
+#include "third_party/nvshmem/nvshmem_config.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/load_library.h"
 #include "tsl/platform/path.h"
@@ -38,24 +39,25 @@ namespace tsl {
 namespace internal {
 
 namespace {
-std::string GetCudaVersion() { return TF_CUDA_VERSION; }
-std::string GetCudaRtVersion() { return TF_CUDART_VERSION; }
-std::string GetCuptiVersion() { return TF_CUPTI_VERSION; }
-std::string GetCudnnVersion() { return TF_CUDNN_VERSION; }
-std::string GetCublasVersion() { return TF_CUBLAS_VERSION; }
-std::string GetCusolverVersion() { return TF_CUSOLVER_VERSION; }
-std::string GetCufftVersion() { return TF_CUFFT_VERSION; }
-std::string GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
-std::string GetNcclVersion() { return TF_NCCL_VERSION; }
-std::string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
-std::string GetHipVersion() {
+absl::string_view GetCudaVersion() { return TF_CUDA_VERSION; }
+absl::string_view GetCudaRtVersion() { return TF_CUDART_VERSION; }
+absl::string_view GetCuptiVersion() { return TF_CUPTI_VERSION; }
+absl::string_view GetCudnnVersion() { return TF_CUDNN_VERSION; }
+absl::string_view GetCublasVersion() { return TF_CUBLAS_VERSION; }
+absl::string_view GetCusolverVersion() { return TF_CUSOLVER_VERSION; }
+absl::string_view GetCufftVersion() { return TF_CUFFT_VERSION; }
+absl::string_view GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
+absl::string_view GetNcclVersion() { return TF_NCCL_VERSION; }
+absl::string_view GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
+absl::string_view GetNvshmemVersion() { return XLA_NVSHMEM_VERSION; }
+absl::string_view GetHipVersion() {
 #if TENSORFLOW_USE_ROCM
   return TF_HIPRUNTIME_SOVERSION;
 #else   // TENSORFLOW_USE_ROCM
   return "";
 #endif  // TENSORFLOW_USE_ROCM
 }
-std::string GetRocBlasVersion() {
+absl::string_view GetRocBlasVersion() {
 #if TENSORFLOW_USE_ROCM
   return TF_ROCBLAS_SOVERSION;
 #else   // TENSORFLOW_USE_ROCM
@@ -64,8 +66,9 @@ std::string GetRocBlasVersion() {
 }
 
 absl::StatusOr<void*> GetDsoHandle(const std::string& name,
-                                   const std::string& version) {
-  auto filename = tsl::internal::FormatLibraryFileName(name, version);
+                                   absl::string_view version) {
+  auto filename =
+      tsl::internal::FormatLibraryFileName(name, std::string(version));
   void* dso_handle;
   absl::Status status =
       tsl::internal::LoadDynamicLibrary(filename.c_str(), &dso_handle);
@@ -139,6 +142,10 @@ absl::StatusOr<void*> GetCudnnDsoHandle() {
 
 absl::StatusOr<void*> GetNcclDsoHandle() {
   return GetDsoHandle("nccl", GetNcclVersion());
+}
+
+absl::StatusOr<void*> GetNvshmemDsoHandle() {
+  return GetDsoHandle("nvshmem_host", GetNvshmemVersion());
 }
 
 absl::StatusOr<void*> GetNvInferDsoHandle() {

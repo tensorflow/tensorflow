@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
 #include "absl/container/fixed_array.h"
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"

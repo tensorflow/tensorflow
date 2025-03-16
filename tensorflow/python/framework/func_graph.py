@@ -378,8 +378,8 @@ class FuncGraph(ops.Graph):
         if not context.executing_eagerly():
           graph = ops.get_default_graph()
           assert isinstance(
-              graph,
-              FuncGraph), "This API should only be used in TF2 enviroment."
+              graph, FuncGraph
+          ), "This API should only be used in TF2 environment."
 
           with graph.as_default():
             ret_nest = graph.capture_call_time_value(

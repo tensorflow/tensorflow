@@ -415,6 +415,14 @@ extern "C" void pthreadpool_parallelize_2d_tile_2d_with_uarch(
   LOG(FATAL) << "Not implemented";
 }
 
+extern "C" void pthreadpool_parallelize_2d_tile_2d_dynamic_with_uarch(
+    pthreadpool_t threadpool,
+    pthreadpool_task_2d_tile_2d_dynamic_with_id_t function, void* context,
+    uint32_t default_uarch_index, uint32_t max_uarch_index, size_t range_i,
+    size_t range_j, size_t tile_i, size_t tile_j, uint32_t flags) {
+  LOG(FATAL) << "Not implemented";
+}
+
 extern "C" void pthreadpool_parallelize_3d(pthreadpool_t threadpool,
                                            pthreadpool_task_3d_t function,
                                            void* context, size_t range_i,
@@ -475,6 +483,15 @@ extern "C" void pthreadpool_parallelize_3d_tile_2d_with_uarch(
     void* context, uint32_t default_uarch_index, uint32_t max_uarch_index,
     size_t range_i, size_t range_j, size_t range_k, size_t tile_j,
     size_t tile_k, uint32_t flags) {
+  LOG(FATAL) << "Not implemented";
+}
+
+extern "C" void pthreadpool_parallelize_3d_tile_2d_dynamic_with_uarch(
+    pthreadpool_t threadpool,
+    pthreadpool_task_3d_tile_2d_dynamic_with_id_t function, void* context,
+    uint32_t default_uarch_index, uint32_t max_uarch_index, size_t range_i,
+    size_t range_j, size_t range_k, size_t tile_j, size_t tile_k,
+    uint32_t flags) {
   LOG(FATAL) << "Not implemented";
 }
 

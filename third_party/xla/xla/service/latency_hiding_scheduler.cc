@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 
@@ -1603,9 +1604,7 @@ class AnnotationReadySetLt {
   }
 };
 absl::StatusOr<HloGraphNode*> FindAndExtractBestAnnotatedNode(
-    DefaultSchedulerCore::SchedulingState& sched_state,
-    DefaultSchedulerCore::OverlapLimitRule
-        scheduling_instruction_crosses_overlap_limit) {
+    DefaultSchedulerCore::SchedulingState& sched_state) {
   using ScheduleCandidate = DefaultSchedulerCore::ScheduleCandidate;
   using CandidateResult = DefaultSchedulerCore::CandidateResult;
   AnnotationReadySetLt ready_lt;
@@ -1618,14 +1617,6 @@ absl::StatusOr<HloGraphNode*> FindAndExtractBestAnnotatedNode(
   for (auto ready_node_it = annotation_ready.begin(),
             e = annotation_ready.end();
        ready_node_it != e; ++ready_node_it) {
-    // If this node would cause the max_concurrent_resource count to go beyond
-    // the limit do not schedule it and pass to the next node.
-    if (scheduling_instruction_crosses_overlap_limit(sched_state,
-                                                     *ready_node_it)) {
-      VLOG(2) << "Annotation instructions crosses overlap limit:"
-              << (*ready_node_it)->GetInstr().name();
-      continue;
-    }
     ScheduleCandidate ready_candidate;
     ready_candidate.node = *ready_node_it;
     if (ready_chosen.node == nullptr) {
@@ -1675,12 +1666,12 @@ absl::StatusOr<HloGraphNode*> FindAndExtractBestAnnotatedNode(
 absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     const HloComputation* computation, int64_t annotation,
     DefaultSchedulerCore::SchedulingState* sched_state) const {
-  // Create the ready set with the roots of the annotation
+  // Filter the ready nodes with the annotation.
   TF_RET_CHECK(sched_state->annotation_ready.empty());
-  for (const HloInstruction* instr :
-       annotation_tracker_->GetRootInstructions(computation, annotation)) {
-    sched_state->annotation_ready.push_back(
-        &sched_state->sched_graph.GetNode(instr));
+  for (HloGraphNode* node : sched_state->ready_set) {
+    if (node->GetAnnotation() == annotation) {
+      sched_state->annotation_ready.push_back(node);
+    }
   }
   int64_t num_scheduled = 0;
   int64_t annotation_size =
@@ -1699,10 +1690,8 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     }());
     VLOG(2) << "Current time: " << sched_state->current_time;
     // Find the best annotated node to schedule.
-    TF_ASSIGN_OR_RETURN(
-        HloGraphNode * node,
-        FindAndExtractBestAnnotatedNode(
-            *sched_state, scheduling_instruction_crosses_overlap_limit_));
+    TF_ASSIGN_OR_RETURN(HloGraphNode * node,
+                        FindAndExtractBestAnnotatedNode(*sched_state));
 
     TF_RET_CHECK(node != nullptr)
         << "Couldn't find an annotated node to schedule.";
@@ -1727,6 +1716,23 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
       << "Couldn't schedule all annotated nodes in one go.";
   return absl::OkStatus();
 }
+
+// Returns the vector of annotations that the given node is a successor of, but
+// is not included in that annotation group itself.
+std::vector<int64_t> GetPredecessorAnnotations(const HloGraphNode* node) {
+  int64_t cur_annotation = node->GetAnnotation();
+  std::vector<int64_t> predecessor_annotations;
+  absl::flat_hash_set<int64_t> seen_annotations;
+  for (const HloEdge& edge : node->GetPredecessors()) {
+    int64_t pred_annotation = edge.Target().GetAnnotation();
+    if (pred_annotation != cur_annotation &&
+        seen_annotations.insert(pred_annotation).second) {
+      predecessor_annotations.push_back(pred_annotation);
+    }
+  }
+  return predecessor_annotations;
+}
+
 absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     HloGraphNode* n, DefaultSchedulerCore::SchedulingState* sched_state) const {
   // Insert the node into the sequence and mark it as scheduled.
@@ -1734,6 +1740,30 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
       const_cast<HloInstruction*>(&n->GetInstr()));
   n->SetScheduled();
 
+  // If this node was a successor to one or more scheduling groups, update the
+  // number of scheduled successors for each of those groups and add the group
+  // the ready_annotations set if all of its successors have been scheduled.
+  std::vector<int64_t> annotations = GetPredecessorAnnotations(n);
+  if (!annotations.empty()) {
+    VLOG(2) << "Scheduled node is a frontier: " << n->GetInstr().name();
+    for (int64_t annotation : annotations) {
+      sched_state->num_scheduled_successors_for_annotation[annotation]++;
+      VLOG(2)
+          << "Annotation: " << annotation << " scheduled num successors: "
+          << sched_state->num_scheduled_successors_for_annotation[annotation]
+          << " total num successors: "
+          << annotation_tracker_->GetNumSuccessors(n->GetInstr().parent(),
+                                                   annotation);
+      // LegalizeSchedulingAnnotations pass should have made sure that we will
+      // eventually reach a state where all successors of the annotation are
+      // scheduled.
+      if (annotation_tracker_->GetNumSuccessors(n->GetInstr().parent(),
+                                                annotation) ==
+          sched_state->num_scheduled_successors_for_annotation[annotation]) {
+        sched_state->ready_annotations.push_back(annotation);
+      }
+    }
+  }
   // Remove scheduled node from selective_resources_releasers if it
   // was there.
   if (sched_state->config.enable_selective_resources &&
@@ -1827,6 +1857,10 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
           auto occupied_resources =
               edge.Target().GetShareableResourcesOnEdge(inverse_edge);
           for (const int64_t resource : occupied_resources) {
+            VLOG(3) << "Adding edge from" << edge.Target().GetInstr().name()
+                    << " to " << inverse_edge.Target().GetInstr().name()
+                    << " for resource"
+                    << sched_state->async_tracker->GetResourceName(resource);
             CHECK(AddOccupierToResource(
                 current_time, inverse_edge,
                 sched_state->shareable_resource_occupiers[resource]));
@@ -1914,25 +1948,8 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
       continue;
     }
     sched_state->ready_set.push_back(&edge.Target());
-    if (annotation != -1) {
-      sched_state->ready_num_nodes_with_annotation[annotation]++;
-      VLOG(2) << "Annotation: " << annotation
-              << " ready_num_nodes_with_annotation: "
-              << sched_state->ready_num_nodes_with_annotation[annotation]
-              << " num_root_instructions: "
-              << annotation_tracker_->GetNumRootInstructions(
-                     n->GetInstr().parent(), annotation);
-      // LegalizeSchedulingAnnotations pass should have made sure that we will
-      // eventually reach a state where all of the annotation root instructions
-      // will be ready at the same time.
-      if (annotation_tracker_->GetNumRootInstructions(n->GetInstr().parent(),
-                                                      annotation) ==
-          sched_state->ready_num_nodes_with_annotation[annotation]) {
-        sched_state->ready_annotations.push_back(annotation);
-      }
-      if (annotation == sched_state->ongoing_annotation) {
-        sched_state->annotation_ready.push_back(&edge.Target());
-      }
+    if (annotation != -1 && annotation == sched_state->ongoing_annotation) {
+      sched_state->annotation_ready.push_back(&edge.Target());
     }
     if (edge.Target().GetReadyTime() > current_time) {
       sched_state->next_ready_stack.push_back(&edge.Target());
@@ -2412,6 +2429,14 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
                                            latency_estimator_);
   if (annotation_tracker_->HasAnnotations(computation)) {
     sched_state.sched_graph.AnnotateGraph(annotation_tracker_.get());
+    for (int64_t annotation :
+         annotation_tracker_->GetAnnotations(computation)) {
+      if (annotation_tracker_->GetSuccessors(computation, annotation).empty()) {
+        VLOG(3) << "Annotation " << annotation
+                << " does not have any successors, is ready to be scheduled";
+        sched_state.ready_annotations.push_back(annotation);
+      }
+    }
   }
   sched_state.sched_graph.InitializeGraphAnalysis(async_tracker_);
   VLOG(5) << "Just built graph:";
@@ -2430,23 +2455,6 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
           << memory_pressure_tracker.memory_usage();
   sched_state.ready_set.insert(sched_state.ready_set.end(), roots.begin(),
                                roots.end());
-  for (HloGraphNode* root : roots) {
-    int64_t annotation = root->GetAnnotation();
-    if (annotation != -1) {
-      sched_state.ready_num_nodes_with_annotation[annotation]++;
-      VLOG(2) << "Annotation: " << annotation
-              << " ready_num_nodes_with_annotation: "
-              << sched_state.ready_num_nodes_with_annotation[annotation]
-              << " num_root_instructions: "
-              << annotation_tracker_->GetNumRootInstructions(computation,
-                                                             annotation);
-      if (annotation_tracker_->GetNumRootInstructions(computation,
-                                                      annotation) ==
-          sched_state.ready_num_nodes_with_annotation[annotation]) {
-        sched_state.ready_annotations.push_back(annotation);
-      }
-    }
-  }
   // Schedule in order bottom up.
   while (!sched_state.ready_set.empty() || !sched_state.nop_set.empty()) {
     VLOG(10) << "Current ready time: " << sched_state.current_time;

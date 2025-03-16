@@ -3632,6 +3632,77 @@ TEST_F(DynamicSliceFusionTest, MultipleOffsetsAsFunctionOfInductionVariable) {
       /*run_hlo_passes=*/false, /*use_threads=*/true, std::nullopt));
 }
 
+TEST_F(DynamicSliceFusionTest,
+       ReduceScatterDynamicSliceMultipleBuffersShouldFuseAndExecuteCorrectly) {
+  const char* hlo = R"(
+    HloModule test, replica_count=2
+    add {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      ROOT add = s32[] add(a, b)
+    }
+    body {
+      param.1 = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) parameter(0)
+      iter.1 = s32[] get-tuple-element(param.1), index=0
+      c1 = s32[] constant(1)
+      c0 = s32[] constant(0)
+      src1 = s32[8,8,8] get-tuple-element(param.1), index=1
+      src2 = s32[8,8,8] get-tuple-element(param.1), index=2
+      dst1 = s32[8,4,8] get-tuple-element(param.1), index=3
+      dst2 = s32[8,4,8] get-tuple-element(param.1), index=4
+      ds1 = s32[1,8,8]{2,1,0} dynamic-slice(src1, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
+      ds2 = s32[1,8,8]{2,1,0} dynamic-slice(src2, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
+      rs1 = s32[8,8] reshape(ds1)
+      rs2 = s32[8,8] reshape(ds2)
+      rs = (s32[4,8], s32[4,8]) reduce-scatter(rs1, rs2), dimensions={0}, replica_groups={{0,1}}, to_apply=add
+      reduce-scatter1 = s32[4,8] get-tuple-element(rs), index=0
+      reduce-scatter2 = s32[4,8] get-tuple-element(rs), index=1
+      reshape1 = s32[1,4,8] reshape(reduce-scatter1)
+      reshape2 = s32[1,4,8] reshape(reduce-scatter2)
+      dus1 = s32[8,4,8] dynamic-update-slice(dst1, reshape1, iter.1, c0, c0)
+      dus2 = s32[8,4,8] dynamic-update-slice(dst2, reshape2, iter.1, c0, c0)
+      add = s32[] add(iter.1, c1)
+      ROOT tuple = tuple(add, src1, src2, dus1, dus2)
+    }
+    condition {
+      param.2 = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) parameter(0)
+      iter.2 = s32[] get-tuple-element(param.2), index=0
+      c8 = s32[] constant(8)
+      ROOT compare = pred[] compare(iter.2, c8), direction=LT
+    }
+    ENTRY main {
+      c0 = s32[] constant(0)
+      p1 = s32[8,8,8] parameter(0)
+      p2 = s32[8,8,8] parameter(1)
+      p3 = s32[8,4,8] parameter(2)
+      p4 = s32[8,4,8] parameter(3)
+      tuple = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) tuple(c0, p1, p2, p3, p4)
+      ROOT while = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) while(tuple), body=body, condition=condition
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  std::unique_ptr<HloModule> m_fused = m->Clone();
+  m_fused->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_dynamic_slice_fusion(true);
+  TF_ASSERT_OK_AND_ASSIGN(m_fused, GetOptimizedModule(std::move(m_fused)));
+  TF_ASSERT_OK_AND_ASSIGN(m, GetOptimizedModule(std::move(m)));
+
+  // Check that the fused module has a dynamic address computation.
+  std::vector<HloComputation*> fused_dynamic_slice_fusions =
+      GetDynamicSliceFusions(*m_fused);
+  ASSERT_EQ(fused_dynamic_slice_fusions.size(), 1);
+  // Check that the unfused module does not have a dynamic address computation.
+  std::vector<HloComputation*> unfused_dynamic_slice_fusions =
+      GetDynamicSliceFusions(*m);
+  ASSERT_EQ(unfused_dynamic_slice_fusions.size(), 0);
+
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
+      std::move(m_fused), std::move(m),
+      /*run_hlo_passes=*/false, /*use_threads=*/true, std::nullopt));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -15,33 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/op_utils.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/hlo_module_map.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace profiler {
-namespace {
+using tsl::uint64;
 
-// Return capped performance. If time == 0, returns the original perf.
-// Otherwise, returns the minimum of perf and the product of rate_limit
-// and time.
-double GetCappedPerf(double perf, uint64 time, double rate_limit) {
-  if (perf <= 0) return 0;
-  if (time == 0) return perf;
-  return std::min(perf, time * rate_limit);
-}
-
-}  // namespace
+namespace {}  // namespace
 
 // Annotate the op_metrics with the metadata from the instr_wrapper.
 void EnterOpMetadata(OpMetrics* op_metrics,
@@ -158,7 +150,8 @@ void DeviceOpMetricsDbBuilder::EnterOp(
     absl::string_view provenance, absl::string_view deduplicated_name,
     bool is_eager, uint64 occurrences, uint64 time_ps, uint64 children_time_ps,
     int64_t flops, int64_t bytes_accessed,
-    const protobuf::RepeatedPtrField<OpMetrics::MemoryAccessed>&
+    // NOLINTNEXTLINE: clang-tidy missing-includes false positive
+    const tsl::protobuf::RepeatedPtrField<OpMetrics::MemoryAccessed>&
         memory_accessed_breakdown,
     int64_t model_flops) {
   EnterOpMetadata(program_id, name, category, provenance, deduplicated_name,

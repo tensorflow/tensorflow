@@ -85,6 +85,7 @@ class LiteRtDispatchDelegateOptions {
 //
 
 static constexpr absl::string_view kAllocBase = "alloc_base";
+static constexpr absl::string_view kAllocFd = "alloc_fd";
 
 inline void AddAllocBaseOption(const void* alloc_base,
                                LiteRtDispatchDelegateOptions& opts) {
@@ -101,6 +102,23 @@ inline litert::Expected<const void*> FindAllocBase(
     return alloc_base.Error();
   }
   return std::any_cast<const void*>(*alloc_base);
+}
+
+inline void AddAllocFdOption(int alloc_fd,
+                             LiteRtDispatchDelegateOptions& opts) {
+  LiteRtAny opt;
+  opt.type = kLiteRtAnyTypeVoidPtr;
+  opt.int_value = alloc_fd;
+  opts.AddOption(LiteRtDispatchOption{kAllocBase.data(), opt});
+}
+
+inline litert::Expected<int> FindAllocFd(
+    const LiteRtDispatchDelegateOptions& opts) {
+  auto alloc_fd = opts.FindDispatchOption(kAllocFd);
+  if (!alloc_fd) {
+    return alloc_fd.Error();
+  }
+  return std::any_cast<int>(*alloc_fd);
 }
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DISPATCH_DISPATCH_DELEGATE_OPTIONS_H_

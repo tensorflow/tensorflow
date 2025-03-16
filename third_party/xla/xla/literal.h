@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -195,10 +196,21 @@ class LiteralBase {
   template <typename NativeT>
   NativeT Get(absl::Span<const int64_t> multi_index,
               const ShapeIndex& shape_index) const;
+
   // Overloads of Get for array literals. CHECKs if the literal is not
   // array-shaped and dense.
   template <typename NativeT>
   NativeT Get(absl::Span<const int64_t> multi_index) const;
+
+  // Gets an element in the literal at the given linear index. Linear index is
+  // CHECKed against the literal size.
+  template <typename NativeT>
+  NativeT GetLinear(int64_t linear_index, const ShapeIndex& shape_index) const;
+
+  // Overloads of GetLinear for array literals. CHECKs if the literal is
+  // not array-shaped and dense.
+  template <typename NativeT>
+  NativeT GetLinear(int64_t linear_index) const;
 
   // Get the dynamic size on dim_index in the literal at the given shape_index.
   DynamicSizeType GetDynamicSize(int64_t dim_index,
@@ -826,6 +838,14 @@ class LiteralBase {
     template <typename NativeT>
     void Set(absl::Span<const int64_t> index, NativeT value);
 
+    // Gets or sets an element in the array at the given linear index. The
+    // linear index is CHECKed against the total number of elements in the
+    // array. This piece must be array-shaped.
+    template <typename NativeT>
+    NativeT GetLinear(int64_t linear_index) const;
+    template <typename NativeT>
+    void SetLinear(int64_t linear_index, NativeT value);
+
     DynamicSizeType GetDynamicSize(int64_t dim_index) const;
     void SetDynamicSize(int64_t dim_index, DynamicSizeType size);
     void AllocateBuffers();
@@ -837,22 +857,18 @@ class LiteralBase {
     }
     void set_buffer(char* buffer) {
       DCHECK(LayoutUtil::IsDenseArray(*subshape_));
-      auto* dense_rep = std::holds_alternative<Uninitialized>(rep_)
-                            ? &rep_.emplace<DenseRep>()
-                            : GetDenseRep();
-      DCHECK(dense_rep);
-      dense_rep->data = buffer;
+      storage_.Emplace<DenseRep>(buffer);
     }
     void MoveDataFrom(Piece& from) {
-      DCHECK(!std::holds_alternative<DenseRep>(rep_));
-      DCHECK(!std::holds_alternative<TupleRep>(rep_));
-      if (auto* dense_rep = from.GetDenseRep()) {
-        rep_.emplace<DenseRep>().data = dense_rep->data;
-      } else if (auto* inlined_rep = from.GetDenseInlinedRep()) {
-        std::memcpy(rep_.emplace<DenseInlinedRep>().data, inlined_rep->data,
-                    from.total_bytes_dense());
+      DCHECK(!storage_.Isa<DenseRep>());
+      DCHECK(!storage_.Isa<TupleRep>());
+      if (auto* dense_rep = from.storage_.GetDenseRep()) {
+        storage_.Emplace<DenseRep>(dense_rep->data);
+      } else if (auto* inlined_rep = from.storage_.GetDenseInlinedRep()) {
+        storage_.Emplace<DenseInlinedRep>(inlined_rep->data,
+                                          from.total_bytes_dense());
       }
-      from.rep_.emplace<Uninitialized>();
+      from.storage_.Emplace<Uninitialized>();
     }
 
     // Gets/sets the buffer holding dynamic sizes.
@@ -876,9 +892,9 @@ class LiteralBase {
     const Shape& subshape() const { return *subshape_; }
     void set_subshape(const Shape* subshape) {
       subshape_ = subshape;
-      if (std::holds_alternative<Uninitialized>(rep_)) {
+      if (storage_.Isa<Uninitialized>()) {
         if (subshape_->IsTuple()) {
-          rep_.emplace<TupleRep>();
+          storage_.Emplace<TupleRep>();
         }
       }
     }
@@ -918,21 +934,21 @@ class LiteralBase {
       return const_cast<Piece&>(const_cast<const Piece*>(this)->child(index));
     }
     const Piece& child(int64_t index) const {
-      auto* tuple_rep = GetTupleRep();
+      auto* tuple_rep = storage_.GetTupleRep();
       DCHECK(tuple_rep);
       return tuple_rep->children[index];
     }
 
     // Adds a child piece to this piece's children.
     void emplace_back(Piece child_piece) {
-      auto* tuple_rep = GetTupleRep();
+      auto* tuple_rep = storage_.GetTupleRep();
       DCHECK(tuple_rep);
       tuple_rep->children.emplace_back(std::move(child_piece));
     }
 
     // Returns the size of children pieces of this piece.
     int64_t children_size() const {
-      if (auto* tuple_rep = GetTupleRep()) {
+      if (auto* tuple_rep = storage_.GetTupleRep()) {
         return tuple_rep->children.size();
       }
       return 0;
@@ -1040,43 +1056,118 @@ class LiteralBase {
     bool DeserializeData(DeserializeState<InputIterator>& state);
 
    private:
+    // Literals can be used as DMA targets, which can require alignment. We
+    // force a tsl::Allocator::kAllocatorAlignment-byte minimum alignment.
+    static constexpr size_t kMinimumAlignment = 64;
+
+    // The maximum number of bytes that can be inlined in the DenseInlinedRep.
+    static constexpr size_t kMaxInlinedBytes = 24;
+
     // Uninitialized state representation.
     struct Uninitialized {};
-    // Out of line dense array storage.
-    union DenseRep {
-      char* data;
-    };
+
+    // Children pieces for tuple shaped pieces.
     struct TupleRep {
-      // Children pieces for tuple shaped pieces.
-      std::vector<Piece> children = {};
+      std::vector<Piece> children;
     };
 
-    // Literals can be used as DMA targets, which can require alignment. We
-    // force a tsl::Allocator::kAllocatorAlignment-byte minimum
-    // alignment.
-    static inline constexpr size_t kMinimumAlignment = 64;
+    // Out of line dense array storage.
+    struct DenseRep {
+      DenseRep() = default;
+      explicit DenseRep(char* data) : data(data) {}
 
-    // Use just so many bytes that we don't increase the sizeof(Piece).
-    static inline constexpr size_t kMaxInlinedBytes =
-        std::max(sizeof(DenseRep), sizeof(TupleRep));
+      char* data = nullptr;
+    };
 
     // Inlined dense array storage.
     struct DenseInlinedRep {
+      DenseInlinedRep() = default;
+      DenseInlinedRep(const char* init, size_t size) {
+        DCHECK_LE(size, kMaxInlinedBytes);
+        std::memcpy(data, init, size);
+      }
+
       alignas(kMinimumAlignment) char data[kMaxInlinedBytes];
     };
 
-    const DenseInlinedRep* GetDenseInlinedRep() const {
-      return std::get_if<DenseInlinedRep>(&rep_);
-    }
-    DenseInlinedRep* GetDenseInlinedRep() {
-      return std::get_if<DenseInlinedRep>(&rep_);
-    }
+    // A wrapper around the piece representations with cached data pointer.
+    class Storage {
+     public:
+      Storage() = default;
 
-    const DenseRep* GetDenseRep() const { return std::get_if<DenseRep>(&rep_); }
-    DenseRep* GetDenseRep() { return std::get_if<DenseRep>(&rep_); }
+      Storage(Storage&& other) { *this = std::move(other); }
+      Storage& operator=(Storage&& other) {
+        rep_ = std::move(other.rep_);
+        data_ = other.data_;
 
-    const TupleRep* GetTupleRep() const { return std::get_if<TupleRep>(&rep_); }
-    TupleRep* GetTupleRep() { return std::get_if<TupleRep>(&rep_); }
+        if (auto* inline_rep = GetDenseInlinedRep()) {
+          data_ = inline_rep->data;
+        }
+
+        other.rep_.emplace<Uninitialized>();
+        other.data_ = nullptr;
+
+        return *this;
+      }
+
+      template <typename Rep>
+      bool Isa() const {
+        return std::holds_alternative<Rep>(rep_);
+      }
+
+      template <typename Rep, typename... Args>
+      Rep& Emplace(Args... args) {
+        Rep& emplaced = rep_.emplace<Rep>(std::forward<Args>(args)...);
+        if constexpr (std::is_same_v<Rep, DenseRep> ||
+                      std::is_same_v<Rep, DenseInlinedRep>) {
+          data_ = emplaced.data;
+        } else {
+          data_ = nullptr;
+        }
+        return emplaced;
+      }
+
+      const DenseInlinedRep* GetDenseInlinedRep() const {
+        return std::get_if<DenseInlinedRep>(&rep_);
+      }
+
+      DenseInlinedRep* GetDenseInlinedRep() {
+        return std::get_if<DenseInlinedRep>(&rep_);
+      }
+
+      const DenseRep* GetDenseRep() const {
+        return std::get_if<DenseRep>(&rep_);
+      }
+
+      DenseRep* GetDenseRep() { return std::get_if<DenseRep>(&rep_); }
+
+      const TupleRep* GetTupleRep() const {
+        return std::get_if<TupleRep>(&rep_);
+      }
+
+      TupleRep* GetTupleRep() { return std::get_if<TupleRep>(&rep_); }
+
+      const char* data() const {
+        DCHECK_EQ(dense_data(), data_) << "cached data pointer is stale";
+        return data_;
+      }
+
+      char* data() {
+        DCHECK_EQ(dense_data(), data_) << "cached data pointer is stale";
+        return data_;
+      }
+
+     private:
+      const char* dense_data() const {
+        if (auto* rep = GetDenseRep()) return rep->data;
+        if (auto* rep = GetDenseInlinedRep()) return rep->data;
+        return nullptr;
+      }
+
+      std::variant<Uninitialized, TupleRep, DenseRep, DenseInlinedRep> rep_;
+      char* data_ = nullptr;  // cached `rep_.data` value for dense reps
+    };
+
     // Helpers for traversing the piece via ForEachSubpiece rooted at 'index'.
     // The first non-OK (or non-true) value is returned by the function.
     // The callable 'func' has the same signature as described above in
@@ -1085,7 +1176,7 @@ class LiteralBase {
     absl::Status ForEachHelper(const Fn& func, const Piece& piece,
                                ShapeIndex* index) const {
       TF_RETURN_IF_ERROR(func(*index, piece));
-      if (auto* tuple_rep = piece.GetTupleRep()) {
+      if (auto* tuple_rep = piece.storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
           TF_RETURN_IF_ERROR(
@@ -1101,7 +1192,7 @@ class LiteralBase {
       if (!func(*index, piece)) {
         return false;
       }
-      if (auto* tuple_rep = piece.GetTupleRep()) {
+      if (auto* tuple_rep = piece.storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
           if (!ForEachHelperBool(func, tuple_rep->children[i], index)) {
@@ -1116,7 +1207,7 @@ class LiteralBase {
     absl::Status ForEachMutableHelper(const Fn& func, Piece* piece,
                                       ShapeIndex* index) {
       TF_RETURN_IF_ERROR(func(*index, piece));
-      if (auto* tuple_rep = piece->GetTupleRep()) {
+      if (auto* tuple_rep = piece->storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
           TF_RETURN_IF_ERROR(
@@ -1136,8 +1227,8 @@ class LiteralBase {
     template <typename NativeT>
     void CopyElementsWithDynamicBound(const LiteralBase::Piece& src);
 
-    // Storage representation of this piece.
-    std::variant<Uninitialized, DenseInlinedRep, DenseRep, TupleRep> rep_;
+    // Storage for this piece.
+    Storage storage_;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
@@ -1275,23 +1366,57 @@ class MutableLiteralBase : public LiteralBase {
   template <typename NativeT>
   void PopulateR4FromArray4D(const Array4D<NativeT>& values);
 
+  // Collection of type aliases for static type checking Literal::Populate(.*)
+  // functions defined below. We rely on templates to be able to inline
+  // generator and populator functions into the call sites.
+
+  template <typename NativeT, typename Generator>
+  using IsGenerator = std::enable_if_t<std::is_convertible_v<
+      NativeT, std::invoke_result_t<Generator, absl::Span<const int64_t>>>>;
+
+  template <typename NativeT, typename Generator>
+  using IsParallelGenerator = std::enable_if_t<std::is_convertible_v<
+      NativeT,
+      std::invoke_result_t<Generator, absl::Span<const int64_t>, int>>>;
+
+  template <typename Populator>
+  using IsPopulator = std::enable_if_t<
+      std::is_invocable_v<Populator, void*, absl::Span<const int64_t>>>;
+
+  template <typename Populator>
+  using IsParallelPopulator = std::enable_if_t<
+      std::is_invocable_v<Populator, void*, absl::Span<const int64_t>, int>>;
+
+  template <typename NativeT, typename Generator>
+  using IsLinearGenerator = std::enable_if_t<
+      std::is_convertible_v<NativeT, std::invoke_result_t<Generator, int64_t>>>;
+
+  template <typename NativeT, typename Generator>
+  using IsLinearParallelGenerator = std::enable_if_t<std::is_convertible_v<
+      NativeT, std::invoke_result_t<Generator, int64_t, int>>>;
+
+  template <typename Populator>
+  using IsLinearPopulator =
+      std::enable_if_t<std::is_invocable_v<Populator, void*, int64_t>>;
+
+  template <typename Populator>
+  using IsLinearParallelPopulator =
+      std::enable_if_t<std::is_invocable_v<Populator, void*, int64_t, int>>;
+
   // Populates literal values by calling the generator function for every cell
   // in this literal object.
   //
-  // generator must be a callable of the type
-  // NativeT(absl::Span<const int64_t> indexes) or compatible.
-  //
   // This literal must have a dense layout.
-  template <typename NativeT>
-  absl::Status Populate(
-      absl::FunctionRef<NativeT(absl::Span<const int64_t>)> generator);
+  template <typename NativeT, typename Generator,
+            IsGenerator<NativeT, Generator>* = nullptr>
+  absl::Status Populate(Generator&& generator);
 
   // A parallel version of Populate(). This can be used if the generator is
   // thread-safe and the values for the shape's different elements are
   // independent.
-  template <typename NativeT>
-  absl::Status PopulateParallel(
-      absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator);
+  template <typename NativeT, typename Generator,
+            IsParallelGenerator<NativeT, Generator>* = nullptr>
+  absl::Status PopulateParallel(Generator&& generator);
 
   // Similar to Populate() but takes a populator function that allows caller
   // specify how to write to the destination buffer rather than a generator that
@@ -1300,14 +1425,32 @@ class MutableLiteralBase : public LiteralBase {
   // that we can avoid templatizing the method for better code size.
   //
   // This literal must have a dense layout.
-  absl::Status PopulateInplace(
-      absl::FunctionRef<void(void*, absl::Span<const int64_t>)> populator);
+  template <typename Populator, IsPopulator<Populator>* = nullptr>
+  absl::Status PopulateInplace(Populator&& populator);
 
   // A parallel version of PopulateInplace(). This can be used if the generator
   // is thread-safe and the values for the shape's different elements are
   // independent.
-  absl::Status PopulateInplaceParallel(
-      absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator);
+  template <typename Populator, IsParallelPopulator<Populator>* = nullptr>
+  absl::Status PopulateInplaceParallel(Populator&& populator);
+
+  // Overload of Populate() that takes a linear index generator.
+  template <typename NativeT, typename Generator,
+            IsLinearGenerator<NativeT, Generator>* = nullptr>
+  absl::Status PopulateLinear(Generator&& generator);
+
+  // Overload of PopulateParallel() that takes a linear index generator.
+  template <typename NativeT, typename Generator,
+            IsLinearParallelGenerator<NativeT, Generator>* = nullptr>
+  absl::Status PopulateLinearParallel(Generator&& generator);
+
+  // Overload of PopulateInplace() that takes a linear index generator.
+  template <typename Populator, IsLinearPopulator<Populator>* = nullptr>
+  absl::Status PopulateLinearInplace(Populator&& populator);
+
+  // Overload of PopulateInplaceParallel() that takes a linear index generator.
+  template <typename Populator, IsLinearParallelPopulator<Populator>* = nullptr>
+  absl::Status PopulateLinearInplaceParallel(Populator&& populator);
 
   // Fills this literal with the given value.
   template <typename NativeT>
@@ -1347,16 +1490,23 @@ class MutableLiteralBase : public LiteralBase {
   // The parent class borrows this shape.
   MaybeOwningShapePtr shape_;
 
-  // Implementation details shared between Populate() and PopulateParallel()
-  //  template <typename NativeT, typename FnType>
-  //  absl::Status PopulateInternal(const FnType& generator, bool parallel);
-  template <typename NativeT>
-  absl::Status PopulateInternal(
-      absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator,
-      bool parallel);
+  // We do not add static type checking for internal generators as these
+  // functions are not part of the public API and we construct generators from
+  // already type checked generators passed by the user.
+
+  // Implementation details shared between Populate() and PopulateParallel().
+  template <typename NativeT, typename Generator>
+  absl::Status PopulateInternal(Generator&& generator, bool parallel);
   void PopulateInplaceInternal(
       absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator,
       bool parallel);
+
+  // Implementation details shared between PopulateLinear() and
+  // PopulateLinearParallel().
+  template <typename NativeT, typename Generator>
+  absl::Status PopulateLinearInternal(Generator&& generator, bool parallel);
+  void PopulateLinearInplaceInternal(
+      absl::FunctionRef<void(void*, int64_t, int)> populator, bool parallel);
 
   friend class LiteralBase;
   friend class MutableBorrowingLiteral;
@@ -1427,7 +1577,7 @@ class Literal : public MutableLiteralBase {
  private:
   friend class LiteralBase;
   friend class MutableLiteralBase;
-  const Piece& root_piece() const override { return root_piece_; };
+  const Piece& root_piece() const final { return root_piece_; };
   // Deallocate the buffers held by this literal.
   void DeallocateBuffers();
 
@@ -1477,7 +1627,7 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   explicit MutableBorrowingLiteral(ShapeTree<char*> src_buf_ptrs);
 
  private:
-  const Piece& root_piece() const override { return *root_piece_; };
+  const Piece& root_piece() const final { return *root_piece_; };
   // Recursively copies the subtree from the `src_piece` at the given child
   // index to the `dest_piece`. For buffers only the pointers are copied, but
   // not the content.
@@ -1498,7 +1648,7 @@ class LiteralSlice : public LiteralBase {
   LiteralSlice(const LiteralBase& literal, const ShapeIndex& view_root);
 
  private:
-  const Piece& root_piece() const override { return *root_piece_; };
+  const Piece& root_piece() const final { return *root_piece_; };
 
   const Piece* root_piece_;  // Not owned.
 };
@@ -1526,7 +1676,7 @@ class BorrowingLiteral : public LiteralBase {
 
  private:
   // Accessor for the root piece of this literal.
-  const Piece& root_piece() const override { return root_piece_; };
+  const Piece& root_piece() const final { return root_piece_; };
   Piece root_piece_;
 
   // Shape of this literal. Stored as unique_ptr such that the (default) move
@@ -1690,8 +1840,8 @@ template <typename NativeT>
 NativeT LiteralBase::Piece::Get(absl::Span<const int64_t> multi_index) const {
   DCHECK(LayoutUtil::IsDenseArray(subshape()))
       << __func__ << " is only supported for dense arrays: " << subshape();
-  return data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
-      subshape(), multi_index)];
+  return GetLinear<NativeT>(
+      IndexUtil::MultidimensionalIndexToLinearIndex(subshape(), multi_index));
 }
 
 template <typename NativeT>
@@ -1699,8 +1849,25 @@ void LiteralBase::Piece::Set(absl::Span<const int64_t> multi_index,
                              NativeT value) {
   DCHECK(LayoutUtil::IsDenseArray(subshape()))
       << __func__ << " is only supported for dense arrays: " << subshape();
-  data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
-      subshape(), multi_index)] = value;
+  return SetLinear<NativeT>(
+      IndexUtil::MultidimensionalIndexToLinearIndex(subshape(), multi_index),
+      value);
+}
+
+template <typename NativeT>
+NativeT LiteralBase::Piece::GetLinear(int64_t linear_index) const {
+  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+      << __func__ << " is only supported for dense arrays: " << subshape();
+  DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
+  return data<NativeT>().data()[linear_index];
+}
+
+template <typename NativeT>
+void LiteralBase::Piece::SetLinear(int64_t linear_index, NativeT value) {
+  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+      << __func__ << " is only supported for dense arrays: " << subshape();
+  DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
+  data<NativeT>().data()[linear_index] = value;
 }
 
 template <typename NativeT>
@@ -1723,6 +1890,17 @@ inline NativeT LiteralBase::Get(absl::Span<const int64_t> multi_index,
 template <typename NativeT>
 inline NativeT LiteralBase::Get(absl::Span<const int64_t> multi_index) const {
   return root_piece().Get<NativeT>(multi_index);
+}
+
+template <typename NativeT>
+inline NativeT LiteralBase::GetLinear(int64_t linear_index,
+                                      const ShapeIndex& shape_index) const {
+  return piece(shape_index).GetLinear<NativeT>(linear_index);
+}
+
+template <typename NativeT>
+inline NativeT LiteralBase::GetLinear(int64_t linear_index) const {
+  return root_piece().GetLinear<NativeT>(linear_index);
 }
 
 template <typename NativeT>
@@ -1901,10 +2079,9 @@ void MutableLiteralBase::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
   PopulateFromArray(values);
 }
 
-template <typename NativeT>
-TF_ATTRIBUTE_NOINLINE absl::Status MutableLiteralBase::PopulateInternal(
-    absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator,
-    bool parallel) {
+template <typename NativeT, typename Generator>
+absl::Status MutableLiteralBase::PopulateInternal(Generator&& generator,
+                                                  bool parallel) {
   const Shape& this_shape = shape();
   DCHECK(LayoutUtil::IsDenseArray(this_shape));
   TF_RET_CHECK(this_shape.element_type() ==
@@ -1922,9 +2099,9 @@ TF_ATTRIBUTE_NOINLINE absl::Status MutableLiteralBase::PopulateInternal(
   return absl::OkStatus();
 }
 
-template <typename NativeT>
-TF_ATTRIBUTE_NOINLINE absl::Status MutableLiteralBase::Populate(
-    absl::FunctionRef<NativeT(absl::Span<const int64_t>)> generator) {
+template <typename NativeT, typename Generator,
+          MutableLiteralBase::IsGenerator<NativeT, Generator>*>
+absl::Status MutableLiteralBase::Populate(Generator&& generator) {
   TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(
@@ -1933,13 +2110,100 @@ TF_ATTRIBUTE_NOINLINE absl::Status MutableLiteralBase::Populate(
       },
       /*parallel=*/false);
 }
-template <typename NativeT>
-TF_ATTRIBUTE_NOINLINE absl::Status MutableLiteralBase::PopulateParallel(
-    absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator) {
+template <typename NativeT, typename Generator,
+          MutableLiteralBase::IsParallelGenerator<NativeT, Generator>*>
+absl::Status MutableLiteralBase::PopulateParallel(Generator&& generator) {
   TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(generator,
                                    /*parallel=*/data<NativeT>().size() > 32);
+}
+
+template <typename NativeT, typename Generator>
+absl::Status MutableLiteralBase::PopulateLinearInternal(Generator&& generator,
+                                                        bool parallel) {
+  const Shape& this_shape = shape();
+  DCHECK(LayoutUtil::IsDenseArray(this_shape));
+  TF_RET_CHECK(this_shape.element_type() ==
+               primitive_util::NativeToPrimitiveType<NativeT>())
+      << "Failing to populate literal with element type "
+      << primitive_util::LowercasePrimitiveTypeName(this_shape.element_type())
+      << " using data of type "
+      << primitive_util::LowercasePrimitiveTypeName(
+             primitive_util::NativeToPrimitiveType<NativeT>());
+  PopulateLinearInplaceInternal(
+      [&](void* dest, int64_t linear_index, int thread_id) {
+        *static_cast<NativeT*>(dest) = generator(linear_index, thread_id);
+      },
+      parallel);
+  return absl::OkStatus();
+}
+
+template <typename NativeT, typename Generator,
+          MutableLiteralBase::IsLinearGenerator<NativeT, Generator>*>
+absl::Status MutableLiteralBase::PopulateLinear(Generator&& generator) {
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
+  return PopulateLinearInternal<NativeT>(
+      [&](int64_t linear_index, int /*thread_id*/) {
+        return generator(linear_index);
+      },
+      /*parallel=*/false);
+}
+template <typename NativeT, typename Generator,
+          MutableLiteralBase::IsLinearParallelGenerator<NativeT, Generator>*>
+absl::Status MutableLiteralBase::PopulateLinearParallel(Generator&& generator) {
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
+  return PopulateLinearInternal<NativeT>(
+      std::forward<Generator>(generator),
+      /*parallel=*/data<NativeT>().size() > 32);
+}
+
+template <typename Populator, MutableLiteralBase::IsPopulator<Populator>*>
+absl::Status MutableLiteralBase::PopulateInplace(Populator&& populator) {
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
+  PopulateInplaceInternal(
+      [&](void* dest, absl::Span<const int64_t> indexes, int /*thread_id*/) {
+        return populator(dest, indexes);
+      },
+      /*parallel=*/false);
+  return absl::OkStatus();
+}
+
+template <typename Populator,
+          MutableLiteralBase::IsParallelPopulator<Populator>*>
+absl::Status MutableLiteralBase::PopulateInplaceParallel(
+    Populator&& populator) {
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
+  PopulateInplaceInternal(std::forward<Populator>(populator),
+                          /*parallel=*/element_count() > 32);
+  return absl::OkStatus();
+}
+
+template <typename Populator, MutableLiteralBase::IsLinearPopulator<Populator>*>
+absl::Status MutableLiteralBase::PopulateLinearInplace(Populator&& populator) {
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
+  PopulateLinearInplaceInternal(
+      [&](void* dest, int64_t linear_index, int /*thread_id*/) {
+        return populator(dest, linear_index);
+      },
+      /*parallel=*/false);
+  return absl::OkStatus();
+}
+
+template <typename Populator,
+          MutableLiteralBase::IsLinearParallelPopulator<Populator>*>
+absl::Status MutableLiteralBase::PopulateLinearInplaceParallel(
+    Populator&& populator) {
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
+  PopulateLinearInplaceInternal(std::forward<Populator>(populator),
+                                /*parallel=*/element_count() > 32);
+  return absl::OkStatus();
 }
 
 template <typename NativeT>

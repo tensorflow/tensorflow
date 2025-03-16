@@ -18,7 +18,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <memory>
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
 #include "absl/types/span.h"
@@ -32,12 +31,21 @@
 #include "tensorflow/lite/experimental/litert/runtime/fastrpc_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/runtime/ion_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 #if LITERT_HAS_AHWB_SUPPORT
 #include <android/hardware_buffer.h>
 #endif  // LITERT_HAS_AHWB_SUPPORT
 
+#if LITERT_HAS_OPENGL_SUPPORT
+#include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+
 namespace {
+
+using ::litert::RankedTensorType;
+using ::litert::TensorBuffer;
+
 constexpr const float kTensorData[] = {10, 20, 30, 40};
 
 constexpr const int32_t kTensorDimensions[] = {sizeof(kTensorData) /
@@ -46,7 +54,6 @@ constexpr const int32_t kTensorDimensions[] = {sizeof(kTensorData) /
 constexpr const LiteRtRankedTensorType kTensorType = {
     /*.element_type=*/kLiteRtElementTypeFloat32,
     ::litert::BuildLayout(kTensorDimensions)};
-}  // namespace
 
 int GetReferenceCount(const litert::TensorBuffer& tensor_buffer) {
   LiteRtTensorBufferT* internal_tensor_buffer =
@@ -445,13 +452,11 @@ TEST(TensorBuffer, ReadWriteBasic) {
 }
 
 TEST(TensorBuffer, ReadWriteBufferSizeMismatch) {
-  LiteRtTensorBuffer litert_tensor_buffer;
-  ASSERT_EQ(LiteRtCreateManagedTensorBuffer(kLiteRtTensorBufferTypeHostMemory,
-                                            &kTensorType, sizeof(kTensorData),
-                                            &litert_tensor_buffer),
-            kLiteRtStatusOk);
-
-  litert::TensorBuffer tensor_buffer(litert_tensor_buffer, /*owned=*/true);
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer tensor_buffer,
+      TensorBuffer::CreateManaged(kLiteRtTensorBufferTypeHostMemory,
+                                  RankedTensorType(kTensorType),
+                                  sizeof(kTensorData)));
   {
     // Write with smaller size of data.
     auto write_success =
@@ -482,3 +487,25 @@ TEST(TensorBuffer, ReadWriteBufferSizeMismatch) {
     ASSERT_FALSE(read_success);
   }
 }
+
+#if LITERT_HAS_OPENGL_SUPPORT
+TEST(TensorBuffer, FromGlTexture) {
+  std::unique_ptr<tflite::gpu::gl::EglEnvironment> env;
+  ASSERT_TRUE(tflite::gpu::gl::EglEnvironment::NewEglEnvironment(&env).ok());
+
+  // Create GL texture.
+  tflite::gpu::gl::GlTexture gl_texture(GL_TEXTURE_2D, 1, GL_RGBA8, 1, 1,
+                                        /*has_ownership=*/true);
+  ASSERT_TRUE(gl_texture.is_valid());
+
+  // Create tensor buffer from existing GL texture (e.g. this could be from
+  // Android Camera API).
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      TensorBuffer tensor_buffer,
+      TensorBuffer::CreateFromGlTexture(
+          RankedTensorType(kTensorType), gl_texture.target(), gl_texture.id(),
+          gl_texture.format(), gl_texture.bytes_size(), gl_texture.layer()));
+}
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+
+}  // namespace

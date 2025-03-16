@@ -512,7 +512,7 @@ absl::StatusOr<bool> CudnnPadForConvolutions::Run(
       }
       changed |= local_changed;
     }
-    if (compute_capability_.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    if (compute_capability_.IsAtLeast(se::CudaComputeCapability::kVolta)) {
       for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
         TF_ASSIGN_OR_RETURN(
             bool local_changed,

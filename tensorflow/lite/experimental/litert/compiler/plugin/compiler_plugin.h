@@ -17,10 +17,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -29,6 +31,8 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_flags.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
@@ -111,10 +115,15 @@ class CompilerPlugin {
   // Search for shared library files with prefix "libLiteRtCompilerPlugin" in
   // the directories passed through "lib_search_paths". Populates
   // "loaded_plugins" with resolved plugin apis for each found library that can
-  // be succesfully loaded. Additionally initializes the compiler plugin
+  // be successfully loaded. Additionally initializes the compiler plugin
   // instances and stores handle.
   static Expected<std::vector<CompilerPlugin>> LoadPlugins(
       absl::Span<const absl::string_view> lib_search_paths);
+
+  // Set compiler flags within the plugin.
+  LiteRtStatus SetFlags(const CompilerFlags& flags) {
+    return flags.SetPluginFlags(plugin_handle_, plugin_api_.set_flags);
+  }
 
   CompilerPlugin(CompilerPlugin&& other);
   CompilerPlugin& operator=(CompilerPlugin&& other);
@@ -130,7 +139,7 @@ class CompilerPlugin {
   CompilerPlugin() = default;
 
   std::vector<std::string> soc_models_;
-  void* lib_handle_ = nullptr;
+  SharedLibrary lib_;
   LiteRtCompilerPluginApi plugin_api_ = {};
   LiteRtCompilerPlugin plugin_handle_ = nullptr;
 
@@ -154,7 +163,7 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
 
 // Same as "PartitionModel" choose partitions directly based on the selected
 // ops. Selected ops may contain any ops in the the main subgraph of the model.
-// This function will seperate them into DAGs and slice the model accordingly.
+// This function will separate them into DAGs and slice the model accordingly.
 Expected<PartitionResult> PartitionModelDirect(
     std::vector<LiteRtOpWithPartitionIndex> selected_ops, LiteRtModelT& model);
 
@@ -163,7 +172,7 @@ Expected<PartitionResult> PartitionModelDirect(
 Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
                            absl::string_view soc_model = "");
 
-// Applies the compilation step to the model given a pre-determined partition.
+// Applies the compilation step to the model given a predetermined partition.
 Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
                                         LiteRtModelT& model,
                                         PartitionResult partitions,

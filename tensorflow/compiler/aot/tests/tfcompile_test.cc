@@ -46,7 +46,7 @@ namespace tensorflow {
 namespace tfcompile {
 namespace {
 
-using ::testing::HasSubstr;
+using ::testing::ContainsRegex;
 using ::testing::IsSupersetOf;
 
 TEST(TFCompileTest, Add) {
@@ -675,17 +675,18 @@ TEST(TFCompileTest, HloProfiling) {
   std::vector<string> hlo_profile_lines =
       absl::StrSplit(hlo_profile_as_string, '\n');
 
-  auto header = HasSubstr("Execution profile for");
-  auto total_cycles_profile_line = HasSubstr("[total]");
-  auto dot_profile_line = HasSubstr(
-      "%dot = f32[2,2]{1,0} dot(f32[2,2]{1,0} %arg0, f32[2,2]{1,0} %arg1)");
-  auto add_profile_line = HasSubstr(
-      "%add = f32[2,2]{1,0} add(f32[2,2]{1,0} %arg0, f32[2,2]{1,0} %arg1)");
-  auto tuple_profile_line = HasSubstr(
-      "%tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(f32[2,2]{1,0} %dot, "
-      "f32[2,2]{1,0} %add)");
-  auto arg0_profile_line = HasSubstr("%arg0 = f32[2,2]{1,0} parameter(0)");
-  auto arg1_profile_line = HasSubstr("%arg1 = f32[2,2]{1,0} parameter(1)");
+  auto header = ContainsRegex("Execution profile for");
+  auto total_cycles_profile_line = ContainsRegex(R"(\[total\])");
+  auto dot_profile_line =
+      ContainsRegex(R"(%dot = f32\[2,2\]{1,0\} dot\(.*%arg0, .*%arg1\))");
+  auto add_profile_line =
+      ContainsRegex(R"(%add = f32\[2,2\]\{1,0\} add\(.*%arg0, .*%arg1\))");
+  auto tuple_profile_line = ContainsRegex(
+      R"(%tuple = \(f32\[2,2\]\{1,0\}, f32\[2,2\]\{1,0\}\) tuple\(.*%dot, .*%add\))");
+  auto arg0_profile_line =
+      ContainsRegex(R"(%arg0 = f32\[2,2\]\{1,0\} parameter\(0\))");
+  auto arg1_profile_line =
+      ContainsRegex(R"(%arg1 = f32\[2,2\]\{1,0\} parameter\(1\))");
 
   EXPECT_THAT(hlo_profile_lines,
               IsSupersetOf({header, total_cycles_profile_line, dot_profile_line,

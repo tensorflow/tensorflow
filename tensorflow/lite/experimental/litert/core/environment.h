@@ -18,6 +18,8 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_any.h"
@@ -53,6 +55,7 @@ class LiteRtEnvironmentT {
  private:
   std::map<LiteRtEnvOptionTag, LiteRtAny> options_;
   litert::internal::AcceleratorRegistry accelerators_;
+  std::vector<std::string> string_options_;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_ENVIRONMENT_H_

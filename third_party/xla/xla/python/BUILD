@@ -20,10 +20,7 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility([
-        ":friends",
-        "//third_party/py/jax:__subpackages__",
-    ]),
+    default_visibility = internal_visibility(["//visibility:private"]),
     licenses = ["notice"],
 )
 
@@ -83,7 +80,7 @@ py_strict_library(
     name = "xla_client_test",
     testonly = 1,
     srcs = ["xla_client_test.py"],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":xla_client",
         "@absl_py//absl/flags",
@@ -192,7 +189,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":nb_numpy",
         "//xla:literal",
@@ -226,7 +223,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -247,7 +244,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":nb_class_ptr",
         # placeholder for index annotation deps
@@ -322,6 +319,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":aggregate_profile",
         ":callback",
@@ -414,6 +412,7 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
@@ -544,6 +543,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@nanobind",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -565,6 +565,7 @@ cc_library(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":callback",
         ":nb_numpy",
@@ -685,6 +686,7 @@ cc_library(
     name = "inspect_sharding",
     srcs = ["inspect_sharding.cc"],
     hdrs = ["inspect_sharding.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -700,6 +702,7 @@ cc_library(
     name = "custom_partition_callback",
     srcs = ["custom_partition_callback.cc"],
     hdrs = ["custom_partition_callback.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:debug_options_flags",
         "//xla:util",
@@ -728,6 +731,7 @@ cc_library(
     name = "custom_call_batch_partitioner",
     srcs = ["custom_call_batch_partitioner.cc"],
     hdrs = ["custom_call_batch_partitioner.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -849,6 +853,7 @@ cc_library(
         "//xla/pjrt:lru_cache",
         "//xla/python/ifrt",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
@@ -898,6 +903,7 @@ cc_library(
         "//xla/pjrt:status_casters",
         "//xla/python/ifrt",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/python/lib/core:numpy",
@@ -934,7 +940,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":nb_class_ptr",
         ":pytree_proto_cc",
@@ -1015,22 +1021,15 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
-        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@nanobind",
-        "@shardy//shardy/dialect/sdy/ir:dialect",
-        "@stablehlo//:chlo_ops",
-        "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_serialization",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/translate:stablehlo",
-        "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:status_casters",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
-        "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
@@ -1038,12 +1037,51 @@ cc_library(
 )
 
 cc_library(
+    name = "sdy",
+    srcs = ["sdy.cc"],
+    hdrs = ["sdy.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        # placeholder for index annotation deps
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeWriter",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@nanobind",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms/import:passes",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "//xla/mlir_hlo:all_passes",
+        "//xla/pjrt:mlir_to_hlo",
+        "//xla/pjrt:status_casters",
+        "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
+        "//xla/service/spmd/shardy/sdy_round_trip:import_shardy_attrs",
+        "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
+    ],
+)
+
+cc_library(
     name = "refine_polymorphic_shapes",
     srcs = ["refine_polymorphic_shapes.cc"],
     hdrs = ["refine_polymorphic_shapes.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/mlir/utils:error_util",
+        "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:stablehlo_extension_passes",
+        "//xla/service/spmd/shardy/round_trip_common:import_constants",
+        "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/status",
@@ -1057,6 +1095,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
@@ -1068,6 +1107,7 @@ cc_library(
     srcs = ["profiler_utils.cc"],
     hdrs = ["profiler_utils.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/backends/profiler:profiler_backends",
         "//xla/backends/profiler/plugin:plugin_tracer",
@@ -1259,12 +1299,14 @@ cc_library(
 tf_proto_library(
     name = "py_host_callback_proto",
     srcs = ["py_host_callback.proto"],
+    visibility = internal_visibility([":friends"]),
 )
 
 cc_library(
     name = "logging",
     srcs = ["logging.cc"],
     hdrs = ["logging.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/log:initialize",
     ],
@@ -1353,6 +1395,7 @@ tsl_pybind_extension(
         ":python_ref_manager",
         ":pytree",
         ":refine_polymorphic_shapes",
+        ":sdy",
         ":traceback",
         ":types",
         ":util",
@@ -1454,7 +1497,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
@@ -1485,6 +1527,7 @@ cc_library(
     hdrs = ["nb_class_ptr.h"],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = ["@nanobind"],
 )
 
@@ -1508,6 +1551,7 @@ cc_library(
     compatible_with = [],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -1524,6 +1568,7 @@ cc_library(
     compatible_with = [],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/container:inlined_vector",
         "@nanobind",
@@ -1536,6 +1581,7 @@ cc_library(
     compatible_with = [],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/types:span",
         "@nanobind",
@@ -1548,6 +1594,7 @@ cc_library(
     compatible_with = [],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "@nanobind",
@@ -1560,6 +1607,7 @@ cc_library(
     compatible_with = [],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/container:flat_hash_set",
         "@nanobind",

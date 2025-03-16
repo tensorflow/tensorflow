@@ -227,6 +227,7 @@ filegroup(
         "@local_xla//xla/tsl/concurrency:xla_cpu_runtime_hdrs",
         "@local_xla//xla/tsl/framework:xla_cpu_runtime_hdrs",
         "@local_xla//xla/tsl/framework/fixedpoint:xla_cpu_runtime_hdrs",
+        "@local_xla//xla/tsl/lib/math:xla_cpu_runtime_hdrs",
     ],
     visibility = [
         "//tensorflow/tools/pip_package:__pkg__",

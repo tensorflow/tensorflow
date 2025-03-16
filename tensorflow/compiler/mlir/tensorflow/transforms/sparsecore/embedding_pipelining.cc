@@ -204,15 +204,19 @@ bool UseEmbeddingPipelining(ModuleOp& module) {
     LOG(INFO) << "Embedding pipelining disabled via flag.";
     return false;
   }
-  // Detect summaries by looking for key Ops in the graph. It would be better to
-  // do this via operator attributes rather than looking for a specific op.
-  WalkResult walk_result = module.walk([&](Operation* op) -> WalkResult {
-    if (llvm::isa<TF::WriteSummaryOp>(op)) return WalkResult::interrupt();
-    return WalkResult::advance();
-  });
-  if (walk_result.wasInterrupted()) {
-    LOG(INFO) << "TF summaries detected - disabling embedding pipelining.";
-    return false;
+
+  if (tensorflow::GetBuildXlaOpsPassFlags()
+          ->tf_xla_disable_full_embedding_pipelining_with_summaries) {
+    // Detect summaries by looking for key Ops in the graph. It would be better
+    // to do this via operator attributes rather than looking for a specific op.
+    WalkResult walk_result =
+        module.walk([&](TF::WriteSummaryOp op) -> WalkResult {
+          return WalkResult::interrupt();
+        });
+    if (walk_result.wasInterrupted()) {
+      LOG(WARNING) << "TF summaries detected - disabling embedding pipelining.";
+      return false;
+    }
   }
   LOG(INFO) << "Embedding pipelining rewrite enabled.";
   return true;

@@ -78,7 +78,7 @@ pytype_strict_library(
     name = "metrics_interface",
     srcs = ["metrics_interface.py"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow/lite/tools/pip_package:__subpackages__"],
 )
 
 genrule(

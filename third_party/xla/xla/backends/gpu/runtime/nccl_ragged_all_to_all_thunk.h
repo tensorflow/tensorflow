@@ -25,14 +25,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 
@@ -75,8 +72,6 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
                                  se::Stream& stream,
                                  CommunicatorHandle comm_handle) override;
 
-  AsyncStreamKind GetAsyncStreamKind() const override;
-
  private:
   bool is_local() const;
   bool should_use_memcpy() const { return p2p_memcpy_enabled_ && is_local(); }
@@ -94,35 +89,15 @@ class NcclRaggedAllToAllStartThunk : public NcclCollectiveThunk {
   absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryHandle>
       device_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
 
-  absl::Mutex pointers_mutex_;
-  // Maps from a device to a pointer to an uint64_t value. The pointer is
-  // written to and read from in each call to RunNcclCollective(), but is
-  // preallocated as CUDA host memory in the first call to Initialize(), since
-  // allocating CUDA host memory every call to RunNcclCollective() is expensive.
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<se::MemoryAllocation>>
-      send_pointers_ ABSL_GUARDED_BY(pointers_mutex_);
-  // Maps from a device to a pointer to an uint64_t array whose size is the
-  // size of the replica_group the device is in. Like with send_pointers,
-  // this is used in RunNcclCollective() and allocated in Initialize().
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<se::MemoryAllocation>>
-      receive_pointer_maps_ ABSL_GUARDED_BY(pointers_mutex_);
+  absl::Mutex events_mutex_;
+  // Events to synchronize steams on different devices at the start of the
+  // kernel.
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>>
+      start_events_ ABSL_GUARDED_BY(events_mutex_);
+  // Events to synchronize steams on different devices at the end of the kernel.
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>>
+      end_events_ ABSL_GUARDED_BY(events_mutex_);
 };
-
-absl::Status RunRaggedAllToAll(
-    GpuCollectives* collectives, int64_t ragged_row_element_size,
-    int64_t num_total_updates, const std::vector<DeviceBufferPair>& buffers,
-    se::Stream& stream, Communicator* comm,
-    const std::vector<int64_t*>& ragged_metadata_allocs,
-    const se::DeviceMemoryBase& output_offsets_device_buffer);
-
-absl::Status RunMemCpyRaggedAllToAll(
-    GpuCollectives* collectives, int64_t ragged_row_element_size,
-    int64_t num_total_updates, const std::vector<DeviceBufferPair>& buffers,
-    se::Stream& stream, Communicator* comm,
-    const std::vector<int64_t*>& ragged_metadata_allocs, uint64_t* send_pointer,
-    uint64_t receive_pointer_map[]);
 
 }  // namespace gpu
 }  // namespace xla

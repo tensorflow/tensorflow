@@ -21,23 +21,18 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla::cpu {
 
 // A client for compiling XLA programs to executables using the XLA:CPU backend.
 class NanoRtClient {
  public:
-  NanoRtClient();
+  NanoRtClient() = default;
 
   // Compiles the given XLA computation to a NanoRtExecutable using the XLA:CPU
   // backend.
   absl::StatusOr<std::unique_ptr<NanoRtExecutable>> Compile(
       const XlaComputation& computation);
-
- private:
-  // Thread pool for running XLA:CPU compute tasks.
-  std::shared_ptr<tsl::thread::ThreadPool> intra_op_thread_pool_;
 };
 
 }  // namespace xla::cpu

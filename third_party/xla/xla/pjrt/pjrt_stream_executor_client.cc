@@ -1238,7 +1238,7 @@ absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorClient::DmaMap");
   TF_ASSIGN_OR_RETURN(
       LocalDeviceState * local_device,
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(devices_[0])
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(addressable_devices_[0])
           ->GetLocalDeviceState());
   bool success = local_device->compute_stream()->parent()->HostMemoryRegister(
       data, buffer_size);
@@ -1255,7 +1255,7 @@ absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorClient::DmaUnmap");
   TF_ASSIGN_OR_RETURN(
       LocalDeviceState * local_device,
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(devices_[0])
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(addressable_devices_[0])
           ->GetLocalDeviceState());
   bool success =
       local_device->compute_stream()->parent()->HostMemoryUnregister(data);
@@ -3120,10 +3120,9 @@ PjRtStreamExecutorLoadedExecutable::Execute(
         *hlo_inputs.add_arguments() = literal->ToProto();
       }
       *hlo_snapshot.add_partitions() = std::move(hlo_inputs);
-
-      DumpHloUnoptimizedSnapshotIfEnabled(
-          hlo_snapshot, input_hlo_snapshot_bits_->debug_options);
     }
+    DumpHloUnoptimizedSnapshotIfEnabled(
+        hlo_snapshot, input_hlo_snapshot_bits_->debug_options);
   }
 
   RunId run_id;

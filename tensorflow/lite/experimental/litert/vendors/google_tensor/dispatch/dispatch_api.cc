@@ -26,6 +26,7 @@
 
 #include "absl/strings/string_view.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
+#include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
@@ -38,6 +39,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/litert_dispatch_device_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/litert_dispatch_graph.h"
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/litert_dispatch_invocation_context.h"
+#include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/litert_dispatch_metrics.h"
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/southbound.h"
 
 namespace {
@@ -200,12 +202,13 @@ LiteRtStatus UnregisterTensorBuffer(LiteRtDispatchDeviceContext device_context,
 
 LiteRtStatus InvocationContextCreate(
     LiteRtDispatchDeviceContext device_context,
-    LiteRtDispatchExecutableType exec_type, const void* exec_bytecode,
-    size_t exec_bytecode_size, const char* function_name, int num_inputs,
-    int num_outputs, LiteRtDispatchInvocationContext* invocation_context) {
+    LiteRtDispatchExecutableType exec_type,
+    const LiteRtMemBuffer* exec_bytecode_buffer, const char* function_name,
+    int num_inputs, int num_outputs,
+    LiteRtDispatchInvocationContext* invocation_context) {
   if (auto result = LiteRtDispatchInvocationContextT::CreateFromBytecode(
-          *TheSouthbound, device_context, exec_type, exec_bytecode,
-          exec_bytecode_size, function_name, num_inputs, num_outputs);
+          *TheSouthbound, device_context, exec_type, exec_bytecode_buffer,
+          function_name, num_inputs, num_outputs);
       result) {
     *invocation_context = result->release();
     return kLiteRtStatusOk;
@@ -321,6 +324,62 @@ LiteRtStatus InvokeAsync(LiteRtDispatchInvocationContext invocation_context,
 }
 
 // /////////////////////////////////////////////////////////////////////////////
+// Metrics API
+// /////////////////////////////////////////////////////////////////////////////
+
+LiteRtStatus StartMetricsCollection(
+    LiteRtDispatchInvocationContext invocation_context, int detail_level) {
+  if (auto result = invocation_context->StartMetricsCollection(detail_level);
+      result) {
+    return kLiteRtStatusOk;
+  } else {
+    LITERT_LOG(LITERT_ERROR, "Failed to start metrics collection: %s",
+               result.Error().Message().c_str());
+    return result.Error().Status();
+  }
+}
+
+LiteRtStatus StopMetricsCollection(
+    LiteRtDispatchInvocationContext invocation_context,
+    LiteRtDispatchMetrics* metrics) {
+  if (auto result = invocation_context->StopMetricsCollection(metrics);
+      result) {
+    return kLiteRtStatusOk;
+  } else {
+    LITERT_LOG(LITERT_ERROR, "Failed to stop metrics collection: %s",
+               result.Error().Message().c_str());
+    return result.Error().Status();
+  }
+}
+
+LiteRtStatus GetNumMetrics(LiteRtDispatchMetrics metrics, int* num_metrics) {
+  if (metrics == nullptr) {
+    LITERT_LOG(LITERT_ERROR,
+               "GetNumMetrics failed: metrics should not be null");
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *num_metrics = metrics->GetNumMetrics();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus GetMetric(LiteRtDispatchMetrics metrics, int metric_index,
+                       LiteRtMetric* metric) {
+  if (metrics == nullptr) {
+    LITERT_LOG(LITERT_ERROR, "GetMetric failed: metrics should not be null");
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *metric = metrics->GetMetric(metric_index);
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus DestroyMetrics(LiteRtDispatchMetrics metrics) {
+  if (metrics) {
+    delete metrics;
+  }
+  return kLiteRtStatusOk;
+}
+
+// /////////////////////////////////////////////////////////////////////////////
 // Graph Execution API
 // /////////////////////////////////////////////////////////////////////////////
 
@@ -417,10 +476,9 @@ LiteRtStatus ConnectGraphOutput(LiteRtDispatchGraph graph, int output_index,
 
 LiteRtStatus LoadExecutable(LiteRtDispatchDeviceContext device_context,
                             LiteRtDispatchExecutableType type,
-                            const void* bytecode, size_t bytecode_size,
+                            const LiteRtMemBuffer* bytecode_buffer,
                             LiteRtDispatchExecutableHandle* exec_handle) {
-  if (auto result =
-          device_context->LoadExecutable(type, bytecode, bytecode_size);
+  if (auto result = device_context->LoadExecutable(type, bytecode_buffer);
       result) {
     *exec_handle = *result;
     return kLiteRtStatusOk;
@@ -533,6 +591,11 @@ LiteRtDispatchInterface TheInterface = {
     .detach_input = litert::google_tensor::DetachInput,
     .detach_output = litert::google_tensor::DetachOutput,
     .invoke = litert::google_tensor::Invoke,
+    .start_metrics_collection = litert::google_tensor::StartMetricsCollection,
+    .stop_metrics_collection = litert::google_tensor::StopMetricsCollection,
+    .get_num_metrics = litert::google_tensor::GetNumMetrics,
+    .get_metric = litert::google_tensor::GetMetric,
+    .destroy_metrics = litert::google_tensor::DestroyMetrics,
 };
 
 LiteRtDispatchAsyncInterface TheAsyncInterface = {

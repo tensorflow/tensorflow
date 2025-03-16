@@ -3754,10 +3754,10 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferReshapeShape(
     const Shape& operand, absl::Span<const int64_t> dimensions,
-    absl::Span<const int64_t> new_sizes, int64_t inferred_dimension) {
+    int64_t inferred_dimension) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "reshape"));
   Shape inferred_shape =
-      ShapeUtil::MakeShape(operand.element_type(), new_sizes);
+      ShapeUtil::MakeShape(operand.element_type(), dimensions);
   VLOG(3) << "Reshape inferred shape: "
           << ShapeUtil::HumanString(inferred_shape);
 
@@ -3780,17 +3780,9 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
   std::vector<int64_t> indices(operand.rank());
   std::iota(indices.begin(), indices.end(), 0);
-  if (dimensions.size() != operand.rank() ||
-      !std::is_permutation(dimensions.begin(), dimensions.end(),
-                           indices.begin())) {
-    return InvalidArgument(
-        "Reshape dimensions [%s] are not a permutation of the operand "
-        "dimensions (operand shape is %s).",
-        StrJoin(dimensions, ","), ShapeUtil::HumanString(operand));
-  }
 
   // Propagate dynamic dimension.
-  auto common_factors = CommonFactors(operand.dimensions(), new_sizes);
+  auto common_factors = CommonFactors(operand.dimensions(), dimensions);
   for (int64_t input_dim = 0; input_dim < operand.rank(); ++input_dim) {
     if (!operand.is_dynamic_dimension(input_dim)) {
       continue;
@@ -3862,14 +3854,14 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     // Calculate output dynamic reshape dimension.
     int64_t output_dynamic_dimension = -1;
 
-    if (operand.dimensions(input_dim) == 1 && !new_sizes.empty()) {
+    if (operand.dimensions(input_dim) == 1 && !dimensions.empty()) {
       // If dynamic dimension is size 1, it can only be most-major or
       // most-minor.
       if (input_dim == 0) {
         output_dynamic_dimension = 0;
       }
       if (input_dim == operand.rank() - 1) {
-        output_dynamic_dimension = new_sizes.size() - 1;
+        output_dynamic_dimension = dimensions.size() - 1;
       }
 
       if (output_dynamic_dimension == -1) {
@@ -3898,7 +3890,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
       std::vector<int64_t> output_non_degenerated;
       output_non_degenerated.reserve(output_dim_end);
       for (int64_t i = output_dim_start; i < output_dim_end; ++i) {
-        if (new_sizes[i] != 1) {
+        if (dimensions[i] != 1) {
           output_non_degenerated.push_back(i);
         }
       }

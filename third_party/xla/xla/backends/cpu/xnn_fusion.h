@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_XNN_FUSION_H_
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape.h"

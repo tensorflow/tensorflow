@@ -22,6 +22,10 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer_requirements.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 LiteRtStatus LiteRtCreateTensorBufferRequirements(
     int num_supported_tensor_buffer_types,
     const LiteRtTensorBufferType* supported_tensor_buffer_types,
@@ -82,3 +86,7 @@ void LiteRtDestroyTensorBufferRequirements(
     LiteRtTensorBufferRequirements requirements) {
   delete requirements;
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif

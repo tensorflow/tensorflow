@@ -87,6 +87,7 @@ bool GpuAlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(
          config.algorithm() == PrecisionConfig::ALG_DOT_BF16_BF16_F32 ||
          config.algorithm() == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
          config.algorithm() == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
+         config.algorithm() == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9 ||
          config.algorithm() == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
          config.algorithm() == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ||
          config.algorithm() == PrecisionConfig::ALG_DOT_F32_F32_F32;
@@ -103,6 +104,8 @@ GpuAlgebraicSimplifierVisitor::MakeMultiplyForPrecisionAlgorithm(
       return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X3(lhs, rhs);
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
       return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X6(lhs, rhs);
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X9(lhs, rhs);
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
       return DotAlgorithmRewriter::MakeMultiplyForTF32TF32F32(lhs, rhs);
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:

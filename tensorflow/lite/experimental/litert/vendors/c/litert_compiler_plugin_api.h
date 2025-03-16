@@ -73,6 +73,10 @@ typedef LiteRtStatus (*LiteRtGetCompiledResultCallInfoT)(
 typedef LiteRtStatus (*LiteRtGetNumCompiledResultCallsT)(
     LiteRtCompiledResult, LiteRtParamIndex* num_calls);
 
+typedef LiteRtStatus (*LiteRtCompilerPluginSetFlagsT)(
+    LiteRtCompilerPlugin compiler_plugin, LiteRtParamIndex num_flags,
+    const char** keys, const char** values);
+
 //
 // Function Pointer Container
 //
@@ -99,6 +103,8 @@ struct LiteRtCompilerPluginApi {
   LiteRtCompiledResultNumByteCodeModulesT get_compiled_result_num_byte_code;
   LiteRtGetCompiledResultCallInfoT get_compiled_result_call_info;
   LiteRtGetNumCompiledResultCallsT get_compiled_result_num_calls;
+
+  LiteRtCompilerPluginSetFlagsT set_flags;
 };
 
 #ifdef __cplusplus
@@ -140,6 +146,9 @@ static constexpr absl::string_view kLiteRtGetCompiledResultCallInfo =
     "LiteRtGetCompiledResultCallInfo";
 static constexpr absl::string_view kLiteRtGetNumCompiledResultCalls =
     "LiteRtGetNumCompiledResultCalls";
+
+static constexpr absl::string_view kLiteRtCompilerPluginSetFlags =
+    "LiteRtCompilerPluginSetFlags";
 
 #endif  // __cplusplus
 

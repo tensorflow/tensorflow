@@ -44,8 +44,8 @@ class LiteRtDispatchDeviceContextT {
   litert::Expected<void> DestroyGraph(LiteRtDispatchGraph graph);
 
   litert::Expected<LiteRtDispatchExecutableHandle> LoadExecutable(
-      LiteRtDispatchExecutableType type, const void* bytecode,
-      size_t bytecode_size);
+      LiteRtDispatchExecutableType type,
+      const LiteRtMemBuffer* bytecode_buffer);
 
   litert::Expected<void> UnloadExecutable(
       LiteRtDispatchExecutableHandle exec_handle);

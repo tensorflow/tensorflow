@@ -210,8 +210,10 @@ NcclCollectiveConfig GetNcclCollectiveConfig(
 }
 
 NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
-                                         bool is_sync)
+                                         bool is_sync,
+                                         AsyncStreamKind stream_kind)
     : Thunk(kind, thunk_info),
+      stream_kind_(stream_kind),
       async_events_(is_sync ? nullptr : new AsyncEvents()) {}
 
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(

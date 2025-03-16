@@ -18,6 +18,10 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 LiteRtStatus LiteRtEnvironmentCreate(int num_options,
                                      const LiteRtEnvOption* options,
                                      LiteRtEnvironment* environment) {
@@ -35,3 +39,7 @@ void LiteRtDestroyEnvironment(LiteRtEnvironment environment) {
     delete environment;
   }
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif

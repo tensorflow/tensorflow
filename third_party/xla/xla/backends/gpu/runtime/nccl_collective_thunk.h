@@ -124,7 +124,8 @@ class NcclCollectiveDoneThunk;
 // Thunk base class for NCCL collective operations.
 class NcclCollectiveThunk : public Thunk {
  public:
-  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync);
+  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
+                      AsyncStreamKind stream_kind);
 
   struct Buffer {
     int64_t element_count;
@@ -184,9 +185,7 @@ class NcclCollectiveThunk : public Thunk {
                                          se::Stream& stream,
                                          CommunicatorHandle comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
-  virtual AsyncStreamKind GetAsyncStreamKind() const {
-    return AsyncStreamKind::kCollective;
-  }
+  virtual AsyncStreamKind GetAsyncStreamKind() const { return stream_kind_; }
 
   // A collective thunk is normally an independent operation in a sense that
   // different instances of the same collective thunk communicate each other.
@@ -199,6 +198,8 @@ class NcclCollectiveThunk : public Thunk {
   virtual bool NeedFirstCallRendzevous() const { return true; }
 
  private:
+  const AsyncStreamKind stream_kind_;
+
   bool IsAsync() const { return async_events_ != nullptr; }
   std::shared_ptr<AsyncEvents> async_events_;
 

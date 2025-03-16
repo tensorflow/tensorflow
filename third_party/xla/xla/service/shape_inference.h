@@ -295,7 +295,7 @@ class ShapeInference {
   // its operand and the new dimension sizes specified.
   static absl::StatusOr<Shape> InferReshapeShape(
       const Shape& operand, absl::Span<const int64_t> dimensions,
-      absl::Span<const int64_t> new_sizes, int64_t inferred_dimension);
+      int64_t inferred_dimension);
 
   // Infers the shape produced by a dynamic reshape operation from the element
   // type of its operand and the new dimension sizes specified. The result shape

@@ -1,7 +1,7 @@
 """Default (OSS) build versions of TensorFlow general-purpose build extensions."""
 
 load(
-    "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
+    "@local_xla//third_party/py/rules_pywrap:pywrap.bzl",
     _pywrap_aware_cc_import = "pywrap_aware_cc_import",
     _pywrap_aware_filegroup = "pywrap_aware_filegroup",
     _pywrap_aware_genrule = "pywrap_aware_genrule",

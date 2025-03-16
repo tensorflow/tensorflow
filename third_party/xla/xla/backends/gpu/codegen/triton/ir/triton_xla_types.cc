@@ -15,6 +15,9 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/Types.h"  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"
@@ -44,6 +47,25 @@ void TiledTensorType::print(mlir::AsmPrinter &printer) const {
   printer << "|";
   printer.printDimensionList(getOriginalShape());
   printer << "x" << getElementType() << ">";
+}
+
+LogicalResult TiledTensorType::verify(
+    llvm::function_ref<InFlightDiagnostic()> emit_error,
+    ArrayRef<int64_t> tile_shape, ArrayRef<int64_t> original_shape,
+    Type element_type) {
+  if (tile_shape.size() != original_shape.size()) {
+    return emit_error() << "tile shape and original shape have different ranks";
+  }
+
+  for (const auto &[tile_dim, original_dim] :
+       llvm::zip(tile_shape, original_shape)) {
+    if (tile_dim > original_dim) {
+      return emit_error()
+             << "tile dim value can't be greater than original dim value";
+    }
+  }
+
+  return success();
 }
 
 }  // namespace mlir::triton::xla

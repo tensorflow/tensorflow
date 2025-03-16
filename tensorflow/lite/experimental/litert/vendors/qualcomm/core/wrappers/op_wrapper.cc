@@ -3,6 +3,9 @@
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 
+#include <string>
+#include <utility>
+
 namespace qnn {
 
 OpWrapper::OpWrapper(std::string name, const char* op_type)

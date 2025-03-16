@@ -1060,22 +1060,14 @@ absl::StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(
                         broadcast_dimensions);
 }
 
-XlaOp XlaBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
+XlaOp XlaBuilder::UnaryOp(
+    HloOpcode unop, XlaOp operand,
+    const std::optional<ResultAccuracy>& result_accuracy) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferUnaryOpShape(unop, *operand_shape));
-    return AddOpWithShape(unop, shape, {operand});
-  });
-}
-
-XlaOp XlaBuilder::UnaryOp(HloOpcode unop, XlaOp operand,
-                          const ResultAccuracy& result_accuracy) {
-  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_ASSIGN_OR_RETURN(
-        Shape shape, ShapeInference::InferUnaryOpShape(unop, *operand_shape));
-    return AddOpWithResultAccuracy(unop, shape, {operand}, result_accuracy);
+    return AddOpWithShape(unop, shape, {operand}, result_accuracy);
   });
 }
 
@@ -1794,27 +1786,13 @@ absl::StatusOr<XlaOp> XlaBuilder::PadInternal(
 }
 
 XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64_t> dimensions,
-                          absl::Span<const int64_t> new_sizes,
                           int64_t inferred_dimension) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_ASSIGN_OR_RETURN(const Shape shape, ShapeInference::InferReshapeShape(
-                                               *operand_shape, dimensions,
-                                               new_sizes, inferred_dimension));
-    XlaOp transposed = IsIdentityPermutation(dimensions)
-                           ? operand
-                           : Transpose(operand, dimensions);
-    return ReshapeInternal(shape, transposed, inferred_dimension);
-  });
-}
-
-XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64_t> new_sizes,
-                          int64_t inferred_dimension) {
-  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(operand));
-    std::vector<int64_t> dimensions(shape->dimensions_size());
-    std::iota(dimensions.begin(), dimensions.end(), 0);
-    return Reshape(operand, dimensions, new_sizes, inferred_dimension);
+    TF_ASSIGN_OR_RETURN(const Shape shape,
+                        ShapeInference::InferReshapeShape(
+                            *operand_shape, dimensions, inferred_dimension));
+    return ReshapeInternal(shape, operand, inferred_dimension);
   });
 }
 
@@ -2462,18 +2440,6 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const std::string& config) {
     *instr.mutable_shape() = infeed_instruction_shape.ToProto();
     instr.set_infeed_config(config);
 
-    if (shape.IsArray() && sharding() &&
-        sharding()->type() == OpSharding::OTHER) {
-      // TODO(b/110793772): Support tiled array-shaped infeeds.
-      return InvalidArgument(
-          "Tiled sharding is not yet supported for array-shaped infeeds");
-    }
-
-    if (sharding() && sharding()->type() == OpSharding::REPLICATED) {
-      return InvalidArgument(
-          "Replicated sharding is not yet supported for infeeds");
-    }
-
     // Infeed takes a single token operand. Generate the token to pass to the
     // infeed.
     XlaOp token;
@@ -2519,12 +2485,21 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const std::string& config) {
                                                  HloOpcode::kInfeed, {token}));
     }
 
-    HloInstructionProto infeed_token;
-    *infeed_token.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
-    infeed_token.set_tuple_index(1);
-    TF_ASSIGN_OR_RETURN(infeed_token_,
-                        AddInstruction(std::move(infeed_token),
-                                       HloOpcode::kGetTupleElement, {infeed}));
+    auto get_token = [&]() -> absl::StatusOr<XlaOp> {
+      HloInstructionProto infeed_token;
+      *infeed_token.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
+      infeed_token.set_tuple_index(1);
+      return AddInstruction(std::move(infeed_token),
+                            HloOpcode::kGetTupleElement, {infeed});
+    };
+    if (sharding()) {
+      // Arbitrarily assign token to device 0.
+      OpSharding sharding = sharding_builder::AssignDevice(0);
+      XlaScopedShardingAssignment scoped_sharding(this, sharding);
+      TF_ASSIGN_OR_RETURN(infeed_token_, get_token());
+    } else {
+      TF_ASSIGN_OR_RETURN(infeed_token_, get_token());
+    }
 
     // The infeed instruction produces a tuple of the infed data and a token
     // type. Return XLA op containing the data.
@@ -4889,17 +4864,17 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
 
 absl::StatusOr<XlaOp> XlaBuilder::AddOpWithShape(
     HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands) {
-  HloInstructionProto instr;
-  *instr.mutable_shape() = shape.ToProto();
-  return AddInstruction(std::move(instr), opcode, operands);
+  return AddOpWithShape(opcode, shape, operands, std::nullopt);
 }
 
-absl::StatusOr<XlaOp> XlaBuilder::AddOpWithResultAccuracy(
+absl::StatusOr<XlaOp> XlaBuilder::AddOpWithShape(
     HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands,
-    const ResultAccuracy& result_accuracy) {
+    const std::optional<ResultAccuracy>& result_accuracy) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
-  *instr.mutable_result_accuracy() = result_accuracy;
+  if (result_accuracy.has_value()) {
+    *instr.mutable_result_accuracy() = result_accuracy.value();
+  }
   return AddInstruction(std::move(instr), opcode, operands);
 }
 
@@ -5042,13 +5017,8 @@ XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64_t dimno,
                                      pad_hi);
 }
 
-XlaOp Reshape(const XlaOp operand, absl::Span<const int64_t> dimensions,
-              absl::Span<const int64_t> new_sizes) {
-  return operand.builder()->Reshape(operand, dimensions, new_sizes);
-}
-
-XlaOp Reshape(const XlaOp operand, absl::Span<const int64_t> new_sizes) {
-  return operand.builder()->Reshape(operand, new_sizes);
+XlaOp Reshape(const XlaOp operand, absl::Span<const int64_t> dimensions) {
+  return operand.builder()->Reshape(operand, dimensions);
 }
 
 XlaOp Reshape(const Shape& shape, XlaOp operand) {
@@ -5799,75 +5769,106 @@ XlaOp Atan2(const XlaOp y, const XlaOp x,
   return y.builder()->BinaryOp(HloOpcode::kAtan2, y, x, broadcast_dimensions);
 }
 
-XlaOp Exp(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kExp, operand);
-}
-
-XlaOp Exp(const XlaOp operand, const ResultAccuracy& result_accuracy) {
+XlaOp Exp(const XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy) {
   return operand.builder()->UnaryOp(HloOpcode::kExp, operand, result_accuracy);
 }
 
-XlaOp Expm1(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kExpm1, operand);
+XlaOp Expm1(const XlaOp operand,
+            const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kExpm1, operand,
+                                    result_accuracy);
 }
+
 XlaOp Floor(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kFloor, operand);
 }
+
 XlaOp Ceil(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kCeil, operand);
 }
+
 XlaOp Round(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kRoundNearestAfz, operand);
 }
+
 XlaOp RoundNearestEven(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kRoundNearestEven, operand);
 }
-XlaOp Log(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kLog, operand);
+
+XlaOp Log(const XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kLog, operand, result_accuracy);
 }
-XlaOp Log1p(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kLog1p, operand);
+
+XlaOp Log1p(const XlaOp operand,
+            const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kLog1p, operand,
+                                    result_accuracy);
 }
-XlaOp Erf(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kErf, operand);
+
+XlaOp Erf(const XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kErf, operand, result_accuracy);
 }
-XlaOp Logistic(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kLogistic, operand);
+
+XlaOp Logistic(const XlaOp operand,
+               const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kLogistic, operand,
+                                    result_accuracy);
 }
+
 XlaOp Sign(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kSign, operand);
 }
+
 XlaOp Clz(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kClz, operand);
 }
-XlaOp Cos(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kCos, operand);
+
+XlaOp Cos(const XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kCos, operand, result_accuracy);
 }
-XlaOp Sin(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kSin, operand);
+
+XlaOp Sin(const XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kSin, operand, result_accuracy);
 }
-XlaOp Tan(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kTan, operand);
+
+XlaOp Tan(const XlaOp operand,
+          const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kTan, operand, result_accuracy);
 }
-XlaOp Tanh(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kTanh, operand);
+
+XlaOp Tanh(const XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kTanh, operand, result_accuracy);
 }
+
 XlaOp Real(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kReal, operand);
 }
+
 XlaOp Imag(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kImag, operand);
 }
-XlaOp Sqrt(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kSqrt, operand);
-}
-XlaOp Cbrt(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kCbrt, operand);
-}
-XlaOp Rsqrt(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kRsqrt, operand);
+
+XlaOp Sqrt(const XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kSqrt, operand, result_accuracy);
 }
 
+XlaOp Cbrt(const XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kCbrt, operand, result_accuracy);
+}
+
+XlaOp Rsqrt(const XlaOp operand,
+            const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kRsqrt, operand,
+                                    result_accuracy);
+}
 XlaOp Pow(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64_t> broadcast_dimensions) {
   return lhs.builder()->BinaryOp(HloOpcode::kPower, lhs, rhs,

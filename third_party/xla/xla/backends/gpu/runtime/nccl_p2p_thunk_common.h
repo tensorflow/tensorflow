@@ -99,7 +99,7 @@ NcclP2PConfig GetNcclP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
 // Returns the stream kind for the asynchronous stream used to execute an HLO
 // Send or Recv instruction, by inspecting the frontend attributes of the
 // instruction.
-AsyncStreamKind GetStreamKindForSendRecv(const HloSendRecvInstruction* instr);
+AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr);
 
 }  // namespace gpu
 }  // namespace xla

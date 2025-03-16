@@ -18,10 +18,12 @@
 #include <memory.h>
 #include <stddef.h>
 
-#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#if LITERT_HAS_OPENCL_SUPPORT
+#include <CL/cl.h>
+#endif  // LITERT_HAS_OPENCL_SUPPORT
 #if LITERT_HAS_OPENGL_SUPPORT
 #include <GLES3/gl31.h>
 #include <GLES3/gl32.h>
@@ -57,6 +59,7 @@ typedef enum {
   kLiteRtTensorBufferTypeFastRpc = 5,
   kLiteRtTensorBufferTypeOpenCl = 6,
   kLiteRtTensorBufferTypeGlBuffer = 7,
+  kLiteRtTensorBufferTypeGlTexture = 8,
 } LiteRtTensorBufferType;
 
 typedef void (*LiteRtHostMemoryDeallocator)(void* addr);
@@ -66,6 +69,7 @@ typedef void (*LiteRtDmaBufDeallocator)(void* dmabuf_buffer_addr);
 typedef void (*LiteRtFastRpcDeallocator)(void* fastrpc_buffer_addr);
 typedef void (*LiteRtOpenClDeallocator)(void* opencl_buffer_addr);
 typedef void (*LiteRtGlBufferDeallocator)(void* gl_buffer_addr);
+typedef void (*LiteRtGlTextureDeallocator)(void* gl_texture_addr);
 
 // /////////////////////////////////////////////////////////////////////////////
 // TensorBuffers.
@@ -175,6 +179,16 @@ LiteRtStatus LiteRtGetTensorBufferOpenClBuffer(LiteRtTensorBuffer tensor_buffer,
 #endif  // LITERT_HAS_OPENCL_SUPPORT
 
 #if LITERT_HAS_OPENGL_SUPPORT
+LiteRtStatus LiteRtCreateTensorBufferFromGlTexture(
+    const LiteRtRankedTensorType* tensor_type, GLenum target, GLuint id,
+    GLenum format, size_t size_bytes, GLint layer,
+    LiteRtGlTextureDeallocator deallocator, LiteRtTensorBuffer* buffer);
+
+LiteRtStatus LiteRtGetTensorBufferGlTexture(LiteRtTensorBuffer tensor_buffer,
+                                            GLenum* target, GLuint* id,
+                                            GLenum* format, size_t* size_bytes,
+                                            GLint* layer);
+
 LiteRtStatus LiteRtCreateTensorBufferFromGlBuffer(
     const LiteRtRankedTensorType* tensor_type, GLenum target, GLuint id,
     size_t bytes_size, size_t offset, LiteRtGlBufferDeallocator deallocator,

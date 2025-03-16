@@ -31,43 +31,10 @@ namespace litert::internal {
 
 constexpr absl::string_view kLiteRtSharedLibPrefix = "libLiteRt";
 
-// Check for null and print the last dlerror.
-inline void LogDlError() {
-  char* err = ::dlerror();
-  if (err == nullptr) {
-    return;
-  }
-  LITERT_LOG(LITERT_WARNING, "::dlerror() : %s", err);
-}
-
-// Probes for a list of shared library at given paths and returns when the first
-// one is found. Returns kLiteRtStatusErrorDynamicLoading if none of the shared
-// libraries are found.
-LiteRtStatus OpenLib(const std::vector<std::string>& so_paths,
-                     void** lib_handle, bool log_failure = false);
-
 // Loads shared library at given path. Logging can be disabled to probe for
 // shared libraries.
 LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle,
                      bool log_failure = true);
-
-// Closes reference to loaded shared library held by lib_handle.
-LiteRtStatus CloseLib(void* lib_handle);
-
-// Resolves a named symbol from given lib handle of type Sym.
-template <class Sym>
-inline static LiteRtStatus ResolveLibSymbol(void* lib_handle,
-                                            absl::string_view sym_name,
-                                            Sym* sym_handle) {
-  Sym ptr = (Sym)::dlsym(lib_handle, sym_name.data());
-  if (ptr == nullptr) {
-    LITERT_LOG(LITERT_ERROR, "Faild to resolve symbol: %s\n", sym_name.data());
-    LogDlError();
-    return kLiteRtStatusErrorDynamicLoading;
-  }
-  *sym_handle = ptr;
-  return kLiteRtStatusOk;
-}
 
 // Find all litert shared libraries in "search_path" and return
 // kLiteRtStatusErrorInvalidArgument if the provided search_path doesn't
@@ -90,9 +57,6 @@ LiteRtStatus FindLiteRtSharedLibsHelper(const std::string& search_path,
                                         const std::string& lib_pattern,
                                         bool full_match,
                                         std::vector<std::string>& results);
-
-// Get details about the dynamic library including its .so dependencies.
-void DLLInfo(void* lib_handle, std::ostream& out = std::cerr);
 
 }  // namespace litert::internal
 

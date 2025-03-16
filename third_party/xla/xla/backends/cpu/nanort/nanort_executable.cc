@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -42,11 +43,14 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
+
+#define EIGEN_USE_THREADS
+
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 
@@ -175,9 +179,20 @@ static absl::StatusOr<std::optional<size_t>> ResolveTempAllocationIndex(
   return temp_allocation_index;
 }
 
+NanoRtExecutable::ExecuteOptions&
+NanoRtExecutable::ExecuteOptions::set_intra_op_thread_pool(
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool) {
+  intra_op_thread_pool_ = intra_op_thread_pool;
+  return *this;
+}
+
+const Eigen::ThreadPoolDevice*
+NanoRtExecutable::ExecuteOptions::intra_op_thread_pool() const {
+  return intra_op_thread_pool_;
+}
+
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
-    std::unique_ptr<Executable> executable,
-    std::shared_ptr<tsl::thread::ThreadPool> thread_pool) {
+    std::unique_ptr<Executable> executable) {
   const HloModule& module = executable->module();
 
   VLOG(3) << "Create NanoRtExecutable: name = " << module.name();
@@ -212,20 +227,18 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
   }
 
   return absl::WrapUnique(new NanoRtExecutable(
-      std::move(executable), std::move(thread_pool),
-      std::move(allocation_sizes), std::move(argument_to_allocation_index),
+      std::move(executable), std::move(allocation_sizes),
+      std::move(argument_to_allocation_index),
       std::move(result_to_allocation_index), temp_allocation_index));
 }
 
 NanoRtExecutable::NanoRtExecutable(
     std::unique_ptr<Executable> executable,
-    std::shared_ptr<tsl::thread::ThreadPool> thread_pool,
     std::vector<size_t> allocation_sizes,
     std::vector<size_t> argument_to_allocation_index,
     std::vector<size_t> result_to_allocation_index,
     std::optional<size_t> temp_allocation_index)
     : executable_(std::move(executable)),
-      thread_pool_(std::move(thread_pool)),
       allocation_sizes_(std::move(allocation_sizes)),
       argument_to_allocation_index_(std::move(argument_to_allocation_index)),
       result_to_allocation_index_(std::move(result_to_allocation_index)),
@@ -252,7 +265,7 @@ static se::DeviceMemoryBase ToDeviceMemory(
 
 tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
     absl::Span<const Argument> arguments, absl::Span<const Result> results,
-    PreallocatedTemp temp) {
+    PreallocatedTemp temp, ExecuteOptions options) {
   TraceMe trace([&] {
     return TraceMeEncode("NanoRtExecutable::Execute",
                          {{"name", executable_->module().name()}});
@@ -317,9 +330,18 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   }
 
   cpu::BufferAllocations allocations(std::move(buffers));
-  cpu::Thunk::ExecuteParams execute_params = {
+
+  // Use the intra-op thread pool to offload thunk executor tasks.
+  auto* intra_op_thread_pool = options.intra_op_thread_pool();
+  ThreadPoolTaskRunner task_runner(
+      intra_op_thread_pool ? intra_op_thread_pool->getPool() : nullptr);
+
+  Thunk::ExecuteParams execute_params = {
       executable->function_library(),
       &allocations,
+      /*xfeed=*/nullptr,
+      intra_op_thread_pool,
+      &task_runner,
   };
 
   return executable->thunks().Execute(execute_params);

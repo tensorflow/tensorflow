@@ -29,6 +29,7 @@ if hasattr(sys, 'setdlopenflags') and hasattr(sys, 'getdlopenflags'):
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.lite.python import interpreter as interpreter_wrapper
+from tensorflow.lite.python import lite
 from tensorflow.lite.python.metrics import metrics
 from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_registerer
 from tensorflow.python.framework import test_util
@@ -374,12 +375,12 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
         return tf.raw_ops.Sum(input=x, axis=[0])
 
     test_model = TestModel()
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([
+    converter = lite.TFLiteConverterV2.from_concrete_functions([
         test_model.TestSum.get_concrete_function(
             tf.TensorSpec([None], tf.float32))
     ], test_model)
     model = converter.convert()
-    interpreter = tf.lite.Interpreter(model_content=model)
+    interpreter = lite.Interpreter(model_content=model)
     # Make sure that passing empty tensor doesn't cause any errors.
     interpreter.get_signature_runner()(x=tf.zeros([0], tf.float32))
 

@@ -21,6 +21,7 @@ import tempfile
 import tensorflow as tf
 
 from tensorflow.lite.python import analyzer
+from tensorflow.lite.python import lite
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
@@ -80,7 +81,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     def func(x):
       return x + tf.cos(x)
 
-    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()], func)
     fb_model = converter.convert()
     mock_stdout = io.StringIO()
@@ -98,7 +99,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     def func(x):
       return x + tf.cos(x)
 
-    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()], func)
     fb_model = converter.convert()
     mock_stdout = io.StringIO()
@@ -141,7 +142,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
               'sub': root.f2
           })
 
-      converter = tf.lite.TFLiteConverter.from_saved_model(tmp_dir)
+      converter = lite.TFLiteConverterV2.from_saved_model(tmp_dir)
       fb_model = converter.convert()
       mock_stdout = io.StringIO()
       with test.mock.patch.object(sys, 'stdout', mock_stdout):
@@ -163,7 +164,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     def func():
       return tf.cos(1.0)
 
-    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()], func)
     fb_model = converter.convert()
     mock_stdout = io.StringIO()
@@ -181,7 +182,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     def func(lhs, rhs):
       return tf.einsum('ABD,DNH->ABNH', lhs, rhs)
 
-    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()], func)
     converter.unfold_batchmatmul = True
     fb_model = converter.convert()

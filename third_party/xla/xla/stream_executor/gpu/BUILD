@@ -821,7 +821,7 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "tma_metadata_test",
     srcs = ["tma_metadata_test.cc"],
     deps = [

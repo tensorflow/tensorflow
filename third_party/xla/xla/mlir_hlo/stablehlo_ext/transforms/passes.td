@@ -52,18 +52,30 @@ def StablehloPrepareForHloExportPass : Pass<"stablehlo-ext-prepare-for-hlo-expor
   }];
 }
 
-def StablehloFlattenTuplePass : Pass<"stablehlo-ext-flatten-tuple", "func::FuncOp"> {
-  let summary = "Flatten tuples in operands and results of operators that "
-    "support both tuple and variadic type.";
-}
+def StablehloCanonicalizeFromHloImportPass : Pass<"stablehlo-ext-canonicalize-from-hlo-import", "mlir::func::FuncOp"> {
+  let summary = "Simplify StableHLO imported from HLO";
 
-def StablehloFlattenEntryFunctionTuplesPass : Pass<"stablehlo-ext-expand-flatten-entry-function-tuples", "ModuleOp"> {
-  let summary = "Flatten HLO tuple for the entry function of the module.";
+  let dependentDialects = ["stablehlo::StablehloDialect"];
+
+  let description = [{
+    This pass simplifies StableHLO imported from HLO. This pass is a subset of
+    the graph simplification passes and is intended to bring the imported HLO
+    back to a more canonical form without applying a full set of graph
+    simplifications.
+
+    Namely, this pass:
+    * Simplifies tuples, undoing `tuple(get_tuple_element)` and
+      `get_tuple_element(tuple)`.
+    * Converts WhileOp explicit captured constants to implicit captures.
+    * Flattens tuples in operands and results of operators that support both
+      tuple and variadic type.
+    * Flattens tuples in entry function of the module.
+  }];
+
   let options = [
     Option<"entryFunctionNameOption", "entry-function", "std::string",
-           /*default=*/"", "the name of entry function of the module">,
+           /*default=*/[{"main"}], "the name of entry function of the module">,
   ];
-  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
 
 def StablehloLegalizeQuantCompositePass : Pass<"stablehlo-ext-legalize-quant-composite", "ModuleOp"> {

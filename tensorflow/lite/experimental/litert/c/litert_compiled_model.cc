@@ -28,6 +28,10 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/runtime/compiled_model.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 LiteRtStatus LiteRtCreateCompiledModel(
     LiteRtEnvironment environment, LiteRtModel model,
     LiteRtCompilationOptions compilation_options,
@@ -140,3 +144,7 @@ LiteRtStatus LiteRtRunCompiledModelAsync(LiteRtCompiledModel compiled_model,
 void LiteRtDestroyCompiledModel(LiteRtCompiledModel compiled_model) {
   delete compiled_model;
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif

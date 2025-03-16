@@ -199,6 +199,7 @@ cc_library(
     visibility = ["//xla/python/ifrt:users"],
     deps = [
         ":ifrt_ir_compile_options_proto_cc",
+        "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
@@ -248,6 +249,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//xla/python/ifrt:users"],
     deps = [
+        ":ifrt_ir_compile_options_proto_cc",
         ":ifrt_ir_program",
         ":ifrt_ir_program_proto_cc",
         ":version",
@@ -280,6 +282,7 @@ xla_cc_test(
         ":ifrt_ir_program_serdes",
         ":version",
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt/support:module_parsing",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
@@ -482,6 +485,7 @@ tsl_pybind_extension(
         ":ifrt_ir_program_serdes",
         ":version",
         "//xla/pjrt:status_casters",
+        "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt/ir/transforms:utils",
         "//xla/python/ifrt/support:module_parsing",
         "//xla/tsl/platform:statusor",

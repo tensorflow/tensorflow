@@ -65,7 +65,7 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
                                 flatten_computation_args_result_, builder_);
   ImportUseAutoSpmdPartitioning(hlo_module, module, builder_);
 
-  if (!import_all_computation_)
+  if (!import_all_computation_) {
     // Only import the entry computation, any reachable one will be imported
     // unless turned into a region operation.
     return HloFunctionImporter::ImportAsFunc(
@@ -73,18 +73,22 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
                &builder_,
                /*is_main*/ true, flatten_computation_args_result_)
         .status();
+  }
 
   auto* module_entry_computation = hlo_module.entry_computation();
-  for (const auto* computation : hlo_module.computations())
+  for (const auto* computation : hlo_module.computations()) {
     TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
                            *computation, symbol_table_, &function_map_,
                            &builder_,
                            /*is_main*/ computation == module_entry_computation,
                            flatten_computation_args_result_)
                            .status());
+  }
 
   ImportEntryComputationLayoutAndTiles(
       hlo_module, module, flatten_computation_args_result_, builder_);
+  TF_RETURN_IF_ERROR(ImportLayoutModes(
+      hlo_module, module, flatten_computation_args_result_, builder_));
   return absl::OkStatus();
 }
 

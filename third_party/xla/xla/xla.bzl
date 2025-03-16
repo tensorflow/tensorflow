@@ -6,6 +6,11 @@ load(
     "if_rocm_is_configured",
 )
 load(
+    "//xla/tsl:package_groups.bzl",
+    "DEFAULT_LOAD_VISIBILITY",
+    "LEGACY_XLA_USERS",
+)
+load(
     "//xla/tsl:tsl.bzl",
     "tsl_copts",
 )
@@ -14,10 +19,13 @@ load(
     "if_static",
     "tf_exec_properties",
 )
+load("//xla/tsl/platform/default:build_config.bzl", "strict_cc_test")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+
+visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_XLA_USERS)
 
 def xla_py_proto_library(**_kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
@@ -71,20 +79,27 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
 def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):
     native.cc_binary(deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS, copts = copts, **kwargs)
 
-def xla_cc_test(name, deps = [], linkstatic = True, **kwargs):
-    """A wrapper around cc_test that adds XLA-specific dependencies.
+def xla_cc_test(
+        name,
+        deps = [],
+        **kwargs):
+    """A wrapper around strict_cc_test that adds XLA-specific dependencies.
 
     Also, it sets linkstatic to True by default, which is a good practice for catching duplicate
     symbols at link time (e.g. linking in two main() functions).
 
     Use xla_cc_test or xla_test instead of cc_test in all .../xla/... directories except .../tsl/...,
     where tsl_cc_test should be used.
+
+    Args:
+      name: The name of the test.
+      deps: The dependencies of the test.
+      **kwargs: Other arguments to pass to the test.
     """
 
-    native.cc_test(
+    strict_cc_test(
         name = name,
         deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS,
-        linkstatic = linkstatic,
         exec_properties = tf_exec_properties(kwargs),
         **kwargs
     )

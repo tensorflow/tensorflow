@@ -107,6 +107,11 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& VerifyNoHostMemorySpace() {
+    verify_no_host_memory_space = true;
+    return std::move(*this);
+  }
+
   bool IsLayoutSensitive() const { return layout_sensitive; }
 
   bool AllowMixedPrecision() const { return allow_mixed_precision; }
@@ -156,6 +161,9 @@ struct HloVerifierOpts {
 
   // Check if channel instructions all have unique channel ids.
   bool verify_unique_channel_ids = true;
+
+  // Check if a shape has a host memory space color
+  bool verify_no_host_memory_space = false;
 
   HloPredicate instruction_can_change_layout;
 

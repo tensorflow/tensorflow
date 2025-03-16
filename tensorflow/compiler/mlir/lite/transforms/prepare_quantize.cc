@@ -49,8 +49,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tfl_quantization_driver.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_driver.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 
@@ -344,6 +344,9 @@ void PrepareQuantizePass::runOnOperation() {
     quant_specs_.legacy_float_scale = legacy_float_scale_;
     quant_specs_.disable_set_input_nodes_quantization_params =
         disable_set_input_nodes_quantization_params_;
+    quant_specs_.qdq_conversion_mode =
+        quant::GetQDQQuantModeFromString(qdq_conversion_mode_);
+
     for (const auto& ir : input_ranges_) {
       std::pair<std::string, std::string> input_range = absl::StrSplit(ir, '|');
       std::optional<double> optional_min;
@@ -400,8 +403,7 @@ void PrepareQuantizePass::runOnOperation() {
     patterns_1.add<PrepareLstmOutputScale<LSTMOp>>(ctx);
     patterns_1.add<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(ctx);
   }
-  if (is_qdq_conversion_ ||
-      quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone) {
+  if (quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone) {
     patterns_1.add<PropagateReshapedPerAxisQuantDim,
                    PropagateTransposedPerAxisQuantDim>(ctx);
   }
@@ -445,8 +447,7 @@ void PrepareQuantizePass::runOnOperation() {
       func, is_signed, bit_width,
       disable_per_channel_ || quant_specs_.disable_per_channel,
       op_quant_spec_getter, infer_tensor_range, quant_specs_.legacy_float_scale,
-      (is_qdq_conversion_ ||
-       quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone));
+      quant_specs_.qdq_conversion_mode);
 }
 
 }  // namespace

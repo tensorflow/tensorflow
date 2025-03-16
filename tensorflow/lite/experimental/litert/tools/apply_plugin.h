@@ -22,9 +22,12 @@
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_flags.h"
 #include "tensorflow/lite/experimental/litert/tools/outstream.h"
 
 namespace litert::tools {
+
+using ::litert::internal::CompilerFlags;
 
 struct ApplyPluginRun {
   // NOTE: All StrFlagT are expected to have static storage duration.
@@ -138,6 +141,10 @@ struct ApplyPluginRun {
   // "silent" behavior and should only be used when this tool is part of a
   // larger pipeline like an end2end test.
   UserStream dump_out;
+
+  // Compiler flags to pass to the plugin. Only relevant for "APPLY" and
+  // "COMPILE" commands.
+  CompilerFlags compiler_flags;
 };
 
 LiteRtStatus ApplyPlugin(ApplyPluginRun::Ptr run);

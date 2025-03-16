@@ -41,6 +41,7 @@ extern "C" {
 #define LITERT_HAS_DMABUF_SUPPORT 1
 #define LITERT_HAS_FASTRPC_SUPPORT 1
 #define LITERT_HAS_OPENGL_SUPPORT 1
+#define LITERT_HAS_OPENCL_SUPPORT 1
 // copybara:comment_begin(google-only)
 #elif defined(GOOGLE_UNSUPPORTED_OS_LOONIX)
 #define LITERT_HAS_ION_SUPPORT 0
@@ -54,6 +55,10 @@ extern "C" {
 #define LITERT_HAS_FASTRPC_SUPPORT 0
 #define LITERT_HAS_OPENCL_SUPPORT 1
 #define LITERT_HAS_OPENGL_SUPPORT 0
+#endif
+
+#if defined(LITERT_DISABLE_OPENCL_SUPPORT)
+#define LITERT_HAS_OPENCL_SUPPORT 0
 #endif
 
 #define LITERT_API_VERSION_MAJOR 0
@@ -84,6 +89,7 @@ typedef enum {
   kLiteRtStatusErrorNotFound = 6,
   kLiteRtStatusErrorTimeoutExpired = 7,
   kLiteRtStatusErrorWrongVersion = 8,
+  kLiteRtStatusErrorUnknown = 9,
 
   // File and loading related errors.
   kLiteRtStatusErrorFileIO = 500,
@@ -121,6 +127,14 @@ typedef int LiteRtHwAcceleratorSet;
 
 // For indexing into LiteRT collections or counting LiteRT things.
 typedef size_t LiteRtParamIndex;
+
+#if defined(_WIN32)
+// Provides posix_memalign() missing in Windows.
+#include <errno.h>
+
+#define posix_memalign(p, a, s) \
+  (((*(p)) = _aligned_malloc((s), (a))), *(p) ? 0 : errno)
+#endif  // defined(_WIN32)
 
 #ifdef __cplusplus
 }

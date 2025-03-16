@@ -122,6 +122,11 @@ struct ExecuteOptions {
   // an invalid future.
   bool fill_status = false;
 
+  // Execution stream ID identifies the series of executions that must be
+  // executed in program order.  Executions with different execution stream IDs
+  // may be executed in any order and concurrently.
+  int64_t execution_stream_id = 0;
+
   // Custom execution options specific to the runtime. The user and the runtime
   // are responsible for ensuring version compatibility.
   std::optional<AttributeMap> custom_options;
@@ -234,7 +239,7 @@ class LoadedExecutable
   // API).
   virtual absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
-      std::optional<tsl::RCReference<DeviceList>> devices) = 0;
+      std::optional<DeviceListRef> devices) = 0;
 
   // Deletes the executable from the devices. The operation may be asynchronous.
   // The returned future will have the result of the deletion on the devices.

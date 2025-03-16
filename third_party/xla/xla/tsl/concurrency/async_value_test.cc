@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/concurrency/async_value.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 
 namespace tsl {
 
@@ -180,5 +182,28 @@ TEST(AsyncValueTest, StackAllocatedAsyncValue) {
   std::make_unique<AsyncValueOwningRef<Payload>>(std::move(owner));
   EXPECT_EQ(2, counter);
 }
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+static void BM_AddAndThenCallback(benchmark::State& state) {
+  size_t n = 0;
+
+  auto ref = MakeConstructedAsyncValueRef<int32_t>(42);
+  for (auto _ : state) {
+    // Reset AsyncValue to avoid keeping enqueued callbacks alive.
+    if (++n % 1024 == 0) {
+      ref.SetStateConcrete();
+      ref = MakeConstructedAsyncValueRef<int32_t>(42);
+    }
+
+    ref.AndThen([] {});
+  }
+
+  ref.SetStateConcrete();
+}
+
+BENCHMARK(BM_AddAndThenCallback);
 
 }  // namespace tsl

@@ -51,7 +51,9 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/shape_partition.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
@@ -142,7 +144,7 @@ absl::StatusOr<Shape> MakeShapeWithLayoutInternal(
       pointer_primitive_type, element_size_in_bits, memory_space, split_configs,
       std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return std::move(shape);
+  return shape;
 }
 
 template <typename T>
@@ -314,7 +316,7 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
                            static_cast<int>(element_type),
                            absl::StrJoin(dimensions, ","));
   }
-  return std::move(shape);
+  return shape;
 }
 
 /* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedShape(
@@ -340,7 +342,7 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
           "Cannot mark a dynamic dimension at dim=%d as static", i);
     }
   }
-  return std::move(shape);
+  return shape;
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDenseLayout(
@@ -1930,7 +1932,7 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
 namespace {
 
 struct ParallelState {
-  explicit ParallelState(int64_t task_count) : counter(task_count) {
+  explicit ParallelState(int64_t task_count) {
     // If this method is changed, please remember to change
     // GetForEachIndexParallelThreadCount() as well.
     static auto* global_pool = new tsl::thread::ThreadPool(
@@ -1938,13 +1940,10 @@ struct ParallelState {
     pool = global_pool;
   }
   ~ParallelState() = default;
-  void Wait() { counter.Wait(); }
-  void TaskComplete() { counter.DecrementCount(); }
 
   absl::Mutex mu;
   tsl::thread::ThreadPool* pool;
   absl::Status status;  // Guarded by mu
-  absl::BlockingCounter counter;
 };
 
 }  // anonymous namespace
@@ -1953,32 +1952,101 @@ struct ParallelState {
     const Shape& shape, absl::Span<const int64_t> base,
     absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
     const ForEachParallelVisitorFunction& visitor_function) {
+  // Short-circuit if there is no work to do.
   ForEachState s(shape, base, count, incr);
-  ParallelState pstate(s.CalculateNumSteps());
-  if (s.IsZeroElementArray()) {
-    return pstate.status;
+  if (s.IsZeroElementArray()) return absl::OkStatus();
+
+  // Execute the visitor function inline in the caller thread.
+  auto execute_inline = [&] {
+    return ForEachIndexInternal(shape, base, count, incr,
+                                [&](absl::Span<const int64_t> index) {
+                                  return visitor_function(index, 0);
+                                });
+  };
+
+  // Don't try to handle special cases with 0 counts or increments in parallel.
+  auto is_zero = [](int64_t value) { return value == 0; };
+  if (absl::c_any_of(count, is_zero) || absl::c_any_of(incr, is_zero)) {
+    return execute_inline();
   }
-  // Allows handling R0 arrays, such that the visitor function will be called
-  // once with the proper empty indexes.
-  int64_t n = -1;
-  while (n < s.rank) {
-    auto indexes_copy = s.indexes;
-    pstate.pool->Schedule([indexes_copy, &visitor_function, &pstate] {
-      const int thread_id = pstate.pool->CurrentThreadId();
-      absl::StatusOr<bool> result = visitor_function(indexes_copy, thread_id);
+
+  // Don't try to handle scalar shapes in parallel.
+  if (ElementsIn(shape) == 1) {
+    return execute_inline();
+  }
+
+  // Compute the dimensions of the "work" which are defined by the count of
+  // elements in each dimension and the increment.
+  std::vector<int64_t> work_dims(shape.dimensions_size());
+  for (size_t d = 0; d < shape.rank(); ++d) {
+    work_dims[d] = tsl::MathUtil::CeilOfRatio(count[d], incr[d]);
+  }
+
+  // Create the shape of the "work" which has same layout as the original shape.
+  Shape work_shape = ShapeUtil::MakeShape(shape.element_type(), work_dims);
+  *work_shape.mutable_layout() = shape.layout();
+
+  // We target one task (partition) per available thread.
+  size_t target_partition_count = GetForEachIndexParallelThreadCount();
+
+  // Compute major-to-minor partition counts for parallelizing the work.
+  ShapePartitionAssigner assigner(work_shape);
+  std::vector<int64_t> partition_counts = assigner.Run(target_partition_count);
+  int64_t partition_count = assigner.GetTotalPartitionCount(partition_counts);
+
+  // For a single partition compute everything in the caller thread.
+  if (partition_count == 1) return execute_inline();
+
+  // Iterate over all partitions in parallel.
+  ShapePartitionIterator iterator(work_shape, partition_counts);
+  ParallelState pstate(partition_count);
+
+  // Process a single partition using bounds defined by the partition iterator.
+  auto process_partition = [&](size_t i) {
+    auto partition = iterator.GetPartition(i);
+
+    // Adjust base and count for the `i`-th partition.
+    std::vector<int64_t> partition_base(base.begin(), base.end());
+    std::vector<int64_t> partition_count(count.begin(), count.end());
+
+    // Iterate over all dimension bounds starting from the outermost dimension.
+    for (int64_t d = 0; d < partition.size(); ++d) {
+      // Size and offset in the `work_shape` for the `i`-th partition.
+      auto [partition_start, partition_size] = partition[d];
+
+      // Update base and count for the `i`-th partition.
+      size_t dim = LayoutUtil::Major(shape.layout(), d);
+      partition_base[dim] += partition_start * incr[dim];
+      partition_count[dim] = std::min(count[dim] - partition_start * incr[dim],
+                                      partition_size * incr[dim]);
+    }
+
+    ForEachState s(shape, partition_base, partition_count, incr);
+    const int thread_id = pstate.pool->CurrentThreadId();
+
+    // Allows handling R0 arrays, such that the visitor function will be
+    // called once with the proper empty indexes.
+    int64_t n = -1;
+    while (n < s.rank) {
+      absl::StatusOr<bool> result = visitor_function(s.indexes, thread_id);
       if (!result.ok()) {
         absl::MutexLock lock(&pstate.mu);
         if (pstate.status.ok()) {
           pstate.status = result.status();
         }
       }
-      pstate.TaskComplete();
-    });
-    // Increments dimensions in minor to major order.
-    n = s.IncrementDim();
-  }
+      // Increments dimensions in minor to major order.
+      n = s.IncrementDim();
+    }
+  };
 
-  pstate.Wait();
+  // Launch parallel for loop to process all partitions.
+  pstate.pool->ParallelFor(partition_count, /*cost_per_unit=*/1000000,
+                           [&](int64_t p_begin, int64_t p_end) {
+                             for (size_t i = p_begin; i < p_end; ++i) {
+                               process_partition(i);
+                             }
+                           });
   return pstate.status;
 }
 
@@ -2142,4 +2210,23 @@ int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {
     }
   });
 }
+
+/*static*/ void ShapeUtil::FlattenTupleShape(
+    const Shape& shape, std::vector<const Shape*>& flattened) {
+  if (shape.IsTuple()) {
+    for (const Shape& subshape : shape.tuple_shapes()) {
+      FlattenTupleShape(subshape, flattened);
+    }
+  } else {
+    flattened.push_back(&shape);
+  }
+}
+
+/*static*/ std::vector<const Shape*> ShapeUtil::FlattenTupleShape(
+    const Shape& shape) {
+  std::vector<const Shape*> flattened;
+  FlattenTupleShape(shape, flattened);
+  return flattened;
+}
+
 }  // namespace xla

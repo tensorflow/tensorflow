@@ -307,6 +307,7 @@ cc_library(
     visibility = [
         "//tensorflow/lite:__pkg__",
         "//tensorflow/lite/core:__subpackages__",
+        "//third_party/odml/infra/genai/inference/executor/google_tensor:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite/c:common",

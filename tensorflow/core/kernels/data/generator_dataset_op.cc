@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/generator_dataset_op.h"
 
-#include <iterator>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"

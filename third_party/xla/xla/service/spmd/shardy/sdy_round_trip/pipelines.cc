@@ -16,13 +16,17 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 
 #include <cassert>
+#include <functional>
 
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/dedup_meshes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_callback_custom_calls.h"
@@ -35,9 +39,11 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
+using ::mlir::PassPipelineOptions;
 using ::mlir::PassPipelineRegistration;
 
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm) {
+  pm.addPass(createSdyRoundTripDedupMeshesPass());
   pm.addPass(createExportNamedComputationsPass());
   pm.addPass(createSdyRoundTripExportOpsPass());
   pm.addPass(createSdyRoundTripShardMapExportPass());
@@ -48,8 +54,9 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm) {
   pm.addPass(createExportStablehloShardingsPass());
 }
 
-void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm) {
-  addCommonPreImportPasses(pm);
+void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
+                                   bool enableConstantImport) {
+  addCommonPreImportPasses(pm, enableConstantImport);
   pm.addPass(createSdyRoundTripImportCallbackCustomCallsPass());
   pm.addPass(createSdyRoundTripImportShardyAttrsPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
@@ -65,11 +72,27 @@ void registerSdyRoundTripExportPipeline() {
       addSdyRoundTripExportPipeline);
 }
 
+namespace {
+
+struct SdyRoundTripImportPipelineOptions
+    : public PassPipelineOptions<SdyRoundTripImportPipelineOptions> {
+  Option<bool> enable_constant_import{*this, "enable-constant-import",
+                                      llvm::cl::desc("Enable constant import."),
+                                      llvm::cl::init(true)};
+};
+
+void sdyRoundTripImportPipeline(
+    mlir::OpPassManager& pm, const SdyRoundTripImportPipelineOptions& options) {
+  addSdyRoundTripImportPipeline(pm, options.enable_constant_import);
+}
+
+}  // namespace
+
 void registerSdyRoundTripImportPipeline() {
-  PassPipelineRegistration<> importPipeline(
+  PassPipelineRegistration<SdyRoundTripImportPipelineOptions> importPipeline(
       "xla-sdy-round-trip-import-pipeline",
-      "Run passes to import an StableHLO module into the SDY (Shardy) dialect.",
-      addSdyRoundTripImportPipeline);
+      "Run passes to import a StableHLO module into the SDY (Shardy) dialect.",
+      sdyRoundTripImportPipeline);
 }
 
 }  // namespace sdy

@@ -53,10 +53,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/tpu_step_breakdown_utils.h"
 #include "tensorflow/core/profiler/utils/tpu_step_details_utils.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -137,7 +137,8 @@ const char* kKernelLaunchTfDataContention =
 
 template <class Collection>
 double GetTimeInMs(const Collection& type_ps, EventType event_type) {
-  return PicoToMilli(gtl::FindWithDefault(type_ps, event_type, /*value=*/0));
+  return tsl::profiler::PicoToMilli(
+      gtl::FindWithDefault(type_ps, event_type, /*value=*/0));
 }
 
 GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
@@ -200,7 +201,7 @@ GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
 }
 
 InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
-    const protobuf::RepeatedPtrField<PerCoreStepInfo>& grouped_by_step) {
+    const tsl::protobuf::RepeatedPtrField<PerCoreStepInfo>& grouped_by_step) {
   InputPipelineAnalysisResult result;
   result.set_tag(false);
 
@@ -539,7 +540,7 @@ void ConvertGenericStepBreakdownToTpuStepBreakdown(
 // of the same step across cores.
 PerTpuStepDetails ComputeTpuPerStepDataAcrossCores(
     const PerCoreStepInfo& coreid_stepinfo_map,
-    const protobuf::Map<uint32_t, tensorflow::profiler::CoreDetails>&
+    const tsl::protobuf::Map<uint32_t, tensorflow::profiler::CoreDetails>&
         core_details_map) {
   PerTpuStepDetails per_step_data;
 
@@ -806,8 +807,8 @@ TpuStepTimeBreakdown ComputeTpuStepTimeBreakdownInMs(
 // of the step that runs on that core. Elements are in the same order that the
 // steps are executed over time.
 InputPipelineAnalysisResult ComputeTpuInputPipelineAnalysisResult(
-    const protobuf::RepeatedPtrField<PerCoreStepInfo>& grouped_by_step,
-    const protobuf::Map<uint32_t, tensorflow::profiler::CoreDetails>&
+    const tsl::protobuf::RepeatedPtrField<PerCoreStepInfo>& grouped_by_step,
+    const tsl::protobuf::Map<uint32_t, tensorflow::profiler::CoreDetails>&
         core_details_map) {
   InputPipelineAnalysisResult result;
   bool has_sparse_core = false;
@@ -1092,7 +1093,7 @@ PerCoreAllReduceBreakdown ComputePerStepAllReduceBreakdownAcrossCores(
 void MayFixTpuStepAnalysis(
     const StepEvents& host_step_events, const OpMetricsDb& device_op_metrics_db,
     StepDatabaseResult& step_db,
-    const protobuf::Map<uint32_t, tensorflow::profiler::CoreDetails>&
+    const tsl::protobuf::Map<uint32_t, tensorflow::profiler::CoreDetails>&
         core_details_map) {
   // This code is only applicable when input is received by the tensor core
   // from the host without the use of infeed. If the tensor core receives
@@ -1358,7 +1359,7 @@ InputPipelineAnalysisRecommendation GenerateRecommendation() {
 }
 
 StepSummary ComputeStepTimeSummaryInMs(
-    const protobuf::RepeatedPtrField<PerCoreStepInfo>& grouped_by_step) {
+    const tsl::protobuf::RepeatedPtrField<PerCoreStepInfo>& grouped_by_step) {
   tsl::Stat<double> total_step_stats_in_ms;
   // iterates over each step.
   for (const auto& coreid_stepinfo_map : grouped_by_step) {
@@ -1493,7 +1494,7 @@ void OutputAnalysis(double output_percent, std::string* output_classification,
 
 BottleneckAnalysis ComputeBottleneckAnalysis(
     const InputTimeBreakdown& input_time_breakdown,
-    const protobuf::RepeatedPtrField<::google::protobuf::Any>&
+    const tsl::protobuf::RepeatedPtrField<::google::protobuf::Any>&
         any_step_details) {
   double total_step_time_ms = 0;
   double total_input_ms = 0;

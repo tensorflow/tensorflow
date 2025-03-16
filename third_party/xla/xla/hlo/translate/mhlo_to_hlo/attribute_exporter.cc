@@ -92,6 +92,8 @@ absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
       return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3;
     case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32_X6:
       return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32_X9:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9;
     case mlir::hlo::detail::KnownDotAlgorithm::TF32_TF32_F32:
       return xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32;
     case mlir::hlo::detail::KnownDotAlgorithm::TF32_TF32_F32_X3:

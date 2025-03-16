@@ -2,8 +2,8 @@
 # load("//devtools/deps/check:deps_check.bzl", "check_dependencies")
 #
 # copybara:uncomment_end
-load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "export_lrt_runtime_only_linkopt", "export_lrt_runtime_only_script")
-load("//tensorflow/lite/experimental/litert/build_common:special_rule.bzl", "gles_deps", "gles_linkopts")
+load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "copy_file", "export_lrt_runtime_only_linkopt", "export_lrt_runtime_only_script")
+load("//tensorflow/lite/experimental/litert/build_common:special_rule.bzl", "gles_deps", "gles_headers", "gles_linkopts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -94,6 +94,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/model:model_load",
+        "//tensorflow/lite/experimental/litert/core/model:model_serialize",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
@@ -231,7 +232,6 @@ cc_library(
         "litert_dispatch_delegate.h",
     ],
     deps = [
-        ":litert_environment",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:c_api_types",
@@ -384,7 +384,6 @@ cc_library(
         ":litert_accelerator",
         ":litert_accelerator_options",
         ":litert_common",
-        ":litert_compiled_model",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/core:accelerator",
         "//tensorflow/lite/experimental/litert/core:environment",
@@ -453,8 +452,43 @@ cc_shared_library(
     user_link_flags = export_lrt_runtime_only_linkopt() + select({
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
-    }),
+    }) + ["-Wl,-soname=libLiteRtRuntimeCApi.so"],
     deps = LITERT_C_API_COMMON_DEPS,
+)
+
+cc_library(
+    name = "litert_dispatch_headers",
+    hdrs = [
+        ":litert_environment.h",
+        ":litert_accelerator.h",
+        ":litert_accelerator_options.h",
+        ":litert_any.h",
+        ":litert_common.h",
+        ":litert_compiled_model.h",
+        ":litert_compiled_model_options.h",
+        ":litert_event.h",
+        ":litert_layout.h",
+        ":litert_logging.h",
+        ":litert_model.h",
+        ":litert_op_code.h",
+        ":litert_options.h",
+        ":litert_tensor_buffer.h",
+        ":litert_tensor_buffer_requirements.h",
+        # Needed for litert/c/litert_op_code.h
+        "//tensorflow/lite:builtin_ops.h",
+        # Neeeded for litert/c/litert_model.h
+        "//tensorflow/lite/c:tensorflowlite_c_api_hdrs_filegroup",
+        "//tensorflow/lite/core/c:headers_filegroup",
+    ],  # Export all header files (.h) in this directory
+    deps = [
+        "@opencl_headers",
+    ],
+)
+
+copy_file(
+    name = "copy_litert_runtime_c_api_so",
+    src = "//tensorflow/lite/experimental/litert/c:litert_runtime_c_api_so",
+    target = "libLiteRtRuntimeCApi.so",
 )
 
 # This is cc_library target based on `libLiteRtRuntimeCApi.so`.
@@ -467,12 +501,13 @@ cc_library(
         # Neeeded for litert/c/litert_model.h
         "//tensorflow/lite/c:tensorflowlite_c_api_hdrs_filegroup",
         "//tensorflow/lite/core/c:headers_filegroup",
-        "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch.h",
     ],
     linkstatic = 1,
     deps = [
+        # only depend on headers
         "@opencl_headers",
-    ] + gles_deps(),
+        "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
+    ] + gles_headers(),
 )
 
 # copybara:uncomment_begin(google-only)

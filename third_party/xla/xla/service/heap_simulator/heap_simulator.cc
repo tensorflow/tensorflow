@@ -1387,7 +1387,7 @@ class SliceTimeAllPermutationIterator : public SliceTimePermutationIterator {
  private:
   SliceTimeAllPermutationIterator() = default;
 
-  int64_t num_slices_;
+  int64_t num_slices_ = 0;  // Initialize to 0
   bool done_ = true;
   std::vector<int64_t> permutation_;
 };
@@ -1610,7 +1610,7 @@ class SliceTimePreferredPermutationIterator
     return permutation_index;
   }
 
-  int64_t num_slices_;
+  int64_t num_slices_ = 0;  // Initialize to 0
   // For each value in permutation, indicates if it has a fixed value tied to
   // a sliced allocation before repacking. If fixed_permutation_values[i] is
   // true, permutation_[i] holds the fixed slice time for the slice with the
@@ -2066,8 +2066,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
   if (preferred_offset_ >= 0) {
     ChunksSortedBySliceTime chunks = FindForOffset(preferred_offset_);
     if (!chunks.empty()) {
-      VLOG(1) << "SlicedAllocationFinder found chunks: " << "{ "
-              << absl::StrJoin(chunks, ", ", absl::StreamFormatter()) << " }";
+      VLOG(1) << "SlicedAllocationFinder found chunks: "
+              << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
+              << " }";
       return chunks;
     }
   }
@@ -2099,8 +2100,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
     VLOG(3) << "SlicedAllocationFinder::Find() searching " << root->ToString();
     ChunksSortedBySliceTime chunks = FindInRoot(*root);
     if (!chunks.empty()) {
-      VLOG(1) << "SlicedAllocationFinder found chunks: " << "{ "
-              << absl::StrJoin(chunks, ", ", absl::StreamFormatter()) << " }";
+      VLOG(1) << "SlicedAllocationFinder found chunks: "
+              << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
+              << " }";
       return chunks;
     }
   }
