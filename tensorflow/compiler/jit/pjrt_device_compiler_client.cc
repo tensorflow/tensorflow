@@ -77,8 +77,9 @@ PjRtDeviceCompilerClient::LoadExecutable(
     const XlaCompiler::CompilationResult& result,
     const std::string& serialized_executable) {
   VLOG(1) << "Deserializing from string to xla::PjRtLoadedExecutable.";
-  return client_->DeserializeExecutable(serialized_executable,
-                                        GetPjRtCompileOptions(options, result));
+  return client_->LoadSerializedExecutable(
+      serialized_executable, GetPjRtCompileOptions(options, result),
+      xla::LoadOptions());
 }
 
 void PjRtDeviceCompilerClient::WaitForProgramsToFinish() {

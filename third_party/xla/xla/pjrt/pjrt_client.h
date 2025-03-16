@@ -615,19 +615,6 @@ class PjRtClient {
     return Unimplemented("Compile with MLIR Module is not supported.");
   }
 
-  // Deserializes a serialized executable as produced by
-  // PjRtExecutable::SerializeExecutable(). `serialized` must have been
-  // produced by a compiler of the same platform and version as this one.
-  //
-  // Pending completion of b/237720161, `options` is a mandatory argument in
-  // most implementations of this interface. They _are_ optional for
-  // implementations related to the PJRT C API.
-  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-  DeserializeExecutable(absl::string_view serialized,
-                        std::optional<CompileOptions> options) {
-    return Unimplemented("Deserialize is not supported.");
-  }
-
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
   // returned executable is loaded by this client. The same checks are made as
   // in Load that the serialized executable is compatible with the client.
