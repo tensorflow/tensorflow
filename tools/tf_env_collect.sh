@@ -34,15 +34,20 @@ PYTHON_BIN_PATH="$(which python || which python3 || die "Cannot find Python bina
 HEADER_WIDTH=68
 # Create a string of HEADER_WIDTH "=" characters
 HEADER=$(printf "%*s" "$HEADER_WIDTH" "" | sed 's/ /=/g')
-TITLE="GETTING STARTED"
 
 print_header () {
+  # This function simply prints the header with even spacing, 
+  # and also prints it to STDERR so that the human running
+  # the script sees progress.
   local TITLE="$1"
   echo
+  # This line is a bit cryptic, but it essentially
+  # just pads the title with "=" to be the desired length.
+  local PADDED_TITLE="== $TITLE ${HEADER:${#TITLE}+4}"
   # Echo to STDOUT
-  echo "== $TITLE ${HEADER:${#TITLE}+4}"
+  echo "$PADDED_TITLE"
   # Echo to STDERR (to show progress to the user as it runs)
-  echo "== $TITLE ${HEADER:${#TITLE}+4}" 1>&2
+  echo "$PADDED_TITLE" 1>&2
 }
 
 # Clear the output file
