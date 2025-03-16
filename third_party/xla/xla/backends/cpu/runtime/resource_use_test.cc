@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/resource_use.h"
 
+#include <gtest/gtest.h>
 #include "tsl/platform/test.h"
 
 namespace xla::cpu {
