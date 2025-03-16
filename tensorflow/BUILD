@@ -1362,7 +1362,7 @@ tf_cc_shared_library(
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-z defs",
+            "-Wl,-z,defs",
             "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
         ],
     }),
