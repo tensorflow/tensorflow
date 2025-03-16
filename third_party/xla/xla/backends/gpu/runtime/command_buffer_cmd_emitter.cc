@@ -203,7 +203,7 @@ static absl::StatusOr<Command> Convert(const CollectiveDoneThunk& thunk) {
 
 static absl::StatusOr<Command> Convert(const DynamicSliceThunk& thunk) {
   auto cmd_sequence = std::make_unique<CommandBufferCmdSequence>();
-  auto embed_thunk = thunk.get_embeded_thunk();
+  auto embed_thunk = thunk.get_embedded_thunk();
   TF_RETURN_IF_ERROR(AppendCommands(
       *cmd_sequence, embed_thunk->thunks(),
       CommandBufferCmdSequence::SynchronizationMode::kAutomatic));

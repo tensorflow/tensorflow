@@ -132,7 +132,7 @@ class DynamicSliceThunk : public Thunk {
     std::optional<uint64_t> offset_byte_size;
   };
 
-  const SequentialThunk* get_embeded_thunk() const {
+  const SequentialThunk* get_embedded_thunk() const {
     return embedded_thunk_.get();
   }
 
