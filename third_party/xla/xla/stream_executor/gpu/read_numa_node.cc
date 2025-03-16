@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <string>
 
+#include "absl/log/log.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numa.h"
 
