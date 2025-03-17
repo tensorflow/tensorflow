@@ -16,6 +16,18 @@ package_group(
 )
 
 cc_library(
+    name = "autotuner",
+    hdrs = ["autotuner.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/runtime:thunk",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
     name = "device_spec",
     hdrs = ["device_spec.h"],
     deps = [
