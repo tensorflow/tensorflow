@@ -71,7 +71,8 @@ bool IsSameTopology(const PjRtTopologyDescription& topology1,
 }
 
 absl::Status IsValidTopologyAndClientForCompile(
-    const PjRtTopologyDescription& topology, PjRtClient* client) {
+    const PjRtTopologyDescription& topology, PjRtClient* client,
+    const CompileOptions& options) {
   if (client == nullptr) {
     return absl::UnimplementedError(
         "SE:GPU compiler requires non-null client.");
@@ -82,7 +83,8 @@ absl::Status IsValidTopologyAndClientForCompile(
   }
   TF_ASSIGN_OR_RETURN(auto client_topology, client->GetTopologyDescription());
 
-  if (!IsSameTopology(topology, *client_topology)) {
+  if (!IsSameTopology(topology, *client_topology) &&
+      !options.compile_without_execution) {
     return absl::UnimplementedError(
         "SE:GPU compiler requires the topology same as the one in the client.");
   }
@@ -129,7 +131,8 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   CompileOptions input_options = options;
   if (!options.target_config) {
     if (client != nullptr) {
-      TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
+      TF_RETURN_IF_ERROR(
+          IsValidTopologyAndClientForCompile(topology, client, options));
       return client->Compile(computation, options);
     }
     const auto& gpu_topology =
