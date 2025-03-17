@@ -110,11 +110,11 @@ int32_t MatMulF32(const void* run_options_ptr, float* out, float* lhs,
   static absl::once_flag flag_once;
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
-  XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
-  const Eigen::ThreadPoolDevice* tpd =
-      (Eigen::ThreadPoolDevice*)(run_options->intra_op_thread_pool());
   // The threads in Compute Library are bound for the cores 0..max_threads-1
-  const int max_threads = tpd->numThreads();
+  const int max_threads = run_options ? static_cast<Eigen::ThreadPoolDevice*>(
+                                            run_options->intra_op_thread_pool())
+                                            ->numThreads()
+                                      : 1;
 
   // arm_compute::Scheduler does not support concurrent access thus a
   // workaround here restricts it to only one call
