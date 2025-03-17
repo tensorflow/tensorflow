@@ -125,7 +125,7 @@ config_setting(
 config_setting(
     name = "android",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
+        ["@platforms//os:android"],
         [],
     ),
     values = if_oss(
@@ -138,7 +138,7 @@ config_setting(
 config_setting(
     name = "emscripten",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:emscripten"],
+        ["@platforms//os:emscripten"],
         [],
     ),
     values = if_oss(
@@ -155,7 +155,7 @@ config_setting(
 config_setting(
     name = "macos_x86_64_default",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
+        ["@platforms//os:macos"],
         [],
     ),
     values = {
@@ -167,7 +167,7 @@ config_setting(
 config_setting(
     name = "macos_x86_64_crosscompile",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
+        ["@platforms//os:macos"],
         [],
     ),
     values = {
@@ -188,7 +188,7 @@ selects.config_setting_group(
 config_setting(
     name = "macos_arm64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
+        ["@platforms//os:macos"],
         [],
     ),
     values = {
@@ -223,7 +223,7 @@ config_setting(
     name = "windows",
     # Internal builds query the target OS.
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:windows"],
+        ["@platforms//os:windows"],
         [],
     ),
     # OSS builds query the CPU type.
@@ -238,7 +238,7 @@ config_setting(
 config_setting(
     name = "ios",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:ios"],
+        ["@platforms//os:ios"],
         [],
     ),
     values = if_oss(
@@ -272,7 +272,7 @@ config_setting(
 config_setting(
     name = "android_arm",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
+        ["@platforms//os:android"],
         [],
     ),
     values = dict(
@@ -287,7 +287,7 @@ config_setting(
 config_setting(
     name = "linux_aarch64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
+        ["@platforms//os:linux"],
         [],
     ),
     values = {"cpu": "aarch64"},
@@ -297,7 +297,7 @@ config_setting(
 config_setting(
     name = "linux_armhf",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
+        ["@platforms//os:linux"],
         [],
     ),
     values = {"cpu": "armhf"},
@@ -307,7 +307,7 @@ config_setting(
 config_setting(
     name = "linux_x86_64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
+        ["@platforms//os:linux"],
         [],
     ),
     values = {"cpu": "k8"},
@@ -317,7 +317,7 @@ config_setting(
 config_setting(
     name = "linux_ppc64le",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
+        ["@platforms//os:linux"],
         [],
     ),
     values = {"cpu": "ppc"},
@@ -327,7 +327,7 @@ config_setting(
 config_setting(
     name = "linux_s390x",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
+        ["@platforms//os:linux"],
         [],
     ),
     values = {"cpu": "s390x"},
@@ -337,7 +337,7 @@ config_setting(
 config_setting(
     name = "ios_x86_64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:ios"],
+        ["@platforms//os:ios"],
         [],
     ),
     values = dict(
@@ -421,7 +421,7 @@ config_setting(
 config_setting(
     name = "fuchsia",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:fuchsia"],
+        ["@platforms//os:fuchsia"],
         [],
     ),
     values = if_oss(
@@ -436,14 +436,14 @@ config_setting(
 config_setting(
     name = "android_x86",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
+        ["@platforms//os:android"],
         [],
-    ),
+    ) + ["@platforms//cpu:x86_32"],
     values = dict(
         if_oss(
             {"crosstool_top": "//external:android/crosstool"},
         ),
-        cpu = "x86",
+        # cpu = "x86",
     ),
     visibility = ["//visibility:public"],
 )
@@ -511,7 +511,7 @@ selects.config_setting_group(
 config_setting(
     name = "fuchsia_x86_64",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:fuchsia"],
+        ["@platforms//os:fuchsia"],
         [],
     ),
     values = {
