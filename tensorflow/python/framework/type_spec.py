@@ -784,7 +784,7 @@ class LegacyTypeSpecBatchEncoder(TypeSpecBatchEncoder):
   """TypeSpecBatchEncoder for legacy composite tensor classes.
 
   TODO(edloper): Update existing composite tensors to use non-legacy
-    CompositTensorBatchEncoders.
+    CompositeTensorBatchEncoders.
   """
 
   def batch(self, type_spec, batch_size):
