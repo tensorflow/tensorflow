@@ -315,6 +315,9 @@ class Thunk {
   struct PrepareParams {
     // Parameters for executing collective operations.
     const CollectiveExecuteParams* collective_params = nullptr;
+
+    // Total local device count.
+    int local_device_count = 0;
   };
 
   //===--------------------------------------------------------------------===//

@@ -96,6 +96,33 @@ bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
   }
 }
 
+// Returns true if all the replica groups are local to the device. Returns false
+// if any of the replica groups are not local to the device or it could not be
+// determined, because replica groups are empty.
+//
+// The function assumes that in a multi-host setup, all host have the same
+// number of devices.
+bool IsLocalCollective(const std::vector<ReplicaGroup>& replica_groups,
+                       int64_t num_local_participants) {
+  if (replica_groups.empty()) {
+    // Without replica groups, we cannot determine if the collective is local or
+    // not.
+    return false;
+  }
+
+  for (const auto& replica_group : replica_groups) {
+    const int64_t node_id =
+        replica_group.replica_ids().at(0) / num_local_participants;
+    if (!absl::c_all_of(replica_group.replica_ids(),
+                        [num_local_participants, node_id](const int64_t rank) {
+                          return rank / num_local_participants == node_id;
+                        })) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 // This file runs collective ops (i.e. ops that communicate between multiple
@@ -377,6 +404,11 @@ absl::StatusOr<se::Event*> CollectiveThunk::AsyncEvents::GetEvent(
 
 absl::Status CollectiveThunk::Prepare(
     const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
+  // Initialize is_local_ before any call to the thunk functions, like
+  // GetAsyncStreamKind, because their value can depend on it.
+  is_local_ =
+      IsLocalCollective(config().replica_groups, params.local_device_count);
+
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,

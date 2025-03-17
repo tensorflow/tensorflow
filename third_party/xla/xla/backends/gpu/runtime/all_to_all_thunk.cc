@@ -105,10 +105,6 @@ AllToAllStartThunk::AllToAllStartThunk(
 
 absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  device_count_ = params.local_device_count;
-  CHECK_GT(device_count_, 0);
-  VLOG(5) << "Local device count: " << device_count_;
-
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
 
   if (is_local() && p2p_memcpy_enabled_) {
@@ -174,19 +170,6 @@ AsyncStreamKind AllToAllStartThunk::GetAsyncStreamKind() const {
     return AsyncStreamKind::kMemCpyP2P;
   }
   return CollectiveThunk::GetAsyncStreamKind();
-}
-
-bool AllToAllStartThunk::is_local() const {
-  for (const auto& replica_group : config_.config.replica_groups) {
-    const int64_t node_id = replica_group.replica_ids().at(0) / device_count_;
-    if (!absl::c_all_of(replica_group.replica_ids(),
-                        [this, node_id](const int64_t rank) {
-                          return rank / device_count_ == node_id;
-                        })) {
-      return false;
-    }
-  }
-  return true;
 }
 
 absl::Status RunAllToAll(GpuCollectives* collectives, bool has_split_dimension,
