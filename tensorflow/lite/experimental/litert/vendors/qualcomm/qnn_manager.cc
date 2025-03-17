@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <filesystem>  // NOLINT
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -25,6 +26,15 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
+#include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/backends/perf_control.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpContext.h"
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 #include "third_party/qairt/latest/include/QNN/QnnBackend.h"
@@ -37,14 +47,6 @@
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemCommon.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemInterface.h"
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
-#include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
 
 namespace litert::qnn {
 
@@ -294,7 +296,7 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
           : kLibQnnSystemSo;
   LITERT_RETURN_IF_ERROR(LoadSystemLib(lib_qnn_system_so_path));
   LITERT_RETURN_IF_ERROR(ResolveSystemApi());
-
+  // TODO(jiunkaiy): Set log level option
   if (auto status = Api()->logCreate(GetDefaultStdOutLogger(),
                                      QNN_LOG_LEVEL_INFO, &LogHandle());
       status != QNN_SUCCESS) {
@@ -334,6 +336,14 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
       LITERT_LOG(LITERT_ERROR, "Failed to create QNN device: %d", status);
       return kLiteRtStatusErrorRuntimeFailure;
     }
+  }
+
+  // TODO(jiunkaiy): Set dispatch option
+  if (DeviceHandle() == nullptr) {
+    HtpBackendOptions htp_options = HTP_OPTION_INIT;
+    htp_options.performance_mode = kHtpBurst;
+    perf_control_ = std::make_unique<::qnn::PerfControl>(Api(), htp_options);
+    perf_control_->Init(&DeviceHandle());
   }
 
   return kLiteRtStatusOk;

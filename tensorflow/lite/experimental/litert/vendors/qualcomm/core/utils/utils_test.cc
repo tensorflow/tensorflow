@@ -15,7 +15,7 @@ bool IsPrefix(std::string_view prefix, std::string_view full) {
   return prefix == full.substr(0, prefix.size());
 }
 
-bool CheckLoggoing(const std::string log_path, LiteRtQnnLogLevel log_level) {
+bool CheckLoggoing(const std::string log_path, QnnLogLevel log_level) {
   std::ifstream fin(log_path);
   std::string msg;
   while (std::getline(fin, msg)) {
@@ -45,7 +45,7 @@ bool CheckLoggoing(const std::string log_path, LiteRtQnnLogLevel log_level) {
 
 }  // namespace
 
-class LiteRtLog : public ::testing::TestWithParam<LiteRtQnnLogLevel> {};
+class LiteRtLog : public ::testing::TestWithParam<QnnLogLevel> {};
 INSTANTIATE_TEST_SUITE_P(, LiteRtLog,
                          ::testing::Values(kLogOff, kLogLevelError,
                                            kLogLevelWarn, kLogLevelInfo,
@@ -64,7 +64,7 @@ TEST_P(LiteRtLog, SanityTest) {
   qnn::QNNLogger::SetLogFilePointer(file_ptr);
 
   // Set log_level and print message to file
-  LiteRtQnnLogLevel log_level = GetParam();
+  QnnLogLevel log_level = GetParam();
   qnn::QNNLogger::SetLogLevel(log_level);
   QNN_LOG_VERBOSE("This is a verbose message.");
   QNN_LOG_INFO("This is an info message.");

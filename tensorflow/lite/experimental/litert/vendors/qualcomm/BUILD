@@ -84,6 +84,7 @@ litert_cc_lib_with_qnn(
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_shared_library",
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/backends:perf_control",
     ],
 )
 
