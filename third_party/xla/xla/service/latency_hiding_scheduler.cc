@@ -2155,6 +2155,12 @@ HloScheduleGraph::HloScheduleGraph(
                 it = nodes_.find(async_start);
                 CHECK(it != nodes_.end());
                 HloGraphNode* start_node = it->second.get();
+                // Ignore token operands as they are not real aliasing.
+                if (use.instruction->operand(use.operand_number)
+                        ->shape()
+                        .IsToken()) {
+                  continue;
+                }
                 // If there is already a transitive link between the nodes the
                 // other way then skip adding this one.
                 if (IsPredecessorTransitively(pred_node, start_node)) {

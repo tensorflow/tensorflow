@@ -4151,4 +4151,66 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp2d"));
 }
 
+TEST_F(LatencyHidingSchedulerTest, WhileLoopImpossibleScheduleSend) {
+  // For async instructions we can create impossible to schedule situations
+  // where there is no way to schedule a start without going beyond the schedule
+  // because of edges added by the aliasing detection logic in the scheduler.
+  // Encountered this only on send/send-done so far because of tokens being
+  // piped through the send.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+while_cond {
+  param = (bf16[8]{0}, bf16[8]{0}, pred[], token[], token[]) parameter(0)
+  ROOT gte = pred[] get-tuple-element(param), index=2
+}
+
+while_body {
+  param = (bf16[8]{0}, bf16[8]{0}, pred[], token[], token[]) parameter(0)
+  gte0 = bf16[8]{0} get-tuple-element(param), index=0
+  gte2 = bf16[8]{0} get-tuple-element(param), index=1
+  gte1 = pred[] get-tuple-element(param), index=2
+  gte3 = token[] get-tuple-element(param), index=3
+  gte4 = token[] get-tuple-element(param), index=4
+  bitcast = bf16[8]{0} bitcast(gte0)
+  s.1 = (bf16[8]{0}, token[]) send(gte0, gte3)
+  sd.1 = bf16[8]{0} send-done(s.1)
+  s.2 = (bf16[8]{0}, token[]) send(gte2, gte4)
+  sd.2 = bf16[8]{0} send-done(s.2)
+  ROOT tuple = (bf16[8]{0}, bf16[8]{0}, pred[], token[], token[]) tuple(gte2, gte0, gte1, sd.2, sd.1)
+}
+
+ENTRY entry {
+  p0 = bf16[8]{0} parameter(0)
+  p1 = bf16[8]{0} parameter(1)
+  p2 = pred[] parameter(2)
+  after-all0 = token[] after-all()
+  after-all1 = token[] after-all()
+  tuple = (bf16[8]{0}, bf16[8]{0}, pred[], token[], token[]) tuple(p0, p1, p2, after-all0, after-all1)
+  while = (bf16[8]{0}, bf16[8]{0}, pred[], token[], token[]) while(tuple), condition=while_cond, body=while_body
+  gte0 = bf16[8]{0} get-tuple-element(while), index=0
+  gte1 = bf16[8]{0} get-tuple-element(while), index=1
+  ROOT add = bf16[8]{0} add(gte0, gte1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.send_recv_overlap_limit = 1;
+  sched_config.schedule_send_recvs = true;
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* while_body = hlo_module->GetComputationWithName("while_body");
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(while_body).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+}
+
 }  // namespace xla
