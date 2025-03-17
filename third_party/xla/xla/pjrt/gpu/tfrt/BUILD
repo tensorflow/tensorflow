@@ -95,7 +95,9 @@ xla_cc_test(
         "requires-gpu-nvidia:2",
     ],
     deps = [
+        ":gpu_event",
         ":tfrt_gpu_client",
+        ":tracked_tfrt_gpu_device_buffer",
         "//xla:shape_util",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
@@ -104,12 +106,14 @@ xla_cc_test(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:gpu_plugin",
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 

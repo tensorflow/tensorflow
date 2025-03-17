@@ -927,4 +927,28 @@ absl::Status TfrtGpuExecutable::SetUpDonation(bool tuple_inputs) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<TfrtGpuBuffer::DonationTransaction>
+TfrtGpuBuffer::AcquireDonation() {
+  absl::MutexLock lock(&mu_);
+
+  if (tracked_device_buffer_ == nullptr) {
+    return InvalidArgument("Donation requested for invalid buffer");
+  }
+
+  if (external_reference_counter_ > 0) {
+    return InvalidArgument(
+        "Donation requested for buffer with external reference");
+  }
+
+  CHECK(donation_event_.IsAvailable());
+  CHECK(!donation_event_.get());
+  donation_event_ = tsl::MakeUnconstructedAsyncValueRef<bool>();
+
+  // Swap out `tracked_device_buffer_` so that no one can acquire a usage
+  // event after this point.
+  VLOG(1) << "TfrtGpuBuffer::AcquireDonation: " << tracked_device_buffer_.get();
+  return DonationTransaction(donation_event_,
+                             std::move(tracked_device_buffer_));
+}
+
 }  // namespace xla

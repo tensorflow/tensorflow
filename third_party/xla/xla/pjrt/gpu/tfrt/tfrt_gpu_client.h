@@ -376,6 +376,66 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   bool IsOnCpu() const override { return false; }
 
  private:
+  // A helper class for managing a pending donation. It should be committed upon
+  // success. Otherwise, the donated buffer is returned to the TfrtGpuBuffer.
+  class DonationTransaction {
+   public:
+    explicit DonationTransaction(
+        tsl::AsyncValueRef<bool> donation_event,
+        std::unique_ptr<TrackedTfrtGpuDeviceBuffer> device_buffer)
+        : donation_event_(donation_event),
+          device_buffer_(std::move(device_buffer)) {
+      VLOG(3) << "DonationTransaction::DonationTransaction";
+    }
+    DonationTransaction(const DonationTransaction&) = delete;
+    DonationTransaction& operator=(const DonationTransaction&) = delete;
+    DonationTransaction(DonationTransaction&&) = default;
+    DonationTransaction& operator=(DonationTransaction&& other) {
+      Abort();
+
+      donation_event_ = other.donation_event_;
+      device_buffer_ = std::move(other.device_buffer_);
+      return *this;
+    }
+
+    ~DonationTransaction() { Abort(); }
+
+    // Commit the donation. The rvalue ref qualifier is used to ensure the
+    // semantic that it can be committed at most once.
+    void Commit() && {
+      donation_event_.emplace(true);
+      device_buffer_->SetUnOwned();
+      device_buffer_.reset();
+    }
+
+    TrackedTfrtGpuDeviceBuffer* device_buffer() const {
+      return device_buffer_.get();
+    }
+
+   private:
+    void Abort() {
+      if (device_buffer_) {
+        VLOG(0) << "DonationTransaction::Abort is going to "
+                   "abort donation: "
+                << device_buffer_.get();
+        donation_event_.emplace(false);
+        device_buffer_.reset();  // TODO(b/382117736): We should put this back
+                                 // into the TfrtGpuBuffer instead.
+      }
+    }
+
+    tsl::AsyncValueRef<bool> donation_event_;
+    std::unique_ptr<TrackedTfrtGpuDeviceBuffer> device_buffer_;
+  };
+
+  // Acquires the device buffer for exclusive donation. The caller of this
+  // method is expected to use the usage events and definition events to
+  // serialize this donation with previous usages. After this method is called,
+  // calls to AcquireUsage() will fail. Returns error status if the buffer is
+  // already donated or there is outstanding external references.
+  absl::StatusOr<DonationTransaction> AcquireDonation()
+      ABSL_LOCKS_EXCLUDED(mu_);
+
   tsl::AsyncValueRef<bool> GetDonationEvent() {
     absl::MutexLock lock(&mu_);
     return donation_event_;
@@ -432,6 +492,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
 
   friend class TfrtGpuClient;
   friend class TfrtGpuExecutable;
+  friend class DonationTransactionPeer;
 };
 
 class TfrtGpuExecutable final : public PjRtLoadedExecutable {
