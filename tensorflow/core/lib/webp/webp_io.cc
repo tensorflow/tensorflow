@@ -56,8 +56,13 @@ bool DecodeWebPImage(absl::string_view webp_string, uint8_t* output, int width,
   const uint8_t* input_data =
       reinterpret_cast<const uint8_t*>(webp_string.data());
   const size_t input_size = webp_string.size();
-  const int row_stride = width * channels * sizeof(uint8_t);
+  const size_t row_stride = width * channels * sizeof(uint8_t);
   const size_t output_size = height * row_stride;
+
+  // row_stride is actually an *int*, so check that it won't overflow.
+  if (static_cast<int>(row_stride) != static_cast<int64_t>(row_stride)) {
+    return false;
+  }
 
   switch (channels) {
     case 3:
