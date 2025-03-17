@@ -432,6 +432,46 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "fusion_dynamic_memcpy_rewriter",
+    srcs = ["fusion_dynamic_memcpy_rewriter.cc"],
+    hdrs = ["fusion_dynamic_memcpy_rewriter.h"],
+    deps = [
+        "//xla/backends/gpu/codegen:copy",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:call_graph",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "fusion_dynamic_memcpy_rewriter_test",
+    srcs = ["fusion_dynamic_memcpy_rewriter_test.cc"],
+    deps = [
+        ":fusion_dynamic_memcpy_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "block_scaling_rewriter",
     srcs = ["block_scaling_rewriter.cc"],
     hdrs = ["block_scaling_rewriter.h"],
