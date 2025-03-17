@@ -1268,6 +1268,11 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
   std::vector<DevicePutResult> device_puts;
   device_puts.reserve(device_put_fns.size());
   {
+    // TODO(b/318709106): This is a temporary solution to propagate a hint to
+    // backends that the current traceback does not change within the scope.
+    // This should be removed once context propagation from IFRT API is
+    // implemented.
+    TracebackCacheScope traceback_cache_scope;
     nb::gil_scoped_release gil_release;
     for (auto& device_put_fn : device_put_fns) {
       TF_ASSIGN_OR_RETURN(auto device_put, std::move(device_put_fn)());
