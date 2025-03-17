@@ -297,8 +297,9 @@ int main(int argc, char** argv) {
   HloRunnerConfig opts;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("input_format", &opts.input_format_str,
-                "HLO input mode: text, proto_text, proto_binary, or "
-                "snapshot_proto_binary"),
+                "HLO input mode: text, proto_text, proto_binary, "
+                "snapshot_proto_binary, unoptimized_snapshot_proto_binary, or "
+                "unoptimized_snapshot_proto_text"),
       tsl::Flag("run", &opts.should_run, "Should we run the compiled HLO?"),
       tsl::Flag("dump_output_literal_to", &opts.dump_output_literal_to,
                 "A path to which the HLO output will be dumped. "
