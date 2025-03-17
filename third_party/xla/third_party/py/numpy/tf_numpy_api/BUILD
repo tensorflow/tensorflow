@@ -1,7 +1,7 @@
 # TensorFlow API backwards compatibility test goldens for tf.experimental.numpy.
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//third_party/tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
