@@ -105,9 +105,8 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
 
 // Swaps reshape-transpose to transpose-reshape whenever possible. This is
 // possible when the reshape does not affect memory ordering.
-::tensorflow::Status ReorderReshapeTranspose::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ReorderReshapeTranspose::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   auto transpose_it = model->operators.begin() + op_index;
 
