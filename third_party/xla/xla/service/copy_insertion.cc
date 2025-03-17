@@ -1646,7 +1646,7 @@ class CopyRemover {
       // the liverages at and after s_{x+1}, and it is safe to order all uses
       // of s_x before the definition of d_1, by checking the live range
       // constraints for each pair --- we cannot skip the later checks because
-      // the live range ordering is not guranteed to be transitive --- while it
+      // the live range ordering is not guaranteed to be transitive --- while it
       // may be ok to have lr_1 before lr_2, and lr_2 before lv_3 while merging
       // their buffers, it may not be ok to merge the buffers of lr_1 and lv_3,
       // because the exclusiveness relation of non-overlapping computations is
@@ -2114,7 +2114,7 @@ absl::Status CopyInsertion::AddCopiesForAsyncSendRecv(
 
   // For other cases that send/recv are outside of the while loop, live times
   // are disjoint. No copies are needed.
-  if (!parent->IsWhileBodyComputation()) {
+  if (parent->caller_instructions(HloOpcode::kWhile).empty()) {
     return absl::OkStatus();
   }
 

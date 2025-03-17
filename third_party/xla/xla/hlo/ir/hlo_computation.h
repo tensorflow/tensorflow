@@ -219,8 +219,6 @@ class HloComputation {
     kCustomCall,
     // This computation is a collective computation.
     kCollective,
-    // This computation is a while body computation.
-    kWhile,
     // This computation is a conditional branch computation.
     kConditional,
     // Last Value for range checking.
@@ -841,30 +839,6 @@ class HloComputation {
     SetInstruction(collective_call_instruction, InstructionType::kCollective);
   }
 
-  // Returns if this computation is a body computation of a while.
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  bool IsWhileBodyComputation() const {
-    return instruction_type() == InstructionType::kWhile;
-  }
-
-  // Returns the owning while call instruction, or nullptr if this is not a
-  // while call body computation.
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  HloInstruction* WhileCallInstruction() const {
-    return instruction_type() == InstructionType::kWhile ? instruction()
-                                                         : nullptr;
-  }
-
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  void SetWhileCallInstruction(HloInstruction* while_call_instruction) {
-    CHECK(while_call_instruction != nullptr);
-    CHECK(while_call_instruction->opcode() == HloOpcode::kWhile);
-    SetInstruction(while_call_instruction, InstructionType::kWhile);
-  }
-
   // Returns if this computation is a branch computation of a conditional.
   [[deprecated(
       "This is broken. Use CallGraph::GetComputationCallers() instead")]]
@@ -983,11 +957,15 @@ class HloComputation {
   }
 
   // The returned callers are in no particular order.
-  absl::InlinedVector<const HloInstruction*, 1> caller_instructions() const {
+  absl::InlinedVector<HloInstruction*, 1> caller_instructions(
+      std::optional<HloOpcode> caller_opcode = std::nullopt) const {
     if (const auto* map = GetCallersMap()) {
-      absl::InlinedVector<const HloInstruction*, 1> result;
-      for (const auto& [instr, _] : *map) {
-        result.push_back(instr);
+      absl::InlinedVector<HloInstruction*, 1> result;
+      for (auto [instr, _] : *map) {
+        if (caller_opcode == std::nullopt ||
+            instr->opcode() == *caller_opcode) {
+          result.push_back(instr);
+        }
       }
       return result;
     }
@@ -995,8 +973,23 @@ class HloComputation {
     if (callers_ == 0) {
       return {};
     }
-    return {
-        reinterpret_cast<const HloInstruction*>(callers_ & ~kCallerTypeMask)};
+
+    auto* instr =
+        reinterpret_cast<HloInstruction*>(callers_ & ~kCallerTypeMask);
+    if (caller_opcode == std::nullopt || instr->opcode() == *caller_opcode) {
+      return {instr};
+    }
+
+    return {};
+  }
+
+  // Returns the only caller with the given opcode, if there is exactly one.
+  std::optional<HloInstruction*> GetUniqueCaller(HloOpcode opcode) const {
+    auto callers = caller_instructions(opcode);
+    if (callers.size() == 1) {
+      return callers.front();
+    }
+    return std::nullopt;
   }
 
   void ClearCalledComputations();
@@ -1076,12 +1069,12 @@ class HloComputation {
   friend class HloInstruction;
   // Add/remove call from `caller`, which must be in this computation, to
   // `callee`.
-  void AddCallee(const HloInstruction* caller, HloComputation* callee);
-  void RemoveCallee(const HloInstruction* caller, HloComputation* callee);
+  void AddCallee(HloInstruction* caller, HloComputation* callee);
+  void RemoveCallee(HloInstruction* caller, HloComputation* callee);
 
   // Returns nullptr if `callers_` is not a map.
-  absl::flat_hash_map<const HloInstruction*, int>* GetCallersMap();
-  absl::flat_hash_map<const HloInstruction*, int>* const GetCallersMap() const;
+  absl::flat_hash_map<HloInstruction*, int>* GetCallersMap();
+  absl::flat_hash_map<HloInstruction*, int>* const GetCallersMap() const;
 
   // Unique ID of this computation.
   // This is set to -1 if the computation is not in a module. Should only be

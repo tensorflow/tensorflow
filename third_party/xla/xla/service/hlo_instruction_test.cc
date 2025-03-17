@@ -2712,25 +2712,17 @@ TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {
   module->AddEntryComputation(main_builder.Build());
   // Should find one while body computation in the graph and it should point to
   // the while instruction.
-  int num_while_body_comp = 0;
-  for (HloComputation* comp : module->MakeComputationPostOrder()) {
-    if (comp->IsWhileBodyComputation()) {
-      num_while_body_comp += 1;
-      EXPECT_EQ(comp->WhileCallInstruction(),
-                module->entry_computation()->root_instruction());
-    }
-  }
-  EXPECT_EQ(num_while_body_comp, 1);
-
+  int num_whiles = 0;
   for (HloInstruction* instruction :
        module->entry_computation()->instructions()) {
     if (instruction->opcode() == HloOpcode::kWhile) {
+      ++num_whiles;
       HloComputation* while_body = instruction->while_body();
-      EXPECT_TRUE(while_body->IsWhileBodyComputation());
-      HloInstruction* while_back_ref = while_body->WhileCallInstruction();
-      EXPECT_EQ(while_back_ref->while_body(), while_body);
+      EXPECT_EQ(while_body->GetUniqueCaller(HloOpcode::kWhile).value(),
+                instruction);
     }
   }
+  EXPECT_EQ(num_whiles, 1);
 }
 
 TEST_F(HloInstructionTest,
