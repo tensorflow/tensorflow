@@ -23,9 +23,11 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/platform/status.h"
@@ -68,6 +70,15 @@ class CoordinationServiceAgent {
       const absl::StatusOr<std::vector<tensorflow::KeyValueEntry>>&)>;
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
+
+  // A JobStateCallback is a callback that receives the current and previous job
+  // state. If there is no previous job state, previous_state is empty. The
+  // provided states are only valid for the duration of the callback.
+  struct JobStateUpdate {
+    absl::Span<const tensorflow::CoordinatedTaskStateInfo> previous_state;
+    absl::Span<const tensorflow::CoordinatedTaskStateInfo> current_state;
+  };
+  using JobStateCallback = absl::AnyInvocable<void(const JobStateUpdate&)>;
 
   virtual ~CoordinationServiceAgent() = default;
 
@@ -306,6 +317,11 @@ class CoordinationServiceAgent {
   // barrier across tasks A, B, and C. Task D, which failed, is ignored.
   virtual absl::StatusOr<std::vector<tensorflow::CoordinatedTask>>
   GetAliveTasks(const std::vector<tensorflow::CoordinatedTask>& tasks) = 0;
+
+  // Registers a JobStateCallback that will be invoked when the state of the job
+  // changes. Multiple changes to the job state may be coalesced into a single
+  // call to the provided callback. Callback invocations may also be delayed.
+  virtual void AddJobStateCallback(JobStateCallback callback) = 0;
 
   // Get unowned Env* that the agent was initialized with.
   virtual absl::StatusOr<tsl::Env*> GetEnv() = 0;
