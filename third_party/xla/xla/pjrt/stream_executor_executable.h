@@ -38,12 +38,13 @@ class StreamExecutorExecutable : public PjRtExecutable {
   StreamExecutorExecutable(
       const CompileOptions& compile_options,
       std::vector<std::unique_ptr<xla::AotCompilationResult>> executables,
-      int num_replicas, int num_partitions, absl::string_view name,
-      absl::string_view fingerprint,
+      std::shared_ptr<HloModule> hlo_module, int num_replicas,
+      int num_partitions, absl::string_view name, absl::string_view fingerprint,
       std::optional<std::vector<std::vector<absl::string_view>>>
           output_memory_kinds)
       : compile_options_(compile_options),
         aot_executables_(std::move(executables)),
+        hlo_module_(std::move(hlo_module)),
         num_replicas_(num_replicas),
         num_partitions_(num_partitions),
         name_(name),
@@ -59,7 +60,7 @@ class StreamExecutorExecutable : public PjRtExecutable {
   }
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
-    return absl::UnimplementedError("GetHloModules is not supported.");
+    return std::vector<std::shared_ptr<HloModule>>{hlo_module_};
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
@@ -88,6 +89,7 @@ class StreamExecutorExecutable : public PjRtExecutable {
  private:
   CompileOptions compile_options_;
   std::vector<std::unique_ptr<xla::AotCompilationResult>> aot_executables_;
+  std::shared_ptr<HloModule> hlo_module_;
   int num_replicas_;
   int num_partitions_;
   std::string name_;
