@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/backends/gpu/collectives/nvshmem_collectives.h"
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,7 +25,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "xla/backends/gpu/collectives/nvshmem_collectives.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
@@ -35,7 +36,7 @@ limitations under the License.
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/util/command_line_flags.h"
 
-namespace xla {
+namespace xla::gpu {
 namespace {
 
 // Tests that NVSHMEM library can be loaded and initialized.
@@ -81,19 +82,16 @@ absl::Status InitializationTestBody(const int node_id, const int num_nodes) {
   auto kv_store =
       GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"gpu:");
 
-  xla::gpu::NvshmemCollectives::Default()->SetEnvInfo(node_id, num_nodes, 1,
-                                                      kv_store);
+  NvshmemCollectives::Default()->SetEnvInfo(node_id, num_nodes, 1, kv_store);
   cudaSetDevice(node_id);
-  TF_ASSIGN_OR_RETURN(void* ptr,
-                      xla::gpu::NvshmemCollectives::Default()->Allocate(1024));
+  TF_ASSIGN_OR_RETURN(void* ptr, NvshmemCollectives::Default()->Allocate(1024));
   TF_RET_CHECK(ptr != nullptr);
-  TF_RETURN_IF_ERROR(xla::gpu::NvshmemCollectives::Default()->Deallocate(ptr));
+  TF_RETURN_IF_ERROR(NvshmemCollectives::Default()->Deallocate(ptr));
   return absl::OkStatus();
 }
 
 }  // namespace
-
-}  // namespace xla
+}  // namespace xla::gpu
 
 int main(int argc, char* argv[]) {
   // Save name of binary so that it may invoke itself.
@@ -109,7 +107,7 @@ int main(int argc, char* argv[]) {
   tsl::Flags::Parse(&argc, argv, flag_list);
   testing::InitGoogleTest(&argc, argv);
   if (node_id >= 0) {
-    absl::Status result = xla::InitializationTestBody(node_id, num_nodes);
+    absl::Status result = xla::gpu::InitializationTestBody(node_id, num_nodes);
     if (!result.ok()) {
       LOG(ERROR) << result;
     }

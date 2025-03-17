@@ -1,7 +1,7 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -271,6 +271,7 @@ cc_library(
         "cuda-only",
         "gpu",
     ],
+    visibility = ["//visibility:private"],
     deps = [
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
@@ -314,6 +315,7 @@ xla_cc_test(
         # go/cuda#memorysanitizer
         "nomsan",
     ],
+    visibility = ["//visibility:private"],
     deps = [
         ":gpu_collectives",
         ":nccl_communicator",
@@ -335,4 +337,35 @@ xla_cc_test(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rccl",
     ]),
+)
+
+xla_cc_test(
+    name = "nvshmem_collectives_test",
+    srcs = ["nvshmem_collectives_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "no_oss",
+        "nomsan",
+        "notap",  # TODO(b/399931591): Re-enable once flakiness is resolved.
+    ] + if_google(google_value = ["requires-gpu-nvidia:2"]),  # This tag is not documented in OSS yet.
+    deps = [
+        ":nvshmem_collectives",
+        "//xla:debug_options_flags",
+        "//xla:status_macros",
+        "//xla/pjrt/distributed",
+        "//xla/pjrt/distributed:client",
+        "//xla/pjrt/distributed:service",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:subprocess",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
 )
