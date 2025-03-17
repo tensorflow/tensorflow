@@ -348,9 +348,12 @@ xla_cc_test(
         ":cpu_codegen_test_main",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep

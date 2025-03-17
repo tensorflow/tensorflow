@@ -22,27 +22,26 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/hlo_module_config.h"
 
-namespace {
-
-const char* const kXlaOptimizeForSizeCpuOption = "xla_cpu_optimize_for_size";
-const char* const kLlvmIrDotTilingFactor = "xla_llvm_dot_tiling_factor";
-const char* const kXlaForceEnableExperimentalLlvmIrGemm =
+constexpr char kXlaOptimizeForSizeCpuOption[] = "xla_cpu_optimize_for_size";
+constexpr char kLlvmIrDotTilingFactor[] = "xla_llvm_dot_tiling_factor";
+constexpr char kXlaForceEnableExperimentalLlvmIrGemm[] =
     "xla_force_enable_experimental_llvm_ir_gemm";
-const char* const kLlvmIrGemmTileSize = "xla_llvm_ir_gemm_tile_size";
-const char* const kDisableSlpVectorizer = "xla_cpu_disable_slp_vectorizer";
-const char* const kDisableLoopUnrolling = "xla_cpu_disable_loop_unrolling";
-const char* const kFoldAllConstants = "xla_cpu_fold_all_constants";
+constexpr char kLlvmIrGemmTileSize[] = "xla_llvm_ir_gemm_tile_size";
+constexpr char kDisableSlpVectorizer[] = "xla_cpu_disable_slp_vectorizer";
+constexpr char kDisableLoopUnrolling[] = "xla_cpu_disable_loop_unrolling";
+constexpr char kFoldAllConstants[] = "xla_cpu_fold_all_constants";
+constexpr char kSmallWhileLoopByteThreshold[] =
+    "xla_cpu_small_while_loop_byte_threshold";
 
-}  // namespace
-
-namespace xla {
-namespace cpu {
-namespace options {
+namespace xla::cpu::options {
 
 bool OptimizeForSizeRequested(const HloModuleConfig& config) {
   const auto& extra_options_map =
@@ -84,6 +83,24 @@ std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
     return tiling_factor;
   }
   return std::nullopt;
+}
+
+absl::StatusOr<int64_t> SmallWhileLoopByteThreshold(
+    const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+
+  auto itr = extra_options_map.find(kSmallWhileLoopByteThreshold);
+  if (itr == extra_options_map.end()) {
+    return 1024;  // Default value.
+  }
+
+  int64_t byte_threshold;
+  if (!absl::SimpleAtoi(itr->second, &byte_threshold)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to parse value for: ", kSmallWhileLoopByteThreshold, "."));
+  }
+  return byte_threshold;
 }
 
 bool ForceEnableExperimentalLlvmIrGemm(const HloModuleConfig& config) {
@@ -128,6 +145,4 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
                                                tile_size_n_in_vector_width);
 }
 
-}  // namespace options
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu::options
