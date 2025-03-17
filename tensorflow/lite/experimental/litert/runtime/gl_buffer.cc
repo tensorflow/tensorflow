@@ -12,14 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
 
-#if LITERT_HAS_OPENGL_SUPPORT
-
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
-#include <GLES3/gl31.h>
-#include <GLES3/gl32.h>
 #include <stdlib.h>
 
 #include <cstddef>
@@ -29,11 +23,21 @@
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "tensorflow/lite/delegates/gpu/gl/gl_buffer.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_gl_types.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/runtime/gl_buffer.h"
+
+#if LITERT_HAS_OPENGL_SUPPORT
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <GLES3/gl31.h>
+#include <GLES3/gl32.h>
+
+#include "tensorflow/lite/delegates/gpu/gl/gl_buffer.h"
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 
 namespace litert {
 namespace internal {
@@ -128,7 +132,93 @@ Expected<GlBuffer> GlBuffer::AllocFromAhwbBuffer(AhwbBuffer& ahwb_buffer) {
 }
 #endif  // LITERT_HAS_AHWB_SUPPORT
 
+GlBuffer::GlBuffer(LiteRtGLenum target, LiteRtGLuint id, size_t size_bytes,
+                   size_t offset, LiteRtGlBufferDeallocator deallocator)
+    : size_bytes_(size_bytes) {
+#if LITERT_HAS_OPENGL_SUPPORT
+
+  if (deallocator != nullptr) {
+    tflite_gl_buffer_ = tflite::gpu::gl::GlBuffer(
+        target, id, size_bytes, offset, /*has_ownership=*/false);
+    deallocator_ = std::move(deallocator);
+  } else {
+    tflite_gl_buffer_ = tflite::gpu::gl::GlBuffer(
+        target, id, size_bytes, offset, /*has_ownership=*/true);
+    deallocator_ = nullptr;
+  }
+#else
+  LITERT_LOG(LITERT_ERROR, "GlBuffer::GlBuffer() is not supported");
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+}
+
+GlBuffer::GlBuffer(GlBuffer&& other) {
+#if LITERT_HAS_OPENGL_SUPPORT
+  tflite_gl_buffer_ = std::move(other.tflite_gl_buffer_);
+  deallocator_ = std::move(other.deallocator_);
+  data_ = other.data_;
+  size_bytes_ = other.size_bytes_;
+#if LITERT_HAS_AHWB_SUPPORT
+  ahwb_ = other.ahwb_;
+#endif  // LITERT_HAS_AHWB_SUPPORT
+  // Reset the other GlBuffer to a default state.
+  other.data_ = nullptr;
+  other.size_bytes_ = 0;
+#if LITERT_HAS_AHWB_SUPPORT
+  other.ahwb_ = nullptr;
+#endif  // LITERT_HAS_AHWB_SUPPORT
+#else
+  LITERT_LOG(LITERT_ERROR, "GlBuffer::GlBuffer() is not supported");
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+}
+
+GlBuffer::~GlBuffer() {
+#if LITERT_HAS_OPENGL_SUPPORT
+  if (deallocator_ != nullptr) {
+    deallocator_(reinterpret_cast<void*>(tflite_gl_buffer_.id()));
+  }
+  if (data_ != nullptr) {
+    free(data_);
+  }
+#else
+  LITERT_LOG(LITERT_ERROR, "GlBuffer::~GlBuffer() is not supported");
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+}
+
+LiteRtGLenum GlBuffer::target() const {
+#if LITERT_HAS_OPENGL_SUPPORT
+  return tflite_gl_buffer_.target();
+#else
+  LITERT_LOG(LITERT_ERROR, "GlBuffer::target() is not supported");
+  return 0;
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+}
+LiteRtGLuint GlBuffer::id() const {
+#if LITERT_HAS_OPENGL_SUPPORT
+  return tflite_gl_buffer_.id();
+#else
+  LITERT_LOG(LITERT_ERROR, "GlBuffer::id() is not supported");
+  return 0;
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+}
+size_t GlBuffer::size_bytes() const {
+#if LITERT_HAS_OPENGL_SUPPORT
+  return tflite_gl_buffer_.bytes_size();
+#else
+  LITERT_LOG(LITERT_ERROR, "GlBuffer::size_bytes() is not supported");
+  return 0;
+#endif  // LITERT_HAS_OPENGL_SUPPORT
+}
+size_t GlBuffer::offset() const {
+#if LITERT_HAS_OPENGL_SUPPORT
+  return tflite_gl_buffer_.offset();
+#else
+  LITERT_LOG(LITERT_ERROR, "GlBuffer::offset() is not supported");
+  return 0;
+#endif
+}
+
 Expected<GlBuffer> GlBuffer::Alloc(size_t size_bytes) {
+#if LITERT_HAS_OPENGL_SUPPORT
   tflite::gpu::gl::GlBuffer tflite_gl_buffer;
 
   if (!tflite::gpu::gl::CreateReadWriteShaderStorageBuffer<std::byte>(
@@ -136,9 +226,13 @@ Expected<GlBuffer> GlBuffer::Alloc(size_t size_bytes) {
            .ok()) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                       "Failed to allocate GL buffer");
-  };
+  }
 
   return GlBuffer(std::move(tflite_gl_buffer));
+#else
+  return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                    "OpenGL buffers are not supported");
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 }
 
 template Expected<float*> GlBuffer::Lock<float>();
@@ -148,6 +242,7 @@ template Expected<void> GlBuffer::Unlock<char>();
 
 template <typename T>
 Expected<T*> GlBuffer::Lock() {
+#if LITERT_HAS_OPENGL_SUPPORT
   absl::MutexLock lock(&mutex_);
 #if LITERT_HAS_AHWB_SUPPORT
   if (ahwb_ != nullptr) {
@@ -173,10 +268,15 @@ Expected<T*> GlBuffer::Lock() {
     }
   }
   return Expected<T*>(static_cast<T*>(data_));
+#else
+  return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                    "GlBuffer::Lock() is not supported");
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 }
 
 template <typename T>
 Expected<void> GlBuffer::Unlock() {
+#if LITERT_HAS_OPENGL_SUPPORT
   absl::MutexLock lock(&mutex_);
 #if LITERT_HAS_AHWB_SUPPORT
   if (ahwb_ != nullptr) {
@@ -196,10 +296,14 @@ Expected<void> GlBuffer::Unlock() {
         absl::StrCat("Failed to write GL buffer: ", status.message()));
   }
   return Expected<void>();
+#else
+  return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                    "GlBuffer::Unlock() is not supported");
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 }
 
-#if LITERT_HAS_AHWB_SUPPORT
 Expected<int> GlBuffer::CreateEglSyncAndFence() {
+#if LITERT_HAS_OPENGL_SUPPORT && LITERT_HAS_AHWB_SUPPORT
   LITERT_RETURN_IF_ERROR(
       IsAhwbToGlInteropSupported(),
       Unexpected(kLiteRtStatusErrorRuntimeFailure,
@@ -224,10 +328,11 @@ Expected<int> GlBuffer::CreateEglSyncAndFence() {
                  "Failed to dup native fence from AHardwareBuffer"));
 
   return native_fence;
+#else
+  return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                    "AHardwareBuffer to GL interop is not supported");
+#endif  // LITERT_HAS_OPENGL_SUPPORT && LITERT_HAS_AHWB_SUPPORT
 }
-#endif  // LITERT_HAS_AHWB_SUPPORT
 
 }  // namespace internal
 }  // namespace litert
-
-#endif  // LITERT_HAS_OPENGL_SUPPORT

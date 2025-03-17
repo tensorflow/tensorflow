@@ -22,6 +22,7 @@
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
+#include "tensorflow/lite/experimental/litert/c/litert_gl_types.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
@@ -147,42 +148,15 @@ class TensorBuffer
   }
 #endif
 
-#if LITERT_HAS_OPENGL_SUPPORT
-  struct GlTexture {
-    GLenum target;
-    GLuint id;
-    GLenum format;
-    size_t size_bytes;
-    GLint layer;
-  };
-  static Expected<TensorBuffer> CreateFromGlTexture(
-      const RankedTensorType& tensor_type, GLenum target, GLuint id,
-      GLenum format, size_t size_bytes, GLint layer) {
-    LiteRtTensorBuffer tensor_buffer;
-    auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(tensor_type);
-    LITERT_RETURN_IF_ERROR(LiteRtCreateTensorBufferFromGlTexture(
-        &litert_tensor_type, target, id, format, size_bytes, layer,
-        /*deallocator=*/nullptr, &tensor_buffer));
-    return TensorBuffer(tensor_buffer);
-  }
-
-  Expected<GlTexture> GetGlTexture() const {
-    GlTexture gl_texture;
-    LITERT_RETURN_IF_ERROR(LiteRtGetTensorBufferGlTexture(
-        Get(), &gl_texture.target, &gl_texture.id, &gl_texture.format,
-        &gl_texture.size_bytes, &gl_texture.layer));
-    return gl_texture;
-  }
-
   struct GlBuffer {
-    GLenum target;
-    GLuint id;
+    LiteRtGLenum target;
+    LiteRtGLuint id;
     size_t size_bytes;
     size_t offset;
   };
 
   static Expected<TensorBuffer> CreateFromGlBuffer(
-      const RankedTensorType& tensor_type, GLenum target, GLuint id,
+      const RankedTensorType& tensor_type, LiteRtGLenum target, LiteRtGLuint id,
       size_t size_bytes, size_t offset) {
     LiteRtTensorBuffer tensor_buffer;
     auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(tensor_type);
@@ -199,7 +173,31 @@ class TensorBuffer
         &gl_buffer.offset));
     return gl_buffer;
   }
-#endif  // LITERT_HAS_OPENGL_SUPPORT
+  struct GlTexture {
+    LiteRtGLenum target;
+    LiteRtGLuint id;
+    LiteRtGLenum format;
+    size_t size_bytes;
+    LiteRtGLint layer;
+  };
+  static Expected<TensorBuffer> CreateFromGlTexture(
+      const RankedTensorType& tensor_type, LiteRtGLenum target, LiteRtGLuint id,
+      LiteRtGLenum format, size_t size_bytes, LiteRtGLint layer) {
+    LiteRtTensorBuffer tensor_buffer;
+    auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(tensor_type);
+    LITERT_RETURN_IF_ERROR(LiteRtCreateTensorBufferFromGlTexture(
+        &litert_tensor_type, target, id, format, size_bytes, layer,
+        /*deallocator=*/nullptr, &tensor_buffer));
+    return TensorBuffer(tensor_buffer);
+  }
+
+  Expected<GlTexture> GetGlTexture() const {
+    GlTexture gl_texture;
+    LITERT_RETURN_IF_ERROR(LiteRtGetTensorBufferGlTexture(
+        Get(), &gl_texture.target, &gl_texture.id, &gl_texture.format,
+        &gl_texture.size_bytes, &gl_texture.layer));
+    return gl_texture;
+  }
 
   Expected<LiteRtTensorBufferType> BufferType() const {
     LiteRtTensorBufferType tensor_buffer_type;

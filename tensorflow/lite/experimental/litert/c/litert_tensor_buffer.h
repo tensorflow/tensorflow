@@ -24,12 +24,8 @@
 #if LITERT_HAS_OPENCL_SUPPORT
 #include <CL/cl.h>
 #endif  // LITERT_HAS_OPENCL_SUPPORT
+#include "tensorflow/lite/experimental/litert/c/litert_gl_types.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_types.h"
-
-#if LITERT_HAS_OPENGL_SUPPORT
-#include <GLES3/gl31.h>
-#include <GLES3/gl32.h>
-#endif  // LITERT_HAS_OPENGL_SUPPORT
 
 #if LITERT_HAS_AHWB_SUPPORT
 #include <android/hardware_buffer.h>
@@ -168,26 +164,24 @@ LiteRtStatus LiteRtGetTensorBufferOpenClBuffer(LiteRtTensorBuffer tensor_buffer,
                                                cl_mem* cl_mem_addr);
 #endif  // LITERT_HAS_OPENCL_SUPPORT
 
-#if LITERT_HAS_OPENGL_SUPPORT
-LiteRtStatus LiteRtCreateTensorBufferFromGlTexture(
-    const LiteRtRankedTensorType* tensor_type, GLenum target, GLuint id,
-    GLenum format, size_t size_bytes, GLint layer,
-    LiteRtGlTextureDeallocator deallocator, LiteRtTensorBuffer* buffer);
-
-LiteRtStatus LiteRtGetTensorBufferGlTexture(LiteRtTensorBuffer tensor_buffer,
-                                            GLenum* target, GLuint* id,
-                                            GLenum* format, size_t* size_bytes,
-                                            GLint* layer);
-
 LiteRtStatus LiteRtCreateTensorBufferFromGlBuffer(
-    const LiteRtRankedTensorType* tensor_type, GLenum target, GLuint id,
-    size_t size_bytes, size_t offset, LiteRtGlBufferDeallocator deallocator,
-    LiteRtTensorBuffer* buffer);
+    const LiteRtRankedTensorType* tensor_type, LiteRtGLenum target,
+    LiteRtGLuint id, size_t size_bytes, size_t offset,
+    LiteRtGlBufferDeallocator deallocator, LiteRtTensorBuffer* buffer);
 
 LiteRtStatus LiteRtGetTensorBufferGlBuffer(LiteRtTensorBuffer tensor_buffer,
-                                           GLenum* target, GLuint* id,
-                                           size_t* size_bytes, size_t* offset);
-#endif  // LITERT_HAS_OPENGL_SUPPORT
+                                           LiteRtGLenum* target,
+                                           LiteRtGLuint* id, size_t* size_bytes,
+                                           size_t* offset);
+
+LiteRtStatus LiteRtCreateTensorBufferFromGlTexture(
+    const LiteRtRankedTensorType* tensor_type, LiteRtGLenum target,
+    LiteRtGLuint id, LiteRtGLenum format, size_t size_bytes, LiteRtGLint layer,
+    LiteRtGlTextureDeallocator deallocator, LiteRtTensorBuffer* buffer);
+
+LiteRtStatus LiteRtGetTensorBufferGlTexture(
+    LiteRtTensorBuffer tensor_buffer, LiteRtGLenum* target, LiteRtGLuint* id,
+    LiteRtGLenum* format, size_t* size_bytes, LiteRtGLint* layer);
 
 // Create a buffer backed by managed memory for a given size.
 LiteRtStatus LiteRtCreateManagedTensorBuffer(
