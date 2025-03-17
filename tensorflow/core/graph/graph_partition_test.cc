@@ -281,7 +281,7 @@ TEST_F(GraphPartitionTest, CrossDeviceData) {
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
-  _Send(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
+  _Send give_me_a_name(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
   ExpectMatchA();
 
   b1 = FloatInput(scope_b_.WithOpName("B1"));
@@ -304,7 +304,7 @@ TEST_F(GraphPartitionTest, CrossDeviceControl) {
   a1 = FloatInput(scope_a_.WithOpName("A1"));
   auto c =
       Const(scope_a_.WithOpName("A1/ctrl/_0").WithControlDependencies(a1), {});
-  _Send(scope_a_.WithOpName("A1/_1"), c, "edge_3_A1", a, 82, b);
+  _Send give_me_a_name(scope_a_.WithOpName("A1/_1"), c, "edge_3_A1", a, 82, b);
   ExpectMatchA();
 
   auto recv =
@@ -327,7 +327,7 @@ TEST_F(GraphPartitionTest, CrossDeviceData_MultiUse) {
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
-  _Send(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
+  _Send give_me_a_name(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
   ExpectMatchA();
 
   auto recv =
@@ -352,7 +352,7 @@ TEST_F(GraphPartitionTest, CrossDeviceControl_MultiUse) {
   a1 = FloatInput(scope_a_.WithOpName("A1"));
   auto c =
       Const(scope_a_.WithOpName("A1/ctrl/_0").WithControlDependencies(a1), {});
-  _Send(scope_a_.WithOpName("A1/_1"), c, "edge_3_A1", a, 82, b);
+  _Send give_me_a_name(scope_a_.WithOpName("A1/_1"), c, "edge_3_A1", a, 82, b);
   ExpectMatchA();
 
   auto recv =
@@ -376,12 +376,12 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
-  _Send(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
+  _Send give_me_a_name(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
   auto c =
       Const(scope_a_.WithOpName("A1/ctrl/_2").WithControlDependencies(a1), {});
   // NOTE: Send 0 A1/_1 -> A1/_2 is not necessarily needed. We could
   // use A1/_0 -> A1/_4 as the control as a minor optimization.
-  _Send(scope_a_.WithOpName("A1/_3"), c, "edge_3_A1", a, 82, b);
+  _Send give_me_a_name(scope_a_.WithOpName("A1/_3"), c, "edge_3_A1", a, 82, b);
   ExpectMatchA();
 
   auto recv1 =
@@ -401,9 +401,9 @@ TEST_F(GraphPartitionTest, CrossDeviceLoopSimple) {
   auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
                                      {a2, Input("A5", 0, DT_BOOL)})
                 .output;
-  LoopCond(in_.WithOpName("A4"), a3);
+  LoopCond give_me_a_name(in_.WithOpName("A4"), a3);
   auto b1 = Identity(in_.WithOpName("B1"), a3);
-  NextIteration(in_.WithOpName("A5"), b1);
+  NextIteration give_me_a_name(in_.WithOpName("A5"), b1);
 
   CheckLoopConstruction(ToGraphDef());
 }
@@ -414,9 +414,9 @@ TEST_F(GraphPartitionTest, CrossDeviceLoopSimple1) {
   auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
                                      {a2, Input("B5", 0, DT_BOOL)})
                 .output;
-  LoopCond(in_.WithOpName("A4"), a3);
+  LoopCond give_me_a_name(in_.WithOpName("A4"), a3);
   auto b1 = Identity(in_.WithOpName("B1"), a3);
-  NextIteration(in_.WithOpName("B5"), b1);
+  NextIteration give_me_a_name(in_.WithOpName("B5"), b1);
 
   std::unordered_map<string, GraphDef> partitions;
   Partition(ToGraphDef(), &partitions);
