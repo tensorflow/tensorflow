@@ -17,7 +17,9 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/constants.h"
 
+#include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -34,6 +36,7 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/test.h"
 
