@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_client_test.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -23,8 +24,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/builder/xla_builder.h"
