@@ -22,8 +22,8 @@ cc_library(
         "tfl_quantization_driver.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:portable_tensor_utils",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "@com_google_absl//absl/container:flat_hash_map",
