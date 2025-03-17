@@ -1210,10 +1210,9 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
     absl::Span<const PyDevice* const> dst_devices, bool committed,
     bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics,
     bool jax_enable_x64) {
-  if (dst_devices.size() != xs.size() || xs.empty()) {
+  if (dst_devices.size() != xs.size()) {
     throw nb::value_error(
-        absl::StrCat("Argument sizes (xs and devices) must match %zu vs "
-                     "%zu and be nonzero",
+        absl::StrCat("Argument sizes (xs and devices) must match %zu vs %zu",
                      dst_devices.size(), xs.size())
             .c_str());
   }
@@ -1302,16 +1301,24 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
           ? xla::GetIfrtConcreteSharding(sharding, ifrt::Shape(shape),
                                          std::move(shapes))
           : xla::GetIfrtHloSharding(sharding, ifrt::Shape(shape)));
+  TF_ASSIGN_OR_RETURN(auto ifrt_dtype, DtypeToIfRtDType(dtype));
+  // TODO(emilyaf): Remove the following and just use ifrt_dtype when tokens are
+  // supported.
+  ifrt::DType array_dtype =
+      ifrt_arrays.empty() ? ifrt_dtype : ifrt_arrays.front()->dtype();
+  TF_ASSIGN_OR_RETURN(auto py_device_list, jax::GetPyDeviceList(sharding));
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
-      ifrt_arrays.front()->client()->AssembleArrayFromSingleDeviceArrays(
-          ifrt::Shape(shape), std::move(ifrt_sharding),
-          absl::MakeSpan(ifrt_arrays),
-          xla::ifrt::ArrayCopySemantics::kReuseInput,
-          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
+      py_device_list->py_client()
+          ->ifrt_client()
+          ->AssembleArrayFromSingleDeviceArrays(
+              array_dtype, ifrt::Shape(shape), std::move(ifrt_sharding),
+              absl::MakeSpan(ifrt_arrays),
+              xla::ifrt::ArrayCopySemantics::kReuseInput,
+              xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
   return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
-                 dst_devices[0]->client(), Traceback::Get(),
+                 py_device_list->py_client(), Traceback::Get(),
                  std::move(ifrt_array), committed, /*skip_checks=*/true);
 }
 

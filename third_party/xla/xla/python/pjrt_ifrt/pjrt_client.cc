@@ -1014,9 +1014,10 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
           arrays.size());
     }
     return arrays[0];
-  } else if (!llvm::isa<const OpaqueSharding, const ConcreteSharding,
-                        const ConcreteEvenSharding, const ShardingParamSharding,
-                        const HloSharding>(sharding.get())) {
+  } else if (!llvm::isa<const SingleDeviceSharding, const OpaqueSharding,
+                        const ConcreteSharding, const ConcreteEvenSharding,
+                        const ShardingParamSharding, const HloSharding>(
+                 sharding.get())) {
     return InvalidArgument(
         "Only SingleDeviceSharding, OpaqueSharding, ConcreteSharding, "
         "ConcreteEvenSharding, ShardingParamSharding, HloSharding are "
