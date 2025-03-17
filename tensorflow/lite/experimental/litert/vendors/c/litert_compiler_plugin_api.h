@@ -51,7 +51,8 @@ typedef LiteRtStatus (*LiteRtGetCompilerPluginSupportedSocModelT)(
     const char** soc_moel_idx);
 
 typedef LiteRtStatus (*LiteRtCompilerPluginPartitionT)(
-    LiteRtCompilerPlugin, LiteRtSubgraph subgraph, LiteRtOpList selected_ops);
+    LiteRtCompilerPlugin, const char* soc_model, LiteRtSubgraph subgraph,
+    LiteRtOpList selected_ops);
 
 typedef LiteRtStatus (*LiteRtCompilerPluginCompileT)(
     LiteRtCompilerPlugin, const char* soc_model, LiteRtModel partitions,
