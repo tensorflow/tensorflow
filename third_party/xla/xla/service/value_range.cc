@@ -94,7 +94,8 @@ Range RecursivelyIdentifyRange(
     absl::flat_hash_map<const HloInstruction*, Range>& known_ranges,
     const HloAliasAnalysis* alias_analysis) {
   // Non scalar or non-integer HLO. Abort.
-  if ((!instr->shape().IsInteger() && instr->shape().element_type() != PRED) ||
+  if ((!instr->shape().AreAllLeavesIntegers() &&
+       instr->shape().element_type() != PRED) ||
       instr->shape().rank() != 0) {
     return Range{};
   }
@@ -179,7 +180,7 @@ Range RecursivelyIdentifyRange(
                   /*is_linear=*/true},
             instr, known_ranges);
       }
-      if (!instr->shape().IsInteger()) {
+      if (!instr->shape().AreAllLeavesIntegers()) {
         return Range{};
       }
       VLOG(5) << "Handling Constant";
@@ -205,7 +206,7 @@ Range RecursivelyIdentifyRange(
           instr, known_ranges);
     }
     case HloOpcode::kAdd: {
-      if (!instr->shape().IsInteger()) {
+      if (!instr->shape().AreAllLeavesIntegers()) {
         return Range{};
       }
       VLOG(5) << "Handling Add";
@@ -235,7 +236,7 @@ Range RecursivelyIdentifyRange(
           instr, known_ranges);
     }
     case HloOpcode::kMultiply: {
-      if (!instr->shape().IsInteger()) {
+      if (!instr->shape().AreAllLeavesIntegers()) {
         return Range{};
       }
       VLOG(5) << "Handling Multiply";
@@ -300,7 +301,7 @@ Range RecursivelyIdentifyRange(
           instr, known_ranges);
     }
     case HloOpcode::kSubtract: {
-      if (!instr->shape().IsInteger()) {
+      if (!instr->shape().AreAllLeavesIntegers()) {
         return Range{};
       }
       VLOG(5) << "Handling Subtract";

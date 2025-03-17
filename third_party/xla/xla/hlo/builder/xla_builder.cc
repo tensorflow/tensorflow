@@ -916,7 +916,7 @@ XlaOp XlaBuilder::MhloDynamicBroadcastInDim(
     TF_ASSIGN_OR_RETURN(const Shape* output_dimensions_shape,
                         GetShapePtr(output_dimensions));
 
-    if (!output_dimensions_shape->IsInteger()) {
+    if (!output_dimensions_shape->AreAllLeavesIntegers()) {
       return InvalidArgument("output_dimensions must be an integer type %s",
                              ShapeUtil::HumanString(*output_dimensions_shape));
     }

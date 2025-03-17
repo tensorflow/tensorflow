@@ -514,7 +514,7 @@ absl::StatusOr<Value> EmitConstant(EmitterLocOpBuilder b,
     return CreateConst(b, ty, converted.GetFirstElement<uint64_t>());
   }
 
-  if (constant.shape().IsInteger()) {
+  if (constant.shape().AreAllLeavesIntegers()) {
     TF_ASSIGN_OR_RETURN(Literal converted, constant.literal().Convert(S64));
     return CreateConst(b, ty, converted.GetFirstElement<int64_t>());
   }

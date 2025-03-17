@@ -196,7 +196,7 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
   }
 
   if (offset->opcode() == HloOpcode::kConvert &&
-      offset->operand(0)->shape().IsInteger() &&
+      offset->operand(0)->shape().AreAllLeavesIntegers() &&
       primitive_util::BitWidth(offset->operand(0)->shape().element_type()) <=
           primitive_util::BitWidth(offset->shape().element_type())) {
     return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size,

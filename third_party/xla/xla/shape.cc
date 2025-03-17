@@ -125,10 +125,10 @@ std::string Shape::ToString(bool print_layout) const {
   }
 }
 
-bool Shape::IsInteger() const {
+bool Shape::AreAllLeavesIntegers() const {
   if (IsTuple()) {
-    return absl::c_all_of(tuple_shapes_,
-                          [](const Shape& s) { return s.IsInteger(); });
+    return absl::c_all_of(
+        tuple_shapes_, [](const Shape& s) { return s.AreAllLeavesIntegers(); });
   }
   return primitive_util::IsIntegralType(element_type());
 }

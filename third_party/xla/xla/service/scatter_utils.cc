@@ -221,7 +221,7 @@ bool IsScatterCombinerAssociative(const HloComputation* combiner) {
     case HloOpcode::kMultiply:
     case HloOpcode::kOr:
     case HloOpcode::kXor:
-      return combiner->root_instruction()->shape().IsInteger();
+      return combiner->root_instruction()->shape().AreAllLeavesIntegers();
     default:
       return false;
   }

@@ -110,9 +110,9 @@ class Shape {
   bool IsToken() const { return element_type() == TOKEN; }
   bool IsOpaque() const { return element_type() == OPAQUE_TYPE; }
 
-  // Returns whether all elements in the shape are integer.
-  // A nested tuple of integers is considered as integer.
-  bool IsInteger() const;
+  // Returns whether all elements in the shape are integers.
+  // Tuple shapes are traversed recursively.
+  bool AreAllLeavesIntegers() const;
 
   // Returns true if no array dimension in the shape is dynamically sized. Tuple
   // shapes are traversed recursively.

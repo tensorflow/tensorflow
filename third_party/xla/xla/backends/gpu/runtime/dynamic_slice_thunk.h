@@ -81,14 +81,14 @@ class DynamicSliceThunk : public Thunk {
       Shape init_output_shape =
           this->indvar_init->entry_computation()->root_instruction()->shape();
       CHECK(this->indvar_init->entry_computation()->num_parameters() == 0 &&
-            init_output_shape.IsInteger() &&
+            init_output_shape.AreAllLeavesIntegers() &&
             ShapeUtil::IsScalar(init_output_shape))
           << "Induction variable init module expected with signature `() -> "
              "integer[]`.";
       Shape update_output_shape =
           this->indvar_update->entry_computation()->root_instruction()->shape();
       CHECK(this->indvar_update->entry_computation()->num_parameters() == 1 &&
-            update_output_shape.IsInteger() &&
+            update_output_shape.AreAllLeavesIntegers() &&
             ShapeUtil::IsScalar(update_output_shape))
           << "Induction variable update module expected with signature "
              "`(integer[]) -> integer[]`.";
@@ -96,7 +96,7 @@ class DynamicSliceThunk : public Thunk {
                                      ->parameter_instruction(0)
                                      ->shape();
       CHECK(ShapeUtil::IsScalar(update_input_shape) &&
-            update_input_shape.IsInteger())
+            update_input_shape.AreAllLeavesIntegers())
           << "Induction variable update module expected with signature "
              "`(integer[]) -> integer[]`.";
     }
