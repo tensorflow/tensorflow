@@ -1405,6 +1405,7 @@ GetOptimizedProgramModule(const PJRT_Executable_OptimizedProgram_Args* args) {
         "`%s`: MPMD execution is not supported by PJRT C API",
         args->executable->get()->name());
   }
+  CHECK(hlo_modules[0] != nullptr) << "[clin] hlo_modules[0] is nullptr";
   return std::move(hlo_modules[0]);
 }
 
