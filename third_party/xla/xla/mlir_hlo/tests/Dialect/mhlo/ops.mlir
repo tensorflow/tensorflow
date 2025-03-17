@@ -7117,7 +7117,7 @@ func.func @composite_c4(%arg0: !mhlo.token) {
 func.func @ragged_dot_non_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3x2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<2x11x7xf32> {
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [0],
         rhs_batching_dimensions = [1],
         lhs_contracting_dimensions = [2],
@@ -7137,7 +7137,7 @@ func.func @ragged_dot_non_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3
 func.func @ragged_dot_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<3x2x11x7xf32> {
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [0],
         rhs_batching_dimensions = [0],
         lhs_contracting_dimensions = [2],
@@ -7157,7 +7157,7 @@ func.func @ragged_dot_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<2x5x7
 func.func @ragged_dot_batch(%lhs : tensor<3x11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<3x11x7xf32> {
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [0],
         rhs_batching_dimensions = [0],
         lhs_contracting_dimensions = [2],
@@ -7177,7 +7177,7 @@ func.func @ragged_dot_incompatible_contracting_dims(%lhs : tensor<11x5xf32>, %rh
   // @expected-error@+1 {{contracting dimension sizes must match}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [],
         rhs_batching_dimensions = [],
         lhs_contracting_dimensions = [1],
@@ -7197,7 +7197,7 @@ func.func @ragged_dot_group_sizes_incorrect_rank(%lhs : tensor<11x5xf32>, %rhs :
   // @expected-error@+1 {{expected group_sizes to have rank 1, got 2}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [],
         rhs_batching_dimensions = [],
         lhs_contracting_dimensions = [1],
@@ -7216,7 +7216,7 @@ func.func @ragged_dot_group_sizes_incorrect_rank(%lhs : tensor<11x5xf32>, %rhs :
 func.func @ragged_dot_mode1_group_sizes_broadcasted(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<3x19x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<19x17x11x7xf32> {
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [0],
         rhs_batching_dimensions = [1],
         lhs_contracting_dimensions = [3],
@@ -7236,7 +7236,7 @@ func.func @ragged_dot_mode1_group_sizes_incorrect_shape(%lhs : tensor<19x17x11x5
   // @expected-error@+1 {{group_sizes is expected to have shape [19, 17, 3], got [19, 11, 3]}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [0],
         rhs_batching_dimensions = [1],
         lhs_contracting_dimensions = [3],
@@ -7256,7 +7256,7 @@ func.func @ragged_dot_mode2_group_sizes_incorrect_shape(%lhs : tensor<19x11x17x5
   // @expected-error@+1 {{group_sizes is expected to have shape [19, 17, 3], got [19, 11, 3]}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [0],
         rhs_batching_dimensions = [0],
         lhs_contracting_dimensions = [2,3],
@@ -7276,7 +7276,7 @@ func.func @ragged_dot_mode3_group_sizes_incorrect_shape(%lhs : tensor<17x19x11x5
   // @expected-error@+1 {{group_sizes is expected to have shape [17, 3], got [19, 3]}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [0,1],
         rhs_batching_dimensions = [0,1],
         lhs_contracting_dimensions = [3],
@@ -7296,7 +7296,7 @@ func.func @ragged_dot_incorrect_group_dim_size(%lhs : tensor<11x5xf32>, %rhs : t
   // @expected-error@+1 {{rhs group dimension is expected to have size=2, got 3}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [],
         rhs_batching_dimensions = [],
         lhs_contracting_dimensions = [1],
@@ -7316,7 +7316,7 @@ func.func @ragged_dot_incorrect_number_of_lhs_ragged_dimensions(%lhs : tensor<11
   // @expected-error@+1 {{There must be exactly one ragged dimension in the lhs}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [],
         rhs_batching_dimensions = [],
         lhs_contracting_dimensions = [1],
@@ -7336,7 +7336,7 @@ func.func @ragged_dot_rhs_group_dim_is_batch(%lhs : tensor<3x11x5xf32>, %rhs : t
   // @expected-error@+1 {{has duplicated dimension from rhs_group_dimensions and rhs_batching_dimensions: 0}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [0],
         rhs_batching_dimensions = [0],
         lhs_contracting_dimensions = [2],
@@ -7356,7 +7356,7 @@ func.func @ragged_dot_rhs_group_dim_is_contracting(%lhs : tensor<11x3xf32>, %rhs
   // @expected-error@+1 {{has duplicated dimension from rhs_group_dimensions and rhs_contracting_dimensions: 1}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [],
         rhs_batching_dimensions = [],
         lhs_contracting_dimensions = [1],
@@ -7376,7 +7376,7 @@ func.func @ragged_dot_nonzero_rhs_group_dims_for_ragged_batch(%lhs : tensor<2x11
   // @expected-error@+1 {{There must be zero group dimensions in the rhs when the ragged dimension is batch or contracting}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [0],
         rhs_batching_dimensions = [1],
         lhs_contracting_dimensions = [2],
@@ -7396,7 +7396,7 @@ func.func @ragged_dot_nonzero_rhs_group_dims_for_ragged_contracting(%lhs : tenso
   // @expected-error@+1 {{There must be zero group dimensions in the rhs when the ragged dimension is batch or contracting}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [],
         rhs_batching_dimensions = [],
         lhs_contracting_dimensions = [1],
@@ -7416,7 +7416,7 @@ func.func @ragged_dot_zero_rhs_group_dims_for_ragged_noncontracting(%lhs : tenso
   // @expected-error@+1 {{There must be exactly one group dimension in the rhs when the lhs ragged dimension is non-contracting}}
   %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-      dot_dimension_numbers = <
+      dot_dimension_numbers = #mhlo.dot<
         lhs_batching_dimensions = [],
         rhs_batching_dimensions = [],
         lhs_contracting_dimensions = [1],

@@ -8,7 +8,7 @@ module @ragged_dot_non_contracting {
     // CHECK: f32[19,11,7] ragged-dot(%[[ARG0]], %[[ARG1]], %[[ARG2]]), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_ragged_dims={1}, rhs_group_dims={0}
     %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
       ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-        dot_dimension_numbers = <
+        dot_dimension_numbers = #mhlo.dot<
           lhs_batching_dimensions = [],
           rhs_batching_dimensions = [],
           lhs_contracting_dimensions = [2],
@@ -33,7 +33,7 @@ module @ragged_dot_contracting {
     // CHECK: f32[3,11,7] ragged-dot(%[[ARG0]], %[[ARG1]], %[[ARG2]]), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, lhs_ragged_dims={2}
     %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
       ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-        dot_dimension_numbers = <
+        dot_dimension_numbers = #mhlo.dot<
           lhs_batching_dimensions = [],
           rhs_batching_dimensions = [],
           lhs_contracting_dimensions = [1,2],
@@ -58,7 +58,7 @@ module @ragged_dot_batch {
     // CHECK: f32[19,17,11,7] ragged-dot(%[[ARG0]], %[[ARG1]], %[[ARG2]]), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, lhs_ragged_dims={1}
     %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
       ragged_dot_dimension_numbers = #mhlo.ragged_dot<
-        dot_dimension_numbers = <
+        dot_dimension_numbers = #mhlo.dot<
           lhs_batching_dimensions = [0,1],
           rhs_batching_dimensions = [0,1],
           lhs_contracting_dimensions = [3],

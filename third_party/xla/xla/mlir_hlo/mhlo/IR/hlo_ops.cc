@@ -6857,9 +6857,14 @@ Attribute RaggedDotDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
           {"dot_dimension_numbers", "lhs_ragged_dimensions",
            "rhs_group_dimensions"},
           {[&]() {
-             auto result = DotDimensionNumbersAttr::parse(parser, type);
-             if (!result) return ParseResult(failure());
-             dotDimensionNumbers = llvm::cast<DotDimensionNumbersAttr>(result);
+             Attribute attr;
+             if (failed(parser.parseAttribute(attr)))
+               return ParseResult(failure());
+             dotDimensionNumbers =
+                 llvm::dyn_cast<DotDimensionNumbersAttr>(attr);
+             if (!dotDimensionNumbers)
+               parser.emitError(parser.getCurrentLocation(),
+                                "expected #mhlo.dot attribute");
              return ParseResult(success());
            },
            [&]() { return parseDims(parser, lhsRaggedDimensions); },
