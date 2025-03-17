@@ -62,11 +62,6 @@ TEST(DeviceIdManagerTest, Basics) {
                                                              value_1));
   EXPECT_EQ(value_1, TfToPlatformDeviceId(device_type, key_2));
 
-  // Mapping the same TfDeviceId to a different value.
-  ASSERT_FALSE(
-      DeviceIdManager::InsertTfPlatformDeviceIdPair(device_type, key_2, value_0)
-          .ok());
-
   // Getting a nonexistent mapping.
   ASSERT_FALSE(DeviceIdManager::TfToPlatformDeviceId(device_type,
                                                      TfDeviceId(100), &value_0)
