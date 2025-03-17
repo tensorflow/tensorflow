@@ -2115,8 +2115,10 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
           unique_user->opcode() == HloOpcode::kWhile);
     if (unique_user->IsRoot()) {
       // send/recv op in the loop body.
-      CHECK(unique_user->parent()->IsWhileBodyComputation());
-      while_op = unique_user->parent()->WhileCallInstruction();
+      auto maybe_while_op =
+          unique_user->parent()->GetUniqueCaller(HloOpcode::kWhile);
+      CHECK(maybe_while_op);
+      while_op = *maybe_while_op;
       i = unique_user->operand_index(inst);
     } else {
       // send/recv leading into the loop.
@@ -2146,8 +2148,10 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
     if (iter_tuple->opcode() == HloOpcode::kParameter) {
       // send-done/recv-done in the loop body.
       CHECK(Cast<HloParameterInstruction>(iter_tuple)->parameter_number() == 0);
-      CHECK(operand->parent()->IsWhileBodyComputation());
-      while_op = iter_tuple->parent()->WhileCallInstruction();
+      auto maybe_while =
+          iter_tuple->parent()->GetUniqueCaller(HloOpcode::kWhile);
+      CHECK(maybe_while);
+      while_op = *maybe_while;
       i = gte->tuple_index();
     } else {
       // send-done/recv-done proceeding the loop.

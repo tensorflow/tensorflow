@@ -239,7 +239,8 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    if (!combine_while_loops_ && computation->IsWhileBodyComputation()) {
+    if (!combine_while_loops_ &&
+        computation->GetUniqueCaller(HloOpcode::kWhile)) {
       VLOG(2) << "Skipping this computation because the computation is a while "
                  "loop body: "
               << computation->ToString();

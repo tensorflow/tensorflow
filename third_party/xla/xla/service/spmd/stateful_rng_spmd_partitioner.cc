@@ -90,11 +90,11 @@ bool StatefulRngSpmdPartitioner::CanSideEffectingHaveReplicatedSharding(
 
 absl::Status StatefulRngSpmdPartitioner::HandleRotateRightWhilePreprocessing(
     HloComputation* computation) {
-  if (!computation->IsWhileBodyComputation()) {
+  auto maybe_while = computation->GetUniqueCaller(HloOpcode::kWhile);
+  if (!maybe_while) {
     return absl::OkStatus();
   }
-  HloInstruction* while_loop = computation->WhileCallInstruction();
-  TF_RET_CHECK(while_loop);
+  HloInstruction* while_loop = *maybe_while;
   if (computation->parent()
           ->config()
           .debug_options()

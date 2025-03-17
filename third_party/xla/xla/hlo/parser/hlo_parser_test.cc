@@ -2862,8 +2862,8 @@ class HloParameterizedParserTest
     for (HloComputation* computation : module->computations()) {
       for (HloInstruction* instr : computation->instructions()) {
         if (instr->opcode() == HloOpcode::kWhile) {
-          EXPECT_EQ(instr->while_body()->WhileCallInstruction(), instr);
-          EXPECT_TRUE(instr->while_body()->IsWhileBodyComputation());
+          EXPECT_EQ(instr->while_body()->GetUniqueCaller(HloOpcode::kWhile),
+                    instr);
         }
       }
     }

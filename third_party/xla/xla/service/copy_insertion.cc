@@ -2114,7 +2114,7 @@ absl::Status CopyInsertion::AddCopiesForAsyncSendRecv(
 
   // For other cases that send/recv are outside of the while loop, live times
   // are disjoint. No copies are needed.
-  if (!parent->IsWhileBodyComputation()) {
+  if (!parent->caller_instructions(HloOpcode::kWhile).empty()) {
     return absl::OkStatus();
   }
 

@@ -148,9 +148,6 @@ absl::Status AnnotateNode(const CallGraphNode& node) {
         computation->SetCollectiveCallInstruction(instruction);
       }
 
-    } else if (instruction->opcode() == HloOpcode::kWhile) {
-      instruction->while_body()->SetWhileCallInstruction(instruction);
-
     } else if (instruction->opcode() == HloOpcode::kConditional) {
       for (HloComputation* branch : instruction->branch_computations()) {
         branch->SetConditionalCallInstruction(instruction);
